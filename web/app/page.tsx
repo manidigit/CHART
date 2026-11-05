@@ -7,6 +7,7 @@ import {
   ShieldCheck, Signal, SlidersHorizontal, Sparkles,
 } from "lucide-react";
 import type { MarketInstrument } from "@/lib/market";
+import MarketCandlestickChart, { type ChartCandle } from "@/components/MarketCandlestickChart";
 
 type SummaryInstrument = MarketInstrument & {
   quote: null;
@@ -37,6 +38,8 @@ export default function DashboardPage() {
   const [summary, setSummary] = useState<SummaryResponse | null>(null);
   const [apiState, setApiState] = useState<"loading" | "ready" | "unavailable">("loading");
   const [lastChecked, setLastChecked] = useState<string | null>(null);
+  const [candles, setCandles] = useState<ChartCandle[]>([]);
+  const [candleLoading, setCandleLoading] = useState(false);
 
   async function refresh() {
     setApiState("loading");
@@ -53,6 +56,20 @@ export default function DashboardPage() {
   }
 
   useEffect(() => { void refresh(); }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCandles([]);
+    setCandleLoading(true);
+    fetch(`/api/v1/candles?instrumentId=${selected.id}&timeframe=M15&limit=96`, { cache: "no-store" })
+      .then(async (response) => {
+        const body = await response.json() as { candles?: ChartCandle[] };
+        if (!cancelled && response.ok && Array.isArray(body.candles)) setCandles(body.candles);
+      })
+      .catch(() => { if (!cancelled) setCandles([]); })
+      .finally(() => { if (!cancelled) setCandleLoading(false); });
+    return () => { cancelled = true; };
+  }, [selected.id]);
 
   const active = summary?.instruments.find((item) => item.id === selected.id);
 
@@ -109,9 +126,15 @@ export default function DashboardPage() {
           <section className="panel chart-panel" id="chart">
             <div className="panel-head"><div><div className="panel-kicker">PRICE ACTION</div><h2>{selected.symbol} <span className="subdued">· 15 minute</span></h2></div><button className="select-control">M15 <ChevronDown size={14} /></button></div>
             <div className="chart-placeholder">
-              <div className="chart-grid"><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span></div>
-              <div className="chart-center"><div className="chart-icon"><CandlestickChart size={25} /></div><b>Waiting for verified market data</b><span>The chart will render after the provider passes symbol, history and M15 quality checks.</span></div>
-              <div className="chart-time"><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span></div>
+              {candles.length > 0 ? (
+                <MarketCandlestickChart candles={candles} height={280} />
+              ) : (
+                <>
+                  <div className="chart-grid"><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span></div>
+                  <div className="chart-center"><div className="chart-icon"><CandlestickChart size={25} /></div><b>{candleLoading ? "Checking candle feed" : "Waiting for verified market data"}</b><span>The chart renders only after the provider passes symbol, history and M15 quality checks.</span></div>
+                  <div className="chart-time"><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span></div>
+                </>
+              )}
             </div>
             <div className="chart-legend"><span><i className="legend-line emerald" /> EMA 20</span><span><i className="legend-line blue" /> SMA 50</span><span><i className="legend-line amber" /> VWAP</span><span className="legend-note">Indicators activate with verified candles</span></div>
           </section>
