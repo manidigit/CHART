@@ -726,7 +726,7 @@ Timeframeهای هدف نمودار:
 
 - LightGBM
 - Scikit-learn
-- اجرای مدل روی دستگاه: مدل درختی صادرشده و ارزیابی با کد ساده در برنامه، و ONNX Runtime؛ هر دو از نظر دقت و سرعت در Android و Windows آزمایش شوند
+- اجرای مدل در Browser در برابر Backend: مدل درختی صادرشده و ONNX Runtime یا گزینه‌های مناسب Web؛ از نظر دقت، سرعت، حافظه و امنیت آزمایش شوند
 - Python برای آموزش
 - Optuna برای بهینه‌سازی
 - ابزارهای آماده Feature Engineering
