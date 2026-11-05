@@ -1,6 +1,6 @@
-# Chart Intelligence (Android · Kotlin & Jetpack Compose)
+# Chart Intelligence (Responsive Web + Android)
 
-Independent financial chart analysis, multi-horizon forecast engine, walk-forward validation suite, and market data provider POC workbench implementing `CHART_INTELLIGENCE_MASTER_SPEC.md` (v1.7).
+Independent financial chart analysis, multi-horizon forecast engine, walk-forward validation suite, and market data provider POC workbench implementing `CHART_INTELLIGENCE_MASTER_SPEC.md` (v1.9).
 
 ## Core Modules
 
@@ -23,7 +23,7 @@ Independent financial chart analysis, multi-horizon forecast engine, walk-forwar
 
 ## Shared Web + Android Platform (in progress)
 
-The approved platform is PHP 8.3 REST API + MariaDB + a separate Python Worker, consumed by the existing Kotlin/Jetpack Compose Android app and a Next.js/TypeScript Web dashboard.
+The approved product has only two clients: a responsive Next.js/TypeScript Web dashboard (desktop and Android mobile browsers) and the existing Kotlin/Jetpack Compose Android app. There is no Windows or separate desktop application. Both clients use the PHP 8.3 REST API + MariaDB + separate Python Worker.
 
 - Architecture: `docs/SHARED_PLATFORM_ARCHITECTURE.md`
 - API contract: `docs/API_SPECIFICATION.md`
@@ -33,4 +33,4 @@ The approved platform is PHP 8.3 REST API + MariaDB + a separate Python Worker, 
 - Python Worker: `worker/`
 - Web dashboard: `web/`
 
-This is an implementation scaffold, not a production deployment. No XAUUSD/SPOTBRENT provider adapter is enabled yet; provider mappings remain TO VERIFY. The migration seeds instrument identities only and intentionally inserts no synthetic market candles. Do not expose the API until a production authentication/session strategy, rate limiting, and hosting compatibility have been verified.
+This is an implementation scaffold, not a production deployment. No SPOTBRENT/XAUUSD provider adapter is enabled yet; provider mappings remain TO VERIFY. The migration seeds instrument identities only and intentionally inserts no synthetic market candles. Do not expose the API until a production authentication/session strategy, rate limiting, and hosting compatibility have been verified.
