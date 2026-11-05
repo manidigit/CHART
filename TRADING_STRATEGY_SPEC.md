@@ -1,7 +1,7 @@
 # TRADING STRATEGY SPEC
 
 **وضعیت:** خارج از دامنه نسخه اول؛ مرجع مرحله Trading Strategy و Portfolio Simulation.
-**وابسته به:** `CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.7`)
+**وابسته به:** `CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.8`)
 **ابزارهای اولیه:** `XAUUSD` و `SPOTBRENT`؛ شبیه‌سازی این سند بعد از اعتبارسنجی پیش‌بینی روی همین دو ابزار شروع می‌شود.
 
 ------------------------------------------------------------------------
