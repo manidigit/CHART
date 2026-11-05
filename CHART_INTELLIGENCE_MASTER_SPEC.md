@@ -1073,10 +1073,9 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
 - کاربرد: بررسی اجرای مدل Exportشده در Browser یا Backend و مقایسه سرعت، حافظه، پشتیبانی Operatorها و برابری عددی خروجی با محیط آموزش.
 - وضعیت: فقط پس از POC Browser/Backend انتخاب می‌شود؛ فناوری Runtime قطعی نیست.
 
-### pandas-ta — جایگزین/مقایسه محاسبات Indicator (TO VERIFY)
+### pandas-ta — گزینه مقایسه‌ای محاسبات Indicator (TO VERIFY)
 
-- مخزن: https://github.com/xgboosted/pandas-ta-classic
-- فایل مرجع: README.md — https://github.com/xgboosted/pandas-ta-classic/blob/main/README.md
+- منبع upstream، شاخه فعال، فایل README و License باید پیش از آزمایش از نو تثبیت شوند؛ در این سند به مخزن یا Fork تأییدنشده ارجاع قطعی داده نمی‌شود.
 - کاربرد: مقایسه پوشش Indicator و سهولت ادغام با Pandas در برابر TA-Lib.
 - وضعیت: گزینه مقایسه‌ای؛ اگر TA-Lib نیازهای پروژه را پوشش دهد، دو کتابخانه هم‌زمان وارد Runtime نشوند مگر دلیل فنی روشن وجود داشته باشد.
 
