@@ -20,7 +20,7 @@ export default function DashboardPage() {
 
   useEffect(() => {
     let active = true;
-    fetch(`${API_BASE}/api/v1/instruments`, { cache: "no-store" })
+    fetch(`${API_BASE}/instruments`, { cache: "no-store" })
       .then((response) => {
         if (!response.ok) throw new Error("API unavailable");
         return response.json();
