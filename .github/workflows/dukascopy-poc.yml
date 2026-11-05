@@ -1,0 +1,28 @@
+name: Dukascopy market-data POC
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dukascopy-node
+        run: npm install --no-save dukascopy-node@1.51.1
+      - name: Run smoke test
+        run: node scripts/provider_poc/dukascopy_smoke_test.cjs
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: dukascopy-report
+          path: dukascopy_report.json
+          if-no-files-found: warn
