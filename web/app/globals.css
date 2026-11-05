@@ -8,6 +8,9 @@ header { display:flex; justify-content:space-between; align-items:center; gap:16
 h1 { font-size:22px; margin:0; letter-spacing:.02em; }
 .sub { color:var(--muted); font-size:12px; margin-top:6px; }
 .toolbar { display:flex; gap:10px; flex-wrap:wrap; }
+input { font:inherit; color:var(--text); background:var(--panel); border:1px solid var(--line); border-radius:8px; padding:9px 12px; min-width:190px; }
+select { max-width:100%; }
+@media (max-width:600px) { .toolbar { width:100%; } .toolbar input, .toolbar select { flex:1 1 145px; min-width:0; } }
 .grid { display:grid; grid-template-columns:minmax(0, 1fr) 300px; gap:16px; }
 .panel { background:var(--panel); border:1px solid var(--line); border-radius:12px; padding:16px; min-width:0; }
 .panel h2 { font-size:14px; margin:0 0 14px; color:#cbd7e5; }
