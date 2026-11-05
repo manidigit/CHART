@@ -3,6 +3,9 @@ package com.chartintelligence.app.ui
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.chartintelligence.app.data.ProviderPocAndMarketService
+import com.chartintelligence.app.data.SharedApiResult
+import com.chartintelligence.app.data.SharedInstrument
+import com.chartintelligence.app.data.SharedMarketApiClient
 import com.chartintelligence.app.engine.PredictionAndValidationEngine
 import com.chartintelligence.app.model.CandleRecord
 import com.chartintelligence.app.model.ChartTimeframe
@@ -58,13 +61,17 @@ data class ChartIntelligenceUiState(
     val importBatches: List<DataImportBatch> = ProviderPocAndMarketService.getInitialImportBatches(),
     val ephemeralOcrCandidate: EphemeralOcrCandidate? = null,
     val isRunningNetworkPoc: Boolean = false,
-    val statusBannerMessage: String? = null
+    val statusBannerMessage: String? = null,
+    val sharedApiStatus: String = "Shared API has not been checked.",
+    val sharedApiInstruments: List<SharedInstrument> = emptyList(),
+    val isCheckingSharedApi: Boolean = false
 )
 
 class ChartIntelligenceViewModel : ViewModel() {
 
     private val m15CandleStore = mutableMapOf<String, MutableList<CandleRecord>>()
     private var predictionCounter = 1
+    private val sharedMarketApiClient = SharedMarketApiClient()
 
     private val _uiState = MutableStateFlow(ChartIntelligenceUiState())
     val uiState: StateFlow<ChartIntelligenceUiState> = _uiState.asStateFlow()
@@ -76,6 +83,29 @@ class ChartIntelligenceViewModel : ViewModel() {
         }
         seedInitialImmutableLedger()
         recomputeForCurrentSelection()
+        refreshSharedApiStatus()
+    }
+
+    fun refreshSharedApiStatus() {
+        if (_uiState.value.isCheckingSharedApi) return
+        _uiState.update { it.copy(isCheckingSharedApi = true) }
+        viewModelScope.launch {
+            when (val result = sharedMarketApiClient.getInstruments()) {
+                is SharedApiResult.Success -> _uiState.update { current ->
+                    current.copy(
+                        isCheckingSharedApi = false,
+                        sharedApiInstruments = result.value,
+                        sharedApiStatus = "Connected · ${result.value.size} instruments available"
+                    )
+                }
+                is SharedApiResult.Unavailable -> _uiState.update { current ->
+                    current.copy(
+                        isCheckingSharedApi = false,
+                        sharedApiStatus = result.message
+                    )
+                }
+            }
+        }
     }
 
     private fun seedInitialImmutableLedger() {
