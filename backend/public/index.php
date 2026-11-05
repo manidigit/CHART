@@ -40,6 +40,14 @@ if ($method !== 'GET') respond(405, ['error' => 'method_not_allowed']);
 $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH) ?: '/';
 if ($path === '/api/v1/health') respond(200, ['status' => 'ok', 'api_version' => 'v1']);
 
+$expectedToken = getenv('CHART_API_READ_TOKEN');
+$authorization = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+if ($expectedToken === false || $expectedToken === '' ||
+    !preg_match('/^Bearer\\s+(.+)$/i', $authorization, $tokenMatch) ||
+    !hash_equals($expectedToken, trim($tokenMatch[1]))) {
+    respond(401, ['error' => 'unauthorized']);
+}
+
 try {
     if ($path === '/api/v1/instruments') {
         $rows = db()->query("SELECT id, display_name, tradingview_symbol, market_type, quote_currency, price_basis, decimals, status FROM instruments ORDER BY is_initial_primary DESC, id")->fetchAll();
