@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
 """Twelve Data read-only market-data smoke test for Chart Intelligence.
 
-Reads TWELVE_DATA_API_KEY from the environment. Never prints the key or
-full request URLs. It checks the provider catalogue and fetches a small
-sample of 15-minute OHLC candles for Gold Spot and Brent Spot.
+The API key is read only from TWELVE_DATA_API_KEY. It is never printed.
+This first POC tests the provider's documented gold symbol and a Brent
+symbol candidate independently, so one plan restriction cannot hide the
+result of the other request.
 """
 from __future__ import annotations
 
@@ -20,6 +21,14 @@ BASE_URL = "https://api.twelvedata.com"
 INTERVAL = "15min"
 OUTPUT_SIZE = 100
 TIMEOUT_SECONDS = 30
+
+# XAU/USD is explicitly listed as the Commodity trial symbol by Twelve Data.
+# XBR is listed by Twelve Data as its Brent Spot instrument; XBR/USD is tested
+# as the candidate API ticker and will be confirmed or rejected by the API.
+INSTRUMENTS = [
+    {"name": "Gold Spot / US Dollar", "symbol": "XAU/USD"},
+    {"name": "Brent Spot", "symbol": "XBR/USD"},
+]
 
 
 class ProviderError(RuntimeError):
@@ -46,7 +55,6 @@ def api_get(endpoint: str, params: dict[str, str] | None = None):
         with urllib.request.urlopen(request, timeout=TIMEOUT_SECONDS) as response:
             payload = response.read().decode("utf-8")
     except urllib.error.HTTPError as exc:
-        # Do not print request URL or request headers: the API key is secret.
         body = exc.read().decode("utf-8", errors="replace")
         try:
             data = json.loads(body)
@@ -69,35 +77,6 @@ def api_get(endpoint: str, params: dict[str, str] | None = None):
             f"{data.get('message', 'Unknown provider error')}"
         )
     return data
-
-
-def records_from_catalog(payload):
-    if isinstance(payload, list):
-        return payload
-    if isinstance(payload, dict):
-        for key in ("data", "values", "commodities"):
-            value = payload.get(key)
-            if isinstance(value, list):
-                return value
-    raise ProviderError("Unexpected /commodities response structure")
-
-
-def find_commodity(records, wanted: str):
-    matches = []
-    for item in records:
-        if not isinstance(item, dict):
-            continue
-        name = str(item.get("name", "")).strip()
-        symbol = str(item.get("symbol", "")).strip()
-        normalized = name.casefold()
-        if wanted == "gold" and ("gold spot" in normalized):
-            matches.append((name, symbol))
-        elif wanted == "brent" and ("brent spot" in normalized):
-            matches.append((name, symbol))
-
-    # Prefer the exact Spot instrument name, then deterministic symbol order.
-    matches.sort(key=lambda pair: (pair[0].casefold() not in (f"{wanted} spot",), pair[1]))
-    return matches[0] if matches else None
 
 
 def as_decimal(value, field: str) -> Decimal:
@@ -147,22 +126,20 @@ def inspect_series(display_name: str, symbol: str):
     if duplicate_count:
         raise ProviderError(f"{display_name}: {duplicate_count} duplicate candle timestamps")
 
-    deltas = [(right - left) for left, right in zip(stamps, stamps[1:])]
     expected = timedelta(minutes=15)
-    exact_intervals = sum(delta == expected for delta in deltas)
-    gaps_over_interval = sum(delta > expected for delta in deltas)
-
+    deltas = [right - left for left, right in zip(stamps, stamps[1:])]
     return {
         "instrument_name": display_name,
-        "provider_symbol": symbol,
+        "provider_symbol_tested": symbol,
         "provider": "Twelve Data",
         "interval": INTERVAL,
         "timezone": "UTC",
+        "status": "passed",
         "candle_count": len(parsed),
         "first_candle_utc": stamps[0].isoformat(),
         "last_candle_utc": stamps[-1].isoformat(),
-        "exact_15m_transitions": exact_intervals,
-        "gaps_over_15m": gaps_over_interval,
+        "exact_15m_transitions": sum(delta == expected for delta in deltas),
+        "gaps_over_15m": sum(delta > expected for delta in deltas),
         "ohlc_valid": True,
         "duplicate_timestamps": duplicate_count,
         "latest_candle_may_be_open": True,
@@ -170,40 +147,32 @@ def inspect_series(display_name: str, symbol: str):
 
 
 def main():
-    catalog = api_get("commodities")
-    records = records_from_catalog(catalog)
-
-    selected = {}
-    for key in ("gold", "brent"):
-        match = find_commodity(records, key)
-        if not match:
-            candidates = []
-            for item in records:
-                if isinstance(item, dict) and key in str(item.get("name", "")).casefold():
-                    candidates.append({
-                        "name": item.get("name"),
-                        "symbol": item.get("symbol"),
-                    })
-            raise ProviderError(
-                f"Could not identify a {key.title()} Spot symbol in the provider catalogue. "
-                f"Related catalogue entries: {json.dumps(candidates[:10], ensure_ascii=False)}"
-            )
-        selected[key] = match
-
     results = []
-    for key in ("gold", "brent"):
-        name, symbol = selected[key]
-        results.append(inspect_series(name, symbol))
+    for instrument in INSTRUMENTS:
+        try:
+            results.append(inspect_series(instrument["name"], instrument["symbol"]))
+        except ProviderError as exc:
+            results.append({
+                "instrument_name": instrument["name"],
+                "provider_symbol_tested": instrument["symbol"],
+                "provider": "Twelve Data",
+                "interval": INTERVAL,
+                "status": "failed",
+                "error": str(exc),
+            })
 
+    passed = sum(item["status"] == "passed" for item in results)
     report = {
         "test": "twelve_data_market_data_smoke_test",
-        "status": "passed",
+        "status": "passed" if passed == len(INSTRUMENTS) else "partial" if passed else "failed",
         "provider": "Twelve Data",
         "scope": "market data only; no brokerage account or trading endpoints",
         "requested_interval": INTERVAL,
         "instruments": results,
     }
     print(json.dumps(report, ensure_ascii=False, indent=2))
+    if passed != len(INSTRUMENTS):
+        sys.exit(1)
 
 
 if __name__ == "__main__":
