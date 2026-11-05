@@ -11,6 +11,8 @@ android {
 
     defaultConfig {
         applicationId = "com.chartintelligence.app"
+        val chartApiBaseUrl = providers.gradleProperty("CHART_API_BASE_URL").orElse("").get().trimEnd('/')
+        buildConfigField("String", "CHART_API_BASE_URL", "\"$chartApiBaseUrl\"")
         minSdk = 24
         targetSdk = 36
         versionCode = 1
