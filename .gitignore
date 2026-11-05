@@ -1,0 +1,8 @@
+.gradle/
+build/
+app/build/
+local.properties
+.env
+*.apk
+*.aab
+dukascopy_report.json
