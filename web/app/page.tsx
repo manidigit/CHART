@@ -62,7 +62,7 @@ export default function DashboardPage() {
     });
   }, [instruments, marketType, search]);
 
-  const current = instruments.find((item) => item.id === selected);
+  const current = filtered.find((item) => item.id === selected) ?? filtered[0];
 
   return (
     <main>
@@ -81,7 +81,7 @@ export default function DashboardPage() {
           <select aria-label="Market category" value={marketType} onChange={(event) => setMarketType(event.target.value)}>
             {marketTypes.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
           </select>
-          <select aria-label="Instrument" value={selected} onChange={(event) => setSelected(event.target.value)}>
+          <select aria-label="Instrument" value={current?.id ?? ""} onChange={(event) => setSelected(event.target.value)}>
             {filtered.map((item) => (
               <option key={item.id} value={item.id}>
                 {item.tradingview_symbol} · {item.market_type}
@@ -100,7 +100,7 @@ export default function DashboardPage() {
           {apiState === "loading" && <div className="chart-placeholder">Connecting to shared market API…</div>}
           {apiState === "unavailable" && <div className="chart-placeholder">Market API unavailable. No sample prices are shown as live data.</div>}
           {apiState === "connected" && !selected && <div className="chart-placeholder">No instrument matches this search. Clear the search or choose another market category.</div>}
-          {apiState === "connected" && selected && <CandleChart instrumentId={selected} />}
+          {apiState === "connected" && current && <CandleChart instrumentId={current.id} />}
         </section>
         <aside className="panel">
           <h2>Selected instrument</h2>
