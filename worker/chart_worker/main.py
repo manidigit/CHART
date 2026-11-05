@@ -26,6 +26,28 @@ def connect():
     )
 
 
+def enqueue_hourly_jobs(conn):
+    """Create one ingestion job per primary instrument and UTC hour, idempotently."""
+    cur = conn.cursor()
+    cur.execute(
+        """SELECT id FROM instruments
+           WHERE is_initial_primary=1 AND status <> 'DISABLED' ORDER BY id"""
+    )
+    instruments = [row[0] for row in cur.fetchall()]
+    hour = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:00:00Z")
+    for instrument_id in instruments:
+        schedule_key = f"INGEST_M15:{instrument_id}:{hour}"
+        cur.execute(
+            """INSERT IGNORE INTO worker_jobs
+               (job_type, schedule_key, instrument_id, payload_json, status, available_at)
+               VALUES ('INGEST_M15', %s, %s, JSON_OBJECT('timeframe','M15','scheduled_for',%s),
+                       'QUEUED', UTC_TIMESTAMP(3))""",
+            (schedule_key, instrument_id, hour),
+        )
+    conn.commit()
+    cur.close()
+
+
 def claim_one(conn, worker_id: str):
     """Claim one due job. Row lock prevents concurrent workers claiming same job."""
     cur = conn.cursor(dictionary=True)
@@ -87,6 +109,7 @@ def main():
     worker_id = f"{socket.gethostname()}-{os.getpid()}"
     conn = connect()
     try:
+        enqueue_hourly_jobs(conn)
         # Bounded batch makes this safe for cPanel Cron execution limits.
         for _ in range(int(os.getenv("CHART_WORKER_MAX_JOBS", "10"))):
             job = claim_one(conn, worker_id)
