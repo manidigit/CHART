@@ -1,0 +1,51 @@
+name: Shared Platform CI
+
+on:
+  push:
+    branches: [main, feature/shared-web-android-platform]
+    paths:
+      - 'backend/**'
+      - 'worker/**'
+      - 'web/**'
+      - '.github/workflows/shared-platform-ci.yml'
+  pull_request:
+    paths:
+      - 'backend/**'
+      - 'worker/**'
+      - 'web/**'
+      - '.github/workflows/shared-platform-ci.yml'
+
+jobs:
+  php-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.3'
+      - name: Lint PHP API
+        run: php -l backend/public/index.php
+
+  python-compile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile worker
+        run: python -m compileall -q worker/chart_worker
+
+  web-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Install dependencies
+        working-directory: web
+        run: npm install
+      - name: Build dashboard
+        working-directory: web
+        run: npm run build
