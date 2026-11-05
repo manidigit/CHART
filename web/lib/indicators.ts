@@ -80,9 +80,13 @@ export function computeTechnicalSnapshot(input: VerifiedCandle[]): TechnicalSnap
     candle.high < candle.low || candle.high < candle.close || candle.low > candle.close
   )) return null;
 
+  for (let index = 1; index < candles.length; index++) {
+    if (candles[index].openTimeUtcMs <= candles[index - 1].openTimeUtcMs) return null;
+  }
+
   const latest = candles[candles.length - 1];
   const sma20 = mean(closes.slice(-20));
-  const ema50 = ema(closes.slice(-50), 50);
+  const ema50 = ema(closes, 50);
   const rsi14 = wilderRsi(closes.slice(-15), 14);
   const atr14 = wilderAtr(candles.slice(-15), 14);
   const trend = latest.close > ema50 && latest.close > sma20 && rsi14 >= 55
