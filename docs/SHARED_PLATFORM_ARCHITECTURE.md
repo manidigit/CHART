@@ -1,195 +1,147 @@
-# CHART Shared Android + Web Platform Architecture
+# CHART Shared Web + Android Architecture
 
-**Status:** APPROVED — implementation baseline  
-**Scope:** Shared market-data and analysis platform for Android and Web  
-**Product boundary:** Read-only market analysis and forecasting. No broker-account connections and no trade execution.
+**Status:** Approved implementation direction  
+**Clients:** Responsive Web + Android only  
+**Product boundary:** Independent market-chart analysis and forecasting; read-only market data; no broker-account connection or trade execution.
 
-## 1. Executive decision
+## 1. Product shape
 
-CHART will provide two client applications backed by one logical platform:
+CHART has two client experiences backed by one data and analysis platform:
 
-- **Web dashboard:** responsive browser application, inspired by OpenStock's information architecture.
-- **Android application:** the existing Android client, consuming the same public application API.
-- **Shared platform:** market-data ingestion, candle normalization, indicator calculation, forecasting, validation, persistence, and scheduled jobs. Clients render and interact with results; they do not independently decide market truth.
+- **Web:** the primary responsive interface; works in desktop and Android mobile browsers.
+- **Android:** the existing Kotlin + Jetpack Compose application.
+- **Windows/Desktop application:** removed from scope. There is no separate Windows client.
 
-The initial instruments remain the independently identified TradingView instruments `XAUUSD` and `SPOTBRENT`, on M15. Provider symbols and instrument identity must be verified independently; TradingView symbols are identifiers, not data sources.
+Both clients use the same PHP REST API and receive the same candles, indicators, forecasts, validation results, provider metadata and data-quality state.
 
-## 2. Logical architecture
+## 2. Instrument discovery — not a two-symbol application
+
+The product exposes a searchable, categorized instrument catalog. The catalog is extensible and is not hard-coded to the initial symbols.
+
+Initial categories include:
+- Spot commodities and metals
+- Commodity futures
+- CFDs
+- Forex
+- Crypto spot and (when explicitly supported) other crypto instrument types
+- Equities and indices
+
+Examples are distinct instruments, not aliases to be merged:
+- Brent Spot (SPOTBRENT)
+- Brent Futures (for example, a verified futures symbol/contract)
+- WTI Futures
+- XAUUSD Spot
+- Gold Futures
+- BTCUSDT Spot
+- Individual equities
+
+Selecting one item opens only that instrument's chart and its own historical series, provider mapping, indicators, forecasts and validation history. Similar names or the same underlying commodity do not make two instruments interchangeable.
+
+**Initial default:** Brent Spot (SPOTBRENT) on M15. This is a settled user decision and must not be asked again. XAUUSD M15 remains another initial catalog item.
+
+A symbol is shown as live/available only when a source mapping and data quality have been verified. If a chart is known but has no usable source, show it as unavailable or awaiting a data source; never silently substitute a related CFD, future, index or other provider's series.
+
+## 3. Reuse before rebuilding
+
+CHART should learn from existing charting terminals and libraries instead of rebuilding commodity functionality:
+
+- Reuse a mature chart renderer (TradingView Lightweight Charts is the current web baseline; evaluate other suitable libraries only when they add a concrete capability).
+- Treat chart rendering and market-data acquisition as separate concerns. A chart library is not itself a market-data entitlement or raw-data API.
+- Build thin provider adapters around documented APIs and reusable community libraries where their coverage, license, reliability and terms are suitable.
+- Use provider fallback only between sources verified for the same instrument definition. Fallback must be visible in chart metadata; never cross-fallback Spot to Futures or CFD.
+- Use existing indicator, data-processing, scheduling and backtesting libraries when they pass compatibility and license review. Do not add every referenced repository as a dependency.
+
+## 4. Logical architecture
 
 ```text
-                 ┌──────────────────────┐
-                 │     Web Dashboard    │
-                 │ Next.js / TypeScript │
-                 └──────────┬───────────┘
-                            │ HTTPS / REST
-                 ┌──────────▼───────────┐
-                 │    Android Client    │
-                 │ Existing Android app │
-                 └──────────┬───────────┘
-                            │ HTTPS / REST
-                 ┌──────────▼───────────┐
-                 │    Shared API Layer  │
-                 │ Auth, read APIs, DTO │
-                 └──────────┬───────────┘
-                            │
-             ┌──────────────┼─────────────────┐
-             │              │                 │
-     ┌───────▼──────┐ ┌─────▼────────┐ ┌──────▼─────────┐
-     │ Market Data  │ │ Analysis &   │ │ Forecast and   │
-     │ Provider     │ │ Indicators   │ │ Validation     │
-     │ Adapters     │ │              │ │ Engine         │
-     └───────┬──────┘ └─────┬────────┘ └──────┬─────────┘
-             │              │                 │
-             └──────────────┼─────────────────┘
-                            │
-                 ┌──────────▼───────────┐
-                 │ Persistence Layer    │
-                 │ MariaDB + DuckDB*    │
-                 └──────────────────────┘
-
-                 ┌──────────────────────┐
-                 │ Scheduled Data Jobs  │
-                 │ APScheduler (Python) │
-                 └──────────────────────┘
+ Responsive Web (Next.js)       Android (Kotlin / Compose)
+             \                    /
+              \   HTTPS / REST   /
+               Shared PHP 8.3 API
+                       |
+                    MariaDB
+                       |
+          Python Worker + Job Queue
+                       |
+       Instrument-specific Provider Adapters
+                       |
+    Official/documented market-data APIs and feeds
 ```
 
-`DuckDB*` is proposed for analytical scans/backtest datasets, not as the authoritative multi-client transactional store. MariaDB remains the operational system of record under the current master-spec decision.
+Responsibilities:
+- **PHP API:** authentication, instrument catalog/search, read DTOs, access control, rate limiting and audit metadata.
+- **MariaDB:** operational system of record for instrument definitions, provider mappings, candles, jobs, analysis snapshots, forecasts and validation.
+- **Python Worker:** provider polling, normalization, data-quality checks, indicators, forecasting and validation.
+- **Web and Android:** selection, visualization and user interaction. They do not connect to MariaDB or hold provider secrets.
 
-## 3. Proposed technology mapping
+The worker runs as a bounded CLI process from Cron, claims jobs from MariaDB and retries safely. cPanel Python/Cron support remains a deployment check; if inadequate, move only the worker to a separate runtime.
 
-| Layer | Candidate | Role | Status |
-|---|---|---|---|
-| Web | Next.js + TypeScript | Dashboard, responsive layouts, routing | PROPOSED |
-| Web charts | TradingView Lightweight Charts | Candlesticks, volume, overlays, forecast series | PROPOSED |
-| Android | Existing Android client | Native Android UI and chart presentation | Existing code; master spec conflict to reconcile |
-| Public API | PHP 8.3 REST API | Shared HTTPS contract for both clients | APPROVED |
-| Operational database | MariaDB | Instruments, candles, jobs, forecasts, alerts, audit metadata | Existing master-spec decision |
-| Analytics worker | Python CLI Worker | Provider adapters, data quality, indicators, forecast/validation jobs | APPROVED; runtime hosting TO VERIFY |
-| Indicators | TA-Lib | Standard technical indicator calculations | PROPOSED; parity tests required |
-| Backtesting | vectorbt | Research and vectorized historical evaluation | PROPOSED; not a trading executor |
-| Analytical store | DuckDB | Local/worker analytical queries and backtest datasets | PROPOSED; not authoritative transactional DB |
-| Scheduler | MariaDB job queue + Cron-invoked bounded Python CLI | Hourly ingestion and downstream processing | APPROVED; cPanel compatibility TO VERIFY |
-| Chart data acquisition | Provider adapters | Read-only market data only | Provider per instrument TO VERIFY |
+## 5. Provider and chart identity
 
-This is a logical single platform. It may contain a PHP API and a Python worker internally; both clients still use one stable API contract. Do not expose provider credentials to either client.
+Every instrument has its own stable internal ID and explicit metadata:
+- Market type and instrument class
+- Exchange/provider and provider symbol
+- Contract/expiry/roll metadata for futures
+- Quote currency, units and price basis (Bid/Ask/Mid/Last/unknown)
+- Session calendar and timezone
+- Supported timeframes and data freshness
+- Data quality and provider status
 
-## 4. Hourly M15 ingestion policy
+Each source adapter is attached to one instrument mapping. Multiple providers may be listed for the same instrument only after equivalence is checked. A source for Brent CFD is not a fallback for Brent Spot; Brent Futures and WTI Futures remain independent.
 
-The requested operating cadence is hourly, not tick-by-tick:
+Provider API keys remain server-side. Only read-only market-data endpoints are allowed. No broker OAuth, trading account, balances, positions, orders or transaction history.
 
-1. The scheduler starts one hourly ingestion cycle.
-2. For each instrument, the adapter requests the most recent closed M15 candles, including an overlap window (at least the previous 8 candles).
-3. The ingestion service validates timestamps, OHLC consistency, duplicates, ordering, price basis, instrument identity, and the provider's own session calendar.
-4. Candles are upserted idempotently using a unique key based on instrument, provider/source identity, timeframe, and candle-open timestamp.
-5. Missing intervals are classified against that instrument/provider's session calendar. Closed-market intervals are not treated as data loss.
-6. Indicators and derived timeframes are recalculated only after candle validation.
-7. Forecasts and validation records are generated and stored with model/version/data-cutoff metadata.
-8. Both clients read the same latest snapshot and expose its last-update timestamp and data-quality status.
+## 6. Update cadence and data integrity
 
-An hourly run must not assume that exactly four new candles always exist. Market closures, provider delays, failed jobs, and corrections can change the count. The overlap/reconciliation window prevents missed candles and makes retries safe.
+The requested baseline is hourly reconciliation of closed M15 candles:
+1. Enqueue one due job for each enabled instrument/source mapping.
+2. Fetch recent closed candles with an overlap window.
+3. Validate OHLC, timestamps, duplicates, session gaps, price basis and instrument identity.
+4. Upsert idempotently using instrument + source + timeframe + candle-open timestamp.
+5. Recompute indicators/forecasts only after accepted data.
+6. Publish one shared snapshot for Web and Android.
 
-## 5. Initial dashboard information architecture
+Do not assume each run always returns exactly four candles. Market closures, delayed providers and corrections require overlap and reconciliation. Synthetic preview data must never enter canonical candles or official forecasts.
 
-### Global shell
-- Instrument selector: XAUUSD / SPOTBRENT
-- Timeframe selector: M15 initially
-- Last successful update, provider/source label, and data-quality status
-- Responsive navigation for desktop and mobile
+## 7. Web and Android experience
 
-### Main market workspace
-- Large candlestick chart
-- Volume panel where valid volume exists
-- Indicator overlays and sub-panels
-- Forecast horizon selector: +15m, +1h, +4h, +1d, subject to current model readiness
-- Forecast quantile cone and scenario probabilities, clearly separated from observed prices
-- Instrument-specific session markers
+- Instrument search and category filters are available from the chart workspace.
+- Default selected instrument is SPOTBRENT M15.
+- Timeframe selector is independent of instrument selection.
+- Every chart displays provider/source, price basis, last successful update and data-quality state.
+- Mobile browser layout is first-class: controls wrap, chart remains usable, side panels stack below the chart.
+- Android displays the same server-side values and supports the same catalog.
 
-### Analysis panels
-- Trend state: bullish / bearish / neutral
-- Volatility and ATR
-- RSI, MACD, moving averages, Bollinger Bands
-- Support/resistance as analytical estimates, not trade instructions
-- Forecast history and out-of-sample performance
-- Data gaps, provider health, and last ingestion result
+## 8. API baseline
 
-### Alerts
-- Price-level and analytical-condition alerts
-- Notification delivery is separate from trade execution
-- No order-entry controls, broker balances, positions, or account activity
+- GET /api/v1/instruments?q=&market_type=&limit=
+- GET /api/v1/instruments/{id}/candles?timeframe=M15&limit=500
+- GET /api/v1/instruments/{id}/snapshot
+- GET /api/v1/instruments/{id}/forecasts
+- GET /api/v1/jobs/market-data-status
 
-A heatmap, social sentiment, and broad multi-exchange coverage are not phase-one requirements. They can be considered after reliable XAUUSD/SPOTBRENT data and forecast quality are established.
+Every candle response identifies the instrument, source, provider symbol, price basis, timestamp and quality state. API changes are versioned and contract-tested across both clients.
 
-## 6. Data and API contracts
+## 9. Delivery sequence
 
-Initial read endpoints (names illustrative):
+1. Establish instrument catalog and source mapping model.
+2. Verify a real M15 data source for SPOTBRENT; it is the first chart to bring online.
+3. Render real candles in the Web chart; expose source and quality metadata.
+4. Add other instrument families independently as verified sources become available.
+5. Connect Android to the same catalog and API.
+6. Add analysis, forecasts and validation to the same chart workspace.
 
-- `GET /api/v1/instruments`
-- `GET /api/v1/instruments/{id}/candles?timeframe=M15&from=...&to=...`
-- `GET /api/v1/instruments/{id}/snapshot`
-- `GET /api/v1/instruments/{id}/indicators?timeframe=M15`
-- `GET /api/v1/instruments/{id}/forecasts`
-- `GET /api/v1/instruments/{id}/validation`
-- `GET /api/v1/jobs/market-data-status`
-- `GET /api/v1/alerts`
+## 10. Acceptance criteria
 
-Every response must identify the instrument, provider/source, timeframe, price basis, timestamp convention, last update, and quality state where relevant. Candle and forecast DTOs must be versioned and shared by both clients.
+- No Windows or separate desktop client remains in scope.
+- Web works on desktop and Android mobile browsers.
+- SPOTBRENT M15 is the default instrument; no repeat clarification is requested.
+- Users can search and select distinct Spot, Futures, CFD, Forex, Crypto and Equity instruments.
+- Instrument identity and data series are never silently substituted or merged.
+- Web and Android render the same server-side candles and analysis for the same instrument/timeframe.
+- Every chart exposes source, price basis, freshness and quality.
+- No broker-account or trade-execution functionality exists.
 
-## 7. Security and product boundary
+## 11. Implementation status
 
-- Market-data-only provider credentials stay server-side in environment secrets.
-- No credentials, API keys, or provider secrets in Android or web bundles.
-- No Broker Account Connector, trading API, brokerage OAuth, account balance, positions, orders, or transaction-history ingestion.
-- No create/modify/cancel order endpoints.
-- The system is an analysis and forecasting product; all trading decisions and execution remain outside CHART.
-
-## 8. Repository and implementation sequence
-
-1. Resolve the existing architecture inconsistencies before broad implementation.
-2. Define and test the canonical instrument/candle/API contracts.
-3. Implement the shared read API and market-data ingestion/reconciliation.
-4. Build the web dashboard using Lightweight Charts.
-5. Connect the existing Android app to the same API; do not fork calculation logic into the client.
-6. Add shared indicator outputs and forecast visualizations.
-7. Add automated tests for candle correctness, idempotency, session gaps, API contract parity, and Android/Web display parity.
-8. Deploy only after provider access and hosting/runtime requirements are proven.
-
-## 9. Governance conflicts requiring resolution
-
-The current repository contains conflicting architecture declarations:
-
-- The master specification lists Flutter/Dart and Windows in its platform section, while the repository's actual Android implementation is Kotlin + Jetpack Compose.
-- The master specification selects PHP 8.3 REST API, MariaDB, shared hosting, and local-first sync. The proposed Python ecosystem (TA-Lib, vectorbt, APScheduler, DuckDB) requires a persistent Python runtime for scheduled processing; ordinary PHP shared hosting may not provide a suitable always-on worker.
-- The user has approved **PHP 8.3 + MariaDB + Python Worker**, alongside Android + Web clients. The existing Kotlin/Compose Android implementation is retained.
-
-Approved path: preserve Kotlin/Compose Android, add Next.js Web, use PHP/MariaDB as the shared operational API/store, and run Python as a separate bounded CLI worker. Cron enqueues one idempotent hourly M15 job per primary instrument. cPanel Python compatibility remains a deployment gate; if unsupported, move only the worker to a VPS/managed runtime.
-
-## 10. External projects and license gates
-
-- Lightweight Charts: Apache-2.0 (verify attribution and license obligations for the chosen distribution).
-- TA-Lib Python wrapper: BSD-2-Clause.
-- skfolio: BSD-3-Clause; not required for the initial two-instrument dashboard.
-- CCXT: MIT; crypto exchange API focus, not the initial XAUUSD/SPOTBRENT provider.
-- DuckDB: MIT.
-- APScheduler: MIT.
-- Freqtrade: GPL-3.0 and a trading-bot project; do not embed its execution engine. Its research/evaluation patterns may be studied separately.
-- Cryptofeed and vectorbt: license must be confirmed from the exact repository license file and any edition/dependency terms before adoption.
-
-No dependency is approved solely because it appears in the reference list. Review maintenance, license, security, compatibility, runtime, and provider coverage before adding it.
-
-## 11. Acceptance criteria for the first usable release
-
-- Android and Web display the same candle set and same server-generated indicator/forecast values for the same instrument and timeframe.
-- A successful hourly cycle reconciles the latest closed M15 candles without duplicates or silent gaps.
-- A delayed or failed cycle can be retried safely.
-- Every displayed chart identifies its source, price basis, last update, and quality status.
-- XAUUSD and SPOTBRENT remain separate series and are never silently merged across providers.
-- No broker-account or order-execution capability exists in the product.
-
-
-## 12. Implementation status
-
-- Master specification updated to approve the hybrid PHP/MariaDB + Python Worker architecture.
-- Initial MariaDB migration, read-only PHP API skeleton, bounded Python worker/job queue, and Next.js shell are committed on the feature branch.
-- No production provider adapter is enabled; provider mappings remain TO VERIFY and no real candles are seeded.
-- The web chart stays in an explicit unavailable state until verified provider candles exist.
-- Deployment is blocked pending authentication/rate-limit hardening, MariaDB-version compatibility checks, cPanel Python/Cron proof, and provider-specific data validation.
+The repository currently contains the PHP/MariaDB API scaffold, Python worker scaffold, initial instrument migration and Next.js shell. This is not yet a production deployment. Provider adapters for SPOTBRENT and XAUUSD remain unverified; the next data milestone is a real SPOTBRENT M15 feed, not additional infrastructure.
