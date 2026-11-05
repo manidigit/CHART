@@ -2,6 +2,7 @@
 <resources>
     <string name="app_name">Chart Intelligence</string>
     <string name="app_subtitle">Independent Multi-Horizon Forecast &amp; Validation Engine · v1.7</string>
+    <string name="nav_dashboard">Dashboard</string>
     <string name="nav_chart_forecast">Forecast</string>
     <string name="nav_walk_forward">Validation</string>
     <string name="nav_provider_poc">Data POC</string>
