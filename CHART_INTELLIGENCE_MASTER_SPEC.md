@@ -1039,7 +1039,62 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
 
 تصمیم: هیچ کد، ماژول اجرای معامله، مدیریت پوزیشن، اتصال حساب یا منطق Bot از Freqtrade وارد پروژه نمی‌شود. فقط در صورت نیاز می‌توان مستندات روش‌های جلوگیری از Look-ahead Bias را به‌عنوان مرجع تحقیق مطالعه کرد؛ معیارهای Forecast Validation پروژه همچنان سند اصلی خودمان است.
 
-## 14.5 منابع تأییدنشده و قاعده استفاده
+## 14.5 سایر ابزارهای قبلاً بررسی‌شده و وضعیت جاری
+
+این ابزارها در فهرست فنی قبلی پروژه وجود داشته‌اند و همچنان با وضعیت زیر نگهداری می‌شوند؛ افزودن آن‌ها به فهرست به معنی انتخاب نهایی یا مجوز ادغام در Production نیست.
+
+### Scikit-learn — چارچوب مدل‌سازی و Baseline (TO VERIFY)
+
+- مخزن: https://github.com/scikit-learn/scikit-learn
+- فایل مرجع: README.md — https://github.com/scikit-learn/scikit-learn/blob/main/README.rst
+- مستندات تقسیم داده زمانی: https://scikit-learn.org/stable/modules/generated/sklearn.model_selection.TimeSeriesSplit.html
+- کاربرد: Baselineها، Pipelineهای Feature، مدل‌های کلاسیک و ابزارهای ارزیابی. برای داده زمانی باید Split زمانی و جلوگیری از نشت آینده رعایت شود؛ Split تصادفی معمولی برای Forecast Validation کافی نیست.
+- وضعیت: گزینه جدی تحقیق، نه انتخاب قطعی مدل.
+
+### LightGBM — مدل درختی (TO VERIFY)
+
+- مخزن: https://github.com/microsoft/LightGBM
+- فایل مرجع: README.md — https://github.com/microsoft/LightGBM/blob/master/README.md
+- کاربرد: آزمایش مدل‌های مبتنی بر Gradient Boosting برای طبقه‌بندی جهت و برآورد مقدار/Quantile، فقط با Walk-Forward و مقایسه با Baseline.
+- وضعیت: نامزد مدل؛ تا قبل از آزمون خارج از نمونه و Calibration انتخاب نهایی نیست.
+
+### Optuna — بهینه‌سازی آزمایش‌ها (TO VERIFY)
+
+- مخزن: https://github.com/optuna/optuna
+- فایل مرجع: README.md — https://github.com/optuna/optuna/blob/master/README.md
+- کاربرد: جست‌وجوی پارامترهای مدل و Featureها در داده آموزشی/اعتبارسنجی هر Fold.
+- محدودیت: بهینه‌سازی نباید روی Test نهایی انجام شود؛ تعداد آزمایش‌ها و Multiple Testing باید ثبت شود تا Overfitting ناشی از جست‌وجوی پارامتر پنهان نماند.
+- وضعیت: ابزار کمکی تحقیق، نه بخشی از Runtime محصول.
+
+### ONNX Runtime — گزینه استقرار مدل (TO VERIFY)
+
+- مخزن: https://github.com/microsoft/onnxruntime
+- فایل مرجع: README.md — https://github.com/microsoft/onnxruntime/blob/main/README.md
+- کاربرد: بررسی اجرای مدل Exportشده در Browser یا Backend و مقایسه سرعت، حافظه، پشتیبانی Operatorها و برابری عددی خروجی با محیط آموزش.
+- وضعیت: فقط پس از POC Browser/Backend انتخاب می‌شود؛ فناوری Runtime قطعی نیست.
+
+### pandas-ta — جایگزین/مقایسه محاسبات Indicator (TO VERIFY)
+
+- مخزن: https://github.com/xgboosted/pandas-ta-classic
+- فایل مرجع: README.md — https://github.com/xgboosted/pandas-ta-classic/blob/main/README.md
+- کاربرد: مقایسه پوشش Indicator و سهولت ادغام با Pandas در برابر TA-Lib.
+- وضعیت: گزینه مقایسه‌ای؛ اگر TA-Lib نیازهای پروژه را پوشش دهد، دو کتابخانه هم‌زمان وارد Runtime نشوند مگر دلیل فنی روشن وجود داشته باشد.
+
+### yfinance — داده آزمایشی، نه Provider اصلی (POC ONLY)
+
+- مخزن: https://github.com/ranaroussi/yfinance
+- فایل مرجع: README.md — https://github.com/ranaroussi/yfinance/blob/main/README.md
+- کاربرد: تست اولیه Pipeline و داده ابزارهای قابل‌دسترسی Yahoo Finance، از جمله نمادهای Futures مستقل مانند BZ=F یا GC=F.
+- محدودیت: منبع رسمی بورس یا Provider تضمین‌شده نیست و جایگزین XAUUSD Spot یا Brent Spot نمی‌شود. محدودیت تاریخچه Intraday، Rate Limit و شرایط استفاده باید در زمان آزمایش بررسی شود.
+
+### Binance Spot API — فقط برای ابزار رمزارزی مستقل در صورت فعال‌شدن آن
+
+- مستندات API: https://github.com/binance/binance-spot-api-docs/blob/master/rest-api.md
+- مخزن داده عمومی: https://github.com/binance/binance-public-data
+- کاربرد قبلی: BTCUSDT Spot. این منبع به دو ابزار اولیه XAUUSD و SPOTBRENT مربوط نیست و نباید برای آن‌ها استفاده شود.
+- وضعیت: منبع اولیه BTCUSDT در صورت فعال‌شدن آن Instrument؛ خارج از POC فعلی دو ابزار اولیه.
+
+## 14.6 منابع تأییدنشده و قاعده استفاده
 
 - لینک پست X ارسال‌شده در گفتگو، به علت در دسترس نبودن محتوای پست، منبع فنی تأییدشده محسوب نمی‌شود و در تصمیم معماری یا فهرست وابستگی‌ها وارد نشده است. فقط پس از دریافت متن یا تصویر قابل‌خواندن، بررسی خواهد شد.
 - هیچ نسخه، API یا قابلیت کتابخانه‌ای صرفاً بر اساس README برای Production قطعی نمی‌شود؛ نسخه جاری، Release، License، امنیت، وابستگی‌ها و سازگاری در زمان پیاده‌سازی دوباره بررسی می‌شوند.
