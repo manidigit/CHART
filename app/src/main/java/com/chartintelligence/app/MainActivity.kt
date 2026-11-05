@@ -102,7 +102,7 @@ fun ChartIntelligenceApp(
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
     var currentTab by rememberSaveable { mutableStateOf(AppTab.DASHBOARD) }
 
-    if (currentTab != AppTab.FORECAST) {
+    if (currentTab != AppTab.DASHBOARD) {
         BackHandler {
             currentTab = AppTab.DASHBOARD
         }
