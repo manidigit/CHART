@@ -668,14 +668,12 @@ Endpointهای سفارش، معاملات، پورتفوی و مدیریت سر
 
 ## 9.4 Sync
 
-- Local-first.
-- تغییرات محلی در Queue ثبت شوند.
-- Push به سرور، اعتبارسنجی و ثبت مرکزی.
-- Pull برای دریافت تغییرات سرور.
-- Retry برای عملیات ناموفق.
-- Idempotency برای جلوگیری از ثبت تکراری.
-- Conflict Resolution برای تنظیمات و داده‌های قابل‌تغییر.
-- Prediction Records immutable باقی بمانند.
+- MariaDB و API سرور منبع حقیقت داده‌های بازار، تحلیل و پیش‌بینی هستند.
+- Android می‌تواند برای تجربه آفلاین cache محلی داشته باشد؛ cache محلی مرجع صحت داده نیست.
+- کلاینت‌ها فقط از REST API نسخه‌بندی‌شده استفاده می‌کنند و مستقیماً به MariaDB متصل نمی‌شوند.
+- درخواست‌های قابل retry باید idempotent باشند.
+- Prediction Records پس از ثبت immutable باقی می‌مانند.
+- Web و Android باید برای یک instrument/timeframe یک snapshot و DTO یکسان دریافت کنند.
 
 # 10. Prediction Engine
 
@@ -927,7 +925,7 @@ Timeframeهای هدف نمودار:
 - آزمایش ورود دستی و استخراج عددی از تصویر برای Revolut Brent CFD.
 - بررسی کیفیت کندل‌ها و پیوستگی تاریخچه هر ابزار به‌صورت مستقل.
 - ساخت نمونه اولیه Pipeline.
-- بررسی اجرای تحلیل و استنتاج روی Android و Windows.
+- بررسی اجرای تحلیل در Python Worker و نمایش یکسان در Web و Android.
 
 - POC نمودار در Android و Windows: نمودار بومی Flutter در برابر WebView.
 - POC اجرای مدل روی دستگاه: مدل درختی صادرشده در برابر ONNX Runtime، با آزمون برابری خروجی Python و Dart.
