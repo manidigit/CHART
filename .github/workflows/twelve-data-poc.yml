@@ -2,6 +2,12 @@ name: Twelve Data market-data POC
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - ".github/workflows/twelve-data-poc.yml"
+      - "scripts/provider_poc/twelve_data_smoke_test.py"
 
 permissions:
   contents: read
