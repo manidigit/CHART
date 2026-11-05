@@ -28,6 +28,7 @@ import androidx.compose.material.icons.filled.Analytics
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudSync
 import androidx.compose.material.icons.filled.DocumentScanner
+import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.FactCheck
 import androidx.compose.material.icons.filled.Gavel
 import androidx.compose.material3.Icon
@@ -57,6 +58,7 @@ import com.chartintelligence.app.ui.screens.DataImportOcrScreen
 import com.chartintelligence.app.ui.screens.ForecastTerminalScreen
 import com.chartintelligence.app.ui.screens.MasterSpecGovernanceScreen
 import com.chartintelligence.app.ui.screens.ProviderPocLabScreen
+import com.chartintelligence.app.ui.screens.SharedDashboardScreen
 import com.chartintelligence.app.ui.screens.WalkForwardValidationScreen
 import com.chartintelligence.app.ui.theme.BullishEmerald
 import com.chartintelligence.app.ui.theme.ChartIntelligenceTheme
@@ -73,6 +75,7 @@ enum class AppTab(
     val titleRes: Int,
     val icon: ImageVector
 ) {
+    DASHBOARD("dashboard", R.string.nav_dashboard, Icons.Default.Dashboard),
     FORECAST("forecast", R.string.nav_chart_forecast, Icons.Default.Analytics),
     VALIDATION("validation", R.string.nav_walk_forward, Icons.Default.FactCheck),
     PROVIDER_POC("provider_poc", R.string.nav_provider_poc, Icons.Default.CloudSync),
@@ -97,11 +100,11 @@ fun ChartIntelligenceApp(
     viewModel: ChartIntelligenceViewModel = viewModel()
 ) {
     val uiState by viewModel.uiState.collectAsStateWithLifecycle()
-    var currentTab by rememberSaveable { mutableStateOf(AppTab.FORECAST) }
+    var currentTab by rememberSaveable { mutableStateOf(AppTab.DASHBOARD) }
 
     if (currentTab != AppTab.FORECAST) {
         BackHandler {
-            currentTab = AppTab.FORECAST
+            currentTab = AppTab.DASHBOARD
         }
     }
 
@@ -224,6 +227,12 @@ fun ChartIntelligenceApp(
                 .padding(innerPadding)
         ) {
             when (currentTab) {
+                AppTab.DASHBOARD -> SharedDashboardScreen(
+                    uiState = uiState,
+                    onRefresh = viewModel::refreshSharedApiStatus,
+                    onSelectInstrument = viewModel::selectInstrument
+                )
+
                 AppTab.FORECAST -> ForecastTerminalScreen(
                     uiState = uiState,
                     onSelectInstrument = viewModel::selectInstrument,
