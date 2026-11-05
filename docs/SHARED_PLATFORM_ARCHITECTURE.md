@@ -1,6 +1,6 @@
 # CHART Shared Android + Web Platform Architecture
 
-**Status:** PROPOSED — implementation baseline for review  
+**Status:** APPROVED — implementation baseline  
 **Scope:** Shared market-data and analysis platform for Android and Web  
 **Product boundary:** Read-only market analysis and forecasting. No broker-account connections and no trade execution.
 
@@ -62,13 +62,13 @@ The initial instruments remain the independently identified TradingView instrume
 | Web | Next.js + TypeScript | Dashboard, responsive layouts, routing | PROPOSED |
 | Web charts | TradingView Lightweight Charts | Candlesticks, volume, overlays, forecast series | PROPOSED |
 | Android | Existing Android client | Native Android UI and chart presentation | Existing code; master spec conflict to reconcile |
-| Public API | Existing PHP 8.3 REST API | Shared HTTPS contract for both clients | Existing master-spec decision |
+| Public API | PHP 8.3 REST API | Shared HTTPS contract for both clients | APPROVED |
 | Operational database | MariaDB | Instruments, candles, jobs, forecasts, alerts, audit metadata | Existing master-spec decision |
-| Analytics worker | Python | Provider adapters, TA-Lib, vectorbt integration, forecast/validation jobs | PROPOSED |
+| Analytics worker | Python CLI Worker | Provider adapters, data quality, indicators, forecast/validation jobs | APPROVED; runtime hosting TO VERIFY |
 | Indicators | TA-Lib | Standard technical indicator calculations | PROPOSED; parity tests required |
 | Backtesting | vectorbt | Research and vectorized historical evaluation | PROPOSED; not a trading executor |
 | Analytical store | DuckDB | Local/worker analytical queries and backtest datasets | PROPOSED; not authoritative transactional DB |
-| Scheduler | APScheduler | Hourly ingestion and downstream processing | PROPOSED |
+| Scheduler | MariaDB job queue + Cron-invoked bounded Python CLI | Hourly ingestion and downstream processing | APPROVED; cPanel compatibility TO VERIFY |
 | Chart data acquisition | Provider adapters | Read-only market data only | Provider per instrument TO VERIFY |
 
 This is a logical single platform. It may contain a PHP API and a Python worker internally; both clients still use one stable API contract. Do not expose provider credentials to either client.
@@ -159,9 +159,9 @@ The current repository contains conflicting architecture declarations:
 
 - The master specification lists Flutter/Dart and Windows in its platform section, while the repository's actual Android implementation is Kotlin + Jetpack Compose.
 - The master specification selects PHP 8.3 REST API, MariaDB, shared hosting, and local-first sync. The proposed Python ecosystem (TA-Lib, vectorbt, APScheduler, DuckDB) requires a persistent Python runtime for scheduled processing; ordinary PHP shared hosting may not provide a suitable always-on worker.
-- The user has now approved **Android + Web with one shared data/analysis platform**, but has not explicitly approved replacing PHP/MariaDB or changing the existing Android implementation.
+- The user has approved **PHP 8.3 + MariaDB + Python Worker**, alongside Android + Web clients. The existing Kotlin/Compose Android implementation is retained.
 
-Recommended path: preserve the existing Android client and PHP/MariaDB API contract initially; run the Python analytics/scheduler as a separately deployable worker only if the hosting environment supports it. If it does not, select a suitable managed/VPS runtime before implementation. Do not silently migrate the master architecture.
+Approved path: preserve Kotlin/Compose Android, add Next.js Web, use PHP/MariaDB as the shared operational API/store, and run Python as a separate bounded CLI worker. Cron enqueues one idempotent hourly M15 job per primary instrument. cPanel Python compatibility remains a deployment gate; if unsupported, move only the worker to a VPS/managed runtime.
 
 ## 10. External projects and license gates
 
@@ -184,3 +184,12 @@ No dependency is approved solely because it appears in the reference list. Revie
 - Every displayed chart identifies its source, price basis, last update, and quality status.
 - XAUUSD and SPOTBRENT remain separate series and are never silently merged across providers.
 - No broker-account or order-execution capability exists in the product.
+
+
+## 12. Implementation status
+
+- Master specification updated to approve the hybrid PHP/MariaDB + Python Worker architecture.
+- Initial MariaDB migration, read-only PHP API skeleton, bounded Python worker/job queue, and Next.js shell are committed on the feature branch.
+- No production provider adapter is enabled; provider mappings remain TO VERIFY and no real candles are seeded.
+- The web chart stays in an explicit unavailable state until verified provider candles exist.
+- Deployment is blocked pending authentication/rate-limit hardening, MariaDB-version compatibility checks, cPanel Python/Cron proof, and provider-specific data validation.
