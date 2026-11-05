@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import {
   Activity, AlertTriangle, Bell, CandlestickChart,
   CheckCircle2, ChevronDown, Clock3, Database, Gauge, Layers3, RefreshCw,
@@ -41,7 +41,7 @@ export default function DashboardPage() {
   const [candles, setCandles] = useState<ChartCandle[]>([]);
   const [candleLoading, setCandleLoading] = useState(false);
 
-  async function refresh() {
+  const refresh = useCallback(async () => {
     setApiState("loading");
     try {
       const response = await fetch("/api/v1/market/summary", { cache: "no-store" });
@@ -53,9 +53,9 @@ export default function DashboardPage() {
       setApiState("unavailable");
       setLastChecked(new Date().toISOString());
     }
-  }
+  }, []);
 
-  useEffect(() => { void refresh(); }, []);
+  useEffect(() => { void refresh(); }, [refresh]);
 
   useEffect(() => {
     let cancelled = false;
