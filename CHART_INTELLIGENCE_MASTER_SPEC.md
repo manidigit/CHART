@@ -3,7 +3,7 @@
 ## سند مرجع اصلی پروژه و مشخصات محصول
 
 **شناسه سند:** `CHART_INTELLIGENCE_MASTER_SPEC`\
-**نسخه:** `1.9`\
+**نسخه:** `1.10`\
 **تاریخ آخرین بازبینی:** 2026-11-05\
 **وضعیت:** سند مرجع جاری پروژه\
 **زبان سند:** فارسی؛ نام فنی اجزا و شناسه‌ها به انگلیسی
@@ -216,14 +216,17 @@ Chart Intelligence یک **موتور مستقل تحلیل و پیش‌بینی 
 | همگام‌سازی | ارتباط Web Client با REST API؛ سیاست Cache و صف عملیات آفلاین نیازمند طراحی | TO VERIFY |
 | Runtime استنتاج | اجرای مدل در Browser یا Backend؛ انتخاب پس از POC | TO VERIFY |
 | آموزش مدل | Python خارج از هاست؛ محل اجرا در POC مشخص می‌شود | TO VERIFY |
-| میزبانی فعلی | Shared Hosting با cPanel | DECIDED |
+| میزبانی فعلی | Shared Hosting با cPanel برای اجزای فعلی PHP/MariaDB؛ محل اجرای همه پردازش‌ها هنوز قطعی نیست | DECIDED / PARTIAL |
+| میزبانی پردازش Python | سرویس Container/Worker مدیریت‌شده یا محیط مستقل؛ انتخاب پس از ارزیابی | TO VERIFY |
+| میزبانی Frontend | میزبانی Static/CDN مستقل از Backend؛ ارائه‌دهنده نیازمند انتخاب | TO VERIFY |
+| پایگاه داده تحلیلی مدیریت‌شده | MotherDuck به‌عنوان گزینه ارزیابی DuckDB Cloud | TO VERIFY |
 | پایگاه داده تحلیلی آزمایشی | DuckDB؛ فقط POC و پردازش تحلیلی، نه منبع اصلی داده | TO VERIFY |
 | محاسبات اندیکاتور Python | TA-Lib؛ نامزد استفاده مستقیم پس از POC | TO VERIFY |
 | زمان‌بندی Python | APScheduler؛ فقط در صورت ایجاد Worker/Runtime پایتون | TO VERIFY |
 
 ## 3.3 اصل معماری
 
--   معماری Modular Monolith؛ در MVP از Microservices استفاده نشود.
+-   معماری منطقی Modular Monolith؛ در MVP به Microservices پیچیده و پراکنده تبدیل نشود. بااین‌حال، محل اجرای Frontend، API، Worker پردازشی و دیتابیس می‌تواند از نظر استقرار جدا باشد؛ جداسازی Deploy به‌تنهایی به معنی Microservices کردن منطق محصول نیست.
 -   منطق پیش‌بینی به Provider یا دیتابیس خاص وابسته نباشد.
 -   Adapterها اتصال به منابع مختلف را جدا کنند.
 -   Backend از ابتدا طوری طراحی شود که مهاجرت MariaDB به PostgreSQL در
@@ -237,6 +240,165 @@ Chart Intelligence یک **موتور مستقل تحلیل و پیش‌بینی 
 
 ------------------------------------------------------------------------
 
+
+## 3.4 مدل اجرای اجزا و تفکیک محل میزبانی (TO VERIFY)
+
+اصل مهم این پروژه آن است که «محل میزبانی وب‌سایت» با «محل اجرای همه محاسبات» یکسان فرض نشود. محصول می‌تواند یک رابط وب داشته باشد، اما پردازش‌های سنگین یا دائمی را در سرویس جداگانه اجرا کند. کاربر فقط از طریق مرورگر وب (از جمله Android) به محصول دسترسی خواهد داشت؛ نیازی به نرم‌افزار دسکتاپ یا نصب محلی کاربر نیست.
+
+### 3.4.1 طبقه‌بندی اجزا بر اساس شیوه اجرا
+
+| جزء | شیوه اجرای طبیعی | محل‌های قابل بررسی | نکته معماری |
+|---|---|---|---|
+| Web Frontend و Lightweight Charts | فایل‌های JavaScript/HTML/CSS در مرورگر | Static Hosting/CDN؛ Cloudflare Pages یا سرویس مشابه | نمودار سمت Client اجرا می‌شود؛ API فقط داده و خروجی تحلیل را تحویل می‌دهد. |
+| PHP REST API فعلی | پردازش درخواست HTTP | Shared Hosting فعلی یا Web Service/Container | تا زمانی که محدودیت اثبات نشده، حفظ هاست فعلی گزینه پایه است. |
+| MariaDB عملیاتی | سرویس پایگاه داده رابطه‌ای | MariaDB فعلی روی هاست یا دیتابیس مدیریت‌شده مستقل | Source of Truth عملیاتی باقی می‌ماند مگر تصمیم رسمی دیگری ثبت شود. |
+| Python Analysis Worker | پردازش محاسباتی کوتاه یا دسته‌ای | Railway/Render/Fly.io یا VPS/Container مستقل | محل طبیعی اجرای TA-Lib، Feature Engineering و بخشی از DuckDB است؛ باید از API وب جدا و با قرارداد مشخص متصل شود. |
+| Data Ingestion Worker | اتصال پیوسته به Provider یا دریافت دوره‌ای | Background Worker دائمی یا Scheduled Job | برای اتصال دائمی WebSocket به Worker همیشه‌فعال نیاز است؛ برای داده دوره‌ای، Cron/Job کوتاه‌مدت کافی است. |
+| Forecast/Validation Research | اجرای آزمایش‌های سنگین و غیرهم‌زمان با درخواست کاربر | محیط Notebook، Container پژوهشی یا ماشین ابری موقت | VectorBT، Skfolio، Optuna و آموزش مدل نباید بدون نیاز وارد مسیر پاسخ‌دهی آنلاین شوند. |
+| Analytical Store | پردازش تحلیلی Embedded یا دیتابیس تحلیلی مدیریت‌شده | DuckDB داخل Worker، فایل‌های Parquet/Object Storage یا MotherDuck | انتخاب بر اساس حجم داده، تعداد نویسنده/خواننده، پایداری و هزینه انجام می‌شود. |
+| Scheduler | زمان‌بندی وظایف | Cron سرویس میزبانی، APScheduler در Worker فعال یا Scheduler مدیریت‌شده | فقط یک مرجع زمان‌بندی برای هر Job؛ از اجرای تکراری و هم‌پوشانی جلوگیری شود. |
+
+### 3.4.2 الگوی پیشنهادی برای بررسی، نه تصمیم نهایی
+
+معماری ترکیبی زیر به‌عنوان گزینه اصلی تحقیق ثبت می‌شود:
+
+1. Frontend استاتیک و Lightweight Charts در مرورگر کاربر اجرا شود.
+2. PHP REST API و MariaDB فعلی در هاست موجود باقی بمانند، تا زمانی که نیاز واقعی به مهاجرت اثبات شود.
+3. پردازش‌های Python که Shared Hosting از آن‌ها پشتیبانی نمی‌کند یا منابع بیشتری می‌خواهند، در یک Python Worker مدیریت‌شده اجرا شوند.
+4. Worker از طریق HTTPS API یا ارتباط داخلی امن با Backend ارتباط بگیرد؛ دسترسی مستقیم مرورگر به دیتابیس یا Worker ممنوع است.
+5. داده تحلیلی حجیم می‌تواند به‌صورت Snapshot/Parquet در Object Storage نگهداری و با DuckDB پردازش شود؛ ذخیره عملیاتی و رکوردهای معتبر همچنان در MariaDB بمانند.
+6. وظایف زمان‌بندی‌شده با Cron مدیریت‌شده یا Scheduler داخل Worker اجرا شوند؛ انتخاب بر اساس نیاز به اجرای دائمی، دقت زمان و قابلیت Retry باشد.
+7. محیط پژوهش/آموزش مدل از محیط Production جدا باشد؛ مدل فقط پس از ارزیابی و نسخه‌بندی به Runtime پیش‌بینی منتقل شود.
+
+این الگو از نظر منطق محصول Modular Monolith باقی می‌ماند؛ اجزا فقط در صورت نیاز عملیاتی جداگانه Deploy می‌شوند. فعلاً هیچ Provider ابری انتخاب قطعی نشده است.
+
+### 3.4.3 حالت‌های اجرای Worker
+
+- **Scheduled Job:** پردازش شروع می‌شود، وظیفه مشخص را انجام می‌دهد و خارج می‌شود. مناسب دریافت دوره‌ای کندل M15، ساخت Dataset، گزارش و پاک‌سازی.
+- **Background Worker:** پردازش دائماً فعال است و صف کار یا جریان داده را مصرف می‌کند. مناسب WebSocket دائمی، پردازش رخدادمحور و کارهای طولانی.
+- **On-demand Job:** فقط هنگام درخواست مشخص اجرا می‌شود. مناسب تحلیل تاریخی سنگین یا محاسبه مجددی که لازم نیست دائماً روشن باشد.
+- **Research Environment:** محیط موقت یا Notebook برای آزمایش مدل، اعتبارسنجی و مقایسه؛ نباید وابستگی سرویس آنلاین به Session پژوهشی ایجاد شود.
+
+### 3.4.4 قواعد ارتباط و امنیت
+
+- API Key، رمز دیتابیس و Provider Secret فقط در Secret/Environment Variable سمت سرویس نگهداری شوند؛ هرگز در Frontend یا Repository عمومی قرار نگیرند.
+- ارتباط سرویس‌ها با HTTPS/TLS یا شبکه خصوصی ارائه‌دهنده انجام شود.
+- Worker فقط حداقل مجوز لازم را داشته باشد؛ برای مثال، اگر فقط Snapshot تحلیلی می‌خواند، مجوز نوشتن در جداول عملیاتی دریافت نکند.
+- هر Job دارای شناسه اجرا، وضعیت، زمان شروع/پایان، تعداد رکورد ورودی/خروجی، خطا و امکان Retry باشد.
+- Jobها Idempotent باشند؛ اجرای مجدد نباید رکورد تکراری یا وضعیت متناقض تولید کند.
+- Health Check، Log، هشدار خطا، محدودیت منابع و سقف هزینه برای هر سرویس لازم است.
+- قطع سرویس پردازشی نباید باعث از دست رفتن داده اصلی یا غیرقابل‌استفاده‌شدن رابط وب شود؛ API باید آخرین خروجی معتبر را در صورت وجود ارائه دهد و کهنگی داده را نمایش دهد.
+
+## 3.5 ارائه‌دهندگان میزبانی و سرویس‌های ابری برای ارزیابی (TO VERIFY)
+
+این فهرست Shortlist تحقیق است، نه انتخاب فروشنده. قیمت، محدودیت پلن، منطقه دیتاسنتر، SLA، سیاست نگهداری داده و شرایط تجاری باید در زمان تصمیم‌گیری دوباره بررسی شوند.
+
+### A. Railway — گزینه جدی برای Python Worker و Scheduled Job
+
+منابع رسمی:
+- Services: https://docs.railway.com/services
+- Build & Deploy: https://docs.railway.com/build-deploy
+- Cron Jobs: https://docs.railway.com/cron-jobs
+- Usage/Billing: https://docs.railway.com/cli/usage
+
+مدل اجرا:
+- هر Service در قالب Container اجرا می‌شود.
+- Persistent Service برای API یا Background Worker دائمی.
+- Cron Job برای اجرای زمان‌بندی‌شده که پس از اتمام کار خارج می‌شود.
+- متغیرهای محیطی، اتصال به GitHub، Log، Metrics، Healthcheck و Region در پنل سرویس مدیریت می‌شوند.
+
+کاربرد احتمالی: استقرار Python Worker برای TA-Lib و DuckDB، یا اجرای دریافت دوره‌ای و محاسبات تحلیلی بدون انتقال کل Backend فعلی.
+
+ریسک/محدودیت: هزینه مصرفی باید با سقف بودجه کنترل شود؛ Cron Job در صورت تمام‌نشدن اجرای قبلی ممکن است نوبت بعدی را از دست بدهد. زمان‌بندی UTC است و زمان دقیق اجرا تضمین دقیقه‌ای ندارد. برای WebSocket دائمی باید Persistent Service استفاده شود، نه Cron Job.
+
+### B. Render — گزینه جدی برای Worker، Cron و محیط‌های جدا
+
+منابع رسمی:
+- Service Types: https://render.com/docs/service-types
+- Background Workers: https://render.com/docs/background-workers
+- Cron Jobs: https://render.com/docs/cronjobs
+- Persistent Disks: https://render.com/docs/disks
+- Compute Plans: https://render.com/docs/compute-plans
+
+مدل اجرا:
+- Web Service برای API، Static Site برای Frontend، Background Worker برای پردازش دائمی، Cron Job برای کارهای دوره‌ای و Private Service برای سرویس داخلی.
+- Workerها می‌توانند از Queue کار دریافت کنند و خارج از مسیر درخواست کاربر پردازش انجام دهند.
+- امکان اتصال Persistent Disk به برخی سرویس‌ها وجود دارد.
+
+کاربرد احتمالی: اجرای Python Worker و Jobهای دوره‌ای، جدا از PHP API فعلی.
+
+ریسک/محدودیت: Cron Job به Persistent Disk دسترسی ندارد. دیسک پایدار به یک Instance محدود است و محدودیت مقیاس‌پذیری/Zero-Downtime دارد؛ بنابراین نباید فایل DuckDB مشترک را بدون طراحی هم‌زمانی روی دیسک یک سرویس فرض کنیم. هزینه Worker دائمی با زمان روشن‌بودن محاسبه می‌شود.
+
+### C. Fly.io — گزینه بررسی برای کنترل بیشتر روی Container و Process
+
+منابع رسمی:
+- Background Workers: https://fly.io/learn/background-workers/
+- Resource Pricing: https://fly.io/docs/about/pricing/
+
+مدل اجرا:
+- برنامه از Image/Container اجرا می‌شود و می‌تواند Process Groupهای جدا مانند web، worker و scheduler داشته باشد.
+- هر Process Group روی Machineهای مستقل اجرا می‌شود.
+- Volume پایدار برای داده محلی Machine قابل استفاده است.
+
+کاربرد احتمالی: اجرای Worker دائمی Python یا پردازش‌های سفارشی با کنترل بیشتر روی CPU/RAM و محل اجرا.
+
+ریسک/محدودیت: مدیریت منابع، شبکه، Volume، Backup و عملیات زیرساختی نسبت به گزینه‌های ساده‌تر مسئولیت بیشتری ایجاد می‌کند. Volume محلی را نباید با Storage مشترک چندنویسنده اشتباه گرفت. هزینه Machine روشن و Storage باید جداگانه محاسبه شود.
+
+### D. Cloudflare Pages/Workers — گزینه مناسب لبه و Frontend، نه انتخاب پیش‌فرض برای محاسبات Python سنگین
+
+منابع رسمی:
+- Python Workers: https://developers.cloudflare.com/workers/languages/python/
+- Python Packages: https://developers.cloudflare.com/workers/languages/python/packages/
+- Python Workers execution model: https://developers.cloudflare.com/workers/languages/python/how-python-workers-work/
+- Limits: https://developers.cloudflare.com/workers/platform/limits/
+
+مدل اجرا:
+- Static Assets/Frontend از شبکه توزیع محتوا ارائه می‌شوند.
+- Workerها کد کوتاه HTTP/Edge را اجرا می‌کنند و به سرویس‌هایی مانند R2، D1، KV، Queues و Workflows متصل می‌شوند.
+- Python Workers از Pyodide/WebAssembly استفاده می‌کنند و محدودیت پشتیبانی بسته‌ها دارند.
+
+کاربرد احتمالی: میزبانی Frontend، Cache، لایه Edge/API سبک، محافظت و مسیریابی درخواست‌ها.
+
+محدودیت مهم: بسته‌های Python باید با محیط Pyodide/PyEmscripten سازگار باشند؛ وجود یک پکیج روی PyPI به معنی قابل‌اجرا بودن آن در Workers نیست. TA-Lib و وابستگی‌های Native/C، DuckDB و پردازش سنگین باید جداگانه از نظر سازگاری بررسی شوند. محدودیت CPU و RAM نیز برای تحلیل تاریخی سنگین مناسب فرض نمی‌شود. بنابراین Cloudflare فعلاً گزینه اصلی Python Analysis Worker نیست.
+
+### E. MotherDuck — گزینه بررسی برای DuckDB مدیریت‌شده
+
+منابع رسمی:
+- DuckDB MotherDuck Extension: https://duckdb.org/docs/current/core_extensions/motherduck
+- معرفی معماری Hybrid: https://duckdb.org/library/motherduck/
+
+مدل اجرا:
+- DuckDB Client از محیط برنامه به سرویس ابری MotherDuck متصل می‌شود.
+- بخشی از Query می‌تواند در Client و بخشی در Cloud پردازش شود.
+- مدیریت زیرساخت پایگاه داده تحلیلی از تیم پروژه جدا می‌شود.
+
+کاربرد احتمالی: اگر DuckDB در POC از نظر تحلیل مناسب باشد اما نگهداری فایل/ماشین، پایداری و اشتراک‌گذاری داده دشوار شود، MotherDuck به‌عنوان گزینه مدیریت‌شده بررسی می‌شود.
+
+ریسک/محدودیت: هزینه سرویس، انتقال داده، منطقه نگهداری، احراز هویت، Vendor Lock-in و سازگاری Extensionها باید ارزیابی شود. MotherDuck جایگزین خودکار MariaDB عملیاتی نیست و تا بررسی هزینه و امنیت انتخاب نمی‌شود.
+
+### F. GitHub Actions — فقط CI و کارهای توسعه‌ای، نه موتور اجرای دائمی محصول
+
+منبع رسمی: https://docs.github.com/actions
+
+کاربرد مجاز: تست خودکار، بررسی کیفیت، ساخت Artifact، کنترل تغییرات و انتشار نسخه.
+
+عدم استفاده به‌عنوان Runtime اصلی: اجرای دائمی Worker، دریافت مداوم داده یا Scheduler قابل اتکای Production نباید به GitHub Actions واگذار شود؛ Scheduled Workflow برای CI/Automation مخزن مناسب است، نه جایگزین سرویس پردازشی دائمی.
+
+## 3.6 قواعد انتخاب سرویس میزبانی
+
+قبل از انتخاب Provider باید این موارد در یک ماتریس مقایسه شوند:
+1. امکان اجرای Python نسخه موردنیاز و کتابخانه‌های Native/C مانند TA-Lib؛
+2. CPU، RAM، محدودیت زمان اجرا و رفتار پردازش‌های طولانی؛
+3. امکان Background Worker دائمی در برابر Cron Job کوتاه‌مدت؛
+4. امکان اتصال امن به MariaDB فعلی و انتقال Snapshot/Parquet؛
+5. Persistent Storage، Backup، بازیابی و محدودیت Multi-Instance؛
+6. Log، Metrics، Health Check، هشدار و Restart خودکار؛
+7. هزینه واقعی بر اساس ساعت روشن‌بودن، CPU، RAM، Storage، Egress و حداقل هزینه ماهانه؛
+8. محل جغرافیایی داده، امنیت Secretها، کنترل دسترسی، حریم خصوصی و شرایط سرویس؛
+9. امکان خروج از Provider و انتقال Worker/داده بدون بازنویسی منطق محصول؛
+10. سادگی عملیات و میزان نگهداری موردنیاز.
+
+هیچ انتخابی فقط بر اساس پلن رایگان انجام نشود. محدودیت منابع و احتمال تغییر قیمت یا حذف پلن رایگان باید در تصمیم ثبت شود.
 
 # 4. تایم‌فریم و زمان‌بندی داده
 
