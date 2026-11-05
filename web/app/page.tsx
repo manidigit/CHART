@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { CandleChart } from "./components/CandleChart";
 
 type Instrument = {
   id: string;
@@ -10,7 +11,7 @@ type Instrument = {
   status: string;
 };
 
-const API_BASE = process.env.NEXT_PUBLIC_CHART_API_BASE ?? "";
+const API_BASE = "/api/chart";
 
 export default function DashboardPage() {
   const [instruments, setInstruments] = useState<Instrument[]>([]);
@@ -53,11 +54,9 @@ export default function DashboardPage() {
       <div className="grid">
         <section className="panel">
           <h2>{current?.display_name ?? "Market chart"} · M15</h2>
-          <div className="chart-placeholder">
-            {apiState === "loading" && "Connecting to shared PHP API…"}
-            {apiState === "unavailable" && "API not connected. Configure NEXT_PUBLIC_CHART_API_BASE and deploy the PHP API."}
-            {apiState === "connected" && "API connected. Candlestick rendering will be enabled after verified provider candles are available."}
-          </div>
+          {apiState === "loading" && <div className="chart-placeholder">Connecting to shared PHP API…</div>}
+          {apiState === "unavailable" && <div className="chart-placeholder">API not connected. Configure server-side CHART_API_ORIGIN and CHART_API_READ_TOKEN.</div>}
+          {apiState === "connected" && selected && <CandleChart instrumentId={selected} />}
         </section>
         <aside className="panel">
           <h2>Market status</h2>
