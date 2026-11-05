@@ -51,8 +51,31 @@ if ($expectedToken === false || $expectedToken === '' ||
 
 try {
     if ($path === '/api/v1/instruments') {
-        $rows = db()->query("SELECT id, display_name, tradingview_symbol, market_type, quote_currency, price_basis, decimals, status FROM instruments ORDER BY is_initial_primary DESC, id")->fetchAll();
-        respond(200, ['api_version' => 'v1', 'data' => $rows]);
+        $where = [];
+        $params = [];
+        $query = trim((string)($_GET['q'] ?? ''));
+        $marketType = strtoupper(trim((string)($_GET['market_type'] ?? '')));
+        $limit = filter_var($_GET['limit'] ?? 200, FILTER_VALIDATE_INT);
+        if ($limit === false || $limit < 1 || $limit > 500) respond(422, ['error' => 'invalid_limit', 'max' => 500]);
+        if ($query !== '') {
+            $where[] = '(id LIKE :q_id OR display_name LIKE :q_name OR tradingview_symbol LIKE :q_symbol)';
+            $needle = '%' . $query . '%';
+            $params['q_id'] = $needle;
+            $params['q_name'] = $needle;
+            $params['q_symbol'] = $needle;
+        }
+        $allowedTypes = ['SPOT', 'FUTURES', 'CFD', 'FOREX', 'CRYPTO', 'EQUITY', 'INDEX'];
+        if ($marketType !== '') {
+            if (!in_array($marketType, $allowedTypes, true)) respond(422, ['error' => 'invalid_market_type']);
+            $where[] = 'market_type = :market_type';
+            $params['market_type'] = $marketType;
+        }
+        $sql = "SELECT id, display_name, tradingview_symbol, market_type, quote_currency, price_basis, decimals, status, is_initial_primary FROM instruments";
+        if ($where) $sql .= ' WHERE ' . implode(' AND ', $where);
+        $sql .= ' ORDER BY is_initial_primary DESC, display_name ASC LIMIT ' . (int)$limit;
+        $stmt = db()->prepare($sql);
+        $stmt->execute($params);
+        respond(200, ['api_version' => 'v1', 'data' => $stmt->fetchAll(), 'meta' => ['count' => $stmt->rowCount(), 'default_instrument' => 'SPOTBRENT']]);
     }
 
     if (preg_match('#^/api/v1/instruments/([A-Za-z0-9_-]+)/candles$#', $path, $m)) {
