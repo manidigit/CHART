@@ -3,7 +3,7 @@
 ## سند مرجع اصلی پروژه و مشخصات محصول
 
 **شناسه سند:** `CHART_INTELLIGENCE_MASTER_SPEC`\
-**نسخه:** `1.8`\
+**نسخه:** `1.9`\
 **تاریخ آخرین بازبینی:** 2026-11-05\
 **وضعیت:** سند مرجع جاری پروژه\
 **زبان سند:** فارسی؛ نام فنی اجزا و شناسه‌ها به انگلیسی
@@ -217,6 +217,9 @@ Chart Intelligence یک **موتور مستقل تحلیل و پیش‌بینی 
 | Runtime استنتاج | اجرای مدل در Browser یا Backend؛ انتخاب پس از POC | TO VERIFY |
 | آموزش مدل | Python خارج از هاست؛ محل اجرا در POC مشخص می‌شود | TO VERIFY |
 | میزبانی فعلی | Shared Hosting با cPanel | DECIDED |
+| پایگاه داده تحلیلی آزمایشی | DuckDB؛ فقط POC و پردازش تحلیلی، نه منبع اصلی داده | TO VERIFY |
+| محاسبات اندیکاتور Python | TA-Lib؛ نامزد استفاده مستقیم پس از POC | TO VERIFY |
+| زمان‌بندی Python | APScheduler؛ فقط در صورت ایجاد Worker/Runtime پایتون | TO VERIFY |
 
 ## 3.3 اصل معماری
 
@@ -228,6 +231,9 @@ Chart Intelligence یک **موتور مستقل تحلیل و پیش‌بینی 
 - محصول به‌صورت Web Application پیاده‌سازی می‌شود و از طریق مرورگر دسکتاپ و Android قابل استفاده است؛ اپلیکیشن Native جداگانه در دامنه فعلی نیست.
 - محل اجرای استنتاج مدل (مرورگر یا Backend) و فناوری آن پس از POC انتخاب می‌شود؛ محدودیت حافظه، سرعت، امنیت و حجم داده باید سنجیده شود.
 - اگر Feature Engineering در Python و استنتاج در محیط دیگری انجام شود، آزمون برابری خروجی روی داده مرجع اجباری است؛ زبان و Runtime سمت کاربر هنوز انتخاب نشده‌اند.
+- دسترسی به داده از طریق Repository/Adapter مستقل از موتور ذخیره‌سازی انجام شود؛ Prediction Engine نباید SQL اختصاصی MariaDB یا DuckDB را مستقیماً فراخوانی کند.
+- MariaDB روی هاست، منبع اصلی و مرجع عملیاتی داده باقی می‌ماند. DuckDB فقط در POC برای تحلیل‌های تاریخی و پردازش‌های دسته‌ای ارزیابی می‌شود؛ قبولی DuckDB به معنی جایگزینی خودکار MariaDB نیست.
+- اگر DuckDB در یک workload مشخص از نظر دقت، پایداری، حافظه، هم‌زمانی یا زمان پاسخ معیارهای از پیش تعیین‌شده را پاس نکند، همان workload از طریق لایه داده روی MariaDB اجرا می‌شود. انتقال باید بدون تغییر قرارداد API و منطق Prediction Engine ممکن باشد.
 
 ------------------------------------------------------------------------
 
@@ -250,8 +256,10 @@ M15 ساخته شوند. تجمیع باید: - با session بازار هماه
 
 ## 4.3 زمان‌بندی دریافت
 
--   Cron هاست حداقل هر ۱۵ دقیقه قابل اجرا است.
+-   Cron هاست حداقل هر ۱۵ دقیقه قابل اجرا است و در نسخه فعلی زمان‌بند اصلی باقی می‌ماند.
 -   اجرای دوره‌ای هر ۱۵ دقیقه برای دریافت کندل‌های بسته‌شده مناسب است.
+-   APScheduler فقط در صورت ایجاد Worker یا سرویس Python مستقل و اثبات نیاز به زمان‌بندی پیچیده‌تر بررسی می‌شود؛ جایگزین‌کردن Cron فعلی پیش‌فرض نیست.
+-   زمان‌بندی نباید تنها سازوکار جلوگیری از اجرای تکراری باشد؛ قفل اجرا، Idempotency و ثبت وضعیت Job در لایه برنامه/دیتابیس لازم است.
 -   پردازش نباید به اجرای دقیق Cron وابسته باشد.
 -   هر اجرا باید آخرین کندل‌های بسته‌شده و پردازش‌نشده را پیدا کند.
 -   چند کندل قبلی دوباره دریافت شوند تا اصلاح یا کندل ازدست‌رفته شناسایی
@@ -531,6 +539,9 @@ Google Drive API v3 برای نگهداری فایل Backup: `files.create` با
 - Remote DB Access برای Web Client استفاده نمی‌شود.
 - Cache محلی مرورگر و رفتار آفلاین/صف عملیات هنوز نیازمند طراحی است؛ در صورت پیاده‌سازی، عملیات باید Idempotent باشند.
 - API باید از نوع دیتابیس مستقل باشد تا مهاجرت آینده ممکن شود.
+- MariaDB منبع اصلی داده‌های عملیاتی، کندل‌های معتبر، Prediction Recordها و وضعیت همگام‌سازی است.
+- DuckDB در مرحله POC می‌تواند از snapshot یا فایل‌های تحلیلی کنترل‌شده (مانند Parquet/CSV) برای queryهای تاریخی استفاده کند؛ اتصال مستقیم Web Client به DuckDB مجاز نیست.
+- DuckDB تا زمان تصویب جداگانه، منبع حقیقت (Source of Truth)، مخزن اصلی Prediction Record یا جایگزین MariaDB نیست.
 
 ## 8.3 قواعد طراحی
 
@@ -544,6 +555,11 @@ Google Drive API v3 برای نگهداری فایل Backup: `files.create` با
 - Prediction Records تغییرناپذیر باشند.
 - تصاویر نمودار در دیتابیس یا فایل‌سیستم ذخیره نشوند.
 - حجم ذخیره‌سازی و رشد دیتابیس پایش شود.
+- آزمایش DuckDB باید با همان Dataset، تعریف ابزار، timezone، نوع قیمت، precision و قواعد کیفیتی MariaDB انجام شود؛ اختلاف نتیجه عددی یا حذف/تکرار رکورد قابل‌قبول نیست.
+- معیارهای POC DuckDB حداقل شامل زمان Import، زمان Queryهای فیلتر زمانی و تجمیع، Window Functionها، مصرف RAM، زمان سرد/گرم، رفتار در بار خواندن هم‌زمان، نوشتن/به‌روزرسانی و بازیابی پس از توقف است.
+- پیش از POC باید سقف‌های قابل‌قبول P95 latency، RAM، حجم داده، تعداد خواننده هم‌زمان و زمان به‌روزرسانی تعیین و ثبت شوند؛ تا پیش از تعیین این آستانه‌ها نتیجه قبول/رد صادر نشود.
+- در صورت رد DuckDB برای یک workload، همان عملیات از طریق Repository روی MariaDB اجرا می‌شود. مهاجرت نباید به Dual-Write مبهم یا دو منبع حقیقت منجر شود؛ در هر مرحله فقط یک منبع مرجع برای هر داده تعیین می‌شود.
+- خروجی انتقال/تغییر موتور باید با Row Count، کلیدهای یکتا، بازه زمانی، checksum نمونه‌ای، OHLC و precision کنترل شود.
 - در نسخه اول هیچ جدول یا فرایند اجباری برای ادغام بین‌بازاری یا انتقال Feature از یک ابزار به ابزار دیگر لازم نیست.
 
 - هر Prediction Record شامل hash خودش و ارجاع به hash رکورد قبلی باشد (بخش ۱۱.۵).
@@ -860,32 +876,175 @@ Timeframeهای هدف نمودار:
 
 عملکرد تاریخی یا Paper Trading تضمین‌کننده عملکرد آینده نیست.
 
-# 14. ابزارها و پروژه‌های متن‌باز برای بررسی
+# 14. ابزارها و پروژه‌های متن‌باز؛ تصمیم استفاده و منابع دقیق
 
-در این فهرست، TradingView Lightweight Charts برای لایه نمایش نمودار انتخاب قطعی پروژه است. سایر ابزارها صرفاً گزینه‌های تحقیق و POC هستند و تا زمان تأیید جداگانه وابستگی قطعی محسوب نمی‌شوند.
+این فصل مشخص می‌کند از هر مخزن GitHub دقیقاً کدام فایل‌ها و قابلیت‌ها برای پروژه لازم‌اند. لینک به یک مخزن به معنی کپی‌کردن کد آن نیست؛ اصل بر نصب نسخه رسمی/پکیج و استفاده از API عمومی است. کد منبع فقط در صورت نیاز، پس از بررسی License، نگهداری، امنیت و سازگاری خوانده می‌شود.
 
-| ابزار/پروژه | کاربرد | وضعیت |
-|---|---|---|
-| TradingView Lightweight Charts | کتابخانه JavaScript/TypeScript برای نمایش نمودار مالی در Web؛ Canvas، سری‌های کندلی/خطی/حجمی، به‌روزرسانی داده و افزونه‌های سفارشی | DECIDED؛ کتابخانه نمودار پروژه |
-| TA-Lib | اندیکاتورهای تکنیکال | بررسی |
-| pandas-ta | اندیکاتورهای Python | بررسی |
-| scikit-learn | یادگیری ماشین و Baseline | گزینه جدی |
-| LightGBM | مدل‌های مبتنی بر درخت | گزینه جدی |
-| Optuna | بهینه‌سازی پارامتر | بررسی |
-| ONNX Runtime | اجرای مدل در Browser یا Backend | نیازمند POC؛ انتخاب نشده |
-| yfinance | داده آزمایشی Yahoo Finance | POC، نه منبع قطعی |
-| Binance API | داده BTCUSDT Spot | منبع اولیه انتخاب‌شده |
+## 14.1 استفاده مستقیم یا POC اصلی
 
-ابزارهای Backtesting معاملاتی برای مرحله Strategy Engine بررسی می‌شوند و پیش‌نیاز Prediction Engine نیستند.
+### A. TradingView Lightweight Charts — استفاده مستقیم (DECIDED)
 
-برای هر پروژه باید این موارد بررسی شوند:
-- License و شرایط استفاده فعلی
-- آخرین Release و فعالیت نگهداری
-- Issues و باگ‌های شناخته‌شده
-- امنیت و وابستگی‌ها
-- سازگاری مرورگرهای هدف (دسکتاپ و Android)، Web Client و Backend
-- عملکرد و منابع موردنیاز
-- محدودیت داده و API
+مخزن: https://github.com/tradingview/lightweight-charts
+
+فایل‌ها و مسیرهای مرجع در GitHub:
+- README.md: https://github.com/tradingview/lightweight-charts/blob/master/README.md — نصب npm، API پایه، ایجاد Chart و Series و معرفی قابلیت‌های توسعه.
+- .github/skills/lightweight-charts/SKILL.md: https://github.com/tradingview/lightweight-charts/blob/master/.github/skills/lightweight-charts/SKILL.md — راهنمای API نسخه ۵، مدل ذهنی کتابخانه، زمان، مقیاس‌ها، markerها و خطاهای رایج پیاده‌سازی.
+- .github/skills/lightweight-charts-plugin-authoring/SKILL.md: https://github.com/tradingview/lightweight-charts/blob/master/.github/skills/lightweight-charts-plugin-authoring/SKILL.md — راهنمای ساخت Plugin؛ انتخاب Custom Series یا Primitive و نکات autoscale، whitespace و hit-testing.
+- plugin-examples/README.md: https://github.com/tradingview/lightweight-charts/tree/master/plugin-examples — نمونه‌های توسعه افزونه و Overlay سفارشی.
+- LICENSE و NOTICE: https://github.com/tradingview/lightweight-charts/tree/master — مجوز و الزام Attribution.
+
+آنچه در محصول استفاده می‌کنیم:
+1. نمایش کندل‌های OHLC برای XAUUSD و SPOTBRENT در M15.
+2. بارگذاری تاریخچه و به‌روزرسانی آخرین کندل بسته‌شده از API خود پروژه.
+3. نمایش Volume فقط در صورت وجود داده معتبر و مشخص‌بودن معنای آن؛ Tick Volume، Real Volume و نبود Volume نباید یکسان نمایش داده شوند.
+4. نمایش خط/سری پیش‌بینی، بازه احتمالی، سناریوها و تاریخچه Forecast.
+5. نمایش Support/Resistance، روند، ساختار بازار و الگوهای تشخیص‌داده‌شده با Overlayهای سفارشی.
+6. تعامل لمسی، تغییر اندازه، انتخاب بازه و جابه‌جایی نمودار در مرورگر Android و دسکتاپ.
+7. جداسازی کامل داده و وضعیت دو Instrument؛ تعویض نماد نباید Series یا Overlay ابزار قبلی را باقی بگذارد.
+
+مرز مسئولیت: Lightweight Charts فقط لایه نمایش است؛ منبع قیمت، اندیکاتور، تشخیص الگو، تحلیل، Forecast یا ذخیره‌سازی نیست. هیچ منطق تحلیلی داخل Plugin نمودار به‌عنوان منبع حقیقت قرار نگیرد.
+
+الزام مجوز: طبق README و NOTICE مخزن، محصول باید TradingView را به‌عنوان سازنده کتابخانه Attribution کند و لینک TradingView را در صفحه قابل دسترس کاربران قرار دهد؛ روش استفاده از attributionLogo نیز در مستندات رسمی ذکر شده است. این الزام پیش از انتشار باید در UI نهایی بررسی شود.
+
+### B. TA-Lib Python — نامزد استفاده مستقیم برای محاسبات تکنیکال (TO VERIFY)
+
+مخزن: https://github.com/TA-Lib/ta-lib-python
+
+فایل مرجع:
+- README.md: https://github.com/TA-Lib/ta-lib-python/blob/master/README.md — Function API، Abstract API، ورودی NumPy/Pandas/Polars، نسخه‌های سازگار، نصب، Lookback و رفتار NaN.
+
+قابلیت‌هایی که برای پروژه بررسی و در صورت موفقیت استفاده می‌شوند:
+- SMA و EMA؛
+- RSI، MACD، ADX و Stochastic؛
+- ATR و Bollinger Bands؛
+- توابع تشخیص الگوهای کندلی موجود در کتابخانه؛
+- محاسبه Batch برای تاریخچه و محاسبه افزایشی/Streaming برای کندل جدید، در صورت مناسب‌بودن API و محیط اجرا.
+
+قواعد ادغام:
+1. TA-Lib فقط محاسبه‌کننده Indicator است؛ تصمیم نهایی روند، اعتبار الگو، ساختار بازار و Forecast متعلق به منطق اختصاصی Chart Intelligence است.
+2. پارامتر، نسخه کتابخانه، Warm-up/Lookback و زمان آخرین کندل ورودی باید در Feature Pipeline قابل ردیابی باشند.
+3. مقدارهای NaN و رفتار انتشار NaN در TA-Lib باید صریحاً مدیریت شوند؛ کندل گمشده نباید با داده ساختگی پر شود.
+4. خروجی TA-Lib روی Dataset مرجع با محاسبه مستقل چند Indicator تطبیق داده شود.
+5. داده Volume فقط با ثبت volume_type و کیفیت آن وارد Indicatorهای وابسته به حجم شود.
+6. TA-Lib نباید مستقیماً روی هاست Shared Hosting فرض شود؛ محل اجرای Python در POC تعیین می‌شود.
+
+وضعیت: POC لازم است؛ هنوز وابستگی Runtime قطعی نیست. License مخزن Python wrapper در README به BSD 2-Clause اشاره می‌کند؛ مجوز و نسخه کتابخانه C پایه نیز هنگام Pin کردن نسخه بررسی شود.
+
+### C. DuckDB — POC برای تحلیل تاریخی و پردازش دسته‌ای (TO VERIFY)
+
+مخزن: https://github.com/duckdb/duckdb
+
+فایل‌ها و منابع مرجع:
+- README.md: https://github.com/duckdb/duckdb/blob/main/README.md — معماری in-process، SQL تحلیلی، پشتیبانی از CSV/Parquet/JSON، Clientها و اتصال به پایگاه‌های دیگر.
+- benchmark/README.md: https://github.com/duckdb/duckdb/blob/main/benchmark/README.md — روش اجرای Benchmarkهای رسمی مخزن.
+- Python Client documentation: https://duckdb.org/docs/current/clients/python/overview — اتصال و اجرای SQL از Python.
+- Parquet documentation: https://duckdb.org/docs/current/data/parquet/overview — خواندن/نوشتن داده تحلیلی Parquet.
+- MySQL extension documentation: https://duckdb.org/docs/current/core_extensions/mysql — بررسی امکان اتصال و query داده MySQL/MariaDB-compatible؛ سازگاری نسخه و عملیات واقعی باید POC شود.
+
+کاربرد مورد آزمایش:
+- Query تاریخچه M15 دو Instrument؛
+- فیلتر بازه زمانی، تجمیع و ساخت Timeframeهای بالاتر؛
+- Window Functionها و محاسبه Datasetهای Feature؛
+- تحلیل آماری و استخراج Dataset برای Walk-Forward؛
+- خواندن Snapshotهای Parquet/CSV و مقایسه با MariaDB.
+
+طرح POC و معیار قبولی:
+- یک Dataset واقعی و یکسان برای هر دو ابزار استفاده شود؛ ابتدا نمونه یک‌ساله و سپس بیشترین تاریخچه معتبر موجود.
+- Queryهای واقعی پروژه، نه فقط Benchmark عمومی، روی DuckDB و MariaDB اجرا و زمان، RAM و صحت خروجی ثبت شود.
+- زمان Import، فیلتر زمانی، aggregation، Window Function، خواندن سرد/گرم، خواندن هم‌زمان، به‌روزرسانی، توقف/بازیابی و انتقال خروجی آزمایش شود.
+- Row Count، Unique Key، timestamp UTC، OHLC، price_basis، precision و checksum نمونه‌ای با منبع مرجع تطبیق داده شوند.
+- آستانه‌های P95 latency، RAM، حجم Dataset و concurrency پیش از آزمون تعیین شوند؛ نتیجه‌گیری بدون این آستانه‌ها معتبر نیست.
+
+مرز معماری قطعی فعلی: MariaDB روی هاست Source of Truth باقی می‌ماند. DuckDB ابتدا موتور تحلیلی آزمایشی است، نه جایگزین قطعی دیتابیس عملیاتی. اگر DuckDB در یک workload جواب ندهد، همان workload از طریق Data Repository روی MariaDB اجرا می‌شود. هیچ اتصال مستقیم Browser به DuckDB، Dual-Write بدون کنترل یا دو منبع حقیقت مجاز نیست.
+
+### D. APScheduler — زمان‌بندی اختیاری Worker پایتون (TO VERIFY)
+
+مخزن: https://github.com/agronholm/apscheduler
+
+فایل مرجع:
+- README.rst: https://github.com/agronholm/apscheduler/blob/master/README.rst — Scheduler/Task Queue، synchronous و asynchronous، ذخیره پایدار Job، Cron/Interval/Calendar/One-off Trigger، محدودیت اجرای هم‌زمان و چند Worker.
+
+کاربرد احتمالی در آینده:
+- اجرای Jobهای دریافت داده و محاسبه Feature؛
+- اجرای دوره‌ای تحلیل و اعتبارسنجی؛
+- مدیریت زمان‌بندی و Retry وظایف Python در محیطی که Worker دائمی یا سرویس پایتون در دسترس باشد.
+
+محدودیت فعلی: هاست فعلی Shared Hosting با PHP 8.3 و Cron حداقل هر ۱۵ دقیقه است؛ بنابراین APScheduler جایگزین Cron فعلی نیست و تا اثبات وجود Runtime/Worker پایتون به پروژه اضافه نمی‌شود. README مخزن هشدار می‌دهد سری v4 پیش‌انتشار است و برای Production توصیه نمی‌شود؛ در زمان اجرا باید نسخه پایدار و وضعیت رسمی Release دوباره بررسی شود. Jobها در هر صورت باید Idempotent، قابل Retry و دارای کنترل اجرای تکراری باشند.
+
+## 14.2 ابزارهای تحقیق و اعتبارسنجی؛ بدون وابستگی Runtime
+
+### E. VectorBT — ابزار تحقیق و آزمایش آماری (TO VERIFY)
+
+مخزن: https://github.com/polakowo/vectorbt
+
+فایل‌ها و منابع مرجع:
+- README.md: https://github.com/polakowo/vectorbt/blob/master/README.md — پژوهش روی داده بازار، ساخت Indicator و Signal، مقایسه تعداد زیادی فرضیه/پارامتر، API مبتنی بر NumPy/Pandas، قابلیت‌های vectorized و گزارش نتایج.
+- LICENSE.md: https://github.com/polakowo/vectorbt/blob/master/LICENSE.md — شرایط Fair-Code؛ پیش از هر نوع استفاده یا توزیع در محصول باید دقیقاً بررسی حقوقی شود.
+- Official feature documentation: https://vectorbt.dev/getting-started/features/ — شرح ویژگی‌های کتابخانه و محدودیت نسخه Community در برابر PRO.
+
+استفاده مجاز در پروژه:
+- آزمایش سریع فرضیه‌های تحلیلی روی تاریخچه M15؛
+- مقایسه ترکیب Indicatorها و پارامترها؛
+- تحلیل توزیع Signalها و حساسیت نتایج؛
+- استفاده پژوهشی در مرحله مستقل Strategy Simulation، فقط پس از تصویب آن مرحله.
+
+عدم استفاده: VectorBT وارد هسته Online Prediction Engine یا Runtime وب نمی‌شود. قابلیت‌های Portfolio/Backtesting آن نباید باعث ورود سفارش، مدیریت پوزیشن یا ربات معاملاتی به محصول شود. به دلیل شرایط Fair-Code، استفاده مستقیم در محصول یا توزیع وابسته به بررسی License است؛ تا آن زمان فقط مرجع تحقیق و مقایسه مفهومی است.
+
+### F. Skfolio — مرجع روش‌های اعتبارسنجی و ریسک، نه کتابخانه هسته (TO VERIFY)
+
+مخزن: https://github.com/skfolio/skfolio
+
+منبع مرجع: فایل README.md مخزن و مستندات رسمی Skfolio؛ جزئیات نسخه، License و API باید پیش از هر آزمایش دوباره از منبع رسمی خوانده شود.
+
+ایده‌های قابل اقتباس، در صورت نیاز و با تعریف مستقل:
+- تفکیک رژیم‌های بازار (Market Regime) برای تحلیل کیفیت Forecast؛
+- روش‌های Cross-Validation مناسب داده زمانی، از جمله Purged/Combinatorial و Walk-Forward؛
+- سنجش پایداری مدل در دوره‌ها و شرایط متفاوت بازار؛
+- سنجه‌های ریسک و Drawdown فقط در مرحله مستقل Strategy/Portfolio Simulation.
+
+عدم استفاده: مسئله اصلی Skfolio بهینه‌سازی پرتفوی و مدل‌های عامل/ریسک است؛ برای MVP دو نمودار مستقل XAUUSD و SPOTBRENT ضرورت مستقیم ندارد. کتابخانه به Runtime پروژه اضافه نمی‌شود و هیچ وابستگی بین دو Instrument برای تحلیل ایجاد نمی‌کند.
+
+## 14.3 الگوهای معماری قابل اقتباس؛ بدون ورود کد کتابخانه
+
+### G. Cryptofeed — فقط الگوی Feed Adapter و Normalization
+
+مخزن: https://github.com/bmoscon/cryptofeed
+
+فایل‌های مرجع:
+- README.md: https://github.com/bmoscon/cryptofeed/blob/master/README.md — FeedHandler، callbackها، داده Normalized، timestamp دریافت، Candle و وضعیت closed.
+- cryptofeed/types.pyx: https://github.com/bmoscon/cryptofeed/blob/master/cryptofeed/types.pyx — تعریف ساختار داده‌های استاندارد مانند Trade، Ticker، OrderBook و Candle.
+
+ایده‌های مورد استفاده در طراحی اختصاصی: Adapter مستقل برای هر Provider، استانداردسازی نام نماد و داده، نگهداری زمان رخداد منبع در کنار زمان دریافت، تفکیک کندل بسته از کندل باز و جداکردن Feed از مصرف‌کننده داده.
+
+عدم استفاده از کد: Providerهای فهرست‌شده در README عمدتاً صرافی‌های رمزارزی‌اند و ابزار مستقیم XAUUSD/Brent Spot پروژه نیستند. مجوز AGPL مخزن نیز مانع مهمی برای ادغام مستقیم بدون بررسی حقوقی است. بنابراین فقط الگوی معماری اقتباس می‌شود.
+
+### H. CCXT — فقط الگوی Provider Adapter
+
+مخزن: https://github.com/ccxt/ccxt
+
+فایل مرجع:
+- README.md: https://github.com/ccxt/ccxt/blob/master/README.md — Unified API، استانداردسازی متدها و تفاوت APIهای Exchange؛ مخزن بر اتصال به صرافی‌های رمزارزی متمرکز است.
+
+ایده مورد اقتباس: قرارداد یکسان برای Adapterها، جداسازی mapping نماد Provider از شناسه Instrument داخلی، و امکان تعویض Provider بدون تغییر Prediction Engine.
+
+عدم استفاده: CCXT برای صرافی‌های کریپتو طراحی شده و APIهای عمومی و خصوصی/معاملاتی را نیز پوشش می‌دهد. پروژه ما در نسخه فعلی فقط Market Data از Provider مستقل می‌گیرد و هیچ Broker/Exchange Account یا Order API مجاز نیست؛ بنابراین خود CCXT وارد هسته نمی‌شود.
+
+## 14.4 پروژه خارج از دامنه
+
+### I. Freqtrade — عدم استفاده (OUT OF SCOPE)
+
+مخزن و فایل مرجع: https://github.com/freqtrade/freqtrade/blob/develop/README.md
+
+Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backtesting، مدیریت معامله، Web UI و اجرای استراتژی است. این محصول با محدوده فعلی Chart Intelligence هم‌راستا نیست.
+
+تصمیم: هیچ کد، ماژول اجرای معامله، مدیریت پوزیشن، اتصال حساب یا منطق Bot از Freqtrade وارد پروژه نمی‌شود. فقط در صورت نیاز می‌توان مستندات روش‌های جلوگیری از Look-ahead Bias را به‌عنوان مرجع تحقیق مطالعه کرد؛ معیارهای Forecast Validation پروژه همچنان سند اصلی خودمان است.
+
+## 14.5 منابع تأییدنشده و قاعده استفاده
+
+- لینک پست X ارسال‌شده در گفتگو، به علت در دسترس نبودن محتوای پست، منبع فنی تأییدشده محسوب نمی‌شود و در تصمیم معماری یا فهرست وابستگی‌ها وارد نشده است. فقط پس از دریافت متن یا تصویر قابل‌خواندن، بررسی خواهد شد.
+- هیچ نسخه، API یا قابلیت کتابخانه‌ای صرفاً بر اساس README برای Production قطعی نمی‌شود؛ نسخه جاری، Release، License، امنیت، وابستگی‌ها و سازگاری در زمان پیاده‌سازی دوباره بررسی می‌شوند.
+- ابزارهای POC باید با Dataset واقعی دو Instrument اولیه و M15 ارزیابی شوند؛ نتیجه یک ابزار روی بازار یا Dataset دیگر قابل تعمیم خودکار نیست.
+- هیچ‌یک از این کتابخانه‌ها مجاز نیستند مرز محصول را از تحلیل و پیش‌بینی نمودار به اجرای سفارش یا اتصال حساب معاملاتی تغییر دهند.
 
 # 15. برنامه توسعه و ترتیب کار
 
@@ -913,6 +1072,9 @@ Timeframeهای هدف نمودار:
 - POC رابط Responsive در مرورگر دسکتاپ و Android.
 - پیاده‌سازی نمونه نمودار با TradingView Lightweight Charts؛ بررسی نمایش کندل‌های M15، حجم، تعامل لمسی، تغییر اندازه، بارگذاری تاریخچه و Overlayهای پیش‌بینی.
 - POC اجرای مدل در Browser در برابر Backend؛ با آزمون برابری Feature Engineering و خروجی پیش‌بینی.
+- POC DuckDB در برابر MariaDB با Dataset واقعی M15 دو Instrument؛ اندازه‌گیری صحت، زمان Query، Import، RAM، رفتار هم‌زمانی و بازیابی طبق بخش ۸.۳ و ۱۴.۱-C.
+- POC TA-Lib برای محاسبه Indicatorهای منتخب روی Dataset مرجع؛ کنترل Lookback، NaN، Warm-up و تطبیق خروجی.
+- APScheduler فقط در صورت فراهم‌شدن Runtime/Worker پایتون و اثبات محدودیت Cron هاست وارد POC شود؛ در غیر این صورت Cron حفظ می‌شود.
 - POC عملی هر Provider فهرست‌شده در فصل ۶ (نماد، M15، عمق تاریخچه، سقف درخواست، کیفیت کندل).
 
 - تمرکز POC داده روی دو ابزار اولیه: XAUUSD و SPOTBRENT با M15؛ مقایسه Pepperstone (cTrader)، Dukascopy و OANDA از نظر عمق تاریخچه، کیفیت و پیوستگی M15.
@@ -971,10 +1133,9 @@ Timeframeهای هدف نمودار:
 
 در حال حاضر VPS خریداری نشود.
 
-ابتدا با هاست موجود: - PHP API - MariaDB - Cron هر ۱۵ دقیقه - ذخیره و
-Sync داده - پردازش سبک
+ابتدا با هاست موجود: - PHP API - MariaDB به‌عنوان Source of Truth - Cron هر ۱۵ دقیقه - ذخیره و Sync داده - پردازش سبک اجرا شود.
 
-اجرا شود.
+DuckDB در این مرحله فقط برای POC و پردازش تحلیلی در محیطی که Runtime آن فراهم است بررسی می‌شود؛ وجود DuckDB روی Shared Hosting فرض نمی‌شود. اگر یک Query یا workload در DuckDB معیارهای POC را پاس نکند، همان عملیات از طریق Data Repository روی MariaDB اجرا می‌شود. خرید VPS یا تغییر دیتابیس عملیاتی بدون شواهد POC مجاز نیست.
 
 ## 16.2 مواردی که باید از هاستینگ تأیید شوند
 
@@ -1025,6 +1186,9 @@ API؛ - سرور مستقل در آینده، اگر حجم پردازش توج�
 - Web Application با طراحی Responsive برای دسکتاپ و Android؛ اپلیکیشن Native و نسخه دسکتاپ مستقل در دامنه فعلی نیست.
 - TradingView Lightweight Charts برای نمایش نمودار مالی.
 - Backend با PHP 8.3 REST API و MariaDB مرکزی.
+- MariaDB منبع حقیقت داده عملیاتی است؛ DuckDB فقط POC تحلیلی و قابل جایگزینی است و تصمیم استفاده نهایی آن به نتیجه Benchmark وابسته است.
+- TA-Lib نامزد محاسبات اندیکاتور است و تا پایان POC، وابستگی Runtime قطعی محسوب نمی‌شود.
+- APScheduler جایگزین Cron فعلی نیست؛ فقط در صورت نیاز اثبات‌شده به Worker پایتون بررسی می‌شود.
 - فناوری Frontend، ذخیره‌سازی مرورگر و سیاست Offline/Cache تا انجام POC قطعی نیست.
 - حداقل timeframe داده M15.
 - تحلیل و ارزیابی قطعی فقط با کندل بسته‌شده.
