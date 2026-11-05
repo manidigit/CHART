@@ -84,6 +84,22 @@ fun ForecastTerminalScreen(
     ) {
         item {
             Spacer(modifier = Modifier.height(4.dp))
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(NeutralAmber.copy(alpha = 0.10f))
+                    .border(1.dp, NeutralAmber.copy(alpha = 0.55f), RoundedCornerShape(10.dp))
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "DEVELOPMENT SERIES · NOT LIVE PROVIDER DATA",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = NeutralAmber,
+                    fontWeight = FontWeight.Bold
+                )
+            }
             // Read-Only & Isolation Compliance Banner (Section 1.3, 1.4, 1.6)
             Row(
                 modifier = Modifier
