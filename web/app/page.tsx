@@ -78,7 +78,7 @@ export default function DashboardPage() {
       <section className="main">
         <header className="topbar">
           <div className="breadcrumb">Workspace <span>/</span> Market overview</div>
-          <div className="top-actions"><span className="refresh-pill"><Clock3 size={14} /> 60-minute refresh</span><button className="icon-button" onClick={() => void refresh()} aria-label="Refresh data"><RefreshCw size={17} /></button><div className="avatar small">CI</div></div>
+          <div className="top-actions"><span className="refresh-pill"><Clock3 size={14} /> 60-minute target</span><button className="icon-button" onClick={() => void refresh()} aria-label="Refresh data"><RefreshCw size={17} /></button><div className="avatar small">CI</div></div>
         </header>
 
         <div className="page-heading">
@@ -102,7 +102,7 @@ export default function DashboardPage() {
           <Metric label="LAST PRICE" value="—" detail="Waiting for verified feed" />
           <Metric label="24H CHANGE" value="—" detail="Not calculated" />
           <Metric label="MARKET TREND" value="UNAVAILABLE" detail="Requires closed M15 candles" />
-          <Metric label="LAST UPDATE" value="—" detail={lastChecked ? new Date(lastChecked).toLocaleTimeString() : "Not checked"} />
+          <Metric label="API CHECK" value="—" detail={lastChecked ? new Date(lastChecked).toLocaleTimeString() : "Not checked"} />
         </section>
 
         <div className="content-grid">
@@ -111,7 +111,7 @@ export default function DashboardPage() {
             <div className="chart-placeholder">
               <div className="chart-grid"><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span></div>
               <div className="chart-center"><div className="chart-icon"><CandlestickChart size={25} /></div><b>Waiting for verified market data</b><span>The chart will render after the provider passes symbol, history and M15 quality checks.</span></div>
-              <div className="chart-time"><span>15:00</span><span>18:00</span><span>21:00</span><span>00:00</span><span>03:00</span></div>
+              <div className="chart-time"><span>—</span><span>—</span><span>—</span><span>—</span><span>—</span></div>
             </div>
             <div className="chart-legend"><span><i className="legend-line emerald" /> EMA 20</span><span><i className="legend-line blue" /> SMA 50</span><span><i className="legend-line amber" /> VWAP</span><span className="legend-note">Indicators activate with verified candles</span></div>
           </section>
