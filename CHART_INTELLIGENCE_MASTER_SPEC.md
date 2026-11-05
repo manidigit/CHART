@@ -3,8 +3,8 @@
 ## سند مرجع اصلی پروژه و مشخصات محصول
 
 **شناسه سند:** `CHART_INTELLIGENCE_MASTER_SPEC`\
-**نسخه:** `1.4`\
-**تاریخ آخرین بازبینی:** 2026-11-04\
+**نسخه:** `1.5`\
+**تاریخ آخرین بازبینی:** 2026-11-05\
 **وضعیت:** سند مرجع جاری پروژه\
 **زبان سند:** فارسی؛ نام فنی اجزا و شناسه‌ها به انگلیسی
 
@@ -347,14 +347,23 @@ Providerها برای **استفاده شخصی فعلی و POC** بررسی م�
 
 ## 6.4 Brent Spot
 
-- **Pepperstone (cTrader Open API):** گزینه اصلی POC برای تطبیق با نماد `SPOTBRENT` در TradingView، که نماد کارگزار پپرستون است. نیازمند حساب آزمایشی و ثبت برنامه در پورتال Open API؛ عمق تاریخچه وابسته به کارگزار است و باید آزمایش شود. وضعیت: `TO VERIFY`.
+**هویت نمودار هدف در TradingView:** `SPOTBRENT` — Brent Crude (Spot).
 
-Brent Spot یک ابزار مستقل است و نمودار، تاریخچه، تحلیل و پیش‌بینی خودش را دارد.
+Brent Spot یک ابزار مستقل است و نمودار، تاریخچه، تحلیل و پیش‌بینی خودش را دارد. نماد Provider باید جدا از نماد TradingView ثبت شود.
 
-- گزینه‌های POC برای M15: OANDA (`BCO_USD`)، Dukascopy، Twelve Data و OilPriceAPI. وجود نماد، نوع واقعی ابزار و عمق تاریخچه باید آزمایش شود.
-- ماهیت ابزار طبق تعریف خود Provider ثبت می‌شود. اگر Provider ابزار را CFD معرفی می‌کند، زیر هویت Brent Spot ثبت نمی‌شود؛ باید هویت دقیق آن در `instruments` تعریف شود.
-- **EIA API v2** (`https://api.eia.gov/v2/petroleum/pri/spt/data/`، کلید رایگان) برای داده روزانه Brent Spot و افق روزانه؛ منبع M15 نیست و با تناوب و ماهیت خودش ثبت می‌شود.
-- داده Brent Spot نباید با Brent Futures یا Brent CFD Revolut ادغام یا به‌جای آن‌ها ثبت شود.
+**Twelve Data — نماد Provider: `XBR/USD` (Brent Spot).**
+- نگاشت مورد آزمایش: TradingView `SPOTBRENT` ← Twelve Data `XBR/USD`.
+- درخواست آزمایشی M15 با endpoint `/time_series` اجرا شد؛ Provider پاسخ داد این نماد فقط از پلن Grow یا Venture در دسترس است.
+- نتیجه: نماد `XBR/USD` برای Brent Spot مشخص شده، اما دسترسی عملی با Secret و پلن فعلی تأیید نشد. وضعیت دسترسی: `PLAN_RESTRICTED`؛ این نتیجه به معنی نامعتبر بودن نماد نیست.
+- ارتقای پلن تا زمان مقایسه هزینه و گزینه‌های جایگزین تصمیم‌گیری نمی‌شود.
+
+**سایر گزینه‌های POC:**
+- **Pepperstone (cTrader Open API):** گزینه تطبیق با `SPOTBRENT` در TradingView؛ نیازمند حساب آزمایشی و ثبت برنامه در پورتال Open API؛ عمق تاریخچه وابسته به کارگزار و نیازمند آزمایش است. وضعیت: `TO VERIFY`.
+- **OANDA:** نماد کاندیدای `BCO_USD`؛ وجود نماد در فهرست واقعی Instrumentها، نوع ابزار و دسترسی M15 باید تأیید شود.
+- **Dukascopy** و **OilPriceAPI:** وجود نماد دقیق، نوع واقعی ابزار و عمق تاریخچه M15 باید آزمایش شود.
+- **EIA API v2** (`https://api.eia.gov/v2/petroleum/pri/spt/data/`، کلید رایگان): گزینه داده روزانه Brent Spot برای افق روزانه؛ منبع M15 نیست و با تناوب و ماهیت خودش ثبت می‌شود.
+
+ماهیت ابزار طبق تعریف خود Provider ثبت می‌شود. اگر Provider ابزار را CFD معرفی می‌کند، زیر هویت Brent Spot ثبت نمی‌شود؛ باید هویت دقیق آن در `instruments` تعریف شود. داده Brent Spot نباید با Brent Futures یا Brent CFD Revolut ادغام یا به‌جای آن‌ها ثبت شود.
 
 ## 6.5 Brent Futures
 
