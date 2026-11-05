@@ -19,3 +19,18 @@ Independent financial chart analysis, multi-horizon forecast engine, walk-forwar
    - **Binance Spot Live API**: Public `/api/v3/klines` closed M15 candle ingestion for `BTCUSDT`.
 4. **Manual OHLC & Zero-Storage Ephemeral Chart OCR**:
    - Supports `Brent CFD – Revolut` and API-restricted instruments via manual `DECIMAL` entry and on-device ephemeral image extraction (images are immediately purged in compliance with Section 5.3).
+
+
+## Shared Web + Android Platform (in progress)
+
+The approved platform is PHP 8.3 REST API + MariaDB + a separate Python Worker, consumed by the existing Kotlin/Jetpack Compose Android app and a Next.js/TypeScript Web dashboard.
+
+- Architecture: `docs/SHARED_PLATFORM_ARCHITECTURE.md`
+- API contract: `docs/API_SPECIFICATION.md`
+- Database schema: `docs/DATABASE_SCHEMA.md`
+- MariaDB migration: `backend/database/migrations/001_shared_platform.sql`
+- PHP API: `backend/public/index.php`
+- Python Worker: `worker/`
+- Web dashboard: `web/`
+
+This is an implementation scaffold, not a production deployment. No XAUUSD/SPOTBRENT provider adapter is enabled yet; provider mappings remain TO VERIFY. The migration seeds instrument identities only and intentionally inserts no synthetic market candles. Do not expose the API until a production authentication/session strategy, rate limiting, and hosting compatibility have been verified.
