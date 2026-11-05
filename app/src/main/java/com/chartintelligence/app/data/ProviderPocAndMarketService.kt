@@ -40,26 +40,6 @@ object ProviderPocAndMarketService {
 
     val instruments: List<InstrumentSpec> = listOf(
         InstrumentSpec(
-            instrumentId = "XAUUSD_SPOT",
-            displayName = "Gold Spot / U.S. Dollar",
-            persianName = "طلای اسپات به دلار",
-            tradingViewSymbol = "XAUUSD",
-            providerName = "Pepperstone cTrader / Twelve Data / Dukascopy",
-            providerSymbol = "XAU/USD · xauusd",
-            marketType = MarketType.SPOT,
-            providerInstrumentType = "TO VERIFY (Spot / Spot-CFD per provider)",
-            quoteCurrency = "USD",
-            decimals = 2,
-            priceBasis = PriceBasis.BID,
-            volumeType = VolumeType.TICK,
-            timestampUnit = TimestampUnit.MILLISECONDS,
-            sessionScheduleUtc = "Mon–Fri 22:00–21:00 UTC (Daily 60m break)",
-            inputMethod = "API (Read-Only Market Data)",
-            status = DecisionStatus.DECIDED,
-            isolationRuleNote = "Primary Phase-1 Instrument #1. Never merged with Gold Futures (GC=F).",
-            isInitialPrimary = true
-        ),
-        InstrumentSpec(
             instrumentId = "SPOTBRENT",
             displayName = "Brent Crude (Spot)",
             persianName = "نفت برنت اسپات",
@@ -67,16 +47,56 @@ object ProviderPocAndMarketService {
             providerName = "Pepperstone cTrader / Twelve Data (XBR/USD)",
             providerSymbol = "SPOTBRENT · XBR/USD",
             marketType = MarketType.SPOT,
-            providerInstrumentType = "TO VERIFY (Pepperstone SpotCrude vs Twelve Data XBR/USD)",
+            providerInstrumentType = "Spot Crude Oil",
             quoteCurrency = "USD",
             decimals = 2,
             priceBasis = PriceBasis.MID,
             volumeType = VolumeType.TICK,
             timestampUnit = TimestampUnit.SECONDS,
-            sessionScheduleUtc = "Mon–Fri 01:00–22:00 UTC (Daily 3h break)",
+            sessionScheduleUtc = "Mon–Fri 01:00–22:00 UTC",
             inputMethod = "API / CSV Import",
             status = DecisionStatus.DECIDED,
-            isolationRuleNote = "Primary Phase-1 Instrument #2. Independent from Dukascopy BRENT.CMD/USD, BZ=F Futures, and Revolut CFD.",
+            isolationRuleNote = "ابزار پیش‌فرض: نفت برنت اسپات. کاملاً مستقل از نفت تگزاس، فیوچرز و سایر بازارها.",
+            isInitialPrimary = true
+        ),
+        InstrumentSpec(
+            instrumentId = "WTI_CRUDE_SPOT",
+            displayName = "WTI Crude Oil (Texas)",
+            persianName = "نفت سبک تگزاس (WTI)",
+            tradingViewSymbol = "USOIL",
+            providerName = "Twelve Data / Spot Feed (CL)",
+            providerSymbol = "WTI/USD",
+            marketType = MarketType.SPOT,
+            providerInstrumentType = "WTI Spot Crude",
+            quoteCurrency = "USD",
+            decimals = 2,
+            priceBasis = PriceBasis.MID,
+            volumeType = VolumeType.TICK,
+            timestampUnit = TimestampUnit.SECONDS,
+            sessionScheduleUtc = "Mon–Fri NYMEX Session",
+            inputMethod = "API / CSV Import",
+            status = DecisionStatus.DECIDED,
+            isolationRuleNote = "نمودار مستقل نفت تگزاس (WTI)؛ با داده‌های مستقل خودش تحلیل و پیش‌بینی می‌شود.",
+            isInitialPrimary = true
+        ),
+        InstrumentSpec(
+            instrumentId = "XAUUSD_SPOT",
+            displayName = "Gold Spot / U.S. Dollar",
+            persianName = "طلای اسپات به دلار",
+            tradingViewSymbol = "XAUUSD",
+            providerName = "Pepperstone cTrader / Twelve Data / Dukascopy",
+            providerSymbol = "XAU/USD · xauusd",
+            marketType = MarketType.SPOT,
+            providerInstrumentType = "Spot Gold",
+            quoteCurrency = "USD",
+            decimals = 2,
+            priceBasis = PriceBasis.BID,
+            volumeType = VolumeType.TICK,
+            timestampUnit = TimestampUnit.MILLISECONDS,
+            sessionScheduleUtc = "Mon–Fri 22:00–21:00 UTC",
+            inputMethod = "API (Read-Only Market Data)",
+            status = DecisionStatus.DECIDED,
+            isolationRuleNote = "طلای اسپات؛ به صورت مجزا با تاریخچه خودش تحلیل می‌شود.",
             isInitialPrimary = true
         ),
         InstrumentSpec(
@@ -168,8 +188,9 @@ object ProviderPocAndMarketService {
         val startOpenMs = nowAligned - count * m15Ms
 
         val (basePrice, amplitude, stepVol, seedPhase) = when (spec.instrumentId) {
-            "XAUUSD_SPOT" -> Quad(2742.50, 14.80, 3.20, 0.45)
             "SPOTBRENT" -> Quad(74.85, 1.65, 0.34, 1.25)
+            "WTI_CRUDE_SPOT" -> Quad(70.40, 1.75, 0.38, 0.85)
+            "XAUUSD_SPOT" -> Quad(2742.50, 14.80, 3.20, 0.45)
             "DUKASCOPY_BRENT_CFD" -> Quad(74.72, 1.62, 0.33, 1.32)
             "BTCUSDT_SPOT" -> Quad(71450.00, 920.00, 195.00, 2.10)
             "REVOLUT_BRENT_CFD" -> Quad(74.90, 1.55, 0.31, 2.85)

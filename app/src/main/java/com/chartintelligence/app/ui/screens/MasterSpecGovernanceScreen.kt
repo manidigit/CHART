@@ -110,7 +110,7 @@ fun MasterSpecGovernanceScreen(
                     "Pepperstone (cTrader Open API) M15 History Depth: Must be tested first for XAUUSD and SPOTBRENT; full Dukascopy download is paused until comparison completes.",
                     "Dukascopy Bid vs Ask & Full 2011 Continuity: 6 sample probes succeeded (12/12); full continuity and spread offset vs Pepperstone under verification.",
                     "Twelve Data Plan Scope: XAU/USD 100-bar M15 smoke test passed; XBR/USD returned PLAN_RESTRICTED (Grow/Venture required).",
-                    "On-Device Inference Runtime: Exported Tree Evaluator vs ONNX Runtime parity test between Python training and mobile inference.",
+                    "On-Device / Web Inference Runtime: Lightweight model evaluation for Web and Android environments.",
                     "Neutral Trend Threshold Parameters: |ΔP| < k × ATR(period) — multiplier k and ATR period tuned during POC."
                 )
             )

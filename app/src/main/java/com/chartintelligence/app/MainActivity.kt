@@ -227,6 +227,7 @@ fun ChartIntelligenceApp(
                 AppTab.FORECAST -> ForecastTerminalScreen(
                     uiState = uiState,
                     onSelectInstrument = viewModel::selectInstrument,
+                    onLoadCustomSymbol = viewModel::loadCustomOrExistingSymbol,
                     onSelectTimeframe = viewModel::selectTimeframe,
                     onSelectHorizon = viewModel::selectHorizon,
                     onUpdateNeutralParams = viewModel::updateNeutralParameters,

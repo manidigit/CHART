@@ -127,7 +127,59 @@ class ChartIntelligenceViewModel : ViewModel() {
         _uiState.update {
             it.copy(
                 selectedInstrument = spec,
-                statusBannerMessage = "Switched to isolated series: ${spec.displayName} (${spec.tradingViewSymbol})"
+                statusBannerMessage = "نمودار انتخاب شد: ${spec.persianName} (${spec.tradingViewSymbol})"
+            )
+        }
+        recomputeForCurrentSelection()
+    }
+
+    fun loadCustomOrExistingSymbol(rawQuery: String) {
+        val cleaned = rawQuery.trim().uppercase(Locale.US)
+        if (cleaned.isEmpty()) return
+
+        val existing = _uiState.value.instruments.find {
+            it.tradingViewSymbol.equals(cleaned, ignoreCase = true) ||
+                it.instrumentId.equals(cleaned, ignoreCase = true) ||
+                it.providerSymbol.contains(cleaned, ignoreCase = true) ||
+                it.persianName.contains(rawQuery.trim())
+        }
+
+        if (existing != null) {
+            selectInstrument(existing.instrumentId)
+            return
+        }
+
+        val customId = "${cleaned.replace("/", "_")}_CUSTOM"
+        val isCrypto = cleaned.endsWith("USDT") || cleaned.endsWith("BTC")
+        val newSpec = com.chartintelligence.app.model.InstrumentSpec(
+            instrumentId = customId,
+            displayName = "$cleaned Independent Series",
+            persianName = "نمودار مستقل $cleaned",
+            tradingViewSymbol = cleaned,
+            providerName = if (isCrypto) "Binance Spot Public API" else "Twelve Data / Custom Provider",
+            providerSymbol = cleaned,
+            marketType = if (isCrypto) com.chartintelligence.app.model.MarketType.CRYPTO_SPOT else com.chartintelligence.app.model.MarketType.SPOT,
+            providerInstrumentType = "Independent Series ($cleaned)",
+            quoteCurrency = if (isCrypto) "USDT" else "USD",
+            decimals = 2,
+            priceBasis = com.chartintelligence.app.model.PriceBasis.LAST,
+            volumeType = com.chartintelligence.app.model.VolumeType.REAL,
+            timestampUnit = com.chartintelligence.app.model.TimestampUnit.MILLISECONDS,
+            sessionScheduleUtc = "Independent Market Session",
+            inputMethod = "API / Manual",
+            status = com.chartintelligence.app.model.DecisionStatus.TO_VERIFY,
+            isolationRuleNote = "سری مستقل تعریف‌شده توسط کاربر برای نماد $cleaned؛ بدون ادغام با سایر بازارها.",
+            isInitialPrimary = false
+        )
+
+        val generatedCandles = ProviderPocAndMarketService.generateInitialClosedM15Candles(newSpec, 96).toMutableList()
+        m15CandleStore[customId] = generatedCandles
+
+        _uiState.update { current ->
+            current.copy(
+                instruments = listOf(newSpec) + current.instruments,
+                selectedInstrument = newSpec,
+                statusBannerMessage = "نمودار مستقل «$cleaned» ساخته و بارگذاری شد."
             )
         }
         recomputeForCurrentSelection()

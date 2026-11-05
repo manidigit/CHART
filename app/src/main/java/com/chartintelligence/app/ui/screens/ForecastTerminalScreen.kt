@@ -63,10 +63,19 @@ import com.chartintelligence.app.ui.theme.TextPrimary
 import com.chartintelligence.app.ui.theme.TextSecondary
 import java.util.Locale
 
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+
 @Composable
 fun ForecastTerminalScreen(
     uiState: ChartIntelligenceUiState,
     onSelectInstrument: (String) -> Unit,
+    onLoadCustomSymbol: (String) -> Unit,
     onSelectTimeframe: (ChartTimeframe) -> Unit,
     onSelectHorizon: (ForecastHorizon) -> Unit,
     onUpdateNeutralParams: (Int, Double) -> Unit,
@@ -75,6 +84,7 @@ fun ForecastTerminalScreen(
 ) {
     val spec = uiState.selectedInstrument
     val forecast = uiState.activeForecast
+    var symbolSearchText by remember { mutableStateOf("") }
 
     LazyColumn(
         modifier = modifier
@@ -82,67 +92,84 @@ fun ForecastTerminalScreen(
             .padding(horizontal = 16.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // Prominent Direct Symbol Input & Search Box
         item {
             Spacer(modifier = Modifier.height(4.dp))
-            // Read-Only & Isolation Compliance Banner (Section 1.3, 1.4, 1.6)
-            Row(
+            Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(12.dp))
-                    .background(ElevatedCardSurface)
-                    .border(1.dp, SubtleBorderSlate, RoundedCornerShape(12.dp))
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.SpaceBetween
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(DeepSlateSurface)
+                    .border(1.5.dp, BullishEmerald.copy(alpha = 0.65f), RoundedCornerShape(14.dp))
+                    .padding(12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
+                Text(
+                    text = "۱. چه نموداری را می‌خواهید تحلیل و پیش‌بینی کنید؟",
+                    style = MaterialTheme.typography.titleSmall,
+                    color = BullishEmerald,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "نام نماد را بنویسید (مثل XAUUSD، SPOTBRENT، BTCUSDT، EURUSD، AAPL) یا از دکمه‌های آماده زیر انتخاب کنید:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextSecondary
+                )
                 Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Icon(
-                        imageVector = Icons.Default.Security,
-                        contentDescription = "Strict Read-Only Market Data",
-                        tint = BullishEmerald,
-                        modifier = Modifier.size(18.dp)
+                    OutlinedTextField(
+                        value = symbolSearchText,
+                        onValueChange = { symbolSearchText = it },
+                        placeholder = {
+                            Text(
+                                text = "مثال: XAUUSD یا SPOTBRENT یا BTCUSDT",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = TextMuted
+                            )
+                        },
+                        singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = BullishEmerald,
+                            unfocusedBorderColor = SubtleBorderSlate,
+                            focusedTextColor = TextPrimary,
+                            unfocusedTextColor = TextPrimary
+                        ),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag("custom_symbol_input")
                     )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Column {
-                        Text(
-                            text = "READ-ONLY MARKET DATA · NO BROKER / NO ORDERS",
-                            style = MaterialTheme.typography.labelSmall,
-                            color = BullishEmerald,
-                            fontWeight = FontWeight.Bold
+                    Button(
+                        onClick = {
+                            if (symbolSearchText.isNotBlank()) {
+                                onLoadCustomSymbol(symbolSearchText)
+                                symbolSearchText = ""
+                            }
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = BullishEmerald,
+                            contentColor = Color(0xFF002418)
+                        ),
+                        shape = RoundedCornerShape(10.dp),
+                        modifier = Modifier.testTag("load_custom_symbol_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Search,
+                            contentDescription = "نمایش نمودار",
+                            modifier = Modifier.size(16.dp)
                         )
+                        Spacer(modifier = Modifier.width(4.dp))
                         Text(
-                            text = spec.isolationRuleNote,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = TextSecondary
+                            text = "نمایش نمودار",
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold
                         )
                     }
                 }
-                Box(
-                    modifier = Modifier
-                        .clip(RoundedCornerShape(6.dp))
-                        .background(DeepSlateSurface)
-                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                ) {
-                    Text(
-                        text = spec.status.tag,
-                        style = MaterialTheme.typography.labelSmall,
-                        color = if (spec.isInitialPrimary) BullishEmerald else NeutralAmber
-                    )
-                }
-            }
-        }
 
-        // Independent Instrument Selector
-        item {
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                Text(
-                    text = "INDEPENDENT INSTRUMENT SERIES (SEC 2.1–2.3)",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = TextMuted
-                )
+                // Quick-select Instrument Chips
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -154,7 +181,7 @@ fun ForecastTerminalScreen(
                         Box(
                             modifier = Modifier
                                 .clip(RoundedCornerShape(12.dp))
-                                .background(if (selected) BullishEmerald.copy(alpha = 0.16f) else DeepSlateSurface)
+                                .background(if (selected) BullishEmerald.copy(alpha = 0.20f) else ElevatedCardSurface)
                                 .border(
                                     width = if (selected) 1.5.dp else 1.dp,
                                     color = if (selected) BullishEmerald else SubtleBorderSlate,
@@ -165,11 +192,17 @@ fun ForecastTerminalScreen(
                                 .testTag("instrument_chip_${inst.instrumentId}")
                         ) {
                             Column {
+                                Text(
+                                    text = inst.persianName,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = if (selected) BullishEmerald else TextPrimary,
+                                    fontWeight = FontWeight.Bold
+                                )
                                 Row(verticalAlignment = Alignment.CenterVertically) {
                                     Text(
                                         text = inst.tradingViewSymbol,
-                                        style = MaterialTheme.typography.titleSmall,
-                                        color = if (selected) BullishEmerald else TextPrimary
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = if (selected) BullishEmerald else ForecastCyan
                                     )
                                     Spacer(modifier = Modifier.width(6.dp))
                                     Text(
@@ -178,11 +211,6 @@ fun ForecastTerminalScreen(
                                         color = TextSecondary
                                     )
                                 }
-                                Text(
-                                    text = inst.persianName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = TextSecondary
-                                )
                             }
                         }
                     }
@@ -198,9 +226,9 @@ fun ForecastTerminalScreen(
             ) {
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "CHART TIMEFRAME (≥ M15)",
+                        text = "۲. تایم‌فریم کندل‌ها (≥ M15)",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        color = TextPrimary
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
@@ -232,9 +260,9 @@ fun ForecastTerminalScreen(
 
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "FORECAST HORIZON",
+                        text = "۳. افق پیش‌بینی آینده",
                         style = MaterialTheme.typography.labelSmall,
-                        color = TextMuted
+                        color = TextPrimary
                     )
                     Spacer(modifier = Modifier.height(4.dp))
                     Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
