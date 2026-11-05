@@ -19,3 +19,13 @@ Independent financial chart analysis, multi-horizon forecast engine, walk-forwar
    - **Binance Spot Live API**: Public `/api/v3/klines` closed M15 candle ingestion for `BTCUSDT`.
 4. **Manual OHLC & Zero-Storage Ephemeral Chart OCR**:
    - Supports `Brent CFD – Revolut` and API-restricted instruments via manual `DECIMAL` entry and on-device ephemeral image extraction (images are immediately purged in compliance with Section 5.3).
+
+
+## Shared Web + Android Dashboard (in progress)
+
+A responsive Next.js dashboard and shared read-only market API foundation are being added under `web/`. The Android API adapter is `SharedMarketApiClient.kt`.
+
+- Architecture and delivery gates: [CHART_SHARED_DASHBOARD_ARCHITECTURE.md](CHART_SHARED_DASHBOARD_ARCHITECTURE.md)
+- Web app: `cd web && npm install && npm run dev`
+- Android service base URL: configure Gradle property `CHART_API_BASE_URL` after the shared API is deployed.
+- Market-data routes intentionally report unavailable until a verified provider is connected. No demo prices are represented as live data.
