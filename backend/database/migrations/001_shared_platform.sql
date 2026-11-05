@@ -113,6 +113,6 @@ CREATE TABLE IF NOT EXISTS worker_jobs (
 -- candles are seeded and no provider is promoted to production by this migration.
 INSERT INTO instruments (id, display_name, tradingview_symbol, market_type, quote_currency, price_basis, decimals, is_initial_primary, status)
 VALUES
- ('XAUUSD_SPOT', 'Gold Spot / U.S. Dollar', 'XAUUSD', 'SPOT', 'USD', 'bid', 2, TRUE, 'TO_VERIFY'),
+ ('XAUUSD_SPOT', 'Gold Spot / U.S. Dollar', 'XAUUSD', 'SPOT', 'USD', 'bid', 2, FALSE, 'TO_VERIFY'),
  ('SPOTBRENT', 'Brent Crude (Spot)', 'SPOTBRENT', 'SPOT', 'USD', 'mid', 2, TRUE, 'TO_VERIFY')
-ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), tradingview_symbol=VALUES(tradingview_symbol);
+ON DUPLICATE KEY UPDATE display_name=VALUES(display_name), tradingview_symbol=VALUES(tradingview_symbol), is_initial_primary=VALUES(is_initial_primary);
