@@ -2,9 +2,9 @@
 
 import { useEffect, useState } from "react";
 import {
-  Activity, AlertTriangle, ArrowDownRight, ArrowUpRight, Bell, CandlestickChart,
+  Activity, AlertTriangle, Bell, CandlestickChart,
   CheckCircle2, ChevronDown, Clock3, Database, Gauge, Layers3, RefreshCw,
-  ShieldCheck, Signal, SlidersHorizontal, Sparkles, Waves,
+  ShieldCheck, Signal, SlidersHorizontal, Sparkles,
 } from "lucide-react";
 import type { MarketInstrument } from "@/lib/market";
 
