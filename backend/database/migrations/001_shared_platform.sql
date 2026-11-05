@@ -93,6 +93,7 @@ CREATE TABLE IF NOT EXISTS forecasts (
 CREATE TABLE IF NOT EXISTS worker_jobs (
   id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
   job_type VARCHAR(48) NOT NULL,
+  schedule_key VARCHAR(128) NOT NULL,
   instrument_id VARCHAR(64) NULL,
   payload_json JSON NOT NULL,
   status VARCHAR(16) NOT NULL DEFAULT 'QUEUED',
@@ -103,6 +104,7 @@ CREATE TABLE IF NOT EXISTS worker_jobs (
   last_error TEXT NULL,
   created_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3),
   updated_at DATETIME(3) NOT NULL DEFAULT CURRENT_TIMESTAMP(3) ON UPDATE CURRENT_TIMESTAMP(3),
+  UNIQUE KEY uq_job_schedule (schedule_key),
   KEY ix_jobs_claim (status, available_at, id),
   CONSTRAINT fk_job_instrument FOREIGN KEY (instrument_id) REFERENCES instruments(id)
 ) ENGINE=InnoDB;
