@@ -33,13 +33,13 @@ The initial Next.js service lives in `/web`. Route handlers run server-side and 
 | `GET /api/v1/analysis/latest?instrumentId=XAUUSD_SPOT&timeframe=M15` | Canonical indicator and trend output |
 | `GET /api/v1/forecasts/latest?instrumentId=XAUUSD_SPOT` | Official forecast records and timestamps |
 
-The first four endpoints have initial route handlers. Until a verified provider is configured, market summary and candle endpoints deliberately return unavailable responses. The UI must show unavailable state rather than fabricated or demo prices.
+All six endpoints have initial route handlers. The shared technical-indicator calculation module is started, but the analysis route is not yet connected to a persisted candle repository. Until a verified provider and repository are configured, market summary, candle, analysis and forecast endpoints deliberately return unavailable responses. The UI must show unavailable state rather than fabricated or demo prices.
 
 ## Android integration
 
 `SharedMarketApiClient.kt` is the Android read-only API adapter. Configure its base URL at build time using Gradle property `CHART_API_BASE_URL`. Provider credentials must never be stored in Android resources, BuildConfig or client code; credentials remain server-side.
 
-The Android app retains its current local forecast/validation screens. Migration of the official chart and forecast screens to server-authoritative data is a subsequent integration step, after the shared service has a verified provider and deployed URL. Until then, locally generated demonstration candles must not be represented as live provider data.
+The Android app now opens on a shared-service dashboard tab and checks the shared instruments endpoint through the new API adapter. Its existing forecast/validation screens remain local. Migration of the official chart and forecast screens to server-authoritative data is a subsequent integration step, after the shared service has a verified provider and deployed URL. Until then, locally generated demonstration candles must not be represented as live provider data.
 
 ## Provider selection gates
 
