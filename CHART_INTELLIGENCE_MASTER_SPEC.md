@@ -547,13 +547,13 @@ XAUUSD یا هر نمودار طلا فقط یک نمونه از کاتالوگ 
 هیچ Provider پولی از طرف پروژه خریداری یا به‌عنوان پیش‌نیاز محصول انتخاب نمی‌شود. اگر کاربر کلید یا اشتراک پولی Provider دیگری را داشته باشد، می‌تواند آن را به‌صورت BYOK به نمودار خودش متصل کند. هر سری از Provider متفاوت، chart_id مستقل دارد.
 
 
-## 6.4 نمودارهای Brent
+## 6.4 نمودارهای نفت (Brent / WTI) و اولویت کلید Twelve Data
 
-Brent Spot، Brent Futures و هر Brent CFD نمودارهای مستقل‌اند. Brent CFD در Dukascopy، Revolut یا Provider دیگر به‌عنوان Brent Spot ثبت نمی‌شود مگر metadata رسمی Provider دقیقاً همان ماهیت را تأیید کند.
+انواع نمودارهای نفت (از جمله `SPOTBRENT`، `Brent CFD`، `Brent Futures BZ=F`، `WTI Spot` و `WTI Futures CL=F`) نمودارهای مستقل در کاتالوگ باز برنامه هستند. Brent CFD در Dukascopy، Revolut یا Provider دیگر به‌عنوان Brent Spot ثبت نمی‌شود مگر metadata رسمی Provider دقیقاً همان ماهیت را تأیید کند.
 
-گزینه‌های بررسی‌شده شامل Twelve Data (XBR/USD)، Dukascopy (brentcmdusd)، OANDA، cTrader و EIA برای داده روزانه هستند. این‌ها صرفاً گزینه‌های تحقیق/POC با محدودیت‌های متفاوت‌اند؛ هیچ‌کدام منبع واحد و قطعی همه نمودارهای Brent نیستند.
-
-هر Provider symbol، نوع ابزار، مبنای قیمت و تقویم معاملاتی در Chart Registry ثبت می‌شود. اختلاف قیمت بین دو نمودار از دو Provider خطا تلقی نمی‌شود و داده‌هایشان بدون تطبیق و تصمیم صریح ادغام نمی‌شود. API پولی، در صورت نیاز، فقط با کلید/اشتراک خود کاربر و به‌صورت اختیاری متصل می‌شود.
+- **اولویت اول منبع داده در انتخابگر واچ‌لیست (`DECIDED`):** هنگام افزودن هر یک از مدل‌های نمودار نفت یا طلا به واچ‌لیست، اولویت اول کانال دریافت داده استفاده از **`Twelve Data API`** با کلید اختصاصی ذخیره‌شده در GitHub Secrets (`TWELVE_DATA_API_KEY`) است.
+- **مدیریت محدودیت پلن و گزینه‌های جایگزین در زیر نمودار:** اگر نماد خاصی در Twelve Data محدودیت پلن داشته باشد (مانند `XBR/USD` در پلن رایگان)، آداپتور وضعیت دقیق نماد را گزارش می‌دهد و کاربر می‌تواند در همان منوی زیر نمودار، سایر نمادهای فعال در Twelve Data یا منابع رایگان جایگزین (مانند `Dukascopy` برای `brentcmdusd`، `Yahoo Finance` برای `BZ=F`/`CL=F`، یا ورود فایل CSV/JSON) را به‌عنوان منبع آن آیتم در واچ‌لیست انتخاب کند.
+- هر Provider symbol، نوع ابزار، مبنای قیمت و تقویم معاملاتی در Chart Registry ثبت می‌شود. اختلاف قیمت بین دو نمودار از دو Provider خطا تلقی نمی‌شود و داده‌هایشان بدون تطبیق و تصمیم صریح ادغام نمی‌شود.
 
 ## 6.5 Brent Futures
 
@@ -763,61 +763,62 @@ Google Drive API v3 می‌تواند فقط محل نگهداری فایل Back
 
 ## 8.4 جداول دامنه‌ای پیشنهادی
 
-### Chart Registry & Market Data
-- charts — هویت و metadata هر نمودار
-- chart_aliases — نام‌ها و نمادهای قابل جست‌وجو
-- market_sources / providers
-- chart_data_sources — کانال‌های دریافت هر نمودار و وضعیت آن‌ها
-- provider_instrument_mappings
-- market_sessions
-- candles
-- data_import_batches
-- data_quality_reports
-- data_corrections
+### Chart Registry, Watchlist & Market Data
+- `charts` — هویت، metadata و منبع داده فعال (`active_source_id`) هر نمودار
+- `user_watchlist` — فهرست نمودارهای انتخاب‌شده توسط هر کاربر (`user_id`, `chart_id`, `selected_source_id`, `default_timeframe`, `sort_order`)
+- `chart_aliases` — نام‌ها و نمادهای قابل جست‌وجو (مانند ۵ مدل نفت، طلا، رمزارز و غیره)
+- `market_sources` / `providers` — فهرست منابع دریافت داده (`twelve_data`, `dukascopy`, `yahoo_finance`, `binance_spot`, `manual_csv`)
+- `chart_data_sources` — کانال‌های دریافت مجاز هر نمودار و وضعیت آن‌ها (`ACTIVE_TESTED`, `PLAN_RESTRICTED`, `FALLBACK`, `DISABLED`)
+- `provider_instrument_mappings`
+- `market_sessions`
+- `candles` — جدول استاندارد کندل‌ها با کلید یکتای `(chart_id, source_id, timeframe_id, open_time)`، قیمت‌های `DECIMAL(18,8)`، زمان `UTC` و فیلدهای `is_complete` و `quality_status`
+- `data_import_batches`
+- `data_quality_reports`
+- `data_corrections`
 
 ### User Provider Access
-- user_provider_credentials — ارجاع امن به Secretهای متعلق به هر کاربر؛ نه ذخیره متن ساده کلید
-- user_chart_access — مالکیت/دسترسی کاربر به نمودارها در صورت نیاز
+- `user_provider_credentials` — ارجاع امن به Secretهای متعلق به هر کاربر؛ نه ذخیره متن ساده کلید
+- `user_chart_access` — مالکیت/دسترسی کاربر به نمودارها در صورت نیاز
 
-### Analysis
-- indicator_definitions
-- indicator_values
-- market_features
-- market_structures
-- support_resistance_levels
-- detected_patterns
+### Analysis & Core Indicators
+- `indicator_definitions` — تعاریف و پارامترهای ۶ اندیکاتور پایه فاز اول (`SMA 20/50`, `EMA 20`, `Bollinger Bands 20,2`, `RSI 14`, `MACD 12,26,9`, `ATR 14`)
+- `indicator_values`
+- `market_features`
+- `market_structures`
+- `support_resistance_levels`
+- `detected_patterns`
 
 ### Prediction & Models
-- prediction_runs
-- prediction_forecasts
-- prediction_scenarios
-- prediction_outcomes
-- prediction_evaluations
-- prediction_models
-- model_versions
-- model_evaluations
-- model_deployments
+- `prediction_runs`
+- `prediction_forecasts`
+- `prediction_scenarios`
+- `prediction_outcomes`
+- `prediction_evaluations`
+- `prediction_models`
+- `model_versions`
+- `model_evaluations`
+- `model_deployments`
 
 ### Future Trading Strategy
-- strategy_definitions
-- strategy_backtests
-- simulated_orders
-- simulated_trades
-- portfolio_snapshots
-- performance_metrics
+- `strategy_definitions`
+- `strategy_backtests`
+- `simulated_orders`
+- `simulated_trades`
+- `portfolio_snapshots`
+- `performance_metrics`
 
 ### Users, Sync, Security & Backup
-- users
-- devices
-- user_preferences
-- api_tokens
-- sync_events
-- sync_cursors
-- sync_conflicts
-- audit_logs
-- login_attempts
-- system_logs
-- backup_records
+- `users`
+- `devices`
+- `user_preferences`
+- `api_tokens`
+- `sync_events`
+- `sync_cursors`
+- `sync_conflicts`
+- `audit_logs`
+- `login_attempts`
+- `system_logs`
+- `backup_records`
 
 این فهرست دامنه‌ای است؛ ستون‌ها، کلیدهای خارجی و Indexها باید در DATABASE_SCHEMA.md نهایی شوند. همه جداول داده/تحلیل/پیش‌بینی باید از chart_id استفاده کنند. جدول‌های اجرای معامله واقعی، سفارش واقعی و اتصال حساب کارگزاری در دامنه نیستند.
 
@@ -837,29 +838,35 @@ Google Drive API v3 می‌تواند فقط محل نگهداری فایل Back
 
 ## 9.2 Endpointهای اولیه
 
-- POST /auth/register
-- POST /auth/login
-- POST /auth/refresh
-- GET /charts
-- POST /charts
-- GET /charts/{chart_id}
-- PATCH /charts/{chart_id}
-- GET /charts/search
-- GET /providers
-- GET /charts/{chart_id}/data-sources
-- POST /charts/{chart_id}/data-sources
-- POST /user/provider-credentials — ثبت/به‌روزرسانی کلید متعلق به همان کاربر، بدون بازگرداندن مقدار Secret
-- DELETE /user/provider-credentials/{credential_id}
-- GET /market/candles?chart_id=...
-- POST /market/candles/import
-- POST /market/images/extract (در صورت فعال‌سازی؛ پردازش موقت و بدون ذخیره تصویر)
-- POST /sync/push
-- GET /sync/pull
-- POST /predictions
-- GET /predictions/history?chart_id=...
-- POST /predictions/evaluate
-- GET /models/versions?chart_id=...
-- GET /system/status
+- `POST /auth/login` — ورود با نام کاربری و رمز عبور (دروازه ورود شخصی فاز ۱ و چندکاربره در مراحل بعد)
+- `POST /auth/logout`
+- `POST /auth/refresh`
+- `GET /watchlist` — دریافت فهرست واچ‌لیست کاربر به همراه منبع داده انتخاب‌شده (`source_id`) و آخرین وضعیت هر نمودار
+- `POST /watchlist` — افزودن یک نمودار (مثلاً یکی از ۵ مدل نفت یا طلا) به همراه منبع دریافت داده انتخابی (`Twelve Data API` یا سایر منابع) به واچ‌لیست
+- `PATCH /watchlist/{watchlist_item_id}` — تغییر منبع دریافت داده (`source_id`) یا تایم‌فریم پیش‌فرض آیتم واچ‌لیست
+- `DELETE /watchlist/{watchlist_item_id}` — حذف نمودار از واچ‌لیست
+- `GET /charts/catalog` — کاتالوگ باز نمودارهای قابل انتخاب (انواع مدل‌های نفت، طلا، رمزارز و غیره) به همراه لیست منابع داده/API پشتیبانی‌شده زیر هر نمودار
+- `GET /charts`
+- `POST /charts`
+- `GET /charts/{chart_id}`
+- `PATCH /charts/{chart_id}`
+- `GET /charts/search`
+- `GET /providers`
+- `GET /charts/{chart_id}/data-sources`
+- `POST /charts/{chart_id}/data-sources`
+- `POST /user/provider-credentials` — ثبت/به‌روزرسانی کلید متعلق به همان کاربر، بدون بازگرداندن مقدار Secret
+- `DELETE /user/provider-credentials/{credential_id}`
+- `GET /market/candles?chart_id=...&source_id=...&timeframe=...` — دریافت کندل‌های بسته‌شده به همراه محاسبه ۶ اندیکاتور پایه (`SMA 20/50`, `EMA 20`, `BB 20,2`, `RSI 14`, `MACD 12,26,9`, `ATR 14`)
+- `POST /market/candles/sync` — دریافت و به‌روزرسانی کندل‌های جدید از منبع انتخاب‌شده (با اولویت `Twelve Data API` از کلید ذخیره‌شده یا منبع انتخابی کاربر)
+- `POST /market/candles/import`
+- `POST /market/images/extract` (در صورت فعال‌سازی؛ پردازش موقت و بدون ذخیره تصویر)
+- `POST /sync/push`
+- `GET /sync/pull`
+- `POST /predictions`
+- `GET /predictions/history?chart_id=...`
+- `POST /predictions/evaluate`
+- `GET /models/versions?chart_id=...`
+- `GET /system/status`
 
 Endpointهای سفارش، معاملات واقعی، پرتفوی و مدیریت سرمایه در دامنه نسخه اول نیستند. همه Endpointهای داده/پیش‌بینی باید هویت نمودار را صریحاً دریافت یا از مسیر معتبر resolve کنند.
 

@@ -102,11 +102,11 @@ Based only on the supplied information:
 | Python analysis worker | Not yet approved for this host | Python version, package installation, CPU/RAM/runtime limits and long-running process policy are unknown |
 | Persistent WebSocket/data-ingestion worker | Do not assume it can run here | Shared-hosting providers commonly restrict persistent background processes; provider confirmation required |
 | Heavy analytics / model inference | Do not allocate here without testing | The displayed account limits do not establish sustained compute capacity |
-| Static web frontend / browser chart rendering | Hosted on `https://chart.manico.es` alongside PHP REST API | Same-origin deployment simplifies routing and avoids CORS in Phase 1 |
-| Android application (`APK`) | Built automatically in GitHub Actions on every `git push` | Connects to `https://chart.manico.es/api/v1/` over HTTPS |
+| Static web frontend / browser chart rendering | Hosted on `https://chart.manico.es` alongside PHP REST API | Built with Modular Vanilla JS (ES6+) + TradingView Lightweight Charts; same-origin deployment avoids CORS |
+| Android application (`APK`) | Built automatically in GitHub Actions on every `git push` | Kotlin + Jetpack Compose client connecting to `https://chart.manico.es/api/v1/` over HTTPS |
 | Research and backtesting environment | Keep separate from production runtime | Research workloads should not compete with the live application |
 
-This is an initial assessment, not a final hosting decision for future heavy compute workers. The product consists of an Android application (APK) and a responsive web application on `chart.manico.es` for chart analysis and forecasting, not an automated trading or order-execution system.
+This is an initial assessment, not a final hosting decision for future heavy compute workers. The product consists of an Android application (APK) and a responsive web application on `chart.manico.es` (with a personal login gate, a TradingView-style Watchlist & Data Source selector, and a dedicated Chart + 6 Core Indicators view) for chart analysis and forecasting, not an automated trading or order-execution system.
 
 ## 5. Required verification before making hosting decisions
 
@@ -141,7 +141,7 @@ The following are release gates, not administrative notes:
 
 Evidence must include verification date, method, observed result and responsible operator. A server-level service status is not sufficient evidence for account-level capability.
 
-**Automated Host Capability Probe:** Upon first deployment to `https://chart.manico.es`, a token-protected diagnostic endpoint (`/api/v1/system/status`) will automatically inspect and report the account's active PHP SAPI version, loaded extensions (`pdo_mysql`, `curl`, `openssl`, `mbstring`, `bcmath`), `memory_limit`, `max_execution_time`, MariaDB connection health, and outbound HTTPS connectivity to market-data providers.
+**Automated Host Capability Probe:** Upon first deployment to `https://chart.manico.es`, a token-protected diagnostic endpoint (`/api/v1/system/status`) and `.github/workflows/host-probe.yml` automatically inspect and report the account's active PHP SAPI version, loaded extensions (`pdo_mysql`, `curl`, `openssl`, `mbstring`, `bcmath`), `memory_limit`, `max_execution_time`, MariaDB connection health, and outbound HTTPS connectivity to market-data providers.
 
 ## 6. Secrets and environment configuration
 
@@ -167,7 +167,7 @@ The project owner has **already stored** the following **8 secrets** in **GitHub
 | 5 | `DB_NAME` | **STORED** (Nov 6, 2026) | PHP Backend Runtime & Probe | MariaDB database name on the cPanel host (`DB_HOST` defaults to `localhost`) |
 | 6 | `DB_PASSWORD` | **STORED** (Nov 6, 2026) | PHP Backend Runtime & Probe | MariaDB database password |
 | 7 | `DB_USER` | **STORED** (Nov 6, 2026) | PHP Backend Runtime & Probe | MariaDB database username |
-| 8 | `TWELVE_DATA_API_KEY` | **STORED** (Nov 6, 2026) | Market Data POC & Optional Provider | Twelve Data API key for market data smoke tests and optional channel |
+| 8 | `TWELVE_DATA_API_KEY` | **STORED** (Nov 6, 2026) | Primary Market Data Channel & POC | Twelve Data API key prioritized for Watchlist chart data ingestion (Oil, Gold, etc.) |
 
 > **CRITICAL NOTE FOR AI ASSISTANTS (ChatGPT, Gemini, Claude, etc.) AND DEVELOPERS:**
 > - **Do NOT search the codebase, `.env` files, or Git history for these 8 values**, and **do NOT ask the project owner to send or re-enter them.**
@@ -183,16 +183,18 @@ Actual values must never be committed to Git, pasted into source files, or place
 - **Known:** Account dashboard reports 2 GB physical memory limit, 5 GB disk, 100 GB bandwidth, 20 entry processes and 150 processes.
 - **DECIDED:** Target subdomain for Web Application and PHP REST API is `https://chart.manico.es`.
 - **DECIDED & CONFIGURED (2026-11-06):** All 8 required operational and CI/CD secrets (`CPANEL_API_TOKEN`, `CPANEL_DOCROOT`, `CPANEL_HOST`, `CPANEL_USERNAME`, `DB_NAME`, `DB_PASSWORD`, `DB_USER`, `TWELVE_DATA_API_KEY`) are stored in **GitHub Repository Secrets (Actions)**.
+- **DECIDED:** Web Frontend uses **Modular Vanilla JS (ES6+) + TradingView Lightweight Charts** on `https://chart.manico.es`; Android client is a native **Kotlin + Jetpack Compose `APK`** built via GitHub Actions. Windows/Desktop app is canceled.
+- **DECIDED:** Application entry flow is: (1) Personal username/password Login Gate (multi-user ready in DB) ➔ (2) Watchlist Screen (never auto-draws a chart on launch; user picks chart variant e.g. from 5 Oil models + selects Data Source/API underneath with `Twelve Data API` as Priority #1) ➔ (3) Clicking a Watchlist item opens the Dedicated Chart & 6 Core Indicators Screen (`SMA 20/50`, `EMA 20`, `Bollinger Bands 20,2`, `RSI 14`, `MACD 12,26,9`, `ATR 14`) with the active Source Badge displayed right next to the chart name.
 - **DECIDED:** Every `git push` automatically deploys Web/PHP files to `chart.manico.es` via `cPanel API Token` and builds the installable Android `APK` via GitHub Actions.
 - **TO VERIFY / P0:** Product target PHP 8.3 has not yet been confirmed on the account's web runtime or CLI (verified via `.github/workflows/host-probe.yml` on `chart.manico.es`).
 - **TO VERIFY / P0:** Backup availability is not established; `jetbackup5d` was reported down and no successful restore evidence is recorded. Application-level encrypted DB export will be implemented as a safeguard.
 - **Public-repository rule:** Account-specific shared IP, provider server label and internal package identifier are intentionally redacted from this public inventory. Keep operational identifiers in a private approved store if genuinely needed.
 - **Not established:** Whether Python analysis, persistent workers, WebSockets, account-level SSH or external database connections are permitted.
-- **Not decided:** Whether any workload should move to Railway, Render, Fly.io, a VPS, or another managed service.
+- **Not decided:** Whether any workload should move to Railway, Render, Fly.io, a VPS, or another managed service (not needed in Phase 1 since PHP + MariaDB handles the 6 core indicators and candle storage directly).
 - **Not decided:** Whether DuckDB, MotherDuck or another analytical storage option will be used.
 - **Rule:** Do not provision additional paid infrastructure until the existing hosting capabilities have been checked and workload requirements are clear.
 - **Rule:** No paid TradingView subscription is available or planned for the project; product operation must not depend on one.
-- **Rule:** The project does not purchase or centrally fund paid market-data APIs. Free/legal data access and file/manual import are the default priorities.
+- **Rule:** The project does not purchase or centrally fund paid market-data APIs. The owner's stored `TWELVE_DATA_API_KEY` and free/legal data feeds + CSV/manual import are used by default.
 - **Rule:** A user may optionally connect their own paid market-data API using their own credential (BYOK). Any resulting subscription, usage charge and provider limits belong solely to that user. No automatic upgrade or charge is permitted.
 - **Rule:** Product core functionality must remain usable without a paid API key. A user's paid key is optional and isolated to that user's chart/access context.
 - **Rule:** No production infrastructure or paid provider subscription may be provisioned without explicit owner approval.
