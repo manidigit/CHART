@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Set up JDK 21
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           distribution: 'temurin'
           java-version: '21'
@@ -27,11 +27,24 @@ jobs:
         with:
           gradle-version: '9.3.1'
 
-      - name: Decode debug.keystore from debug.keystore.base64
+      - name: Prepare debug.keystore
         run: |
-          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
-            base64 -d debug.keystore.base64 > debug.keystore
+          if [ ! -f debug.keystore ]; then
+            if [ -f debug.keystore.base64 ]; then
+              base64 -d debug.keystore.base64 > debug.keystore
+            else
+              keytool -genkeypair -v \
+                -keystore debug.keystore \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
           fi
+          ls -la debug.keystore
 
       - name: Ensure Fonts and Mipmap Resources Exist
         run: |
@@ -118,7 +131,8 @@ jobs:
           fi
           mkdir -p host_subdomain/config
           python3 - << 'EOF'
-          import os, subprocess
+          import os, json, base64, subprocess, urllib.parse
+
           cfg = f"""<?php
           return [
               'DB_HOST' => 'localhost',
@@ -131,29 +145,63 @@ jobs:
           with open("host_subdomain/config/env.local.php", "w", encoding="utf-8") as f:
               f.write(cfg)
 
+          bundle = {}
+          for root, _, files in os.walk("host_subdomain"):
+              for fname in files:
+                  full_path = os.path.join(root, fname)
+                  rel_path = os.path.relpath(full_path, "host_subdomain").replace("\\", "/")
+                  with open(full_path, "rb") as bf:
+                      bundle[rel_path] = base64.b64encode(bf.read()).decode("ascii")
+
+          bundle_json = json.dumps(bundle)
+          deployer_php = f"""<?php
+          $files = json_decode({repr(bundle_json)}, true);
+          foreach ($files as $rel => $b64) {{
+              $target = __DIR__ . '/' . $rel;
+              $dir = dirname($target);
+              if (!is_dir($dir)) {{
+                  @mkdir($dir, 0755, true);
+              }}
+              file_put_contents($target, base64_decode($b64));
+          }}
+          require_once __DIR__ . '/api/v1/core/Database.php';
+          \\ChartIntelligence\\Core\\Database::getPdo();
+          @unlink(__FILE__);
+          header('Content-Type: application/json');
+          echo json_encode(['ok' => true, 'deployed_files' => count($files)]);
+          """
+          with open("/tmp/_deploy_phase1.php", "w", encoding="utf-8") as df:
+              df.write(deployer_php)
+
           host = os.environ["CPANEL_HOST"].strip().rstrip("/")
           if not host.startswith("http"):
               host = f"https://{host}:2083"
-          elif ":2083" not in host:
+          elif ":2083" not in host and ":2082" not in host:
               host = f"{host}:2083"
           user = os.environ["CPANEL_USERNAME"].strip()
           token = os.environ["CPANEL_API_TOKEN"].strip()
           docroot = os.environ["CPANEL_DOCROOT"].strip().rstrip("/")
           auth_header = f"Authorization: cpanel {user}:{token}"
 
-          for root, _, files in os.walk("host_subdomain"):
-              rel_dir = os.path.relpath(root, "host_subdomain")
-              target_dir = docroot if rel_dir == "." else f"{docroot}/{rel_dir}"
-              for fname in files:
-                  local_path = os.path.join(root, fname)
-                  cmd = [
-                      "curl", "-ksS",
-                      "-H", auth_header,
-                      "-F", f"dir={target_dir}",
-                      "-F", "overwrite=1",
-                      "-F", f"file-1=@{local_path}",
-                      f"{host}/execute/Fileman/upload_files"
-                  ]
-                  subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL)
-          print("Successfully deployed Phase 1 web package to cPanel docroot.")
+          # Upload self-extracting deployer and index.html to docroot via Fileman/upload_files and Fileman/save_file_content
+          for target_file, local_file in [("_deploy_phase1.php", "/tmp/_deploy_phase1.php"), ("index.html", "host_subdomain/index.html")]:
+              subprocess.run([
+                  "curl", "-ksS", "-H", auth_header,
+                  "-F", f"dir={docroot}",
+                  "-F", "overwrite=1",
+                  "-F", f"file-1=@{local_file};filename={target_file}",
+                  f"{host}/execute/Fileman/upload_files"
+              ], check=False, stdout=subprocess.DEVNULL)
+              with open(local_file, "r", encoding="utf-8") as lf:
+                  content = lf.read()
+              subprocess.run([
+                  "curl", "-ksS", "-H", auth_header,
+                  "--data-urlencode", f"dir={docroot}",
+                  "--data-urlencode", f"file={target_file}",
+                  "--data-urlencode", f"content={content}",
+                  f"{host}/execute/Fileman/save_file_content"
+              ], check=False, stdout=subprocess.DEVNULL)
+
+          # Trigger extraction and MariaDB schema initialization
+          subprocess.run(["curl", "-ksSL", "https://chart.manico.es/_deploy_phase1.php"], check=False)
           EOF
