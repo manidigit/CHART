@@ -1,13 +1,13 @@
 # Chart Intelligence (`chart.manico.es` · Web & Android APK)
 
-موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.14`)**.
+موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.15`)**.
 
 ---
 
 ## ۱. اسناد مرجع پروژه (Source of Truth) و قانون به‌روزرسانی خودکار
 
 پیش از هرگونه تغییر در معماری، کدنویسی یا تنظیمات، این ۳ سند باید مطالعه شوند:
-1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) و اولویت‌های اجرایی (نسخه `1.14`).
+1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) و اولویت‌های اجرایی (نسخه `1.15`).
 2. **[`INFRASTRUCTURE_INVENTORY.md`](./INFRASTRUCTURE_INVENTORY.md)** — مشخصات فنی هاست cPanel، ساب‌دامین `https://chart.manico.es`، دیتابیس MariaDB و ماتریس راستی‌آزمایی زیرساخت.
 3. **[`TRADING_STRATEGY_SPEC.md`](./TRADING_STRATEGY_SPEC.md)** — مشخصات ماژول شبیه‌سازی استراتژی معاملاتی (مرحله بعدی و مستقل از موتور پیش‌بینی).
 
