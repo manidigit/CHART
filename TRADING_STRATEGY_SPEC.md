@@ -1,7 +1,7 @@
 # TRADING STRATEGY SPEC
 
 **وضعیت:** خارج از دامنه نسخه اول؛ مرجع مرحله Trading Strategy و Portfolio Simulation.
-**وابسته به:** `CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.18`)
+**وابسته به:** `CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.19`)
 **واحد شبیه‌سازی:** هر chart_id مستقل؛ این سند به فهرست بسته‌ای از Instrumentها وابسته نیست.
 **مرجع داده و پیش‌بینی:** قرارداد Forecast، هویت سری، Data Readiness و Model Governance فقط در `CHART_INTELLIGENCE_MASTER_SPEC.md` تعریف می‌شوند؛ این سند آن‌ها را تکرار یا بازتعریف نمی‌کند.
 

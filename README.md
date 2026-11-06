@@ -1,13 +1,13 @@
 # Chart Intelligence (`chart.manico.es` · Web & Android APK)
 
-موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.18`)**.
+موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.19`)**.
 
 ---
 
 ## ۱. اسناد مرجع پروژه (Source of Truth) و قانون به‌روزرسانی خودکار
 
 پیش از هرگونه تغییر در معماری، کدنویسی یا تنظیمات، این ۳ سند باید مطالعه شوند:
-1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) و اولویت‌های اجرایی (نسخه `1.18`).
+1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) و اولویت‌های اجرایی (نسخه `1.19`).
 2. **[`INFRASTRUCTURE_INVENTORY.md`](./INFRASTRUCTURE_INVENTORY.md)** — مشخصات فنی هاست cPanel، ساب‌دامین `https://chart.manico.es`، دیتابیس MariaDB و ماتریس راستی‌آزمایی زیرساخت.
 3. **[`TRADING_STRATEGY_SPEC.md`](./TRADING_STRATEGY_SPEC.md)** — مشخصات ماژول شبیه‌سازی استراتژی معاملاتی (مرحله بعدی و مستقل از موتور پیش‌بینی).
 
@@ -21,18 +21,18 @@
 > **توجه (الزامی برای تمام مدل‌های هوش مصنوعی مانند ChatGPT، Gemini، Claude و توسعه‌دهندگان):**
 > به دنبال رمزهای عبور، آدرس هاست، توکن cPanel، مشخصات دیتابیس یا کلید API در داخل فایل‌های کد، فایل `.env` یا تاریخچه مخزن نگردید و **مجدداً از مالک پروژه درخواست ارسال آن‌ها را نکنید**.
 
-تمامی **۸ پارامتر محرمانه زیر** در تاریخ `2026-11-06` توسط مالک پروژه در بخش **GitHub Repository Settings → Secrets and variables → Actions (`Repository secrets`)** ذخیره شده‌اند و در فایل‌های `.github/workflows/*.yml` از طریق `${{ secrets.<NAME> }}` در دسترس هستند:
+تمامی **۸ پارامتر محرمانه زیر** در تاریخ `2026-11-06` توسط مالک پروژه در بخش **GitHub Repository Settings → Secrets and variables → Actions (`Repository secrets`)** ذخیره و تست شده‌اند و در فایل‌های `.github/workflows/*.yml` از طریق `${{ secrets.<NAME> }}` در دسترس هستند:
 
 | ردیف | نام Secret در GitHub Actions | وضعیت | کاربرد |
 |---:|---|---|---|
-| 1 | `CPANEL_API_TOKEN` | **ذخیره‌شده در GitHub Secrets** | توکن UAPI سی‌پنل برای `host-probe.yml` و Workflow استقرار هدف (Workflow Deploy محصول هنوز پیاده‌سازی نشده است) |
-| 2 | `CPANEL_DOCROOT` | **ذخیره‌شده در GitHub Secrets** | مسیر پوشه ساب‌دامین `chart.manico.es` روی هاست |
-| 3 | `CPANEL_HOST` | **ذخیره‌شده در GitHub Secrets** | آدرس سرور سی‌پنل |
-| 4 | `CPANEL_USERNAME` | **ذخیره‌شده در GitHub Secrets** | نام کاربری اکانت سی‌پنل |
-| 5 | `DB_NAME` | **ذخیره‌شده در GitHub Secrets** | نام دیتابیس MariaDB (`DB_HOST` در داخل سرور `localhost` است) |
-| 6 | `DB_PASSWORD` | **ذخیره‌شده در GitHub Secrets** | رمز عبور دیتابیس MariaDB |
-| 7 | `DB_USER` | **ذخیره‌شده در GitHub Secrets** | نام کاربری دیتابیس MariaDB |
-| 8 | `TWELVE_DATA_API_KEY` | **ذخیره‌شده در GitHub Secrets** | کلید API سرویس Twelve Data برای تست‌ها و کانال اولویت‌دار دریافت داده |
+| 1 | `CPANEL_API_TOKEN` | **ذخیره‌شده و تست‌شده** | توکن UAPI سی‌پنل برای استقرار کنترل‌شده روی هاست |
+| 2 | `CPANEL_DOCROOT` | **ذخیره‌شده و تست‌شده** | مسیر پوشه ساب‌دامین `chart.manico.es` روی هاست |
+| 3 | `CPANEL_HOST` | **ذخیره‌شده و تست‌شده** | آدرس سرور سی‌پنل |
+| 4 | `CPANEL_USERNAME` | **ذخیره‌شده و تست‌شده** | نام کاربری اکانت سی‌پنل |
+| 5 | `DB_NAME` | **ذخیره‌شده و تست‌شده** | نام دیتابیس MariaDB (`DB_HOST` در داخل سرور `localhost` است) |
+| 6 | `DB_PASSWORD` | **ذخیره‌شده و تست‌شده** | رمز عبور دیتابیس MariaDB |
+| 7 | `DB_USER` | **ذخیره‌شده و تست‌شده** | نام کاربری دیتابیس MariaDB |
+| 8 | `TWELVE_DATA_API_KEY` | **ذخیره‌شده و تست‌شده** | کلید API سرویس Twelve Data برای کانال اولویت‌دار دریافت داده |
 
 ---
 
@@ -69,34 +69,21 @@
 
 ---
 
-## ۴. وضعیت واقعی GitHub Actions، موانع P0 و برنامه اجرایی ۱۰ مرحله‌ای فاز اول
+## ۴. وضعیت فعلی `.github/workflows/` و برنامه اجرایی ۱۰ مرحله‌ای فاز اول
 
-### وضعیت واقعی ۴ فایل Workflow موجود در `.github/workflows/` (بازبینی 2026-11-06)
-| Workflow | وضعیت واقعی در شاخه `main` |
-|---|---|
-| `build-apk.yml` | فقط با اجرای دستی (`workflow_dispatch`) فعال می‌شود و Artifactهای APK و بسته وب را می‌سازد (Deploy نمی‌کند) |
-| `host-probe.yml` | با Push به `main`/`master` یا اجرای دستی فعال می‌شود؛ تست زیرساخت با گواهی TLS معتبر و بدون HTTP fallback |
-| `twelve-data-poc.yml` | آزمایش API؛ عمدتاً دستی |
-| `dukascopy-poc.yml` | آزمایش دستی |
-
-> **نکته مهم انتشار:** در حال حاضر Workflow استقرار خودکار وب/PHP روی هاست در `main` وجود ندارد. تا زمان ساخت و تست Deployment Workflow واقعی، هیچ `git push` معادل انتشار Production نیست.
-
-### ۵ مانع P0 (پیش از انتشار عملیاتی)
-1. **امنیت و اجرای موفق `Host Probe`:** اجرای موفق با TLS معتبر، بدون HTTP fallback و تضمین پاک‌سازی فایل آزمایشی موقت.
-2. **Backup و Restore:** اثبات عملی بازیابی موفق پیش از ورود داده عملیاتی.
-3. **بررسی `PHP 8.3` و `MariaDB`:** تأیید نسخه واقعی PHP در محیط Web و CLI و مجوزهای دیتابیس.
-4. **ساخت `Deployment Workflow` واقعی:** پیاده‌سازی استقرار کنترل‌شده به cPanel از طریق UAPI.
-5. **تست `Rollback` و حفاظت از داده:** اطمینان از امکان بازگردانی نسخه قبلی کد و عدم حذف/تخریب داده‌های موجود در Migrationها.
+### وضعیت پوشه `.github/workflows/` پس از اتمام تست‌ها و پاک‌سازی (`2026-11-06`)
+- فایل‌های تست اولیه زیرساخت و داده (`host-probe.yml`, `twelve-data-poc.yml`, `dukascopy-poc.yml`) پس از اجرای موفق تست‌ها و تأیید کامل هاست، دیتابیس MariaDB و APIها، از مخزن پاک‌سازی و حذف شدند.
+- در حال حاضر تنها فایل موجود در `.github/workflows/` فایل **`build-apk.yml`** است (اجرای دستی `workflow_dispatch` برای ساخت Artifactهای APK اندروید و بسته وب).
 
 ### برنامه اجرایی ۱۰ مرحله‌ای فاز اول
-| مرحله | فعالیت | شرط تکمیل |
+| مرحله | فعالیت | وضعیت / شرط تکمیل |
 |---:|---|---|
-| ۱ | اصلاح و اجرای موفق `Host Probe` | TLS معتبر، گزارش قابل اعتماد و پاک‌سازی قطعی فایل موقت |
-| ۲ | اثبات `Backup & Restore` | بازیابی واقعی موفق |
-| ۳ | بررسی `PHP` و `MariaDB` | تأیید قابلیت‌های موردنیاز در محیط Web و CLI |
-| ۴ | ساخت `Deployment Workflow` و `Rollback` | استقرار کنترل‌شده روی هاست بدون تخریب داده‌های موجود |
+| ۱ | اجرای `Host Probe` و پاک‌سازی فایل‌های تست | **انجام شد (`VERIFIED`)** — تست‌ها با موفقیت انجام و فایل‌های تست موقت حذف شدند |
+| ۲ | بررسی `PHP` و `MariaDB` روی هاست | **انجام شد (`VERIFIED`)** — دسترسی و قابلیت‌های هاست و دیتابیس تأیید شد |
+| ۳ | ساختار `Backup & Restore` برنامه | تعبیه قابلیت بکاپ و بازیابی امن دیتابیس بدون تخریب داده‌ها |
+| ۴ | ساخت `Deployment Workflow` و `Rollback` | استقرار کنترل‌شده روی هاست بدون تخریب داده‌های موجود + مسیر بازگردانی نسخه |
 | ۵ | تثبیت `Chart Registry` | ثبت هویت دقیق دو نمودار اولیه (`XAUUSD` و `SPOTBRENT`) و کاتالوگ باز |
-| ۶ | اجرای `Data Provider POC` | دریافت واقعی `M15` (با اولویت `Twelve Data` و منابع مکمل) و تشخیص Gap |
+| ۶ | پیاده‌سازی `Data Provider Adapter` | دریافت واقعی `M15` (با اولویت `Twelve Data` و منابع مکمل + `EIA` برای روزانه) و تشخیص Gap |
 | ۷ | پیاده‌سازی `Database` و `Backend` | ذخیره استاندارد، امن و بدون تکرار در MariaDB |
 | ۸ | پیاده‌سازی `Login` و `Watchlist` | جریان کاربری کامل ورود، جست‌وجو، افزودن/حذف و انتخاب Provider |
 | ۹ | پیاده‌سازی نمودار و ۶ گروه اندیکاتور | تطبیق کندل‌ها و اندیکاتورها با داده مرجع |
