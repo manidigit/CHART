@@ -102,6 +102,19 @@ jobs:
           # validation enabled. Never send cPanel credentials over an unverified TLS channel.
           ssl_ctx = ssl.create_default_context()
 
+          class HTTPSOnlyRedirectHandler(urllib.request.HTTPRedirectHandler):
+              def redirect_request(self, req, fp, code, msg, headers, newurl):
+                  if urllib.parse.urlparse(newurl).scheme.lower() != "https":
+                      raise urllib.error.HTTPError(
+                          newurl, code, "Refusing redirect to a non-HTTPS URL", headers, fp
+                      )
+                  return super().redirect_request(req, fp, code, msg, headers, newurl)
+
+          https_opener = urllib.request.build_opener(
+              urllib.request.HTTPSHandler(context=ssl_ctx),
+              HTTPSOnlyRedirectHandler()
+          )
+
           def cpanel_uapi_get(module, func, params=None):
               query = "?" + urllib.parse.urlencode(params) if params else ""
               url = f"{host_url}/execute/{module}/{func}{query}"
@@ -109,7 +122,7 @@ jobs:
                   "Authorization": auth_header,
                   "User-Agent": "ChartIntelligence-HostProbe/1.1"
               })
-              with urllib.request.urlopen(req, context=ssl_ctx, timeout=25) as resp:
+              with https_opener.open(req, timeout=25) as resp:
                   raw = resp.read().decode("utf-8", errors="replace")
                   return json.loads(raw)
 
@@ -135,7 +148,7 @@ jobs:
                   "Content-Type": f"multipart/form-data; boundary={boundary}",
                   "User-Agent": "ChartIntelligence-HostProbe/1.1"
               })
-              with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
+              with https_opener.open(req, timeout=30) as resp:
                   raw = resp.read().decode("utf-8", errors="replace")
                   return json.loads(raw)
 
@@ -328,7 +341,7 @@ jobs:
                       print(f"\n=== 4. Calling Subdomain Probe at https://{SUBDOMAIN_HOST}/{probe_filename} ===")
                       try:
                           req = urllib.request.Request(probe_url, headers={"User-Agent": "ChartIntelligence-HostProbe/1.1"})
-                          with urllib.request.urlopen(req, context=ssl_ctx, timeout=25) as resp:
+                          with https_opener.open(req, timeout=25) as resp:
                               raw_body = resp.read().decode("utf-8", errors="replace")
                               probe_data = json.loads(raw_body)
                               print(f"  - Probe executed successfully over {scheme.upper()}!")
