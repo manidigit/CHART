@@ -136,6 +136,7 @@ The following are release gates for the selected direct-to-production deployment
 | P0 | Secret exposure | Confirm no credentials are committed or exposed in workflow logs, public artifacts, frontend bundles or repository history; rotate any exposed secret |
 | P0 | Deployment scope | Verify workflow triggers and branch filters; working branches must not deploy to Production |
 | P0 | Rollback | Demonstrate restoration of previous application release and safe handling of database migrations; record production release identifier |
+| P0 | Host probe security and validity | Remove disabled TLS certificate verification and HTTP fallback; prove temporary probe cleanup; require PHP 8.3 on web and CLI; make failed provider/network checks explicit rather than reporting unconditional success |
 | P1 | Database | Least-privilege grants, connection limits, migration test, backup inclusion and restore verified |
 | P1 | Network | Outbound HTTPS/DNS and provider connectivity tested from the actual account/runtime |
 | P1 | Provider/data contract | For XAUUSD and SPOTBRENT separately: exact provider symbol, coverage, rate limits, timezone, price basis, closed-candle semantics and usage rights recorded |
@@ -147,6 +148,8 @@ Evidence must include verification date, method, observed result and responsible
 **Automated Host Capability Probe:** The token-protected diagnostic endpoint (/api/v1/system/status) should inspect active PHP SAPI version, loaded extensions (pdo_mysql, curl, openssl, mbstring, bcmath), memory_limit, max_execution_time, MariaDB connection health and outbound HTTPS. It must not return secrets, environment values, filesystem paths or internal configuration to unauthenticated users.
 
 **Direct Production deployment rule:** The owner selected direct deployment without a separate staging environment. CI must pass before deployment; branch triggers must be explicit; migrations must be additive/versioned; a known-good release and tested rollback path must exist. A failed P0 gate blocks production-changing releases.
+
+**Observed review of .github/workflows/host-probe.yml (main, 2026-11-06):** The workflow is restricted to pushes on main/master and manual dispatch, so this specific probe workflow does not run on arbitrary working branches. However, it disables TLS certificate and hostname verification for cPanel UAPI and the temporary probe request, and it attempts an HTTP fallback. This creates a credential-interception risk and must be corrected before using the workflow with production secrets. The PHP probe accepts PHP 8.1+ as a success signal even though the product target is PHP 8.3; it reports the web SAPI but does not establish the CLI runtime. Outbound provider checks are recorded but do not fail the job when a provider check fails, and the final success message can therefore overstate readiness. The workflow uploads a temporary PHP file into the document root and attempts cleanup; cleanup behavior must be verified and the endpoint must never be left publicly accessible. The database DDL/DML probe creates and drops a temporary table, so it must be reviewed for safe isolation and cleanup. Until these issues are fixed and the probe is rerun successfully, it is not accepted as P0 readiness evidence.
 
 ## 6. Secrets and environment configuration
 
@@ -195,6 +198,7 @@ Actual values must never be committed to Git, pasted into source files, or place
 - **TO VERIFY / P0:** PHP 8.3 has not yet been confirmed on the account's web runtime or CLI.
 - **TO VERIFY / P0:** Backup availability is not established; jetbackup5d was reported down and no successful restore evidence is recorded. No production-changing release should proceed until a successful restore test is recorded.
 - **TO VERIFY / P0:** Deployment rollback and database migration rollback have not yet been demonstrated.
+- **TO FIX / P0:** Existing host-probe workflow disables TLS certificate verification and allows HTTP fallback while sending cPanel credentials; it does not enforce PHP 8.3 or fail on unsuccessful provider connectivity checks. Correct and revalidate before relying on its result.
 - **TO VERIFY / P1:** Exact XAUUSD and SPOTBRENT provider symbols, coverage, price basis, timestamp semantics, rate limits and usage rights.
 - **Not established:** Whether Python analysis, persistent workers, WebSockets, account-level SSH or external database connections are permitted.
 - **Not decided:** Whether any workload should move to Railway, Render, Fly.io, a VPS, or another managed service.
