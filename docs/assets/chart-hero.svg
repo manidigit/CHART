@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
+<title id="title">CHART Intelligence</title>
+<desc id="desc">Abstract dark financial chart illustration with candlesticks and a forecast trajectory.</desc>
+<defs>
+  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1220"/><stop offset="1" stop-color="#111d30"/></linearGradient>
+  <linearGradient id="glow" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#32d6a0" stop-opacity=".22"/><stop offset="1" stop-color="#32d6a0" stop-opacity="0"/></linearGradient>
+</defs>
+<rect width="1200" height="420" rx="26" fill="url(#bg)"/>
+<path d="M0 330 C220 260 360 390 570 300 S940 190 1200 250 V420 H0Z" fill="url(#glow)"/>
+<g stroke="#24354b" stroke-width="1"><path d="M60 70H1140M60 140H1140M60 210H1140M60 280H1140M60 350H1140"/><path d="M160 40V370M300 40V370M440 40V370M580 40V370M720 40V370M860 40V370M1000 40V370"/></g>
+<g font-family="Inter,Arial,sans-serif" fill="#f3f7fb"><text x="78" y="112" font-size="54" font-weight="700" letter-spacing="5">CHART</text><text x="80" y="151" font-size="17" fill="#9db0c5" letter-spacing="3">INTELLIGENCE</text><text x="80" y="202" font-size="16" fill="#c3d0df">Market analysis · Multi-timeframe charts · Forecast evaluation</text></g>
+<g stroke-width="3">
+<g stroke="#32d6a0" fill="#32d6a0"><path d="M590 190V280M620 155V250M650 180V300M680 135V225M710 160V265M740 110V205M770 130V245M800 95V185M830 120V220M860 80V175"/></g>
+<g stroke="#f16f78" fill="#f16f78"><path d="M605 205V245M635 195V230M665 215V260M695 165V205M725 185V235M755 155V210M785 155V220M815 120V175M845 145V195"/></g>
+</g>
+<path d="M575 265 C650 230 695 245 750 185 S850 145 900 125 S1000 95 1090 55" fill="none" stroke="#32d6a0" stroke-width="4" stroke-linecap="round" stroke-dasharray="9 10"/>
+<path d="M575 265 C650 230 695 245 750 185 S850 145 900 125 S1000 95 1090 55" fill="none" stroke="#32d6a0" stroke-opacity=".2" stroke-width="18"/>
+<circle cx="1090" cy="55" r="7" fill="#32d6a0"/>
+<text x="930" y="375" fill="#7890aa" font-family="Inter,Arial,sans-serif" font-size="13" letter-spacing="2">ANALYZE · VALIDATE · LEARN</text>
+</svg>
