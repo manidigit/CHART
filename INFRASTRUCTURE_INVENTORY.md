@@ -131,15 +131,16 @@ The following are release gates, not administrative notes:
 
 | Priority | Item | Required evidence before production reliance |
 |---|---|---|
-| P0 | Backup and restore | Provider confirmation of schedule/retention/off-site copy plus a successful restore test with timestamp and scope |
-| P0 | PHP 8.3 target | Account-level web runtime and CLI version checks; required extensions and limits recorded |
+| P0 | Backup and restore | Provider confirmation of schedule/retention/off-site copy (or app-level encrypted dump) plus a successful restore test with timestamp and scope |
+| P0 | Host Probe security & cleanup | TLS certificate/hostname verification enabled and HTTP fallback removed in `host-probe.yml`; verify a successful run on `chart.manico.es`, guaranteed temporary-file cleanup, and explicit reporting of failed outbound provider checks |
+| P0 | PHP 8.3 & MariaDB runtime | Account-level web runtime and CLI PHP version checks, required extensions/limits, and non-destructive MariaDB DDL/DML grants recorded |
+| P0 | Controlled cPanel Deployment Workflow | Create and test a real cPanel UAPI deployment workflow with pre-release checks; current `build-apk.yml` only packages artifacts and does not deploy |
+| P0 | Rollback & data safety | Tested rollback procedure for application code and non-destructive database migrations so experimental/staged changes never delete or corrupt existing MariaDB data |
 | P0 | Secret exposure | Confirm no credentials or private endpoints are committed; rotate any secret found in repository history |
-| P0 | Web/PHP deployment | Create and test a real cPanel UAPI deployment workflow; current `build-apk.yml` only packages artifacts and does not deploy |
-| P0 | Host Probe validity | TLS verification is now enabled and HTTP fallback removed in `host-probe.yml`; verify an actual run, temporary-file cleanup, PHP 8.3 on web and CLI, and make failed outbound-provider checks explicit |
-| P1 | Cron | A real account-level test proving allowed cadence, execution time, lock behavior and logs |
-| P1 | Python/Worker | Runtime/version, package installation, process lifetime, memory/CPU and outbound network verified by a test job |
-| P1 | Database | Least-privilege grants, connection limits, backup inclusion and restore verified |
-| P1 | Network | Outbound HTTPS/DNS and any required provider connectivity tested from the actual account/runtime |
+| P1 | Initial POC symbols (`XAUUSD` & `SPOTBRENT`) | Verify exact provider symbol mapping, license/terms, rate limits, and `M15` historical/live coverage for both `XAUUSD` and `SPOTBRENT` |
+| P1 | Cron, DB & Gap detection | A real account-level test proving allowed cron cadence, execution time, lock behavior, DB persistence, and gap detection (never merging data from another provider without verified Price Basis & series identity) |
+| P1 | 6 Core Indicator Groups verification | Numerical parity verification for all 6 indicator groups (`SMA 20/50`, `EMA 20`, `Bollinger Bands 20,2`, `RSI 14`, `MACD 12,26,9`, `ATR 14`) against reference data |
+| P1 | Python/Worker (Future Phase) | Runtime/version, package installation, process lifetime, memory/CPU and outbound network verified by a test job before Phase 3 Prediction Engine |
 
 Evidence must include verification date, method, observed result and responsible operator. A server-level service status is not sufficient evidence for account-level capability.
 
@@ -162,7 +163,7 @@ The project owner has **already stored** the following **8 secrets** in **GitHub
 
 | # | Secret Name | Status in GitHub Actions | Component | Purpose |
 |---:|---|---|---|---|
-| 1 | `CPANEL_API_TOKEN` | **STORED** (Nov 6, 2026) | GitHub Actions / planned deployment | cPanel UAPI token intended for deployment and file management; no deploy workflow currently consumes it |
+| 1 | `CPANEL_API_TOKEN` | **STORED** (Nov 6, 2026) | GitHub Actions / planned deployment | cPanel UAPI token intended for deployment and file management; currently used by `host-probe.yml`, while the product deploy workflow is pending implementation |
 | 2 | `CPANEL_DOCROOT` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | Target document root directory for `chart.manico.es` on the host |
 | 3 | `CPANEL_HOST` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | cPanel server host/URL (e.g., port `2083` UAPI endpoint) |
 | 4 | `CPANEL_USERNAME` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | cPanel account username |
@@ -185,11 +186,15 @@ Actual values must never be committed to Git, pasted into source files, or place
 - **Known:** Account dashboard reports 2 GB physical memory limit, 5 GB disk, 100 GB bandwidth, 20 entry processes and 150 processes.
 - **DECIDED:** Target subdomain for Web Application and PHP REST API is `https://chart.manico.es`.
 - **DECIDED & CONFIGURED (2026-11-06):** All 8 required operational and CI/CD secrets (`CPANEL_API_TOKEN`, `CPANEL_DOCROOT`, `CPANEL_HOST`, `CPANEL_USERNAME`, `DB_NAME`, `DB_PASSWORD`, `DB_USER`, `TWELVE_DATA_API_KEY`) are stored in **GitHub Repository Secrets (Actions)**.
+- **DECIDED (Pre-Development Audit — 2026-11-06):**
+  - **Phase 1 Scope:** Base data ingestion, storage, Watchlist management, and chart/indicator rendering only (**no Prediction Engine in Phase 1**).
+  - **Initial POC Charts & Timeframe:** Both `XAUUSD` and `SPOTBRENT` in `M15` (with open Watchlist catalog and timeframe display switching `M15/M30/H1/H4/D1`).
+  - **Deployment Policy:** Controlled direct deployment to the primary host (`chart.manico.es`) with pre-release checks, non-destructive DB updates, and tested Rollback.
+  - **Authentication:** Single personal account in Phase 1; multi-user-ready MariaDB schema from day one.
+  - **6 Core Indicator Groups:** `SMA (20, 50)` (one group with two periods), `EMA (20)`, `Bollinger Bands (20, 2)`, `RSI (14)`, `MACD (12, 26, 9)`, and `ATR (14)`.
 - **DECIDED:** Web Frontend uses **Modular Vanilla JS (ES6+) + TradingView Lightweight Charts** on `https://chart.manico.es`; Android client is a native **Kotlin + Jetpack Compose `APK`** built via GitHub Actions. Windows/Desktop app is canceled.
-- **DECIDED:** Application entry flow is: (1) Personal username/password Login Gate (multi-user ready in DB) ➔ (2) Watchlist Screen (never auto-draws a chart on launch; user picks chart variant e.g. from 5 Oil models + selects Data Source/API underneath with `Twelve Data API` as Priority #1) ➔ (3) Clicking a Watchlist item opens the Dedicated Chart & 6 Core Indicators Screen (`SMA 20/50`, `EMA 20`, `Bollinger Bands 20,2`, `RSI 14`, `MACD 12,26,9`, `ATR 14`) with the active Source Badge displayed right next to the chart name.
-- **IMPLEMENTATION STATUS (2026-11-06):** No automatic Web/PHP deployment workflow exists in `main`. `.github/workflows/build-apk.yml` runs only by manual dispatch and creates an APK artifact plus a web-package artifact; it does not upload either to cPanel. `.github/workflows/host-probe.yml` runs on pushes and manual dispatch but is diagnostic only. Automated cPanel deployment remains a target, not an implemented capability.
-- **TO VERIFY / P0:** Product target PHP 8.3 has not yet been confirmed on the account's web runtime or CLI (verified via `.github/workflows/host-probe.yml` on `chart.manico.es`).
-- **TO VERIFY / P0:** Backup availability is not established; `jetbackup5d` was reported down and no successful restore evidence is recorded. Application-level encrypted DB export will be implemented as a safeguard.
+- **IMPLEMENTATION STATUS (2026-11-06):** Four workflows currently exist in `.github/workflows/`: `build-apk.yml` (manual dispatch; builds APK and web-package artifacts without deploying), `host-probe.yml` (push/manual infrastructure probe with verified TLS and no HTTP fallback), `twelve-data-poc.yml` (manual API test), and `dukascopy-poc.yml` (manual API test). Automated cPanel deployment remains a P0 target to be implemented and tested with Rollback support.
+- **TO VERIFY / P0:** 5 release-blocking P0 items must be completed before operational release: (1) Verified `host-probe.yml` execution & temp-file cleanup, (2) Proven Backup & Restore, (3) Confirmed PHP 8.3 (Web/CLI) & MariaDB capabilities, (4) Tested cPanel Deployment Workflow, and (5) Tested Rollback & non-destructive DB migration path.
 - **Public-repository rule:** Account-specific shared IP, provider server label and internal package identifier are intentionally redacted from this public inventory. Keep operational identifiers in a private approved store if genuinely needed.
 - **Not established:** Whether Python analysis, persistent workers, WebSockets, account-level SSH or external database connections are permitted.
 - **Not decided:** Whether any workload should move to Railway, Render, Fly.io, a VPS, or another managed service (not needed in Phase 1 since PHP + MariaDB handles the 6 core indicators and candle storage directly).
