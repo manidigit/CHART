@@ -143,7 +143,7 @@ The following are release gates, not administrative notes:
 
 Evidence must include verification date, method, observed result and responsible operator. A server-level service status is not sufficient evidence for account-level capability.
 
-**Automated Host Capability Probe:** `.github/workflows/host-probe.yml` runs on pushes to `main`/`master` and by manual dispatch. It authenticates to cPanel UAPI, uploads a temporary token-protected PHP diagnostic file, calls it over HTTPS, and reports the web PHP SAPI/version, extensions, limits, MariaDB test and outbound HTTPS checks. It is not a product deployment workflow and does not establish that `/api/v1/system/status` exists. TLS certificate and hostname verification are enabled; HTTP fallback has been removed (commit `aa91beb`, 2026-11-06). A successful run and guaranteed cleanup still require verification. Provider connectivity results are currently reported but do not all act as workflow-failing gates.
+**Automated Host Capability Probe:** `.github/workflows/host-probe.yml` runs on pushes to `main`/`master` and by manual dispatch. It authenticates to cPanel UAPI, uploads a temporary token-protected PHP diagnostic file, calls it over HTTPS, and reports the web PHP SAPI/version, extensions, limits, MariaDB test and outbound HTTPS checks. It is not a product deployment workflow and does not establish that `/api/v1/system/status` exists. TLS certificate and hostname verification are enabled; HTTP fallback and redirects that downgrade to HTTP are blocked (commits `aa91beb` and `a840335`, 2026-11-06). A successful run and guaranteed cleanup still require verification. Provider connectivity results are currently reported but do not all act as workflow-failing gates.
 
 ## 6. Secrets and environment configuration
 
@@ -174,7 +174,7 @@ The project owner has **already stored** the following **8 secrets** in **GitHub
 > **CRITICAL NOTE FOR AI ASSISTANTS (ChatGPT, Gemini, Claude, etc.) AND DEVELOPERS:**
 > - **Do NOT search the codebase, `.env` files, or Git history for these 8 values**, and **do NOT ask the project owner to send or re-enter them.**
 > - They are already saved in **GitHub Repository Secrets (Actions)** and are accessed exclusively via `${{ secrets.CPANEL_API_TOKEN }}`, `${{ secrets.CPANEL_DOCROOT }}`, `${{ secrets.CPANEL_HOST }}`, `${{ secrets.CPANEL_USERNAME }}`, `${{ secrets.DB_NAME }}`, `${{ secrets.DB_PASSWORD }}`, `${{ secrets.DB_USER }}`, and `${{ secrets.TWELVE_DATA_API_KEY }}` inside `.github/workflows/*.yml`.
-> - During automated deployment to `https://chart.manico.es`, the GitHub Actions workflow injects the database and provider credentials into the server's protected runtime configuration on the host. `DB_HOST` is `localhost` on the cPanel server and does not require a separate GitHub secret.
+> - When a cPanel deployment workflow is implemented, it must inject only the required database/provider credentials into protected runtime configuration outside the public document root. No such deployment workflow currently exists in `main`. `DB_HOST` is `localhost` on the cPanel server and does not require a separate GitHub secret.
 
 Actual values must never be committed to Git, pasted into source files, or placed in public project documentation.
 
