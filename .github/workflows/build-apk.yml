@@ -87,16 +87,73 @@ jobs:
           if-no-files-found: error
 
   package-web-subdomain:
-    name: Package Subdomain Web Files
+    name: Package and Deploy Subdomain Web Files
     runs-on: ubuntu-latest
 
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Upload Subdomain Web Files
+      - name: Upload Subdomain Web Package Artifact (Public-Safe)
         uses: actions/upload-artifact@v4
         with:
           name: host-subdomain-web-package
           path: host_subdomain/
           if-no-files-found: error
+
+      - name: Deploy Web Package to cPanel (chart.manico.es)
+        env:
+          CPANEL_HOST: ${{ secrets.CPANEL_HOST }}
+          CPANEL_USERNAME: ${{ secrets.CPANEL_USERNAME }}
+          CPANEL_API_TOKEN: ${{ secrets.CPANEL_API_TOKEN }}
+          CPANEL_DOCROOT: ${{ secrets.CPANEL_DOCROOT }}
+          DB_NAME: ${{ secrets.DB_NAME }}
+          DB_USER: ${{ secrets.DB_USER }}
+          DB_PASSWORD: ${{ secrets.DB_PASSWORD }}
+          TWELVE_DATA_API_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: |
+          if [ -z "$CPANEL_HOST" ] || [ -z "$CPANEL_USERNAME" ] || [ -z "$CPANEL_API_TOKEN" ] || [ -z "$CPANEL_DOCROOT" ]; then
+            echo "cPanel deployment secrets not available in this context; skipping remote upload."
+            exit 0
+          fi
+          mkdir -p host_subdomain/config
+          python3 - << 'EOF'
+          import os, subprocess
+          cfg = f"""<?php
+          return [
+              'DB_HOST' => 'localhost',
+              'DB_NAME' => {repr(os.environ.get('DB_NAME', ''))},
+              'DB_USER' => {repr(os.environ.get('DB_USER', ''))},
+              'DB_PASSWORD' => {repr(os.environ.get('DB_PASSWORD', ''))},
+              'TWELVE_DATA_API_KEY' => {repr(os.environ.get('TWELVE_DATA_API_KEY', ''))},
+          ];
+          """
+          with open("host_subdomain/config/env.local.php", "w", encoding="utf-8") as f:
+              f.write(cfg)
+
+          host = os.environ["CPANEL_HOST"].strip().rstrip("/")
+          if not host.startswith("http"):
+              host = f"https://{host}:2083"
+          elif ":2083" not in host:
+              host = f"{host}:2083"
+          user = os.environ["CPANEL_USERNAME"].strip()
+          token = os.environ["CPANEL_API_TOKEN"].strip()
+          docroot = os.environ["CPANEL_DOCROOT"].strip().rstrip("/")
+          auth_header = f"Authorization: cpanel {user}:{token}"
+
+          for root, _, files in os.walk("host_subdomain"):
+              rel_dir = os.path.relpath(root, "host_subdomain")
+              target_dir = docroot if rel_dir == "." else f"{docroot}/{rel_dir}"
+              for fname in files:
+                  local_path = os.path.join(root, fname)
+                  cmd = [
+                      "curl", "-ksS",
+                      "-H", auth_header,
+                      "-F", f"dir={target_dir}",
+                      "-F", "overwrite=1",
+                      "-F", f"file-1=@{local_path}",
+                      f"{host}/execute/Fileman/upload_files"
+                  ]
+                  subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL)
+          print("Successfully deployed Phase 1 web package to cPanel docroot.")
+          EOF
