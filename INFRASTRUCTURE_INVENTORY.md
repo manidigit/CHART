@@ -19,7 +19,7 @@
 | Operating system | Linux | Kernel `6.8.0-142-generic`; architecture `x86_64` |
 | Database server | MariaDB `10.6.28` | Service reported up |
 | Target subdomain | `https://chart.manico.es` | Owner-approved subdomain for Web Frontend and PHP REST API |
-| Deployment mechanism | GitHub Actions via `cPanel API Token` (UAPI) | Automated deploy on every `git push` (plus Android APK build artifact) |
+| Deployment mechanism | GitHub Actions | `build-apk.yml` is manual (`workflow_dispatch`) and creates APK/web-package artifacts; no cPanel deployment workflow exists in `main` as of 2026-11-06 |
 | Shared IP address | Redacted / not published | Public repository does not need the account's shared IP address |
 | Sendmail path | `/usr/sbin/sendmail` | Reported path |
 | Perl path/version | `/usr/bin/perl`, `5.26.3` | Reported by cPanel |
@@ -103,7 +103,7 @@ Based only on the supplied information:
 | Persistent WebSocket/data-ingestion worker | Do not assume it can run here | Shared-hosting providers commonly restrict persistent background processes; provider confirmation required |
 | Heavy analytics / model inference | Do not allocate here without testing | The displayed account limits do not establish sustained compute capacity |
 | Static web frontend / browser chart rendering | Hosted on `https://chart.manico.es` alongside PHP REST API | Built with Modular Vanilla JS (ES6+) + TradingView Lightweight Charts; same-origin deployment avoids CORS |
-| Android application (`APK`) | Built automatically in GitHub Actions on every `git push` | Kotlin + Jetpack Compose client connecting to `https://chart.manico.es/api/v1/` over HTTPS |
+| Android application (`APK`) | Built by manually dispatched GitHub Actions workflow (`workflow_dispatch`) | Kotlin + Jetpack Compose; APK is uploaded as a workflow artifact, not automatically published to a store or host |
 | Research and backtesting environment | Keep separate from production runtime | Research workloads should not compete with the live application |
 
 This is an initial assessment, not a final hosting decision for future heavy compute workers. The product consists of an Android application (APK) and a responsive web application on `chart.manico.es` (with a personal login gate, a TradingView-style Watchlist & Data Source selector, and a dedicated Chart + 6 Core Indicators view) for chart analysis and forecasting, not an automated trading or order-execution system.
@@ -134,6 +134,8 @@ The following are release gates, not administrative notes:
 | P0 | Backup and restore | Provider confirmation of schedule/retention/off-site copy plus a successful restore test with timestamp and scope |
 | P0 | PHP 8.3 target | Account-level web runtime and CLI version checks; required extensions and limits recorded |
 | P0 | Secret exposure | Confirm no credentials or private endpoints are committed; rotate any secret found in repository history |
+| P0 | Web/PHP deployment | Create and test a real cPanel UAPI deployment workflow; current `build-apk.yml` only packages artifacts and does not deploy |
+| P0 | Host Probe validity | TLS verification is now enabled and HTTP fallback removed in `host-probe.yml`; verify an actual run, temporary-file cleanup, PHP 8.3 on web and CLI, and make failed outbound-provider checks explicit |
 | P1 | Cron | A real account-level test proving allowed cadence, execution time, lock behavior and logs |
 | P1 | Python/Worker | Runtime/version, package installation, process lifetime, memory/CPU and outbound network verified by a test job |
 | P1 | Database | Least-privilege grants, connection limits, backup inclusion and restore verified |
@@ -141,7 +143,7 @@ The following are release gates, not administrative notes:
 
 Evidence must include verification date, method, observed result and responsible operator. A server-level service status is not sufficient evidence for account-level capability.
 
-**Automated Host Capability Probe:** Upon first deployment to `https://chart.manico.es`, a token-protected diagnostic endpoint (`/api/v1/system/status`) and `.github/workflows/host-probe.yml` automatically inspect and report the account's active PHP SAPI version, loaded extensions (`pdo_mysql`, `curl`, `openssl`, `mbstring`, `bcmath`), `memory_limit`, `max_execution_time`, MariaDB connection health, and outbound HTTPS connectivity to market-data providers.
+**Automated Host Capability Probe:** `.github/workflows/host-probe.yml` runs on pushes to `main`/`master` and by manual dispatch. It authenticates to cPanel UAPI, uploads a temporary token-protected PHP diagnostic file, calls it over HTTPS, and reports the web PHP SAPI/version, extensions, limits, MariaDB test and outbound HTTPS checks. It is not a product deployment workflow and does not establish that `/api/v1/system/status` exists. TLS certificate and hostname verification are enabled; HTTP fallback has been removed (commit `aa91beb`, 2026-11-06). A successful run and guaranteed cleanup still require verification. Provider connectivity results are currently reported but do not all act as workflow-failing gates.
 
 ## 6. Secrets and environment configuration
 
@@ -160,7 +162,7 @@ The project owner has **already stored** the following **8 secrets** in **GitHub
 
 | # | Secret Name | Status in GitHub Actions | Component | Purpose |
 |---:|---|---|---|---|
-| 1 | `CPANEL_API_TOKEN` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | cPanel UAPI token for automated deployment and file management |
+| 1 | `CPANEL_API_TOKEN` | **STORED** (Nov 6, 2026) | GitHub Actions / planned deployment | cPanel UAPI token intended for deployment and file management; no deploy workflow currently consumes it |
 | 2 | `CPANEL_DOCROOT` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | Target document root directory for `chart.manico.es` on the host |
 | 3 | `CPANEL_HOST` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | cPanel server host/URL (e.g., port `2083` UAPI endpoint) |
 | 4 | `CPANEL_USERNAME` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | cPanel account username |
@@ -185,7 +187,7 @@ Actual values must never be committed to Git, pasted into source files, or place
 - **DECIDED & CONFIGURED (2026-11-06):** All 8 required operational and CI/CD secrets (`CPANEL_API_TOKEN`, `CPANEL_DOCROOT`, `CPANEL_HOST`, `CPANEL_USERNAME`, `DB_NAME`, `DB_PASSWORD`, `DB_USER`, `TWELVE_DATA_API_KEY`) are stored in **GitHub Repository Secrets (Actions)**.
 - **DECIDED:** Web Frontend uses **Modular Vanilla JS (ES6+) + TradingView Lightweight Charts** on `https://chart.manico.es`; Android client is a native **Kotlin + Jetpack Compose `APK`** built via GitHub Actions. Windows/Desktop app is canceled.
 - **DECIDED:** Application entry flow is: (1) Personal username/password Login Gate (multi-user ready in DB) ➔ (2) Watchlist Screen (never auto-draws a chart on launch; user picks chart variant e.g. from 5 Oil models + selects Data Source/API underneath with `Twelve Data API` as Priority #1) ➔ (3) Clicking a Watchlist item opens the Dedicated Chart & 6 Core Indicators Screen (`SMA 20/50`, `EMA 20`, `Bollinger Bands 20,2`, `RSI 14`, `MACD 12,26,9`, `ATR 14`) with the active Source Badge displayed right next to the chart name.
-- **DECIDED:** Every `git push` automatically deploys Web/PHP files to `chart.manico.es` via `cPanel API Token` and builds the installable Android `APK` via GitHub Actions.
+- **IMPLEMENTATION STATUS (2026-11-06):** No automatic Web/PHP deployment workflow exists in `main`. `.github/workflows/build-apk.yml` runs only by manual dispatch and creates an APK artifact plus a web-package artifact; it does not upload either to cPanel. `.github/workflows/host-probe.yml` runs on pushes and manual dispatch but is diagnostic only. Automated cPanel deployment remains a target, not an implemented capability.
 - **TO VERIFY / P0:** Product target PHP 8.3 has not yet been confirmed on the account's web runtime or CLI (verified via `.github/workflows/host-probe.yml` on `chart.manico.es`).
 - **TO VERIFY / P0:** Backup availability is not established; `jetbackup5d` was reported down and no successful restore evidence is recorded. Application-level encrypted DB export will be implemented as a safeguard.
 - **Public-repository rule:** Account-specific shared IP, provider server label and internal package identifier are intentionally redacted from this public inventory. Keep operational identifiers in a private approved store if genuinely needed.
