@@ -1,10 +1,6 @@
 name: Build Android APK and Package Web
 
 on:
-  push:
-    branches:
-      - main
-      - master
   workflow_dispatch:
 
 jobs:

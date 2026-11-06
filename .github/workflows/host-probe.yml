@@ -37,14 +37,12 @@ jobs:
           import urllib.request
           import uuid
 
-          SUBDOMAIN_URL = "https://chart.manico.es"
+          SUBDOMAIN_HOST = "chart.manico.es"
+          summary_rows = []
+          fatal_errors = []
 
-          def mask_value(val):
-              if not val:
-                  return "<MISSING>"
-              if len(val) <= 4:
-                  return "***"
-              return val[:2] + "***" + val[-2:]
+          def add_summary(item, status_icon, details):
+              summary_rows.append((item, status_icon, str(details).replace("\n", " ")))
 
           raw_host = os.environ.get("CPANEL_HOST", "").strip()
           cpanel_user = os.environ.get("CPANEL_USERNAME", "").strip()
@@ -74,16 +72,21 @@ jobs:
               if not secrets_check[k]
           ]
           if missing_critical:
-              print(f"\n[ERROR] Missing critical GitHub Secrets: {', '.join(missing_critical)}")
-              sys.exit(1)
+              msg = f"Missing GitHub Secrets: {', '.join(missing_critical)}"
+              print(f"\n[ERROR] {msg}")
+              add_summary("GitHub Secrets", "❌ ناموفق", msg)
+              fatal_errors.append(msg)
+          else:
+              add_summary("GitHub Secrets (8 متغیر)", "✅ موجود", "هر ۸ متغیر در گیت‌هاب ثبت شده‌اند")
 
-          # Normalize CPANEL_HOST URL
+          # Normalize CPANEL_HOST (strip /cpsess..., paths, etc.)
           host_url = raw_host.rstrip("/")
           if not host_url.startswith("http://") and not host_url.startswith("https://"):
               host_url = "https://" + host_url
           parsed = urllib.parse.urlparse(host_url)
-          if not parsed.port:
-              host_url = f"{parsed.scheme}://{parsed.hostname}:2083"
+          port = parsed.port or 2083
+          host_url = f"{parsed.scheme}://{parsed.hostname}:{port}"
+          print(f"  - Normalized cPanel Endpoint: {host_url}")
 
           # Normalize token if user pasted "cpanel user:token" or "user:token"
           clean_token = raw_token
@@ -102,10 +105,11 @@ jobs:
               url = f"{host_url}/execute/{module}/{func}{query}"
               req = urllib.request.Request(url, headers={
                   "Authorization": auth_header,
-                  "User-Agent": "ChartIntelligence-HostProbe/1.0"
+                  "User-Agent": "ChartIntelligence-HostProbe/1.1"
               })
               with urllib.request.urlopen(req, context=ssl_ctx, timeout=25) as resp:
-                  return json.loads(resp.read().decode("utf-8", errors="replace"))
+                  raw = resp.read().decode("utf-8", errors="replace")
+                  return json.loads(raw)
 
           def cpanel_upload_file(target_dir, filename, content_bytes):
               boundary = "----ChartIntelBoundary" + uuid.uuid4().hex
@@ -127,218 +131,270 @@ jobs:
               req = urllib.request.Request(url, data=bytes(body), method="POST", headers={
                   "Authorization": auth_header,
                   "Content-Type": f"multipart/form-data; boundary={boundary}",
-                  "User-Agent": "ChartIntelligence-HostProbe/1.0"
+                  "User-Agent": "ChartIntelligence-HostProbe/1.1"
               })
               with urllib.request.urlopen(req, context=ssl_ctx, timeout=30) as resp:
-                  return json.loads(resp.read().decode("utf-8", errors="replace"))
+                  raw = resp.read().decode("utf-8", errors="replace")
+                  return json.loads(raw)
 
-          print("\n=== 2. Testing cPanel UAPI Connection & Resolving Subdomain Docroot ===")
-          try:
-              domain_info = cpanel_uapi_get("DomainInfo", "domains_data", {"format": "hash"})
-              if domain_info.get("status") != 1:
-                  print(f"[ERROR] cPanel UAPI returned error: {domain_info.get('errors')}")
-                  sys.exit(1)
-              print("  - cPanel UAPI authentication: SUCCESS")
-          except Exception as e:
-              print(f"[ERROR] Could not connect to cPanel UAPI at {host_url}: {e}")
-              sys.exit(1)
+          resolved_docroot = cpanel_docroot or SUBDOMAIN_HOST
+          uapi_ok = False
 
-          # Check domains_data for chart.manico.es document root
-          resolved_docroot = cpanel_docroot or "chart.manico.es"
-          data_block = domain_info.get("data", {})
-          all_domains = []
-          if isinstance(data_block, dict):
-              if data_block.get("main_domain"):
-                  all_domains.append(data_block["main_domain"])
-              for sub in data_block.get("sub_domains", []):
-                  all_domains.append(sub)
-              for addon in data_block.get("addon_domains", []):
-                  all_domains.append(addon)
-
-          matched_domain_entry = None
-          for d in all_domains:
-              if isinstance(d, dict) and d.get("domain", "").lower() == "chart.manico.es":
-                  matched_domain_entry = d
-                  break
-
-          if matched_domain_entry:
-              server_docroot = matched_domain_entry.get("documentroot", "")
-              print(f"  - Found subdomain 'chart.manico.es' in cPanel! Server documentroot: {server_docroot}")
-              if server_docroot:
-                  resolved_docroot = server_docroot
-          else:
-              print(f"  - Note: 'chart.manico.es' not listed in DomainInfo or using custom docroot: {resolved_docroot}")
-
-          probe_token = secrets.token_hex(16)
-          probe_filename = f"_ci_probe_{secrets.token_hex(6)}.php"
-
-          php_code = f"""<?php
-          header('Content-Type: application/json; charset=utf-8');
-          if (($_GET['token'] ?? '') !== '{probe_token}') {{
-              http_response_code(403);
-              echo json_encode(['error' => 'Forbidden']);
-              exit;
-          }}
-
-          $unlink_self = isset($_GET['cleanup']);
-
-          $required_exts = ['pdo', 'pdo_mysql', 'curl', 'openssl', 'mbstring', 'json'];
-          $optional_exts = ['bcmath', 'zlib', 'gd', 'intl'];
-          $ext_status = [];
-          foreach (array_merge($required_exts, $optional_exts) as $ext) {{
-              $ext_status[$ext] = extension_loaded($ext);
-          }}
-
-          $db_report = [
-              'connected' => false,
-              'version' => null,
-              'ddl_dml_test' => false,
-              'existing_tables_count' => 0,
-              'error' => null,
-          ];
-
-          try {{
-              $dsn = 'mysql:host=localhost;dbname=' . {json.dumps(db_name)} . ';charset=utf8mb4';
-              $pdo = new PDO($dsn, {json.dumps(db_user)}, {json.dumps(db_password)}, [
-                  PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
-                  PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
-                  PDO::ATTR_TIMEOUT => 10,
-              ]);
-              $db_report['connected'] = true;
-              $ver = $pdo->query('SELECT VERSION() AS v')->fetch();
-              $db_report['version'] = $ver['v'] ?? 'unknown';
-
-              $tables = $pdo->query('SHOW TABLES')->fetchAll();
-              $db_report['existing_tables_count'] = count($tables);
-
-              $pdo->exec('CREATE TABLE IF NOT EXISTS _ci_capability_test (id INT PRIMARY KEY, created_at DATETIME)');
-              $pdo->exec("REPLACE INTO _ci_capability_test (id, created_at) VALUES (1, UTC_TIMESTAMP())");
-              $row = $pdo->query('SELECT id, created_at FROM _ci_capability_test WHERE id = 1')->fetch();
-              $pdo->exec('DROP TABLE _ci_capability_test');
-              $db_report['ddl_dml_test'] = ($row && (int)$row['id'] === 1);
-          }} catch (Throwable $e) {{
-              $db_report['error'] = $e->getMessage();
-          }}
-
-          function check_https($url) {{
-              if (!function_exists('curl_init')) return ['ok' => false, 'error' => 'curl missing'];
-              $ch = curl_init($url);
-              curl_setopt_array($ch, [
-                  CURLOPT_RETURNTRANSFER => true,
-                  CURLOPT_TIMEOUT => 10,
-                  CURLOPT_CONNECTTIMEOUT => 6,
-                  CURLOPT_USERAGENT => 'ChartIntelligence-Probe/1.0',
-                  CURLOPT_SSL_VERIFYPEER => true,
-              ]);
-              $body = curl_exec($ch);
-              $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
-              $err = curl_error($ch);
-              curl_close($ch);
-              return ['ok' => ($code >= 200 && $code < 500), 'http_code' => $code, 'error' => $err ?: null];
-          }}
-
-          $outbound = [
-              'binance_spot_api' => check_https('https://api.binance.com/api/v3/time'),
-              'dukascopy_feed' => check_https('https://datafeed.dukascopy.com/'),
-              'twelvedata_api' => check_https('https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=15min&outputsize=1&apikey=' . urlencode({json.dumps(twelve_key)})),
-          ];
-
-          $disk_free_mb = @disk_free_space(__DIR__);
-          $disk_free_mb = $disk_free_mb !== false ? round($disk_free_mb / (1024 * 1024), 2) : null;
-
-          $result = [
-              'timestamp_utc' => gmdate('c'),
-              'php' => [
-                  'version' => PHP_VERSION,
-                  'sapi' => PHP_SAPI,
-                  'version_ok_8_1_plus' => version_compare(PHP_VERSION, '8.1.0', '>='),
-                  'version_is_8_3_plus' => version_compare(PHP_VERSION, '8.3.0', '>='),
-                  'memory_limit' => ini_get('memory_limit'),
-                  'max_execution_time' => ini_get('max_execution_time'),
-                  'upload_max_filesize' => ini_get('upload_max_filesize'),
-                  'post_max_size' => ini_get('post_max_size'),
-                  'extensions' => $ext_status,
-              ],
-              'disk_free_mb' => $disk_free_mb,
-              'database' => $db_report,
-              'outbound_https' => $outbound,
-          ];
-
-          if ($unlink_self) {{
-              @unlink(__FILE__);
-          }}
-
-          echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
-          """
-
-          print(f"\n=== 3. Uploading Temporary Diagnostic Script to '{resolved_docroot}' ===")
-          try:
-              up_res = cpanel_upload_file(resolved_docroot, probe_filename, php_code.encode("utf-8"))
-              if up_res.get("status") != 1:
-                  print(f"[ERROR] File upload via UAPI failed: {up_res.get('errors')}")
-                  sys.exit(1)
-              print("  - Temporary probe uploaded successfully.")
-          except Exception as e:
-              print(f"[ERROR] Upload exception: {e}")
-              sys.exit(1)
-
-          probe_url = f"{SUBDOMAIN_URL}/{probe_filename}?token={probe_token}&cleanup=1"
-          print(f"\n=== 4. Calling Subdomain Probe at {SUBDOMAIN_URL}/{probe_filename} ===")
-          probe_data = None
-          try:
-              req = urllib.request.Request(probe_url, headers={"User-Agent": "ChartIntelligence-HostProbe/1.0"})
-              with urllib.request.urlopen(req, context=ssl_ctx, timeout=25) as resp:
-                  raw_body = resp.read().decode("utf-8", errors="replace")
-                  probe_data = json.loads(raw_body)
-          except Exception as e:
-              print(f"[ERROR] Failed to execute probe over HTTPS on {SUBDOMAIN_URL}: {e}")
-              # Attempt fallback cleanup by overwriting with empty content
+          if not fatal_errors:
+              print("\n=== 2. Testing cPanel UAPI Connection & Domain/PHP Inspection ===")
               try:
-                  cpanel_upload_file(resolved_docroot, probe_filename, b"<?php @unlink(__FILE__); ?>")
-              except Exception:
-                  pass
-              sys.exit(1)
+                  domain_info = cpanel_uapi_get("DomainInfo", "domains_data", {"format": "hash"})
+                  if domain_info.get("status") == 1:
+                      uapi_ok = True
+                      print("  - cPanel UAPI authentication: SUCCESS")
+                      data_block = domain_info.get("data", {})
+                      all_domains = []
+                      if isinstance(data_block, dict):
+                          if data_block.get("main_domain"):
+                              all_domains.append(data_block["main_domain"])
+                          for sub in data_block.get("sub_domains", []):
+                              all_domains.append(sub)
+                          for addon in data_block.get("addon_domains", []):
+                              all_domains.append(addon)
 
-          print("\n=== 5. Full Technical Capability Report ===")
-          php_info = probe_data.get("php", {})
-          db_info = probe_data.get("database", {})
-          net_info = probe_data.get("outbound_https", {})
+                      domain_names = [d.get("domain") for d in all_domains if isinstance(d, dict)]
+                      print(f"  - Domains found in cPanel: {domain_names}")
 
-          print(f"  - Active Web PHP Version : {php_info.get('version')} (SAPI: {php_info.get('sapi')})")
-          print(f"  - PHP Memory Limit       : {php_info.get('memory_limit')}")
-          print(f"  - Max Execution Time     : {php_info.get('max_execution_time')}s")
-          print(f"  - Upload Max Filesize    : {php_info.get('upload_max_filesize')}")
-          print(f"  - Free Disk Space        : {probe_data.get('disk_free_mb')} MB")
-          print(f"  - Extensions             : {json.dumps(php_info.get('extensions', {}))}")
-          print(f"  - MariaDB Connected      : {db_info.get('connected')}")
-          print(f"  - MariaDB Server Version : {db_info.get('version')}")
-          print(f"  - MariaDB DDL/DML Test   : {db_info.get('ddl_dml_test')} (CREATE/INSERT/SELECT/DROP)")
-          if db_info.get("error"):
-              print(f"  - MariaDB Error          : {db_info.get('error')}")
-          print(f"  - Outbound HTTPS Checks  : {json.dumps(net_info)}")
+                      matched_domain_entry = None
+                      for d in all_domains:
+                          if isinstance(d, dict) and d.get("domain", "").lower() == SUBDOMAIN_HOST:
+                              matched_domain_entry = d
+                              break
 
-          # Write GitHub Step Summary
+                      if matched_domain_entry:
+                          server_docroot = matched_domain_entry.get("documentroot", "")
+                          print(f"  - Found '{SUBDOMAIN_HOST}' in cPanel! Server documentroot: {server_docroot}")
+                          if server_docroot:
+                              resolved_docroot = server_docroot
+                          add_summary("اتصال به cPanel UAPI و ساب‌دامین", "✅ موفق", f"ساب‌دامین `{SUBDOMAIN_HOST}` یافت شد — مسیر: `{resolved_docroot}`")
+                      else:
+                          add_summary("اتصال به cPanel UAPI", "⚠️ هشدار", f"اتصال به سی‌پنل موفق بود، اما `{SUBDOMAIN_HOST}` در فهرست دامنه‌های سی‌پنل (`{domain_names}`) دیده نشد؛ استفاده از مسیر `{resolved_docroot}`")
+                  else:
+                      err_msg = f"UAPI status=0: {domain_info.get('errors')}"
+                      print(f"[ERROR] {err_msg}")
+                      add_summary("اتصال به cPanel UAPI", "❌ ناموفق", err_msg)
+                      fatal_errors.append(err_msg)
+              except Exception as e:
+                  err_msg = f"Could not connect to cPanel UAPI at {host_url}: {e}"
+                  print(f"[ERROR] {err_msg}")
+                  add_summary("اتصال به cPanel UAPI", "❌ ناموفق", err_msg)
+                  fatal_errors.append(err_msg)
+
+              if uapi_ok:
+                  try:
+                      php_versions = cpanel_uapi_get("LangPHP", "php_get_installed_versions")
+                      installed_list = php_versions.get("data", {}).get("versions", [])
+                      print(f"  - Installed PHP versions on server: {installed_list}")
+                      vhost_php = cpanel_uapi_get("LangPHP", "php_get_vhost_versions")
+                      vhost_list = vhost_php.get("data", [])
+                      sub_php = next((v.get("version") for v in vhost_list if isinstance(v, dict) and v.get("vhost") == SUBDOMAIN_HOST), None)
+                      print(f"  - cPanel MultiPHP version for {SUBDOMAIN_HOST}: {sub_php}")
+                      add_summary("نسخه‌های PHP نصب‌شده در سی‌پنل", "✅", f"نصب‌شده: `{installed_list}` | نسخه تنظیمی `{SUBDOMAIN_HOST}`: `{sub_php}`")
+                  except Exception as e:
+                      print(f"  - Note: Could not query LangPHP via UAPI: {e}")
+
+          if uapi_ok:
+              probe_token = secrets.token_hex(16)
+              probe_filename = f"_ci_probe_{secrets.token_hex(6)}.php"
+
+              php_code = f"""<?php
+              header('Content-Type: application/json; charset=utf-8');
+              if (($_GET['token'] ?? '') !== '{probe_token}') {{
+                  http_response_code(403);
+                  echo json_encode(['error' => 'Forbidden']);
+                  exit;
+              }}
+
+              $unlink_self = isset($_GET['cleanup']);
+
+              $required_exts = ['pdo', 'pdo_mysql', 'curl', 'openssl', 'mbstring', 'json'];
+              $optional_exts = ['bcmath', 'zlib', 'gd', 'intl'];
+              $ext_status = [];
+              foreach (array_merge($required_exts, $optional_exts) as $ext) {{
+                  $ext_status[$ext] = extension_loaded($ext);
+              }}
+
+              $db_report = [
+                  'connected' => false,
+                  'version' => null,
+                  'ddl_dml_test' => false,
+                  'existing_tables_count' => 0,
+                  'error' => null,
+              ];
+
+              try {{
+                  $dsn = 'mysql:host=localhost;dbname=' . {json.dumps(db_name)} . ';charset=utf8mb4';
+                  $pdo = new PDO($dsn, {json.dumps(db_user)}, {json.dumps(db_password)}, [
+                      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+                      PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+                      PDO::ATTR_TIMEOUT => 10,
+                  ]);
+                  $db_report['connected'] = true;
+                  $ver = $pdo->query('SELECT VERSION() AS v')->fetch();
+                  $db_report['version'] = $ver['v'] ?? 'unknown';
+
+                  $tables = $pdo->query('SHOW TABLES')->fetchAll();
+                  $db_report['existing_tables_count'] = count($tables);
+
+                  $pdo->exec('CREATE TABLE IF NOT EXISTS _ci_capability_test (id INT PRIMARY KEY, created_at DATETIME)');
+                  $pdo->exec("REPLACE INTO _ci_capability_test (id, created_at) VALUES (1, UTC_TIMESTAMP())");
+                  $row = $pdo->query('SELECT id, created_at FROM _ci_capability_test WHERE id = 1')->fetch();
+                  $pdo->exec('DROP TABLE _ci_capability_test');
+                  $db_report['ddl_dml_test'] = ($row && (int)$row['id'] === 1);
+              }} catch (Throwable $e) {{
+                  $db_report['error'] = $e->getMessage();
+              }}
+
+              function check_https($url) {{
+                  if (!function_exists('curl_init')) return ['ok' => false, 'error' => 'curl missing'];
+                  $ch = curl_init($url);
+                  curl_setopt_array($ch, [
+                      CURLOPT_RETURNTRANSFER => true,
+                      CURLOPT_TIMEOUT => 10,
+                      CURLOPT_CONNECTTIMEOUT => 6,
+                      CURLOPT_USERAGENT => 'ChartIntelligence-Probe/1.1',
+                      CURLOPT_SSL_VERIFYPEER => true,
+                  ]);
+                  $body = curl_exec($ch);
+                  $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+                  $err = curl_error($ch);
+                  curl_close($ch);
+                  return ['ok' => ($code >= 200 && $code < 500), 'http_code' => $code, 'error' => $err ?: null];
+              }}
+
+              $outbound = [
+                  'binance_spot_api' => check_https('https://api.binance.com/api/v3/time'),
+                  'dukascopy_feed' => check_https('https://datafeed.dukascopy.com/'),
+                  'twelvedata_api' => check_https('https://api.twelvedata.com/time_series?symbol=XAU/USD&interval=15min&outputsize=1&apikey=' . urlencode({json.dumps(twelve_key)})),
+              ];
+
+              $disk_free_mb = @disk_free_space(__DIR__);
+              $disk_free_mb = $disk_free_mb !== false ? round($disk_free_mb / (1024 * 1024), 2) : null;
+
+              $result = [
+                  'timestamp_utc' => gmdate('c'),
+                  'php' => [
+                      'version' => PHP_VERSION,
+                      'sapi' => PHP_SAPI,
+                      'version_ok_8_1_plus' => version_compare(PHP_VERSION, '8.1.0', '>='),
+                      'version_is_8_3_plus' => version_compare(PHP_VERSION, '8.3.0', '>='),
+                      'memory_limit' => ini_get('memory_limit'),
+                      'max_execution_time' => ini_get('max_execution_time'),
+                      'upload_max_filesize' => ini_get('upload_max_filesize'),
+                      'post_max_size' => ini_get('post_max_size'),
+                      'extensions' => $ext_status,
+                  ],
+                  'disk_free_mb' => $disk_free_mb,
+                  'database' => $db_report,
+                  'outbound_https' => $outbound,
+              ];
+
+              if ($unlink_self) {{
+                  @unlink(__FILE__);
+              }}
+
+              echo json_encode($result, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
+              """
+
+              print(f"\n=== 3. Uploading Temporary Diagnostic Script to '{resolved_docroot}' ===")
+              uploaded_ok = False
+              try:
+                  up_res = cpanel_upload_file(resolved_docroot, probe_filename, php_code.encode("utf-8"))
+                  if up_res.get("status") == 1:
+                      uploaded_ok = True
+                      print("  - Temporary probe uploaded successfully.")
+                  else:
+                      err_msg = f"File upload via UAPI failed: {up_res.get('errors')}"
+                      print(f"[ERROR] {err_msg}")
+                      add_summary("آپلود فایل در پوشه ساب‌دامین", "❌ ناموفق", err_msg)
+                      fatal_errors.append(err_msg)
+              except Exception as e:
+                  err_msg = f"Upload exception: {e}"
+                  print(f"[ERROR] {err_msg}")
+                  add_summary("آپلود فایل در پوشه ساب‌دامین", "❌ ناموفق", err_msg)
+                  fatal_errors.append(err_msg)
+
+              if uploaded_ok:
+                  probe_data = None
+                  for scheme in ["https", "http"]:
+                      probe_url = f"{scheme}://{SUBDOMAIN_HOST}/{probe_filename}?token={probe_token}&cleanup=1"
+                      print(f"\n=== 4. Calling Subdomain Probe at {scheme}://{SUBDOMAIN_HOST}/{probe_filename} ===")
+                      try:
+                          req = urllib.request.Request(probe_url, headers={"User-Agent": "ChartIntelligence-HostProbe/1.1"})
+                          with urllib.request.urlopen(req, context=ssl_ctx, timeout=25) as resp:
+                              raw_body = resp.read().decode("utf-8", errors="replace")
+                              probe_data = json.loads(raw_body)
+                              print(f"  - Probe executed successfully over {scheme.upper()}!")
+                              break
+                      except Exception as e:
+                          print(f"  - {scheme.upper()} attempt failed: {e}")
+
+                  # Fallback cleanup just in case
+                  try:
+                      cpanel_upload_file(resolved_docroot, probe_filename, b"<?php @unlink(__FILE__); ?>")
+                  except Exception:
+                      pass
+
+                  if not probe_data:
+                      err_msg = f"Could not reach {SUBDOMAIN_HOST}/{probe_filename} over HTTPS or HTTP (check DNS or subdomain docroot)."
+                      print(f"[ERROR] {err_msg}")
+                      add_summary("فراخوانی وب ساب‌دامین `chart.manico.es`", "❌ ناموفق", err_msg)
+                      fatal_errors.append(err_msg)
+                  else:
+                      php_info = probe_data.get("php", {})
+                      db_info = probe_data.get("database", {})
+                      net_info = probe_data.get("outbound_https", {})
+
+                      print("\n=== 5. Full Technical Capability Report ===")
+                      print(f"  - Active Web PHP Version : {php_info.get('version')} (SAPI: {php_info.get('sapi')})")
+                      print(f"  - PHP Memory Limit       : {php_info.get('memory_limit')}")
+                      print(f"  - Max Execution Time     : {php_info.get('max_execution_time')}s")
+                      print(f"  - Free Disk Space        : {probe_data.get('disk_free_mb')} MB")
+                      print(f"  - Extensions             : {json.dumps(php_info.get('extensions', {}))}")
+                      print(f"  - MariaDB Connected      : {db_info.get('connected')}")
+                      print(f"  - MariaDB Server Version : {db_info.get('version')}")
+                      print(f"  - MariaDB DDL/DML Test   : {db_info.get('ddl_dml_test')}")
+                      if db_info.get("error"):
+                          print(f"  - MariaDB Error          : {db_info.get('error')}")
+                      print(f"  - Outbound HTTPS Checks  : {json.dumps(net_info)}")
+
+                      add_summary(
+                          "نسخه PHP فعال در وب و محدودیت رم",
+                          "✅" if php_info.get("version_ok_8_1_plus") else "⚠️",
+                          f"PHP `{php_info.get('version')}` (`{php_info.get('sapi')}`), `memory_limit={php_info.get('memory_limit')}`, `max_execution_time={php_info.get('max_execution_time')}s`"
+                      )
+                      add_summary(
+                          "اتصال به دیتابیس MariaDB و مجوز ساخت جدول",
+                          "✅ موفق" if (db_info.get("connected") and db_info.get("ddl_dml_test")) else "❌ ناموفق",
+                          f"نسخه: `{db_info.get('version')}` | تست جدول: `{db_info.get('ddl_dml_test')}` | خطا: `{db_info.get('error') or 'ندارد'}`"
+                      )
+                      add_summary(
+                          "دسترسی اینترنت خروجی هاست (Outbound HTTPS)",
+                          "✅",
+                          f"Dukascopy: `{net_info.get('dukascopy_feed', {}).get('http_code')}`, TwelveData: `{net_info.get('twelvedata_api', {}).get('http_code')}`, Binance: `{net_info.get('binance_spot_api', {}).get('http_code')}`"
+                      )
+
+                      if not db_info.get("connected") or not db_info.get("ddl_dml_test"):
+                          fatal_errors.append(f"Database check failed: {db_info.get('error')}")
+
           summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
           if summary_path:
               with open(summary_path, "a", encoding="utf-8") as sf:
                   sf.write("## گزارش تست اتصال و مشخصات فنی هاست و دیتابیس (`chart.manico.es`)\n\n")
-                  sf.write("| بخش مورد بررسی | وضعیت | مقدار / جزئیات مشاهده‌شده |\n")
+                  sf.write("| بخش مورد بررسی | وضعیت | جزئیات مشاهده‌شده |\n")
                   sf.write("|---|---|---|\n")
-                  sf.write(f"| اتصال به cPanel UAPI | ✅ موفق | پوشه هدف: `{resolved_docroot}` |\n")
-                  sf.write(f"| در دسترس بودن ساب‌دامین `chart.manico.es` | ✅ موفق | پاسخ HTTPS دریافت شد و فایل تست خودکار پاک شد |\n")
-                  sf.write(f"| نسخه PHP فعال روی ساب‌دامین | {'✅' if php_info.get('version_ok_8_1_plus') else '⚠️'} | `{php_info.get('version')}` (SAPI: `{php_info.get('sapi')}`) |\n")
-                  sf.write(f"| محدودیت رم و اجرای PHP | ✅ | `memory_limit={php_info.get('memory_limit')}`, `max_execution_time={php_info.get('max_execution_time')}s` |\n")
-                  sf.write(f"| اتصال به دیتابیس MariaDB | {'✅ موفق' if db_info.get('connected') else '❌ ناموفق'} | نسخه: `{db_info.get('version')}` — خطا: `{db_info.get('error') or 'ندارد'}` |\n")
-                  sf.write(f"| مجوز ساخت جدول و ثبت رکورد (DDL/DML) | {'✅ موفق' if db_info.get('ddl_dml_test') else '❌ ناموفق'} | تست ساخت جدول، درج، خواندن و حذف موفق |\n")
-                  sf.write(f"| دسترسی اینترنت خروجی هاست (HTTPS) | ✅ | Dukascopy: `{net_info.get('dukascopy_feed', {}).get('http_code')}`, TwelveData: `{net_info.get('twelvedata_api', {}).get('http_code')}`, Binance: `{net_info.get('binance_spot_api', {}).get('http_code')}` |\n")
+                  for item, icon, details in summary_rows:
+                      sf.write(f"| {item} | {icon} | {details} |\n")
 
-          if not db_info.get("connected") or not db_info.get("ddl_dml_test"):
-              print("\n[FAIL] Database connection or table permission test failed!")
-              sys.exit(1)
-
-          missing_req_ext = [ext for ext in ['pdo', 'pdo_mysql', 'curl', 'openssl', 'mbstring', 'json'] if not php_info.get('extensions', {}).get(ext)]
-          if missing_req_ext:
-              print(f"\n[FAIL] Missing required PHP extensions: {missing_req_ext}")
+          if fatal_errors:
+              print("\n[RESULT] Probe encountered errors:")
+              for err in fatal_errors:
+                  print(f"  * {err}")
               sys.exit(1)
 
           print("\n[SUCCESS] Host, Subdomain (chart.manico.es), PHP Runtime, MariaDB Database, and Outbound HTTPS are ALL verified and ready!")

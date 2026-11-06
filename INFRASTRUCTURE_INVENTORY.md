@@ -154,23 +154,27 @@ For every application secret, the project must document:
 - Which authorized role can provision or rotate it.
 - How to request access if it is missing.
 
-### 6.1 Required GitHub Actions Secrets for Auto-Deploy to `chart.manico.es`
+### 6.1 Configured GitHub Actions Secrets (`STORED & ACTIVE` as of 2026-11-06)
 
-To enable automatic deployment on every `git push` using the owner's `cPanel API Token`, the following secrets must be configured in **GitHub Repository Settings → Secrets and variables → Actions** (and never committed to Git):
+The project owner has **already stored** the following **8 secrets** in **GitHub Repository Settings → Secrets and variables → Actions** (`Repository secrets`):
 
-| Secret Name | Component | Purpose |
-|---|---|---|
-| `CPANEL_HOST` | GitHub Actions CI/CD | cPanel server base URL (e.g., `https://manico.es:2083`) |
-| `CPANEL_USERNAME` | GitHub Actions CI/CD | cPanel account username |
-| `CPANEL_API_TOKEN` | GitHub Actions CI/CD | cPanel UAPI token generated under *Manage API Tokens* |
-| `CPANEL_DOCROOT` | GitHub Actions CI/CD | Target directory for `chart.manico.es` on the host (e.g., `chart.manico.es` or `public_html/chart`) |
-| `DB_HOST` | PHP Backend Runtime | MariaDB host (default `localhost` on cPanel) |
-| `DB_NAME` | PHP Backend Runtime | MariaDB database name created in cPanel |
-| `DB_USER` | PHP Backend Runtime | MariaDB database username |
-| `DB_PASSWORD` | PHP Backend Runtime | MariaDB database password |
-| `APP_ADMIN_TOKEN` | PHP Backend Runtime | Initial owner authentication token for personal Phase 1 access and `/api/v1/system/status` probe |
+| # | Secret Name | Status in GitHub Actions | Component | Purpose |
+|---:|---|---|---|---|
+| 1 | `CPANEL_API_TOKEN` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | cPanel UAPI token for automated deployment and file management |
+| 2 | `CPANEL_DOCROOT` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | Target document root directory for `chart.manico.es` on the host |
+| 3 | `CPANEL_HOST` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | cPanel server host/URL (e.g., port `2083` UAPI endpoint) |
+| 4 | `CPANEL_USERNAME` | **STORED** (Nov 6, 2026) | GitHub Actions CI/CD | cPanel account username |
+| 5 | `DB_NAME` | **STORED** (Nov 6, 2026) | PHP Backend Runtime & Probe | MariaDB database name on the cPanel host (`DB_HOST` defaults to `localhost`) |
+| 6 | `DB_PASSWORD` | **STORED** (Nov 6, 2026) | PHP Backend Runtime & Probe | MariaDB database password |
+| 7 | `DB_USER` | **STORED** (Nov 6, 2026) | PHP Backend Runtime & Probe | MariaDB database username |
+| 8 | `TWELVE_DATA_API_KEY` | **STORED** (Nov 6, 2026) | Market Data POC & Optional Provider | Twelve Data API key for market data smoke tests and optional channel |
 
-Actual values must be supplied through the approved secret store or deployment environment, never committed to Git, pasted into source files, or placed in public project documentation. GitHub documentation should tell an authorized operator where to configure or retrieve each secret without exposing its value.
+> **CRITICAL NOTE FOR AI ASSISTANTS (ChatGPT, Gemini, Claude, etc.) AND DEVELOPERS:**
+> - **Do NOT search the codebase, `.env` files, or Git history for these 8 values**, and **do NOT ask the project owner to send or re-enter them.**
+> - They are already saved in **GitHub Repository Secrets (Actions)** and are accessed exclusively via `${{ secrets.CPANEL_API_TOKEN }}`, `${{ secrets.CPANEL_DOCROOT }}`, `${{ secrets.CPANEL_HOST }}`, `${{ secrets.CPANEL_USERNAME }}`, `${{ secrets.DB_NAME }}`, `${{ secrets.DB_PASSWORD }}`, `${{ secrets.DB_USER }}`, and `${{ secrets.TWELVE_DATA_API_KEY }}` inside `.github/workflows/*.yml`.
+> - During automated deployment to `https://chart.manico.es`, the GitHub Actions workflow injects the database and provider credentials into the server's protected runtime configuration on the host. `DB_HOST` is `localhost` on the cPanel server and does not require a separate GitHub secret.
+
+Actual values must never be committed to Git, pasted into source files, or placed in public project documentation.
 
 
 ## 7. Current status and decision log
@@ -178,8 +182,9 @@ Actual values must be supplied through the approved secret store or deployment e
 - **Known:** Shared cPanel hosting account with Apache, PHP-FPM service, MariaDB 10.6.28 and cron daemon reported up.
 - **Known:** Account dashboard reports 2 GB physical memory limit, 5 GB disk, 100 GB bandwidth, 20 entry processes and 150 processes.
 - **DECIDED:** Target subdomain for Web Application and PHP REST API is `https://chart.manico.es`.
+- **DECIDED & CONFIGURED (2026-11-06):** All 8 required operational and CI/CD secrets (`CPANEL_API_TOKEN`, `CPANEL_DOCROOT`, `CPANEL_HOST`, `CPANEL_USERNAME`, `DB_NAME`, `DB_PASSWORD`, `DB_USER`, `TWELVE_DATA_API_KEY`) are stored in **GitHub Repository Secrets (Actions)**.
 - **DECIDED:** Every `git push` automatically deploys Web/PHP files to `chart.manico.es` via `cPanel API Token` and builds the installable Android `APK` via GitHub Actions.
-- **TO VERIFY / P0:** Product target PHP 8.3 has not yet been confirmed on the account's web runtime or CLI (to be verified by the automated Host Capability Probe on `chart.manico.es`).
+- **TO VERIFY / P0:** Product target PHP 8.3 has not yet been confirmed on the account's web runtime or CLI (verified via `.github/workflows/host-probe.yml` on `chart.manico.es`).
 - **TO VERIFY / P0:** Backup availability is not established; `jetbackup5d` was reported down and no successful restore evidence is recorded. Application-level encrypted DB export will be implemented as a safeguard.
 - **Public-repository rule:** Account-specific shared IP, provider server label and internal package identifier are intentionally redacted from this public inventory. Keep operational identifiers in a private approved store if genuinely needed.
 - **Not established:** Whether Python analysis, persistent workers, WebSockets, account-level SSH or external database connections are permitted.
@@ -199,8 +204,8 @@ Actual values must be supplied through the approved secret store or deployment e
 2. Treat values in Sections 1–3 as owner-supplied cPanel observations, not independently verified guarantees.
 3. Treat items in Section 5 as unknown until verified.
 4. Never invent credentials, hostnames, database names, API endpoints or secret values.
-5. If a required secret is missing, identify its environment-variable name and ask the project owner to configure it in the approved secret store.
-6. Do not request that secrets be committed to GitHub.
+5. **Do not ask the owner for cPanel, MariaDB, or Twelve Data credentials:** The 8 secrets (`CPANEL_API_TOKEN`, `CPANEL_DOCROOT`, `CPANEL_HOST`, `CPANEL_USERNAME`, `DB_NAME`, `DB_PASSWORD`, `DB_USER`, `TWELVE_DATA_API_KEY`) are already stored in **GitHub Repository Secrets (Actions)**. Reference them via `${{ secrets.<NAME> }}` in GitHub Actions workflows. Only ask the owner if a brand-new secret not in this list of 8 is required.
+6. Do not request that secrets be committed to GitHub or pasted in chat.
 7. Do not create paid services, migrate data, change DNS, expose database ports or modify production infrastructure without explicit owner approval.
 8. Preserve the product boundary: analysis and decision support only; no automatic order execution.
 9. Keep user-supplied API credentials isolated by user and provider. Never expose a key to another user, return it in API responses, log it, or commit it to the repository.
@@ -208,3 +213,4 @@ Actual values must be supplied through the approved secret store or deployment e
 11. Do not interpret `jetbackup5d: down` as proof of either backup failure or backup success. Until restore evidence is recorded, treat recovery capability as unverified and production-blocking.
 12. Do not mark PHP 8.3 as available based only on PHP-FPM service status; verify the actual account-level web and CLI runtimes.
 13. Keep account identifiers, shared IPs and provider-internal labels out of this public repository unless a documented operational need and explicit owner approval justify publication.
+14. **Mandatory Proactive In-Place Documentation Sync (No User Reminder Needed):** Whenever you and the project owner discuss, evaluate, troubleshoot, or debate a topic and reach a conclusion, decision, or verification result (whether fixing a mistaken assumption, updating an existing section, deleting obsolete content, or adding a brand-new section), you **MUST immediately and automatically update the exact relevant section in-place** across the specification documents (`CHART_INTELLIGENCE_MASTER_SPEC.md`, `INFRASTRUCTURE_INVENTORY.md`, `TRADING_STRATEGY_SPEC.md`, `README.md`) without waiting for the owner to remind you. Never append patch notes or addenda to the bottom of files; always rewrite/insert/delete in the proper structural section so the repository documentation is never left half-finished if the session hits a token/rate limit and continues on another AI assistant.

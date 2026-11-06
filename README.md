@@ -1,21 +1,44 @@
-# Chart Intelligence (Android · Kotlin & Jetpack Compose)
+# Chart Intelligence (`chart.manico.es` · Web & Android APK)
 
-Independent financial chart analysis, multi-horizon forecast engine, walk-forward validation suite, and market data provider POC workbench implementing `CHART_INTELLIGENCE_MASTER_SPEC.md` (v1.7).
+موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.14`)**.
 
-## Core Modules
+---
 
-1. **Multi-Horizon Forecast Terminal**:
-   - Strictly isolated instrument series (`XAUUSD`, `SPOTBRENT`, `BRENT.CMD/USD`, `BTCUSDT`, `REV:BRENT_CFD`, `BZ=F`).
-   - Session-aware closed-candle timeframes (`M15`, `M30`, `H1`, `H4`, `D1`) and forecast horizons (`+15m`, `+1h`, `+4h`, `+1d`).
-   - Interactive candlestick & `Q10–Q90` quantile forecast cone chart with volatility-adjusted neutral trend threshold (`|ΔP| < k × ATR(period)`).
-   - Cryptographic SHA-256 hash-chained immutable prediction ledger.
-2. **Historical Walk-Forward Forecast Validation**:
-   - Out-of-sample Purged + Embargoed walk-forward evaluation (`Frozen Model` vs `Adaptive Model`).
-   - Compares directional accuracy against the 3 mandatory baselines (`Persistence`, `Previous Direction`, `SMA`).
-   - Reports `DECIMAL` `MAE`, `RMSE`, multi-class `Brier Score`, `Pinball Quantile Loss`, `Q10–Q90` interval coverage, and Effective Sample Size (`N_eff`).
-3. **Market Data Provider POC Lab**:
-   - **Twelve Data Smoke Test**: Read-only `15min` verification for `XAU/USD` and `XBR/USD` (`PLAN_RESTRICTED` handling) via `BuildConfig.TWELVE_DATA_API_KEY`.
-   - **Dukascopy 6-Probe Historical Audit**: `Bid` and `Ask` inspection for `xauusd` and `brentcmdusd` with trading-session calendar gap classification.
-   - **Binance Spot Live API**: Public `/api/v3/klines` closed M15 candle ingestion for `BTCUSDT`.
-4. **Manual OHLC & Zero-Storage Ephemeral Chart OCR**:
-   - Supports `Brent CFD – Revolut` and API-restricted instruments via manual `DECIMAL` entry and on-device ephemeral image extraction (images are immediately purged in compliance with Section 5.3).
+## ۱. اسناد مرجع پروژه (Source of Truth) و قانون به‌روزرسانی خودکار
+
+پیش از هرگونه تغییر در معماری، کدنویسی یا تنظیمات، این ۳ سند باید مطالعه شوند:
+1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) و اولویت‌های اجرایی (نسخه `1.14`).
+2. **[`INFRASTRUCTURE_INVENTORY.md`](./INFRASTRUCTURE_INVENTORY.md)** — مشخصات فنی هاست cPanel، ساب‌دامین `https://chart.manico.es`، دیتابیس MariaDB و ماتریس راستی‌آزمایی زیرساخت.
+3. **[`TRADING_STRATEGY_SPEC.md`](./TRADING_STRATEGY_SPEC.md)** — مشخصات ماژول شبیه‌سازی استراتژی معاملاتی (مرحله بعدی و مستقل از موتور پیش‌بینی).
+
+> **قانون الزامی برای تمام هوش‌های مصنوعی (به‌روزرسانی خودکار و درجا بدون نیاز به یادآوری کاربر):**
+> هر زمان پس از بررسی، بحث و چکش‌کاری با کاربر روی یک موضوع به **جمع‌بندی یا نتیجه** رسیدید (تصحیح یک اشتباه قبلی، تغییر یک تصمیم، حذف یک مورد منسوخ یا اضافه‌شدن یک بخش جدید که قبلاً نبوده)، **بلافاصله و به‌صورت خودجوش (بدون اینکه کاربر مجبور به یادآوری باشد)** بخش مربوطه را در اسناد بالا **درجا (In-Place)** ویرایش، جایگزین، حذف یا اضافه کنید. هرگز به انتهای اسناد وصله‌پینه یا تبصره نچسبانید. اسناد مخزن باید در هر لحظه ۱۰۰٪ به‌روز و کامل باشند تا در صورت اتمام سقف پیام (Limit) و ادامه کار با یک هوش مصنوعی دیگر، هیچ تصمیمی جا نمانده باشد.
+
+---
+
+## ۲. راهنمای مهم برای هوش‌های مصنوعی و توسعه‌دهندگان: محل ذخیره متغیرهای محرمانه (GitHub Secrets)
+
+> **توجه (الزامی برای تمام مدل‌های هوش مصنوعی مانند ChatGPT، Gemini، Claude و توسعه‌دهندگان):**
+> به دنبال رمزهای عبور، آدرس هاست، توکن cPanel، مشخصات دیتابیس یا کلید API در داخل فایل‌های کد، فایل `.env` یا تاریخچه مخزن نگردید و **مجدداً از مالک پروژه درخواست ارسال آن‌ها را نکنید**.
+
+تمامی **۸ پارامتر محرمانه زیر** در تاریخ `2026-11-06` توسط مالک پروژه در بخش **GitHub Repository Settings → Secrets and variables → Actions (`Repository secrets`)** ذخیره شده‌اند و در فایل‌های `.github/workflows/*.yml` از طریق `${{ secrets.<NAME> }}` در دسترس هستند:
+
+| ردیف | نام Secret در GitHub Actions | وضعیت | کاربرد |
+|---:|---|---|---|
+| 1 | `CPANEL_API_TOKEN` | **ذخیره‌شده در GitHub Secrets** | توکن UAPI سی‌پنل برای آپلود و استقرار خودکار روی هاست |
+| 2 | `CPANEL_DOCROOT` | **ذخیره‌شده در GitHub Secrets** | مسیر پوشه ساب‌دامین `chart.manico.es` روی هاست |
+| 3 | `CPANEL_HOST` | **ذخیره‌شده در GitHub Secrets** | آدرس سرور سی‌پنل |
+| 4 | `CPANEL_USERNAME` | **ذخیره‌شده در GitHub Secrets** | نام کاربری اکانت سی‌پنل |
+| 5 | `DB_NAME` | **ذخیره‌شده در GitHub Secrets** | نام دیتابیس MariaDB (`DB_HOST` در داخل سرور `localhost` است) |
+| 6 | `DB_PASSWORD` | **ذخیره‌شده در GitHub Secrets** | رمز عبور دیتابیس MariaDB |
+| 7 | `DB_USER` | **ذخیره‌شده در GitHub Secrets** | نام کاربری دیتابیس MariaDB |
+| 8 | `TWELVE_DATA_API_KEY` | **ذخیره‌شده در GitHub Secrets** | کلید API سرویس Twelve Data برای تست‌ها و کانال دریافت داده |
+
+---
+
+## ۳. پلتفرم‌ها و پایپ‌لاین خودکار (CI/CD)
+
+- **نسخه وب:** مستقر روی ساب‌دامین **`https://chart.manico.es`** (ریسپانسیو برای دسکتاپ و موبایل، با کتابخانه رایگان TradingView Lightweight Charts).
+- **نسخه اندروید:** خروجی فایل نصبی **`APK`** که به‌صورت خودکار در GitHub Actions بیلد می‌شود و به API مرکزی روی `https://chart.manico.es/api/v1/` متصل است.
+- **حذف نسخه دسکتاپ/ویندوز:** نسخه نصبی ویندوز/دسکتاپ خارج از دامنه پروژه است.
+- **تمرکز گام اول:** اتصال و نمایش نمودار **نفت برنت اسپات (`SPOTBRENT`)**، امکان انتخاب منبع دریافت داده برای هر نمودار در بخش **Settings**، نمایش **نام منبع داده دقیقاً کنار نام نمودار در بالای صفحه**، و ثبت کندل‌ها در MariaDB.
