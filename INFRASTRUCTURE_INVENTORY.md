@@ -1,7 +1,7 @@
 # INFRASTRUCTURE INVENTORY
 
 **Project:** Chart Intelligence  
-**Document status:** Initial inventory — partially verified  
+**Document status:** Public-safe infrastructure inventory — partially verified  
 **Last updated:** 2026-11-06  
 **Source:** Hosting account's cPanel Server Information, Statistics, Processor Information and Service Status screens, supplied by the project owner.  
 **Purpose:** Provide a shared infrastructure reference for ChatGPT, other AI assistants and developers. This document records observed infrastructure facts, distinguishes them from assumptions, and lists items that still require verification.
@@ -12,13 +12,13 @@
 
 | Item | Reported value | Notes |
 |---|---|---|
-| Hosting package | `mani_G-5GB` | Shared hosting account; confirm exact resource policy with provider |
-| Server name | `autumn` | Provider's server label |
+| Hosting package | Shared hosting plan (public identifier redacted) | Shared hosting account; confirm exact resource policy with provider |
+| Server name | Redacted | Internal provider label omitted from public repository |
 | Control panel | cPanel `138.0 (build 19)` | Reported by cPanel |
 | Web server | Apache `2.4.69` | Service reported up |
 | Operating system | Linux | Kernel `6.8.0-142-generic`; architecture `x86_64` |
 | Database server | MariaDB `10.6.28` | Service reported up |
-| Shared IP address | `85.9.111.123` | Infrastructure detail; confirm before relying on it |
+| Shared IP address | Redacted / not published | Public repository does not need the account's shared IP address |
 | Sendmail path | `/usr/sbin/sendmail` | Reported path |
 | Perl path/version | `/usr/bin/perl`, `5.26.3` | Reported by cPanel |
 
@@ -86,7 +86,7 @@ These are the values displayed in the supplied account snapshot. Zero usage is a
 
 **Caution:** A service showing as `up` at server level does not prove that this hosting account has permission to use it. In particular, `sshd` being up does not prove that account-level SSH access is enabled. Likewise, `crond` being up does not prove that every required cron configuration or execution interval is permitted.
 
-The `jetbackup5d` status is reported as down. This alone does not establish whether account backups are unavailable; backup schedules, retention and restore capability must be checked with the hosting provider.
+**Backup risk — unresolved, production-blocking:** The `jetbackup5d` service was reported as `down` in the supplied cPanel snapshot. This does not prove that account backups are absent, but it also provides no evidence that usable backups exist. Until the hosting provider confirms the account-level backup schedule, retention, off-site location and a successful restore test, treat backup availability as **NOT VERIFIED** and do not rely on JetBackup for recovery. Record the last successful backup and restore-test date once verified.
 
 ## 4. Initial architectural assessment
 
@@ -109,7 +109,7 @@ This is an initial assessment, not a final hosting decision. The product remains
 
 The following items have not been established by the supplied screenshots/data:
 
-1. Exact PHP version, enabled extensions, PHP-FPM configuration and per-account PHP limits.
+1. Exact PHP version, enabled extensions, PHP-FPM configuration and per-account PHP limits. The product's current target is PHP 8.3; the cPanel observation that PHP-FPM is `up` does not establish that PHP 8.3 is installed, selected for this account, or used by the web/API runtime. Mark PHP 8.3 as **TO VERIFY** until an account-level runtime check confirms the web SAPI and CLI versions separately.
 2. Whether account-level SSH access is enabled and which shell is available.
 3. Python availability, exact version, virtual-environment support and ability to install required packages.
 4. Whether background processes are permitted, their maximum runtime and whether processes are terminated when they exceed policy.
@@ -117,10 +117,26 @@ The following items have not been established by the supplied screenshots/data:
 6. Outbound HTTPS, DNS and WebSocket connectivity from the account.
 7. MariaDB database name, database user, grants, maximum connections, remote-access policy and backup/restore procedure.
 8. Whether database access is restricted to localhost or can be securely exposed to selected services.
-9. Actual backup schedule, retention, off-site status and a tested restore path; do not infer backup availability from the JetBackup daemon status alone.
+9. Actual backup schedule, retention, off-site status and a tested restore path; do not infer backup availability from the JetBackup daemon status alone. Until verified, backup/restore is a production-blocking risk. Confirm whether a separate provider backup mechanism exists even while `jetbackup5d` is down.
 10. Provider definitions for CPU units, physical memory, I/O and process limits, including throttling and suspension thresholds.
 11. Whether the account permits Node.js applications or other application runtimes, if these become relevant.
 12. Disk inode limits and any separate limits on database size, file count or outbound traffic.
+
+## 5.1 Verification priority and acceptance evidence
+
+The following are release gates, not administrative notes:
+
+| Priority | Item | Required evidence before production reliance |
+|---|---|---|
+| P0 | Backup and restore | Provider confirmation of schedule/retention/off-site copy plus a successful restore test with timestamp and scope |
+| P0 | PHP 8.3 target | Account-level web runtime and CLI version checks; required extensions and limits recorded |
+| P0 | Secret exposure | Confirm no credentials or private endpoints are committed; rotate any secret found in repository history |
+| P1 | Cron | A real account-level test proving allowed cadence, execution time, lock behavior and logs |
+| P1 | Python/Worker | Runtime/version, package installation, process lifetime, memory/CPU and outbound network verified by a test job |
+| P1 | Database | Least-privilege grants, connection limits, backup inclusion and restore verified |
+| P1 | Network | Outbound HTTPS/DNS and any required provider connectivity tested from the actual account/runtime |
+
+Evidence must include verification date, method, observed result and responsible operator. A server-level service status is not sufficient evidence for account-level capability.
 
 ## 6. Secrets and environment configuration
 
@@ -140,6 +156,9 @@ Actual values must be supplied through the approved secret store or deployment e
 
 - **Known:** Shared cPanel hosting account with Apache, PHP-FPM service, MariaDB 10.6.28 and cron daemon reported up.
 - **Known:** Account dashboard reports 2 GB physical memory limit, 5 GB disk, 100 GB bandwidth, 20 entry processes and 150 processes.
+- **TO VERIFY / P0:** Product target PHP 8.3 has not yet been confirmed on the account's web runtime or CLI.
+- **TO VERIFY / P0:** Backup availability is not established; `jetbackup5d` was reported down and no successful restore evidence is recorded.
+- **Public-repository rule:** Account-specific shared IP, provider server label and internal package identifier are intentionally redacted from this public inventory. Keep operational identifiers in a private approved store if genuinely needed.
 - **Not established:** Whether Python analysis, persistent workers, WebSockets, account-level SSH or external database connections are permitted.
 - **Not decided:** Whether any workload should move to Railway, Render, Fly.io, a VPS, or another managed service.
 - **Not decided:** Whether DuckDB, MotherDuck or another analytical storage option will be used.
@@ -163,3 +182,6 @@ Actual values must be supplied through the approved secret store or deployment e
 8. Preserve the product boundary: analysis and decision support only; no automatic order execution.
 9. Keep user-supplied API credentials isolated by user and provider. Never expose a key to another user, return it in API responses, log it, or commit it to the repository.
 10. Paid provider APIs are optional BYOK integrations only; the product must not require or centrally fund them.
+11. Do not interpret `jetbackup5d: down` as proof of either backup failure or backup success. Until restore evidence is recorded, treat recovery capability as unverified and production-blocking.
+12. Do not mark PHP 8.3 as available based only on PHP-FPM service status; verify the actual account-level web and CLI runtimes.
+13. Keep account identifiers, shared IPs and provider-internal labels out of this public repository unless a documented operational need and explicit owner approval justify publication.
