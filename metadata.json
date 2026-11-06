@@ -1,8 +1,0 @@
-{
-  "name": "Chart Intelligence",
-  "description": "Multi-source financial candlestick intelligence & technical indicator platform (Oil, Gold, Crypto, Forex) with Watchlist-first workflow and MariaDB sync.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
