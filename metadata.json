@@ -1,8 +1,0 @@
-{
-  "name": "Chart Intelligence",
-  "description": "Independent financial chart analysis, walk-forward forecast validation, and market data quality engine.",
-  "requestFramePermissions": [],
-  "majorCapabilities": [
-    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
-  ]
-}
