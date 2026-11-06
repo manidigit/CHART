@@ -2,6 +2,9 @@ name: Build Android APK and Package Web
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
 
 jobs:
   build-android-apk:
@@ -13,17 +16,68 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Set up JDK 17
+      - name: Set up JDK 21
         uses: actions/setup-java@v4
         with:
           distribution: 'temurin'
-          java-version: '17'
+          java-version: '21'
 
-      - name: Grant execute permission for gradlew
-        run: chmod +x ./gradlew
+      - name: Setup Gradle 9.3.1
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '9.3.1'
+
+      - name: Decode debug.keystore from debug.keystore.base64
+        run: |
+          if [ ! -f debug.keystore ] && [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          fi
+
+      - name: Ensure Fonts and Mipmap Resources Exist
+        run: |
+          mkdir -p app/src/main/res/font
+          if [ ! -f app/src/main/res/font/vazirmatn.ttf ]; then
+            curl -fsSL "https://fonts.gstatic.com/s/vazirmatn/v16/Dxx78j6PP2D_kU2muijPEe1n2vVbfJRklWgzCRCT6w.ttf" -o app/src/main/res/font/vazirmatn.ttf
+          fi
+          if [ ! -f app/src/main/res/font/jetbrains_mono.ttf ]; then
+            curl -fsSL "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOQ.ttf" -o app/src/main/res/font/jetbrains_mono.ttf
+          fi
+          if [ ! -f app/src/main/res/mipmap-mdpi/ic_launcher.png ]; then
+            python3 - << 'EOF'
+          import os, struct, zlib
+          def make_png(path, width, height):
+              os.makedirs(os.path.dirname(path), exist_ok=True)
+              raw = b"".join(b"\x00" + b"\x0b\x0f\x17\xff" * width for _ in range(height))
+              def chunk(tag, data):
+                  return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
+              ihdr = struct.pack("!IIBBBBB", width, height, 8, 6, 0, 0, 0)
+              png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
+              with open(path, "wb") as f:
+                  f.write(png)
+          for folder, sz in [("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)]:
+              make_png(f"app/src/main/res/mipmap-{folder}/ic_launcher.png", sz, sz)
+              make_png(f"app/src/main/res/mipmap-{folder}/ic_launcher_round.png", sz, sz)
+          EOF
+          fi
+
+      - name: Prepare .env for Secrets Gradle Plugin
+        env:
+          TWELVE_KEY: ${{ secrets.TWELVE_DATA_API_KEY }}
+        run: |
+          if [ -n "$TWELVE_KEY" ]; then
+            echo "TWELVE_DATA_API_KEY=$TWELVE_KEY" > .env
+          elif [ ! -f .env ] && [ -f .env.example ]; then
+            cp .env.example .env
+          fi
+
+      - name: Accept Android SDK Licenses
+        run: |
+          if [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
+            yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          fi
 
       - name: Build Debug APK with Gradle
-        run: ./gradlew assembleDebug --no-daemon
+        run: gradle assembleDebug --no-daemon --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
