@@ -1,13 +1,13 @@
 # Chart Intelligence (`chart.manico.es` · Web & Android APK)
 
-موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.15`)**.
+موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.16`)**.
 
 ---
 
 ## ۱. اسناد مرجع پروژه (Source of Truth) و قانون به‌روزرسانی خودکار
 
 پیش از هرگونه تغییر در معماری، کدنویسی یا تنظیمات، این ۳ سند باید مطالعه شوند:
-1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) و اولویت‌های اجرایی (نسخه `1.15`).
+1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) و اولویت‌های اجرایی (نسخه `1.16`).
 2. **[`INFRASTRUCTURE_INVENTORY.md`](./INFRASTRUCTURE_INVENTORY.md)** — مشخصات فنی هاست cPanel، ساب‌دامین `https://chart.manico.es`، دیتابیس MariaDB و ماتریس راستی‌آزمایی زیرساخت.
 3. **[`TRADING_STRATEGY_SPEC.md`](./TRADING_STRATEGY_SPEC.md)** — مشخصات ماژول شبیه‌سازی استراتژی معاملاتی (مرحله بعدی و مستقل از موتور پیش‌بینی).
 
@@ -25,7 +25,7 @@
 
 | ردیف | نام Secret در GitHub Actions | وضعیت | کاربرد |
 |---:|---|---|---|
-| 1 | `CPANEL_API_TOKEN` | **ذخیره‌شده در GitHub Secrets** | توکن UAPI سی‌پنل برای آپلود و استقرار خودکار روی هاست |
+| 1 | `CPANEL_API_TOKEN` | **ذخیره‌شده در GitHub Secrets** | توکن UAPI سی‌پنل برای Workflow استقرار هدف؛ Workflow Deploy هنوز پیاده‌سازی نشده است |
 | 2 | `CPANEL_DOCROOT` | **ذخیره‌شده در GitHub Secrets** | مسیر پوشه ساب‌دامین `chart.manico.es` روی هاست |
 | 3 | `CPANEL_HOST` | **ذخیره‌شده در GitHub Secrets** | آدرس سرور سی‌پنل |
 | 4 | `CPANEL_USERNAME` | **ذخیره‌شده در GitHub Secrets** | نام کاربری اکانت سی‌پنل |
@@ -38,8 +38,10 @@
 
 ## ۳. پلتفرم‌ها و جریان کاربری فاز اول (Watchlist-First UX)
 
+> **وضعیت پیاده‌سازی CI/CD (بازبینی 2026-11-06):** `.github/workflows/build-apk.yml` فقط با `workflow_dispatch` اجرا می‌شود و APK و بسته فایل‌های وب را به‌صورت Artifact می‌سازد؛ این Workflow چیزی را روی هاست Deploy نمی‌کند. `.github/workflows/host-probe.yml` فقط Probe زیرساخت است. در شاخه `main` هنوز Workflow واقعی Deploy وب/PHP به cPanel وجود ندارد؛ بنابراین Push به GitHub را معادل انتشار نسخه Production ندانید.
+
 - **نسخه وب:** مستقر روی ساب‌دامین **`https://chart.manico.es`** (ریسپانسیو برای دسکتاپ و موبایل، پیاده‌سازی‌شده با **Modular Vanilla JS (ES6+) + TradingView Lightweight Charts**).
-- **نسخه اندروید:** خروجی فایل نصبی **`APK`** (Kotlin + Jetpack Compose) که به‌صورت خودکار در GitHub Actions بیلد می‌شود و به API مرکزی روی `https://chart.manico.es/api/v1/` متصل است.
+- **نسخه اندروید:** خروجی فایل نصبی **`APK`** (Kotlin + Jetpack Compose) که در حال حاضر با اجرای دستی Workflow در GitHub Actions ساخته و به‌صورت Artifact ارائه می‌شود؛ به API مرکزی روی `https://chart.manico.es/api/v1/` متصل است.
 - **حذف نسخه دسکتاپ/ویندوز:** نسخه نصبی ویندوز/دسکتاپ خارج از دامنه پروژه است.
 
 ### جریان ۳ مرحله‌ای ورود، واچ‌لیست و نمایش نمودار (مشابه TradingView)
