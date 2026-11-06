@@ -134,6 +134,7 @@ The following are release gates for the selected direct-to-production deployment
 | P0 | Backup and restore | Provider confirmation of schedule/retention/off-site copy plus a successful restore test with timestamp and scope |
 | P0 | PHP 8.3 target | Account-level web runtime and CLI version checks; required extensions and limits recorded |
 | P0 | Secret exposure | Confirm no credentials are committed or exposed in workflow logs, public artifacts, frontend bundles or repository history; rotate any exposed secret |
+| P0 | Deployment implementation | Create and test a cPanel deployment workflow; repository audit found no deploy workflow in .github/workflows as of 2026-11-06 | 
 | P0 | Deployment scope | Verify workflow triggers and branch filters; working branches must not deploy to Production |
 | P0 | Rollback | Demonstrate restoration of previous application release and safe handling of database migrations; record production release identifier |
 | P0 | Host probe security and validity | Remove disabled TLS certificate verification and HTTP fallback; prove temporary probe cleanup; require PHP 8.3 on web and CLI; make failed provider/network checks explicit rather than reporting unconditional success |
@@ -198,6 +199,8 @@ Actual values must never be committed to Git, pasted into source files, or place
 - **TO VERIFY / P0:** PHP 8.3 has not yet been confirmed on the account's web runtime or CLI.
 - **TO VERIFY / P0:** Backup availability is not established; jetbackup5d was reported down and no successful restore evidence is recorded. No production-changing release should proceed until a successful restore test is recorded.
 - **TO VERIFY / P0:** Deployment rollback and database migration rollback have not yet been demonstrated.
+- **TO IMPLEMENT / P0:** No cPanel deployment workflow was present in .github/workflows during the 2026-11-06 audit. build-apk.yml is manual-only and uploads artifacts; it does not deploy the website/API.
+- **TO FIX / P0:** Existing host-probe workflow disables TLS certificate verification and allows HTTP fallback while sending cPanel credentials; it does not enforce PHP 8.3 or fail on unsuccessful provider connectivity checks. Correct and revalidate before relying on its result.
 - **TO FIX / P0:** Existing host-probe workflow disables TLS certificate verification and allows HTTP fallback while sending cPanel credentials; it does not enforce PHP 8.3 or fail on unsuccessful provider connectivity checks. Correct and revalidate before relying on its result.
 - **TO VERIFY / P1:** Exact XAUUSD and SPOTBRENT provider symbols, coverage, price basis, timestamp semantics, rate limits and usage rights.
 - **Not established:** Whether Python analysis, persistent workers, WebSockets, account-level SSH or external database connections are permitted.
