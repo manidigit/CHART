@@ -84,8 +84,10 @@ jobs:
           if not host_url.startswith("http://") and not host_url.startswith("https://"):
               host_url = "https://" + host_url
           parsed = urllib.parse.urlparse(host_url)
+          if parsed.scheme.lower() != "https" or not parsed.hostname:
+              raise ValueError("CPANEL_HOST must resolve to a valid HTTPS URL; HTTP is not permitted.")
           port = parsed.port or 2083
-          host_url = f"{parsed.scheme}://{parsed.hostname}:{port}"
+          host_url = f"https://{parsed.hostname}:{port}"
           print(f"  - Normalized cPanel Endpoint: {host_url}")
 
           # Normalize token if user pasted "cpanel user:token" or "user:token"
@@ -96,9 +98,9 @@ jobs:
               clean_token = clean_token.split(":", 1)[1].strip()
 
           auth_header = f"cpanel {cpanel_user}:{clean_token}"
+          # Keep the platform trust store, hostname verification, and certificate
+          # validation enabled. Never send cPanel credentials over an unverified TLS channel.
           ssl_ctx = ssl.create_default_context()
-          ssl_ctx.check_hostname = False
-          ssl_ctx.verify_mode = ssl.CERT_NONE
 
           def cpanel_uapi_get(module, func, params=None):
               query = "?" + urllib.parse.urlencode(params) if params else ""
@@ -321,9 +323,9 @@ jobs:
 
               if uploaded_ok:
                   probe_data = None
-                  for scheme in ["https", "http"]:
-                      probe_url = f"{scheme}://{SUBDOMAIN_HOST}/{probe_filename}?token={probe_token}&cleanup=1"
-                      print(f"\n=== 4. Calling Subdomain Probe at {scheme}://{SUBDOMAIN_HOST}/{probe_filename} ===")
+                  for scheme in ["https"]:
+                      probe_url = f"https://{SUBDOMAIN_HOST}/{probe_filename}?token={probe_token}&cleanup=1"
+                      print(f"\n=== 4. Calling Subdomain Probe at https://{SUBDOMAIN_HOST}/{probe_filename} ===")
                       try:
                           req = urllib.request.Request(probe_url, headers={"User-Agent": "ChartIntelligence-HostProbe/1.1"})
                           with urllib.request.urlopen(req, context=ssl_ctx, timeout=25) as resp:
@@ -341,7 +343,7 @@ jobs:
                       pass
 
                   if not probe_data:
-                      err_msg = f"Could not reach {SUBDOMAIN_HOST}/{probe_filename} over HTTPS or HTTP (check DNS or subdomain docroot)."
+                      err_msg = f"Could not reach {SUBDOMAIN_HOST}/{probe_filename} over verified HTTPS (check DNS, TLS certificate, or subdomain docroot)."
                       print(f"[ERROR] {err_msg}")
                       add_summary("فراخوانی وب ساب‌دامین `chart.manico.es`", "❌ ناموفق", err_msg)
                       fatal_errors.append(err_msg)
