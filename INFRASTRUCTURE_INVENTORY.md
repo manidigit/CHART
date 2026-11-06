@@ -18,6 +18,8 @@
 | Web server | Apache `2.4.69` | Service reported up |
 | Operating system | Linux | Kernel `6.8.0-142-generic`; architecture `x86_64` |
 | Database server | MariaDB `10.6.28` | Service reported up |
+| Target subdomain | `https://chart.manico.es` | Owner-approved subdomain for Web Frontend and PHP REST API |
+| Deployment mechanism | GitHub Actions via `cPanel API Token` (UAPI) | Automated deploy on every `git push` (plus Android APK build artifact) |
 | Shared IP address | Redacted / not published | Public repository does not need the account's shared IP address |
 | Sendmail path | `/usr/sbin/sendmail` | Reported path |
 | Perl path/version | `/usr/bin/perl`, `5.26.3` | Reported by cPanel |
@@ -100,10 +102,11 @@ Based only on the supplied information:
 | Python analysis worker | Not yet approved for this host | Python version, package installation, CPU/RAM/runtime limits and long-running process policy are unknown |
 | Persistent WebSocket/data-ingestion worker | Do not assume it can run here | Shared-hosting providers commonly restrict persistent background processes; provider confirmation required |
 | Heavy analytics / model inference | Do not allocate here without testing | The displayed account limits do not establish sustained compute capacity |
-| Static web frontend / browser chart rendering | Can be hosted separately or alongside PHP | Final hosting choice is not yet decided |
+| Static web frontend / browser chart rendering | Hosted on `https://chart.manico.es` alongside PHP REST API | Same-origin deployment simplifies routing and avoids CORS in Phase 1 |
+| Android application (`APK`) | Built automatically in GitHub Actions on every `git push` | Connects to `https://chart.manico.es/api/v1/` over HTTPS |
 | Research and backtesting environment | Keep separate from production runtime | Research workloads should not compete with the live application |
 
-This is an initial assessment, not a final hosting decision. The product remains a web-based chart analysis system, not an automated trading or order-execution system.
+This is an initial assessment, not a final hosting decision for future heavy compute workers. The product consists of an Android application (APK) and a responsive web application on `chart.manico.es` for chart analysis and forecasting, not an automated trading or order-execution system.
 
 ## 5. Required verification before making hosting decisions
 
@@ -138,16 +141,34 @@ The following are release gates, not administrative notes:
 
 Evidence must include verification date, method, observed result and responsible operator. A server-level service status is not sufficient evidence for account-level capability.
 
+**Automated Host Capability Probe:** Upon first deployment to `https://chart.manico.es`, a token-protected diagnostic endpoint (`/api/v1/system/status`) will automatically inspect and report the account's active PHP SAPI version, loaded extensions (`pdo_mysql`, `curl`, `openssl`, `mbstring`, `bcmath`), `memory_limit`, `max_execution_time`, MariaDB connection health, and outbound HTTPS connectivity to market-data providers.
+
 ## 6. Secrets and environment configuration
 
 This inventory intentionally does not contain secret values.
 
 For every application secret, the project must document:
 - The exact environment-variable name expected by the application.
-- Which component needs it (web/API, ingestion worker, analysis worker, etc.).
-- The approved storage location (for example, hosting-panel environment configuration, deployment-platform secrets, or GitHub Actions Secrets for CI only).
+- Which component needs it (web/API, ingestion worker, analysis worker, CI/CD, etc.).
+- The approved storage location (for example, hosting-panel environment configuration, server config outside `public_html`, or GitHub Actions Secrets for CI/CD).
 - Which authorized role can provision or rotate it.
 - How to request access if it is missing.
+
+### 6.1 Required GitHub Actions Secrets for Auto-Deploy to `chart.manico.es`
+
+To enable automatic deployment on every `git push` using the owner's `cPanel API Token`, the following secrets must be configured in **GitHub Repository Settings → Secrets and variables → Actions** (and never committed to Git):
+
+| Secret Name | Component | Purpose |
+|---|---|---|
+| `CPANEL_HOST` | GitHub Actions CI/CD | cPanel server base URL (e.g., `https://manico.es:2083`) |
+| `CPANEL_USERNAME` | GitHub Actions CI/CD | cPanel account username |
+| `CPANEL_API_TOKEN` | GitHub Actions CI/CD | cPanel UAPI token generated under *Manage API Tokens* |
+| `CPANEL_DOCROOT` | GitHub Actions CI/CD | Target directory for `chart.manico.es` on the host (e.g., `chart.manico.es` or `public_html/chart`) |
+| `DB_HOST` | PHP Backend Runtime | MariaDB host (default `localhost` on cPanel) |
+| `DB_NAME` | PHP Backend Runtime | MariaDB database name created in cPanel |
+| `DB_USER` | PHP Backend Runtime | MariaDB database username |
+| `DB_PASSWORD` | PHP Backend Runtime | MariaDB database password |
+| `APP_ADMIN_TOKEN` | PHP Backend Runtime | Initial owner authentication token for personal Phase 1 access and `/api/v1/system/status` probe |
 
 Actual values must be supplied through the approved secret store or deployment environment, never committed to Git, pasted into source files, or placed in public project documentation. GitHub documentation should tell an authorized operator where to configure or retrieve each secret without exposing its value.
 
@@ -156,8 +177,10 @@ Actual values must be supplied through the approved secret store or deployment e
 
 - **Known:** Shared cPanel hosting account with Apache, PHP-FPM service, MariaDB 10.6.28 and cron daemon reported up.
 - **Known:** Account dashboard reports 2 GB physical memory limit, 5 GB disk, 100 GB bandwidth, 20 entry processes and 150 processes.
-- **TO VERIFY / P0:** Product target PHP 8.3 has not yet been confirmed on the account's web runtime or CLI.
-- **TO VERIFY / P0:** Backup availability is not established; `jetbackup5d` was reported down and no successful restore evidence is recorded.
+- **DECIDED:** Target subdomain for Web Application and PHP REST API is `https://chart.manico.es`.
+- **DECIDED:** Every `git push` automatically deploys Web/PHP files to `chart.manico.es` via `cPanel API Token` and builds the installable Android `APK` via GitHub Actions.
+- **TO VERIFY / P0:** Product target PHP 8.3 has not yet been confirmed on the account's web runtime or CLI (to be verified by the automated Host Capability Probe on `chart.manico.es`).
+- **TO VERIFY / P0:** Backup availability is not established; `jetbackup5d` was reported down and no successful restore evidence is recorded. Application-level encrypted DB export will be implemented as a safeguard.
 - **Public-repository rule:** Account-specific shared IP, provider server label and internal package identifier are intentionally redacted from this public inventory. Keep operational identifiers in a private approved store if genuinely needed.
 - **Not established:** Whether Python analysis, persistent workers, WebSockets, account-level SSH or external database connections are permitted.
 - **Not decided:** Whether any workload should move to Railway, Render, Fly.io, a VPS, or another managed service.
