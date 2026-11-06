@@ -3,7 +3,7 @@
 ## سند مرجع اصلی پروژه و مشخصات محصول
 
 **شناسه سند:** `CHART_INTELLIGENCE_MASTER_SPEC`\
-**نسخه:** `1.16`\
+**نسخه:** `1.17`\
 **تاریخ آخرین بازبینی:** 2026-11-06\
 **وضعیت:** سند مرجع جاری پروژه\
 **زبان سند:** فارسی؛ نام فنی اجزا و شناسه‌ها به انگلیسی
@@ -205,17 +205,18 @@ chart_id کلید مرجع داده‌های همان نمودار است. نا�
 
 ## 3.1 پلتفرم‌های هدف و استقرار خودکار
 
-**قطعی (DECIDED):**
+**تصمیم هدف (DECIDED):**
 - وب‌اپلیکیشن ریسپانسیو روی https://chart.manico.es و اپلیکیشن اندروید با خروجی APK حفظ می‌شوند؛ نسخه دسکتاپ/ویندوز خارج از دامنه است.
 - مالک پروژه استقرار مستقیم روی هاست Production را برای فاز اول انتخاب کرده است؛ محیط Staging جداگانه پیش‌نیاز این فاز نیست.
-- GitHub Actions برای تست، build و deployment استفاده می‌شود. پیش از هر deployment حداقل lint/syntax check، تست‌های خودکار، بررسی موفقیت build و کنترل artifact باید اجرا شوند؛ شکست هر gate باید deployment را متوقف کند.
-- Trigger و شرط branch در workflow باید صریح باشد؛ Push به branchهای کاری نباید Production را تغییر دهد و فقط commitهای branch انتشار تأییدشده مجاز به deployment هستند.
-- انتشار باید قابل ردیابی و قابل rollback باشد: ثبت commit SHA، نگهداری نسخه قبلی برنامه و روش بازگردانی کد و schema. Migration دیتابیس باید نسخه‌دار، افزایشی و غیرمخرب باشد.
-- پیش از اولین deployment تغییردهنده داده یا schema، Backup قابل بازیابی از دیتابیس و فایل‌های لازم باید اثبات شود. بدون Restore Test موفق، چنین deploymentی متوقف است.
+- GitHub Actions باید تست، build و deployment را اجرا کند. پیش از هر deployment حداقل lint/syntax check، تست‌های خودکار، موفقیت build و کنترل artifact الزامی است؛ شکست هر gate باید deployment را متوقف کند.
+- Trigger و شرط branch باید صریح باشد؛ Push به branchهای کاری نباید Production را تغییر دهد و فقط commitهای branch انتشار تأییدشده مجاز به deployment هستند.
+- انتشار باید قابل ردیابی و rollback باشد: ثبت commit SHA، نگهداری نسخه قبلی برنامه و روش بازگردانی کد و schema. Migration دیتابیس باید نسخه‌دار، افزایشی و غیرمخرب باشد.
+- پیش از deployment تغییردهنده داده یا schema، Backup قابل بازیابی باید اثبات شود. بدون Restore Test موفق، چنین deploymentی متوقف است.
 - Secrets فقط از GitHub Actions Secrets و runtime امن سرور خوانده می‌شوند؛ هیچ secret در artifact عمومی، log، frontend یا repository قرار نمی‌گیرد.
-- APK در CI ساخته می‌شود؛ تولید APK به معنی تأیید خودکار انتشار یا نصب روی دستگاه کاربر نیست.
 
-**قید مستقیم Production:** استقرار مستقیم به معنی انتشار بدون تست، backup، کنترل دسترسی یا rollback نیست.
+**وضعیت واقعی مخزن در بازبینی 2026-11-06 (TO IMPLEMENT):** در پوشه .github/workflows چهار Workflow مشاهده شد: build-apk.yml، host-probe.yml، twelve-data-poc.yml و dukascopy-poc.yml. فایل build-apk.yml فقط workflow_dispatch دارد و APK را به‌صورت artifact می‌سازد؛ فایل deploy به cPanel در فهرست Workflowها وجود ندارد. بنابراین استقرار خودکار وب/PHP هنوز پیاده‌سازی نشده است و هر عبارت قدیمی مبنی بر Deploy شدن در هر git push، تا زمان ایجاد و آزمون Workflow واقعی معتبر نیست. build-apk.yml نیز فعلاً APK را در اجرای دستی می‌سازد، نه در هر Push.
+
+**قید مستقیم Production:** استقرار مستقیم به معنی انتشار بدون تست، Backup، کنترل دسترسی یا rollback نیست. ابتدا باید Deployment Workflow امن ساخته و با trigger محدود، dry-run/validation و روش rollback بررسی شود؛ سپس انتشار Production فعال گردد.
 
 ## 3.2 معماری کلان انتخاب‌شده
 
@@ -1508,6 +1509,7 @@ API؛ - سرور مستقل در آینده، اگر حجم پردازش توج�
 
 - محصول شامل وب‌اپلیکیشن ریسپانسیو روی https://chart.manico.es و اپلیکیشن اندروید با خروجی APK است؛ نسخه دسکتاپ/ویندوز خارج از دامنه است.
 - استقرار فاز اول مستقیماً روی هاست Production انجام می‌شود؛ Staging جداگانه در این فاز انتخاب نشده است. این تصمیم الزام CI، تست قبل از انتشار، Backup/Restore، branch protection و rollback را حذف نمی‌کند.
+- استقرار خودکار وب/PHP هنوز در مخزن پیاده‌سازی نشده است؛ وجود Secrets و cPanel UAPI به‌تنهایی به معنی وجود Deployment Workflow نیست. ایجاد و اعتبارسنجی آن پیش‌نیاز شروع انتشار برنامه است.
 - فاز اول فقط شامل یک حساب شخصی مالک، Watchlist، انتخاب Provider، دریافت/ذخیره داده و نمایش نمودار است؛ ثبت‌نام عمومی و چندکاربره‌سازی عملیاتی خارج از دامنه است. طراحی داده باید توسعه چندکاربره آینده را ممکن نگه دارد.
 - دو نمودار آغازین XAUUSD و SPOTBRENT هستند؛ هر دو در فاز اول با timeframe M15 اجرا می‌شوند.
 - هویت دقیق Provider symbol، price basis، timezone، session، precision و مجوز داده برای هر نمودار باید مستقل تأیید شود؛ نام نماد به‌تنهایی کافی نیست.
