@@ -1,89 +1,183 @@
-# Chart Intelligence (`chart.manico.es` · Web & Android APK)
+<!--
+CHART Intelligence — project landing page
+Detailed engineering and operational material: docs/PROJECT_GUIDE.md
+-->
 
-موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.23`)**.
+<p align="center">
+  <img src="docs/assets/chart-hero.svg" alt="CHART Intelligence — Market analysis, multi-timeframe charts and forecast evaluation" width="100%">
+</p>
 
----
+<h1 align="center">CHART Intelligence</h1>
 
-## ۱. اسناد مرجع پروژه (Source of Truth) و قانون به‌روزرسانی خودکار
+<p align="center">
+  <strong>A modular financial chart analysis platform for web and Android.</strong><br>
+  Multi-timeframe market data · Technical analysis foundation · Forecast evaluation roadmap
+</p>
 
-پیش از هرگونه تغییر در معماری، کدنویسی یا تنظیمات، این ۳ سند باید مطالعه شوند:
-1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، ۱۰ اصل مهندسی نرم‌افزار، نقشه درختی مویرگی فایل‌ها و الگوریتم‌ها (`بخش 3.3.ج`)، فرمول‌های ریاضی اندیکاتورها، فازبندی ۶ گانه ساخت-تست و قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) (نسخه `1.23`).
-2. **[`INFRASTRUCTURE_INVENTORY.md`](./INFRASTRUCTURE_INVENTORY.md)** — مشخصات فنی هاست cPanel، ساب‌دامین `https://chart.manico.es`، دیتابیس MariaDB و ماتریس راستی‌آزمایی زیرساخت.
-3. **[`TRADING_STRATEGY_SPEC.md`](./TRADING_STRATEGY_SPEC.md)** — مشخصات ماژول شبیه‌سازی استراتژی معاملاتی (مربوط به **فاز ۶** و مستقل از موتور پیش‌بینی).
+<p align="center">
+  <a href="https://chart.manico.es"><img src="https://img.shields.io/badge/Web-chart.manico.es-172b3a?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web application"></a>
+  <a href="https://github.com/manidigit/CHART/actions/workflows/build-apk.yml"><img src="https://img.shields.io/badge/Android-APK%20workflow-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK workflow"></a>
+  <a href="https://github.com/manidigit/CHART"><img src="https://img.shields.io/badge/Platform-Web%20%7C%20Android-4C6FFF?style=for-the-badge" alt="Web and Android"></a>
+  <a href="https://github.com/manidigit/CHART/blob/main/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.23-8B6CEF?style=for-the-badge" alt="Master Spec version 1.23"></a>
+</p>
 
-> **قانون الزامی برای تمام هوش‌های مصنوعی (به‌روزرسانی خودکار و درجا بدون نیاز به یادآوری کاربر):**
-> هر زمان پس از بررسی، بحث و چکش‌کاری با کاربر روی یک موضوع به **جمع‌بندی یا نتیجه** رسیدید (تصحیح یک اشتباه قبلی، تغییر یک تصمیم، حذف یک مورد منسوخ یا اضافه‌شدن یک بخش جدید که قبلاً نبوده)، **بلافاصله و به‌صورت خودجوش (بدون اینکه کاربر مجبور به یادآوری باشد)** بخش مربوطه را در اسناد بالا **درجا (In-Place)** ویرایش، جایگزین، حذف یا اضافه کنید. هرگز به انتهای اسناد وصله‌پینه یا تبصره نچسبانید. اسناد مخزن باید در هر لحظه ۱۰۰٪ به‌روز و کامل باشند تا در صورت اتمام سقف پیام (Limit) و ادامه کار با یک هوش مصنوعی دیگر، هیچ تصمیمی جا نمانده باشد.
-
----
-
-## ۲. راهنمای مهم برای هوش‌های مصنوعی و توسعه‌دهندگان: محل ذخیره متغیرهای محرمانه (GitHub Secrets)
-
-> **توجه (الزامی برای تمام مدل‌های هوش مصنوعی مانند ChatGPT، Gemini، Claude، Grok و توسعه‌دهندگان):**
-> به دنبال رمزهای عبور، آدرس هاست، توکن cPanel، مشخصات دیتابیس یا کلید API در داخل فایل‌های کد، فایل `.env` یا تاریخچه مخزن نگردید و **مجدداً از مالک پروژه درخواست ارسال آن‌ها را نکنید**.
-
-تمامی **۸ پارامتر محرمانه زیر** در تاریخ `2026-11-06` توسط مالک پروژه در بخش **GitHub Repository Settings → Secrets and variables → Actions (`Repository secrets`)** ذخیره و تست شده‌اند و در فایل‌های `.github/workflows/*.yml` از طریق `${{ secrets.<NAME> }}` در دسترس هستند:
-
-| ردیف | نام Secret در GitHub Actions | وضعیت | کاربرد |
-|---:|---|---|---|
-| 1 | `CPANEL_API_TOKEN` | **ذخیره‌شده و تست‌شده** | توکن UAPI سی‌پنل برای استقرار کنترل‌شده روی هاست |
-| 2 | `CPANEL_DOCROOT` | **ذخیره‌شده و تست‌شده** | مسیر پوشه ساب‌دامین `chart.manico.es` روی هاست |
-| 3 | `CPANEL_HOST` | **ذخیره‌شده و تست‌شده** | آدرس سرور سی‌پنل |
-| 4 | `CPANEL_USERNAME` | **ذخیره‌شده و تست‌شده** | نام کاربری اکانت سی‌پنل |
-| 5 | `DB_NAME` | **ذخیره‌شده و تست‌شده** | نام دیتابیس MariaDB (`DB_HOST` در داخل سرور `localhost` است) |
-| 6 | `DB_PASSWORD` | **ذخیره‌شده و تست‌شده** | رمز عبور دیتابیس MariaDB |
-| 7 | `DB_USER` | **ذخیره‌شده و تست‌شده** | نام کاربری دیتابیس MariaDB |
-| 8 | `TWELVE_DATA_API_KEY` | **ذخیره‌شده و تست‌شده** | کلید API سرویس Twelve Data برای کانال اولویت‌دار دریافت داده |
+<p align="center">
+  <a href="#overview">Overview</a> ·
+  <a href="#product">Product</a> ·
+  <a href="#architecture">Architecture</a> ·
+  <a href="#roadmap">Roadmap</a> ·
+  <a href="#data-sources">Data sources</a> ·
+  <a href="#documentation">Documentation</a>
+</p>
 
 ---
 
-## ۳. ده اصل و استاندارد پایه مهندسی نرم‌افزار و قانون «هر جزء/الگوریتم در یک فایل مستقل» (الزامی از روز اول در فاز ۱ — `DECIDED`)
+## Overview
 
-1. **معماری دوزبانه کامل (`فارسی fa` + `English en`) با ۲ فایل مستقل استرینگ، شروع پیش‌فرض فارسی (`RTL` + `Dark`) و ممنوعیت مطلق متن Hardcode:**
-   - **اندروید:** `app/src/main/res/values/strings.xml` (انگلیسی) و `app/src/main/res/values-fa/strings.xml` (فارسی).
-   - **وب:** `host_subdomain/i18n/en.json` (انگلیسی) و `host_subdomain/i18n/fa.json` (فارسی).
-   - برنامه در اولین اجرا با **زبان فارسی (`RTL`) و تم تیره مالی (`Dark`)** باز می‌شود و در تنظیمات در لحظه قابل تغییر به انگلیسی (`LTR`) یا تم روشن است. اعداد، قیمت‌ها (`OHLC`)، نمادها (`SPOTBRENT`, `XAUUSD`) و تایم‌فریم‌ها همیشه با ارقام لاتین و جهت `LTR` نمایش داده می‌شوند.
-2. **سیستم متمرکز تم و رنگ‌ها (`Centralized Theme & Design Tokens`):** تعریف تمام رنگ‌ها، فونت‌ها و ابعاد در `Theme.kt` (اندروید) و متغیرهای `:root` (وب) با پشتیبانی از تم `Dark` و `Light`.
-3. **مدیریت متمرکز تنظیمات و ثابت‌ها (`Centralized AppConfig`):** نگهداری آدرس پایه API (`https://chart.manico.es/api/v1/`)، تایم‌فریم‌ها و کلیدهای ذخیره‌سازی در یک نقطه واحد.
-4. **معماری مویرگی و جداسازی کامل فایل‌ها، کتابخانه‌ها و الگوریتم‌ها (`Granular File-Per-Component & File-Per-Algorithm` — `DECIDED`):**
-   - **ممنوعیت مطلق فایل‌های یک‌کاسه و طولانی:** ریختن چند صفحه، چند منبع داده یا چند الگوریتم داخل یک فایل واحد اکیداً ممنوع است (حجم هدف هر فایل: ۸۰ تا ۲۵۰ خط).
-   - **هر جزء در فایل مستقل خودش (طبق درخت کامل بخش `3.3.ج` سند اصلی):**
-     - هر صفحه (`LoginScreen`, `WatchlistScreen`, `ChartViewScreen`, `SettingsScreen`) در فایل جداگانه.
-     - هر کامپوننت (`ChartTabBar`, `WatchlistRowCard`, `SourceBadgeChip`, `LanguageThemeSelector`) در فایل جداگانه.
-     - هر منبع داده (`TwelveDataAdapter`, `DukascopyAdapter`, `EiaBenchmarkAdapter`, `YahooFinanceAdapter`) در فایل جداگانه در پوشه `providers/`.
-     - هر الگوریتم و اندیکاتور (`SmaCalculator`, `EmaCalculator`, `BollingerBandsCalculator`, `RsiCalculator`, `MacdCalculator`, `AtrCalculator`, `TimeframeAggregator`, `GapDetector`) در فایل کتابخانه‌ای مستقل خودش در پوشه `algorithms/`؛ تا برای بررسی، اصلاح یا ارتقای هر بخش فقط همان فایل کوچک ویرایش شود.
-5. **قرارداد یکپارچه پاسخ و خطای API (`Unified API Envelope`):** بازگرداندن `error_code` و `message_key` از سرور تا پیام خطا به زبان انتخابی کاربر (`fa`/`en`) نمایش داده شود.
-6. **استاندارد قطعی زمان `UTC` (با لنگر کندلی `00:00:00 UTC` برای تمام تایم‌فریم‌ها) و دقت اعشاری قیمت‌ها `DECIMAL(18,8)` در دیتابیس MariaDB (ممنوعیت `FLOAT`/`DOUBLE`).**
-7. **ماشین وضعیت صریح رابط کاربری (`Loading`, `Empty`, `Success`, `Error + Retry`, `Offline`).**
-8. **حفظ پایدار وضعیت تب‌های باز در `Chart View`، زبان و تنظیمات در حافظه محلی (`DataStore` / `LocalStorage`).**
-9. **تست‌پذیری و دسترس‌پذیری (`Modifier.testTag` / `data-testid` با فرمت `snake_case` و حداقل ابعاد لمسی `48dp`).**
-10. **مهاجرت دیتابیس غیرمخرب (`Non-Destructive Idempotent Migrations`) و مسیر `Rollback` در استقرار روی هاست اصلی.**
+**CHART Intelligence** is being built as an independent platform for viewing and analyzing financial market charts across multiple timeframes. The project combines an Android application with a web application and a modular data-provider architecture.
 
----
+The engineering direction prioritizes reliable market-series identity, consistent UTC candle boundaries, independently testable algorithms, and a feedback process for evaluating forecast quality.
 
-## ۴. نقشه راه ۶ فازی توسعه (ساخت ⬅ بیلد و نصب ⬅ تست عملی ⬅ تایید برای فاز بعد)
+> **Project status:** Phase 1 implementation is present in the repository. Phases 2–6 are roadmap items and must not be interpreted as shipped capabilities.
 
-> **قاعده اجرایی قطعی (`DECIDED`):** در هر نوبت کدنویسی **فقط یک فاز** ساخته می‌شود. پس از بیلد، نصب و تست عملی توسط مالک پروژه و دریافت تأیید («اوکی بود، برو فاز بعدی»)، کدنویسی فاز بعدی آغاز می‌شود.
+## Product
 
-| فاز | عنوان و محدوده دقیق فاز | خروجی قابل تست توسط مالک پروژه |
+### Current foundation — Phase 1
+
+- **Web + Android:** responsive web application and Android APK project.
+- **Bilingual interface:** Persian (RTL) and English (LTR), with Persian as the initial language.
+- **Watchlist:** initial Gold and Brent instruments with configurable data-source selection.
+- **Multi-tab chart workspace:** open and retain multiple chart tabs.
+- **Personal access:** first-run personal login flow.
+- **Centralized presentation:** dark/light theme foundation and shared design conventions.
+- **Market-data adapters:** provider integrations are organized as separate modules.
+
+### Planned capabilities
+
+| Phase | Focus | Planned outcome |
 |---:|---|---|
-| **فاز ۱ (پیاده‌سازی‌شده)** | **اسکلت ماژولار و دوزبانه (`fa`/`en`)، تعریف حساب شخصی در اولین ورود، واچ‌لیست پیش‌فرض طلا و نفت برنت با دکمه به‌روزرسانی و `Chart View` چندتب** | ۱) شروع پیش‌فرض با فارسی (`RTL`) و تم تیره مالی و تغییر آنی زبان/تم در تنظیمات؛ ۲) تعریف نام کاربری و رمز عبور شخصی مالک در اولین ورود؛ ۳) حضور پیش‌فرض طلا (`XAUUSD`) و نفت برنت (`SPOTBRENT`) در واچ‌لیست و امکان انتخاب/تغییر منبع داده (`Twelve Data`, `Dukascopy`, `EIA`, `Yahoo Finance`) در تنظیمات؛ ۴) زدن دکمه **«به‌روزرسانی تا این لحظه (`Sync / Update Now`)»**؛ ۵) باز کردن نفت در `Chart View`، برگشت به واچ‌لیست و باز کردن طلا در **تب جدید کنار تب نفت** بدون بسته‌شدن نمودار قبلی. |
-| **فاز ۲** | **۶ گروه اندیکاتور تکنیکال پایه (هر کدام در فایل الگوریتمی مستقل) و تغییر تایم‌فریم روی تب‌های `Chart View`** | تغییر بازه زمانی نمایش (`M15`, `M30`, `H1`, `H4`, `D1` با لنگر `00:00 UTC`) و روشن/خاموش کردن ۶ گروه اندیکاتور پایه (`SMA 20/50`, `EMA 20` با Seed `SMA`, `Bollinger Bands 20,2` با `ddof=0`, `RSI 14` با Wilder RMA, `MACD 12,26,9`, `ATR 14` با Wilder RMA) به‌صورت مستقل روی هر تب باز. |
-| **فاز ۳** | **تشخیص هوشمند Gap، ورود فایل تاریخی (`EIA 1987` / `DataHub`) و Backup/Restore رمزنگاری‌شده** | پر کردن خودکار کندل‌های جاافتاده، آپلود آرشیو تاریخی روزانه برنت از سال ۱۹۸۷ و تهیه/بازیابی بکاپ رمزنگاری‌شده دیتابیس از داخل تنظیمات. |
-| **فاز ۴** | **موتور تحلیل ساختار بازار و پیش‌بینی نسخه اول (`Prediction Engine v1`)** | تشخیص خودکار روند (`صعودی / نزولی / خنثی`)، سطوح حمایت/مقاومت، صدور پیش‌بینی تغییرناپذیر (`Immutable`) در افق‌های `15m`, `1h`, `4h`, `1d` و رسم بازه پیش‌بینی روی نمودار. |
-| **فاز ۵** | **حلقه بازخورد زنده (`Live Feedback Loop`)، کارنامه دقت و یادگیری تطبیقی (`Adaptive Governance`)** | مقایسه خودکار پیش‌بینی‌های قبلی با کندل‌های واقعیِ تازه‌بسته‌شده، نمایش جدول درصد دقت هر نمودار، ارزیابی `Walk-Forward` و ارتقای کنترل‌شده مدل (`Champion/Challenger` + `Rollback`). |
-| **فاز ۶** | **شبیه‌ساز مستقل استراتژی معاملاتی و پنل مدیریت چندکاربره** | شبیه‌سازی سرمایه فرضی (`EUR 1,000` با ریسک `1%` و هزینه‌های واقعی بدون ارسال سفارش واقعی) + پنل ساخت نام کاربری و رمز عبور برای سایر افراد در تنظیمات. |
+| 1 | Product foundation | Modular Web/Android app, localization, login, watchlist and multi-tab charts |
+| 2 | Technical indicators | M15/M30/H1/H4/D1 and SMA, EMA, Bollinger Bands, RSI, MACD and ATR |
+| 3 | Data integrity | Gap detection, historical imports and encrypted backup/restore |
+| 4 | Prediction Engine v1 | Market-structure analysis, support/resistance and immutable forecasts |
+| 5 | Live feedback | Forecast scoring, Walk-Forward evaluation and controlled model governance |
+| 6 | Strategy simulator | Independent strategy simulation and multi-user administration |
+
+The roadmap is governed by a build → install → practical test → owner approval gate. Work on a later phase starts only after the current phase has been tested and approved.
+
+## Architecture
+
+The repository separates the Android client, web client, PHP API, data-provider adapters and database migrations.
+
+```mermaid
+flowchart TB
+    subgraph Clients
+      A[Android app<br/>Kotlin · Jetpack Compose]
+      W[Web app<br/>Vanilla JS]
+    end
+
+    subgraph Backend
+      API[PHP REST API]
+      DB[(MariaDB)]
+      MIG[Database migrations]
+    end
+
+    subgraph MarketData
+      TD[Twelve Data]
+      DK[Dukascopy]
+      EIA[EIA historical benchmark]
+      YF[Yahoo Finance]
+    end
+
+    A --> API
+    W --> API
+    API --> DB
+    MIG --> DB
+    API --> TD
+    API --> DK
+    API --> EIA
+    API --> YF
+```
+
+This diagram shows the repository's application boundaries and provider direction; it is not a claim that every future workflow or production deployment automation is complete.
+
+### Technology
+
+| Layer | Technology |
+|---|---|
+| Android | Kotlin, Jetpack Compose |
+| Web | Modular Vanilla JavaScript (ES6+) |
+| Chart rendering | TradingView Lightweight Charts |
+| Backend API | PHP |
+| Database | MariaDB |
+| Automation | GitHub Actions |
+| Hosting target | cPanel — `chart.manico.es` |
+
+## Data sources
+
+CHART keeps market-series identity explicit. Spot, CFD and Futures prices are distinct instruments and must not be silently merged.
+
+| Market series | Provider symbol | Intended role |
+|---|---|---|
+| Gold Spot | Twelve Data `XAU/USD` | Primary configured source |
+| Gold | Dukascopy `xauusd` | Alternative source |
+| Brent Oil CFD | Dukascopy `brentcmdusd` | Intraday source |
+| Brent | Twelve Data `XBR/USD` | Optional provider route; plan limits must be handled |
+| Brent Futures | Yahoo Finance `BZ=F` | Separate futures series |
+| Europe Brent Spot Price FOB | EIA `RBRTEd` | Daily historical benchmark |
+
+Historical EIA data: [Europe Brent Spot Price FOB — CSV/XLS source](https://www.eia.gov/dnav/pet/hist_xls/RBRTEd.xls).
+
+Provider availability, plan restrictions, licensing and timeframe coverage must be validated for the selected account and instrument. A provider symbol is not interchangeable with another series merely because both refer to Brent or Gold.
+
+## Repository layout
+
+```text
+.
+├── app/                         # Android application
+├── host_subdomain/
+│   ├── api/v1/                   # PHP REST API and provider adapters
+│   ├── assets/                   # Web styles and JavaScript
+│   ├── i18n/                     # Web translations (fa/en)
+│   └── migrations/               # Database migrations
+├── docs/
+│   ├── PROJECT_GUIDE.md          # Development and operational guide
+│   └── assets/chart-hero.svg     # README artwork
+├── .github/workflows/
+│   └── build-apk.yml             # Manual Android APK build
+├── CHART_INTELLIGENCE_MASTER_SPEC.md
+├── INFRASTRUCTURE_INVENTORY.md
+└── TRADING_STRATEGY_SPEC.md
+```
+
+## Build and delivery
+
+- **Android APK:** run the [Build APK workflow](https://github.com/manidigit/CHART/actions/workflows/build-apk.yml) manually using GitHub Actions. The workflow produces a downloadable artifact.
+- **Web application:** [chart.manico.es](https://chart.manico.es).
+- **Deployment automation:** the current repository inventory records the APK build workflow; a cPanel deployment workflow is a separate pending operational task.
+
+## Documentation
+
+| Document | Purpose |
+|---|---|
+| [Project & Development Guide](docs/PROJECT_GUIDE.md) | Engineering standards, secure configuration, roadmap details, provider matrix and workflow notes |
+| [Master Specification](CHART_INTELLIGENCE_MASTER_SPEC.md) | Product requirements, architecture, algorithms and authoritative project decisions |
+| [Infrastructure Inventory](INFRASTRUCTURE_INVENTORY.md) | Hosting environment, infrastructure evidence, limits and unresolved verification items |
+| [Trading Strategy Specification](TRADING_STRATEGY_SPEC.md) | Independent strategy-simulation module specification |
+
+The Master Specification is the source of truth for product and architecture decisions. The Project Guide is a practical companion and must not override it.
+
+## Project principles
+
+- **Evidence over assumptions:** verify the current repository and documentation before proposing changes.
+- **Modularity:** keep screens, components, providers and algorithms independently maintainable.
+- **Data integrity:** preserve instrument identity, UTC timestamps and decimal price precision.
+- **Security by design:** never commit secrets or place private credentials in public documentation.
+- **Measured forecasting:** future predictions must be evaluated against subsequent market data; planned forecasts are not presented as proven performance.
 
 ---
 
-## ۵. ماتریس منابع داده نفت برنت و طلا و وضعیت `.github/workflows/`
-
-- **ماتریس منابع داده طلا و نفت برنت با تفکیک صریح هویت سری‌ها (`DECIDED`):**
-  - **طلا (`XAU/USD` در `M15`):** منبع اول **`Twelve Data API` (`XAU/USD` — فعال و تست‌شده)** + منبع رایگان دوم **`Dukascopy` (`xauusd` — فعال و تست‌شده)**.
-  - **نفت برنت درون‌روزی (`M15`):** منبع رایگان و تست‌شده آماده کار **`Dukascopy` (`brentcmdusd` — با هویت مستقل `Brent Oil CFD`)** + گزینه **`Twelve Data API` (`XBR/USD`)** در منوی منابع (با تشخیص خودکار محدودیت پلن رایگان `PLAN_RESTRICTED` و سوئیچ تک‌کلیکی) + **`Yahoo Finance` (`BZ=F` با هویت `Brent Futures`)**.
-  - **نفت برنت روزانه تاریخی (`D1` از ۱۹۸۷):** **`EIA Europe Brent Spot Price FOB` (`RBRTEd`)** (`https://www.eia.gov/dnav/pet/hist_xls/RBRTEd.xls`) + مسیر پشتیبان **DataHub (`brent-daily.csv`)**.
-- **وضعیت پوشه `.github/workflows/` (`VERIFIED — 2026-11-06`):**
-  - تست‌های اتصال هاست، دیتابیس MariaDB و APIها با موفقیت انجام و فایل‌های تست موقت (`host-probe.yml`, `twelve-data-poc.yml`, `dukascopy-poc.yml`) پاک‌سازی شدند. تنها فایل موجود در حال حاضر `build-apk.yml` است.
-
-
-
-
+<p align="center">
+  <strong>CHART Intelligence</strong><br>
+  <sub>Analyze clearly. Validate continuously. Improve with evidence.</sub>
+</p>
