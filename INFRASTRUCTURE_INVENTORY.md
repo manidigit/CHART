@@ -127,21 +127,26 @@ The following items have not been established by the supplied screenshots/data:
 
 ## 5.1 Verification priority and acceptance evidence
 
-The following are release gates, not administrative notes:
+The following are release gates for the selected direct-to-production deployment model:
 
 | Priority | Item | Required evidence before production reliance |
 |---|---|---|
 | P0 | Backup and restore | Provider confirmation of schedule/retention/off-site copy plus a successful restore test with timestamp and scope |
 | P0 | PHP 8.3 target | Account-level web runtime and CLI version checks; required extensions and limits recorded |
-| P0 | Secret exposure | Confirm no credentials or private endpoints are committed; rotate any secret found in repository history |
-| P1 | Cron | A real account-level test proving allowed cadence, execution time, lock behavior and logs |
-| P1 | Python/Worker | Runtime/version, package installation, process lifetime, memory/CPU and outbound network verified by a test job |
-| P1 | Database | Least-privilege grants, connection limits, backup inclusion and restore verified |
-| P1 | Network | Outbound HTTPS/DNS and any required provider connectivity tested from the actual account/runtime |
+| P0 | Secret exposure | Confirm no credentials are committed or exposed in workflow logs, public artifacts, frontend bundles or repository history; rotate any exposed secret |
+| P0 | Deployment scope | Verify workflow triggers and branch filters; working branches must not deploy to Production |
+| P0 | Rollback | Demonstrate restoration of previous application release and safe handling of database migrations; record production release identifier |
+| P1 | Database | Least-privilege grants, connection limits, migration test, backup inclusion and restore verified |
+| P1 | Network | Outbound HTTPS/DNS and provider connectivity tested from the actual account/runtime |
+| P1 | Provider/data contract | For XAUUSD and SPOTBRENT separately: exact provider symbol, coverage, rate limits, timezone, price basis, closed-candle semantics and usage rights recorded |
+| P1 | Cron | Account-level test proving allowed cadence, execution time, lock behavior and logs |
+| P1 | Python/Worker | Runtime/version, package installation, process lifetime and resource limits verified; not required for Phase 1 unless implementation depends on it |
 
-Evidence must include verification date, method, observed result and responsible operator. A server-level service status is not sufficient evidence for account-level capability.
+Evidence must include verification date, method, observed result and responsible operator. Server-level service status is not sufficient evidence for account-level capability.
 
-**Automated Host Capability Probe:** Upon first deployment to `https://chart.manico.es`, a token-protected diagnostic endpoint (`/api/v1/system/status`) will automatically inspect and report the account's active PHP SAPI version, loaded extensions (`pdo_mysql`, `curl`, `openssl`, `mbstring`, `bcmath`), `memory_limit`, `max_execution_time`, MariaDB connection health, and outbound HTTPS connectivity to market-data providers.
+**Automated Host Capability Probe:** The token-protected diagnostic endpoint (/api/v1/system/status) should inspect active PHP SAPI version, loaded extensions (pdo_mysql, curl, openssl, mbstring, bcmath), memory_limit, max_execution_time, MariaDB connection health and outbound HTTPS. It must not return secrets, environment values, filesystem paths or internal configuration to unauthenticated users.
+
+**Direct Production deployment rule:** The owner selected direct deployment without a separate staging environment. CI must pass before deployment; branch triggers must be explicit; migrations must be additive/versioned; a known-good release and tested rollback path must exist. A failed P0 gate blocks production-changing releases.
 
 ## 6. Secrets and environment configuration
 
@@ -181,22 +186,24 @@ Actual values must never be committed to Git, pasted into source files, or place
 
 - **Known:** Shared cPanel hosting account with Apache, PHP-FPM service, MariaDB 10.6.28 and cron daemon reported up.
 - **Known:** Account dashboard reports 2 GB physical memory limit, 5 GB disk, 100 GB bandwidth, 20 entry processes and 150 processes.
-- **DECIDED:** Target subdomain for Web Application and PHP REST API is `https://chart.manico.es`.
-- **DECIDED & CONFIGURED (2026-11-06):** All 8 required operational and CI/CD secrets (`CPANEL_API_TOKEN`, `CPANEL_DOCROOT`, `CPANEL_HOST`, `CPANEL_USERNAME`, `DB_NAME`, `DB_PASSWORD`, `DB_USER`, `TWELVE_DATA_API_KEY`) are stored in **GitHub Repository Secrets (Actions)**.
-- **DECIDED:** Every `git push` automatically deploys Web/PHP files to `chart.manico.es` via `cPanel API Token` and builds the installable Android `APK` via GitHub Actions.
-- **TO VERIFY / P0:** Product target PHP 8.3 has not yet been confirmed on the account's web runtime or CLI (verified via `.github/workflows/host-probe.yml` on `chart.manico.es`).
-- **TO VERIFY / P0:** Backup availability is not established; `jetbackup5d` was reported down and no successful restore evidence is recorded. Application-level encrypted DB export will be implemented as a safeguard.
-- **Public-repository rule:** Account-specific shared IP, provider server label and internal package identifier are intentionally redacted from this public inventory. Keep operational identifiers in a private approved store if genuinely needed.
+- **DECIDED:** Target subdomain for Web Application and PHP REST API is https://chart.manico.es.
+- **DECIDED:** Phase 1 uses one personal owner account; public registration and operational multi-user support are out of scope. Data model remains extensible for future users.
+- **DECIDED:** Initial chart series are XAUUSD and SPOTBRENT, each on M15 for Phase 1. Exact provider symbol and series metadata remain to be verified independently.
+- **DECIDED:** Owner selected direct deployment to the production host; a separate staging environment is not part of Phase 1.
+- **DECIDED & CONFIGURED (2026-11-06):** All 8 required operational and CI/CD secrets are stored in GitHub Repository Secrets (Actions).
+- **DECIDED:** GitHub Actions builds/deploys the application; workflow trigger/branch filters must be verified so working branches cannot deploy to Production.
+- **TO VERIFY / P0:** PHP 8.3 has not yet been confirmed on the account's web runtime or CLI.
+- **TO VERIFY / P0:** Backup availability is not established; jetbackup5d was reported down and no successful restore evidence is recorded. No production-changing release should proceed until a successful restore test is recorded.
+- **TO VERIFY / P0:** Deployment rollback and database migration rollback have not yet been demonstrated.
+- **TO VERIFY / P1:** Exact XAUUSD and SPOTBRENT provider symbols, coverage, price basis, timestamp semantics, rate limits and usage rights.
 - **Not established:** Whether Python analysis, persistent workers, WebSockets, account-level SSH or external database connections are permitted.
 - **Not decided:** Whether any workload should move to Railway, Render, Fly.io, a VPS, or another managed service.
 - **Not decided:** Whether DuckDB, MotherDuck or another analytical storage option will be used.
-- **Rule:** Do not provision additional paid infrastructure until the existing hosting capabilities have been checked and workload requirements are clear.
-- **Rule:** No paid TradingView subscription is available or planned for the project; product operation must not depend on one.
+- **Rule:** Do not provision additional paid infrastructure until existing hosting capabilities and workload requirements are clear.
+- **Rule:** No paid TradingView subscription is available or planned; product operation must not depend on one.
 - **Rule:** The project does not purchase or centrally fund paid market-data APIs. Free/legal data access and file/manual import are the default priorities.
-- **Rule:** A user may optionally connect their own paid market-data API using their own credential (BYOK). Any resulting subscription, usage charge and provider limits belong solely to that user. No automatic upgrade or charge is permitted.
-- **Rule:** Product core functionality must remain usable without a paid API key. A user's paid key is optional and isolated to that user's chart/access context.
-- **Rule:** No production infrastructure or paid provider subscription may be provisioned without explicit owner approval.
-
+- **Rule:** A user's paid market-data API key is optional BYOK; no automatic upgrade or charge is permitted.
+- **Rule:** No production infrastructure, paid provider subscription, DNS change, data migration or destructive database action may occur without explicit owner approval.
 
 ## 8. Instructions for AI assistants and developers
 
