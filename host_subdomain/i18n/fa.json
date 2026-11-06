@@ -1,0 +1,21 @@
+{
+  "app_name": "Chart Intelligence",
+  "app_subtitle": "سامانه هوشمند تحلیل نمودارهای مالی · فاز ۱",
+  "nav_watchlist": "واچ‌لیست",
+  "nav_chart_view": "نمای نمودار",
+  "nav_settings": "تنظیمات",
+  "login_setup_title": "تعریف حساب شخصی مالک (ورود اول)",
+  "login_signin_title": "ورود به حساب شخصی",
+  "label_username": "نام کاربری",
+  "label_password": "رمز عبور",
+  "label_confirm_password": "تکرار رمز عبور",
+  "action_create_owner_account": "ثبت حساب شخصی و ورود به برنامه",
+  "action_sign_in": "ورود به برنامه",
+  "action_sign_out": "خروج از حساب",
+  "action_sync_all": "به‌روزرسانی همه تا این لحظه",
+  "action_sync_now": "به‌روزرسانی تا این لحظه",
+  "action_open_chart_view": "نمایش نمودار (Chart View)",
+  "settings_title": "تنظیمات معرفی نمادها، منابع و ظاهر",
+  "symbol_xauusd_name": "طلای جهانی اسپات (XAU/USD)",
+  "symbol_spotbrent_name": "نفت برنت اسپات / CFD (SPOTBRENT)"
+}

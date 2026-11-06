@@ -1,0 +1,8 @@
+{
+  "name": "Chart Intelligence",
+  "description": "Independent multi-horizon financial chart analysis, candle synchronization, and multi-tab interactive charting platform for Gold (XAUUSD) and Brent Oil (SPOTBRENT).",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

@@ -1,0 +1,21 @@
+{
+  "app_name": "Chart Intelligence",
+  "app_subtitle": "Multi-Horizon Financial Chart Analysis · Phase 1",
+  "nav_watchlist": "Watchlist",
+  "nav_chart_view": "Chart View",
+  "nav_settings": "Settings",
+  "login_setup_title": "Create Personal Owner Account (First Run)",
+  "login_signin_title": "Sign In to Personal Account",
+  "label_username": "Username",
+  "label_password": "Password",
+  "label_confirm_password": "Confirm Password",
+  "action_create_owner_account": "Create Owner Account & Enter",
+  "action_sign_in": "Sign In",
+  "action_sign_out": "Sign Out",
+  "action_sync_all": "Sync All Up to Now",
+  "action_sync_now": "Sync Up to Now",
+  "action_open_chart_view": "Chart View",
+  "settings_title": "Settings & Symbol Sources",
+  "symbol_xauusd_name": "Gold Spot (XAU/USD)",
+  "symbol_spotbrent_name": "Brent Crude Oil (SPOTBRENT / CFD)"
+}
