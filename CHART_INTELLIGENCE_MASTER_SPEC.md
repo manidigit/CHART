@@ -886,7 +886,7 @@ Endpointهای سفارش، معاملات واقعی، پرتفوی و مدیر
 
 مالک پروژه این **۸ متغیر محرمانه** را در مسیر **GitHub Repository → Settings → Secrets and variables → Actions (`Repository secrets`)** ثبت کرده است:
 
-1. `CPANEL_API_TOKEN` — توکن دسترسی به cPanel UAPI برای آپلود و استقرار خودکار.
+1. `CPANEL_API_TOKEN` — توکن دسترسی به cPanel UAPI برای Workflow استقرار هدف؛ تا زمان پیاده‌سازی Deployment Workflow واقعی، مصرف عملیاتی آن در CI/CD تأیید نشده است.
 2. `CPANEL_DOCROOT` — مسیر پوشه ساب‌دامین `chart.manico.es` روی هاست.
 3. `CPANEL_HOST` — آدرس سرور cPanel.
 4. `CPANEL_USERNAME` — نام کاربری اکانت cPanel.
