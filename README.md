@@ -1,13 +1,13 @@
 # Chart Intelligence (`chart.manico.es` · Web & Android APK)
 
-موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.16`)**.
+موتور مستقل تحلیل و پیش‌بینی نمودارهای مالی در افق‌های زمانی چندگانه، همراه با حلقه بازخورد زنده (Live Feedback Loop) و ارزیابی تاریخی Walk-Forward، منطبق با سند مرجع **`CHART_INTELLIGENCE_MASTER_SPEC.md` (نسخه `1.17`)**.
 
 ---
 
 ## ۱. اسناد مرجع پروژه (Source of Truth) و قانون به‌روزرسانی خودکار
 
 پیش از هرگونه تغییر در معماری، کدنویسی یا تنظیمات، این ۳ سند باید مطالعه شوند:
-1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) و اولویت‌های اجرایی (نسخه `1.16`).
+1. **[`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)** — سند مرجع اصلی محصول، معماری داده، قرارداد خروجی پیش‌بینی (`forecast-contract/v1`) و اولویت‌های اجرایی (نسخه `1.17`).
 2. **[`INFRASTRUCTURE_INVENTORY.md`](./INFRASTRUCTURE_INVENTORY.md)** — مشخصات فنی هاست cPanel، ساب‌دامین `https://chart.manico.es`، دیتابیس MariaDB و ماتریس راستی‌آزمایی زیرساخت.
 3. **[`TRADING_STRATEGY_SPEC.md`](./TRADING_STRATEGY_SPEC.md)** — مشخصات ماژول شبیه‌سازی استراتژی معاملاتی (مرحله بعدی و مستقل از موتور پیش‌بینی).
 
@@ -42,4 +42,4 @@
 - **نسخه اندروید:** خروجی فایل نصبی **`APK`** که به‌صورت خودکار در GitHub Actions بیلد می‌شود و به API مرکزی روی `https://chart.manico.es/api/v1/` متصل است.
 - **حذف نسخه دسکتاپ/ویندوز:** نسخه نصبی ویندوز/دسکتاپ خارج از دامنه پروژه است.
 - **محدوده فاز اول:** یک حساب شخصی، Watchlist، دو نمودار مستقل **XAUUSD** و **SPOTBRENT** در تایم‌فریم **M15**، انتخاب Provider برای هر نمودار، دریافت/اعتبارسنجی/ذخیره کندل در MariaDB، نمایش کندل و شش گروه اندیکاتور پایه. Prediction Engine و Trading Strategy خارج از این فاز هستند.
-- **استقرار:** انتشار مستقیم روی هاست Production طبق تصمیم مالک؛ CI، تست قبل از انتشار، Backup/Restore، branch filter و rollback الزامی‌اند. Push به branch کاری نباید Production را تغییر دهد.
+- **استقرار:** مالک استقرار مستقیم روی هاست Production را انتخاب کرده است؛ اما در بازبینی 2026-11-06 هنوز Deployment Workflow وب/PHP در مخزن وجود نداشت. build-apk.yml فقط با اجرای دستی APK را به‌صورت artifact می‌سازد. ایجاد Deployment Workflow، CI، تست قبل از انتشار، Backup/Restore، branch filter و rollback پیش‌نیاز انتشار واقعی هستند.
