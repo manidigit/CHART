@@ -2,7 +2,7 @@
 
 **Project:** Chart Intelligence  
 **Document status:** Initial inventory — partially verified  
-**Last updated:** 2026-11-05  
+**Last updated:** 2026-11-06  
 **Source:** Hosting account's cPanel Server Information, Statistics, Processor Information and Service Status screens, supplied by the project owner.  
 **Purpose:** Provide a shared infrastructure reference for ChatGPT, other AI assistants and developers. This document records observed infrastructure facts, distinguishes them from assumptions, and lists items that still require verification.
 
@@ -135,15 +135,21 @@ For every application secret, the project must document:
 
 Actual values must be supplied through the approved secret store or deployment environment, never committed to Git, pasted into source files, or placed in public project documentation. GitHub documentation should tell an authorized operator where to configure or retrieve each secret without exposing its value.
 
+
 ## 7. Current status and decision log
 
 - **Known:** Shared cPanel hosting account with Apache, PHP-FPM service, MariaDB 10.6.28 and cron daemon reported up.
 - **Known:** Account dashboard reports 2 GB physical memory limit, 5 GB disk, 100 GB bandwidth, 20 entry processes and 150 processes.
-- **Not established:** Whether Python analysis, persistent workers, WebSockets or external database connections are permitted.
+- **Not established:** Whether Python analysis, persistent workers, WebSockets, account-level SSH or external database connections are permitted.
 - **Not decided:** Whether any workload should move to Railway, Render, Fly.io, a VPS, or another managed service.
 - **Not decided:** Whether DuckDB, MotherDuck or another analytical storage option will be used.
-- **Rule:** Do not provision additional paid infrastructure until the existing hosting capabilities have been checked and the workload requirements are clear.
-- **Rule:** Do not begin implementation or coding solely on the basis of this inventory; infrastructure assessment and product/architecture documentation come first.
+- **Rule:** Do not provision additional paid infrastructure until the existing hosting capabilities have been checked and workload requirements are clear.
+- **Rule:** No paid TradingView subscription is available or planned for the project; product operation must not depend on one.
+- **Rule:** The project does not purchase or centrally fund paid market-data APIs. Free/legal data access and file/manual import are the default priorities.
+- **Rule:** A user may optionally connect their own paid market-data API using their own credential (BYOK). Any resulting subscription, usage charge and provider limits belong solely to that user. No automatic upgrade or charge is permitted.
+- **Rule:** Product core functionality must remain usable without a paid API key. A user's paid key is optional and isolated to that user's chart/access context.
+- **Rule:** No production infrastructure or paid provider subscription may be provisioned without explicit owner approval.
+
 
 ## 8. Instructions for AI assistants and developers
 
@@ -155,3 +161,5 @@ Actual values must be supplied through the approved secret store or deployment e
 6. Do not request that secrets be committed to GitHub.
 7. Do not create paid services, migrate data, change DNS, expose database ports or modify production infrastructure without explicit owner approval.
 8. Preserve the product boundary: analysis and decision support only; no automatic order execution.
+9. Keep user-supplied API credentials isolated by user and provider. Never expose a key to another user, return it in API responses, log it, or commit it to the repository.
+10. Paid provider APIs are optional BYOK integrations only; the product must not require or centrally fund them.
