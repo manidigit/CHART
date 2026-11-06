@@ -189,6 +189,7 @@ Actual values must never be committed to Git, pasted into source files, or place
 - **DECIDED (Pre-Development Audit — 2026-11-06):**
   - **Phase 1 Scope:** Base data ingestion, storage, Watchlist management, and chart/indicator rendering only (**no Prediction Engine in Phase 1**).
   - **Initial POC Charts & Timeframe:** Both `XAUUSD` and `SPOTBRENT` in `M15` (with open Watchlist catalog and timeframe display switching `M15/M30/H1/H4/D1`).
+  - **Brent Data Architecture (`Twelve Data` + `EIA` + `DataHub`):** `Twelve Data API` (using stored `TWELVE_DATA_API_KEY`) is the primary provider for `M15` intraday candles; **`EIA Europe Brent Spot Price FOB` (`RBRTEd`, daily from May 20, 1987, USD/barrel, free direct download `https://www.eia.gov/dnav/pet/hist_xls/RBRTEd.xls` & free API)** is the official daily historical benchmark (`D1`) for validation and long-term daily backtesting; **DataHub (`brent-daily.csv` at `https://datahub.io/core/oil-prices`)** is the fallback archive path.
   - **Deployment Policy:** Controlled direct deployment to the primary host (`chart.manico.es`) with pre-release checks, non-destructive DB updates, and tested Rollback.
   - **Authentication:** Single personal account in Phase 1; multi-user-ready MariaDB schema from day one.
   - **6 Core Indicator Groups:** `SMA (20, 50)` (one group with two periods), `EMA (20)`, `Bollinger Bands (20, 2)`, `RSI (14)`, `MACD (12, 26, 9)`, and `ATR (14)`.
