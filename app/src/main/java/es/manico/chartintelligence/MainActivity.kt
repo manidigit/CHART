@@ -32,16 +32,12 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.credentials.ClearCredentialStateRequest
-import androidx.credentials.CredentialManager
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import es.manico.chartintelligence.ui.screens.ChartViewScreen
@@ -51,9 +47,6 @@ import es.manico.chartintelligence.ui.screens.WatchlistScreen
 import es.manico.chartintelligence.ui.state.MainViewModel
 import es.manico.chartintelligence.ui.state.WorkspaceScreen
 import es.manico.chartintelligence.ui.theme.ChartIntelligenceTheme
-import kotlinx.coroutines.NonCancellable
-import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -69,20 +62,10 @@ class MainActivity : ComponentActivity() {
 fun ChartIntelligenceApp(
     mainViewModel: MainViewModel = viewModel()
 ) {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
 
     val handleSignOut: () -> Unit = {
-        coroutineScope.launch {
-            withContext(NonCancellable) {
-                runCatching {
-                    CredentialManager.create(context)
-                        .clearCredentialState(ClearCredentialStateRequest())
-                }
-                mainViewModel.signOut()
-            }
-        }
+        mainViewModel.signOut()
     }
 
     ChartIntelligenceTheme(
@@ -224,9 +207,7 @@ fun ChartIntelligenceApp(
                         onSignInOwner = mainViewModel::signInOwner,
                         onSetAuthMode = mainViewModel::setAuthMode,
                         onRequestPasswordRecoveryCode = mainViewModel::requestPasswordRecoveryCode,
-                        onConfirmPasswordRecovery = mainViewModel::confirmPasswordRecovery,
-                        onGoogleIdTokenReceived = mainViewModel::signInWithGoogleIdToken,
-                        onGoogleSignInFailed = mainViewModel::onGoogleSignInFailed
+                        onConfirmPasswordRecovery = mainViewModel::confirmPasswordRecovery
                     )
                 } else {
                     when (state.currentScreen) {

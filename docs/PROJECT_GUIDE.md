@@ -69,13 +69,13 @@
 12. **میز کار حرفه‌ای نمودار چندپنلی (`Multi-Pane Professional Chart Workspace`):** نمودار قلب اصلی برنامه است و ۸۰٪ تا ۸۵٪ فضای صفحه را بدون اسکرول عمودی صفحه به خود اختصاص می‌دهد؛ تایم‌فریم‌ها (`15m`, `1h`, `4h`, `1D`) و بازه‌های تاریخی (`1D`, `5D`, `1M`, `3M`, `YTD`, `1Y`, `All`) در یک ردیف واحد بالای نمودار ادغام شده‌اند؛ بوم نمودار دارای پنل اصلی قیمت (`~78%`)، خط افقی نقطه‌چین و برچسب رنگی قیمت فعلی روی محور راست، کراس‌هیر با کادر قیمت و کادر زمان UTC روی محورها، اندیکاتور `SMA 20` و پنل مستقل حجم معاملات (`~22%` قابل تغییر ارتفاع و جمع‌شدن) در پایین است؛ و ابزارهای ترسیم دارای انتخابگر رنگ و ضخامت اختصاصی برای هر خط هستند (در موبایل و اندروید به‌صورت نوار شناور تاشو بالای منوی پایین).
 13. **ماژول تحلیل تکنیکال و محاسباتی:** ارزیابی شاخص‌های نوسان (دامنه، سقف/کف، ATR 14) و نقاط پیوت کلاسیک کف بازار بر اساس محاسبات ریاضی دقیق روی کندل‌های واقعی و بدون داده‌های شبیه‌سازی‌شده یا موک.
 14. **استانداردهای جامعه متن‌باز و نگهداری بلندمدت (`Open-Source Readiness`):** ۵ سند مرجع متن‌باز در ریشه (`ARCHITECTURE.md`، `CONTRIBUTING.md`، `AGENTS.md`، `SECURITY.md`، `CHANGELOG.md`)؛ تفکیک هماهنگ‌کننده‌های ویومدل اندروید در `ui/state/coordinators/` (`ChartDrawingCoordinator.kt`، `SymbolCatalogCoordinator.kt`، `ChartPreferenceCoordinator.kt`)؛ و ماژولارسازی کامل وب با Native ES6 Modules در `assets/js/` بدون باندلر خارجی.
-15. **احراز هویت یکپارچه وب و اندروید، ورود با گوگل و بازیابی رمز با ایمیل (`Unified Auth & Recovery`):** همگام‌سازی حساب مالک بین اندروید و وب از طریق `api/v1/auth.php` و ورود با حساب گوگل (`CredentialManager` + Firebase Auth + Firestore `UserAccountRepository`)، ذخیره ایمیل بازیابی، جریان ۲ مرحله‌ای بازیابی رمز عبور با کد ۶ رقمی ایمیل، و نمایش نشان کاربر فعال به همراه دکمه خروج (`Sign Out`) در نوار هدر بالای صفحه وب و اندروید.
+15. **احراز هویت یکپارچه وب و اندروید و بازیابی رمز با ایمیل (`Unified Auth & Recovery`):** همگام‌سازی حساب مالک بین اندروید و وب مستقیماً از طریق سرور اختصاصی (`api/v1/auth.php` بدون وابستگی به سرویس‌های خارجی مانند Firebase)، ذخیره ایمیل بازیابی، جریان ۲ مرحله‌ای بازیابی رمز عبور با کد ۶ رقمی ایمیل، و نمایش نشان کاربر فعال به همراه دکمه خروج (`Sign Out`) در نوار هدر بالای صفحه وب و اندروید.
 
 ### نمونه جداسازی ماژول‌ها
 
 - **اسناد ریشه:** `ARCHITECTURE.md`, `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md`, `CHANGELOG.md`, `CHART_INTELLIGENCE_MASTER_SPEC.md`
 - **صفحات اندروید:** `LoginScreen`, `WatchlistScreen`, `ChartViewScreen`, `SettingsScreen`
-- **هماهنگ‌کننده‌ها و ریپازیتوری‌های اندروید:** `ChartDrawingCoordinator`, `SymbolCatalogCoordinator`, `ChartPreferenceCoordinator`, `MainViewModel`, `WorkspaceRepository`, `UserAccountRepository`
+- **هماهنگ‌کننده‌ها و ریپازیتوری‌های اندروید:** `ChartDrawingCoordinator`, `SymbolCatalogCoordinator`, `ChartPreferenceCoordinator`, `MainViewModel`, `WorkspaceRepository`
 - **اجزای UI اندروید:** `MultiTabHeader`, `ChartTopBar`, `DrawingToolsRail`, `CandlestickCanvas`, `TabItemCard`, `ThemeSelector`, `TimeframeSelector`
 - **ماژول‌های وب (`host_subdomain/assets/js/`):**
   - `core/store.js` (مدیریت وضعیت مرکزی و کش)
@@ -140,7 +140,7 @@
 طبق بررسی ثبت‌شده در 2026-11-06 و به‌روزرسانی 2026-11-07، Workflowهای آزمایشی اتصال هاست، دیتابیس و Providerها پس از تست پاک‌سازی شده‌اند و فایل اصلی در `.github/workflows/` عبارت است از:
 
 - `build-apk.yml` — اجرا با هر Push روی شاخه `main` و همچنین اجرای دستی (`workflow_dispatch`):
-  1. **Job 1 (`Build Android APK`):** بازسازی کلید امضای ثابت و یکسان `CANONICAL_B64` (دقیقاً مطابق الگوی مخزن `Yadin` با اثر انگشت ثابت `SHA1: 38:C6:57:E4:12:4A:90:85:94:BA:0C:B3:C2:A3:A9:F8:F5:3B:E1:6B` در `debug.keystore` و `app/build.gradle.kts`) و افزایش خودکار `versionCode` بر اساس `100 + GITHUB_RUN_NUMBER` (تا هر نسخه جدید APK بدون نیاز به حذف نسخه قبلی به‌صورت آپدیت درجا روی گوشی نصب شود)، تولید خودکار `app/google-services.json` در محیط CI، کامپایل نسخه Debug اندروید (`gradle assembleDebug`) و بارگذاری Artifact خروجی `chart-intelligence-debug-apk`.
+  1. **Job 1 (`Build Android APK`):** بازسازی کلید امضای ثابت و یکسان `CANONICAL_B64` (دقیقاً مطابق الگوی مخزن `Yadin` با اثر انگشت ثابت `SHA1: 38:C6:57:E4:12:4A:90:85:94:BA:0C:B3:C2:A3:A9:F8:F5:3B:E1:6B` در `debug.keystore` و `app/build.gradle.kts`) و افزایش خودکار `versionCode` بر اساس `100 + GITHUB_RUN_NUMBER` (تا هر نسخه جدید APK بدون نیاز به حذف نسخه قبلی به‌صورت آپدیت درجا روی گوشی نصب شود)، کامپایل نسخه Debug اندروید (`gradle assembleDebug`) و بارگذاری Artifact خروجی `chart-intelligence-debug-apk`.
   2. **Job 2 (`Package and Deploy Subdomain Web Files`):** استخراج تا ۵۰۰۰ کندل `PEPPERSTONE:SPOTBRENT` در تایم‌فریم‌های `15m`, `1h`, `4h`, `1d` با اسکریپت پایتون `sync_tvdatafeed.py`، بارگذاری Artifact عمومی پکیج وب و استقرار خودکار روی `chart.manico.es` به همراه ذخیره کندل‌ها در جدول `candles` دیتابیس MariaDB هاست.
 
 ---

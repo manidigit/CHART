@@ -48,7 +48,7 @@ The engineering direction prioritizes reliable market-series identity, consisten
 - **Bilingual interface:** Persian (RTL) and English (LTR), with Persian as the initial language.
 - **Watchlist:** initial Gold and Brent instruments with configurable data-source selection.
 - **Multi-tab chart workspace:** open and retain multiple chart tabs.
-- **Unified personal access & recovery:** cross-platform owner login synced across Web and Android (`auth.php` + Firebase Authentication / Google Sign-In), recovery email registration, 2-step 6-digit email password reset, and top-bar quick sign-out.
+- **Unified personal access & recovery:** cross-platform owner login synced across Web and Android (`auth.php`), recovery email registration, 2-step 6-digit email password reset, and top-bar quick sign-out.
 - **Centralized presentation:** dark/light theme foundation and shared design conventions.
 - **Market-data adapters:** provider integrations are organized as separate modules.
 

@@ -4,8 +4,6 @@ import android.app.Application
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
-import com.google.firebase.auth.FirebaseAuth
-import com.google.firebase.auth.GoogleAuthProvider
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.config.AppConfig
 import es.manico.chartintelligence.data.model.CandleBar
@@ -15,8 +13,6 @@ import es.manico.chartintelligence.data.model.ChartType
 import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
-import es.manico.chartintelligence.data.model.UserAccount
-import es.manico.chartintelligence.data.repository.UserAccountRepository
 import es.manico.chartintelligence.data.repository.WorkspaceRepository
 import es.manico.chartintelligence.i18n.AppLanguage
 import es.manico.chartintelligence.ui.state.coordinators.ChartDrawingCoordinator
@@ -27,7 +23,6 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.tasks.await
 import java.math.BigDecimal
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -72,12 +67,6 @@ data class Phase1UiState(
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = WorkspaceRepository(application)
-    private val userAccountRepository: UserAccountRepository? = runCatching {
-        UserAccountRepository(application)
-    }.getOrNull()
-    private val firebaseAuth: FirebaseAuth? = runCatching {
-        FirebaseAuth.getInstance()
-    }.getOrNull()
     private val drawingCoordinator = ChartDrawingCoordinator(repository)
     private val symbolCoordinator = SymbolCatalogCoordinator(repository)
     private val preferenceCoordinator = ChartPreferenceCoordinator(repository)
@@ -105,31 +94,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         isOwnerRegistered = true,
                         ownerUsername = serverStatus.username.ifBlank { it.ownerUsername },
                         ownerEmail = serverStatus.email.ifBlank { it.ownerEmail }
-                    )
-                }
-            }
-            val currentUser = firebaseAuth?.currentUser
-            if (currentUser != null && !currentUser.email.isNullOrBlank()) {
-                val synced = repository.syncGoogleOwnerWithServer(
-                    email = currentUser.email.orEmpty(),
-                    displayName = currentUser.displayName.orEmpty()
-                )
-                runCatching {
-                    userAccountRepository?.upsertUserAccount(
-                        username = synced.username,
-                        email = synced.email,
-                        languageCode = _uiState.value.language.code,
-                        isDarkTheme = _uiState.value.isDarkTheme
-                    )
-                }
-                _uiState.update {
-                    it.copy(
-                        isOwnerRegistered = true,
-                        isAuthenticated = true,
-                        ownerUsername = synced.username,
-                        ownerEmail = synced.email,
-                        authErrorResId = null,
-                        authInfoResId = null
                     )
                 }
             }
@@ -247,49 +211,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    fun signInWithGoogleIdToken(idToken: String) {
-        viewModelScope.launch {
-            runCatching {
-                val credential = GoogleAuthProvider.getCredential(idToken, null)
-                val authResult = firebaseAuth?.signInWithCredential(credential)?.await()
-                val user = authResult?.user ?: firebaseAuth?.currentUser
-                val email = user?.email.orEmpty()
-                val displayName = user?.displayName.orEmpty()
-                if (user != null && email.isNotEmpty()) {
-                    val synced = repository.syncGoogleOwnerWithServer(email, displayName)
-                    runCatching {
-                        userAccountRepository?.upsertUserAccount(
-                            username = synced.username,
-                            email = synced.email,
-                            languageCode = _uiState.value.language.code,
-                            isDarkTheme = _uiState.value.isDarkTheme
-                        )
-                    }
-                    _uiState.update {
-                        it.copy(
-                            isOwnerRegistered = true,
-                            isAuthenticated = true,
-                            ownerUsername = synced.username,
-                            ownerEmail = synced.email,
-                            authMode = AuthScreenMode.LOGIN,
-                            authErrorResId = null,
-                            authInfoResId = null,
-                            currentScreen = WorkspaceScreen.WATCHLIST
-                        )
-                    }
-                } else {
-                    _uiState.update { it.copy(authErrorResId = R.string.error_google_sign_in_failed) }
-                }
-            }.onFailure {
-                _uiState.update { it.copy(authErrorResId = R.string.error_google_sign_in_failed) }
-            }
-        }
-    }
-
-    fun onGoogleSignInFailed() {
-        _uiState.update { it.copy(authErrorResId = R.string.error_google_sign_in_failed) }
-    }
-
     fun requestPasswordRecoveryCode(email: String) {
         val cleanEmail = email.trim().lowercase()
         if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
@@ -384,7 +305,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun signOut() {
-        runCatching { firebaseAuth?.signOut() }
         _uiState.update {
             it.copy(
                 isAuthenticated = false,

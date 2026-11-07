@@ -208,42 +208,6 @@ class WorkspaceRepository(context: Context) {
             verifyOwnerCredentials(username, password)
         }
 
-    suspend fun syncGoogleOwnerWithServer(email: String, displayName: String): ServerOwnerStatus =
-        withContext(Dispatchers.IO) {
-            val cleanEmail = email.trim().lowercase()
-            val fallbackUser = displayName.trim().ifBlank { cleanEmail.substringBefore("@") }
-            val currentUser = getOwnerUsername().ifBlank { fallbackUser }
-
-            val remoteResult = runCatching {
-                val payload = JSONObject()
-                    .put("email", cleanEmail)
-                    .put("username", currentUser)
-                val req = Request.Builder()
-                    .url("${AppConfig.API_BASE_URL}auth.php?action=google_sign_in")
-                    .post(payload.toString().toRequestBody(jsonMediaType))
-                    .build()
-                httpClient.newCall(req).execute().use { resp ->
-                    if (resp.isSuccessful) {
-                        val root = JSONObject(resp.body?.string().orEmpty())
-                        if (root.optBoolean("ok", false)) {
-                            val data = root.optJSONObject("data")
-                            val srvUser = data?.optString("owner_username", "").orEmpty().ifBlank { currentUser }
-                            val srvEmail = data?.optString("owner_email", "").orEmpty().ifBlank { cleanEmail }
-                            ServerOwnerStatus(true, srvUser, srvEmail)
-                        } else null
-                    } else null
-                }
-            }.getOrNull()
-
-            val finalUser = remoteResult?.username ?: currentUser
-            val finalEmail = remoteResult?.email ?: cleanEmail
-            prefs.edit()
-                .putString(AppConfig.KEY_OWNER_USERNAME, finalUser)
-                .putString(AppConfig.KEY_OWNER_EMAIL, finalEmail)
-                .apply()
-            ServerOwnerStatus(true, finalUser, finalEmail)
-        }
-
     fun updateOwnerEmailLocal(email: String) {
         prefs.edit().putString(AppConfig.KEY_OWNER_EMAIL, email.trim().lowercase()).apply()
     }

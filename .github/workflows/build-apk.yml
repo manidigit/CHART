@@ -83,55 +83,6 @@ jobs:
             cp .env.example .env
           fi
 
-      - name: Prepare google-services.json for CI Build
-        env:
-          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
-        run: |
-          if [ ! -f app/google-services.json ]; then
-            API_KEY="${FIREBASE_API_KEY:-AIzaSyCIPlaceholderKeyForDebugBuild00000}"
-            cat <<EOF > app/google-services.json
-          {
-            "project_info": {
-              "project_number": "643150512949",
-              "project_id": "my-project-1485866417177",
-              "storage_bucket": "my-project-1485866417177.firebasestorage.app"
-            },
-            "client": [
-              {
-                "client_info": {
-                  "mobilesdk_app_id": "1:643150512949:android:6e93b975c8b83579bd427c",
-                  "android_client_info": {
-                    "package_name": "es.manico.chartintelligence"
-                  }
-                },
-                "oauth_client": [
-                  {
-                    "client_id": "643150512949-1108tnjaq0ralt7rfl3mrl3k5rm789be.apps.googleusercontent.com",
-                    "client_type": 3
-                  }
-                ],
-                "api_key": [
-                  {
-                    "current_key": "$API_KEY"
-                  }
-                ],
-                "services": {
-                  "appinvite_service": {
-                    "other_platform_oauth_client": [
-                      {
-                        "client_id": "643150512949-1108tnjaq0ralt7rfl3k5rm789be.apps.googleusercontent.com",
-                        "client_type": 3
-                      }
-                    ]
-                  }
-                }
-              }
-            ],
-            "configuration_version": "1"
-          }
-          EOF
-          fi
-
       - name: Accept Android SDK Licenses
         run: |
           if [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then

@@ -51,9 +51,8 @@ The software architecture is governed by five core principles:
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Data & Persistence Layer                        │
-│  • Provider Adapters: Twelve Data, Dukascopy, Yahoo Finance, EIA Spot  │
-│  • Identity & Cloud Profile: Firebase Auth (CredentialManager Google   │
-│    Sign-In) + Firestore (`users/{userId}`) + Unified PHP `auth.php`    │
+│  • Provider Adapters: TvDatafeed, Twelve Data, Dukascopy, Yahoo, EIA   │
+│  • Identity & Recovery: Unified PHP `auth.php` + Owner Credentials     │
 │  • Local Storage: SharedPreferences (Android) / LocalStorage (Web)    │
 │  • Remote Backend: PHP REST API (`/api/v1/`) + MariaDB Database       │
 └────────────────────────────────────────────────────────────────────────┘
@@ -75,8 +74,8 @@ The software architecture is governed by five core principles:
 ├── config/                     # Central application configuration & keys
 │   └── AppConfig.kt
 ├── data/
-│   ├── model/                  # Data classes (CandleBar, SymbolConfig, ChartPreferences, UserAccount)
-│   └── repository/             # WorkspaceRepository & UserAccountRepository (Firestore + Server sync)
+│   ├── model/                  # Data classes (CandleBar, SymbolConfig, ChartPreferences)
+│   └── repository/             # WorkspaceRepository (Local + Server sync)
 ├── providers/                  # External data provider adapters
 │   ├── CandleProviderAdapter.kt
 │   ├── DukascopyAdapter.kt

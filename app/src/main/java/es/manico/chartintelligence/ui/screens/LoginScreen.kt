@@ -3,20 +3,17 @@ package es.manico.chartintelligence.ui.screens
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Email
 import androidx.compose.material.icons.outlined.Key
 import androidx.compose.material.icons.outlined.Lock
@@ -26,7 +23,6 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -34,12 +30,10 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -47,17 +41,11 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
-import androidx.credentials.CredentialManager
-import androidx.credentials.CustomCredential
-import androidx.credentials.GetCredentialRequest
-import com.google.android.libraries.identity.googleid.GetSignInWithGoogleOption
-import com.google.android.libraries.identity.googleid.GoogleIdTokenCredential
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.i18n.AppLanguage
 import es.manico.chartintelligence.ui.components.LanguageThemeSelector
 import es.manico.chartintelligence.ui.state.AuthScreenMode
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
-import kotlinx.coroutines.launch
 
 @Composable
 fun LoginScreen(
@@ -76,12 +64,8 @@ fun LoginScreen(
     onSetAuthMode: (AuthScreenMode) -> Unit = {},
     onRequestPasswordRecoveryCode: (String) -> Unit = {},
     onConfirmPasswordRecovery: (String, String, String, String) -> Unit = { _, _, _, _ -> },
-    onGoogleIdTokenReceived: (String) -> Unit = {},
-    onGoogleSignInFailed: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
-    val context = LocalContext.current
-    val coroutineScope = rememberCoroutineScope()
     val financialPalette = LocalFinancialPalette.current
 
     var username by rememberSaveable(initialUsername) { mutableStateOf(initialUsername) }
@@ -449,58 +433,6 @@ fun LoginScreen(
                                     style = MaterialTheme.typography.labelLarge,
                                     fontWeight = FontWeight.Bold
                                 )
-                            }
-
-                            OutlinedButton(
-                                onClick = {
-                                    coroutineScope.launch {
-                                        runCatching {
-                                            val credentialManager = CredentialManager.create(context)
-                                            val signInWithGoogleOption = GetSignInWithGoogleOption.Builder(
-                                                serverClientId = context.getString(R.string.default_web_client_id)
-                                            ).build()
-                                            val request = GetCredentialRequest.Builder()
-                                                .addCredentialOption(signInWithGoogleOption)
-                                                .build()
-                                            val result = credentialManager.getCredential(
-                                                request = request,
-                                                context = context
-                                            )
-                                            val cred = result.credential
-                                            if (
-                                                cred is CustomCredential &&
-                                                cred.type == GoogleIdTokenCredential.TYPE_GOOGLE_ID_TOKEN_CREDENTIAL
-                                            ) {
-                                                val googleIdTokenCredential =
-                                                    GoogleIdTokenCredential.createFrom(cred.data)
-                                                onGoogleIdTokenReceived(googleIdTokenCredential.idToken)
-                                            } else {
-                                                onGoogleSignInFailed()
-                                            }
-                                        }.onFailure {
-                                            onGoogleSignInFailed()
-                                        }
-                                    }
-                                },
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 48.dp)
-                                    .testTag("google_sign_in_button")
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.Center
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.AccountCircle,
-                                        contentDescription = stringResource(R.string.action_sign_in_google)
-                                    )
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    Text(
-                                        text = stringResource(R.string.action_sign_in_google),
-                                        style = MaterialTheme.typography.labelLarge
-                                    )
-                                }
                             }
 
                             if (isOwnerRegistered) {
