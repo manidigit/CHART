@@ -52,8 +52,8 @@ fun ChartTabBar(
             modifier = modifier
                 .fillMaxWidth()
                 .horizontalScroll(scrollState)
-                .padding(vertical = 4.dp),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                .padding(vertical = 2.dp),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
             for (tab in tabs) {
@@ -71,40 +71,40 @@ fun ChartTabBar(
 
                 Row(
                     modifier = Modifier
-                        .heightIn(min = 48.dp)
-                        .clip(RoundedCornerShape(10.dp))
+                        .heightIn(min = 34.dp)
+                        .clip(RoundedCornerShape(8.dp))
                         .background(bgColor)
-                        .border(1.dp, borderColor, RoundedCornerShape(10.dp))
+                        .border(1.dp, borderColor, RoundedCornerShape(8.dp))
                         .clickable { onSelectTab(tab.tabId) }
-                        .padding(start = 12.dp, end = 4.dp, top = 4.dp, bottom = 4.dp)
+                        .padding(start = 10.dp, end = 2.dp, top = 2.dp, bottom = 2.dp)
                         .testTag("chart_tab_${tab.tabId.lowercase()}"),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
                         text = tab.symbolCode,
-                        style = MaterialTheme.typography.labelLarge,
+                        style = MaterialTheme.typography.labelMedium,
                         fontFamily = JetBrainsMonoFontFamily,
                         fontWeight = FontWeight.Bold,
                         color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(5.dp))
                     Text(
                         text = "${tab.provider.badgeLabel} (${tab.timeframe})",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = JetBrainsMonoFontFamily,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    Spacer(modifier = Modifier.width(4.dp))
+                    Spacer(modifier = Modifier.width(2.dp))
                     IconButton(
                         onClick = { onCloseTab(tab.tabId) },
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(28.dp)
                             .testTag("close_tab_${tab.tabId.lowercase()}")
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Close,
                             contentDescription = stringResource(R.string.chart_close_tab),
-                            modifier = Modifier.size(16.dp),
+                            modifier = Modifier.size(14.dp),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }

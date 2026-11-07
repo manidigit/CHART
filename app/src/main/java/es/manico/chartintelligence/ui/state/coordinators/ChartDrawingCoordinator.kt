@@ -18,7 +18,8 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
     fun selectDrawingTool(tab: ChartTabState, tool: DrawingTool): ChartTabState {
         return tab.copy(
             activeDrawingTool = tool,
-            pendingTrendPoint = null
+            pendingTrendPoint = null,
+            isDrawingDockCollapsed = false
         )
     }
 
@@ -32,7 +33,9 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
             DrawingTool.HORIZONTAL_LINE -> {
                 val newDrawing = ChartDrawing.HorizontalLine(
                     id = "hl_${UUID.randomUUID()}",
-                    price = price
+                    price = price,
+                    colorHex = tab.activeDrawingColorHex,
+                    strokeWidthDp = tab.activeDrawingWidthDp
                 )
                 val updatedDrawings = tab.drawings + newDrawing
                 repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
@@ -45,7 +48,9 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
             DrawingTool.VERTICAL_LINE -> {
                 val newDrawing = ChartDrawing.VerticalLine(
                     id = "vl_${UUID.randomUUID()}",
-                    timeUtcMillis = timeUtcMillis
+                    timeUtcMillis = timeUtcMillis,
+                    colorHex = tab.activeDrawingColorHex,
+                    strokeWidthDp = tab.activeDrawingWidthDp
                 )
                 val updatedDrawings = tab.drawings + newDrawing
                 repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
@@ -70,7 +75,9 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                         startTimeUtcMillis = p1.timeUtcMillis,
                         startPrice = p1.price,
                         endTimeUtcMillis = timeUtcMillis,
-                        endPrice = price
+                        endPrice = price,
+                        colorHex = tab.activeDrawingColorHex,
+                        strokeWidthDp = tab.activeDrawingWidthDp
                     )
                     val updatedDrawings = tab.drawings + newDrawing
                     repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
@@ -86,7 +93,52 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
     }
 
     fun selectDrawing(tab: ChartTabState, drawingId: String?): ChartTabState {
-        return tab.copy(selectedDrawingId = drawingId)
+        val selected = tab.drawings.firstOrNull { it.id == drawingId }
+        return tab.copy(
+            selectedDrawingId = drawingId,
+            activeDrawingColorHex = selected?.colorHex ?: tab.activeDrawingColorHex,
+            activeDrawingWidthDp = selected?.strokeWidthDp ?: tab.activeDrawingWidthDp,
+            isDrawingDockCollapsed = if (drawingId != null) false else tab.isDrawingDockCollapsed
+        )
+    }
+
+    fun updateActiveDrawingColor(tab: ChartTabState, colorHex: String): ChartTabState {
+        val targetId = tab.selectedDrawingId
+        val updatedDrawings = if (targetId != null) {
+            tab.drawings.map { d ->
+                if (d.id != targetId) d else when (d) {
+                    is ChartDrawing.HorizontalLine -> d.copy(colorHex = colorHex)
+                    is ChartDrawing.VerticalLine -> d.copy(colorHex = colorHex)
+                    is ChartDrawing.TrendLine -> d.copy(colorHex = colorHex)
+                }
+            }.also { repository.saveDrawingsForChart(tab.chartId, it) }
+        } else {
+            tab.drawings
+        }
+        return tab.copy(
+            activeDrawingColorHex = colorHex,
+            drawings = updatedDrawings
+        )
+    }
+
+    fun updateActiveDrawingWidth(tab: ChartTabState, widthDp: Float): ChartTabState {
+        val clamped = widthDp.coerceIn(1.0f, 5.0f)
+        val targetId = tab.selectedDrawingId
+        val updatedDrawings = if (targetId != null) {
+            tab.drawings.map { d ->
+                if (d.id != targetId) d else when (d) {
+                    is ChartDrawing.HorizontalLine -> d.copy(strokeWidthDp = clamped)
+                    is ChartDrawing.VerticalLine -> d.copy(strokeWidthDp = clamped)
+                    is ChartDrawing.TrendLine -> d.copy(strokeWidthDp = clamped)
+                }
+            }.also { repository.saveDrawingsForChart(tab.chartId, it) }
+        } else {
+            tab.drawings
+        }
+        return tab.copy(
+            activeDrawingWidthDp = clamped,
+            drawings = updatedDrawings
+        )
     }
 
     fun translateSelectedDrawing(

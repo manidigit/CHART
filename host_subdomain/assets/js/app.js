@@ -50,13 +50,21 @@ export function openSymbolInTab(symbolCode) {
       chartId: sym.chartId,
       candles: sym.candles || [],
       scrollOffset: 0,
-      visibleCount: 48,
+      visibleCount: 56,
+      activeDateRange: null,
       chartType: 'candlestick',
+      showVolume: true,
+      volumePaneRatio: 0.22,
+      showSma20: false,
       activeDrawingTool: 'cursor',
+      activeDrawingColor: '#38BDF8',
+      activeDrawingWidth: 2,
+      mobileDockCollapsed: false,
       drawings: loadDrawings(sym.chartId),
       selectedDrawingId: null,
       pendingTrendPoint: null,
       selectedCandleIndex: null,
+      crosshair: { active: false, x: 0, y: 0 },
       isAutoScaleY: true,
       yPriceScaleFactor: 1.0,
       isLoading: (sym.candles || []).length === 0,
@@ -85,20 +93,47 @@ export function renderApp() {
     return;
   }
 
-  const latestCandle = activeTab && activeTab.candles.length ? activeTab.candles[activeTab.candles.length - 1] : {};
-  const inspected =
-    activeTab && activeTab.selectedCandleIndex !== null && activeTab.candles[activeTab.selectedCandleIndex]
-      ? activeTab.candles[activeTab.selectedCandleIndex]
-      : latestCandle;
-  const pct = activeTab && latestCandle.open ? PriceFormatter.formatSignedPct(latestCandle.open, latestCandle.close) : '+0.00%';
+  const latestCandle =
+    activeTab && activeTab.candles.length ? activeTab.candles[activeTab.candles.length - 1] : {};
+  const inspectedIdx =
+    activeTab &&
+    activeTab.selectedCandleIndex !== null &&
+    activeTab.selectedCandleIndex !== undefined &&
+    activeTab.candles[activeTab.selectedCandleIndex]
+      ? activeTab.selectedCandleIndex
+      : activeTab && activeTab.candles.length
+      ? activeTab.candles.length - 1
+      : null;
+  const inspected = inspectedIdx !== null && activeTab ? activeTab.candles[inspectedIdx] : latestCandle;
+
+  const priceDiff =
+    activeTab && latestCandle.open
+      ? PriceFormatter.formatSignedDiff(latestCandle.open, latestCandle.close, activeTab.decimals)
+      : '0.00';
+  const pct =
+    activeTab && latestCandle.open
+      ? PriceFormatter.formatSignedPct(latestCandle.open, latestCandle.close)
+      : '+0.00%';
   const isBull = !pct.startsWith('-');
-  const allowedTfs = activeTab && activeTab.provider === 'eia_brent_spot' ? ['D1'] : ['M15', 'H1', 'H4', 'D1'];
+  const allowedTfs =
+    activeTab && activeTab.provider === 'eia_brent_spot' ? ['D1'] : ['M15', 'H1', 'H4', 'D1'];
 
   const tfChipsHtml = ['M15', 'H1', 'H4', 'D1']
     .map((tf) => {
       const enabled = allowedTfs.includes(tf);
       const isAct = activeTab && activeTab.timeframe === tf;
-      return `<button class="chip ltr-num ${isAct ? 'active' : ''}" data-action="set-timeframe" data-tf="${tf}" ${!enabled ? 'disabled' : ''}>${tf}</button>`;
+      const disp = PriceFormatter.displayTimeframeLabel(tf);
+      return `<button class="chip ltr-num ${isAct ? 'active' : ''}" data-action="set-timeframe" data-tf="${tf}" ${!enabled ? 'disabled' : ''}>${disp}</button>`;
+    })
+    .join('');
+
+  const availableRanges = activeTab
+    ? PriceFormatter.computeAvailableDateRanges(activeTab.candles, activeTab.timeframe)
+    : [];
+  const dateRangeChipsHtml = availableRanges
+    .map((r) => {
+      const isAct = activeTab && activeTab.activeDateRange === r.id;
+      return `<button class="chip ltr-num ${isAct ? 'active' : ''}" data-action="set-date-range" data-range="${r.id}" data-count="${r.count}" ${!r.enabled ? 'disabled' : ''}>${r.label}</button>`;
     })
     .join('');
 
@@ -107,37 +142,52 @@ export function renderApp() {
       (t) => `
       <div class="chart-tab ${t.tabId === (activeTab ? activeTab.tabId : '') ? 'active' : ''}" data-action="select-tab" data-tab="${t.tabId}">
         <strong>${t.symbolCode}</strong>
-        <span>${t.timeframe}</span>
+        <span>${PriceFormatter.displayTimeframeLabel(t.timeframe)}</span>
         <button class="chart-tab-close" data-action="close-tab" data-tab="${t.tabId}">×</button>
       </div>
     `
     )
     .join('');
 
+  const activeMobileScreen = state.currentScreen || 'chart_view';
   let sidePanelHtml = '';
-  if (state.desktopSidePanel === 'watchlist') sidePanelHtml = renderWatchlistContent(i18n);
-  else if (state.desktopSidePanel === 'analysis') sidePanelHtml = renderAnalysisContent(activeTab, i18n);
-  else if (state.desktopSidePanel === 'settings') sidePanelHtml = renderSettingsContent(i18n);
+  const panelTarget =
+    window.innerWidth < 769 && activeMobileScreen !== 'chart_view'
+      ? activeMobileScreen
+      : state.desktopSidePanel;
+
+  if (panelTarget === 'watchlist') sidePanelHtml = renderWatchlistContent(i18n);
+  else if (panelTarget === 'analysis') sidePanelHtml = renderAnalysisContent(activeTab, i18n);
+  else if (panelTarget === 'settings') sidePanelHtml = renderSettingsContent(i18n);
+
+  let smaBadgeHtml = '';
+  if (activeTab && activeTab.showSma20 && inspectedIdx !== null) {
+    const smaArr = PriceFormatter.computeSmaSeries(activeTab.candles, 20);
+    const smaVal = smaArr[inspectedIdx];
+    if (smaVal !== null && smaVal !== undefined) {
+      smaBadgeHtml = `<span style="color:#F59E0B;font-weight:700;">SMA20: ${PriceFormatter.formatPrice(smaVal, activeTab.decimals)}</span>`;
+    }
+  }
 
   root.innerHTML = `
-    <div class="terminal-layout">
-      ${renderTerminalTopBar(activeTab, latestCandle, pct, isBull, tfChipsHtml, tabsHtml, i18n)}
+    <div class="terminal-layout screen-${activeMobileScreen}">
+      ${renderTerminalTopBar(activeTab, latestCandle, priceDiff, pct, isBull, tfChipsHtml, dateRangeChipsHtml, tabsHtml, i18n)}
 
       <div class="terminal-body">
         ${renderLeftToolRail(activeTab, i18n)}
-        ${renderMobileChartTools(activeTab, i18n)}
 
-        <main class="chart-workspace">
+        <main class="chart-workspace ${activeMobileScreen !== 'chart_view' ? 'mobile-hidden' : ''}">
           ${
-            activeTab && inspected && inspected.close
+            activeTab && inspected && inspected.close !== undefined
               ? `
-            <div class="floating-ohlc-bar">
-              <span style="color: var(--primary); font-weight: 700;">${activeTab.symbolCode} · ${activeTab.timeframe}</span>
+            <div class="floating-ohlc-bar ltr-num">
+              <span style="color: var(--primary); font-weight: 700;">${activeTab.symbolCode} · ${PriceFormatter.displayTimeframeLabel(activeTab.timeframe)}</span>
               <span>O: <span class="ohlc-val">${PriceFormatter.formatPrice(inspected.open, activeTab.decimals)}</span></span>
               <span>H: <span class="ohlc-val bull">${PriceFormatter.formatPrice(inspected.high, activeTab.decimals)}</span></span>
               <span>L: <span class="ohlc-val bear">${PriceFormatter.formatPrice(inspected.low, activeTab.decimals)}</span></span>
-              <span>C: <span class="ohlc-val">${PriceFormatter.formatPrice(inspected.close, activeTab.decimals)}</span></span>
-              ${inspected.volume ? `<span>V: <span class="ohlc-val">${Math.round(inspected.volume)}</span></span>` : ''}
+              <span>C: <span class="ohlc-val ${Number(inspected.close) >= Number(inspected.open) ? 'bull' : 'bear'}">${PriceFormatter.formatPrice(inspected.close, activeTab.decimals)}</span></span>
+              ${Number(inspected.volume || 0) > 0 ? `<span>V: <span class="ohlc-val">${PriceFormatter.formatCompactVolume(inspected.volume)}</span></span>` : ''}
+              ${smaBadgeHtml}
               <span style="color: var(--text-dim);">${inspected.open_time_utc_iso || ''}</span>
             </div>
           `
@@ -147,7 +197,7 @@ export function renderApp() {
           <div class="chart-canvas-container">
             ${
               !activeTab || activeTab.candles.length === 0
-                ? `<div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;">
+                ? `<div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; padding: 16px;">
                      <p style="color: ${activeTab && activeTab.hasError ? 'var(--bear)' : 'var(--text-muted)'}; font-size: 14px;">
                        ${i18n.t(activeTab && activeTab.isLoading ? 'chart_state_loading' : activeTab && activeTab.hasError ? 'chart_state_error' : 'chart_state_empty')}
                      </p>
@@ -160,12 +210,14 @@ export function renderApp() {
                 : `<canvas id="active-chart-canvas" class="trading-canvas"></canvas>`
             }
           </div>
+
+          ${renderMobileChartTools(activeTab, i18n)}
         </main>
 
-        <aside class="right-panel ${state.desktopSidePanel ? '' : 'collapsed'}">
+        <aside class="right-panel ${panelTarget ? '' : 'collapsed'} ${activeMobileScreen === 'chart_view' ? 'mobile-hidden' : ''}">
           <div class="panel-header">
-            <h4 class="panel-title">${i18n.t('nav_' + (state.desktopSidePanel || 'watchlist'))}</h4>
-            <button class="tool-rail-btn" data-action="toggle-desktop-panel" data-panel="${state.desktopSidePanel}">✕</button>
+            <h4 class="panel-title">${i18n.t('nav_' + (panelTarget || 'watchlist'))}</h4>
+            <button class="tool-rail-btn" data-action="toggle-desktop-panel" data-panel="${panelTarget}">✕</button>
           </div>
           <div class="panel-content">
             ${sidePanelHtml}
@@ -198,16 +250,16 @@ export function renderApp() {
     </div>
   `;
 
-  if (activeTab && activeTab.candles.length > 0) {
+  if (activeTab && activeTab.candles.length > 0 && (window.innerWidth >= 769 || activeMobileScreen === 'chart_view')) {
     const canvas = document.getElementById('active-chart-canvas');
     if (canvas) {
-      renderCandlestickCanvas(canvas, activeTab, state.isDarkTheme);
-      attachCanvasInteractions(canvas, activeTab, renderApp);
+      renderCandlestickCanvas(canvas, activeTab, state.isDarkTheme, i18n);
+      attachCanvasInteractions(canvas, activeTab, renderApp, i18n);
 
       const container = canvas.parentElement;
       if (container && window.ResizeObserver) {
         const ro = new ResizeObserver(() => {
-          renderCandlestickCanvas(canvas, activeTab, state.isDarkTheme);
+          renderCandlestickCanvas(canvas, activeTab, state.isDarkTheme, i18n);
         });
         ro.observe(container);
       }
@@ -237,7 +289,11 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'toggle-desktop-panel') {
     const panel = btn.getAttribute('data-panel');
-    state.desktopSidePanel = state.desktopSidePanel === panel ? null : panel;
+    if (window.innerWidth < 769) {
+      state.currentScreen = state.currentScreen === panel ? 'chart_view' : panel;
+    } else {
+      state.desktopSidePanel = state.desktopSidePanel === panel ? null : panel;
+    }
     renderApp();
   } else if (action === 'toggle-fullscreen') {
     if (!document.fullscreenElement) {
@@ -255,6 +311,7 @@ document.addEventListener('click', async (e) => {
     openSymbolInTab(btn.getAttribute('data-symbol'));
   } else if (action === 'select-tab') {
     state.activeTabId = btn.getAttribute('data-tab');
+    state.currentScreen = 'chart_view';
     renderApp();
   } else if (action === 'close-tab') {
     e.stopPropagation();
@@ -268,12 +325,32 @@ document.addEventListener('click', async (e) => {
     const tf = btn.getAttribute('data-tf');
     activeTab.timeframe = tf;
     activeTab.scrollOffset = 0;
+    activeTab.activeDateRange = null;
     activeTab.selectedCandleIndex = null;
     activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, tf);
     renderApp();
     await syncSymbolNow(activeTab.symbolCode, tf, renderApp);
+  } else if (action === 'set-date-range' && activeTab) {
+    const rangeId = btn.getAttribute('data-range');
+    const count = parseInt(btn.getAttribute('data-count') || '56', 10);
+    activeTab.activeDateRange = rangeId;
+    activeTab.visibleCount = Math.max(8, Math.min(activeTab.candles.length || 56, count));
+    activeTab.scrollOffset = 0;
+    activeTab.isAutoScaleY = true;
+    activeTab.yPriceScaleFactor = 1.0;
+    renderApp();
   } else if (action === 'set-chart-type' && activeTab) {
     activeTab.chartType = btn.getAttribute('data-type');
+    renderApp();
+  } else if (action === 'toggle-volume' && activeTab) {
+    activeTab.showVolume = activeTab.showVolume === false ? true : false;
+    renderApp();
+  } else if (action === 'cycle-volume-height' && activeTab) {
+    const cur = Number(activeTab.volumePaneRatio || 0.22);
+    activeTab.volumePaneRatio = cur < 0.2 ? 0.22 : cur < 0.27 ? 0.30 : 0.16;
+    renderApp();
+  } else if (action === 'toggle-sma20' && activeTab) {
+    activeTab.showSma20 = !activeTab.showSma20;
     renderApp();
   } else if (
     (action === 'zoom-in' ||
@@ -283,12 +360,19 @@ document.addEventListener('click', async (e) => {
       action === 'auto-scale-y') &&
     activeTab
   ) {
-    const maxCap = Math.max(12, Math.min(160, activeTab.candles.length));
-    if (action === 'zoom-in') activeTab.visibleCount = Math.max(12, (activeTab.visibleCount || 48) - 8);
-    if (action === 'zoom-out') activeTab.visibleCount = Math.min(maxCap, (activeTab.visibleCount || 48) + 8);
+    const maxCap = Math.max(8, activeTab.candles.length);
+    if (action === 'zoom-in') {
+      activeTab.visibleCount = Math.max(8, (activeTab.visibleCount || 56) - 8);
+      activeTab.activeDateRange = null;
+    }
+    if (action === 'zoom-out') {
+      activeTab.visibleCount = Math.min(maxCap, (activeTab.visibleCount || 56) + 8);
+      activeTab.activeDateRange = null;
+    }
     if (action === 'fit-content') {
       activeTab.visibleCount = maxCap;
       activeTab.scrollOffset = 0;
+      activeTab.activeDateRange = 'ALL';
       activeTab.isAutoScaleY = true;
       activeTab.yPriceScaleFactor = 1.0;
     }
@@ -302,8 +386,35 @@ document.addEventListener('click', async (e) => {
     }
     renderApp();
   } else if (action === 'set-draw-tool' && activeTab) {
-    activeTab.activeDrawingTool = btn.getAttribute('data-tool');
+    const tool = btn.getAttribute('data-tool');
+    activeTab.activeDrawingTool = tool;
     activeTab.pendingTrendPoint = null;
+    if (tool !== 'cursor') {
+      activeTab.mobileDockCollapsed = false;
+    }
+    renderApp();
+  } else if (action === 'set-draw-color' && activeTab) {
+    const color = btn.getAttribute('data-color');
+    activeTab.activeDrawingColor = color;
+    if (activeTab.selectedDrawingId) {
+      activeTab.drawings = (activeTab.drawings || []).map((d) =>
+        d.id === activeTab.selectedDrawingId ? { ...d, color } : d
+      );
+      saveDrawings(activeTab.chartId, activeTab.drawings);
+    }
+    renderApp();
+  } else if (action === 'set-draw-width' && activeTab) {
+    const width = parseInt(btn.getAttribute('data-width') || '2', 10);
+    activeTab.activeDrawingWidth = width;
+    if (activeTab.selectedDrawingId) {
+      activeTab.drawings = (activeTab.drawings || []).map((d) =>
+        d.id === activeTab.selectedDrawingId ? { ...d, strokeWidth: width } : d
+      );
+      saveDrawings(activeTab.chartId, activeTab.drawings);
+    }
+    renderApp();
+  } else if (action === 'toggle-mobile-dock' && activeTab) {
+    activeTab.mobileDockCollapsed = !activeTab.mobileDockCollapsed;
     renderApp();
   } else if (action === 'delete-drawing' && activeTab) {
     activeTab.drawings = (activeTab.drawings || []).filter((d) => d.id !== activeTab.selectedDrawingId);

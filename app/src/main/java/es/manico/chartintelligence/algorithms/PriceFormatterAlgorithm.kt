@@ -36,6 +36,52 @@ object PriceFormatterAlgorithm {
         return String.format(Locale.US, "%s%.2f%%", sign, pct)
     }
 
+    fun formatSignedPriceDiff(open: BigDecimal, close: BigDecimal, decimals: Int): String {
+        val diff = close.subtract(open).setScale(decimals, RoundingMode.HALF_UP)
+        val sign = if (diff > BigDecimal.ZERO) "+" else ""
+        return String.format(Locale.US, "%s%.${decimals}f", sign, diff)
+    }
+
+    fun formatCompactVolume(volume: BigDecimal?): String {
+        if (volume == null) return "0"
+        val v = volume.toDouble()
+        if (v <= 0.0) return "0"
+        return when {
+            v >= 1_000_000_000.0 -> String.format(Locale.US, "%.2fB", v / 1_000_000_000.0)
+            v >= 1_000_000.0 -> String.format(Locale.US, "%.2fM", v / 1_000_000.0)
+            v >= 1_000.0 -> String.format(Locale.US, "%.1fK", v / 1_000.0)
+            else -> String.format(Locale.US, "%.0f", v)
+        }
+    }
+
+    fun displayTimeframeLabel(tf: String): String {
+        return when (tf.uppercase(Locale.US)) {
+            "M15" -> "15m"
+            "H1" -> "1h"
+            "H4" -> "4h"
+            "D1" -> "1D"
+            else -> tf
+        }
+    }
+
+    fun computeSmaValues(closes: List<Double>, period: Int = 20): List<Double?> {
+        if (closes.isEmpty() || period <= 1) return closes.map { it }
+        val result = ArrayList<Double?>(closes.size)
+        var rollingSum = 0.0
+        for (i in closes.indices) {
+            rollingSum += closes[i]
+            if (i >= period) {
+                rollingSum -= closes[i - period]
+            }
+            if (i >= period - 1) {
+                result.add(rollingSum / period.toDouble())
+            } else {
+                result.add(null)
+            }
+        }
+        return result
+    }
+
     fun formatAxisTimestamp(epochMillis: Long, timeframe: String): String {
         val instant = Instant.ofEpochMilli(epochMillis)
         return if (timeframe.equals("D1", ignoreCase = true)) {

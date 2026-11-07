@@ -36,18 +36,25 @@ enum class DrawingTool(val id: String) {
  * Market-coordinate-anchored drawing primitive.
  * Every drawing is stored in real (timeUtcMillis, price) coordinates so it stays locked to its
  * exact market level across Zoom, Pan, and Timeframe switches.
+ * Supports per-drawing custom colorHex and strokeWidthDp.
  */
 sealed class ChartDrawing {
     abstract val id: String
+    abstract val colorHex: String?
+    abstract val strokeWidthDp: Float
 
     data class HorizontalLine(
         override val id: String,
-        val price: BigDecimal
+        val price: BigDecimal,
+        override val colorHex: String? = null,
+        override val strokeWidthDp: Float = 2.2f
     ) : ChartDrawing()
 
     data class VerticalLine(
         override val id: String,
-        val timeUtcMillis: Long
+        val timeUtcMillis: Long,
+        override val colorHex: String? = null,
+        override val strokeWidthDp: Float = 2.2f
     ) : ChartDrawing()
 
     data class TrendLine(
@@ -55,7 +62,9 @@ sealed class ChartDrawing {
         val startTimeUtcMillis: Long,
         val startPrice: BigDecimal,
         val endTimeUtcMillis: Long,
-        val endPrice: BigDecimal
+        val endPrice: BigDecimal,
+        override val colorHex: String? = null,
+        override val strokeWidthDp: Float = 2.2f
     ) : ChartDrawing()
 }
 
@@ -65,4 +74,14 @@ sealed class ChartDrawing {
 data class TrendAnchorPoint(
     val timeUtcMillis: Long,
     val price: BigDecimal
+)
+
+/**
+ * Historical Date Range Presets for quick viewport navigation.
+ */
+data class DateRangePresetOption(
+    val id: String,
+    val label: String,
+    val enabled: Boolean,
+    val targetBars: Int
 )

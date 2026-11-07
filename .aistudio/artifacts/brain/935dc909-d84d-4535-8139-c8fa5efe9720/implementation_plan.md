@@ -1,116 +1,154 @@
-# CHART — Unified Authentication, Google Sign-In & Password Recovery
+# بازطراحی جامع و حرفه‌ای محیط کاری نمودار (CHART Workspace Redesign)
 
-This plan upgrades CHART's personal authentication system so your account, email, and credentials work seamlessly across both the **Android application** and the **Web terminal (`chart.manico.es`)**, adding **Google Sign-In**, **Email-based Password Recovery**, and prominent **Header Account & Logout Controls**.
+این طرح، بخش نمودار **CHART** را از یک نمای کارت‌محور ساده به یک **محیط کاری تحلیل مالی تمام‌صفحه، دقیق و چندپنلی (Multi-Pane Financial Charting Workspace)** در هر دو پلتفرم **وب (دسکتاپ و موبایل)** و **اپلیکیشن بومی اندروید** ارتقا می‌دهد.
 
----
-
-## User Review & Critical Decisions
+## تصمیمات تاییدشده کاربر (User Review & Confirmed Decisions)
 
 > [!IMPORTANT]
-> Please review the confirmed choices from our discussion before we proceed with implementation and Firebase provisioning:
+> بر اساس پاسخ‌های شما در مرحله اول، سه تصمیم کلیدی زیر در معماری و طراحی نهایی قفل شده‌اند:
 
-- **Confirmed Decision 1 (Unified Identity & Google Sign-In):** Integrate **Firebase Authentication** (with Google Sign-In via Jetpack Credential Manager on Android) alongside synchronized server-backed credentials so logging in on Android and Web uses a single unified identity rather than separate device-only passwords.
-- **Confirmed Decision 2 (Email & Password Recovery via Host Server):** Capture the owner's recovery email address during account setup or in Settings, and provide a complete **"Forgot Password?" (`فراموشی رمز عبور`)** flow that sends a 6-digit recovery code / reset link via the host server (`auth.php`) to reset the password.
-- **Confirmed Decision 3 (Single Personal Owner Scope for Phase 1):** Maintain a single personal owner account (with username, email, password, Google Sign-In, change password, and password recovery) in Phase 1, keeping full multi-user management scheduled for Phase 6.
-
----
-
-## 1. Overview & Core Concept
-
-- **What It Does:**
-  1. **Unified Cross-Platform Account:** Eliminates the bug where Android only checked local device storage (`SharedPreferences`) while Web checked the server. Both Android and Web now synchronize with the central authentication API and support **Google Sign-In** via Firebase Authentication.
-  2. **Email Registration & Password Recovery (`فراموشی رمز عبور`):** Adds an Email field to account registration and Settings, plus an interactive "Forgot Password?" screen on both Android and Web where you can request a 6-digit verification code sent to your email and set a new password.
-  3. **Always-Accessible Account & Logout Button:** Adds a visible user profile badge and quick **Logout (`خروج`)** button directly in the top header bar of both the Web Terminal and Android app (in addition to the Settings page) so you always know who is logged in and can sign out or switch modes with one click.
-- **Target Audience / Persona:** Project owner and trader using CHART across desktop browsers and Android phones.
-- **Key Value:** True single-account continuity between Web and Android, zero lockout risk thanks to email recovery and Google Sign-In, and clear session control.
+- **تصمیم تاییدشده ۱ (ردیف یکپارچه تایم‌فریم و بازه تاریخی در بالای نمودار):** انتخابگر **تایم‌فریم کندل‌ها (`15m`, `1h`, `4h`, `1D`)** و انتخابگر **محدوده تاریخی قابل مشاهده (`Date Range: 1D, 5D, 1M, 3M, YTD, 1Y, All`)** با تفکیک بصری شفاف در **یک ردیف واحد در بالای نمودار** ادغام می‌شوند تا فضای عمودی پایین نمودار کاملاً آزاد بماند و فقط به محور زمان اختصاص یابد.
+- **تصمیم تاییدشده ۲ (موتور بوم اختصاصی چندلایه و چندپنلی):** استفاده از موتور رندر اختصاصی چندلایه و چندپنلی (`Multi-Pane Layered Canvas Engine`) هماهنگ بین وب و اندروید که انطباق ۱۰۰٪ مختصات زمان/قیمت خطوط ترسیمی با کندل‌ها، پنل مستقل Volume و زیرساخت پنل‌های اندیکاتور را تضمین می‌کند.
+- **تصمیم تاییدشده ۳ (نوار ابزار ترسیم شناور و تاشو در موبایل):** در نسخه موبایل وب و اندروید، ابزارهای ترسیم در یک نوار شناور تاشو بالای منوی ناوبری پایین قرار می‌گیرند که به محض انتخاب ابزار یا کلیک روی یک خط ترسیم‌شده، گزینه‌های **تغییر رنگ (`Color`)** و **ضخامت خط (`Thickness: 1px..4px`)** را به‌صورت خودکار باز می‌کند.
 
 ---
 
-## 2. User Experience & Visual Design
+## ۱. نمای کلی و هدف بازطراحی (Overview & Core Concept)
 
-### Key User Flows
-
-1. **First-Time Owner Setup (Unified):**
-   - If no owner account exists yet, the setup card prompts for **Username**, **Email Address (for password recovery)**, **Password**, and **Confirm Password**, or **Sign in with Google** to bind your Google email immediately.
-2. **Returning Sign-In (Web & Android):**
-   - Users can sign in using either:
-     - **Sign in with Google** (one-tap Google account selector via Credential Manager / Firebase Auth), or
-     - **Username / Email + Password** verified against the synchronized account store.
-3. **Forgot Password Flow (`فراموشی رمز عبور`):**
-   - Clicking **"Forgot Password?"** on the Login card switches to the Recovery step:
-     - **Step A (Request Code):** Enter your registered Email address. The server generates a time-limited 6-digit recovery token and dispatches it via email (`mail()`).
-     - **Step B (Verify & Reset):** Enter the 6-digit recovery code and your new password. Upon verification, the password is updated across the server and local cache, and you are signed in.
-4. **Active Session Header & Quick Logout:**
-   - The top bar on both Desktop Web and Android displays the active username/email badge alongside a dedicated **Logout (`خروج`)** icon button, plus full account & recovery email management inside the **Settings** screen.
-
-### Visual Identity & Theme
-- **Aesthetic Direction:** Institutional dark financial terminal (`#0B0F17` obsidian canvas, `#131A26` elevated cards, `#232F46` crisp borders).
-- **Color Palette & Mood:** Emerald (`#10B981`) for verified/authenticated badges, Sky Blue (`#38BDF8`) for primary actions and Google Sign-In accents, Rose (`#F43F5E`) for destructive/logout actions and validation errors.
-- **Typography & Hierarchy:** `Vazirmatn` for Persian RTL labels and `JetBrains Mono` (LTR tabular numerals) for emails, usernames, and 6-digit recovery codes.
+- **مسئله فعلی:** در نسخه فعلی، نمودار در اندروید داخل یک صفحه اسکرول‌خور با ارتفاع ثابت `340dp` و در وب موبایل با ارتفاع ثابت `380px` محصور شده، حجم معاملات به‌صورت کم‌رنگ روی خود کندل‌ها افتاده، خط قیمت فعلی و برچسب‌های متحرک Crosshair روی محورها وجود ندارد، انتخابگر بازه تاریخی (`Date Range`) پیاده‌سازی نشده و خطوط ترسیمی فاقد تنظیم رنگ و ضخامت اختصاصی هستند.
+- **ارزش کلیدی طرح جدید:**
+  1. **تسلط کامل نمودار بر صفحه (Full-Viewport Workspace):** حذف تمام کارت‌ها، حاشیه‌ها و اسکرول‌های صفحه در نمای نمودار؛ اختصاص بیش از **۸۲٪ تا ۸۸٪ کل فضای صفحه** به بوم نمودار در دسکتاپ و موبایل.
+  2. **تفکیک پنل اصلی کندل‌ها و پنل مستقل Volume:** نمایش حجم معاملات در پنل مجزا زیر نمودار اصلی با خط جداکننده قابل تنظیم (Resizable Splitter)، مقیاس عمودی مستقل، دکمه نمایش/مخفی‌سازی (`Show/Hide Volume`) و مدیریت شفاف نمادهای فاقد حجم واقعی (مانند `EIA D1` بدون تولید عدد ساختگی).
+  3. **ابزارهای حرفه‌ای محور قیمت و زمان:** خط افقی نقطه‌چین قیمت فعلی (`Live/Last Price Line`) با برچسب رنگی روی محور راست، `Crosshair` آزاد با برچسب قیمت متناظر روی محور راست و برچسب زمان دقیق `UTC` روی محور پایین.
+  4. **ارتقای کامل ابزارهای ترسیم (`Drawing Tools`):** پشتیبانی از انتخاب، جابه‌جایی در مختصات بازار، تغییر رنگ، تغییر ضخامت (`1px`, `2px`, `3px`, `4px`)، حذف تکی و ذخیره‌سازی پایدار برای `Horizontal Line`، `Vertical Line` و `Trend Line`.
 
 ---
 
-## 3. Key Product Decisions & Trade-Offs
+## ۲. تجربه کاربری و طراحی بصری (User Experience & Wireframes)
 
-- **Decision 1: Hybrid Firebase Google Sign-In + Host Server Email Recovery**
-  - *Chosen Approach:* Provision Firebase Authentication (Google Sign-In via Credential Manager on Android) while also upgrading the PHP REST API (`auth.php` + MariaDB `users` table) to store the owner's email, password hash, and recovery tokens, with Android syncing directly with the remote API and caching offline credentials.
-  - *Why:* Gives you effortless one-tap Google Sign-In on Android while ensuring your username/password and email recovery work identically on `chart.manico.es` and Android.
-- **Decision 2: Visible Session Controls in Top Bar**
-  - *Chosen Approach:* Place an explicit user badge and Logout button in the top navigation header as well as in the Settings screen.
-  - *Why:* Previously, the logout button was buried at the very bottom of the Settings screen, making it appear as though the app lacked login/logout controls.
+### الف) چیدمان تاییدشده دسکتاپ (`Desktop Chart Workspace — 100vh Zero-Scroll`)
 
----
-
-## 4. Technical Architecture & Data Strategy
-
-### Architecture & Authentication Flow Diagram
-
-```
-┌──────────────────────────────────────────────────────────────────────────┐
-│                        Presentation Layer (UI)                           │
-│  ┌────────────────────────────────┐  ┌────────────────────────────────┐  │
-│  │        Login & Recovery        │  │     Workspace Header & Nav     │  │
-│  │ - Sign in with Google Button   │  │ - Active User / Email Badge    │  │
-│  │ - Username/Email + Password    │  │ - Quick Logout Action Button   │  │
-│  │ - Forgot Password (2-Step UI)  │  │ - Settings Account & Email Box │  │
-│  └───────────────┬────────────────┘  └───────────────┬────────────────┘  │
-└──────────────────┼───────────────────────────────────┼───────────────────┘
-                   │                                   │
-┌──────────────────▼───────────────────────────────────▼───────────────────┐
-│                    Authentication & Session Coordinator                  │
-│  - Firebase Auth (Google Sign-In via Jetpack Credential Manager)         │
-│  - Remote Auth Sync (Synchronizes Owner Username, Email & Password Hash) │
-│  - Password Recovery State Machine (IDLE ➔ CODE_SENT ➔ VERIFIED)         │
-└──────────────────┬───────────────────────────────────┬───────────────────┘
-                   │                                   │
-┌──────────────────▼───────────────┐   ┌───────────────▼───────────────────┐
-│   Firebase Auth & Google Identity│   │   Host Backend API (auth.php)     │
-│  - OAuth 2.0 Google ID Token     │   │  - MariaDB `users` + `email`      │
-│  - Verified Google Email         │   │  - 6-Digit Reset Code Generator   │
-│  - Cross-Device Identity         │   │  - PHP mail() Recovery Dispatcher │
-└──────────────────────────────────┘   └───────────────────────────────────┘
+```text
+┌──────────────────────────────────────────────────────────────────────────────────────────────────────────┐
+│ [ROW 1: COMPACT CHART HEADER - 42px]                                                                     │
+│ 🟢 XAUUSD (Gold Spot · TwelveData) │ 2,748.60  +14.20 (+0.52%) │ [Tabs: XAUUSD × | SPOTBRENT ×] │ [⛶][⚙] │
+├──────────────────────────────────────────────────────────────────────────────────────────────────────────┤
+│ [ROW 2: UNIFIED TIMEFRAME & DATE RANGE BAR - 36px]                                                       │
+│ TF: [15m] [1h] [4h] [1D]  │  Range: [1D] [5D] [1M] [3M] [YTD] [1Y] [All]  │ [🕯/📈] [Vol 👁] [Auto] [🔄] │
+├──────┬───────────────────────────────────────────────────────────────────────────────────────────┬───────┤
+│ LEFT │ [MAIN CANDLESTICK PANE - ~76% Height of Chart Area]                                       │ PRICE │
+│ TOOL │  ┌────────────────────────────────────────────────────────────────────────────┐           │ AXIS  │
+│ RAIL │  │ O: 2746.10   H: 2749.80   L: 2745.20   C: 2748.60 (+0.52%)   2026-11-07 UTC│           │ (72px)│
+│ 44px │  └────────────────────────────────────────────────────────────────────────────┘           │2760.00│
+│      │          │                         ╱● (Trend Line with Custom Color & Width)              │       │
+│ [✢]  │         ┌┴┐                       ╱                                                       │2750.00│
+│ [─]  │         │ │   ┌─┐               ●╱          ┼ (Active Crosshair)                          │       │
+│ [│]  │         └┬┘   │ │              ╱            │                                             ├───────┤
+│ [╱]  │          │    └─┘             ●             │                                             │2748.60│◄─ Current Price Tag
+│ ──── │ ─────────────────────────────┼─────────────────────────────────────────────────────────── │2747.15│◄─ Crosshair Price Tag
+│ [🎨] │                              │                                                            │2740.00│
+│ [2px]├══════════════════════════════╪════════════════════════════════════════════════════════════┼───────┤
+│ [🗑]  │ [SEPARATE VOLUME PANE - ~24% Height (Resizable & Collapsible)]       [Volume: 1,420  [▴]] │ VOL   │
+│      │         ██                   │              ██                                            │ 2.0K  │
+│      │         ██    ██   ██        │        ██    ██    ██                                      │ 1.0K  │
+│      ├──────────────────────────────┴────────────────────────────────────────────────────────────┼───────┤
+│      │ [TIME AXIS - 24px]   08:00         10:00        [2026-11-07 12:15 UTC]        14:00       │  UTC  │
+└──────┴───────────────────────────────────────────────────────────────────────────────────────────┴───────┘
 ```
 
-### Data Model & State Updates
-1. **Owner Account Model:**
-   - `username` (String)
-   - `email` (String — used for Google Sign-In matching and password reset emails)
-   - `password_hash` (Argon2id / SHA-256 salted hash)
-   - `reset_code_hash` & `reset_expires_at_utc` (For 15-minute 6-digit email recovery codes)
-2. **Auth UI State Machine:**
-   - `AuthMode.SIGN_IN`: Standard login with Username/Email + Password or Google Sign-In.
-   - `AuthMode.SETUP_OWNER`: Initial owner registration requiring Username, Recovery Email, and Password.
-   - `AuthMode.FORGOT_PASSWORD_REQUEST`: Input registered Email to receive a 6-digit recovery code.
-   - `AuthMode.FORGOT_PASSWORD_VERIFY`: Input the 6-digit code and new password to complete reset.
+### ب) چیدمان تاییدشده موبایل وب و اپلیکیشن اندروید (`Mobile Edge-to-Edge Workspace`)
 
-### Interactive Component & State Mapping
-- **Login Screen (Android & Web):**
-  - Toggle between Sign-In and Forgot Password modes.
-  - Interactive **"Sign in with Google"** button invoking `CredentialManager` (`GetSignInWithGoogleOption`).
-  - Form validation for empty fields, email format, password length, and recovery code verification.
-- **Top Header Bar (Android & Web):**
-  - Displays current authenticated user (`ownerUsername` / `ownerEmail`) and a one-click **Logout (`خروج`)** button that clears both Firebase/CredentialManager state and session state, returning immediately to `LoginScreen`.
-- **Settings Screen (Android & Web):**
-  - Displays Account card with Username, Recovery Email field (editable with save button), Change Password form, and Sign Out button.
-- **In-Place Documentation Updates:**
-  - Automatically update `CHART_INTELLIGENCE_MASTER_SPEC.md`, `docs/PROJECT_GUIDE.md`, `ARCHITECTURE.md`, and `CHANGELOG.md` in place to reflect the unified authentication and email recovery architecture.
+```text
+┌──────────────────────────────────────────────────────────┐
+│ [ROW 1: COMPACT HEADER & TABS - 44px]                    │
+│ XAUUSD  2,748.60 (+14.20 / +0.52%) 🟢    [🔄] [⛶] [خروج] │
+├──────────────────────────────────────────────────────────┤
+│ [ROW 2: UNIFIED TIMEFRAME & DATE RANGE BAR - 36px]       │
+│ TF:[15m][1h][4h][1D] │ Range:[1D][5D][1M][3M][All] │[Auto]│
+├──────────────────────────────────────────────────┬───────┤
+│ [MAIN CANDLESTICK PANE - 76% of Flexible Height] │ PRICE │
+│ O:2746.1 H:2749.8 L:2745.2 C:2748.6 V:1.42K      │ AXIS  │
+│                                                  │ (62px)│
+│        │                 ╱●                      │2755.00│
+│       ┌┴┐               ╱                        │       │
+│ ──────┴────────────────┼─────── (Current Price)  │2748.60│
+│                        │                         ├───────┤
+│ ───────────────────────┼─────── (Touch Crosshair)│2747.15│
+│                        │                         │2740.00│
+├════════════════════════╪═════════════════════════┼───────┤
+│ [SEPARATE VOLUME PANE] │ [Vol: 1.42K       [👁]] │ VOL   │
+│       ██   ██          │   ██   ██               │ 2.0K  │
+│       ██   ██   ██     │   ██   ██   ██          │ 1.0K  │
+├────────────────────────┴─────────────────────────┼───────┤
+│ [TIME AXIS - 22px]  09:00     [12:15 UTC]   15:00│  UTC  │
+├──────────────────────────────────────────────────┴───────┤
+│ [FLOATING COLLAPSIBLE DRAWING DOCK - 40px]               │
+│ [✏️ Tools ▾] [✢] [─ H] [│ V] [╱ T] │ [🎨] [1x 2x 3x] [🗑] │
+├──────────────────────────────────────────────────────────┤
+│ [BOTTOM NAVIGATION - 56px + Safe Area]                   │
+│   [📈 نمودار]    [📋 واچ‌لیست]    [📊 تحلیل]    [⚙ تنظیمات] │
+└──────────────────────────────────────────────────────────┘
+```
+
+### ج) هویت بصری و تایپوگرافی مالی (`Visual Identity & Theme`)
+- **پالت رنگی متمرکز (`Design System Tokens`):**
+  - پس‌زمینه بوم اصلی: `#0B0F17` (ذغالی عمیق مالی برای حداکثر کنتراست کندل‌ها) و `#FFFFFF` در تم روشن.
+  - شبکه خطوط (`Grid`): بسیار ظریف و کم‌کنتراست (`rgba(148, 163, 184, 0.08)` در تم تیره) تا تمرکز بصری کاملاً روی کندل‌ها و خطوط ترسیمی بماند.
+  - کندل‌ها و ستون‌های حجم صعودی/نزولی: سبز زمردی (`#10B981`) و قرمز مرجانی (`#F43F5E`) در کندل‌ها، و نسخه نیمه‌شفاف هماهنگ (`alpha = 0.45`) در پنل مستقل Volume.
+- **تایپوگرافی اعداد مالی:** تمام قیمت‌ها، تغییرات، درصدها، مقادیر OHLCV و برچسب‌های محور قیمت و زمان با فونت `JetBrains Mono`، ارقام لاتین و جهت `LTR` رندر می‌شوند.
+
+---
+
+## ۳. تصمیمات کلیدی فنی و مهندسی (Key Product Decisions & Trade-Offs)
+
+### ۱. جداسازی کامل مفهوم `Timeframe` و `Date Range` در نوار یکپارچه بالای نمودار
+- **رویکرد انتخاب‌شده:**
+  - دکمه‌های **Timeframe (`15m`, `1h`, `4h`, `1D`)** طول زمانی هر کندل را تعیین می‌کنند و کندل‌های تجمیع‌شده/دریافت‌شده همان تایم‌فریم را بارگذاری می‌نمایند.
+  - دکمه‌های **Date Range (`1D`, `5D`, `1M`, `3M`, `YTD`, `1Y`, `5Y`, `All`)** تعداد کندل‌های قابل مشاهده (`visibleCandleCount`) و افست اسکرول (`scrollOffset`) را بر اساس بازه زمانی انتخاب‌شده تنظیم می‌کنند و فقط گزینه‌هایی فعال می‌شوند که داده تاریخی واقعی آن‌ها در سری موجود باشد (مثلاً اگر ۳ ماه داده `M15` موجود است، گزینه‌های `1D`, `5D`, `1M`, `3M`, `All` فعال و `1Y`/`5Y` غیرفعال می‌شوند).
+
+### ۲. پنل مستقل Volume و مدیریت شفاف نبودِ داده حجم
+- **رویکرد انتخاب‌شده:**
+  - بوم نمودار به دو ناحیه عمودی مجزا (`Main Price Pane` در بالا و `Volume Sub-Pane` در پایین) با یک خط جداکننده افقی (`Pane Divider`) تقسیم می‌شود.
+  - کاربر می‌تواند پنل Volume را مخفی/نمایان کند یا نسبت ارتفاع آن را بین `15%`، `22%` و `30%` تغییر دهد.
+  - اگر منبع داده برای یک نماد حجم معاملات ارائه ندهد (مانند سری روزانه مرجع `EIA RBRTEd` که `volume = 0` دارد)، هیچ ستون ساختگی کشیده نمی‌شود و برچسب شفاف `No Volume Data from Provider` در هدر پنل حجم نمایش می‌یابد.
+
+### ۳. زیرساخت پنل‌های اندیکاتور (`Indicator Overlay & Sub-Pane Readiness`)
+- **رویکرد انتخاب‌شده:**
+  - در مدل وضعیت هر تب نمودار (`ChartTabState`)، ساختار استاندارد `activeIndicators` (شامل اندیکاتورهای روی نمودار `Overlay` مانند `SMA 20` و پنل پایین `Sub-Pane`) با قابلیت روشن/خاموش کردن مستقل تعبیه می‌شود تا معماری چندپنلی بدون نیاز به بازنویسی در فاز ۲ گسترش یابد.
+
+### ۴. ارتقای مدل داده خطوط ترسیمی (`Color + StrokeWidth + Persistence`)
+- **رویکرد انتخاب‌شده:**
+  - به مدل `ChartDrawing` (در هر دو نسخه وب و اندروید) دو ویژگی `colorHex` و `strokeWidthPx` (`1f..4f`) اضافه می‌شود.
+  - با انتخاب هر خط ترسیم‌شده روی نمودار، نوار خواص خط (`Drawing Properties`) فعال شده و امکان تغییر بلادرنگ رنگ، ضخامت، جابه‌جایی مختصاتی (`Time UTC + Price`) و حذف خط را فراهم می‌کند و بلافاصله در ذخیره‌سازی محلی (`localStorage` / `WorkspaceRepository`) ذخیره می‌شود.
+
+---
+
+## ۴. معماری فنی و جریان داده (Technical Architecture & Data Strategy)
+
+```text
+┌───────────────────────────────────────────────────────────────────────────────┐
+│                   CHART WORKSPACE STATE (Per-Tab Isolation)                   │
+│  • symbolCode, provider, timeframe (15m | 1h | 4h | 1D), activeDateRange      │
+│  • candles[], scrollOffsetFromRight, visibleCandleCount                       │
+│  • isAutoScaleY, yPriceScaleFactor, isVolumeVisible, volumePaneHeightRatio    │
+│  • drawings[ { id, type, anchorTimesUtc, anchorPrices, colorHex, widthPx } ]  │
+│  • crosshairState { active, xPx, yPx, snappedTimeUtc, interpolatedPrice }     │
+└───────────────────────────────────────┬───────────────────────────────────────┘
+                                        │
+        ┌───────────────────────────────┴───────────────────────────────┐
+        ▼                                                               ▼
+┌───────────────────────────────────────┐       ┌───────────────────────────────────────┐
+│     MULTI-PANE LAYOUT & GEOMETRY      │       │     INTERACTION & GESTURE ENGINE      │
+│  • Top Unified Bar (TF + Date Range)  │       │  • Drag-to-Pan & Progressive Boundary │
+│  • Main Price Pane (76% - 100% H)     │◄─────►│  • Mouse Wheel & 2-Finger Pinch Zoom  │
+│  • Volume Sub-Pane (0% | 15%..30% H)  │       │  • Right Y-Axis Drag & Double-Tap Auto│
+│  • Right Price/Volume Axis (62-72px)  │       │  • Crosshair Hover / Touch Tracking   │
+│  • Bottom UTC Time Axis (22-26px)     │       │  • Drawing Hit-Test, Drag & Style Edit│
+└───────────────────────────────────────┘       └───────────────────────────────────────┘
+```
+
+### نگاشت تعاملات و صحت عملکرد (`Interactive Component & Verification Mapping`)
+1. **تغییر تایم‌فریم (`15m`, `1h`, `4h`, `1D`):** فراخوانی تجمیع‌کننده کندل‌های بسته‌شده از کش + همگام‌سازی پس‌زمینه از سرور بدون مخلوط شدن کندل‌های نماد یا تایم‌فریم قبلی، با حفظ کامل خطوط ترسیمی در مختصات زمانی/قیمتی جدید.
+2. **انتخاب محدوده زمانی (`Date Range: 1D, 5D, 1M, 3M, YTD, 1Y, All`):** محاسبه تعداد کندل‌های متناظر با بازه زمانی انتخابی در تایم‌فریم فعلی، انتقال `scrollOffset` به آخرین کندل و فعال‌سازی `Auto Scale` عمودی.
+3. **حرکت آزاد و لمس (`Crosshair + OHLC + Axis Callouts`):** نمایش خط متقاطع روی پنل قیمت و پنل حجم، به‌روزرسانی نوار شناور `OHLCV` به کندل زیر نشانگر، رسم کادر قیمت لحظه‌ای روی محور راست و کادر زمان `UTC` روی محور پایین.
+4. **به‌روزرسانی درجای مستندات (`In-Place Documentation Sync`):** به‌روزرسانی هم‌زمان اسناد مرجع پروژه (`CHART_INTELLIGENCE_MASTER_SPEC.md`, `ARCHITECTURE.md`, `docs/PROJECT_GUIDE.md`, `CHANGELOG.md`) به نسخه `1.26` پس از تکمیل و تست کدها.

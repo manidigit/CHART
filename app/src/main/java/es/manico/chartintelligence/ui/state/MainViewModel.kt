@@ -918,6 +918,113 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun selectDateRangeForActiveTab(rangeId: String) {
+        val active = _uiState.value.activeTab ?: return
+        val preset = active.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) } ?: return
+        if (!preset.enabled) return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) {
+                        tab.copy(
+                            activeDateRange = preset.id,
+                            visibleCandleCount = preset.targetBars,
+                            scrollOffsetFromRight = 0,
+                            isAutoScaleY = true,
+                            yPriceScaleFactor = 1.0f
+                        )
+                    } else {
+                        tab
+                    }
+                }
+            )
+        }
+    }
+
+    fun toggleVolumeOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showVolume = !tab.showVolume) else tab
+                }
+            )
+        }
+    }
+
+    fun cycleVolumePaneHeightOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) {
+                        val nextRatio = when {
+                            tab.volumePaneRatio < 0.19f -> 0.22f
+                            tab.volumePaneRatio < 0.26f -> 0.30f
+                            else -> 0.16f
+                        }
+                        tab.copy(
+                            showVolume = true,
+                            volumePaneRatio = nextRatio
+                        )
+                    } else {
+                        tab
+                    }
+                }
+            )
+        }
+    }
+
+    fun toggleSma20OnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showSma20 = !tab.showSma20) else tab
+                }
+            )
+        }
+    }
+
+    fun setDrawingColorOnActiveTab(colorHex: String) {
+        val active = _uiState.value.activeTab ?: return
+        val updatedTab = drawingCoordinator.updateActiveDrawingColor(active, colorHex)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) updatedTab else tab
+                }
+            )
+        }
+    }
+
+    fun setDrawingWidthOnActiveTab(widthDp: Float) {
+        val active = _uiState.value.activeTab ?: return
+        val updatedTab = drawingCoordinator.updateActiveDrawingWidth(active, widthDp)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) updatedTab else tab
+                }
+            )
+        }
+    }
+
+    fun toggleDrawingDockOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) {
+                        tab.copy(isDrawingDockCollapsed = !tab.isDrawingDockCollapsed)
+                    } else {
+                        tab
+                    }
+                }
+            )
+        }
+    }
+
     // --- Dynamic Symbol & Preference Management (Anti-Hardcoding) ---
 
     fun addCustomSymbol(symbolCode: String, customTitle: String, decimals: Int, provider: ProviderId) {

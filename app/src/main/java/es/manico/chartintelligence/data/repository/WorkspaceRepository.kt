@@ -546,12 +546,16 @@ class WorkspaceRepository(context: Context) {
             for (i in 0 until arr.length()) {
                 val obj = arr.getJSONObject(i)
                 val id = obj.optString("id")
+                val colorHex = obj.optString("colorHex", "").takeIf { it.isNotBlank() }
+                val strokeWidthDp = obj.optDouble("strokeWidthDp", 2.2).toFloat().coerceIn(1.0f, 6.0f)
                 when (obj.optString("type")) {
                     "horizontal_line" -> {
                         list.add(
                             ChartDrawing.HorizontalLine(
                                 id = id,
-                                price = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("price", "0")))
+                                price = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("price", "0"))),
+                                colorHex = colorHex,
+                                strokeWidthDp = strokeWidthDp
                             )
                         )
                     }
@@ -559,7 +563,9 @@ class WorkspaceRepository(context: Context) {
                         list.add(
                             ChartDrawing.VerticalLine(
                                 id = id,
-                                timeUtcMillis = obj.optLong("timeUtcMillis", 0L)
+                                timeUtcMillis = obj.optLong("timeUtcMillis", 0L),
+                                colorHex = colorHex,
+                                strokeWidthDp = strokeWidthDp
                             )
                         )
                     }
@@ -570,7 +576,9 @@ class WorkspaceRepository(context: Context) {
                                 startTimeUtcMillis = obj.optLong("startTimeUtcMillis", 0L),
                                 startPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("startPrice", "0"))),
                                 endTimeUtcMillis = obj.optLong("endTimeUtcMillis", 0L),
-                                endPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("endPrice", "0")))
+                                endPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("endPrice", "0"))),
+                                colorHex = colorHex,
+                                strokeWidthDp = strokeWidthDp
                             )
                         )
                     }
@@ -588,6 +596,10 @@ class WorkspaceRepository(context: Context) {
         for (d in drawings) {
             val obj = JSONObject()
             obj.put("id", d.id)
+            if (!d.colorHex.isNullOrBlank()) {
+                obj.put("colorHex", d.colorHex)
+            }
+            obj.put("strokeWidthDp", d.strokeWidthDp.toDouble())
             when (d) {
                 is ChartDrawing.HorizontalLine -> {
                     obj.put("type", "horizontal_line")

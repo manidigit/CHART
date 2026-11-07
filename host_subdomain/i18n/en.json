@@ -119,5 +119,19 @@
   "error_invalid_email": "Please enter a valid email address.",
   "error_email_not_found": "No owner account matched this email address.",
   "error_invalid_recovery_code": "Invalid or expired recovery code.",
-  "sync_server_badge": "Synced across Web & Android"
+  "sync_server_badge": "Synced across Web & Android",
+  "chart_timeframe_label": "TF:",
+  "chart_date_range_label": "Range:",
+  "chart_volume_panel": "Volume",
+  "chart_volume_toggle": "Volume Pane",
+  "chart_volume_resize": "Resize Volume Pane",
+  "chart_volume_unavailable": "No volume data provided by source",
+  "chart_indicator_sma20": "SMA 20",
+  "chart_status_live": "Verified Closed Data",
+  "chart_status_syncing": "Syncing…",
+  "chart_status_cached": "Local Cache",
+  "draw_color_label": "Color:",
+  "draw_width_label": "Width:",
+  "draw_tools_toggle": "Drawing Tools",
+  "chart_data_boundary": "Start of loaded history"
 }

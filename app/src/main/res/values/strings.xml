@@ -140,4 +140,16 @@
     <string name="error_invalid_recovery_code">Invalid or expired recovery code.</string>
     <string name="error_google_sign_in_failed">Google Sign-In could not be completed. You can also sign in with your username and password.</string>
     <string name="sync_server_badge">Synced across Web &amp; Android</string>
+    <string name="chart_timeframe_label">TF</string>
+    <string name="chart_date_range_label">Range</string>
+    <string name="chart_volume_panel">Volume</string>
+    <string name="chart_volume_toggle">Vol</string>
+    <string name="chart_volume_resize">Vol Size</string>
+    <string name="chart_volume_unavailable">No volume data provided by source</string>
+    <string name="chart_indicator_sma20">SMA 20</string>
+    <string name="chart_status_live">Synced</string>
+    <string name="chart_status_syncing">Syncing…</string>
+    <string name="draw_color_label">Color</string>
+    <string name="draw_width_label">Width</string>
+    <string name="draw_tools_toggle">Draw</string>
 </resources>

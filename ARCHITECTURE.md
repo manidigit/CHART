@@ -1,7 +1,7 @@
 # CHART — Architecture & System Design
 
 > **Document Status:** Official Architectural Specification  
-> **Target Version:** 1.25+  
+> **Target Version:** 1.26+  
 > **Master Reference:** [CHART_INTELLIGENCE_MASTER_SPEC.md](./CHART_INTELLIGENCE_MASTER_SPEC.md)
 
 ---
@@ -24,8 +24,10 @@ The software architecture is governed by five core principles:
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Presentation Layer (UI)                         │
-│  • Android: Jetpack Compose screens, Material 3 theme & canvas tokens │
-│  • Web: View components (Desktop terminal layout & mobile touch view)  │
+│  • Multi-Pane Layered Chart Workspace (Main Price Pane + Volume Pane)  │
+│  • Unified Top Subbar (Timeframes 15m..1D + Date Ranges 1D..All + SMA) │
+│  • Android: Jetpack Compose full-viewport canvas & collapsible dock    │
+│  • Web: Desktop terminal layout & mobile touch-locked workspace        │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Events & Actions
                                     ▼
@@ -40,9 +42,9 @@ The software architecture is governed by five core principles:
 │                       Domain & Algorithms Layer                        │
 │  Deterministic, pure business calculations (No UI / No DB dependencies)│
 │  • TimeframeAggregator: Exact OHLCV aggregation (M15 ➔ H1/H4/D1)       │
-│  • DrawingGeometry: Market-coordinate anchoring & hit testing          │
-│  • TechnicalAnalytics: ATR (14), Classic Floor Pivots, Sentiment       │
-│  • PriceFormatter: Decimal precision & step interval scaling           │
+│  • DrawingGeometry: Market-coordinate anchoring, color/width & hit test│
+│  • TechnicalAnalytics: SMA (20), ATR (14), Classic Pivots, Sentiment   │
+│  • PriceFormatter: Signed diff/pct, compact volume & date range bounds │
 │  • CandleValidator: Strict timestamp alignment & decimal sanitization  │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Data Queries & Sync

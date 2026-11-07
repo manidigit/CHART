@@ -1,6 +1,6 @@
 {
-  "summary":  "Comprehensive authentication, session sync, email registration, password recovery, and Google Sign-In plan for CHART across Android and Web.",
-  "updatedAt":  "2026-11-07T11:38:06.842815620Z",
+  "summary":  "طرح جامع بازطراحی محیط کاری نمودار (Chart Workspace Redesign) در نسخه دسکتاپ، موبایل وب و اپلیکیشن اندروید بر اساس پاسخ‌های تاییدشده کاربر: ردیف یکپارچه تایم‌فریم و بازه تاریخی در بالای نمودار، موتور رندر چندپنلی اختصاصی (پنل کندل + پنل مستقل Volume با مقیاس مجزا و قابلیت تغییر ارتفاع/مخفی‌سازی + زیرساخت پنل اندیکاتورها)، خط قیمت فعلی، Crosshair با برچسب لحظه‌ای قیمت و زمان روی محورها، و نوار ابزار ترسیم تاشو با انتخاب رنگ و ضخامت هر خط.",
+  "updatedAt":  "2026-11-07T14:07:03.880666766Z",
   "requestFeedback":  true,
   "userFacing":  true
 }
