@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for integrating the Python tvdatafeed pipeline for PEPPERSTONE:SPOTBRENT (up to 5,000 candles across M15, H1, H4, D1), storing in the cPanel host MariaDB database, setting TradingView (PEPPERSTONE) as the default provider for SPOTBRENT, and expanding history/slider limits to 5,000 candles on Web and Android.",
-  "updatedAt":  "2026-11-07T14:50:24.108940213Z",
+  "summary":  "Implementation plan for fixing Android in-place APK updates by embedding the canonical debug keystore from manidigit/Yadin (CANONICAL_B64) and enabling automatic monotonic versionCode increments across GitHub Actions builds.",
+  "updatedAt":  "2026-11-07T15:39:00.563519090Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

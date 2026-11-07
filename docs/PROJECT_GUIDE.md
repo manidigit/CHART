@@ -140,7 +140,7 @@
 طبق بررسی ثبت‌شده در 2026-11-06 و به‌روزرسانی 2026-11-07، Workflowهای آزمایشی اتصال هاست، دیتابیس و Providerها پس از تست پاک‌سازی شده‌اند و فایل اصلی در `.github/workflows/` عبارت است از:
 
 - `build-apk.yml` — اجرا با هر Push روی شاخه `main` و همچنین اجرای دستی (`workflow_dispatch`):
-  1. **Job 1 (`Build Android APK`):** تولید خودکار `app/google-services.json` در محیط CI (در صورتی که خروجی Git اکسپورت‌شده از AI Studio فاقد آن باشد)، کامپایل نسخه Debug اندروید (`gradle assembleDebug`) و بارگذاری Artifact خروجی `chart-intelligence-debug-apk`.
+  1. **Job 1 (`Build Android APK`):** بازسازی کلید امضای ثابت و یکسان `CANONICAL_B64` (دقیقاً مطابق الگوی مخزن `Yadin` با اثر انگشت ثابت `SHA1: 38:C6:57:E4:12:4A:90:85:94:BA:0C:B3:C2:A3:A9:F8:F5:3B:E1:6B` در `debug.keystore` و `app/build.gradle.kts`) و افزایش خودکار `versionCode` بر اساس `100 + GITHUB_RUN_NUMBER` (تا هر نسخه جدید APK بدون نیاز به حذف نسخه قبلی به‌صورت آپدیت درجا روی گوشی نصب شود)، تولید خودکار `app/google-services.json` در محیط CI، کامپایل نسخه Debug اندروید (`gradle assembleDebug`) و بارگذاری Artifact خروجی `chart-intelligence-debug-apk`.
   2. **Job 2 (`Package and Deploy Subdomain Web Files`):** استخراج تا ۵۰۰۰ کندل `PEPPERSTONE:SPOTBRENT` در تایم‌فریم‌های `15m`, `1h`, `4h`, `1d` با اسکریپت پایتون `sync_tvdatafeed.py`، بارگذاری Artifact عمومی پکیج وب و استقرار خودکار روی `chart.manico.es` به همراه ذخیره کندل‌ها در جدول `candles` دیتابیس MariaDB هاست.
 
 ---

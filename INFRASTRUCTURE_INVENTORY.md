@@ -19,7 +19,7 @@
 | Operating system | Linux | Kernel `6.8.0-142-generic`; architecture `x86_64` |
 | Database server | MariaDB `10.6.28` | Service reported up |
 | Target subdomain | `https://chart.manico.es` | Owner-approved subdomain for Web Frontend and PHP REST API |
-| Deployment mechanism | GitHub Actions | `build-apk.yml` is manual (`workflow_dispatch`) and creates APK/web-package artifacts; no cPanel deployment workflow exists in `main` as of 2026-11-06 |
+| Deployment mechanism | GitHub Actions (`build-apk.yml`) | Runs automatically on `push` to `main` and `workflow_dispatch`; builds deterministically signed APK (`CANONICAL_B64` Yadin keystore + monotonic `versionCode = 100 + GITHUB_RUN_NUMBER`) and deploys Web + MariaDB `tvdatafeed` candles to `chart.manico.es` |
 | Shared IP address | Redacted / not published | Public repository does not need the account's shared IP address |
 | Sendmail path | `/usr/sbin/sendmail` | Reported path |
 | Perl path/version | `/usr/bin/perl`, `5.26.3` | Reported by cPanel |
