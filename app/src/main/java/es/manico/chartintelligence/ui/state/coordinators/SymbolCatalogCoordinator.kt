@@ -64,6 +64,7 @@ class SymbolCatalogCoordinator(private val repository: WorkspaceRepository) {
             inWatchlist = true,
             activeProvider = provider,
             allowedProviders = listOf(
+                ProviderId.TVDATAFEED,
                 ProviderId.DUKASCOPY,
                 ProviderId.TWELVE_DATA,
                 ProviderId.YAHOO_FINANCE

@@ -1,6 +1,6 @@
 {
-  "summary":  "طرح جامع بازطراحی محیط کاری نمودار (Chart Workspace Redesign) در نسخه دسکتاپ، موبایل وب و اپلیکیشن اندروید بر اساس پاسخ‌های تاییدشده کاربر: ردیف یکپارچه تایم‌فریم و بازه تاریخی در بالای نمودار، موتور رندر چندپنلی اختصاصی (پنل کندل + پنل مستقل Volume با مقیاس مجزا و قابلیت تغییر ارتفاع/مخفی‌سازی + زیرساخت پنل اندیکاتورها)، خط قیمت فعلی، Crosshair با برچسب لحظه‌ای قیمت و زمان روی محورها، و نوار ابزار ترسیم تاشو با انتخاب رنگ و ضخامت هر خط.",
-  "updatedAt":  "2026-11-07T14:07:03.880666766Z",
+  "summary":  "Implementation plan for integrating the Python tvdatafeed pipeline for PEPPERSTONE:SPOTBRENT (up to 5,000 candles across M15, H1, H4, D1), storing in the cPanel host MariaDB database, setting TradingView (PEPPERSTONE) as the default provider for SPOTBRENT, and expanding history/slider limits to 5,000 candles on Web and Android.",
+  "updatedAt":  "2026-11-07T14:50:24.108940213Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

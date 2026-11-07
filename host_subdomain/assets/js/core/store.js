@@ -15,10 +15,10 @@ export const BASE_SYMBOLS = [
     chartId: 'chart_spotbrent_main',
     symbolCode: 'SPOTBRENT',
     customTitle: null,
-    decimals: 2,
+    decimals: 3,
     inWatchlist: true,
-    activeProvider: 'dukascopy',
-    allowedProviders: ['dukascopy', 'twelve_data', 'eia_brent_spot', 'yahoo_finance'],
+    activeProvider: 'tvdatafeed',
+    allowedProviders: ['tvdatafeed', 'dukascopy', 'twelve_data', 'eia_brent_spot', 'yahoo_finance'],
     timeframe: 'M15',
   },
   {
@@ -28,7 +28,7 @@ export const BASE_SYMBOLS = [
     decimals: 2,
     inWatchlist: false,
     activeProvider: 'yahoo_finance',
-    allowedProviders: ['yahoo_finance', 'dukascopy', 'eia_brent_spot'],
+    allowedProviders: ['yahoo_finance', 'tvdatafeed', 'dukascopy', 'eia_brent_spot'],
     timeframe: 'M15',
   },
   {
@@ -81,11 +81,13 @@ export function loadChartPreferences() {
     trendColor: '#A855F7',
     hlineColor: '#38BDF8',
     vlineColor: '#F59E0B',
-    candleFetchLimit: 160,
+    candleFetchLimit: 500,
   };
   try {
     const saved = JSON.parse(localStorage.getItem('ci_chart_preferences') || '{}');
-    return { ...defaults, ...saved };
+    const merged = { ...defaults, ...saved };
+    merged.candleFetchLimit = Math.max(40, Math.min(5000, Number(merged.candleFetchLimit) || 500));
+    return merged;
   } catch (_) {
     return defaults;
   }
@@ -93,6 +95,10 @@ export function loadChartPreferences() {
 
 export function saveChartPreferences(prefs) {
   state.chartPreferences = { ...state.chartPreferences, ...prefs };
+  state.chartPreferences.candleFetchLimit = Math.max(
+    40,
+    Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 500)
+  );
   localStorage.setItem('ci_chart_preferences', JSON.stringify(state.chartPreferences));
 }
 
@@ -127,10 +133,13 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
 export function saveCandlesToCache(symbolCode, provider, timeframe, candles) {
   const normTf = provider === 'eia_brent_spot' ? 'D1' : String(timeframe || 'M15').toUpperCase();
   const exactKey = `${symbolCode}_${provider}_${normTf}`;
-  candleCache.set(exactKey, candles);
+  const limit = Math.max(40, Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 500));
+  const cappedInMemory = candles.slice(-limit);
+  candleCache.set(exactKey, cappedInMemory);
   try {
-    const limit = state.chartPreferences.candleFetchLimit || 160;
-    localStorage.setItem(`ci_candles_v2_${exactKey}`, JSON.stringify(candles.slice(-limit)));
+    // Store up to 1500 in browser localStorage to avoid QuotaExceededError while keeping up to 5000 in memory & MariaDB
+    const localCap = Math.min(limit, 1500);
+    localStorage.setItem(`ci_candles_v2_${exactKey}`, JSON.stringify(cappedInMemory.slice(-localCap)));
   } catch (_) {}
 }
 
@@ -152,6 +161,7 @@ export function saveDrawings(chartId, drawings) {
 export function loadSymbolsFromStorage() {
   let saved = null;
   let custom = [];
+  const migratedTvDefault = localStorage.getItem('ci_spotbrent_tv_default_v1') === '1';
   try {
     saved = JSON.parse(localStorage.getItem('ci_symbols') || 'null');
     custom = JSON.parse(localStorage.getItem('ci_custom_symbols') || '[]');
@@ -160,10 +170,13 @@ export function loadSymbolsFromStorage() {
   const allDefinitions = [...BASE_SYMBOLS, ...(Array.isArray(custom) ? custom : [])];
   state.symbols = allDefinitions.map((item) => {
     const match = Array.isArray(saved) ? saved.find((s) => s.symbolCode === item.symbolCode) : null;
-    const activeProvider =
+    let activeProvider =
       match && item.allowedProviders.includes(match.activeProvider)
         ? match.activeProvider
         : item.activeProvider;
+    if (item.symbolCode === 'SPOTBRENT' && !migratedTvDefault) {
+      activeProvider = 'tvdatafeed';
+    }
     const timeframe =
       activeProvider === 'eia_brent_spot'
         ? 'D1'
@@ -184,6 +197,10 @@ export function loadSymbolsFromStorage() {
       hasError: false,
     };
   });
+  if (!migratedTvDefault) {
+    localStorage.setItem('ci_spotbrent_tv_default_v1', '1');
+    saveSymbolsToStorage();
+  }
 }
 
 export function saveSymbolsToStorage() {

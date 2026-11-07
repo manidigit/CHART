@@ -20,9 +20,9 @@ data class ChartPreferences(
     val chartGridColorHex: String = "FF1E293B",     // Grid Dark
 
     // Algorithm & Calculation Parameters
-    val candleFetchLimit: Int = 160,
+    val candleFetchLimit: Int = 500,
     val minVisibleCandles: Int = 12,
-    val maxVisibleCandles: Int = 160,
+    val maxVisibleCandles: Int = 5000,
     val zoomStepCandles: Int = 8,
     val drawingHitTolerancePx: Float = 28f
 ) {

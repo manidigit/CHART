@@ -50,7 +50,8 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
         touchTolerance: Float
     ): ChartPreferences {
         val next = current.copy(
-            candleFetchLimit = fetchLimit.coerceIn(20, 300),
+            candleFetchLimit = fetchLimit.coerceIn(40, 5000),
+            maxVisibleCandles = 5000,
             zoomStepCandles = zoomStep.coerceIn(2, 24),
             drawingHitTolerancePx = touchTolerance.coerceIn(12f, 48f)
         )
@@ -73,7 +74,8 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
 
     fun resetAlgorithmParamsToDefault(current: ChartPreferences): ChartPreferences {
         val next = current.copy(
-            candleFetchLimit = 160,
+            candleFetchLimit = 500,
+            maxVisibleCandles = 5000,
             zoomStepCandles = 8,
             drawingHitTolerancePx = 28f
         )

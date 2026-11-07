@@ -156,6 +156,15 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
+      - name: Extract PEPPERSTONE:SPOTBRENT Candles via tvdatafeed (5,000 Bars)
+        run: |
+          pip install --upgrade --no-cache-dir git+https://github.com/rongardF/tvdatafeed.git pandas || true
+          python3 host_subdomain/scripts/sync_tvdatafeed.py \
+            --symbol SPOTBRENT \
+            --exchange PEPPERSTONE \
+            --bars 5000 \
+            --output-dir host_subdomain/data/tvdatafeed || true
+
       - name: Upload Subdomain Web Package Artifact (Public-Safe)
         uses: actions/upload-artifact@v4
         with:
@@ -214,10 +223,49 @@ jobs:
               file_put_contents($target, base64_decode($b64));
           }}
           require_once __DIR__ . '/api/v1/core/Database.php';
-          \\ChartIntelligence\\Core\\Database::getPdo();
+          $pdo = \\ChartIntelligence\\Core\\Database::getPdo();
+          $seededCandles = 0;
+          if ($pdo !== null) {{
+              $sql = "INSERT INTO candles
+                  (chart_id, provider_id, timeframe, open_time_utc_ms, open_time_utc_iso,
+                   open_price, high_price, low_price, close_price, volume)
+                  VALUES (:cid, 'tvdatafeed', :tf, :ms, :iso, :o, :h, :l, :c, :v)
+                  ON DUPLICATE KEY UPDATE
+                  open_price = VALUES(open_price),
+                  high_price = VALUES(high_price),
+                  low_price  = VALUES(low_price),
+                  close_price = VALUES(close_price),
+                  volume     = VALUES(volume)";
+              $stmt = $pdo->prepare($sql);
+              foreach (['M15', 'H1', 'H4', 'D1'] as $tf) {{
+                  $jsonPath = __DIR__ . '/data/tvdatafeed/SPOTBRENT_' . $tf . '.json';
+                  if (is_file($jsonPath)) {{
+                      $decoded = json_decode((string) file_get_contents($jsonPath), true);
+                      $rows = $decoded['candles'] ?? [];
+                      if (is_array($rows) && count($rows) > 0) {{
+                          $pdo->beginTransaction();
+                          foreach ($rows as $bar) {{
+                              $stmt->execute([
+                                  ':cid' => 'chart_spotbrent_main',
+                                  ':tf'  => $tf,
+                                  ':ms'  => (int) ($bar['open_time_utc_ms'] ?? 0),
+                                  ':iso' => (string) ($bar['open_time_utc_iso'] ?? ''),
+                                  ':o'   => (string) ($bar['open'] ?? '0'),
+                                  ':h'   => (string) ($bar['high'] ?? '0'),
+                                  ':l'   => (string) ($bar['low'] ?? '0'),
+                                  ':c'   => (string) ($bar['close'] ?? '0'),
+                                  ':v'   => (string) ($bar['volume'] ?? '0'),
+                              ]);
+                              $seededCandles++;
+                          }}
+                          $pdo->commit();
+                      }}
+                  }}
+              }}
+          }}
           @unlink(__FILE__);
           header('Content-Type: application/json');
-          echo json_encode(['ok' => true, 'deployed_files' => count($files)]);
+          echo json_encode(['ok' => true, 'deployed_files' => count($files), 'seeded_tvdatafeed_candles' => $seededCandles]);
           """
           with open("/tmp/_deploy_phase1.php", "w", encoding="utf-8") as df:
               df.write(deployer_php)

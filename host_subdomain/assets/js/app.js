@@ -432,12 +432,29 @@ document.addEventListener('click', async (e) => {
     const prov = btn.getAttribute('data-provider');
     const sym = state.symbols.find((s) => s.symbolCode === code);
     if (sym) {
+      const oldProvider = sym.activeProvider;
       sym.activeProvider = prov;
       sym.timeframe = prov === 'eia_brent_spot' ? 'D1' : 'M15';
       sym.candles = getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, sym.timeframe);
       const latest = sym.candles[sym.candles.length - 1];
       sym.lastClose = latest ? latest.close : null;
       sym.lastCandleUtc = latest ? latest.open_time_utc_iso : null;
+
+      // Update any existing open tab for this symbol so Chart View reflects the new provider immediately
+      const oldTabId = `${sym.symbolCode}_${oldProvider}`;
+      const newTabId = `${sym.symbolCode}_${prov}`;
+      const openTab = state.openTabs.find((t) => t.tabId === oldTabId || t.symbolCode === sym.symbolCode);
+      if (openTab) {
+        const wasActive = state.activeTabId === openTab.tabId;
+        openTab.tabId = newTabId;
+        openTab.provider = prov;
+        openTab.timeframe = sym.timeframe;
+        openTab.candles = sym.candles;
+        openTab.scrollOffset = 0;
+        openTab.selectedCandleIndex = null;
+        if (wasActive) state.activeTabId = newTabId;
+      }
+
       saveSymbolsToStorage();
       renderApp();
       await syncSymbolNow(sym.symbolCode, sym.timeframe, renderApp);
@@ -470,7 +487,28 @@ document.addEventListener('click', async (e) => {
   }
 });
 
-document.addEventListener('change', (e) => {
+document.addEventListener('input', (e) => {
+  const slider = e.target.closest('[data-action="set-fetch-limit"]');
+  if (!slider) return;
+  const val = Math.max(40, Math.min(5000, parseInt(slider.value || '500', 10)));
+  const lbl = document.getElementById('fetch-limit-value-label');
+  if (lbl) lbl.textContent = String(val);
+});
+
+document.addEventListener('change', async (e) => {
+  const slider = e.target.closest('[data-action="set-fetch-limit"]');
+  if (slider) {
+    const val = Math.max(40, Math.min(5000, parseInt(slider.value || '500', 10)));
+    saveChartPreferences({ candleFetchLimit: val });
+    const activeTab = state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0];
+    if (activeTab) {
+      await syncSymbolNow(activeTab.symbolCode, activeTab.timeframe, renderApp);
+    } else {
+      renderApp();
+    }
+    return;
+  }
+
   const input = e.target.closest('[data-action="toggle-watchlist"]');
   if (!input) return;
   const code = input.getAttribute('data-symbol');

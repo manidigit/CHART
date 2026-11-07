@@ -305,17 +305,19 @@ fun SettingsScreen(
                             }
                         }
                         Slider(
-                            value = currentFetchLimit,
-                            onValueChange = { currentFetchLimit = it },
+                            value = currentFetchLimit.coerceIn(40f, 5000f),
+                            onValueChange = {
+                                val stepped = ((it / 20f).roundToInt() * 20).coerceIn(40, 5000)
+                                currentFetchLimit = stepped.toFloat()
+                            },
                             onValueChangeFinished = {
                                 onUpdateAlgoParams(
-                                    currentFetchLimit.roundToInt(),
+                                    currentFetchLimit.roundToInt().coerceIn(40, 5000),
                                     chartPreferences.zoomStepCandles,
                                     chartPreferences.drawingHitTolerancePx
                                 )
                             },
-                            valueRange = 40f..300f,
-                            steps = 12,
+                            valueRange = 40f..5000f,
                             modifier = Modifier.testTag("slider_fetch_limit")
                         )
                     }

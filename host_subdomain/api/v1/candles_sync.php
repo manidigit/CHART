@@ -10,12 +10,14 @@ require_once __DIR__ . '/providers/YahooFinanceAdapter.php';
 require_once __DIR__ . '/providers/TwelveDataAdapter.php';
 require_once __DIR__ . '/providers/DukascopyAdapter.php';
 require_once __DIR__ . '/providers/EiaBenchmarkAdapter.php';
+require_once __DIR__ . '/providers/TvDatafeedAdapter.php';
 
 use ChartIntelligence\Algorithms\CandleValidator;
 use ChartIntelligence\Core\ApiEnvelope;
 use ChartIntelligence\Core\Database;
 use ChartIntelligence\Providers\DukascopyAdapter;
 use ChartIntelligence\Providers\EiaBenchmarkAdapter;
+use ChartIntelligence\Providers\TvDatafeedAdapter;
 use ChartIntelligence\Providers\TwelveDataAdapter;
 use ChartIntelligence\Providers\YahooFinanceAdapter;
 
@@ -28,10 +30,16 @@ if (!in_array($timeframe, ['M15', 'H1', 'H4', 'D1'], true)) {
 if ($provider === 'eia_brent_spot') {
     $timeframe = 'D1';
 }
-$limit = max(12, min(200, (int) ($_GET['limit'] ?? 160)));
+// Support up to 5,000 candles per request
+$limit = max(12, min(5000, (int) ($_GET['limit'] ?? 500)));
 $nowMs = (int) round(microtime(true) * 1000);
 
+$pdo = Database::getPdo();
+$chartId = 'chart_' . strtolower($symbol) . '_main';
+
+// For tvdatafeed, check if MariaDB already has stored candles, and also merge any newly synced tvdatafeed files
 $candles = match ($provider) {
+    'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, isset($_GET['refresh'])),
     'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs),
     'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs),
     'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $limit, $nowMs),
@@ -39,39 +47,46 @@ $candles = match ($provider) {
     default => [],
 };
 
-// Persist real candles to MariaDB or read previously stored real candles if upstream is temporarily unreachable.
-// Strictly NO synthetic/fake sine-wave data is ever fabricated.
-$pdo = Database::getPdo();
-$chartId = 'chart_' . strtolower($symbol) . '_main';
-
+// Persist real candles to MariaDB in a fast batch transaction, then query up to $limit (up to 5,000) candles from MariaDB
 if ($pdo !== null && !empty($candles)) {
-    $stmt = $pdo->prepare(
-        "INSERT INTO candles
-            (chart_id, provider_id, timeframe, open_time_utc, open_price, high_price, low_price, close_price, volume, is_closed)
-         VALUES
-            (:chart_id, :provider_id, :tf, :open_ms, :o, :h, :l, :c, :v, 1)
-         ON DUPLICATE KEY UPDATE
-            open_price = VALUES(open_price),
-            high_price = VALUES(high_price),
-            low_price = VALUES(low_price),
-            close_price = VALUES(close_price),
-            volume = VALUES(volume),
-            fetched_at_utc = CURRENT_TIMESTAMP"
-    );
-    foreach ($candles as $bar) {
-        $stmt->execute([
-            ':chart_id' => $chartId,
-            ':provider_id' => $provider,
-            ':tf' => $timeframe,
-            ':open_ms' => $bar['open_time_utc_ms'],
-            ':o' => $bar['open'],
-            ':h' => $bar['high'],
-            ':l' => $bar['low'],
-            ':c' => $bar['close'],
-            ':v' => $bar['volume'],
-        ]);
+    try {
+        $pdo->beginTransaction();
+        $stmt = $pdo->prepare(
+            "INSERT INTO candles
+                (chart_id, provider_id, timeframe, open_time_utc, open_price, high_price, low_price, close_price, volume, is_closed)
+             VALUES
+                (:chart_id, :provider_id, :tf, :open_ms, :o, :h, :l, :c, :v, 1)
+             ON DUPLICATE KEY UPDATE
+                open_price = VALUES(open_price),
+                high_price = VALUES(high_price),
+                low_price = VALUES(low_price),
+                close_price = VALUES(close_price),
+                volume = VALUES(volume),
+                fetched_at_utc = CURRENT_TIMESTAMP"
+        );
+        foreach ($candles as $bar) {
+            $stmt->execute([
+                ':chart_id' => $chartId,
+                ':provider_id' => $provider,
+                ':tf' => $timeframe,
+                ':open_ms' => $bar['open_time_utc_ms'],
+                ':o' => $bar['open'],
+                ':h' => $bar['high'],
+                ':l' => $bar['low'],
+                ':c' => $bar['close'],
+                ':v' => $bar['volume'],
+            ]);
+        }
+        $pdo->commit();
+    } catch (Throwable) {
+        if ($pdo->inTransaction()) {
+            $pdo->rollBack();
+        }
     }
-} elseif ($pdo !== null && empty($candles)) {
+}
+
+// Always read the canonical merged series from MariaDB if available (up to $limit = 5,000 candles)
+if ($pdo !== null) {
     $q = $pdo->prepare(
         "SELECT open_time_utc, open_price, high_price, low_price, close_price, volume
          FROM candles
@@ -85,18 +100,24 @@ if ($pdo !== null && !empty($candles)) {
     $q->bindValue(':lim', $limit, PDO::PARAM_INT);
     $q->execute();
     $rows = array_reverse($q->fetchAll(PDO::FETCH_ASSOC));
-    foreach ($rows as $r) {
-        $c = CandleValidator::sanitizeCandle(
-            (int) $r['open_time_utc'],
-            $timeframe,
-            $r['open_price'],
-            $r['high_price'],
-            $r['low_price'],
-            $r['close_price'],
-            $r['volume']
-        );
-        if ($c !== null) {
-            $candles[] = $c;
+    if (!empty($rows)) {
+        $dbCandles = [];
+        foreach ($rows as $r) {
+            $c = CandleValidator::sanitizeCandle(
+                (int) $r['open_time_utc'],
+                $timeframe,
+                $r['open_price'],
+                $r['high_price'],
+                $r['low_price'],
+                $r['close_price'],
+                $r['volume']
+            );
+            if ($c !== null) {
+                $dbCandles[] = $c;
+            }
+        }
+        if (!empty($dbCandles)) {
+            $candles = $dbCandles;
         }
     }
 }
@@ -105,5 +126,6 @@ ApiEnvelope::sendSuccess([
     'symbol' => $symbol,
     'provider' => $provider,
     'timeframe' => $timeframe,
+    'count' => count($candles),
     'candles' => $candles,
 ]);

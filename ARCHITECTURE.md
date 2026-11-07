@@ -1,7 +1,7 @@
 # CHART — Architecture & System Design
 
 > **Document Status:** Official Architectural Specification  
-> **Target Version:** 1.26+  
+> **Target Version:** 1.27+  
 > **Master Reference:** [CHART_INTELLIGENCE_MASTER_SPEC.md](./CHART_INTELLIGENCE_MASTER_SPEC.md)
 
 ---
@@ -81,6 +81,7 @@ The software architecture is governed by five core principles:
 │   ├── CandleProviderAdapter.kt
 │   ├── DukascopyAdapter.kt
 │   ├── EiaBenchmarkAdapter.kt
+│   ├── TvDatafeedAdapter.kt
 │   ├── TwelveDataAdapter.kt
 │   └── YahooFinanceAdapter.kt
 └── ui/
@@ -99,9 +100,12 @@ The software architecture is governed by five core principles:
 ├── api/v1/                     # PHP REST API backend
 │   ├── algorithms/             # Shared server-side candle aggregation & validation
 │   ├── core/                   # MariaDB connection & JSON response helpers
-│   ├── providers/              # Server-side provider adapters
+│   ├── providers/              # Server-side provider adapters (TvDatafeed, TwelveData, Dukascopy, EIA, Yahoo)
 │   ├── auth.php                # Unified owner registration, login, Google sync & email password recovery
-│   └── candles_sync.php        # Synchronizes closed candles to MariaDB
+│   └── candles_sync.php        # Synchronizes up to 5,000 closed candles per timeframe to MariaDB
+├── scripts/                    # Python & PHP CLI data extraction workers
+│   ├── sync_tvdatafeed.py      # Extracts up to 5,000 PEPPERSTONE:SPOTBRENT candles (15m, 1h, 4h, 1d) via tvdatafeed
+│   └── cron_sync_tvdatafeed.php# Cron helper that runs sync_tvdatafeed.py and batch-upserts into MariaDB
 ├── assets/
 │   ├── css/
 │   │   └── theme.css           # Design tokens, desktop layout, and mobile touch styles

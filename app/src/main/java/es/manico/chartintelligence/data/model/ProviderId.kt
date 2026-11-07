@@ -15,6 +15,12 @@ enum class ProviderId(
         titleResId = R.string.provider_twelve_data,
         defaultTimeframe = "M15"
     ),
+    TVDATAFEED(
+        id = "tvdatafeed",
+        badgeLabel = "TradingView",
+        titleResId = R.string.provider_tvdatafeed,
+        defaultTimeframe = "M15"
+    ),
     DUKASCOPY(
         id = "dukascopy",
         badgeLabel = "Dukascopy",

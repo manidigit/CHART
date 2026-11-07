@@ -16,6 +16,7 @@ import es.manico.chartintelligence.i18n.AppLanguage
 import es.manico.chartintelligence.providers.CandleProviderAdapter
 import es.manico.chartintelligence.providers.DukascopyAdapter
 import es.manico.chartintelligence.providers.EiaBenchmarkAdapter
+import es.manico.chartintelligence.providers.TvDatafeedAdapter
 import es.manico.chartintelligence.providers.TwelveDataAdapter
 import es.manico.chartintelligence.providers.YahooFinanceAdapter
 import kotlinx.coroutines.Dispatchers
@@ -49,17 +50,18 @@ class WorkspaceRepository(context: Context) {
         context.applicationContext.getSharedPreferences(AppConfig.PREFS_FILE_NAME, Context.MODE_PRIVATE)
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(15, TimeUnit.SECONDS)
+        .readTimeout(15, TimeUnit.SECONDS)
         .build()
 
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     private val adapters: Map<ProviderId, CandleProviderAdapter> = mapOf(
         ProviderId.TWELVE_DATA to TwelveDataAdapter(),
-        ProviderId.DUKASCOPY to DukascopyAdapter(),
+        ProviderId.TVDATAFEED to TvDatafeedAdapter(httpClient),
+        ProviderId.DUKASCOPY to DukascopyAdapter(httpClient),
         ProviderId.EIA_BRENT_SPOT to EiaBenchmarkAdapter(),
-        ProviderId.YAHOO_FINANCE to YahooFinanceAdapter()
+        ProviderId.YAHOO_FINANCE to YahooFinanceAdapter(httpClient)
     )
 
     private val candleMemoryStore = HashMap<String, List<CandleBar>>()
@@ -334,9 +336,9 @@ class WorkspaceRepository(context: Context) {
                 horizontalLineColorHex = obj.optString("horizontalLineColorHex", "FF38BDF8"),
                 verticalLineColorHex = obj.optString("verticalLineColorHex", "FFF59E0B"),
                 chartGridColorHex = obj.optString("chartGridColorHex", "FF1E293B"),
-                candleFetchLimit = obj.optInt("candleFetchLimit", 160),
+                candleFetchLimit = obj.optInt("candleFetchLimit", AppConfig.DEFAULT_CANDLE_FETCH_LIMIT).coerceIn(40, 5000),
                 minVisibleCandles = obj.optInt("minVisibleCandles", 12),
-                maxVisibleCandles = obj.optInt("maxVisibleCandles", 160),
+                maxVisibleCandles = obj.optInt("maxVisibleCandles", AppConfig.MAX_VISIBLE_CANDLES).coerceAtLeast(5000),
                 zoomStepCandles = obj.optInt("zoomStepCandles", 8),
                 drawingHitTolerancePx = obj.optDouble("drawingHitTolerancePx", 28.0).toFloat()
             )
@@ -351,9 +353,9 @@ class WorkspaceRepository(context: Context) {
         obj.put("horizontalLineColorHex", prefsObj.horizontalLineColorHex)
         obj.put("verticalLineColorHex", prefsObj.verticalLineColorHex)
         obj.put("chartGridColorHex", prefsObj.chartGridColorHex)
-        obj.put("candleFetchLimit", prefsObj.candleFetchLimit)
+        obj.put("candleFetchLimit", prefsObj.candleFetchLimit.coerceIn(40, 5000))
         obj.put("minVisibleCandles", prefsObj.minVisibleCandles)
-        obj.put("maxVisibleCandles", prefsObj.maxVisibleCandles)
+        obj.put("maxVisibleCandles", prefsObj.maxVisibleCandles.coerceAtLeast(5000))
         obj.put("zoomStepCandles", prefsObj.zoomStepCandles)
         obj.put("drawingHitTolerancePx", prefsObj.drawingHitTolerancePx.toDouble())
         prefs.edit().putString(AppConfig.KEY_CHART_PREFERENCES_JSON, obj.toString()).apply()
@@ -362,7 +364,9 @@ class WorkspaceRepository(context: Context) {
     fun loadSymbolCatalog(): List<SymbolConfig> {
         val defaults = defaultSymbolCatalog()
         val savedJson = prefs.getString(AppConfig.KEY_SYMBOLS_CONFIG_JSON, null)
+        val migratedSpotBrentTv = prefs.getBoolean(AppConfig.KEY_SPOTBRENT_TV_MIGRATED, false)
         val loadedList = if (savedJson.isNullOrBlank()) {
+            prefs.edit().putBoolean(AppConfig.KEY_SPOTBRENT_TV_MIGRATED, true).apply()
             defaults
         } else {
             runCatching {
@@ -381,7 +385,13 @@ class WorkspaceRepository(context: Context) {
                     val base = defaultMap[code]
 
                     if (base != null) {
-                        val validProvider = if (provider in base.allowedProviders) provider else base.activeProvider
+                        val validProvider = if (code == "SPOTBRENT" && !migratedSpotBrentTv) {
+                            ProviderId.TVDATAFEED
+                        } else if (provider in base.allowedProviders) {
+                            provider
+                        } else {
+                            base.activeProvider
+                        }
                         val validTf = if (validProvider == ProviderId.EIA_BRENT_SPOT) "D1" else if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
                         list.add(
                             base.copy(
@@ -403,6 +413,7 @@ class WorkspaceRepository(context: Context) {
                                 inWatchlist = inWatchlist,
                                 activeProvider = provider,
                                 allowedProviders = listOf(
+                                    ProviderId.TVDATAFEED,
                                     ProviderId.DUKASCOPY,
                                     ProviderId.TWELVE_DATA,
                                     ProviderId.YAHOO_FINANCE
@@ -411,6 +422,10 @@ class WorkspaceRepository(context: Context) {
                             )
                         )
                     }
+                }
+                if (!migratedSpotBrentTv) {
+                    prefs.edit().putBoolean(AppConfig.KEY_SPOTBRENT_TV_MIGRATED, true).apply()
+                    saveSymbolCatalog(list)
                 }
                 if (list.isEmpty()) defaults else list
             }.getOrDefault(defaults)
@@ -495,7 +510,7 @@ class WorkspaceRepository(context: Context) {
         symbol: SymbolConfig,
         requestedTimeframe: String = symbol.timeframe
     ): Pair<SymbolConfig, List<CandleBar>> {
-        val adapter = adapters[symbol.activeProvider] ?: DukascopyAdapter()
+        val adapter = adapters[symbol.activeProvider] ?: DukascopyAdapter(httpClient)
         val effectiveTimeframe = if (symbol.activeProvider == ProviderId.EIA_BRENT_SPOT) {
             "D1"
         } else {
@@ -503,11 +518,12 @@ class WorkspaceRepository(context: Context) {
         }
         val key = "${symbol.symbolCode}_${symbol.activeProvider.id}_${effectiveTimeframe}"
         val existing = getCachedOrAggregatedCandles(symbol.symbolCode, symbol.activeProvider, effectiveTimeframe)
+        val configuredFetchLimit = loadChartPreferences().candleFetchLimit.coerceIn(40, 5000)
 
         val syncResult = adapter.fetchClosedCandlesUpToNow(
             symbolCode = symbol.symbolCode,
             timeframe = effectiveTimeframe,
-            limit = AppConfig.DEFAULT_CANDLE_FETCH_LIMIT
+            limit = configuredFetchLimit
         )
 
         val merged = if (syncResult.candles.isNotEmpty()) {
@@ -515,9 +531,9 @@ class WorkspaceRepository(context: Context) {
                 existing = existing,
                 incoming = syncResult.candles,
                 timeframe = effectiveTimeframe
-            )
+            ).takeLast(configuredFetchLimit)
             candleMemoryStore[key] = combined
-            saveCandlesToPrefs(key, combined)
+            saveCandlesToPrefs(key, combined, configuredFetchLimit)
             combined
         } else {
             existing
@@ -643,9 +659,13 @@ class WorkspaceRepository(context: Context) {
         }.getOrDefault(emptyList())
     }
 
-    private fun saveCandlesToPrefs(key: String, candles: List<CandleBar>) {
+    private fun saveCandlesToPrefs(
+        key: String,
+        candles: List<CandleBar>,
+        maxLimit: Int = AppConfig.MAX_VISIBLE_CANDLES
+    ) {
         val arr = JSONArray()
-        for (c in candles.takeLast(AppConfig.DEFAULT_CANDLE_FETCH_LIMIT)) {
+        for (c in candles.takeLast(maxLimit.coerceIn(40, 5000))) {
             val obj = JSONObject()
             obj.put("t", c.openTimeUtcMillis)
             obj.put("o", c.open.toPlainString())
@@ -678,10 +698,11 @@ class WorkspaceRepository(context: Context) {
                 chartId = "chart_spotbrent_main",
                 symbolCode = "SPOTBRENT",
                 titleResId = R.string.symbol_spotbrent_name,
-                decimals = 2,
+                decimals = 3,
                 inWatchlist = true,
-                activeProvider = ProviderId.DUKASCOPY,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
                     ProviderId.DUKASCOPY,
                     ProviderId.TWELVE_DATA,
                     ProviderId.EIA_BRENT_SPOT,
@@ -698,6 +719,7 @@ class WorkspaceRepository(context: Context) {
                 activeProvider = ProviderId.YAHOO_FINANCE,
                 allowedProviders = listOf(
                     ProviderId.YAHOO_FINANCE,
+                    ProviderId.TVDATAFEED,
                     ProviderId.DUKASCOPY,
                     ProviderId.EIA_BRENT_SPOT
                 ),

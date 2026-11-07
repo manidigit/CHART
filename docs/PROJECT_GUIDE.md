@@ -3,7 +3,7 @@
 > راهنمای مکمل برای معرفی جزئیات اجرایی، استانداردهای توسعه و وضعیت پروژه. مرجع تصمیمات معماری و محصول همچنان [سند اصلی](../CHART_INTELLIGENCE_MASTER_SPEC.md) است.
 
 **آخرین بازبینی:** 2026-11-07  
-**نسخه سند مرجع اصلی هنگام بازبینی:** 1.26  
+**نسخه سند مرجع اصلی هنگام بازبینی:** 1.27  
 **وب‌اپلیکیشن:** https://chart.manico.es
 
 ---
@@ -83,7 +83,7 @@
   - `controllers/chartInteractionController.js` (رویدادهای لمسی و ماوس بوم)
   - `views/` (`headerView.js`, `toolRailView.js`, `watchlistView.js`, `analysisView.js`, `settingsView.js`, `loginView.js`, `navigationView.js`)
   - `components/chartRenderer.js` (موتور رندر کندلی)
-- **Providerها:** `TwelveDataAdapter`, `DukascopyAdapter`, `EiaBenchmarkAdapter`, `YahooFinanceAdapter`
+- **Providerها:** `TvDatafeedAdapter` (`PEPPERSTONE:SPOTBRENT` تا ۵۰۰۰ کندل), `TwelveDataAdapter`, `DukascopyAdapter`, `EiaBenchmarkAdapter`, `YahooFinanceAdapter`
 - **الگوریتم‌ها:** `UtcTimeAnchorAlgorithm`, `CandleValidatorAlgorithm`, `TimeframeAggregatorAlgorithm`, `DrawingGeometryAlgorithm`, `PriceFormatterAlgorithm`, `PasswordHashAlgorithm` (و در فاز ۲: `SmaCalculator`, `EmaCalculator`, `BollingerBandsCalculator`, `RsiCalculator`, `MacdCalculator`, `AtrCalculator`, `GapDetector`)
 
 ساختار واقعی فایل‌ها را با درخت مخزن و Master Spec تطبیق دهید؛ این فهرست جایگزین بررسی کد جاری نیست.
@@ -96,7 +96,7 @@
 
 | فاز | محدوده | خروجی مورد انتظار |
 |---:|---|---|
-| **۱ — پیاده‌سازی‌شده** | اسکلت ماژولار Android/Web، فارسی و انگلیسی، ورود شخصی، واچ‌لیست، تنظیمات منابع و نمودار معاملاتی استاندارد چندتب (تایم‌فریم‌های M15/H1/H4/D1، نمایش شمعی و خطی، محورهای پویا با مقیاس دستی/خودکار، ابزارهای رسم خط افقی/عمودی/روند و داده واقعی بازار بدون داده ساختگی) | اجرای نسخه پایه، مشاهده نمادهای اولیه، Sync/Update واقعی، بازکردن چند نمودار در تب‌های مستقل و تحلیل با ابزارهای رسم و تایم‌فریم‌ها |
+| **۱ — پیاده‌سازی‌شده** | اسکلت ماژولار Android/Web، فارسی و انگلیسی، ورود شخصی، واچ‌لیست، تنظیمات منابع و نمودار معاملاتی استاندارد چندتب (تایم‌فریم‌های M15/H1/H4/D1، نمایش شمعی و خطی، محورهای پویا با مقیاس دستی/خودکار، ابزارهای رسم خط افقی/عمودی/روند و داده واقعی بازار بدون داده ساختگی تا سقف ۵۰۰۰ کندل) | اجرای نسخه پایه، مشاهده نمادهای اولیه، Sync/Update واقعی، بازکردن چند نمودار در تب‌های مستقل و تحلیل با ابزارهای رسم و تایم‌فریم‌ها |
 | **۲** | شش گروه اندیکاتور پایه و تایم‌فریم تکمیلی M30 | SMA، EMA، Bollinger Bands، RSI، MACD، ATR و پنل تنظیمات اندیکاتورها |
 | **۳** | تشخیص Gap، ورود داده تاریخی و Backup/Restore رمزنگاری‌شده | تکمیل شکاف داده، ورود تاریخچه EIA/DataHub و پشتیبان‌گیری/بازیابی |
 | **۴** | موتور تحلیل ساختار بازار و Prediction Engine v1 | روند، حمایت/مقاومت، پیش‌بینی‌های Immutable در افق‌های 15m، 1h، 4h و 1d |
@@ -122,7 +122,8 @@
 
 | نوع سری | Provider / نماد | نقش ثبت‌شده |
 |---|---|---|
-| Brent Oil CFD | Dukascopy: `brentcmdusd` | منبع درون‌روزی ثبت‌شده |
+| Spot Brent CFD (TradingView) | `tvdatafeed`: `PEPPERSTONE:SPOTBRENT` | **منبع پیش‌فرض `SPOTBRENT`** (تا ۵۰۰۰ کندل در `M15`, `H1`, `H4`, `D1` منطبق با قیمت TradingView و Revolut) |
+| Brent Oil CFD | Dukascopy: `brentcmdusd` | منبع جایگزین درون‌روزی |
 | Brent در Twelve Data | `XBR/USD` | گزینه Provider؛ محدودیت پلن باید مدیریت شود |
 | Brent Futures | Yahoo Finance: `BZ=F` | سری آتی با هویت مستقل |
 | Europe Brent Spot Price FOB | EIA: `RBRTEd` | مرجع تاریخی روزانه |
@@ -140,7 +141,7 @@
 
 - `build-apk.yml` — اجرا با هر Push روی شاخه `main` و همچنین اجرای دستی (`workflow_dispatch`):
   1. **Job 1 (`Build Android APK`):** تولید خودکار `app/google-services.json` در محیط CI (در صورتی که خروجی Git اکسپورت‌شده از AI Studio فاقد آن باشد)، کامپایل نسخه Debug اندروید (`gradle assembleDebug`) و بارگذاری Artifact خروجی `chart-intelligence-debug-apk`.
-  2. **Job 2 (`Package and Deploy Subdomain Web Files`):** بارگذاری Artifact عمومی پکیج وب و استقرار خودکار روی `chart.manico.es` از طریق cPanel UAPI با استفاده از `--data-urlencode content@file` (برای جلوگیری از خطای محدودیت ۱۲۸ کیلوبایتی `MAX_ARG_STRLEN` در آرگومان‌های خط فرمان لینوکس).
+  2. **Job 2 (`Package and Deploy Subdomain Web Files`):** استخراج تا ۵۰۰۰ کندل `PEPPERSTONE:SPOTBRENT` در تایم‌فریم‌های `15m`, `1h`, `4h`, `1d` با اسکریپت پایتون `sync_tvdatafeed.py`، بارگذاری Artifact عمومی پکیج وب و استقرار خودکار روی `chart.manico.es` به همراه ذخیره کندل‌ها در جدول `candles` دیتابیس MariaDB هاست.
 
 ---
 

@@ -435,7 +435,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         repository.saveSymbolCatalog(enriched)
-        _uiState.update { it.copy(symbols = enriched) }
+        val newTabId = "${symbolCode}_${provider.id}"
+        _uiState.update { state ->
+            var nextActiveTabId = state.activeTabId
+            val updatedTabs = state.openTabs.map { tab ->
+                if (tab.symbolCode == symbolCode) {
+                    if (state.activeTabId == tab.tabId) {
+                        nextActiveTabId = newTabId
+                    }
+                    tab.copy(
+                        tabId = newTabId,
+                        provider = provider,
+                        timeframe = targetTf,
+                        candles = candles,
+                        scrollOffsetFromRight = 0,
+                        selectedCandleIndex = null,
+                        isLoading = candles.isEmpty(),
+                        hasError = false
+                    )
+                } else {
+                    tab
+                }
+            }
+            state.copy(
+                symbols = enriched,
+                openTabs = updatedTabs,
+                activeTabId = nextActiveTabId
+            )
+        }
         syncSingleSymbolUpToNow(symbolCode)
     }
 

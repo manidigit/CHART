@@ -94,6 +94,7 @@
     <string name="symbol_xagusd_name">نقره جهانی اسپات (XAG/USD)</string>
     <string name="symbol_eurusd_name">یورو به دلار آمریکا (EUR/USD)</string>
     <string name="provider_twelve_data">Twelve Data API (اولویت M15)</string>
+    <string name="provider_tvdatafeed">TradingView (PEPPERSTONE:SPOTBRENT)</string>
     <string name="provider_dukascopy">Dukascopy (رایگان و مستقیم M15)</string>
     <string name="provider_eia">EIA Europe Brent Spot FOB (مرجع رسمی D1)</string>
     <string name="provider_yahoo">Yahoo Finance (فید بازار BZ=F)</string>
@@ -106,8 +107,8 @@
     <string name="settings_color_vline">خط عمودی</string>
     <string name="settings_action_reset_colors">بازنشانی به رنگ‌های پیش‌فرض</string>
     <string name="settings_algo_params_section">پارامترهای الگوریتم و محاسبات</string>
-    <string name="settings_algo_params_hint">تنظیم سقف دریافت تاریخچه، گام زوم و حساسیت لمس خطوط بدون هیچ عدد هاردکدشده.</string>
-    <string name="settings_param_fetch_limit">حداکثر کندل‌های دریافتی</string>
+    <string name="settings_algo_params_hint">تنظیم سقف دریافت تاریخچه (تا ۵۰۰۰ کندل)، گام زوم و حساسیت لمس خطوط بدون هیچ عدد هاردکدشده.</string>
+    <string name="settings_param_fetch_limit">حداکثر کندل‌های دریافتی و ذخیره‌شده (تا ۵۰۰۰)</string>
     <string name="settings_param_zoom_step">گام زوم (تعداد کندل)</string>
     <string name="settings_param_touch_tolerance">حساسیت لمس و انتخاب خطوط (پیکسل)</string>
     <string name="settings_action_reset_params">بازنشانی پارامترها</string>

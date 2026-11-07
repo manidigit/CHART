@@ -92,6 +92,30 @@ export function renderSettingsContent(i18n) {
       </div>
 
       <div class="card-subtle" style="margin-top: 14px;">
+        <h5 style="margin: 0 0 10px 0;">${i18n.t('settings_algo_params_section')}</h5>
+        <div class="row-between" style="font-size: 12px; margin-bottom: 6px;">
+          <span>${i18n.t('settings_param_fetch_limit')}</span>
+          <strong id="fetch-limit-value-label" class="ltr-num" style="color: var(--primary);">${p.candleFetchLimit || 500}</strong>
+        </div>
+        <input
+          type="range"
+          min="40"
+          max="5000"
+          step="20"
+          value="${p.candleFetchLimit || 500}"
+          data-action="set-fetch-limit"
+          style="width: 100%; accent-color: var(--primary); cursor: pointer;"
+        />
+        <div class="row-between ltr-num" style="font-size: 10px; color: var(--text-dim); margin-top: 4px;">
+          <span>40</span>
+          <span>500</span>
+          <span>1500</span>
+          <span>3000</span>
+          <span>5000</span>
+        </div>
+      </div>
+
+      <div class="card-subtle" style="margin-top: 14px;">
         <h5 style="margin: 0 0 8px 0;">${i18n.t('settings_appearance_section')}</h5>
         ${renderLanguageThemeBar(i18n)}
       </div>

@@ -188,34 +188,39 @@ class Phase1AlgorithmsTest {
         val defaultPrefs = es.manico.chartintelligence.data.model.ChartPreferences()
         assertEquals("FF10B981", defaultPrefs.bullCandleColorHex)
         assertEquals("FFF43F5E", defaultPrefs.bearCandleColorHex)
-        assertEquals(160, defaultPrefs.candleFetchLimit)
+        assertEquals(500, defaultPrefs.candleFetchLimit)
+        assertEquals(5000, defaultPrefs.maxVisibleCandles)
         assertEquals(8, defaultPrefs.zoomStepCandles)
         assertEquals(28f, defaultPrefs.drawingHitTolerancePx, 0.01f)
 
         val customPrefs = defaultPrefs.copy(
             bullCandleColorHex = "FF06B6D4",
-            candleFetchLimit = 250,
+            candleFetchLimit = 5000,
             drawingHitTolerancePx = 36f
         )
         val bullColor = customPrefs.bullCandleColor
         assertEquals(androidx.compose.ui.graphics.Color(0xFF06B6D4), bullColor)
-        assertEquals(250, customPrefs.candleFetchLimit)
+        assertEquals(5000, customPrefs.candleFetchLimit)
         assertEquals(36f, customPrefs.drawingHitTolerancePx, 0.01f)
     }
 
     @Test
-    fun symbolConfig_supportsDynamicCustomSymbolsWithoutHardcoding() {
-        val btc = es.manico.chartintelligence.data.model.SymbolConfig(
-            chartId = "chart_btcusd_custom",
-            symbolCode = "BTCUSD",
+    fun symbolConfig_supportsDynamicCustomSymbolsAndTvDatafeedProvider() {
+        val tvProvider = es.manico.chartintelligence.data.model.ProviderId.fromId("tvdatafeed")
+        assertEquals(es.manico.chartintelligence.data.model.ProviderId.TVDATAFEED, tvProvider)
+        assertEquals("TradingView", tvProvider.badgeLabel)
+
+        val spotBrent = es.manico.chartintelligence.data.model.SymbolConfig(
+            chartId = "chart_spotbrent_main",
+            symbolCode = "SPOTBRENT",
             titleResId = null,
-            customTitle = "Bitcoin Spot Index",
-            decimals = 2,
-            inWatchlist = true
+            customTitle = "Brent Spot (PEPPERSTONE:SPOTBRENT)",
+            decimals = 3,
+            inWatchlist = true,
+            activeProvider = tvProvider
         )
-        assertTrue(btc.isCustom)
-        assertEquals("Bitcoin Spot Index", btc.customTitle)
-        assertEquals("BTCUSD_dukascopy_M15", btc.compositeTabKey)
+        assertEquals("SPOTBRENT_tvdatafeed_M15", spotBrent.compositeTabKey)
+        assertEquals("101.198", PriceFormatterAlgorithm.formatPrice(BigDecimal("101.198"), spotBrent.decimals))
     }
 }
 

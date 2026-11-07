@@ -18,14 +18,15 @@ object AppConfig {
     const val KEY_CHART_PREFERENCES_JSON: String = "pref_chart_preferences_json"
     const val KEY_CANDLES_CACHE_PREFIX: String = "pref_candles_cache_v2_"
     const val KEY_DRAWINGS_CACHE_PREFIX: String = "pref_drawings_cache_v1_"
+    const val KEY_SPOTBRENT_TV_MIGRATED: String = "pref_spotbrent_tvdatafeed_migrated_v1"
 
     const val DEFAULT_LANGUAGE_CODE: String = "fa"
     const val DEFAULT_DARK_THEME: Boolean = true
     const val DEFAULT_TIMEFRAME: String = "M15"
     val SUPPORTED_TIMEFRAMES: List<String> = listOf("M15", "H1", "H4", "D1")
 
-    const val DEFAULT_CANDLE_FETCH_LIMIT: Int = 160
+    const val DEFAULT_CANDLE_FETCH_LIMIT: Int = 500
     const val MIN_VISIBLE_CANDLES: Int = 12
-    const val MAX_VISIBLE_CANDLES: Int = 160
+    const val MAX_VISIBLE_CANDLES: Int = 5000
     const val DEFAULT_VISIBLE_CANDLES: Int = 48
 }
