@@ -16,11 +16,12 @@ import java.util.concurrent.TimeUnit
 /**
  * Independent Data Provider Adapter: EIA Europe Brent Spot Price FOB (`eia_brent_spot`).
  * Uses the official daily benchmark (1987-present) and DataHub clean CSV mirror.
+ * Never fabricates synthetic data.
  */
 class EiaBenchmarkAdapter(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
         .build()
 ) : CandleProviderAdapter {
 
@@ -33,21 +34,9 @@ class EiaBenchmarkAdapter(
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
         val effectiveTimeframe = "D1"
-        val fetched = runCatching {
+        val candles = runCatching {
             fetchDataHubBrentDailyCsv(limit, nowMillis)
         }.getOrNull().orEmpty()
-
-        val candles = if (fetched.isNotEmpty()) {
-            fetched
-        } else {
-            HistoricalSeedGenerator.buildClosedCandlesUpToNow(
-                symbolCode = symbolCode,
-                providerId = providerId.id,
-                timeframe = effectiveTimeframe,
-                count = limit,
-                nowUtcMillis = nowMillis
-            )
-        }
 
         ProviderSyncResult(
             providerId = providerId,

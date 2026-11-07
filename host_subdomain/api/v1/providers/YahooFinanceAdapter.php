@@ -4,6 +4,7 @@ declare(strict_types=1);
 namespace ChartIntelligence\Providers;
 
 use ChartIntelligence\Algorithms\CandleValidator;
+use ChartIntelligence\Algorithms\TimeframeAggregator;
 use ChartIntelligence\Algorithms\UtcTimeAnchor;
 
 final class YahooFinanceAdapter
@@ -17,8 +18,14 @@ final class YahooFinanceAdapter
             'EURUSD' => 'EURUSD=X',
             default => $symbol,
         };
-        $interval = strtoupper($timeframe) === 'D1' ? '1d' : '15m';
-        $range = $interval === '1d' ? '6mo' : '5d';
+        $normTf = strtoupper($timeframe);
+        [$interval, $range, $sourceTf] = match ($normTf) {
+            'D1' => ['1d', '1y', 'D1'],
+            'H4' => ['60m', '3mo', 'H1'],
+            'H1' => ['60m', '1mo', 'H1'],
+            default => ['15m', '5d', 'M15'],
+        };
+
         $url = sprintf(
             'https://query1.finance.yahoo.com/v8/finance/chart/%s?interval=%s&range=%s',
             urlencode($ticker),
@@ -27,8 +34,8 @@ final class YahooFinanceAdapter
         );
         $ctx = stream_context_create([
             'http' => [
-                'timeout' => 7,
-                'header' => "User-Agent: Mozilla/5.0 (ChartIntelligence/1.0)\r\n",
+                'timeout' => 8,
+                'header' => "User-Agent: Mozilla/5.0 (ChartIntelligence/1.23)\r\n",
             ],
         ]);
         $raw = @file_get_contents($url, false, $ctx);
@@ -48,12 +55,12 @@ final class YahooFinanceAdapter
                 continue;
             }
             $openMs = ((int) $tsSec) * 1000;
-            if (!UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
+            if (!UtcTimeAnchor::isCandleClosed($openMs, $sourceTf, $nowMs)) {
                 continue;
             }
             $c = CandleValidator::sanitizeCandle(
                 $openMs,
-                $timeframe,
+                $sourceTf,
                 $quote['open'][$i],
                 $quote['high'][$i],
                 $quote['low'][$i],
@@ -65,6 +72,10 @@ final class YahooFinanceAdapter
             }
         }
         ksort($candles);
-        return array_slice(array_values($candles), -$limit);
+        $ordered = array_values($candles);
+        if ($normTf === 'H4') {
+            $ordered = TimeframeAggregator::aggregateCandles($ordered, 'H4', $nowMs);
+        }
+        return array_slice($ordered, -$limit);
     }
 }

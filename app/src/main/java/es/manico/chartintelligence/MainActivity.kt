@@ -155,10 +155,22 @@ fun ChartIntelligenceApp(
                             onCloseTab = mainViewModel::closeChartTab,
                             onSyncActiveSymbolNow = mainViewModel::syncSingleSymbolUpToNow,
                             onBackToWatchlist = { mainViewModel.navigateTo(WorkspaceScreen.WATCHLIST) },
+                            onSelectTimeframe = mainViewModel::selectTimeframeForActiveTab,
+                            onSelectChartType = mainViewModel::selectChartTypeForActiveTab,
                             onZoom = mainViewModel::zoomActiveTab,
+                            onPinchZoom = mainViewModel::pinchZoomActiveTab,
+                            onFitContent = mainViewModel::fitContentOnActiveTab,
                             onPanCandles = mainViewModel::panActiveTab,
                             onResetLatest = mainViewModel::resetActiveTabPosition,
-                            onSelectCandle = mainViewModel::selectCandleOnActiveTab
+                            onScaleYAxisByDrag = mainViewModel::scaleYAxisByDrag,
+                            onResetAutoScaleY = mainViewModel::resetAutoScaleY,
+                            onSelectCandle = mainViewModel::selectCandleOnActiveTab,
+                            onSelectDrawingTool = mainViewModel::selectDrawingTool,
+                            onPlaceDrawingAt = mainViewModel::placeDrawingAtCoordinate,
+                            onSelectDrawing = mainViewModel::selectDrawingOnActiveTab,
+                            onTranslateSelectedDrawing = mainViewModel::translateSelectedDrawing,
+                            onDeleteSelectedDrawing = mainViewModel::deleteSelectedDrawingOnActiveTab,
+                            onClearAllDrawings = mainViewModel::clearAllDrawingsOnActiveTab
                         )
 
                         WorkspaceScreen.SETTINGS -> SettingsScreen(

@@ -19,19 +19,21 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Independent Data Provider Adapter: Twelve Data API (`twelve_data`).
- * Priority channel for XAU/USD M15 candles; falls back to the chart.manico.es backend proxy
- * or deterministic closed candles if no client key is configured.
+ * Priority channel for XAU/USD candles; queries chart.manico.es proxy or direct Twelve Data API,
+ * and falls back to real Yahoo Finance market feed if no API key is configured.
+ * Never fabricates synthetic data.
  */
 class TwelveDataAdapter(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
         .build()
 ) : CandleProviderAdapter {
 
     override val providerId: ProviderId = ProviderId.TWELVE_DATA
 
     private val twelveDateTimeFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+    private val yahooFallback = YahooFinanceAdapter(httpClient)
 
     override suspend fun fetchClosedCandlesUpToNow(
         symbolCode: String,
@@ -39,27 +41,23 @@ class TwelveDataAdapter(
         limit: Int
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
-        val fetched = runCatching {
+        val primaryCandles = runCatching {
             fetchFromBackendOrTwelveData(symbolCode, timeframe, limit, nowMillis)
         }.getOrNull().orEmpty()
 
-        val finalCandles = if (fetched.isNotEmpty()) {
-            fetched
+        val realCandles = if (primaryCandles.isNotEmpty()) {
+            primaryCandles
         } else {
-            HistoricalSeedGenerator.buildClosedCandlesUpToNow(
-                symbolCode = symbolCode,
-                providerId = providerId.id,
-                timeframe = timeframe,
-                count = limit,
-                nowUtcMillis = nowMillis
-            )
+            runCatching {
+                yahooFallback.fetchYahooChartCandles(symbolCode, timeframe, limit, nowMillis)
+            }.getOrNull().orEmpty()
         }
 
         ProviderSyncResult(
             providerId = providerId,
             symbolCode = symbolCode,
             timeframe = timeframe,
-            candles = finalCandles,
+            candles = realCandles,
             syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis)
         )
     }
@@ -86,7 +84,6 @@ class TwelveDataAdapter(
             else -> "15min"
         }
 
-        // First attempt via chart.manico.es backend sync proxy (which holds GitHub Actions secret on host)
         val proxyUrl = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=twelve_data&timeframe=$timeframe&limit=$limit"
         val proxyRequest = Request.Builder().url(proxyUrl).get().build()
         runCatching {
@@ -112,9 +109,13 @@ class TwelveDataAdapter(
             for (i in 0 until values.length()) {
                 val item = values.getJSONObject(i)
                 val dtStr = item.optString("datetime")
-                val epochMillis = LocalDateTime.parse(dtStr, twelveDateTimeFormat)
-                    .toInstant(ZoneOffset.UTC)
-                    .toEpochMilli()
+                val epochMillis = if (dtStr.length == 10) {
+                    java.time.LocalDate.parse(dtStr).atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+                } else {
+                    LocalDateTime.parse(dtStr, twelveDateTimeFormat)
+                        .toInstant(ZoneOffset.UTC)
+                        .toEpochMilli()
+                }
                 if (!UtcTimeAnchorAlgorithm.isCandleClosed(epochMillis, timeframe, nowMillis)) continue
                 CandleValidatorAlgorithm.sanitizeAndValidate(
                     rawOpenTimeMillis = epochMillis,

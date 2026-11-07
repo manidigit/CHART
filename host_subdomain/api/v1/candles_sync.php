@@ -5,13 +5,13 @@ require_once __DIR__ . '/core/ApiEnvelope.php';
 require_once __DIR__ . '/core/Database.php';
 require_once __DIR__ . '/algorithms/UtcTimeAnchor.php';
 require_once __DIR__ . '/algorithms/CandleValidator.php';
+require_once __DIR__ . '/algorithms/TimeframeAggregator.php';
+require_once __DIR__ . '/providers/YahooFinanceAdapter.php';
 require_once __DIR__ . '/providers/TwelveDataAdapter.php';
 require_once __DIR__ . '/providers/DukascopyAdapter.php';
 require_once __DIR__ . '/providers/EiaBenchmarkAdapter.php';
-require_once __DIR__ . '/providers/YahooFinanceAdapter.php';
 
 use ChartIntelligence\Algorithms\CandleValidator;
-use ChartIntelligence\Algorithms\UtcTimeAnchor;
 use ChartIntelligence\Core\ApiEnvelope;
 use ChartIntelligence\Core\Database;
 use ChartIntelligence\Providers\DukascopyAdapter;
@@ -21,11 +21,14 @@ use ChartIntelligence\Providers\YahooFinanceAdapter;
 
 $symbol = preg_replace('/[^A-Za-z0-9_]/', '', $_GET['symbol'] ?? 'XAUUSD');
 $provider = preg_replace('/[^a-z0-9_]/', '', $_GET['provider'] ?? 'twelve_data');
-$timeframe = preg_replace('/[^A-Za-z0-9]/', '', $_GET['timeframe'] ?? 'M15');
+$timeframe = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['timeframe'] ?? 'M15'));
+if (!in_array($timeframe, ['M15', 'H1', 'H4', 'D1'], true)) {
+    $timeframe = 'M15';
+}
 if ($provider === 'eia_brent_spot') {
     $timeframe = 'D1';
 }
-$limit = max(10, min(200, (int) ($_GET['limit'] ?? 96)));
+$limit = max(12, min(200, (int) ($_GET['limit'] ?? 160)));
 $nowMs = (int) round(microtime(true) * 1000);
 
 $candles = match ($provider) {
@@ -36,45 +39,12 @@ $candles = match ($provider) {
     default => [],
 };
 
-if (empty($candles)) {
-    $stepMs = UtcTimeAnchor::stepMilliseconds($timeframe);
-    $currentBucket = UtcTimeAnchor::snapToOpenUtcMs($nowMs, $timeframe);
-    $latestClosedOpen = $currentBucket - $stepMs;
-
-    $basePrice = match (strtoupper($symbol)) {
-        'XAUUSD' => 2742.50,
-        'SPOTBRENT' => 74.85,
-        'BRENT_FUTURES' => 75.10,
-        'XAGUSD' => 32.40,
-        'EURUSD' => 1.0845,
-        default => 100.00,
-    };
-
-    $runningClose = $basePrice;
-    $startOpen = $latestClosedOpen - (($limit - 1) * $stepMs);
-    for ($i = 0; $i < $limit; $i++) {
-        $openMs = $startOpen + ($i * $stepMs);
-        if (!UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
-            continue;
-        }
-        $phase = ($openMs / $stepMs) * 0.37;
-        $delta = sin($phase) * ($basePrice * 0.0012);
-        $open = $runningClose;
-        $close = round($open + $delta, 8);
-        $high = round(max($open, $close) + abs(cos($phase)) * ($basePrice * 0.0008), 8);
-        $low = round(min($open, $close) - abs(sin($phase)) * ($basePrice * 0.0008), 8);
-        $c = CandleValidator::sanitizeCandle($openMs, $timeframe, $open, $high, $low, $close, 650.0);
-        if ($c !== null) {
-            $candles[] = $c;
-        }
-        $runningClose = $close;
-    }
-}
-
-// Idempotent Upsert into MariaDB `candles` table if database is connected
+// Persist real candles to MariaDB or read previously stored real candles if upstream is temporarily unreachable.
+// Strictly NO synthetic/fake sine-wave data is ever fabricated.
 $pdo = Database::getPdo();
+$chartId = 'chart_' . strtolower($symbol) . '_main';
+
 if ($pdo !== null && !empty($candles)) {
-    $chartId = 'chart_' . strtolower($symbol) . '_main';
     $stmt = $pdo->prepare(
         "INSERT INTO candles
             (chart_id, provider_id, timeframe, open_time_utc, open_price, high_price, low_price, close_price, volume, is_closed)
@@ -100,6 +70,34 @@ if ($pdo !== null && !empty($candles)) {
             ':c' => $bar['close'],
             ':v' => $bar['volume'],
         ]);
+    }
+} elseif ($pdo !== null && empty($candles)) {
+    $q = $pdo->prepare(
+        "SELECT open_time_utc, open_price, high_price, low_price, close_price, volume
+         FROM candles
+         WHERE chart_id = :chart_id AND provider_id = :provider_id AND timeframe = :tf AND is_closed = 1
+         ORDER BY open_time_utc DESC
+         LIMIT :lim"
+    );
+    $q->bindValue(':chart_id', $chartId);
+    $q->bindValue(':provider_id', $provider);
+    $q->bindValue(':tf', $timeframe);
+    $q->bindValue(':lim', $limit, PDO::PARAM_INT);
+    $q->execute();
+    $rows = array_reverse($q->fetchAll(PDO::FETCH_ASSOC));
+    foreach ($rows as $r) {
+        $c = CandleValidator::sanitizeCandle(
+            (int) $r['open_time_utc'],
+            $timeframe,
+            $r['open_price'],
+            $r['high_price'],
+            $r['low_price'],
+            $r['close_price'],
+            $r['volume']
+        );
+        if ($c !== null) {
+            $candles[] = $c;
+        }
     }
 }
 

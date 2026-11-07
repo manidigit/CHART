@@ -1,6 +1,7 @@
 package es.manico.chartintelligence.providers
 
 import es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm
+import es.manico.chartintelligence.algorithms.TimeframeAggregatorAlgorithm
 import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ProviderId
@@ -14,12 +15,13 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Independent Data Provider Adapter: Yahoo Finance (`yahoo_finance`).
- * Fetches Brent Futures (`BZ=F`), Gold (`GC=F`), Silver (`SI=F`), and EUR/USD (`EURUSD=X`).
+ * Fetches real closed market candles for Brent (`BZ=F`), Gold (`GC=F`), Silver (`SI=F`), and EUR/USD (`EURUSD=X`)
+ * across M15, H1, H4 (aggregated from 60m), and D1 timeframes. Never fabricates synthetic data.
  */
 class YahooFinanceAdapter(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
         .build()
 ) : CandleProviderAdapter {
 
@@ -31,21 +33,9 @@ class YahooFinanceAdapter(
         limit: Int
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
-        val fetched = runCatching {
+        val candles = runCatching {
             fetchYahooChartCandles(symbolCode, timeframe, limit, nowMillis)
         }.getOrNull().orEmpty()
-
-        val candles = if (fetched.isNotEmpty()) {
-            fetched
-        } else {
-            HistoricalSeedGenerator.buildClosedCandlesUpToNow(
-                symbolCode = symbolCode,
-                providerId = providerId.id,
-                timeframe = timeframe,
-                count = limit,
-                nowUtcMillis = nowMillis
-            )
-        }
 
         ProviderSyncResult(
             providerId = providerId,
@@ -56,11 +46,11 @@ class YahooFinanceAdapter(
         )
     }
 
-    private fun fetchYahooChartCandles(
+    fun fetchYahooChartCandles(
         symbolCode: String,
         timeframe: String,
         limit: Int,
-        nowMillis: Long
+        nowMillis: Long = System.currentTimeMillis()
     ): List<CandleBar> {
         val ticker = when (symbolCode.uppercase()) {
             "SPOTBRENT", "BRENT_FUTURES" -> "BZ=F"
@@ -69,12 +59,18 @@ class YahooFinanceAdapter(
             "EURUSD" -> "EURUSD=X"
             else -> symbolCode
         }
-        val interval = if (timeframe.equals("D1", ignoreCase = true)) "1d" else "15m"
-        val range = if (interval == "1d") "6mo" else "5d"
+        val normalizedTf = timeframe.uppercase()
+        val (interval, range, sourceTf) = when (normalizedTf) {
+            "D1" -> Triple("1d", "1y", "D1")
+            "H4" -> Triple("60m", "3mo", "H1")
+            "H1" -> Triple("60m", "1mo", "H1")
+            else -> Triple("15m", "5d", "M15")
+        }
+
         val url = "https://query1.finance.yahoo.com/v8/finance/chart/$ticker?interval=$interval&range=$range"
         val request = Request.Builder()
             .url(url)
-            .header("User-Agent", "Mozilla/5.0 (Android; ChartIntelligence/1.0)")
+            .header("User-Agent", "Mozilla/5.0 (Android; ChartIntelligence/1.23)")
             .get()
             .build()
 
@@ -99,7 +95,7 @@ class YahooFinanceAdapter(
             for (i in 0 until timestamps.length()) {
                 if (opens.isNull(i) || highs.isNull(i) || lows.isNull(i) || closes.isNull(i)) continue
                 val epochMillis = timestamps.getLong(i) * 1000L
-                if (!UtcTimeAnchorAlgorithm.isCandleClosed(epochMillis, timeframe, nowMillis)) continue
+                if (!UtcTimeAnchorAlgorithm.isCandleClosed(epochMillis, sourceTf, nowMillis)) continue
                 val vol = if (volumes != null && !volumes.isNull(i)) {
                     BigDecimal.valueOf(volumes.optDouble(i, 0.0))
                 } else {
@@ -107,7 +103,7 @@ class YahooFinanceAdapter(
                 }
                 CandleValidatorAlgorithm.sanitizeAndValidate(
                     rawOpenTimeMillis = epochMillis,
-                    timeframe = timeframe,
+                    timeframe = sourceTf,
                     open = BigDecimal.valueOf(opens.getDouble(i)),
                     high = BigDecimal.valueOf(highs.getDouble(i)),
                     low = BigDecimal.valueOf(lows.getDouble(i)),
@@ -115,7 +111,14 @@ class YahooFinanceAdapter(
                     volume = vol
                 )?.let { parsed.add(it) }
             }
-            return parsed.sortedBy { it.openTimeUtcMillis }.takeLast(limit)
+
+            val ordered = parsed.sortedBy { it.openTimeUtcMillis }
+            val finalCandles = if (normalizedTf == "H4") {
+                TimeframeAggregatorAlgorithm.aggregateCandles(ordered, "H4", nowMillis)
+            } else {
+                ordered
+            }
+            return finalCandles.takeLast(limit)
         }
     }
 }

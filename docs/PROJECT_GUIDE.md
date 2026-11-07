@@ -69,9 +69,9 @@
 ### نمونه جداسازی ماژول‌ها
 
 - صفحات: `LoginScreen`, `WatchlistScreen`, `ChartViewScreen`, `SettingsScreen`
-- اجزای UI: `ChartTabBar`, `WatchlistRowCard`, `SourceBadgeChip`, `LanguageThemeSelector`
+- اجزای UI: `ChartTabBar`, `ChartToolbar`, `DrawingToolbar`, `CandlestickCanvas`, `WatchlistRowCard`, `SourceBadgeChip`, `LanguageThemeSelector`
 - Providerها: `TwelveDataAdapter`, `DukascopyAdapter`, `EiaBenchmarkAdapter`, `YahooFinanceAdapter`
-- الگوریتم‌ها: `SmaCalculator`, `EmaCalculator`, `BollingerBandsCalculator`, `RsiCalculator`, `MacdCalculator`, `AtrCalculator`, `TimeframeAggregator`, `GapDetector`
+- الگوریتم‌ها: `UtcTimeAnchorAlgorithm`, `CandleValidatorAlgorithm`, `TimeframeAggregatorAlgorithm`, `DrawingGeometryAlgorithm`, `PriceFormatterAlgorithm`, `PasswordHashAlgorithm` (و در فاز ۲: `SmaCalculator`, `EmaCalculator`, `BollingerBandsCalculator`, `RsiCalculator`, `MacdCalculator`, `AtrCalculator`, `GapDetector`)
 
 ساختار واقعی فایل‌ها را با درخت مخزن و Master Spec تطبیق دهید؛ این فهرست جایگزین بررسی کد جاری نیست.
 
@@ -83,8 +83,8 @@
 
 | فاز | محدوده | خروجی مورد انتظار |
 |---:|---|---|
-| **۱ — پیاده‌سازی‌شده** | اسکلت ماژولار Android/Web، فارسی و انگلیسی، ورود شخصی، واچ‌لیست، تنظیمات منابع و نمودار چندتب | اجرای نسخه پایه، مشاهده نمادهای اولیه، Sync/Update و بازکردن چند نمودار در تب‌های مستقل |
-| **۲** | تایم‌فریم‌ها و شش گروه اندیکاتور پایه | M15، M30، H1، H4، D1 و SMA، EMA، Bollinger Bands، RSI، MACD، ATR |
+| **۱ — پیاده‌سازی‌شده** | اسکلت ماژولار Android/Web، فارسی و انگلیسی، ورود شخصی، واچ‌لیست، تنظیمات منابع و نمودار معاملاتی استاندارد چندتب (تایم‌فریم‌های M15/H1/H4/D1، نمایش شمعی و خطی، محورهای پویا با مقیاس دستی/خودکار، ابزارهای رسم خط افقی/عمودی/روند و داده واقعی بازار بدون داده ساختگی) | اجرای نسخه پایه، مشاهده نمادهای اولیه، Sync/Update واقعی، بازکردن چند نمودار در تب‌های مستقل و تحلیل با ابزارهای رسم و تایم‌فریم‌ها |
+| **۲** | شش گروه اندیکاتور پایه و تایم‌فریم تکمیلی M30 | SMA، EMA، Bollinger Bands، RSI، MACD، ATR و پنل تنظیمات اندیکاتورها |
 | **۳** | تشخیص Gap، ورود داده تاریخی و Backup/Restore رمزنگاری‌شده | تکمیل شکاف داده، ورود تاریخچه EIA/DataHub و پشتیبان‌گیری/بازیابی |
 | **۴** | موتور تحلیل ساختار بازار و Prediction Engine v1 | روند، حمایت/مقاومت، پیش‌بینی‌های Immutable در افق‌های 15m، 1h، 4h و 1d |
 | **۵** | Live Feedback Loop و ارزیابی تطبیقی | سنجش پیش‌بینی در برابر کندل‌های واقعی، کارنامه دقت، Walk-Forward و کنترل Champion/Challenger با Rollback |

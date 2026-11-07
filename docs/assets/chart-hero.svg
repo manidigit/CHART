@@ -1,20 +1,95 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="420" viewBox="0 0 1200 420" role="img" aria-labelledby="title desc">
-<title id="title">CHART Intelligence</title>
-<desc id="desc">Abstract dark financial chart illustration with candlesticks and a forecast trajectory.</desc>
-<defs>
-  <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b1220"/><stop offset="1" stop-color="#111d30"/></linearGradient>
-  <linearGradient id="glow" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#32d6a0" stop-opacity=".22"/><stop offset="1" stop-color="#32d6a0" stop-opacity="0"/></linearGradient>
-</defs>
-<rect width="1200" height="420" rx="26" fill="url(#bg)"/>
-<path d="M0 330 C220 260 360 390 570 300 S940 190 1200 250 V420 H0Z" fill="url(#glow)"/>
-<g stroke="#24354b" stroke-width="1"><path d="M60 70H1140M60 140H1140M60 210H1140M60 280H1140M60 350H1140"/><path d="M160 40V370M300 40V370M440 40V370M580 40V370M720 40V370M860 40V370M1000 40V370"/></g>
-<g font-family="Inter,Arial,sans-serif" fill="#f3f7fb"><text x="78" y="112" font-size="54" font-weight="700" letter-spacing="5">CHART</text><text x="80" y="151" font-size="17" fill="#9db0c5" letter-spacing="3">INTELLIGENCE</text><text x="80" y="202" font-size="16" fill="#c3d0df">Market analysis · Multi-timeframe charts · Forecast evaluation</text></g>
-<g stroke-width="3">
-<g stroke="#32d6a0" fill="#32d6a0"><path d="M590 190V280M620 155V250M650 180V300M680 135V225M710 160V265M740 110V205M770 130V245M800 95V185M830 120V220M860 80V175"/></g>
-<g stroke="#f16f78" fill="#f16f78"><path d="M605 205V245M635 195V230M665 215V260M695 165V205M725 185V235M755 155V210M785 155V220M815 120V175M845 145V195"/></g>
-</g>
-<path d="M575 265 C650 230 695 245 750 185 S850 145 900 125 S1000 95 1090 55" fill="none" stroke="#32d6a0" stroke-width="4" stroke-linecap="round" stroke-dasharray="9 10"/>
-<path d="M575 265 C650 230 695 245 750 185 S850 145 900 125 S1000 95 1090 55" fill="none" stroke="#32d6a0" stroke-opacity=".2" stroke-width="18"/>
-<circle cx="1090" cy="55" r="7" fill="#32d6a0"/>
-<text x="930" y="375" fill="#7890aa" font-family="Inter,Arial,sans-serif" font-size="13" letter-spacing="2">ANALYZE · VALIDATE · LEARN</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 420" width="100%" height="100%">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0B0F17"/>
+      <stop offset="60%" stop-color="#111827"/>
+      <stop offset="100%" stop-color="#0F172A"/>
+    </linearGradient>
+    <linearGradient id="lineAreaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#38BDF8" stop-opacity="0.22"/>
+      <stop offset="100%" stop-color="#38BDF8" stop-opacity="0.0"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1200" height="420" rx="18" fill="url(#bgGrad)" stroke="#263248" stroke-width="2"/>
+
+  <!-- Top Header Bar -->
+  <rect x="24" y="20" width="1152" height="54" rx="10" fill="#131A26" stroke="#263248" stroke-width="1"/>
+  <text x="44" y="53" fill="#38BDF8" font-family="monospace, sans-serif" font-size="20" font-weight="bold">CHART INTELLIGENCE</text>
+  <rect x="290" y="32" width="170" height="30" rx="6" fill="#1C2536" stroke="#38BDF8" stroke-width="1"/>
+  <text x="304" y="52" fill="#38BDF8" font-family="monospace" font-size="13" font-weight="bold">XAUUSD · M15 · H1 · H4 · D1</text>
+
+  <!-- Timeframe & Tool Pills -->
+  <g font-family="monospace" font-size="12" font-weight="bold">
+    <rect x="480" y="32" width="44" height="30" rx="6" fill="#38BDF8"/>
+    <text x="490" y="52" fill="#0B0F17">M15</text>
+    <rect x="532" y="32" width="40" height="30" rx="6" fill="#1C2536" stroke="#263248"/>
+    <text x="544" y="52" fill="#94A3B8">H1</text>
+    <rect x="580" y="32" width="40" height="30" rx="6" fill="#1C2536" stroke="#263248"/>
+    <text x="592" y="52" fill="#94A3B8">H4</text>
+    <rect x="628" y="32" width="40" height="30" rx="6" fill="#1C2536" stroke="#263248"/>
+    <text x="640" y="52" fill="#94A3B8">D1</text>
+  </g>
+
+  <!-- Right UTC Badge -->
+  <text x="1156" y="52" text-anchor="end" fill="#10B981" font-family="monospace" font-size="13" font-weight="bold">00:00:00 UTC ANCHOR · CLOSED CANDLES</text>
+
+  <!-- Chart Plot Frame -->
+  <rect x="24" y="88" width="1064" height="292" rx="10" fill="#131A26" stroke="#263248" stroke-width="1"/>
+
+  <!-- Grid Lines -->
+  <g stroke="#1E293B" stroke-width="1" stroke-dasharray="5,5">
+    <line x1="24" y1="146" x2="1088" y2="146"/>
+    <line x1="24" y1="204" x2="1088" y2="204"/>
+    <line x1="24" y1="262" x2="1088" y2="262"/>
+    <line x1="24" y1="320" x2="1088" y2="320"/>
+    <line x1="240" y1="88" x2="240" y2="380"/>
+    <line x1="480" y1="88" x2="480" y2="380"/>
+    <line x1="720" y1="88" x2="720" y2="380"/>
+    <line x1="960" y1="88" x2="960" y2="380"/>
+  </g>
+
+  <!-- Y-Axis Labels -->
+  <g fill="#94A3B8" font-family="monospace" font-size="12">
+    <text x="1100" y="150">2765.00</text>
+    <text x="1100" y="208">2750.00</text>
+    <text x="1100" y="266">2735.00</text>
+    <text x="1100" y="324">2720.00</text>
+  </g>
+
+  <!-- Horizontal Support/Resistance Drawing Line -->
+  <line x1="24" y1="182" x2="1088" y2="182" stroke="#38BDF8" stroke-width="1.8" stroke-dasharray="8,4"/>
+  <rect x="1092" y="171" width="76" height="22" rx="4" fill="#38BDF8"/>
+  <text x="1100" y="186" fill="#0B0F17" font-family="monospace" font-size="11" font-weight="bold">2756.40</text>
+
+  <!-- Trend Line Drawing -->
+  <line x1="140" y1="318" x2="940" y2="142" stroke="#A855F7" stroke-width="2.5"/>
+  <circle cx="140" cy="318" r="5" fill="#A855F7" stroke="#0B0F17" stroke-width="2"/>
+  <circle cx="940" cy="142" r="5" fill="#A855F7" stroke="#0B0F17" stroke-width="2"/>
+
+  <!-- Candlesticks -->
+  <g stroke-width="2">
+    <!-- Bullish & Bearish Sequence -->
+    <line x1="90" y1="290" x2="90" y2="345" stroke="#10B981"/><rect x="82" y="302" width="16" height="30" fill="#10B981" rx="2"/>
+    <line x1="140" y1="275" x2="140" y2="325" stroke="#10B981"/><rect x="132" y="284" width="16" height="26" fill="#10B981" rx="2"/>
+    <line x1="190" y1="280" x2="190" y2="330" stroke="#F43F5E"/><rect x="182" y="288" width="16" height="28" fill="#F43F5E" rx="2"/>
+    <line x1="240" y1="255" x2="240" y2="318" stroke="#10B981"/><rect x="232" y="264" width="16" height="42" fill="#10B981" rx="2"/>
+    <line x1="290" y1="238" x2="290" y2="285" stroke="#10B981"/><rect x="282" y="246" width="16" height="24" fill="#10B981" rx="2"/>
+    <line x1="340" y1="242" x2="340" y2="296" stroke="#F43F5E"/><rect x="332" y="250" width="16" height="32" fill="#F43F5E" rx="2"/>
+    <line x1="390" y1="225" x2="390" y2="288" stroke="#10B981"/><rect x="382" y="232" width="16" height="46" fill="#10B981" rx="2"/>
+    <line x1="440" y1="205" x2="440" y2="255" stroke="#10B981"/><rect x="432" y="212" width="16" height="26" fill="#10B981" rx="2"/>
+    <line x1="490" y1="210" x2="490" y2="268" stroke="#F43F5E"/><rect x="482" y="216" width="16" height="36" fill="#F43F5E" rx="2"/>
+    <line x1="540" y1="198" x2="540" y2="260" stroke="#10B981"/><rect x="532" y="208" width="16" height="42" fill="#10B981" rx="2"/>
+    <line x1="590" y1="178" x2="590" y2="232" stroke="#10B981"/><rect x="582" y="186" width="16" height="28" fill="#10B981" rx="2"/>
+    <line x1="640" y1="184" x2="640" y2="236" stroke="#F43F5E"/><rect x="632" y="190" width="16" height="28" fill="#F43F5E" rx="2"/>
+    <line x1="690" y1="168" x2="690" y2="225" stroke="#10B981"/><rect x="682" y="176" width="16" height="38" fill="#10B981" rx="2"/>
+    <line x1="740" y1="152" x2="740" y2="202" stroke="#10B981"/><rect x="732" y="160" width="16" height="24" fill="#10B981" rx="2"/>
+    <line x1="790" y1="158" x2="790" y2="212" stroke="#F43F5E"/><rect x="782" y="164" width="16" height="30" fill="#F43F5E" rx="2"/>
+    <line x1="840" y1="142" x2="840" y2="200" stroke="#10B981"/><rect x="832" y="148" width="16" height="42" fill="#10B981" rx="2"/>
+    <line x1="890" y1="128" x2="890" y2="178" stroke="#10B981"/><rect x="882" y="136" width="16" height="24" fill="#10B981" rx="2"/>
+    <line x1="940" y1="115" x2="940" y2="165" stroke="#10B981"/><rect x="932" y="122" width="16" height="26" fill="#10B981" rx="2"/>
+    <line x1="990" y1="118" x2="990" y2="168" stroke="#F43F5E"/><rect x="982" y="126" width="16" height="22" fill="#F43F5E" rx="2"/>
+    <line x1="1040" y1="104" x2="1040" y2="154" stroke="#10B981"/><rect x="1032" y="110" width="16" height="34" fill="#10B981" rx="2"/>
+  </g>
 </svg>

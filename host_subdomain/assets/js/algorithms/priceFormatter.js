@@ -13,43 +13,20 @@ export const PriceFormatter = {
     return `${sign}${pct.toFixed(2)}%`;
   },
 
-  buildSeedCandles(symbolCode, providerId, timeframe, count = 96) {
-    const stepMs = timeframe === 'D1' ? 86400000 : 900000;
-    const nowMs = Date.now();
-    const currentBucket = Math.floor(nowMs / stepMs) * stepMs;
-    const latestClosed = currentBucket - stepMs;
-    const baseMap = {
-      XAUUSD: 2742.5,
-      SPOTBRENT: 74.85,
-      BRENT_FUTURES: 75.1,
-      XAGUSD: 32.4,
-      EURUSD: 1.0845,
-    };
-    const base = baseMap[symbolCode] || 100.0;
-    const startOpen = latestClosed - (count - 1) * stepMs;
-    let runningClose = base;
-    const list = [];
-    for (let i = 0; i < count; i++) {
-      const openMs = startOpen + i * stepMs;
-      const phase = (openMs / stepMs) * 0.37;
-      const delta = Math.sin(phase) * (base * 0.0012);
-      const open = runningClose;
-      const close = Number((open + delta).toFixed(8));
-      const high = Number((Math.max(open, close) + Math.abs(Math.cos(phase)) * (base * 0.0008)).toFixed(8));
-      const low = Number((Math.min(open, close) - Math.abs(Math.sin(phase)) * (base * 0.0008)).toFixed(8));
-      const iso = new Date(openMs).toISOString().slice(0, 16).replace('T', ' ') + ' UTC';
-      list.push({
-        open_time_utc_ms: openMs,
-        open_time_utc_iso: iso,
-        open,
-        high,
-        low,
-        close,
-        volume: 650,
-        is_closed: true,
-      });
-      runningClose = close;
+  stepMilliseconds(timeframe = 'M15') {
+    const tf = String(timeframe).toUpperCase();
+    if (tf === 'D1') return 86400000;
+    if (tf === 'H4') return 14400000;
+    if (tf === 'H1') return 3600000;
+    return 900000;
+  },
+
+  formatAxisTimestamp(epochMs, timeframe = 'M15') {
+    if (!epochMs) return '';
+    const iso = new Date(Number(epochMs)).toISOString();
+    if (String(timeframe).toUpperCase() === 'D1') {
+      return iso.slice(0, 10);
     }
-    return list;
+    return iso.slice(5, 16).replace('T', ' ');
   },
 };

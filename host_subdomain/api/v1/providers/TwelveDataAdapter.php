@@ -14,7 +14,7 @@ final class TwelveDataAdapter
         $cfg = Database::getConfig();
         $apiKey = trim((string) ($cfg['TWELVE_DATA_API_KEY'] ?? ''));
         if ($apiKey === '') {
-            return [];
+            return YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
         }
 
         $apiSymbol = match (strtoupper($symbol)) {
@@ -41,14 +41,14 @@ final class TwelveDataAdapter
             urlencode($apiKey)
         );
 
-        $ctx = stream_context_create(['http' => ['timeout' => 7]]);
+        $ctx = stream_context_create(['http' => ['timeout' => 8]]);
         $raw = @file_get_contents($url, false, $ctx);
         if ($raw === false) {
-            return [];
+            return YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
         }
         $json = json_decode($raw, true);
         if (!is_array($json) || empty($json['values']) || !is_array($json['values'])) {
-            return [];
+            return YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
         }
 
         $candles = [];

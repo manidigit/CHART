@@ -15,16 +15,18 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Independent Data Provider Adapter: Dukascopy Bank Feed (`dukascopy`).
- * Verified free M15 intraday source for Brent Crude CFD (`brentcmdusd`) and Gold (`xauusd`).
+ * Queries backend proxy or direct real market feed via Yahoo Finance when proxy is unreachable.
+ * Never fabricates synthetic data.
  */
 class DukascopyAdapter(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
-        .connectTimeout(8, TimeUnit.SECONDS)
-        .readTimeout(8, TimeUnit.SECONDS)
+        .connectTimeout(10, TimeUnit.SECONDS)
+        .readTimeout(10, TimeUnit.SECONDS)
         .build()
 ) : CandleProviderAdapter {
 
     override val providerId: ProviderId = ProviderId.DUKASCOPY
+    private val yahooFallback = YahooFinanceAdapter(httpClient)
 
     override suspend fun fetchClosedCandlesUpToNow(
         symbolCode: String,
@@ -41,23 +43,19 @@ class DukascopyAdapter(
             }
         }.getOrNull().orEmpty()
 
-        val candles = if (proxyCandles.isNotEmpty()) {
+        val realCandles = if (proxyCandles.isNotEmpty()) {
             proxyCandles
         } else {
-            HistoricalSeedGenerator.buildClosedCandlesUpToNow(
-                symbolCode = symbolCode,
-                providerId = providerId.id,
-                timeframe = timeframe,
-                count = limit,
-                nowUtcMillis = nowMillis
-            )
+            runCatching {
+                yahooFallback.fetchYahooChartCandles(symbolCode, timeframe, limit, nowMillis)
+            }.getOrNull().orEmpty()
         }
 
         ProviderSyncResult(
             providerId = providerId,
             symbolCode = symbolCode,
             timeframe = timeframe,
-            candles = candles,
+            candles = realCandles,
             syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis)
         )
     }

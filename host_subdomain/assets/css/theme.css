@@ -231,3 +231,14 @@ body {
   color: var(--primary);
   background: var(--primary-bg);
 }
+
+.trading-canvas {
+  width: 100%;
+  height: 350px;
+  display: block;
+  border-radius: 10px;
+  touch-action: none;
+  user-select: none;
+  cursor: crosshair;
+}
+

@@ -33,9 +33,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.data.model.ChartTabState
+import es.manico.chartintelligence.data.model.ChartType
+import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.ui.components.CandlestickCanvas
 import es.manico.chartintelligence.ui.components.ChartTabBar
+import es.manico.chartintelligence.ui.components.ChartToolbar
+import es.manico.chartintelligence.ui.components.DrawingToolbar
 import es.manico.chartintelligence.ui.components.SourceBadgeChip
+import java.math.BigDecimal
 
 @Composable
 fun ChartViewScreen(
@@ -45,10 +50,22 @@ fun ChartViewScreen(
     onCloseTab: (String) -> Unit,
     onSyncActiveSymbolNow: (String) -> Unit,
     onBackToWatchlist: () -> Unit,
+    onSelectTimeframe: (String) -> Unit,
+    onSelectChartType: (ChartType) -> Unit,
     onZoom: (Boolean) -> Unit,
+    onPinchZoom: (Float) -> Unit,
+    onFitContent: () -> Unit,
     onPanCandles: (Int) -> Unit,
     onResetLatest: () -> Unit,
+    onScaleYAxisByDrag: (Float) -> Unit,
+    onResetAutoScaleY: () -> Unit,
     onSelectCandle: (Int?) -> Unit,
+    onSelectDrawingTool: (DrawingTool) -> Unit,
+    onPlaceDrawingAt: (Long, BigDecimal) -> Unit,
+    onSelectDrawing: (String?) -> Unit,
+    onTranslateSelectedDrawing: (Long, BigDecimal) -> Unit,
+    onDeleteSelectedDrawing: () -> Unit,
+    onClearAllDrawings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBackToWatchlist)
@@ -137,7 +154,7 @@ fun ChartViewScreen(
                     onCloseTab = onCloseTab
                 )
 
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -150,25 +167,61 @@ fun ChartViewScreen(
                     )
                     Text(
                         text = stringResource(R.string.chart_utc_anchor_badge),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
 
                 Spacer(modifier = Modifier.height(8.dp))
 
-                CandlestickCanvas(
-                    tab = activeTab,
-                    onZoom = onZoom,
-                    onPanCandles = onPanCandles,
+                // TradingView-inspired Timeframe, Chart Type, and Range Toolbar
+                ChartToolbar(
+                    activeTimeframe = activeTab.timeframe,
+                    allowedTimeframes = activeTab.allowedTimeframes,
+                    activeChartType = activeTab.chartType,
+                    isAutoScaleY = activeTab.isAutoScaleY,
+                    onSelectTimeframe = onSelectTimeframe,
+                    onSelectChartType = onSelectChartType,
+                    onZoomIn = { onZoom(true) },
+                    onZoomOut = { onZoom(false) },
+                    onFitContent = onFitContent,
                     onResetLatest = onResetLatest,
-                    onSelectCandle = onSelectCandle
+                    onResetAutoScaleY = onResetAutoScaleY
                 )
 
-                Spacer(modifier = Modifier.height(12.dp))
+                Spacer(modifier = Modifier.height(6.dp))
+
+                // Drawing Tools Bar (Crosshair, H-Line, V-Line, Trend Line, Delete, Clear All)
+                DrawingToolbar(
+                    activeTool = activeTab.activeDrawingTool,
+                    hasSelectedDrawing = activeTab.selectedDrawingId != null,
+                    totalDrawingsCount = activeTab.drawings.size,
+                    pendingTrendPoint = activeTab.pendingTrendPoint,
+                    onSelectTool = onSelectDrawingTool,
+                    onDeleteSelected = onDeleteSelectedDrawing,
+                    onClearAll = onClearAllDrawings
+                )
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                CandlestickCanvas(
+                    tab = activeTab,
+                    onPinchZoom = onPinchZoom,
+                    onPanCandles = onPanCandles,
+                    onScaleYAxisByDrag = onScaleYAxisByDrag,
+                    onResetAutoScaleY = onResetAutoScaleY,
+                    onSelectCandle = onSelectCandle,
+                    onPlaceDrawingAt = onPlaceDrawingAt,
+                    onSelectDrawing = onSelectDrawing,
+                    onTranslateSelectedDrawing = onTranslateSelectedDrawing,
+                    onRetrySync = { onSyncActiveSymbolNow(activeTab.symbolCode) }
+                )
+
+                Spacer(modifier = Modifier.height(10.dp))
 
                 Button(
                     onClick = { onSyncActiveSymbolNow(activeTab.symbolCode) },
+                    enabled = !activeTab.isLoading,
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
@@ -180,7 +233,13 @@ fun ChartViewScreen(
                         modifier = Modifier.size(18.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
-                    Text(text = stringResource(R.string.action_sync_now))
+                    Text(
+                        text = if (activeTab.isLoading) {
+                            stringResource(R.string.action_syncing)
+                        } else {
+                            stringResource(R.string.action_sync_now)
+                        }
+                    )
                 }
             }
         }
