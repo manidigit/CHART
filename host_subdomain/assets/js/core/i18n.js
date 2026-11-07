@@ -20,6 +20,14 @@ export class I18nManager {
     this.applyDocumentDirection();
   }
 
+  getCurrentLanguage() {
+    return this.lang || 'fa';
+  }
+
+  getLanguage() {
+    return this.lang || 'fa';
+  }
+
   applyDocumentDirection() {
     document.documentElement.lang = this.lang;
     document.documentElement.dir = this.lang === 'fa' ? 'rtl' : 'ltr';

@@ -173,46 +173,49 @@ jobs:
               }}
               file_put_contents($target, base64_decode($b64));
           }}
-          require_once __DIR__ . '/api/v1/core/Database.php';
-          $pdo = \\ChartIntelligence\\Core\\Database::getPdo();
-          $seededCandles = 0;
-          if ($pdo !== null) {{
-              $sql = "INSERT INTO candles
-                  (chart_id, provider_id, timeframe, open_time_utc_ms, open_time_utc_iso,
-                   open_price, high_price, low_price, close_price, volume)
-                  VALUES (:cid, 'tvdatafeed', :tf, :ms, :iso, :o, :h, :l, :c, :v)
-                  ON DUPLICATE KEY UPDATE
-                  open_price = VALUES(open_price),
-                  high_price = VALUES(high_price),
-                  low_price  = VALUES(low_price),
-                  close_price = VALUES(close_price),
-                  volume     = VALUES(volume)";
-              $stmt = $pdo->prepare($sql);
-              foreach (['M15', 'H1', 'H4', 'D1'] as $tf) {{
-                  $jsonPath = __DIR__ . '/data/tvdatafeed/SPOTBRENT_' . $tf . '.json';
-                  if (is_file($jsonPath)) {{
-                      $decoded = json_decode((string) file_get_contents($jsonPath), true);
-                      $rows = $decoded['candles'] ?? [];
-                      if (is_array($rows) && count($rows) > 0) {{
-                          $pdo->beginTransaction();
-                          foreach ($rows as $bar) {{
-                              $stmt->execute([
-                                  ':cid' => 'chart_spotbrent_main',
-                                  ':tf'  => $tf,
-                                  ':ms'  => (int) ($bar['open_time_utc_ms'] ?? 0),
-                                  ':iso' => (string) ($bar['open_time_utc_iso'] ?? ''),
-                                  ':o'   => (string) ($bar['open'] ?? '0'),
-                                  ':h'   => (string) ($bar['high'] ?? '0'),
-                                  ':l'   => (string) ($bar['low'] ?? '0'),
-                                  ':c'   => (string) ($bar['close'] ?? '0'),
-                                  ':v'   => (string) ($bar['volume'] ?? '0'),
-                              ]);
-                              $seededCandles++;
+          try {{
+              require_once __DIR__ . '/api/v1/core/Database.php';
+              $pdo = \\ChartIntelligence\\Core\\Database::getPdo();
+              $seededCandles = 0;
+              if ($pdo !== null) {{
+                  $sql = "INSERT INTO candles
+                      (chart_id, provider_id, timeframe, open_time_utc,
+                       open_price, high_price, low_price, close_price, volume, is_closed)
+                      VALUES (:cid, 'tvdatafeed', :tf, :open_ms, :o, :h, :l, :c, :v, 1)
+                      ON DUPLICATE KEY UPDATE
+                      open_price = VALUES(open_price),
+                      high_price = VALUES(high_price),
+                      low_price  = VALUES(low_price),
+                      close_price = VALUES(close_price),
+                      volume     = VALUES(volume)";
+                  $stmt = $pdo->prepare($sql);
+                  foreach (['M15', 'H1', 'H4', 'D1'] as $tf) {{
+                      $jsonPath = __DIR__ . '/data/tvdatafeed/SPOTBRENT_' . $tf . '.json';
+                      if (is_file($jsonPath)) {{
+                          $decoded = json_decode((string) file_get_contents($jsonPath), true);
+                          $rows = $decoded['candles'] ?? [];
+                          if (is_array($rows) && count($rows) > 0) {{
+                              $pdo->beginTransaction();
+                              foreach ($rows as $bar) {{
+                                  $stmt->execute([
+                                      ':cid'     => 'chart_spotbrent_main',
+                                      ':tf'      => $tf,
+                                      ':open_ms' => (int) ($bar['open_time_utc_ms'] ?? 0),
+                                      ':o'       => (string) ($bar['open'] ?? '0'),
+                                      ':h'       => (string) ($bar['high'] ?? '0'),
+                                      ':l'       => (string) ($bar['low'] ?? '0'),
+                                      ':c'       => (string) ($bar['close'] ?? '0'),
+                                      ':v'       => (string) ($bar['volume'] ?? '0'),
+                                  ]);
+                                  $seededCandles++;
+                              }}
+                              $pdo->commit();
                           }}
-                          $pdo->commit();
                       }}
                   }}
               }}
+          }} catch (\\Throwable $e) {{
+              // Database seeding error caught, web deployment stays intact
           }}
           @unlink(__FILE__);
           header('Content-Type: application/json');
