@@ -68,13 +68,22 @@
 11. **معماری سه‌لایه عدم هاردکد (`Zero Hardcoding`):** تمام پارامترهای الگوریتم (سقف تاریخچه، گام زوم، خطای لمس) در Config مرکزی تعریف شده و با اسلایدرهای UI در تنظیمات قابل تغییرند؛ رنگ‌های بصری کندل‌ها و خطوط رسم در تم متمرکز و در صفحه تنظیمات با اعمال بلادرنگ قابل انتخاب هستند؛ و کاتالوگ نمادها کاملاً باز بوده و امکان ثبت نماد و اعشار و منبع جدید از داخل تنظیمات بدون هیچ کدنویسی مجدد فراهم است.
 12. **تجربه کاربری نمودارمحور به سبک TradingView:** در دسکتاپ بیش از ۷۵٪ مساحت صفحه به نمودار اختصاص یافته و نوار ابزار رسم عمودی در لبه سمت چپ قرار دارد؛ در موبایل بوم نمودار با `touch-action: none` از هرگونه اسکرول ناخواسته صفحه حین Drag/Pinch محافظت شده و ناوبری با منوی ۴ زبانه Material 3 در پایین صفحه انجام می‌شود.
 13. **ماژول تحلیل تکنیکال و محاسباتی:** ارزیابی شاخص‌های نوسان (دامنه، سقف/کف، ATR 14) و نقاط پیوت کلاسیک کف بازار بر اساس محاسبات ریاضی دقیق روی کندل‌های واقعی و بدون داده‌های شبیه‌سازی‌شده یا موک.
+14. **استانداردهای جامعه متن‌باز و نگهداری بلندمدت (`Open-Source Readiness`):** ۵ سند مرجع متن‌باز در ریشه (`ARCHITECTURE.md`، `CONTRIBUTING.md`، `AGENTS.md`، `SECURITY.md`، `CHANGELOG.md`)؛ تفکیک هماهنگ‌کننده‌های ویومدل اندروید در `ui/state/coordinators/` (`ChartDrawingCoordinator.kt`، `SymbolCatalogCoordinator.kt`، `ChartPreferenceCoordinator.kt`)؛ و ماژولارسازی کامل وب با Native ES6 Modules در `assets/js/` بدون باندلر خارجی.
 
 ### نمونه جداسازی ماژول‌ها
 
-- صفحات: `LoginScreen`, `WatchlistScreen`, `ChartViewScreen`, `SettingsScreen`
-- اجزای UI: `ChartTabBar`, `ChartToolbar`, `DrawingToolbar`, `CandlestickCanvas`, `WatchlistRowCard`, `SourceBadgeChip`, `LanguageThemeSelector`
-- Providerها: `TwelveDataAdapter`, `DukascopyAdapter`, `EiaBenchmarkAdapter`, `YahooFinanceAdapter`
-- الگوریتم‌ها: `UtcTimeAnchorAlgorithm`, `CandleValidatorAlgorithm`, `TimeframeAggregatorAlgorithm`, `DrawingGeometryAlgorithm`, `PriceFormatterAlgorithm`, `PasswordHashAlgorithm` (و در فاز ۲: `SmaCalculator`, `EmaCalculator`, `BollingerBandsCalculator`, `RsiCalculator`, `MacdCalculator`, `AtrCalculator`, `GapDetector`)
+- **اسناد ریشه:** `ARCHITECTURE.md`, `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md`, `CHANGELOG.md`, `CHART_INTELLIGENCE_MASTER_SPEC.md`
+- **صفحات اندروید:** `OwnerLoginScreen`, `WatchlistScreen`, `ChartViewScreen`, `SettingsScreen`
+- **هماهنگ‌کننده‌های اندروید:** `ChartDrawingCoordinator`, `SymbolCatalogCoordinator`, `ChartPreferenceCoordinator`, `MainViewModel`
+- **اجزای UI اندروید:** `MultiTabHeader`, `ChartTopBar`, `DrawingToolsRail`, `CandlestickCanvas`, `TabItemCard`, `ThemeSelector`, `TimeframeSelector`
+- **ماژول‌های وب (`host_subdomain/assets/js/`):**
+  - `core/store.js` (مدیریت وضعیت مرکزی و کش)
+  - `services/apiService.js` (کلاینت REST API)
+  - `controllers/chartInteractionController.js` (رویدادهای لمسی و ماوس بوم)
+  - `views/` (`headerView.js`, `toolRailView.js`, `watchlistView.js`, `analysisView.js`, `settingsView.js`, `loginView.js`, `navigationView.js`)
+  - `components/chartRenderer.js` (موتور رندر کندلی)
+- **Providerها:** `TwelveDataAdapter`, `DukascopyAdapter`, `EiaBenchmarkAdapter`, `YahooFinanceAdapter`
+- **الگوریتم‌ها:** `UtcTimeAnchorAlgorithm`, `CandleValidatorAlgorithm`, `TimeframeAggregatorAlgorithm`, `DrawingGeometryAlgorithm`, `PriceFormatterAlgorithm`, `PasswordHashAlgorithm` (و در فاز ۲: `SmaCalculator`, `EmaCalculator`, `BollingerBandsCalculator`, `RsiCalculator`, `MacdCalculator`, `AtrCalculator`, `GapDetector`)
 
 ساختار واقعی فایل‌ها را با درخت مخزن و Master Spec تطبیق دهید؛ این فهرست جایگزین بررسی کد جاری نیست.
 

@@ -134,17 +134,22 @@ Provider availability, plan restrictions, licensing and timeframe coverage must 
 
 ```text
 .
-├── app/                         # Android application
+├── ARCHITECTURE.md              # System architecture, layer boundaries and extension guide
+├── CONTRIBUTING.md              # Contributor guidelines, workflow and PR standards
+├── AGENTS.md                    # Core operational rules for AI and developer assistants
+├── SECURITY.md                  # Security policies and zero-secrets management
+├── CHANGELOG.md                 # Semantic versioning release history
+├── app/                         # Android application (Kotlin, Compose, Coordinators)
 ├── host_subdomain/
-│   ├── api/v1/                   # PHP REST API and provider adapters
-│   ├── assets/                   # Web styles and JavaScript
-│   ├── i18n/                     # Web translations (fa/en)
-│   └── migrations/               # Database migrations
+│   ├── api/v1/                  # PHP REST API (auth.php, candles_sync.php)
+│   ├── assets/                  # Web Native ES6 modules, styles, and renderer
+│   ├── i18n/                    # Web translations (fa/en)
+│   └── migrations/              # Database migrations
 ├── docs/
-│   ├── PROJECT_GUIDE.md          # Development and operational guide
-│   └── assets/chart-hero.svg     # README artwork
+│   ├── PROJECT_GUIDE.md         # Development and operational guide
+│   └── assets/chart-hero.svg    # README artwork
 ├── .github/workflows/
-│   └── build-apk.yml             # Manual Android APK build
+│   └── build-apk.yml            # Manual Android APK build
 ├── CHART_INTELLIGENCE_MASTER_SPEC.md
 ├── INFRASTRUCTURE_INVENTORY.md
 └── TRADING_STRATEGY_SPEC.md
@@ -160,6 +165,11 @@ Provider availability, plan restrictions, licensing and timeframe coverage must 
 
 | Document | Purpose |
 |---|---|
+| [System Architecture](ARCHITECTURE.md) | High-level system design, module responsibilities, layer diagrams and extension guides |
+| [Contributing Guide](CONTRIBUTING.md) | Contribution standards, local environment setup, code style and PR checklist |
+| [AI & Developer Instructions](AGENTS.md) | Operational rules, core invariants, zero-hardcoding rules and verification requirements |
+| [Security Policy](SECURITY.md) | Security vulnerability disclosure, zero-secrets policy and credential management |
+| [Changelog](CHANGELOG.md) | Structured release notes and feature history across versions |
 | [Project & Development Guide](docs/PROJECT_GUIDE.md) | Engineering standards, secure configuration, roadmap details, provider matrix and workflow notes |
 | [Master Specification](CHART_INTELLIGENCE_MASTER_SPEC.md) | Product requirements, architecture, algorithms and authoritative project decisions |
 | [Infrastructure Inventory](INFRASTRUCTURE_INVENTORY.md) | Hosting environment, infrastructure evidence, limits and unresolved verification items |

@@ -275,48 +275,61 @@ chart_id کلید مرجع داده‌های همان نمودار است. نا�
 -   دسترسی به داده از طریق Repository/Adapter مستقل از موتور ذخیره‌سازی انجام شود؛ Prediction Engine نباید SQL اختصاصی MariaDB یا DuckDB را مستقیماً فراخوانی کند.
 -   MariaDB روی هاست، منبع اصلی و مرجع عملیاتی داده باقی می‌ماند. DuckDB فقط در POC برای تحلیل‌های تاریخی و پردازش‌های دسته‌ای ارزیابی می‌شود؛ قبولی DuckDB به معنی جایگزینی خودکار MariaDB نیست.
 
-### ب) ۱۰ اصل و استاندارد پایه مهندسی نرم‌افزار — الزامی از روز اول در فاز ۱ (`DECIDED`)
+#### ب) ۱۴ اصل و استاندارد پایه مهندسی نرم‌افزار — الزامی از روز اول در فاز ۱ (`DECIDED`)
 
-هر هوش مصنوعی یا توسعه‌دهنده‌ای که کدنویسی فاز ۱ و فازهای بعدی را انجام می‌دهد، **ملزم به رعایت کامل این ۱۰ استاندارد مهندسی از خط اول کدنویسی** است:
+هر هوش مصنوعی یا توسعه‌دهنده‌ای که کدنویسی فاز ۱ و فازهای بعدی را انجام می‌دهد، **ملزم به رعایت کامل این ۱۴ استاندارد مهندسی از خط اول کدنویسی** است:
 
 1.  **معماری دوزبانه کامل (`Bilingual i18n: فارسی fa + English en`) با ۲ فایل استرینگ مجزا و ممنوعیت مطلق Hardcode (`DECIDED`):**
     -   **اپلیکیشن اندروید:** نگهداری کلیه متون، برچسب‌ها، دکمه‌ها، پیام‌های خطا و اصطلاحات در دو فایل منبع استاندارد اندروید:
         -   `app/src/main/res/values/strings.xml` (زبان انگلیسی `en` — پیش‌فرض پایه)
         -   `app/src/main/res/values-fa/strings.xml` (زبان فارسی `fa`)
     -   **وب‌اپلیکیشن (`chart.manico.es`):** نگهداری کلیه کلیدهای متنی در دو فایل دیکشنری مستقل:
-        -   `web/i18n/en.json` (انگلیسی)
-        -   `web/i18n/fa.json` (فارسی)
+        -   `host_subdomain/i18n/en.json` (انگلیسی)
+        -   `host_subdomain/i18n/fa.json` (فارسی)
     -   **ممنوعیت متن Hardcode:** نوشتن هرگونه رشته متنی قابل مشاهده برای کاربر به‌صورت مستقیم داخل کدهای Kotlin/Compose یا HTML/JS اکیداً ممنوع است؛ تمام متون باید با کلید معنایی (`stringResource(R.string.xxx)` در اندروید و `t('xxx')` در وب) فراخوانی شوند.
     -   **تغییر آنی زبان و جهت چیدمان (`RTL` / `LTR`):** در صفحه تنظیمات (`Settings`)، دکمه تغییر زبان (`فارسی` / `English`) قرار دارد که بدون نیاز به نصب مجدد یا پاک شدن وضعیت تب‌های باز، زبان کل برنامه و جهت صفحه (`RTL` برای فارسی و `LTR` برای انگلیسی) را فوراً تغییر می‌دهد.
     -   **استاندارد نمایش اعداد، قیمت‌ها و نمادها:** در هر دو زبان فارسی و انگلیسی، قیمت‌های بازار (`OHLC`)، درصدها، تایم‌فریم‌ها (`M15`, `H1`)، زمان‌های `UTC` و نمادهای بین‌المللی (`SPOTBRENT`, `XAUUSD`) همیشه با ارقام استاندارد لاتین و جهت `LTR` (با فونت Monospace/Tabular) نمایش داده می‌شوند تا خوانایی نمودار و جدول قیمت‌ها به هم نخورد.
 2.  **سیستم متمرکز تم و رنگ‌ها (`Centralized Theme & Design Tokens` — ممنوعیت رنگ و ابعاد Hardcode):**
-    -   در اندروید تمام رنگ‌ها، تایپوگرافی و شکل‌ها در `Theme.kt` (بر پایه Material Design 3 با پشتیبانی از تم تیره `Dark` ویژه چارت‌های مالی و تم روشن `Light`) و در وب در متغیرهای سراسری CSS (`:root` و `[data-theme="dark"]`) تعریف می‌شوند. استفاده از کدهای هگزادسیمال پراکنده در کامپوننت‌ها ممنوع است.
+    -   در اندروید تمام رنگ‌ها، تایپوگرافی و شکل‌ها در `Theme.kt` (بر پایه Material Design 3 با پشتیبانی از تم تیره `Dark` ویژه چارت‌های مالی و تم روشن `Light`) و در وب در متغیرهای سراسری CSS (`theme.css`) تعریف می‌شوند. استفاده از کدهای هگزادسیمال پراکنده در کامپوننت‌ها ممنوع است.
 3.  **مدیریت متمرکز تنظیمات و ثابت‌ها (`Centralized AppConfig`):**
-    -   آدرس پایه سرور (`https://chart.manico.es/api/v1/`)، زمان‌های Timeout شبکه، کلیدهای ذخیره‌سازی محلی، کدهای تایم‌فریم و نسخه برنامه فقط در یک ماژول متمرکز (`AppConfig`) تعریف می‌شوند تا هیچ آدرس یا ثابتی در کدها تکرار نشود.
+    -   آدرس پایه سرور (`https://chart.manico.es/api/v1/`)، زمان‌های Timeout شبکه، کلیدهای ذخیره‌سازی محلی، کدهای تایم‌فریم و پارامترهای پیش‌فرض الگوریتم در `AppConfig` تعریف می‌شوند تا هیچ ثابتی در کدها تکرار نشود.
 4.  **معماری مویرگی، جداسازی کامل کتابخانه‌ها/الگوریتم‌ها و قانون «هر جزء در یک فایل مستقل» (`Granular File-Per-Component & File-Per-Algorithm Architecture` — `DECIDED`):**
-    -   **ممنوعیت مطلق فایل‌های یک‌کاسه و طولانی (`No Monolithic Files`):** ریختن چندین صفحه، چندین آداپتور منبع داده یا چندین الگوریتم و اندیکاتور داخل یک فایل واحد (مثلاً ریختن کل برنامه داخل `MainActivity.kt` یا `app.js` یا `api.php`) **اکیداً ممنوع** است.
+    -   **ممنوعیت مطلق فایل‌های یک‌کاسه و طولانی (`No Monolithic Files`):** ریختن چندین صفحه، چندین آداپتور منبع داده یا چندین الگوریتم و اندیکاتور داخل یک فایل واحد **اکیداً ممنوع** است.
     -   **قانون «یک فایل = یک مسئولیت / یک الگوریتم / یک صفحه / یک کامپوننت»:**
-        -   هر صفحه (`Login`, `Watchlist`, `ChartView`, `Settings`) در فایل مستقل خودش نوشته می‌شود.
-        -   هر قطعه گرافیکی قابل استفاده مجدد (`ChartTabBar`, `WatchlistRowCard`, `SourceBadgeChip`, `LanguageSwitchRow`) در فایل مستقل خودش نوشته می‌شود.
-        -   هر منبع داده (`TwelveDataAdapter`, `DukascopyAdapter`, `EiaBenchmarkAdapter`, `YahooFinanceAdapter`, `CsvImportAdapter`) در فایل مستقل خودش در پوشه `providers/` نوشته می‌شود.
-        -   هر الگوریتم و اندیکاتور (`SmaCalculator`, `EmaCalculator`, `BollingerBandsCalculator`, `RsiCalculator`, `MacdCalculator`, `AtrCalculator`, `GapDetector`, `TimeframeAggregator`, `TrendRegimeDetector` و غیره) در **فایل کتابخانه‌ای مستقل خودش** در پوشه `algorithms/` قرار می‌گیرد تا اگر در آینده خواستیم فقط فرمول یا منطق یک الگوریتم یا یک بخش خاص را بررسی، اصلاح یا ارتقا دهیم، مستقیماً سراغ همان فایل کوچک برویم و به بقیه برنامه دست نزنیم.
+        -   هر صفحه در فایل مستقل خودش نوشته می‌شود.
+        -   هر قطعه گرافیکی قابل استفاده مجدد در فایل مستقل خودش قرار می‌گیرد.
+        -   هر منبع داده در فایل مستقل در پوشه `providers/` قرار دارد.
+        -   هر الگوریتم در فایل کتابخانه‌ای کاملاً خالص (Pure Function) در پوشه `algorithms/` بدون وابستگی به فریم‌ورک‌های گرافیکی قرار می‌گیرد.
     -   **سقف حجم هر فایل:** اندازه هدف هر فایل کد بین **۸۰ تا ۲۵۰ خط** (و حداکثر مطلق ۴۰۰ خط) است.
 5.  **قرارداد یکپارچه پاسخ و خطای API (`Unified API Envelope & Localized Error Keys`):**
     -   تمامی خروجی‌های PHP REST API ساختار استاندارد زیر را دارند:
         `{ "ok": true|false, "data": ..., "error_code": "...", "message_key": "err_...", "meta": { "server_time_utc": "..." } }`
     -   کلاینت اندروید و وب با خواندن `message_key`، پیام خطا را به زبان انتخابی کاربر (`فارسی` یا `انگلیسی`) از فایل استرینگ نمایش می‌دهند.
 6.  **استاندارد قطعی زمان (`Strict UTC`) و دقت اعشاری قیمت‌ها (`DECIMAL(18,8)`):**
-    -   تمام زمان‌ها در دیتابیس، API و منطق برنامه به `UTC` ذخیره و مبادله می‌شوند و فقط در لایه نمایش به زمان محلی یا UTC قابل انتخاب تبدیل می‌گردند.
+    -   تمام زمان‌ها در دیتابیس، API و منطق برنامه به `UTC` ذخیره و مبادله می‌شوند و لنگر تجمیع کندل‌ها `00:00:00 UTC` است.
     -   قیمت‌ها در MariaDB منحصراً با نوع `DECIMAL(18,8)` ذخیره می‌شوند و استفاده از `FLOAT`/`DOUBLE` برای قیمت‌ها ممنوع است.
 7.  **ماشین وضعیت صریح رابط کاربری (`Explicit UI State Machine`):**
     -   هر صفحه و هر تب نمودار باید ۵ وضعیت استاندارد را به‌صورت تمیز و بدون کرش مدیریت کند:
-        `Loading` (در حال دریافت)، `Empty` (واچ‌لیست یا تب خالی با راهنمای افزودن)، `Success` (نمایش داده)، `Error` (نمایش علت خطا به زبان کاربر + دکمه «تلاش مجدد / Retry»)، و `Offline / Stale` (هشدار عدم اتصال به اینترنت همراه با نمایش آخرین داده کش‌شده).
+        `Loading`، `Empty`، `Success`، `Error + Retry`، و `Offline / Stale`.
 8.  **حفظ پایدار وضعیت تب‌های باز و تنظیمات کاربر (`Persistent Workspace State`):**
-    -   زبان انتخابی (`fa`/`en`)، تم (`Dark`/`Light`)، فهرست تب‌های باز در `Chart View`، تب فعال فعلی و تایم‌فریم انتخابی هر تب در حافظه محلی (`DataStore` در اندروید و `LocalStorage` در وب) ذخیره می‌شوند تا با بستن و باز کردن برنامه یا جابه‌جایی بین صفحات `Watchlist`، `Chart View` و `Settings` هیچ تبی بسته نشود.
+    -   زبان انتخابی (`fa`/`en`)، تم (`Dark`/`Light`)، فهرست تب‌های باز در `Chart View`، تب فعال فعلی، تایم‌فریم، خطوط رسم‌شده و پارامترهای شخصی‌سازی‌شده کاربر در حافظه محلی پایدار ذخیره می‌شوند.
 9.  **استاندارد تست‌پذیری و دسترس‌پذیری (`TestTags & Accessibility`):**
-    -   اختصاص شناسه تست استاندارد (`Modifier.testTag("...")` در Compose و `data-testid="..."` در وب) به تمام دکمه‌ها، فیلدها، آیتم‌های واچ‌لیست و تب‌های `Chart View` با نام‌گذاری `snake_case`، رعایت حداقل ابعاد لمسی `48dp × 48dp` و ثبت `contentDescription` از فایل استرینگ دوزبانه.
+    -   اختصاص شناسه تست استاندارد (`Modifier.testTag("...")` در Compose و `data-testid="..."` در وب) با الگوی `snake_case`، رعایت حداقل ابعاد لمسی `48dp × 48dp` و ثبت `contentDescription` دوزبانه.
 10. **مهاجرت دیتابیس غیرمخرب (`Non-Destructive Idempotent Migrations`) و ایمنی استقرار:**
-    -   تمامی اسکریپت‌های دیتابیس باید Idempotent باشند (`CREATE TABLE IF NOT EXISTS` و جدول ثبت نسخه `schema_migrations`). ارتقای برنامه از فاز ۱ به فازهای ۲ تا ۶ تحت هیچ شرایطی نباید جداول یا کندل‌های ذخیره‌شده قبلی در MariaDB را پاک یا بازنویسی مخرب کند.
+    -   تمامی اسکریپت‌های دیتابیس باید Idempotent باشند (`CREATE TABLE IF NOT EXISTS`). ارتقای برنامه از فاز ۱ به فازهای ۲ تا ۶ تحت هیچ شرایطی نباید کندل‌های ذخیره‌شده قبلی در MariaDB را پاک یا بازنویسی مخرب کند.
+11. **معماری سه‌لایه عدم هاردکد (`Zero Hardcoding Architecture` — `DECIDED`):**
+    -   **لایه الگوریتم‌ها:** پارامترهای محاسباتی (سقف تاریخچه کندل‌ها بین ۲۰ تا ۳۰۰، گام زوم بین ۲ تا ۲۴ کندل، تلرانس لمس و کلیک خطوط بین ۱۲ تا ۴۸ پیکسل) در `AppConfig` تعریف شده و در صفحه تنظیمات با اسلایدرهای UI قابل تغییر بلادرنگ و بازنشانی به پیش‌فرض هستند.
+    -   **لایه طراحی و بصری:** رنگ‌های کندل صعودی، کندل نزولی، خط روند، خط افقی، خط عمودی و شبکه پس‌زمینه در تم متمرکز بوده و در صفحه تنظیمات با Color Picker قابل ویرایش و شخصی‌سازی هستند.
+    -   **لایه کاتالوگ نمادها:** سیستم دارای کاتالوگ باز است؛ کاربر می‌تواند مستقیماً از داخل تنظیمات نماد جدید دلخواه با کد نماد، نام نمایشی، تعداد ارقام اعشار و پرووایدر موردنظر ثبت یا حذف کند بدون اینکه نیازی به دستکاری در کدهای برنامه باشد.
+12. **تجربه کاربری حرفه‌ای نمودارمحور به سبک TradingView (`DECIDED`):**
+    -   **نسخه دسکتاپ:** هدر فشرده (<۴۸ پیکسل)، بیش از ۷۵٪ مساحت صفحه به بوم نمودار اختصاص دارد، نوار ابزار رسم عمودی در سمت چپ شبیه TradingView، پنل‌های تاشو کناری (واچ‌لیست، تحلیل، تنظیمات) و کلید حالت تمام‌صفحه.
+    -   **نسخه موبایل اندروید و وب موبایل:** هدر ثابت، جلوگیری از اسکرول ناخواسته صفحه با `touch-action: none` روی بوم نمودار، نوار ابزارهای لمسی در دسترس و نوار ناوبری پایین صفحه ۴ زبانه Material 3 با حداقل ابعاد لمسی ۴۸dp.
+13. **ماژول تحلیل تکنیکال و محاسباتی واقعی (`Technical & Statistical Analytics` — `DECIDED`):**
+    -   محاسبه دقیق سقف و کف بازه، دامنه نوسان درصدی، میانگین دامنه واقعی (`ATR 14`)، نقاط پیوت کلاسیک کف بازار (`P, R1, S1, R2, S2`) و نسبت سنتیمنت کندل‌های صعودی به نزولی به‌صورت مستقیم از کندل‌های واقعی دریافت‌شده؛ بدون هرگونه داده ساختگی، شبیه‌سازی یا موک.
+14. **استانداردهای جامعه متن‌باز، تفکیک هماهنگ‌کننده‌ها و نگهداری بلندمدت (`Open-Source Readiness & Coordinators Architecture` — `DECIDED`):**
+    -   **اسناد استاندارد متن‌باز ریشه مخزن:** ایجاد ۵ فایل استاندارد در ریشه مخزن (`ARCHITECTURE.md`، `CONTRIBUTING.md`، `AGENTS.md`، `SECURITY.md`، `CHANGELOG.md`) برای تبیین مرزهای لایه‌ها، راهنمای مشارکت، قوانین ناوردا برای هوش مصنوعی و امنیت بدون افشای کلیدها.
+    -   **الگوی هماهنگ‌کننده‌ها (Coordinators) در اندروید:** شکستن مسئولیت‌های بزرگ `MainViewModel` به هماهنگ‌کننده‌های متمرکز دامنه تحت پکیج `ui/state/coordinators/` (`ChartDrawingCoordinator.kt` برای چرخه حیات ابزارهای رسم، `SymbolCatalogCoordinator.kt` برای مدیریت پویای نمادها و واچ‌لیست، و `ChartPreferenceCoordinator.kt` برای پالت رنگ و پارامترهای الگوریتم).
+    -   **معماری ماژول‌های بومی (Native ES6 Modules) در وب:** تفکیک کامل لایه فرانت‌اند به ماژول‌های مجزای بومی جاوااسکریپت بدون نیاز به باندلر و بیلد سنگین (`core/store.js`، `services/apiService.js`، `controllers/chartInteractionController.js`، و `views/`).
 
 ### ج) نقشه جامع درخت پوشه‌ها و فایل‌های مجزا (`Modular Directory & File Blueprint` — `DECIDED`)
 
@@ -324,148 +337,112 @@ chart_id کلید مرجع داده‌های همان نمودار است. نا�
 
 ```text
 / (ریشه مخزن)
+├── ARCHITECTURE.md                                    # سند معماری کلان، لایه‌بندی سیستم و راهنمای افزودن ماژول
+├── CONTRIBUTING.md                                    # راهنمای توسعه محلی، استانداردهای کدنویسی و چک‌لیست PR
+├── AGENTS.md                                          # قوانین ناوردا و دستورالعمل‌های عملیاتی برای هوش مصنوعی
+├── SECURITY.md                                        # خط‌مشی امنیت و مدیریت اسرار بدون ذخیره کلید در مخزن
+├── CHANGELOG.md                                       # تاریخچه نسخه‌ها بر پایه Keep a Changelog
+├── README.md                                          # صفحه معرفی و درگاه ورودی عمومی پروژه
+├── CHART_INTELLIGENCE_MASTER_SPEC.md                  # مرجع اصلی و واحد مشخصات محصول و تصمیمات
+├── INFRASTRUCTURE_INVENTORY.md                        # موجودی زیرساخت هاست و سرور
+├── TRADING_STRATEGY_SPEC.md                           # مرجع فاز ۶ (Trading Strategy و Portfolio Simulation)
+├── docs/
+│   └── PROJECT_GUIDE.md                               # راهنمای جامع فنی، اجرایی و استانداردهای مهندسی
+│
 ├── app/src/main/                                      # اپلیکیشن اندروید (Kotlin + Jetpack Compose)
 │   ├── res/
 │   │   ├── values/strings.xml                         # فایل دیکشنری انگلیسی (en — بدون هیچ متن هاردکد در کد)
 │   │   └── values-fa/strings.xml                      # فایل دیکشنری فارسی (fa — راست‌به‌چپ RTL)
-│   ├── assets/chart_engine/                           # موتور رندر نمودار کندلی (Lightweight Charts Bridge)
-│   │   ├── chart_canvas.html
-│   │   └── chart_bridge.js
 │   └── java/es/manico/chartintelligence/
-│       ├── MainActivity.kt                            # فقط نقطه ورود و تزریق تم و زبان (حداکثر ۸۰ خط)
-│       ├── core/
-│       │   ├── config/AppConfig.kt                    # ثابت‌ها، آدرس API، تایم‌فریم‌ها و کلیدهای ذخیره‌سازی
-│       │   ├── i18n/LocaleManager.kt                  # مدیریت تغییر آنی زبان (fa/en) و جهت (RTL/LTR)
-│       │   ├── format/MarketNumberFormatter.kt        # فرمت اعداد، قیمت‌ها و زمان UTC همیشه به لاتین LTR
-│       │   └── storage/WorkspacePreferences.kt        # ذخیره پایدار زبان، تم، توکن و تب‌های باز Chart View
-│       ├── domain/
-│       │   ├── model/
-│       │   │   ├── ChartInstrument.kt                 # مدل نماد و هویت مستقل سری (chart_id)
-│       │   │   ├── DataSourceOption.kt                # مدل منبع داده (Twelve Data, Dukascopy, EIA, ...)
-│       │   │   ├── WatchlistItem.kt                   # مدل آیتم واچ‌لیست و وضعیت آخرین همگام‌سازی
-│       │   │   ├── CandleBar.kt                       # مدل کندل OHLCV استاندارد UTC
-│       │   │   ├── OpenChartTab.kt                    # مدل هر تب باز در Chart View (وضعیت زوم/تایم‌فریم/اندیکاتور)
-│       │   │   └── UiResourceState.kt                 # ماشین وضعیت (Loading, Empty, Success, Error, Offline)
-│       │   └── algorithms/                            # کتابخانه مستقل الگوریتم‌ها در سمت کلاینت (هر الگوریتم یک فایل)
-│       │       ├── indicators/
-│       │       │   ├── SmaCalculator.kt               # الگوریتم مستقل SMA (20, 50) — فاز ۲
-│       │       │   ├── EmaCalculator.kt               # الگوریتم مستقل EMA (20) — فاز ۲
-│       │       │   ├── BollingerBandsCalculator.kt    # الگوریتم مستقل Bollinger Bands (20, 2) — فاز ۲
-│       │       │   ├── RsiCalculator.kt               # الگوریتم مستقل RSI (14) — فاز ۲
-│       │       │   ├── MacdCalculator.kt              # الگوریتم مستقل MACD (12, 26, 9) — فاز ۲
-│       │       │   └── AtrCalculator.kt               # الگوریتم مستقل ATR (14) — فاز ۲
-│       │       ├── series/
-│       │       │   ├── TimeframeAggregator.kt         # الگوریتم ساخت تایم‌فریم‌های بالاتر با لنگر 00:00 UTC
-│       │       │   └── GapDetector.kt                 # الگوریتم تشخیص کندل‌های جاافتاده — فاز ۳
-│       │       └── forecasting/                       # کتابخانه الگوریتم‌های پیش‌بینی (فاز ۴ و ۵ — هر مدل یک فایل)
-│       │           ├── TrendRegimeDetector.kt
-│       │           ├── SupportResistanceFinder.kt
-│       │           └── BaselineForecaster.kt
+│       ├── MainActivity.kt                            # نقطه ورود برنامه و ناوبری صفحات (زیر ۱۰۰ خط)
+│       ├── algorithms/                                # الگوریتم‌های محاسباتی محض و بدون وابستگی به UI
+│       │   ├── CandleValidatorAlgorithm.kt            # اعتبارسنجی کندل‌های OHLCV و ترتیب زمان UTC
+│       │   ├── DrawingGeometryAlgorithm.kt            # هندسه رسم، لنگر مختصاتی، تست برخورد و جابه‌جایی
+│       │   ├── PasswordHashAlgorithm.kt               # هش امن SHA-256 رمز مالک
+│       │   ├── PriceFormatterAlgorithm.kt             # قالب‌بندی ارقام اعشاری و گام‌های محور Y
+│       │   ├── TimeframeAggregatorAlgorithm.kt        # تجمیع کندل‌های M15 به H1, H4, D1 بر مبنای 00:00 UTC
+│       │   └── UtcTimeAnchorAlgorithm.kt              # لنگر زمانی و قالب‌بندی زمان‌های بین‌المللی UTC
+│       ├── config/
+│       │   └── AppConfig.kt                           # پیکربندی متمرکز، ثابت‌ها و پارامترهای پیش‌فرض
 │       ├── data/
-│       │   ├── remote/
-│       │   │   ├── ApiHttpClient.kt                   # کلاینت شبکه و مدیریت Unified API Envelope
-│       │   │   ├── AuthApiService.kt                  # سرویس لاگین شخصی و نشست
-│       │   │   ├── WatchlistApiService.kt             # سرویس دریافت/ویرایش واچ‌لیست و کاتالوگ نمادها
-│       │   │   └── MarketCandleApiService.kt          # سرویس همگام‌سازی (Sync) و دریافت کندل‌های نمودار
+│       │   ├── model/                                 # مدل‌های داده‌ای تغییرناپذیر
+│       │   │   ├── CandleBar.kt                       # کندل کامل بازار
+│       │   │   ├── ChartDrawing.kt                    # مدل‌های خط روند، خط افقی، خط عمودی
+│       │   │   ├── ChartPreferences.kt                # پالت رنگ و پارامترهای الگوریتم
+│       │   │   ├── ChartTabState.kt                   # وضعیت تب فعال نمودار
+│       │   │   ├── ChartType.kt                       # انواع کندلی و خطی
+│       │   │   ├── DrawingTool.kt                     # ابزارهای رسم فعال
+│       │   │   ├── ProviderId.kt                      # شناسه‌های ارائه‌دهندگان داده
+│       │   │   ├── SymbolConfig.kt                    # مشخصات هر نماد بازار
+│       │   │   └── TrendAnchorPoint.kt                # نقاط لنگر خط روند
 │       │   └── repository/
-│       │       ├── AuthRepository.kt
-│       │       ├── WatchlistRepository.kt
-│       │       └── ChartWorkspaceRepository.kt
-│       └── ui/
-│           ├── theme/
-│           │   ├── ColorPalette.kt                    # توکن‌های رنگ مالی (Dark / Light)
-│           │   ├── Typography.kt                      # فونت‌ها و استایل متون فارسی/انگلیسی و اعداد Monospace
-│           │   └── Theme.kt                           # تم مرکزی Material 3
-│           ├── navigation/
-│           │   └── AppNavigationShell.kt              # نوار ناوبری اصلی (Watchlist | Chart View | Settings)
-│           ├── components/                            # قطعات گرافیکی مجزا (هر قطعه در فایل مستقل)
-│           │   ├── SourceBadgeChip.kt                 # برچسب نام منبع داده و وضعیت تازگی کنار نام نمودار
-│           │   ├── WatchlistRowCard.kt                # کارت هر ردیف در واچ‌لیست + دکمه Sync و Chart View
-│           │   ├── ChartTabBar.kt                     # نوار تب‌های موازی نمودارهای باز در بالای Chart View
-│           │   ├── LightweightChartCanvas.kt          # کامپوننت نمایش نمودار کندلی برای تب فعال
-│           │   ├── StateFeedbackBanner.kt             # نمایش وضعیت Loading / Empty / Error + Retry
-│           │   └── LanguageThemeSelector.kt           # سوئیچ تغییر فوری زبان (فارسی/انگلیسی) و تم
-│           └── screens/                               # صفحات اصلی برنامه (هر صفحه در فایل + ViewModel مستقل)
-│               ├── login/
-│               │   ├── LoginScreen.kt
-│               │   └── LoginViewModel.kt
-│               ├── watchlist/
-│               │   ├── WatchlistScreen.kt
-│               │   └── WatchlistViewModel.kt
-│               ├── chartview/
-│               │   ├── ChartViewScreen.kt
-│               │   └── ChartViewViewModel.kt
-│               └── settings/
-│                   ├── SettingsScreen.kt
-│                   └── SettingsViewModel.kt
+│       │       └── WorkspaceRepository.kt             # واسط ذخیره‌سازی محلی و فراخوانی آداپتورها
+│       ├── providers/                                 # آداپتورهای منابع داده مستقل
+│       │   ├── CandleProviderAdapter.kt               # قرارداد یکپارچه منابع داده
+│       │   ├── DukascopyAdapter.kt                    # آداپتور Dukascopy
+│       │   ├── EiaBenchmarkAdapter.kt                 # آداپتور EIA Europe Brent Spot
+│       │   ├── TwelveDataAdapter.kt                   # آداپتور Twelve Data
+│       │   └── YahooFinanceAdapter.kt                 # آداپتور Yahoo Finance
+│       ├── ui/
+│       │   ├── components/                            # کامپوننت‌های رندر مستقل
+│       │   │   ├── CandlestickCanvas.kt               # بوم رندر نمودار کندلی و خطوط رسم
+│       │   │   ├── ChartTopBar.kt                     # هدر تب و مشخصات نماد
+│       │   │   ├── DrawingToolsRail.kt                # نوار ابزار رسم
+│       │   │   ├── MultiTabHeader.kt                  # تب‌های موازی بالای نمودار
+│       │   │   ├── TabItemCard.kt                     # کارت هر تب
+│       │   │   ├── ThemeSelector.kt                   # انتخابگر تم تیره/روشن
+│       │   │   └── TimeframeSelector.kt               # دکمه‌های تایم‌فریم
+│       │   ├── screens/                               # صفحات اصلی برنامه
+│       │   │   ├── ChartViewScreen.kt                 # صفحه نمایش نمودار تعاملی چندتب
+│       │   │   ├── WatchlistScreen.kt                 # صفحه واچ‌لیست با به‌روزرسانی آنی
+│       │   │   ├── SettingsScreen.kt                  # صفحه تنظیمات و شخصی‌سازی رنگ و الگوریتم
+│       │   │   └── OwnerLoginScreen.kt                # صفحه ورود و ثبت حساب مالک
+│       │   ├── state/                                 # لایه وضعیت واکنش‌گرا و هماهنگ‌کننده‌ها
+│       │   │   ├── MainViewModel.kt                   # ویومدل سبک و هماهنگ‌کننده کلی UI
+│       │   │   └── coordinators/                      # هماهنگ‌کننده‌های تفکیک‌شده دامنه
+│       │   │       ├── ChartDrawingCoordinator.kt     # چرخه حیات و جابه‌جایی ابزارهای رسم
+│       │   │       ├── ChartPreferenceCoordinator.kt  # پالت رنگ و پارامترهای الگوریتم
+│       │   │       └── SymbolCatalogCoordinator.kt    # کاتالوگ نمادها و افزودن نماد سفارشی
+│       │   └── theme/                                 # تم متمرکز Material 3
+│       │       ├── Color.kt
+│       │       ├── Theme.kt
+│       │       └── Type.kt
+│       └── i18n/
+│           └── AppLanguage.kt                         # مدیریت زبان دوزبانه fa/en
 │
-└── host_subdomain/                                    # بسته کامل وب‌اپلیکیشن و PHP Backend برای chart.manico.es
-    ├── index.html                                     # پوسته وب‌اپلیکیشن ریسپانسیو
+└── host_subdomain/                                    # وب‌اپلیکیشن ماژولار و PHP REST API برای chart.manico.es
+    ├── index.html                                     # پوسته HTML سبک وب‌اپلیکیشن
     ├── i18n/
     │   ├── en.json                                    # دیکشنری کامل انگلیسی وب
     │   └── fa.json                                    # دیکشنری کامل فارسی وب
     ├── assets/
     │   ├── css/
-    │   │   ├── tokens.css                             # متغیرهای رنگ و ابعاد (:root و تم Dark/Light)
-    │   │   └── layout.css                             # چیدمان ریسپانسیو و پشتیبانی کامل RTL/LTR
-    │   └── js/
+    │   │   └── theme.css                              # متغیرهای رنگی، چیدمان دسکتاپ و موبایل
+    │   └── js/                                        # معماری تفکیک‌شده Native ES6 Modules
     │       ├── core/
-    │       │   ├── appConfig.js                       # تنظیمات پایه وب
-    │       │   ├── i18nManager.js                     # مدیریت ترجمه و تغییر جهت RTL/LTR
-    │       │   ├── stateStore.js                      # ذخیره وضعیت واچ‌لیست و تب‌های باز Chart View
-    │       │   └── apiClient.js                       # ارتباط استاندارد با REST API
-    │       ├── algorithms/                            # الگوریتم‌های مجزای سمت وب (هر الگوریتم یک فایل مستقل)
-    │       │   ├── sma.js
-    │       │   ├── ema.js
-    │       │   ├── bollingerBands.js
-    │       │   ├── rsi.js
-    │       │   ├── macd.js
-    │       │   └── atr.js
-    │       └── views/                                 # ویوهای ماژولار وب (هر بخش در فایل مستقل)
-    │           ├── loginView.js
-    │           ├── watchlistView.js
-    │           ├── chartTabsView.js
-    │           └── settingsView.js
-    └── api/v1/                                        # بک‌اند PHP ماژولار روی هاست cPanel
-        ├── index.php                                  # روتر سبک ورودی API
-        ├── config/
-        │   ├── AppConfig.php                          # خواندن امن تنظیمات دیتابیس و کلیدها از فایل محافظت‌شده
-        │   └── DatabaseConnection.php                 # اتصال PDO امن به MariaDB
-        ├── core/
-        │   ├── ApiResponse.php                        # تولید خروجی استاندارد JSON همراه با message_key
-        │   └── AuthMiddleware.php                     # بررسی توکن نشست کاربر
-        ├── database/
-        │   ├── MigrationRunner.php                    # اجرای خودکار و غیرمخرب جداول (IF NOT EXISTS)
-        │   └── migrations/
-        │       └── 001_phase1_init.sql                # اسکیمای دقیق جداول فاز ۱ در MariaDB
-        ├── providers/                                 # آداپتورهای منابع داده (هر منبع در یک فایل مستقل)
-        │   ├── MarketDataProviderInterface.php        # قرارداد واحد تمام منابع داده
-        │   ├── TwelveDataAdapter.php                  # آداپتور مستقل Twelve Data API
-        │   ├── DukascopyAdapter.php                   # آداپتور مستقل Dukascopy (brentcmdusd / xauusd)
-        │   ├── EiaBenchmarkAdapter.php                # آداپتور مستقل EIA Europe Brent Spot FOB (RBRTEd)
-        │   └── YahooFinanceAdapter.php                # آداپتور مستقل Yahoo Finance (BZ=F / GC=F)
-        ├── algorithms/                                # کتابخانه الگوریتم‌های سمت سرور (هر الگوریتم یک فایل مستقل)
-        │   ├── CandleValidator.php                    # کنترل کیفیت OHLC، زمان UTC و عدم تکرار
-        │   ├── TimeframeAggregator.php                # ساخت تایم‌فریم‌های بالاتر با لنگر 00:00 UTC
-        │   ├── GapDetector.php                        # تشخیص جاافتادگی کندل‌ها بر اساس تقویم نماد
-        │   └── indicators/                            # محاسبه مرجع ۶ گروه اندیکاتور (فاز ۲ — هر کدام یک فایل)
-        │       ├── SmaCalculator.php
-        │       ├── EmaCalculator.php
-        │       ├── BollingerBandsCalculator.php
-        │       ├── RsiCalculator.php
-        │       ├── MacdCalculator.php
-        │       └── AtrCalculator.php
-        ├── repositories/                              # لایه دسترسی به جداول MariaDB (هر جدول یک فایل مستقل)
-        │   ├── UserRepository.php
-        │   ├── CatalogRepository.php
-        │   ├── WatchlistRepository.php
-        │   └── CandleRepository.php
-        └── controllers/                               # کنترلرهای REST API (هر حوزه یک فایل مستقل)
-            ├── SystemStatusController.php
-            ├── AuthController.php
-            ├── CatalogController.php
-            ├── WatchlistController.php
-            └── MarketCandleController.php
+    │       │   └── store.js                           # استور واکنش‌گرای مرکزی، State و ذخیره‌سازی
+    │       ├── services/
+    │       │   └── apiService.js                      # کلاینت ارتباط شبکه با API
+    │       ├── controllers/
+    │       │   └── chartInteractionController.js      # کنترل رویدادهای ماوس، تاچ و درگ بوم
+    │       ├── components/
+    │       │   └── chartRenderer.js                   # موتور رندر نمودار کندلی و خطوط رسم
+    │       ├── views/                                 # کامپوننت‌های رندر نماها
+    │       │   ├── headerView.js                      # هدر ترمینال دسکتاپ و اطلاعات نماد
+    │       │   ├── toolRailView.js                    # نوار ابزار رسم عمودی سمت چپ
+    │       │   ├── watchlistView.js                   # کارت‌های واچ‌لیست
+    │       │   ├── analysisView.js                    # ماژول تحلیل تکنیکال (ATR 14، پیوت و دامنه)
+    │       │   ├── settingsView.js                    # تنظیمات ظاهر، رنگ‌ها و نماد سفارشی
+    │       │   ├── loginView.js                       # فرم ورود و ثبت مالک
+    │       │   └── navigationView.js                  # نوار ناوبری ۴ زبانه Material 3
+    │       ├── algorithms/                            # ماژول‌های محاسباتی محض
+    │       │   ├── drawingGeometry.js                 # هندسه رسم و تست برخورد
+    │       │   ├── priceFormatter.js                  # قالب‌بندی ارقام مالی
+    │       │   └── timeframeAggregator.js             # تجمیع کندل‌های M15
+    │       └── app.js                                 # نقطه ورود سبک برنامه و روتر
+    └── api/v1/                                        # بک‌اند PHP روی هاست cPanel
+        ├── auth.php                                   # سرویس ثبت و احراز هویت مالک
+        └── candles_sync.php                           # سرویس همگام‌سازی کندل‌ها با دیتابیس MariaDB
 ```
 
 ------------------------------------------------------------------------
