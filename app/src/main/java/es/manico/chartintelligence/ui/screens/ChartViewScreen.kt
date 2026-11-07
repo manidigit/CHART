@@ -46,6 +46,7 @@ import java.math.BigDecimal
 fun ChartViewScreen(
     openTabs: List<ChartTabState>,
     activeTab: ChartTabState?,
+    preferences: es.manico.chartintelligence.data.model.ChartPreferences = es.manico.chartintelligence.data.model.ChartPreferences(),
     onSelectTab: (String) -> Unit,
     onCloseTab: (String) -> Unit,
     onSyncActiveSymbolNow: (String) -> Unit,
@@ -206,6 +207,7 @@ fun ChartViewScreen(
 
                 CandlestickCanvas(
                     tab = activeTab,
+                    preferences = preferences,
                     onPinchZoom = onPinchZoom,
                     onPanCandles = onPanCandles,
                     onScaleYAxisByDrag = onScaleYAxisByDrag,

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.algorithms.DrawingGeometryAlgorithm
 import es.manico.chartintelligence.config.AppConfig
+import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartDrawing
 import es.manico.chartintelligence.data.model.ChartTabState
@@ -42,6 +43,7 @@ data class Phase1UiState(
     @StringRes val authErrorResId: Int? = null,
     val currentScreen: WorkspaceScreen = WorkspaceScreen.WATCHLIST,
     val symbols: List<SymbolConfig> = emptyList(),
+    val chartPreferences: ChartPreferences = ChartPreferences(),
     val isSyncingAll: Boolean = false,
     val openTabs: List<ChartTabState> = emptyList(),
     val activeTabId: String? = null,
@@ -65,7 +67,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isOwnerRegistered = repository.isOwnerAccountRegistered(),
             isAuthenticated = false,
             ownerUsername = repository.getOwnerUsername(),
-            symbols = repository.loadSymbolCatalog()
+            symbols = repository.loadSymbolCatalog(),
+            chartPreferences = repository.loadChartPreferences()
         )
     )
     val uiState: StateFlow<Phase1UiState> = _uiState.asStateFlow()
@@ -783,5 +786,114 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+    }
+
+    // --- Dynamic Symbol & Preference Management (Anti-Hardcoding) ---
+
+    fun addCustomSymbol(symbolCode: String, customTitle: String, decimals: Int, provider: ProviderId) {
+        val cleanCode = symbolCode.trim().uppercase()
+        if (cleanCode.isBlank()) return
+        val existing = _uiState.value.symbols.any { it.symbolCode == cleanCode }
+        if (existing) return
+
+        val newSymbol = SymbolConfig(
+            chartId = "chart_${cleanCode.lowercase()}_custom",
+            symbolCode = cleanCode,
+            titleResId = null,
+            customTitle = customTitle.ifBlank { cleanCode },
+            decimals = decimals.coerceIn(0, 6),
+            inWatchlist = true,
+            activeProvider = provider,
+            allowedProviders = listOf(
+                ProviderId.DUKASCOPY,
+                ProviderId.TWELVE_DATA,
+                ProviderId.YAHOO_FINANCE
+            ),
+            timeframe = "M15"
+        )
+        val updated = _uiState.value.symbols + newSymbol
+        repository.saveSymbolCatalog(updated)
+        _uiState.update { it.copy(symbols = updated) }
+        syncSingleSymbolUpToNow(cleanCode)
+    }
+
+    fun deleteSymbol(symbolCode: String) {
+        val target = _uiState.value.symbols.firstOrNull { it.symbolCode == symbolCode } ?: return
+        // Do not delete default base symbols like XAUUSD or SPOTBRENT if needed, but allow deleting custom ones
+        val updated = _uiState.value.symbols.filterNot { it.symbolCode == symbolCode }
+        val updatedTabs = _uiState.value.openTabs.filterNot { it.symbolCode == symbolCode }
+        repository.saveSymbolCatalog(updated)
+        _uiState.update { state ->
+            state.copy(
+                symbols = updated,
+                openTabs = updatedTabs,
+                activeTabId = if (state.activeTabId?.startsWith(symbolCode) == true) updatedTabs.lastOrNull()?.tabId else state.activeTabId
+            )
+        }
+    }
+
+    fun updateBullCandleColor(colorHex: String) {
+        val next = _uiState.value.chartPreferences.copy(bullCandleColorHex = colorHex)
+        repository.saveChartPreferences(next)
+        _uiState.update { it.copy(chartPreferences = next) }
+    }
+
+    fun updateBearCandleColor(colorHex: String) {
+        val next = _uiState.value.chartPreferences.copy(bearCandleColorHex = colorHex)
+        repository.saveChartPreferences(next)
+        _uiState.update { it.copy(chartPreferences = next) }
+    }
+
+    fun updateTrendLineColor(colorHex: String) {
+        val next = _uiState.value.chartPreferences.copy(trendLineColorHex = colorHex)
+        repository.saveChartPreferences(next)
+        _uiState.update { it.copy(chartPreferences = next) }
+    }
+
+    fun updateHorizontalLineColor(colorHex: String) {
+        val next = _uiState.value.chartPreferences.copy(horizontalLineColorHex = colorHex)
+        repository.saveChartPreferences(next)
+        _uiState.update { it.copy(chartPreferences = next) }
+    }
+
+    fun updateVerticalLineColor(colorHex: String) {
+        val next = _uiState.value.chartPreferences.copy(verticalLineColorHex = colorHex)
+        repository.saveChartPreferences(next)
+        _uiState.update { it.copy(chartPreferences = next) }
+    }
+
+    fun updateAlgorithmParams(fetchLimit: Int, zoomStep: Int, touchTolerance: Float) {
+        val next = _uiState.value.chartPreferences.copy(
+            candleFetchLimit = fetchLimit.coerceIn(20, 300),
+            zoomStepCandles = zoomStep.coerceIn(2, 24),
+            drawingHitTolerancePx = touchTolerance.coerceIn(12f, 48f)
+        )
+        repository.saveChartPreferences(next)
+        _uiState.update { it.copy(chartPreferences = next) }
+    }
+
+    fun resetChartColorsToDefault() {
+        val current = _uiState.value.chartPreferences
+        val next = current.copy(
+            bullCandleColorHex = "FF10B981",
+            bearCandleColorHex = "FFF43F5E",
+            trendLineColorHex = "FFA855F7",
+            horizontalLineColorHex = "FF38BDF8",
+            verticalLineColorHex = "FFF59E0B",
+            chartGridColorHex = "FF1E293B"
+        )
+        repository.saveChartPreferences(next)
+        _uiState.update { it.copy(chartPreferences = next) }
+    }
+
+    fun resetAlgorithmParamsToDefault() {
+        val current = _uiState.value.chartPreferences
+        val next = current.copy(
+            candleFetchLimit = 160,
+            zoomStepCandles = 8,
+            drawingHitTolerancePx = 28f
+        )
+        repository.saveChartPreferences(next)
+        _uiState.update { it.copy(chartPreferences = next) }
     }
 }

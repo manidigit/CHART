@@ -69,8 +69,9 @@ fun WatchlistRowCard(
                 verticalAlignment = Alignment.Top
             ) {
                 Column(modifier = Modifier.weight(1f)) {
+                    val displayName = symbol.customTitle ?: symbol.titleResId?.let { stringResource(it) } ?: symbol.symbolCode
                     Text(
-                        text = stringResource(symbol.titleResId),
+                        text = displayName,
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface

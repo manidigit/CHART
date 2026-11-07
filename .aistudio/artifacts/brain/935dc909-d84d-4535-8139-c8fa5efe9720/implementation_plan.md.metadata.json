@@ -1,6 +1,6 @@
 {
-  "summary": "برنامه اجرایی جامع فاز اول (Phase 1 Implementation Plan) پروژه Chart Intelligence شامل معماری ماژولار جزء‌به‌جزء، سیستم دوزبانه فارسی و انگلیسی، ثبت‌نام/ورود حساب شخصی مالک، واچ‌لیست پیش‌فرض طلا و نفت برنت با دکمه به‌روزرسانی تا این لحظه، و نمای نمودار با تب‌های موازی.",
-  "updatedAt": "2026-11-06T20:51:45.169048590Z",
-  "requestFeedback": true,
-  "userFacing": true
+  "summary":  "Comprehensive anti-hardcoding architectural plan and implementation roadmap for algorithms, themes, UI colors, and dynamic symbol management in CHART Intelligence.",
+  "updatedAt":  "2026-11-07T08:12:11.025113299Z",
+  "requestFeedback":  true,
+  "userFacing":  true
 }

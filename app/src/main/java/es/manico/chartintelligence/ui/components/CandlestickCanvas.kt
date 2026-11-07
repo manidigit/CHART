@@ -69,6 +69,7 @@ import kotlin.math.roundToLong
 @Composable
 fun CandlestickCanvas(
     tab: ChartTabState,
+    preferences: es.manico.chartintelligence.data.model.ChartPreferences = es.manico.chartintelligence.data.model.ChartPreferences(),
     onPinchZoom: (Float) -> Unit,
     onPanCandles: (Int) -> Unit,
     onScaleYAxisByDrag: (Float) -> Unit,
@@ -81,6 +82,12 @@ fun CandlestickCanvas(
     modifier: Modifier = Modifier
 ) {
     val financialPalette = LocalFinancialPalette.current
+    val bullColor = preferences.bullCandleColor
+    val bearColor = preferences.bearCandleColor
+    val trendColor = preferences.trendLineColor
+    val hlineColor = preferences.horizontalLineColor
+    val vlineColor = preferences.verticalLineColor
+    val gridColor = preferences.chartGridColor
     val candles = tab.candles
     val totalCount = candles.size
     val visibleCount = tab.visibleCandleCount.coerceIn(12, max(12, totalCount))
@@ -313,7 +320,7 @@ fun CandlestickCanvas(
                                         tapY = tapOffset.y,
                                         timeToX = ::timeToX,
                                         priceToY = ::priceToY,
-                                        hitTolerancePx = 28f
+                                        hitTolerancePx = preferences.drawingHitTolerancePx
                                     )
                                     if (hitDrawing != null) {
                                         onSelectDrawing(hitDrawing.id)
@@ -450,9 +457,9 @@ fun CandlestickCanvas(
                             val closeY = priceToY(candle.close.toDouble())
 
                             val color = if (candle.isBullish) {
-                                financialPalette.bullCandle
+                                bullColor
                             } else {
-                                financialPalette.bearCandle
+                                bearColor
                             }
 
                             drawLine(
@@ -517,7 +524,7 @@ fun CandlestickCanvas(
                         when (drawing) {
                             is ChartDrawing.HorizontalLine -> {
                                 val y = priceToY(drawing.price.toDouble())
-                                val color = if (isSelected) Color(0xFF22D3EE) else Color(0xFF38BDF8)
+                                val color = if (isSelected) hlineColor.copy(alpha = 0.85f) else hlineColor
                                 drawLine(
                                     color = color,
                                     start = Offset(0f, y),
@@ -536,7 +543,7 @@ fun CandlestickCanvas(
                             is ChartDrawing.VerticalLine -> {
                                 val x = timeToX(drawing.timeUtcMillis)
                                 if (x in -20f..(canvasW + 20f)) {
-                                    val color = if (isSelected) Color(0xFFFBBF24) else Color(0xFFF59E0B)
+                                    val color = if (isSelected) vlineColor.copy(alpha = 0.85f) else vlineColor
                                     drawLine(
                                         color = color,
                                         start = Offset(x, 0f),
@@ -558,7 +565,7 @@ fun CandlestickCanvas(
                                 val y1 = priceToY(drawing.startPrice.toDouble())
                                 val x2 = timeToX(drawing.endTimeUtcMillis)
                                 val y2 = priceToY(drawing.endPrice.toDouble())
-                                val color = if (isSelected) Color(0xFFC084FC) else Color(0xFFA855F7)
+                                val color = if (isSelected) trendColor.copy(alpha = 0.85f) else trendColor
                                 drawLine(
                                     color = color,
                                     start = Offset(x1, y1),

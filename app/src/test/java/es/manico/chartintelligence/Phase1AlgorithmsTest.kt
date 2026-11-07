@@ -182,4 +182,40 @@ class Phase1AlgorithmsTest {
         assertTrue(PasswordHashAlgorithm.verifyPassword("MySecretPass123", salt, hash))
         assertFalse(PasswordHashAlgorithm.verifyPassword("WrongPass", salt, hash))
     }
+
+    @Test
+    fun chartPreferences_parsesColorsAndSafeguardsNonHardcodedConfig() {
+        val defaultPrefs = es.manico.chartintelligence.data.model.ChartPreferences()
+        assertEquals("FF10B981", defaultPrefs.bullCandleColorHex)
+        assertEquals("FFF43F5E", defaultPrefs.bearCandleColorHex)
+        assertEquals(160, defaultPrefs.candleFetchLimit)
+        assertEquals(8, defaultPrefs.zoomStepCandles)
+        assertEquals(28f, defaultPrefs.drawingHitTolerancePx, 0.01f)
+
+        val customPrefs = defaultPrefs.copy(
+            bullCandleColorHex = "FF06B6D4",
+            candleFetchLimit = 250,
+            drawingHitTolerancePx = 36f
+        )
+        val bullColor = customPrefs.bullCandleColor
+        assertEquals(androidx.compose.ui.graphics.Color(0xFF06B6D4), bullColor)
+        assertEquals(250, customPrefs.candleFetchLimit)
+        assertEquals(36f, customPrefs.drawingHitTolerancePx, 0.01f)
+    }
+
+    @Test
+    fun symbolConfig_supportsDynamicCustomSymbolsWithoutHardcoding() {
+        val btc = es.manico.chartintelligence.data.model.SymbolConfig(
+            chartId = "chart_btcusd_custom",
+            symbolCode = "BTCUSD",
+            titleResId = null,
+            customTitle = "Bitcoin Spot Index",
+            decimals = 2,
+            inWatchlist = true
+        )
+        assertTrue(btc.isCustom)
+        assertEquals("Bitcoin Spot Index", btc.customTitle)
+        assertEquals("BTCUSD_dukascopy_M15", btc.compositeTabKey)
+    }
 }
+

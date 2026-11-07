@@ -151,6 +151,7 @@ fun ChartIntelligenceApp(
                         WorkspaceScreen.CHART_VIEW -> ChartViewScreen(
                             openTabs = state.openTabs,
                             activeTab = state.activeTab,
+                            preferences = state.chartPreferences,
                             onSelectTab = mainViewModel::selectChartTab,
                             onCloseTab = mainViewModel::closeChartTab,
                             onSyncActiveSymbolNow = mainViewModel::syncSingleSymbolUpToNow,
@@ -179,13 +180,24 @@ fun ChartIntelligenceApp(
                             symbols = state.symbols,
                             ownerUsername = state.ownerUsername,
                             statusBannerResId = state.statusBannerResId,
+                            chartPreferences = state.chartPreferences,
                             onLanguageSelected = mainViewModel::setLanguage,
                             onThemeSelected = mainViewModel::setDarkTheme,
                             onToggleSymbolInWatchlist = mainViewModel::toggleSymbolInWatchlist,
                             onSelectProviderForSymbol = mainViewModel::selectProviderForSymbol,
                             onUpdatePassword = mainViewModel::changePassword,
                             onSignOut = mainViewModel::signOut,
-                            onBackToWatchlist = { mainViewModel.navigateTo(WorkspaceScreen.WATCHLIST) }
+                            onBackToWatchlist = { mainViewModel.navigateTo(WorkspaceScreen.WATCHLIST) },
+                            onUpdateBullColor = mainViewModel::updateBullCandleColor,
+                            onUpdateBearColor = mainViewModel::updateBearCandleColor,
+                            onUpdateTrendColor = mainViewModel::updateTrendLineColor,
+                            onUpdateHLineColor = mainViewModel::updateHorizontalLineColor,
+                            onUpdateVLineColor = mainViewModel::updateVerticalLineColor,
+                            onResetColors = mainViewModel::resetChartColorsToDefault,
+                            onUpdateAlgoParams = mainViewModel::updateAlgorithmParams,
+                            onResetAlgoParams = mainViewModel::resetAlgorithmParamsToDefault,
+                            onAddCustomSymbol = mainViewModel::addCustomSymbol,
+                            onDeleteSymbol = mainViewModel::deleteSymbol
                         )
                     }
                 }

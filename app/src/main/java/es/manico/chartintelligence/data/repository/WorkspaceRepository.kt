@@ -9,6 +9,7 @@ import es.manico.chartintelligence.algorithms.TimeframeAggregatorAlgorithm
 import es.manico.chartintelligence.config.AppConfig
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartDrawing
+import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.i18n.AppLanguage
@@ -99,47 +100,100 @@ class WorkspaceRepository(context: Context) {
             .apply()
     }
 
+    fun loadChartPreferences(): ChartPreferences {
+        val raw = prefs.getString(AppConfig.KEY_CHART_PREFERENCES_JSON, null) ?: return ChartPreferences()
+        return runCatching {
+            val obj = JSONObject(raw)
+            ChartPreferences(
+                bullCandleColorHex = obj.optString("bullCandleColorHex", "FF10B981"),
+                bearCandleColorHex = obj.optString("bearCandleColorHex", "FFF43F5E"),
+                trendLineColorHex = obj.optString("trendLineColorHex", "FFA855F7"),
+                horizontalLineColorHex = obj.optString("horizontalLineColorHex", "FF38BDF8"),
+                verticalLineColorHex = obj.optString("verticalLineColorHex", "FFF59E0B"),
+                chartGridColorHex = obj.optString("chartGridColorHex", "FF1E293B"),
+                candleFetchLimit = obj.optInt("candleFetchLimit", 160),
+                minVisibleCandles = obj.optInt("minVisibleCandles", 12),
+                maxVisibleCandles = obj.optInt("maxVisibleCandles", 160),
+                zoomStepCandles = obj.optInt("zoomStepCandles", 8),
+                drawingHitTolerancePx = obj.optDouble("drawingHitTolerancePx", 28.0).toFloat()
+            )
+        }.getOrDefault(ChartPreferences())
+    }
+
+    fun saveChartPreferences(prefsObj: ChartPreferences) {
+        val obj = JSONObject()
+        obj.put("bullCandleColorHex", prefsObj.bullCandleColorHex)
+        obj.put("bearCandleColorHex", prefsObj.bearCandleColorHex)
+        obj.put("trendLineColorHex", prefsObj.trendLineColorHex)
+        obj.put("horizontalLineColorHex", prefsObj.horizontalLineColorHex)
+        obj.put("verticalLineColorHex", prefsObj.verticalLineColorHex)
+        obj.put("chartGridColorHex", prefsObj.chartGridColorHex)
+        obj.put("candleFetchLimit", prefsObj.candleFetchLimit)
+        obj.put("minVisibleCandles", prefsObj.minVisibleCandles)
+        obj.put("maxVisibleCandles", prefsObj.maxVisibleCandles)
+        obj.put("zoomStepCandles", prefsObj.zoomStepCandles)
+        obj.put("drawingHitTolerancePx", prefsObj.drawingHitTolerancePx.toDouble())
+        prefs.edit().putString(AppConfig.KEY_CHART_PREFERENCES_JSON, obj.toString()).apply()
+    }
+
     fun loadSymbolCatalog(): List<SymbolConfig> {
         val defaults = defaultSymbolCatalog()
         val savedJson = prefs.getString(AppConfig.KEY_SYMBOLS_CONFIG_JSON, null)
-        val merged = if (savedJson.isNullOrBlank()) {
+        val loadedList = if (savedJson.isNullOrBlank()) {
             defaults
         } else {
             runCatching {
-                val map = HashMap<String, Triple<Boolean, ProviderId, String>>()
                 val arr = JSONArray(savedJson)
+                val list = ArrayList<SymbolConfig>()
+                val defaultMap = defaults.associateBy { it.symbolCode }
+
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
-                    val code = obj.optString("symbolCode")
+                    val code = obj.optString("symbolCode").trim().uppercase()
                     val inWatchlist = obj.optBoolean("inWatchlist", false)
                     val provider = ProviderId.fromId(obj.optString("activeProvider"))
                     val tf = obj.optString("timeframe", "M15").ifBlank { "M15" }
-                    map[code] = Triple(inWatchlist, provider, tf)
-                }
-                defaults.map { base ->
-                    val saved = map[base.symbolCode]
-                    if (saved != null) {
-                        val validProvider = if (saved.second in base.allowedProviders) saved.second else base.activeProvider
-                        val tf = if (validProvider == ProviderId.EIA_BRENT_SPOT) {
-                            "D1"
-                        } else if (saved.third in AppConfig.SUPPORTED_TIMEFRAMES) {
-                            saved.third
-                        } else {
-                            "M15"
-                        }
-                        base.copy(
-                            inWatchlist = saved.first,
-                            activeProvider = validProvider,
-                            timeframe = tf
+                    val customTitle = obj.optString("customTitle", null).takeIf { !it.isNullOrBlank() }
+                    val decimals = obj.optInt("decimals", 2)
+                    val base = defaultMap[code]
+
+                    if (base != null) {
+                        val validProvider = if (provider in base.allowedProviders) provider else base.activeProvider
+                        val validTf = if (validProvider == ProviderId.EIA_BRENT_SPOT) "D1" else if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
+                        list.add(
+                            base.copy(
+                                inWatchlist = inWatchlist,
+                                activeProvider = validProvider,
+                                timeframe = validTf,
+                                customTitle = customTitle
+                            )
                         )
                     } else {
-                        base
+                        // User-defined custom symbol
+                        list.add(
+                            SymbolConfig(
+                                chartId = "chart_${code.lowercase()}_custom",
+                                symbolCode = code,
+                                titleResId = null,
+                                customTitle = customTitle ?: code,
+                                decimals = decimals,
+                                inWatchlist = inWatchlist,
+                                activeProvider = provider,
+                                allowedProviders = listOf(
+                                    ProviderId.DUKASCOPY,
+                                    ProviderId.TWELVE_DATA,
+                                    ProviderId.YAHOO_FINANCE
+                                ),
+                                timeframe = if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
+                            )
+                        )
                     }
                 }
+                if (list.isEmpty()) defaults else list
             }.getOrDefault(defaults)
         }
 
-        return merged.map { symbol ->
+        return loadedList.map { symbol ->
             val candles = getCachedOrAggregatedCandles(symbol.symbolCode, symbol.activeProvider, symbol.timeframe)
             val latest = candles.lastOrNull()
             symbol.copy(
@@ -158,6 +212,10 @@ class WorkspaceRepository(context: Context) {
             obj.put("inWatchlist", s.inWatchlist)
             obj.put("activeProvider", s.activeProvider.id)
             obj.put("timeframe", s.timeframe)
+            obj.put("decimals", s.decimals)
+            if (!s.customTitle.isNullOrBlank()) {
+                obj.put("customTitle", s.customTitle)
+            }
             arr.put(obj)
         }
         prefs.edit().putString(AppConfig.KEY_SYMBOLS_CONFIG_JSON, arr.toString()).apply()

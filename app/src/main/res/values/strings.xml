@@ -97,4 +97,26 @@
     <string name="provider_dukascopy">Dukascopy Bank Feed (Free M15)</string>
     <string name="provider_eia">EIA Europe Brent Spot FOB (Official D1)</string>
     <string name="provider_yahoo">Yahoo Finance (BZ=F / Market Feed)</string>
+    <string name="settings_chart_colors_section">Chart Visual Colors Customization</string>
+    <string name="settings_chart_colors_hint">Customize chart colors in real-time. Changes immediately apply to active charts.</string>
+    <string name="settings_color_bull">Bullish Candle</string>
+    <string name="settings_color_bear">Bearish Candle</string>
+    <string name="settings_color_trend">Trend Line</string>
+    <string name="settings_color_hline">Horizontal Line</string>
+    <string name="settings_color_vline">Vertical Line</string>
+    <string name="settings_action_reset_colors">Reset to Default Colors</string>
+    <string name="settings_algo_params_section">Algorithm &amp; Calculation Parameters</string>
+    <string name="settings_algo_params_hint">Tune data fetch limits, zoom step, and drawing touch sensitivity without hardcoded constants.</string>
+    <string name="settings_param_fetch_limit">Max History Fetch Limit</string>
+    <string name="settings_param_zoom_step">Zoom Step (Candles)</string>
+    <string name="settings_param_touch_tolerance">Touch Selection Tolerance (px)</string>
+    <string name="settings_action_reset_params">Reset Parameters</string>
+    <string name="settings_action_add_symbol">Add Custom Symbol</string>
+    <string name="settings_dialog_add_title">Define New Market Symbol</string>
+    <string name="settings_dialog_symbol_code">Symbol Code (e.g. BTCUSD, AAPL)</string>
+    <string name="settings_dialog_symbol_name">Display Name (e.g. Bitcoin Spot)</string>
+    <string name="settings_dialog_decimals">Price Decimal Places (0 - 6)</string>
+    <string name="action_save">Save</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_delete_symbol">Delete</string>
 </resources>

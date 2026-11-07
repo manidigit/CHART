@@ -6,12 +6,17 @@ import java.math.BigDecimal
 data class SymbolConfig(
     val chartId: String,
     val symbolCode: String,
-    @StringRes val titleResId: Int,
-    val decimals: Int,
-    val inWatchlist: Boolean,
-    val activeProvider: ProviderId,
-    val allowedProviders: List<ProviderId>,
-    val timeframe: String,
+    @StringRes val titleResId: Int? = null,
+    val customTitle: String? = null,
+    val decimals: Int = 2,
+    val inWatchlist: Boolean = true,
+    val activeProvider: ProviderId = ProviderId.DUKASCOPY,
+    val allowedProviders: List<ProviderId> = listOf(
+        ProviderId.DUKASCOPY,
+        ProviderId.TWELVE_DATA,
+        ProviderId.YAHOO_FINANCE
+    ),
+    val timeframe: String = "M15",
     val lastClose: BigDecimal? = null,
     val lastCandleUtc: String? = null,
     val storedCandleCount: Int = 0,
@@ -20,4 +25,7 @@ data class SymbolConfig(
 ) {
     val compositeTabKey: String
         get() = "${symbolCode}_${activeProvider.id}_${timeframe}"
+
+    val isCustom: Boolean
+        get() = !customTitle.isNullOrBlank() || titleResId == null
 }

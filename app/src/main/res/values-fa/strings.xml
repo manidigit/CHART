@@ -97,4 +97,26 @@
     <string name="provider_dukascopy">Dukascopy (رایگان و مستقیم M15)</string>
     <string name="provider_eia">EIA Europe Brent Spot FOB (مرجع رسمی D1)</string>
     <string name="provider_yahoo">Yahoo Finance (فید بازار BZ=F)</string>
+    <string name="settings_chart_colors_section">شخصی‌سازی رنگ‌های بصری نمودار</string>
+    <string name="settings_chart_colors_hint">رنگ‌های نمودار را مستقیماً مطابق سلیقه خود تغییر دهید. تغییرات بلافاصله روی تمام نمودارها اعمال می‌شود.</string>
+    <string name="settings_color_bull">کندل صعودی</string>
+    <string name="settings_color_bear">کندل نزولی</string>
+    <string name="settings_color_trend">خط روند</string>
+    <string name="settings_color_hline">خط افقی</string>
+    <string name="settings_color_vline">خط عمودی</string>
+    <string name="settings_action_reset_colors">بازنشانی به رنگ‌های پیش‌فرض</string>
+    <string name="settings_algo_params_section">پارامترهای الگوریتم و محاسبات</string>
+    <string name="settings_algo_params_hint">تنظیم سقف دریافت تاریخچه، گام زوم و حساسیت لمس خطوط بدون هیچ عدد هاردکدشده.</string>
+    <string name="settings_param_fetch_limit">حداکثر کندل‌های دریافتی</string>
+    <string name="settings_param_zoom_step">گام زوم (تعداد کندل)</string>
+    <string name="settings_param_touch_tolerance">حساسیت لمس و انتخاب خطوط (پیکسل)</string>
+    <string name="settings_action_reset_params">بازنشانی پارامترها</string>
+    <string name="settings_action_add_symbol">افزودن نماد جدید</string>
+    <string name="settings_dialog_add_title">تعریف نماد معاملاتی جدید</string>
+    <string name="settings_dialog_symbol_code">کد نماد (مثال: BTCUSD یا AAPL)</string>
+    <string name="settings_dialog_symbol_name">نام نمایشی (مثال: بیت‌کوین اسپات)</string>
+    <string name="settings_dialog_decimals">تعداد ارقام اعشار قیمت (۰ تا ۶)</string>
+    <string name="action_save">ذخیره</string>
+    <string name="action_cancel">انصراف</string>
+    <string name="action_delete_symbol">حذف نماد</string>
 </resources>

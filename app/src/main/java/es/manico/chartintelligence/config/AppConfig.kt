@@ -12,6 +12,7 @@ object AppConfig {
     const val KEY_OWNER_PASSWORD_HASH: String = "pref_owner_password_hash"
     const val KEY_OWNER_PASSWORD_SALT: String = "pref_owner_password_salt"
     const val KEY_SYMBOLS_CONFIG_JSON: String = "pref_symbols_config_json"
+    const val KEY_CHART_PREFERENCES_JSON: String = "pref_chart_preferences_json"
     const val KEY_CANDLES_CACHE_PREFIX: String = "pref_candles_cache_v2_"
     const val KEY_DRAWINGS_CACHE_PREFIX: String = "pref_drawings_cache_v1_"
 
