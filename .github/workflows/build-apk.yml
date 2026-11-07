@@ -83,6 +83,55 @@ jobs:
             cp .env.example .env
           fi
 
+      - name: Prepare google-services.json for CI Build
+        env:
+          FIREBASE_API_KEY: ${{ secrets.FIREBASE_API_KEY }}
+        run: |
+          if [ ! -f app/google-services.json ]; then
+            API_KEY="${FIREBASE_API_KEY:-AIzaSyCIPlaceholderKeyForDebugBuild00000}"
+            cat <<EOF > app/google-services.json
+          {
+            "project_info": {
+              "project_number": "643150512949",
+              "project_id": "my-project-1485866417177",
+              "storage_bucket": "my-project-1485866417177.firebasestorage.app"
+            },
+            "client": [
+              {
+                "client_info": {
+                  "mobilesdk_app_id": "1:643150512949:android:6e93b975c8b83579bd427c",
+                  "android_client_info": {
+                    "package_name": "es.manico.chartintelligence"
+                  }
+                },
+                "oauth_client": [
+                  {
+                    "client_id": "643150512949-1108tnjaq0ralt7rfl3mrl3k5rm789be.apps.googleusercontent.com",
+                    "client_type": 3
+                  }
+                ],
+                "api_key": [
+                  {
+                    "current_key": "$API_KEY"
+                  }
+                ],
+                "services": {
+                  "appinvite_service": {
+                    "other_platform_oauth_client": [
+                      {
+                        "client_id": "643150512949-1108tnjaq0ralt7rfl3k5rm789be.apps.googleusercontent.com",
+                        "client_type": 3
+                      }
+                    ]
+                  }
+                }
+              }
+            ],
+            "configuration_version": "1"
+          }
+          EOF
+          fi
+
       - name: Accept Android SDK Licenses
         run: |
           if [ -n "$ANDROID_HOME" ] && [ -x "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" ]; then
@@ -131,7 +180,7 @@ jobs:
           fi
           mkdir -p host_subdomain/config
           python3 - << 'EOF'
-          import os, json, base64, subprocess, urllib.parse
+          import os, json, base64, subprocess
 
           cfg = f"""<?php
           return [
@@ -184,6 +233,7 @@ jobs:
           auth_header = f"Authorization: cpanel {user}:{token}"
 
           # Upload self-extracting deployer and index.html to docroot via Fileman/upload_files and Fileman/save_file_content
+          # Use content@{local_file} so curl reads large payloads (>128KB) from disk instead of hitting Linux MAX_ARG_STRLEN in execve
           for target_file, local_file in [("_deploy_phase1.php", "/tmp/_deploy_phase1.php"), ("index.html", "host_subdomain/index.html")]:
               subprocess.run([
                   "curl", "-ksS", "-H", auth_header,
@@ -192,13 +242,11 @@ jobs:
                   "-F", f"file-1=@{local_file};filename={target_file}",
                   f"{host}/execute/Fileman/upload_files"
               ], check=False, stdout=subprocess.DEVNULL)
-              with open(local_file, "r", encoding="utf-8") as lf:
-                  content = lf.read()
               subprocess.run([
                   "curl", "-ksS", "-H", auth_header,
                   "--data-urlencode", f"dir={docroot}",
                   "--data-urlencode", f"file={target_file}",
-                  "--data-urlencode", f"content={content}",
+                  "--data-urlencode", f"content@{local_file}",
                   f"{host}/execute/Fileman/save_file_content"
               ], check=False, stdout=subprocess.DEVNULL)
 

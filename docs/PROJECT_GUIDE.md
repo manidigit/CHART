@@ -136,11 +136,11 @@
 
 ## 6. وضعیت Workflowهای GitHub Actions
 
-طبق بررسی ثبت‌شده در 2026-11-06، Workflowهای آزمایشی اتصال هاست، دیتابیس و Providerها پس از تست پاک‌سازی شده‌اند. فایل باقی‌مانده در `.github/workflows/`:
+طبق بررسی ثبت‌شده در 2026-11-06 و به‌روزرسانی 2026-11-07، Workflowهای آزمایشی اتصال هاست، دیتابیس و Providerها پس از تست پاک‌سازی شده‌اند و فایل اصلی در `.github/workflows/` عبارت است از:
 
-- `build-apk.yml` — اجرای دستی از طریق `workflow_dispatch` برای Build و تولید Artifact.
-
-وجود این Workflow به معنی استقرار خودکار وب‌اپلیکیشن روی cPanel نیست. طبق Infrastructure Inventory، Workflow استقرار cPanel هنوز یک کار جداگانه و نیازمند پیاده‌سازی و تست است.
+- `build-apk.yml` — اجرا با هر Push روی شاخه `main` و همچنین اجرای دستی (`workflow_dispatch`):
+  1. **Job 1 (`Build Android APK`):** تولید خودکار `app/google-services.json` در محیط CI (در صورتی که خروجی Git اکسپورت‌شده از AI Studio فاقد آن باشد)، کامپایل نسخه Debug اندروید (`gradle assembleDebug`) و بارگذاری Artifact خروجی `chart-intelligence-debug-apk`.
+  2. **Job 2 (`Package and Deploy Subdomain Web Files`):** بارگذاری Artifact عمومی پکیج وب و استقرار خودکار روی `chart.manico.es` از طریق cPanel UAPI با استفاده از `--data-urlencode content@file` (برای جلوگیری از خطای محدودیت ۱۲۸ کیلوبایتی `MAX_ARG_STRLEN` در آرگومان‌های خط فرمان لینوکس).
 
 ---
 
