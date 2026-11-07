@@ -119,4 +119,25 @@
     <string name="action_save">Save</string>
     <string name="action_cancel">Cancel</string>
     <string name="action_delete_symbol">Delete</string>
+    <string name="label_email">Recovery Email Address</string>
+    <string name="label_recovery_email">Account Recovery Email</string>
+    <string name="label_recovery_code">6-Digit Email Recovery Code</string>
+    <string name="action_sign_in_google">Sign in with Google</string>
+    <string name="action_forgot_password">Forgot your password? (Recover via Email)</string>
+    <string name="action_back_to_login">Back to Sign In</string>
+    <string name="forgot_password_title">Reset Forgotten Password</string>
+    <string name="forgot_password_subtitle">Enter your registered recovery email to receive a 6-digit verification code.</string>
+    <string name="forgot_verify_subtitle">Enter the 6-digit recovery code sent to your email and choose a new password.</string>
+    <string name="action_send_recovery_code">Send Recovery Code to Email</string>
+    <string name="action_verify_and_reset">Verify Code &amp; Set New Password</string>
+    <string name="action_save_email">Save Recovery Email</string>
+    <string name="action_logout_short">Sign Out</string>
+    <string name="status_recovery_code_sent">A 6-digit recovery code has been sent to your email (valid for 15 minutes).</string>
+    <string name="status_password_reset_success">Your password has been reset. You can now sign in.</string>
+    <string name="status_email_updated">Recovery email saved to server successfully.</string>
+    <string name="error_invalid_email">Please enter a valid email address.</string>
+    <string name="error_email_not_found">No owner account matched this email address.</string>
+    <string name="error_invalid_recovery_code">Invalid or expired recovery code.</string>
+    <string name="error_google_sign_in_failed">Google Sign-In could not be completed. You can also sign in with your username and password.</string>
+    <string name="sync_server_badge">Synced across Web &amp; Android</string>
 </resources>

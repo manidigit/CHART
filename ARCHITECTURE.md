@@ -1,7 +1,7 @@
 # CHART — Architecture & System Design
 
 > **Document Status:** Official Architectural Specification  
-> **Target Version:** 1.24+  
+> **Target Version:** 1.25+  
 > **Master Reference:** [CHART_INTELLIGENCE_MASTER_SPEC.md](./CHART_INTELLIGENCE_MASTER_SPEC.md)
 
 ---
@@ -50,6 +50,8 @@ The software architecture is governed by five core principles:
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Data & Persistence Layer                        │
 │  • Provider Adapters: Twelve Data, Dukascopy, Yahoo Finance, EIA Spot  │
+│  • Identity & Cloud Profile: Firebase Auth (CredentialManager Google   │
+│    Sign-In) + Firestore (`users/{userId}`) + Unified PHP `auth.php`    │
 │  • Local Storage: SharedPreferences (Android) / LocalStorage (Web)    │
 │  • Remote Backend: PHP REST API (`/api/v1/`) + MariaDB Database       │
 └────────────────────────────────────────────────────────────────────────┘
@@ -71,8 +73,8 @@ The software architecture is governed by five core principles:
 ├── config/                     # Central application configuration & keys
 │   └── AppConfig.kt
 ├── data/
-│   ├── model/                  # Data classes (CandleBar, SymbolConfig, ChartPreferences)
-│   └── repository/             # WorkspaceRepository (Storage & Provider orchestration)
+│   ├── model/                  # Data classes (CandleBar, SymbolConfig, ChartPreferences, UserAccount)
+│   └── repository/             # WorkspaceRepository & UserAccountRepository (Firestore + Server sync)
 ├── providers/                  # External data provider adapters
 │   ├── CandleProviderAdapter.kt
 │   ├── DukascopyAdapter.kt
@@ -96,7 +98,7 @@ The software architecture is governed by five core principles:
 │   ├── algorithms/             # Shared server-side candle aggregation & validation
 │   ├── core/                   # MariaDB connection & JSON response helpers
 │   ├── providers/              # Server-side provider adapters
-│   ├── auth.php                # Owner registration and session verification
+│   ├── auth.php                # Unified owner registration, login, Google sync & email password recovery
 │   └── candles_sync.php        # Synchronizes closed candles to MariaDB
 ├── assets/
 │   ├── css/

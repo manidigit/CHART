@@ -4,6 +4,8 @@ import android.app.Application
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
+import com.google.firebase.auth.FirebaseAuth
+import com.google.firebase.auth.GoogleAuthProvider
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.config.AppConfig
 import es.manico.chartintelligence.data.model.CandleBar
@@ -13,6 +15,8 @@ import es.manico.chartintelligence.data.model.ChartType
 import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
+import es.manico.chartintelligence.data.model.UserAccount
+import es.manico.chartintelligence.data.repository.UserAccountRepository
 import es.manico.chartintelligence.data.repository.WorkspaceRepository
 import es.manico.chartintelligence.i18n.AppLanguage
 import es.manico.chartintelligence.ui.state.coordinators.ChartDrawingCoordinator
@@ -23,6 +27,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.tasks.await
 import java.math.BigDecimal
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -33,20 +38,29 @@ enum class WorkspaceScreen {
     SETTINGS
 }
 
+enum class AuthScreenMode {
+    LOGIN,
+    FORGOT_REQUEST,
+    FORGOT_VERIFY
+}
+
 data class Phase1UiState(
     val language: AppLanguage = AppLanguage.FA,
     val isDarkTheme: Boolean = true,
     val isOwnerRegistered: Boolean = false,
     val isAuthenticated: Boolean = false,
     val ownerUsername: String = "",
-    @StringRes val authErrorResId: Int? = null,
+    val ownerEmail: String = "",
+    val authMode: AuthScreenMode = AuthScreenMode.LOGIN,
+    @param:StringRes val authErrorResId: Int? = null,
+    @param:StringRes val authInfoResId: Int? = null,
     val currentScreen: WorkspaceScreen = WorkspaceScreen.WATCHLIST,
     val symbols: List<SymbolConfig> = emptyList(),
     val chartPreferences: ChartPreferences = ChartPreferences(),
     val isSyncingAll: Boolean = false,
     val openTabs: List<ChartTabState> = emptyList(),
     val activeTabId: String? = null,
-    @StringRes val statusBannerResId: Int? = null
+    @param:StringRes val statusBannerResId: Int? = null
 ) {
     val watchlistSymbols: List<SymbolConfig>
         get() = symbols.filter { it.inWatchlist }
@@ -58,6 +72,12 @@ data class Phase1UiState(
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = WorkspaceRepository(application)
+    private val userAccountRepository: UserAccountRepository? = runCatching {
+        UserAccountRepository(application)
+    }.getOrNull()
+    private val firebaseAuth: FirebaseAuth? = runCatching {
+        FirebaseAuth.getInstance()
+    }.getOrNull()
     private val drawingCoordinator = ChartDrawingCoordinator(repository)
     private val symbolCoordinator = SymbolCatalogCoordinator(repository)
     private val preferenceCoordinator = ChartPreferenceCoordinator(repository)
@@ -69,6 +89,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isOwnerRegistered = repository.isOwnerAccountRegistered(),
             isAuthenticated = false,
             ownerUsername = repository.getOwnerUsername(),
+            ownerEmail = repository.getOwnerEmail(),
             symbols = symbolCoordinator.loadInitialCatalog(),
             chartPreferences = preferenceCoordinator.loadInitialPreferences()
         )
@@ -76,6 +97,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<Phase1UiState> = _uiState.asStateFlow()
 
     init {
+        viewModelScope.launch {
+            val serverStatus = repository.syncOwnerStatusFromServer()
+            if (serverStatus.isRegistered) {
+                _uiState.update {
+                    it.copy(
+                        isOwnerRegistered = true,
+                        ownerUsername = serverStatus.username.ifBlank { it.ownerUsername },
+                        ownerEmail = serverStatus.email.ifBlank { it.ownerEmail }
+                    )
+                }
+            }
+            val currentUser = firebaseAuth?.currentUser
+            if (currentUser != null && !currentUser.email.isNullOrBlank()) {
+                val synced = repository.syncGoogleOwnerWithServer(
+                    email = currentUser.email.orEmpty(),
+                    displayName = currentUser.displayName.orEmpty()
+                )
+                runCatching {
+                    userAccountRepository?.upsertUserAccount(
+                        username = synced.username,
+                        email = synced.email,
+                        languageCode = _uiState.value.language.code,
+                        isDarkTheme = _uiState.value.isDarkTheme
+                    )
+                }
+                _uiState.update {
+                    it.copy(
+                        isOwnerRegistered = true,
+                        isAuthenticated = true,
+                        ownerUsername = synced.username,
+                        ownerEmail = synced.email,
+                        authErrorResId = null,
+                        authInfoResId = null
+                    )
+                }
+            }
+        }
+
         // Proactively fetch real market data for watchlist symbols that have an empty cache
         val uncachedWatchlist = _uiState.value.watchlistSymbols.filter { it.storedCandleCount == 0 }
         if (uncachedWatchlist.isNotEmpty()) {
@@ -97,9 +156,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { it.copy(currentScreen = screen, statusBannerResId = null) }
     }
 
-    fun registerFirstTimeOwner(username: String, password: String, confirmPassword: String) {
-        if (username.isBlank() || password.isBlank()) {
+    fun setAuthMode(mode: AuthScreenMode) {
+        _uiState.update {
+            it.copy(
+                authMode = mode,
+                authErrorResId = null,
+                authInfoResId = null
+            )
+        }
+    }
+
+    fun registerFirstTimeOwner(
+        username: String,
+        password: String,
+        confirmPassword: String,
+        email: String = ""
+    ) {
+        val cleanUser = username.trim()
+        val cleanEmail = email.trim().lowercase()
+        if (cleanUser.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(authErrorResId = R.string.error_empty_credentials) }
+            return
+        }
+        if (cleanEmail.isNotEmpty() && !cleanEmail.contains("@")) {
+            _uiState.update { it.copy(authErrorResId = R.string.error_invalid_email) }
             return
         }
         if (password.length < 4) {
@@ -110,42 +190,207 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(authErrorResId = R.string.error_password_mismatch) }
             return
         }
-        repository.registerOwnerAccount(username, password)
+        repository.registerOwnerAccount(cleanUser, password, cleanEmail)
         _uiState.update {
             it.copy(
                 isOwnerRegistered = true,
                 isAuthenticated = true,
-                ownerUsername = username.trim(),
+                ownerUsername = cleanUser,
+                ownerEmail = cleanEmail,
+                authMode = AuthScreenMode.LOGIN,
                 authErrorResId = null,
+                authInfoResId = null,
                 currentScreen = WorkspaceScreen.WATCHLIST
             )
+        }
+        viewModelScope.launch {
+            repository.registerOwnerOnServer(cleanUser, cleanEmail, password)
         }
     }
 
     fun signInOwner(username: String, password: String) {
-        if (username.isBlank() || password.isBlank()) {
+        val cleanUser = username.trim()
+        if (cleanUser.isBlank() || password.isBlank()) {
             _uiState.update { it.copy(authErrorResId = R.string.error_empty_credentials) }
             return
         }
-        val verified = repository.verifyOwnerCredentials(username, password)
-        if (!verified) {
-            _uiState.update { it.copy(authErrorResId = R.string.error_invalid_credentials) }
+        if (repository.verifyOwnerCredentials(cleanUser, password)) {
+            _uiState.update {
+                it.copy(
+                    isAuthenticated = true,
+                    authMode = AuthScreenMode.LOGIN,
+                    authErrorResId = null,
+                    authInfoResId = null,
+                    currentScreen = WorkspaceScreen.WATCHLIST
+                )
+            }
             return
         }
+        viewModelScope.launch {
+            val verifiedOnServer = repository.verifyOwnerCredentialsWithServer(cleanUser, password)
+            if (!verifiedOnServer) {
+                _uiState.update { it.copy(authErrorResId = R.string.error_invalid_credentials) }
+                return@launch
+            }
+            _uiState.update {
+                it.copy(
+                    isOwnerRegistered = true,
+                    isAuthenticated = true,
+                    ownerUsername = repository.getOwnerUsername().ifBlank { cleanUser },
+                    ownerEmail = repository.getOwnerEmail(),
+                    authMode = AuthScreenMode.LOGIN,
+                    authErrorResId = null,
+                    authInfoResId = null,
+                    currentScreen = WorkspaceScreen.WATCHLIST
+                )
+            }
+        }
+    }
+
+    fun signInWithGoogleIdToken(idToken: String) {
+        viewModelScope.launch {
+            runCatching {
+                val credential = GoogleAuthProvider.getCredential(idToken, null)
+                val authResult = firebaseAuth?.signInWithCredential(credential)?.await()
+                val user = authResult?.user ?: firebaseAuth?.currentUser
+                val email = user?.email.orEmpty()
+                val displayName = user?.displayName.orEmpty()
+                if (user != null && email.isNotEmpty()) {
+                    val synced = repository.syncGoogleOwnerWithServer(email, displayName)
+                    runCatching {
+                        userAccountRepository?.upsertUserAccount(
+                            username = synced.username,
+                            email = synced.email,
+                            languageCode = _uiState.value.language.code,
+                            isDarkTheme = _uiState.value.isDarkTheme
+                        )
+                    }
+                    _uiState.update {
+                        it.copy(
+                            isOwnerRegistered = true,
+                            isAuthenticated = true,
+                            ownerUsername = synced.username,
+                            ownerEmail = synced.email,
+                            authMode = AuthScreenMode.LOGIN,
+                            authErrorResId = null,
+                            authInfoResId = null,
+                            currentScreen = WorkspaceScreen.WATCHLIST
+                        )
+                    }
+                } else {
+                    _uiState.update { it.copy(authErrorResId = R.string.error_google_sign_in_failed) }
+                }
+            }.onFailure {
+                _uiState.update { it.copy(authErrorResId = R.string.error_google_sign_in_failed) }
+            }
+        }
+    }
+
+    fun onGoogleSignInFailed() {
+        _uiState.update { it.copy(authErrorResId = R.string.error_google_sign_in_failed) }
+    }
+
+    fun requestPasswordRecoveryCode(email: String) {
+        val cleanEmail = email.trim().lowercase()
+        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+            _uiState.update {
+                it.copy(
+                    authErrorResId = R.string.error_invalid_email,
+                    authInfoResId = null
+                )
+            }
+            return
+        }
+        viewModelScope.launch {
+            val sent = repository.requestPasswordResetOnServer(cleanEmail)
+            if (sent) {
+                _uiState.update {
+                    it.copy(
+                        ownerEmail = cleanEmail,
+                        authMode = AuthScreenMode.FORGOT_VERIFY,
+                        authErrorResId = null,
+                        authInfoResId = R.string.status_recovery_code_sent
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        authErrorResId = R.string.error_email_not_found,
+                        authInfoResId = null
+                    )
+                }
+            }
+        }
+    }
+
+    fun confirmPasswordRecovery(
+        email: String,
+        code: String,
+        newPassword: String,
+        confirmPassword: String
+    ) {
+        val cleanEmail = email.trim().lowercase()
+        val cleanCode = code.trim()
+        if (cleanEmail.isBlank() || cleanCode.isBlank() || newPassword.isBlank()) {
+            _uiState.update { it.copy(authErrorResId = R.string.error_empty_credentials) }
+            return
+        }
+        if (newPassword.length < 4) {
+            _uiState.update { it.copy(authErrorResId = R.string.error_password_short) }
+            return
+        }
+        if (newPassword != confirmPassword) {
+            _uiState.update { it.copy(authErrorResId = R.string.error_password_mismatch) }
+            return
+        }
+        viewModelScope.launch {
+            val ok = repository.confirmPasswordResetOnServer(cleanEmail, cleanCode, newPassword)
+            if (ok) {
+                _uiState.update {
+                    it.copy(
+                        ownerEmail = cleanEmail,
+                        authMode = AuthScreenMode.LOGIN,
+                        authErrorResId = null,
+                        authInfoResId = R.string.status_password_reset_success
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        authErrorResId = R.string.error_invalid_recovery_code,
+                        authInfoResId = null
+                    )
+                }
+            }
+        }
+    }
+
+    fun updateRecoveryEmail(email: String) {
+        val cleanEmail = email.trim().lowercase()
+        if (cleanEmail.isBlank() || !cleanEmail.contains("@")) {
+            _uiState.update { it.copy(statusBannerResId = R.string.error_invalid_email) }
+            return
+        }
+        repository.updateOwnerEmailLocal(cleanEmail)
         _uiState.update {
             it.copy(
-                isAuthenticated = true,
-                authErrorResId = null,
-                currentScreen = WorkspaceScreen.WATCHLIST
+                ownerEmail = cleanEmail,
+                statusBannerResId = R.string.status_email_updated
             )
+        }
+        viewModelScope.launch {
+            repository.updateOwnerEmailOnServer(cleanEmail)
         }
     }
 
     fun signOut() {
+        runCatching { firebaseAuth?.signOut() }
         _uiState.update {
             it.copy(
                 isAuthenticated = false,
+                authMode = AuthScreenMode.LOGIN,
                 authErrorResId = null,
+                authInfoResId = null,
                 statusBannerResId = null
             )
         }
@@ -158,6 +403,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         repository.updateOwnerPassword(newPassword)
         _uiState.update { it.copy(statusBannerResId = R.string.settings_password_updated) }
+        viewModelScope.launch {
+            repository.updateOwnerPasswordOnServer(newPassword)
+        }
     }
 
     fun toggleSymbolInWatchlist(symbolCode: String, enabled: Boolean) {

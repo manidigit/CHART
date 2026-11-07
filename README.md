@@ -18,7 +18,7 @@ Detailed engineering and operational material: docs/PROJECT_GUIDE.md
   <a href="https://chart.manico.es"><img src="https://img.shields.io/badge/Web-chart.manico.es-172b3a?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web application"></a>
   <a href="https://github.com/manidigit/CHART/actions/workflows/build-apk.yml"><img src="https://img.shields.io/badge/Android-APK%20workflow-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK workflow"></a>
   <a href="https://github.com/manidigit/CHART"><img src="https://img.shields.io/badge/Platform-Web%20%7C%20Android-4C6FFF?style=for-the-badge" alt="Web and Android"></a>
-  <a href="https://github.com/manidigit/CHART/blob/main/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.24-8B6CEF?style=for-the-badge" alt="Master Spec version 1.24"></a>
+  <a href="https://github.com/manidigit/CHART/blob/main/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.25-8B6CEF?style=for-the-badge" alt="Master Spec version 1.25"></a>
 </p>
 
 <p align="center">
@@ -48,7 +48,7 @@ The engineering direction prioritizes reliable market-series identity, consisten
 - **Bilingual interface:** Persian (RTL) and English (LTR), with Persian as the initial language.
 - **Watchlist:** initial Gold and Brent instruments with configurable data-source selection.
 - **Multi-tab chart workspace:** open and retain multiple chart tabs.
-- **Personal access:** first-run personal login flow.
+- **Unified personal access & recovery:** cross-platform owner login synced across Web and Android (`auth.php` + Firebase Authentication / Google Sign-In), recovery email registration, 2-step 6-digit email password reset, and top-bar quick sign-out.
 - **Centralized presentation:** dark/light theme foundation and shared design conventions.
 - **Market-data adapters:** provider integrations are organized as separate modules.
 

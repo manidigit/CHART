@@ -56,6 +56,13 @@ export function renderSettingsContent(i18n) {
 
   return `
     <div>
+      ${
+        state.statusBannerKey
+          ? `<div style="background: rgba(16, 185, 129, 0.14); border: 1px solid var(--bull); color: var(--bull); padding: 8px 12px; border-radius: var(--radius-sm); font-size: 12px; margin-bottom: 12px;">
+               ${i18n.t(state.statusBannerKey)}
+             </div>`
+          : ''
+      }
       <div class="row-between" style="margin-bottom: 12px;">
         <h4 style="margin: 0;">${i18n.t('settings_symbols_section')}</h4>
         <button class="btn btn-sm btn-primary" data-action="open-add-symbol-modal">
@@ -89,7 +96,23 @@ export function renderSettingsContent(i18n) {
         ${renderLanguageThemeBar(i18n)}
       </div>
 
-      <button class="btn" style="width: 100%; margin-top: 14px;" data-action="sign-out">
+      <div class="card-subtle" style="margin-top: 14px;">
+        <h5 style="margin: 0 0 10px 0;">${i18n.t('settings_account_section')} (${state.ownerUsername || 'Owner'})</h5>
+        <form id="settings-email-form" style="margin-bottom: 10px;">
+          <input class="input-field ltr-num" type="email" name="recovery_email" placeholder="${i18n.t('label_recovery_email')}" value="${state.ownerEmail || ''}" required />
+          <button type="submit" class="btn btn-sm btn-primary" style="width: 100%; margin-top: 6px;">
+            ${i18n.t('action_save_email')}
+          </button>
+        </form>
+        <form id="settings-password-form">
+          <input class="input-field" type="password" name="new_password" placeholder="${i18n.t('settings_new_password')}" required />
+          <button type="submit" class="btn btn-sm" style="width: 100%; margin-top: 6px;">
+            ${i18n.t('settings_change_password')}
+          </button>
+        </form>
+      </div>
+
+      <button class="btn" style="width: 100%; margin-top: 14px; color: var(--bear); border-color: var(--bear);" data-action="sign-out">
         ${i18n.t('action_sign_out')} (${state.ownerUsername})
       </button>
     </div>

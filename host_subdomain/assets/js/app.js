@@ -18,6 +18,10 @@ import {
   syncSymbolNow,
   loginOwner,
   registerOwner,
+  updateOwnerEmail,
+  updateOwnerPassword,
+  requestPasswordReset,
+  confirmPasswordReset,
 } from './services/apiService.js';
 import { attachCanvasInteractions } from './controllers/chartInteractionController.js';
 import { renderTerminalTopBar } from './views/headerView.js';
@@ -341,8 +345,16 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'delete-symbol') {
     deleteSymbol(btn.getAttribute('data-symbol'));
     renderApp();
+  } else if (action === 'set-auth-mode') {
+    state.authMode = btn.getAttribute('data-mode') || 'login';
+    state.authErrorKey = null;
+    state.authInfoKey = null;
+    renderApp();
   } else if (action === 'sign-out') {
     state.isAuthenticated = false;
+    state.authMode = 'login';
+    state.authErrorKey = null;
+    state.authInfoKey = null;
     renderApp();
   }
 });
@@ -376,10 +388,100 @@ document.addEventListener('submit', async (e) => {
     return;
   }
 
+  if (e.target.id === 'settings-email-form') {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const email = (fd.get('recovery_email') || '').toString().trim();
+    if (!email || !email.includes('@')) {
+      state.statusBannerKey = 'error_invalid_email';
+      renderApp();
+      return;
+    }
+    const res = await updateOwnerEmail(email);
+    state.ownerEmail = email;
+    localStorage.setItem('ci_owner_email', email);
+    state.statusBannerKey = res && res.ok ? 'status_email_updated' : 'status_email_updated';
+    renderApp();
+    return;
+  }
+
+  if (e.target.id === 'settings-password-form') {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const newPassword = (fd.get('new_password') || '').toString();
+    if (newPassword.length < 4) {
+      state.statusBannerKey = 'error_password_short';
+      renderApp();
+      return;
+    }
+    await updateOwnerPassword(newPassword);
+    localStorage.setItem('ci_owner_pass_b64', btoa(unescape(encodeURIComponent(newPassword))));
+    state.statusBannerKey = 'settings_password_updated';
+    renderApp();
+    return;
+  }
+
+  if (e.target.id === 'forgot-request-form') {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const email = (fd.get('email') || '').toString().trim();
+    if (!email || !email.includes('@')) {
+      state.authErrorKey = 'error_invalid_email';
+      state.authInfoKey = null;
+      renderApp();
+      return;
+    }
+    const res = await requestPasswordReset(email);
+    if (res && res.ok) {
+      state.ownerEmail = email;
+      localStorage.setItem('ci_owner_email', email);
+      state.authMode = 'forgot_verify';
+      state.authErrorKey = null;
+      state.authInfoKey = 'status_recovery_code_sent';
+    } else {
+      state.authErrorKey = (res && res.error_message) || 'error_email_not_found';
+      state.authInfoKey = null;
+    }
+    renderApp();
+    return;
+  }
+
+  if (e.target.id === 'forgot-verify-form') {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const email = (fd.get('email') || '').toString().trim();
+    const code = (fd.get('recovery_code') || '').toString().trim();
+    const newPassword = (fd.get('new_password') || '').toString();
+    const confirmPassword = (fd.get('confirm_password') || '').toString();
+    if (newPassword.length < 4) {
+      state.authErrorKey = 'error_password_short';
+      renderApp();
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      state.authErrorKey = 'error_password_mismatch';
+      renderApp();
+      return;
+    }
+    const res = await confirmPasswordReset(email, code, newPassword);
+    if (res && res.ok) {
+      localStorage.setItem('ci_owner_pass_b64', btoa(unescape(encodeURIComponent(newPassword))));
+      state.authMode = 'login';
+      state.authErrorKey = null;
+      state.authInfoKey = 'status_password_reset_success';
+    } else {
+      state.authErrorKey = (res && res.error_message) || 'error_invalid_recovery_code';
+      state.authInfoKey = null;
+    }
+    renderApp();
+    return;
+  }
+
   if (e.target.id !== 'auth-form') return;
   e.preventDefault();
   const fd = new FormData(e.target);
   const username = (fd.get('username') || '').toString().trim();
+  const email = (fd.get('email') || '').toString().trim();
   const password = (fd.get('password') || '').toString();
   const confirmPassword = (fd.get('confirm_password') || '').toString();
 
@@ -389,6 +491,11 @@ document.addEventListener('submit', async (e) => {
     return;
   }
   if (!state.isOwnerRegistered) {
+    if (email && !email.includes('@')) {
+      state.authErrorKey = 'error_invalid_email';
+      renderApp();
+      return;
+    }
     if (password.length < 4) {
       state.authErrorKey = 'error_password_short';
       renderApp();
@@ -399,13 +506,16 @@ document.addEventListener('submit', async (e) => {
       renderApp();
       return;
     }
-    await registerOwner(username, password);
+    await registerOwner(username, email, password);
     localStorage.setItem('ci_owner_username', username);
+    if (email) localStorage.setItem('ci_owner_email', email);
     localStorage.setItem('ci_owner_pass_b64', btoa(unescape(encodeURIComponent(password))));
     state.isOwnerRegistered = true;
     state.ownerUsername = username;
+    state.ownerEmail = email;
     state.isAuthenticated = true;
     state.authErrorKey = null;
+    state.authInfoKey = null;
     renderApp();
   } else {
     const ok = await loginOwner(username, password);
@@ -416,6 +526,7 @@ document.addEventListener('submit', async (e) => {
     }
     state.isAuthenticated = true;
     state.authErrorKey = null;
+    state.authInfoKey = null;
     renderApp();
   }
 });

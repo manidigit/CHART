@@ -119,4 +119,25 @@
     <string name="action_save">ذخیره</string>
     <string name="action_cancel">انصراف</string>
     <string name="action_delete_symbol">حذف نماد</string>
+    <string name="label_email">ایمیل بازیابی رمز عبور</string>
+    <string name="label_recovery_email">ایمیل حساب کاربری</string>
+    <string name="label_recovery_code">کد بازیابی ۶ رقمی ارسال‌شده به ایمیل</string>
+    <string name="action_sign_in_google">ورود با حساب گوگل (همگام با فضای ابری)</string>
+    <string name="action_forgot_password">رمز عبور خود را فراموش کرده‌اید؟ (بازیابی با ایمیل)</string>
+    <string name="action_back_to_login">بازگشت به صفحه ورود</string>
+    <string name="forgot_password_title">بازیابی رمز عبور فراموش‌شده</string>
+    <string name="forgot_password_subtitle">ایمیل ثبت‌شده حساب خود را وارد کنید تا کد بازیابی ۶ رقمی برایتان ارسال شود.</string>
+    <string name="forgot_verify_subtitle">کد ۶ رقمی ارسال‌شده به ایمیل و رمز عبور جدید خود را وارد نمایید.</string>
+    <string name="action_send_recovery_code">ارسال کد بازیابی به ایمیل</string>
+    <string name="action_verify_and_reset">تأیید کد و ثبت رمز عبور جدید</string>
+    <string name="action_save_email">ذخیره ایمیل بازیابی</string>
+    <string name="action_logout_short">خروج</string>
+    <string name="status_recovery_code_sent">کد بازیابی ۶ رقمی به ایمیل شما ارسال شد (اعتبار: ۱۵ دقیقه).</string>
+    <string name="status_password_reset_success">رمز عبور شما با موفقیت بازنشانی شد. اکنون می‌توانید وارد شوید.</string>
+    <string name="status_email_updated">ایمیل بازیابی با موفقیت در سرور ذخیره شد.</string>
+    <string name="error_invalid_email">لطفاً یک آدرس ایمیل معتبر وارد کنید.</string>
+    <string name="error_email_not_found">این ایمیل با حساب مالک ثبت‌شده مطابقت ندارد.</string>
+    <string name="error_invalid_recovery_code">کد بازیابی نامعتبر یا منقضی شده است.</string>
+    <string name="error_google_sign_in_failed">ورود با گوگل انجام نشد. می‌توانید با نام کاربری و رمز عبور وارد شوید.</string>
+    <string name="sync_server_badge">همگام‌سازی یکپارچه بین وب و اندروید</string>
 </resources>

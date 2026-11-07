@@ -11,3 +11,4 @@ local.properties
 .env
 app/build
 host_subdomain/config/env.local.php
+*-debug.log

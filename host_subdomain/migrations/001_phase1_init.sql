@@ -6,7 +6,10 @@
 CREATE TABLE IF NOT EXISTS users (
     id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
     username VARCHAR(64) NOT NULL UNIQUE,
+    email VARCHAR(120) NULL,
     password_hash VARCHAR(255) NOT NULL,
+    reset_code_hash VARCHAR(255) NULL,
+    reset_expires_at_utc DATETIME NULL,
     role ENUM('owner', 'admin', 'viewer') NOT NULL DEFAULT 'owner',
     preferred_lang CHAR(2) NOT NULL DEFAULT 'fa',
     preferred_theme VARCHAR(16) NOT NULL DEFAULT 'dark',

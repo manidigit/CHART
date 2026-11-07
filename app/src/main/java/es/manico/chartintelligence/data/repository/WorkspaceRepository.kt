@@ -18,14 +18,27 @@ import es.manico.chartintelligence.providers.DukascopyAdapter
 import es.manico.chartintelligence.providers.EiaBenchmarkAdapter
 import es.manico.chartintelligence.providers.TwelveDataAdapter
 import es.manico.chartintelligence.providers.YahooFinanceAdapter
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import okhttp3.MediaType.Companion.toMediaType
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigDecimal
+import java.util.concurrent.TimeUnit
+
+data class ServerOwnerStatus(
+    val isRegistered: Boolean,
+    val username: String,
+    val email: String
+)
 
 /**
- * Repository managing Phase 1 state & local persistence:
+ * Repository managing Phase 1 state & local/remote persistence:
  * - Language (defaults to Persian FA RTL) & Theme (defaults to Financial Dark)
- * - Personal Owner Account setup (first-run registration + login verification)
+ * - Unified Personal Owner Account setup (synced across Android & Web via auth.php + local cache)
  * - Open symbol catalog with Gold (XAUUSD) and Brent (SPOTBRENT) pre-populated in Watchlist
  * - Idempotent closed-candle storage per (symbolCode, provider, timeframe) with zero fake data
  * - Persistent market-coordinate-anchored chart drawings per chartId
@@ -34,6 +47,13 @@ class WorkspaceRepository(context: Context) {
 
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(AppConfig.PREFS_FILE_NAME, Context.MODE_PRIVATE)
+
+    private val httpClient: OkHttpClient = OkHttpClient.Builder()
+        .connectTimeout(8, TimeUnit.SECONDS)
+        .readTimeout(8, TimeUnit.SECONDS)
+        .build()
+
+    private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     private val adapters: Map<ProviderId, CandleProviderAdapter> = mapOf(
         ProviderId.TWELVE_DATA to TwelveDataAdapter(),
@@ -64,31 +84,181 @@ class WorkspaceRepository(context: Context) {
 
     fun isOwnerAccountRegistered(): Boolean {
         val username = prefs.getString(AppConfig.KEY_OWNER_USERNAME, null)
-        val hash = prefs.getString(AppConfig.KEY_OWNER_PASSWORD_HASH, null)
-        return !username.isNullOrBlank() && !hash.isNullOrBlank()
+        return !username.isNullOrBlank()
     }
 
     fun getOwnerUsername(): String {
         return prefs.getString(AppConfig.KEY_OWNER_USERNAME, "") ?: ""
     }
 
-    fun registerOwnerAccount(username: String, password: String) {
+    fun getOwnerEmail(): String {
+        return prefs.getString(AppConfig.KEY_OWNER_EMAIL, "") ?: ""
+    }
+
+    suspend fun syncOwnerStatusFromServer(): ServerOwnerStatus = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}auth.php?action=status")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val root = JSONObject(resp.body?.string().orEmpty())
+                    if (root.optBoolean("ok", false)) {
+                        val data = root.optJSONObject("data")
+                        val isReg = data?.optBoolean("is_owner_registered", false) == true
+                        val user = data?.optString("owner_username", "").orEmpty().trim()
+                        val email = data?.optString("owner_email", "").orEmpty().trim()
+                        if (isReg && user.isNotEmpty()) {
+                            val editor = prefs.edit().putString(AppConfig.KEY_OWNER_USERNAME, user)
+                            if (email.isNotEmpty()) {
+                                editor.putString(AppConfig.KEY_OWNER_EMAIL, email)
+                            }
+                            editor.apply()
+                            return@withContext ServerOwnerStatus(true, user, email.ifEmpty { getOwnerEmail() })
+                        }
+                    }
+                }
+            }
+        }
+        ServerOwnerStatus(
+            isRegistered = isOwnerAccountRegistered(),
+            username = getOwnerUsername(),
+            email = getOwnerEmail()
+        )
+    }
+
+    fun registerOwnerAccount(username: String, password: String, email: String = "") {
         val cleanUser = username.trim()
+        val cleanEmail = email.trim().lowercase()
         val salt = PasswordHashAlgorithm.generateSaltBase64()
         val hash = PasswordHashAlgorithm.hashPassword(password, salt)
         prefs.edit()
             .putString(AppConfig.KEY_OWNER_USERNAME, cleanUser)
+            .putString(AppConfig.KEY_OWNER_EMAIL, cleanEmail)
             .putString(AppConfig.KEY_OWNER_PASSWORD_SALT, salt)
             .putString(AppConfig.KEY_OWNER_PASSWORD_HASH, hash)
             .apply()
     }
 
+    suspend fun registerOwnerOnServer(username: String, email: String, password: String): Boolean =
+        withContext(Dispatchers.IO) {
+            registerOwnerAccount(username, password, email)
+            runCatching {
+                val payload = JSONObject()
+                    .put("username", username.trim())
+                    .put("email", email.trim().lowercase())
+                    .put("password", password)
+                val req = Request.Builder()
+                    .url("${AppConfig.API_BASE_URL}auth.php?action=register_owner")
+                    .post(payload.toString().toRequestBody(jsonMediaType))
+                    .build()
+                httpClient.newCall(req).execute().use { resp ->
+                    resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+                }
+            }.getOrDefault(false)
+        }
+
     fun verifyOwnerCredentials(username: String, password: String): Boolean {
         val storedUser = prefs.getString(AppConfig.KEY_OWNER_USERNAME, null) ?: return false
+        val storedEmail = prefs.getString(AppConfig.KEY_OWNER_EMAIL, null).orEmpty()
         val salt = prefs.getString(AppConfig.KEY_OWNER_PASSWORD_SALT, null) ?: return false
         val expectedHash = prefs.getString(AppConfig.KEY_OWNER_PASSWORD_HASH, null) ?: return false
-        if (!storedUser.equals(username.trim(), ignoreCase = true)) return false
+        val input = username.trim()
+        val matchesIdentity = storedUser.equals(input, ignoreCase = true) ||
+            (storedEmail.isNotEmpty() && storedEmail.equals(input, ignoreCase = true))
+        if (!matchesIdentity) return false
         return PasswordHashAlgorithm.verifyPassword(password, salt, expectedHash)
+    }
+
+    suspend fun verifyOwnerCredentialsWithServer(username: String, password: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val remoteVerified = runCatching {
+                val payload = JSONObject()
+                    .put("username", username.trim())
+                    .put("password", password)
+                val req = Request.Builder()
+                    .url("${AppConfig.API_BASE_URL}auth.php?action=login")
+                    .post(payload.toString().toRequestBody(jsonMediaType))
+                    .build()
+                httpClient.newCall(req).execute().use { resp ->
+                    val bodyStr = resp.body?.string().orEmpty()
+                    if (resp.isSuccessful) {
+                        val root = JSONObject(bodyStr)
+                        if (root.optBoolean("ok", false)) {
+                            val data = root.optJSONObject("data")
+                            val srvUser = data?.optString("owner_username", "").orEmpty().ifBlank { username.trim() }
+                            val srvEmail = data?.optString("owner_email", "").orEmpty()
+                            registerOwnerAccount(srvUser, password, srvEmail.ifEmpty { getOwnerEmail() })
+                            true
+                        } else {
+                            false
+                        }
+                    } else if (resp.code == 401) {
+                        false
+                    } else {
+                        null
+                    }
+                }
+            }.getOrNull()
+
+            if (remoteVerified == true) return@withContext true
+            verifyOwnerCredentials(username, password)
+        }
+
+    suspend fun syncGoogleOwnerWithServer(email: String, displayName: String): ServerOwnerStatus =
+        withContext(Dispatchers.IO) {
+            val cleanEmail = email.trim().lowercase()
+            val fallbackUser = displayName.trim().ifBlank { cleanEmail.substringBefore("@") }
+            val currentUser = getOwnerUsername().ifBlank { fallbackUser }
+
+            val remoteResult = runCatching {
+                val payload = JSONObject()
+                    .put("email", cleanEmail)
+                    .put("username", currentUser)
+                val req = Request.Builder()
+                    .url("${AppConfig.API_BASE_URL}auth.php?action=google_sign_in")
+                    .post(payload.toString().toRequestBody(jsonMediaType))
+                    .build()
+                httpClient.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val root = JSONObject(resp.body?.string().orEmpty())
+                        if (root.optBoolean("ok", false)) {
+                            val data = root.optJSONObject("data")
+                            val srvUser = data?.optString("owner_username", "").orEmpty().ifBlank { currentUser }
+                            val srvEmail = data?.optString("owner_email", "").orEmpty().ifBlank { cleanEmail }
+                            ServerOwnerStatus(true, srvUser, srvEmail)
+                        } else null
+                    } else null
+                }
+            }.getOrNull()
+
+            val finalUser = remoteResult?.username ?: currentUser
+            val finalEmail = remoteResult?.email ?: cleanEmail
+            prefs.edit()
+                .putString(AppConfig.KEY_OWNER_USERNAME, finalUser)
+                .putString(AppConfig.KEY_OWNER_EMAIL, finalEmail)
+                .apply()
+            ServerOwnerStatus(true, finalUser, finalEmail)
+        }
+
+    fun updateOwnerEmailLocal(email: String) {
+        prefs.edit().putString(AppConfig.KEY_OWNER_EMAIL, email.trim().lowercase()).apply()
+    }
+
+    suspend fun updateOwnerEmailOnServer(email: String): Boolean = withContext(Dispatchers.IO) {
+        val cleanEmail = email.trim().lowercase()
+        updateOwnerEmailLocal(cleanEmail)
+        runCatching {
+            val payload = JSONObject().put("email", cleanEmail)
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}auth.php?action=update_profile")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+            }
+        }.getOrDefault(false)
     }
 
     fun updateOwnerPassword(newPassword: String) {
@@ -99,6 +269,59 @@ class WorkspaceRepository(context: Context) {
             .putString(AppConfig.KEY_OWNER_PASSWORD_HASH, hash)
             .apply()
     }
+
+    suspend fun updateOwnerPasswordOnServer(newPassword: String): Boolean = withContext(Dispatchers.IO) {
+        updateOwnerPassword(newPassword)
+        runCatching {
+            val payload = JSONObject().put("new_password", newPassword)
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}auth.php?action=change_password")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+            }
+        }.getOrDefault(false)
+    }
+
+    suspend fun requestPasswordResetOnServer(email: String): Boolean = withContext(Dispatchers.IO) {
+        val cleanEmail = email.trim().lowercase()
+        val remoteOk = runCatching {
+            val payload = JSONObject().put("email", cleanEmail)
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}auth.php?action=request_password_reset")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+            }
+        }.getOrDefault(false)
+        remoteOk
+    }
+
+    suspend fun confirmPasswordResetOnServer(email: String, code: String, newPassword: String): Boolean =
+        withContext(Dispatchers.IO) {
+            val cleanEmail = email.trim().lowercase()
+            val remoteOk = runCatching {
+                val payload = JSONObject()
+                    .put("email", cleanEmail)
+                    .put("code", code.trim())
+                    .put("new_password", newPassword)
+                val req = Request.Builder()
+                    .url("${AppConfig.API_BASE_URL}auth.php?action=confirm_password_reset")
+                    .post(payload.toString().toRequestBody(jsonMediaType))
+                    .build()
+                httpClient.newCall(req).execute().use { resp ->
+                    resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+                }
+            }.getOrDefault(false)
+
+            if (remoteOk) {
+                updateOwnerPassword(newPassword)
+                updateOwnerEmailLocal(cleanEmail)
+            }
+            remoteOk
+        }
 
     fun loadChartPreferences(): ChartPreferences {
         val raw = prefs.getString(AppConfig.KEY_CHART_PREFERENCES_JSON, null) ?: return ChartPreferences()

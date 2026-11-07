@@ -2,6 +2,7 @@ import { PriceFormatter } from '../algorithms/priceFormatter.js';
 import { state } from '../core/store.js';
 
 export function renderTerminalTopBar(activeTab, latestCandle, pct, isBull, tfChipsHtml, tabsHtml, i18n) {
+  const userLabel = state.ownerUsername || state.ownerEmail || 'Owner';
   return `
     <header class="terminal-topbar">
       <div class="topbar-left">
@@ -36,15 +37,15 @@ export function renderTerminalTopBar(activeTab, latestCandle, pct, isBull, tfChi
         </div>
         <div class="chip-group" style="margin-inline-start: 6px;">
           <button class="chip ${activeTab && activeTab.chartType !== 'line' ? 'active' : ''}" data-action="set-chart-type" data-type="candlestick" title="${i18n.t('chart_type_candles')}">
-             شمعی
+             ${i18n.t('chart_type_candles')}
           </button>
           <button class="chip ${activeTab && activeTab.chartType === 'line' ? 'active' : ''}" data-action="set-chart-type" data-type="line" title="${i18n.t('chart_type_line')}">
-            خطی
+            ${i18n.t('chart_type_line')}
           </button>
         </div>
       </div>
 
-      <!-- Right Quick Actions -->
+      <!-- Right Quick Actions + User Badge & Always-Accessible Logout -->
       <div class="topbar-right">
         <button class="btn btn-sm btn-icon" data-action="sync-symbol" data-symbol="${activeTab ? activeTab.symbolCode : ''}" title="${i18n.t('action_sync_now')}">
           ↻
@@ -60,6 +61,12 @@ export function renderTerminalTopBar(activeTab, latestCandle, pct, isBull, tfChi
         </button>
         <button class="btn btn-sm ${state.desktopSidePanel === 'settings' ? 'btn-primary' : ''}" data-action="toggle-desktop-panel" data-panel="settings">
           ${i18n.t('nav_settings')}
+        </button>
+        <span class="chip ltr-num" style="cursor: default; font-size: 11px;" title="${state.ownerEmail || userLabel}">
+          👤 ${userLabel}
+        </span>
+        <button class="btn btn-sm" style="color: var(--bear); border-color: var(--bear);" data-action="sign-out" title="${i18n.t('action_sign_out')}">
+          ${i18n.t('action_logout_short')}
         </button>
       </div>
     </header>

@@ -79,12 +79,14 @@ fun SettingsScreen(
     isDarkTheme: Boolean,
     symbols: List<SymbolConfig>,
     ownerUsername: String,
+    ownerEmail: String = "",
     statusBannerResId: Int?,
     chartPreferences: ChartPreferences,
     onLanguageSelected: (AppLanguage) -> Unit,
     onThemeSelected: (Boolean) -> Unit,
     onToggleSymbolInWatchlist: (String, Boolean) -> Unit,
     onSelectProviderForSymbol: (String, ProviderId) -> Unit,
+    onUpdateRecoveryEmail: (String) -> Unit = {},
     onUpdatePassword: (String) -> Unit,
     onSignOut: () -> Unit,
     onBackToWatchlist: () -> Unit,
@@ -103,6 +105,7 @@ fun SettingsScreen(
     BackHandler(onBack = onBackToWatchlist)
 
     val financialPalette = LocalFinancialPalette.current
+    var recoveryEmailInput by rememberSaveable(ownerEmail) { mutableStateOf(ownerEmail) }
     var newPassword by rememberSaveable { mutableStateOf("") }
     var showAddSymbolDialog by rememberSaveable { mutableStateOf(false) }
 
@@ -539,7 +542,7 @@ fun SettingsScreen(
                 }
             }
 
-            // Section 5: Personal Account & Password Management
+            // Section 5: Personal Account, Recovery Email & Password Management
             Card(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(14.dp),
@@ -557,6 +560,28 @@ fun SettingsScreen(
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
                     )
+
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                        OutlinedTextField(
+                            value = recoveryEmailInput,
+                            onValueChange = { recoveryEmailInput = it },
+                            label = { Text(stringResource(R.string.label_recovery_email)) },
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings_email_input")
+                        )
+                    }
+
+                    Button(
+                        onClick = { onUpdateRecoveryEmail(recoveryEmailInput) },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .testTag("settings_save_email_button")
+                    ) {
+                        Text(text = stringResource(R.string.action_save_email))
+                    }
 
                     OutlinedTextField(
                         value = newPassword,

@@ -7,15 +7,18 @@ export async function checkBackendOwnerStatus() {
     if (json && json.ok && json.data && json.data.is_owner_registered) {
       state.isOwnerRegistered = true;
       state.ownerUsername = json.data.owner_username || state.ownerUsername;
+      state.ownerEmail = json.data.owner_email || state.ownerEmail;
+      if (state.ownerUsername) localStorage.setItem('ci_owner_username', state.ownerUsername);
+      if (state.ownerEmail) localStorage.setItem('ci_owner_email', state.ownerEmail);
     }
   } catch (_) {}
 }
 
-export async function registerOwner(username, password) {
+export async function registerOwner(username, email, password) {
   const res = await fetch('./api/v1/auth.php?action=register_owner', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, password }),
+    body: JSON.stringify({ username, email, password }),
   });
   return res.json().catch(() => ({ ok: false }));
 }
@@ -28,7 +31,15 @@ export async function loginOwner(username, password) {
       body: JSON.stringify({ username, password }),
     });
     const json = await res.json();
-    if (json && json.ok) return true;
+    if (json && json.ok) {
+      if (json.data) {
+        state.ownerUsername = json.data.owner_username || state.ownerUsername || username;
+        state.ownerEmail = json.data.owner_email || state.ownerEmail;
+        localStorage.setItem('ci_owner_username', state.ownerUsername);
+        if (state.ownerEmail) localStorage.setItem('ci_owner_email', state.ownerEmail);
+      }
+      return true;
+    }
   } catch (_) {}
 
   // Fallback for offline/local personal owner
@@ -40,6 +51,42 @@ export async function loginOwner(username, password) {
     return true;
   }
   return false;
+}
+
+export async function updateOwnerEmail(email) {
+  const res = await fetch('./api/v1/auth.php?action=update_profile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  return res.json().catch(() => ({ ok: false }));
+}
+
+export async function updateOwnerPassword(newPassword) {
+  const res = await fetch('./api/v1/auth.php?action=change_password', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ new_password: newPassword }),
+  });
+  return res.json().catch(() => ({ ok: false }));
+}
+
+export async function requestPasswordReset(email) {
+  const res = await fetch('./api/v1/auth.php?action=request_password_reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email }),
+  });
+  return res.json().catch(() => ({ ok: false }));
+}
+
+export async function confirmPasswordReset(email, code, newPassword) {
+  const res = await fetch('./api/v1/auth.php?action=confirm_password_reset', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email, code, new_password: newPassword }),
+  });
+  return res.json().catch(() => ({ ok: false }));
 }
 
 export async function syncSymbolNow(symbolCode, requestedTimeframe = null, onUpdate = null) {

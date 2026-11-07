@@ -3,7 +3,7 @@
 > راهنمای مکمل برای معرفی جزئیات اجرایی، استانداردهای توسعه و وضعیت پروژه. مرجع تصمیمات معماری و محصول همچنان [سند اصلی](../CHART_INTELLIGENCE_MASTER_SPEC.md) است.
 
 **آخرین بازبینی:** 2026-11-07  
-**نسخه سند مرجع اصلی هنگام بازبینی:** 1.24  
+**نسخه سند مرجع اصلی هنگام بازبینی:** 1.25  
 **وب‌اپلیکیشن:** https://chart.manico.es
 
 ---
@@ -69,16 +69,17 @@
 12. **تجربه کاربری نمودارمحور به سبک TradingView:** در دسکتاپ بیش از ۷۵٪ مساحت صفحه به نمودار اختصاص یافته و نوار ابزار رسم عمودی در لبه سمت چپ قرار دارد؛ در موبایل بوم نمودار با `touch-action: none` از هرگونه اسکرول ناخواسته صفحه حین Drag/Pinch محافظت شده و ناوبری با منوی ۴ زبانه Material 3 در پایین صفحه انجام می‌شود.
 13. **ماژول تحلیل تکنیکال و محاسباتی:** ارزیابی شاخص‌های نوسان (دامنه، سقف/کف، ATR 14) و نقاط پیوت کلاسیک کف بازار بر اساس محاسبات ریاضی دقیق روی کندل‌های واقعی و بدون داده‌های شبیه‌سازی‌شده یا موک.
 14. **استانداردهای جامعه متن‌باز و نگهداری بلندمدت (`Open-Source Readiness`):** ۵ سند مرجع متن‌باز در ریشه (`ARCHITECTURE.md`، `CONTRIBUTING.md`، `AGENTS.md`، `SECURITY.md`، `CHANGELOG.md`)؛ تفکیک هماهنگ‌کننده‌های ویومدل اندروید در `ui/state/coordinators/` (`ChartDrawingCoordinator.kt`، `SymbolCatalogCoordinator.kt`، `ChartPreferenceCoordinator.kt`)؛ و ماژولارسازی کامل وب با Native ES6 Modules در `assets/js/` بدون باندلر خارجی.
+15. **احراز هویت یکپارچه وب و اندروید، ورود با گوگل و بازیابی رمز با ایمیل (`Unified Auth & Recovery`):** همگام‌سازی حساب مالک بین اندروید و وب از طریق `api/v1/auth.php` و ورود با حساب گوگل (`CredentialManager` + Firebase Auth + Firestore `UserAccountRepository`)، ذخیره ایمیل بازیابی، جریان ۲ مرحله‌ای بازیابی رمز عبور با کد ۶ رقمی ایمیل، و نمایش نشان کاربر فعال به همراه دکمه خروج (`Sign Out`) در نوار هدر بالای صفحه وب و اندروید.
 
 ### نمونه جداسازی ماژول‌ها
 
 - **اسناد ریشه:** `ARCHITECTURE.md`, `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md`, `CHANGELOG.md`, `CHART_INTELLIGENCE_MASTER_SPEC.md`
-- **صفحات اندروید:** `OwnerLoginScreen`, `WatchlistScreen`, `ChartViewScreen`, `SettingsScreen`
-- **هماهنگ‌کننده‌های اندروید:** `ChartDrawingCoordinator`, `SymbolCatalogCoordinator`, `ChartPreferenceCoordinator`, `MainViewModel`
+- **صفحات اندروید:** `LoginScreen`, `WatchlistScreen`, `ChartViewScreen`, `SettingsScreen`
+- **هماهنگ‌کننده‌ها و ریپازیتوری‌های اندروید:** `ChartDrawingCoordinator`, `SymbolCatalogCoordinator`, `ChartPreferenceCoordinator`, `MainViewModel`, `WorkspaceRepository`, `UserAccountRepository`
 - **اجزای UI اندروید:** `MultiTabHeader`, `ChartTopBar`, `DrawingToolsRail`, `CandlestickCanvas`, `TabItemCard`, `ThemeSelector`, `TimeframeSelector`
 - **ماژول‌های وب (`host_subdomain/assets/js/`):**
   - `core/store.js` (مدیریت وضعیت مرکزی و کش)
-  - `services/apiService.js` (کلاینت REST API)
+  - `services/apiService.js` (کلاینت REST API شامل احراز هویت و بازیابی رمز)
   - `controllers/chartInteractionController.js` (رویدادهای لمسی و ماوس بوم)
   - `views/` (`headerView.js`, `toolRailView.js`, `watchlistView.js`, `analysisView.js`, `settingsView.js`, `loginView.js`, `navigationView.js`)
   - `components/chartRenderer.js` (موتور رندر کندلی)

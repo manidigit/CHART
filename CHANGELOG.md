@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.25.0] - 2026-11-07
+
+### Added
+- **Unified Web & Android Authentication (`auth.php` + Firebase Auth):**
+  - Synchronized personal owner credentials (`username`, `email`, `password`) across Android (`WorkspaceRepository`) and Web (`apiService.js` + `auth.php`) so registering or updating credentials on either platform works on both.
+  - Integrated Firebase Authentication with Google Sign-In via Jetpack `CredentialManager` (`GetSignInWithGoogleOption`) on Android and cloud profile persistence in Firestore (`users/{userId}`) with zero-trust security rules (`firestore.rules`).
+- **2-Step Email Password Recovery (`فراموشی رمز عبور`):**
+  - Added recovery email field during owner setup and in Settings (`update_profile`).
+  - Added `request_password_reset` (generates a 15-minute 6-digit recovery code sent via host email) and `confirm_password_reset` (verifies the 6-digit code and sets a new password) on both Android and Web.
+- **Always-Accessible Top Header User Badge & Sign-Out:**
+  - Added active user badge and direct **Sign Out (`خروج`)** button in the top header bar of both the Web Terminal (`headerView.js`) and Android app (`MainActivity.kt`).
+
+---
+
 ## [1.24.0] - 2026-11-07
 
 ### Added
