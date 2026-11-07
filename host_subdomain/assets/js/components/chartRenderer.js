@@ -3,8 +3,8 @@ import { DrawingGeometry } from '../algorithms/drawingGeometry.js';
 
 export function computeChartGeometry(canvas, tab) {
   const rect = canvas.getBoundingClientRect();
-  const width = Math.max(300, rect.width || 680);
-  const height = 350;
+  const width = Math.max(300, rect.width || canvas.clientWidth || 680);
+  const height = Math.max(260, rect.height || canvas.clientHeight || 480);
   const padRight = 72;
   const padBottom = 28;
   const padTop = 14;

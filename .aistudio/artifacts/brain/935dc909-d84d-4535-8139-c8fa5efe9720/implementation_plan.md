@@ -1,108 +1,100 @@
-# معماری جلوگیری از هاردکد (Anti-Hardcoding Architecture) در پروژه CHART
+# Implementation Plan: CHART — Complete UI/UX Redesign
 
-برنامه اجرایی برای پیاده‌سازی اصول معماری پویا و جلوگیری از هاردکد در سه حوزه کلیدی: الگوریتم‌ها و پارامترها، تم و متغیرهای بصری/رنگ‌ها، و کاتالوگ نمادها و منابع داده.
-
----
-
-## تصمیمات تأییدشده بر اساس پاسخ‌های کاربر
-
-1. **شخصی‌سازی تم و رنگ‌های نمودار:** پالت رنگ‌ها و متغیرهای بصری در فایل تم متمرکز باشند و کاربر بتواند از بخش تنظیمات (Settings) رنگ کندل‌ها، خطوط رسم، پس‌زمینه و شبکه را تغییر دهد.
-2. **پویایی پارامترهای الگوریتم‌ها:** مقادیر پیش‌فرض در فایل کانفیگ مستقل باشند و در عین حال در پنل تنظیمات داخل برنامه قابل ویرایش و بازنشانی (Reset) باشند.
-3. **کاتالوگ نمادها بدون هاردکد:** امکان افزودن، ویرایش و حذف نمادهای معاملاتی به همراه منبع داده مستقیماً از رابط کاربری در بخش تنظیمات فراهم شود.
+A unified, professional redesign of the CHART platform delivering a high-focus trading workspace for **Desktop Web** and an ergonomic, touch-first experience for **Android Mobile**.
 
 ---
 
-## ۱. نقشه راه جلوگیری از هاردکد در ۳ سطح اصلی
+## 1. Visual Mockups & Design System Direction
 
-### سطح اول: الگوریتم‌ها و محاسبات فنی (Algorithms & Business Logic)
+As requested, two high-fidelity visual mockups have been generated to preview the design language:
 
-```
-┌───────────────────────────────────────┐
-│     AlgorithmConfig / DynamicParams   │  <-- مقادیر پیش‌فرض مرکزی در فایل کانفیگ
-└──────────────────┬────────────────────┘
-                   │
-                   ▼
-┌───────────────────────────────────────┐
-│     Settings UI & Local Storage       │  <-- قابلیت ویرایش در UI + ذخیره در SharedPreferences / LocalStorage
-└──────────────────┬────────────────────┘
-                   │
-                   ▼
-┌───────────────────────────────────────┐
-│  Pure Algorithm Modules (Stateless)   │  <-- دریافت پارامترها به عنوان آرگومان (توابع خالص بدون عدد ثابت)
-│  - TimeframeAggregatorAlgorithm       │
-│  - DrawingGeometryAlgorithm           │
-│  - Indicators (SMA/EMA/RSI/...)       │
-└───────────────────────────────────────┘
-```
+### A. Desktop Trading Terminal
+- **Layout:** High-ratio central workspace (>75% screen space), compact top header bar (<48px) with live quote and timeframes, vertical drawing tool rail on the left (TradingView-style), and collapsible watchlist panel on the right.
+- **Visual Reference:**
+  ![Desktop Trading Terminal](/app/src/main/res/drawable/chart_desktop_ui_1794039891369.jpg)
 
-1. **جداسازی کامل منطق از مقادیر:** در ماژول‌های محاسباتی هیچ مقدار ثابتی (Magic Number) مستقیماً نوشته نمی‌شود. تمام اعداد (دوره زمانی، ضرایب، حساسیت لمس بر حسب پیکسل) به عنوان ورودی تابع تزریق می‌شوند.
-2. **کلاس تنظیمات الگوریتم‌ها (`ChartPreferences`):**
-   - تعداد کندل‌های اولیه دریافتی (پیش‌فرض: ۱۶۰)
-   - حداقل و حداکثر کندل‌های قابل مشاهده در زوم (پیش‌فرض: ۱۲ تا ۱۶۰)
-   - گام زوم (پیش‌فرض: ۸ کندل)
-   - حساسیت لمس و انتخاب خطوط (پیش‌فرض: ۲۴ پیکسل)
+### B. Android Mobile Web Experience
+- **Layout:** Sticky compact top info bar with ticker and fullscreen toggle, dominant responsive candlestick viewport with zero scroll interference (`touch-action: none`), quick drawing tool chips above the bottom navigation, and a 48dp Material 3 bottom navigation bar.
+- **Visual Reference:**
+  ![Mobile Trading App](/app/src/main/res/drawable/chart_mobile_ui_1794039908996.jpg)
 
 ---
 
-### سطح دوم: تم، رنگ‌ها و طراحی بصری (Theme & Design Tokens)
+## 2. Design Tokens & Visual Architecture
 
-```
-┌────────────────────────────────────────────────────────┐
-│  Theme Tokens (Color.kt / theme.css / Dimensions.kt)  │  <-- رنگ‌های پایه سیستم و پالت‌های پیش‌فرض
-└───────────────────────────┬────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│  Dynamic Palette State (CompositionLocal / CSS Vars)   │  <-- پالت فعال با قابلیت خواندن مقادیر ذخیره‌شده
-└───────────────────────────┬────────────────────────────┘
-                            │
-                            ▼
-┌────────────────────────────────────────────────────────┐
-│  Settings Color Picker & Customization UI              │  <-- کاربر می‌تواند رنگ دلخواه را تغییر دهد
-└────────────────────────────────────────────────────────┘
-```
+A single, shared design system (`theme.css`) with consistent tokens across both Web and Android:
 
-1. **انعطاف‌پذیری `FinancialPalette`:** کلاس داده `FinancialPalette` متغیرهای رنگی نمودار را نگه‌داری می‌کند و مقادیر آن از تنظیمات ذخیره‌شده کاربر بارگذاری می‌شود.
-2. **رنگ‌های قابل تنظیم:**
-   - رنگ کندل صعودی (پیش‌فرض: سبز `#10B981`)
-   - رنگ کندل نزولی (پیش‌فرض: قرمز `#F43F5E`)
-   - رنگ خط روند (پیش‌فرض: بنفش `#A855F7`)
-   - رنگ خط افقی (پیش‌فرض: فیروزه‌ای `#38BDF8`)
-   - رنگ خط عمودی (پیش‌فرض: کهربایی `#F59E0B`)
-   - دکمه بازگشت به تنظیمات اولیه (Reset to Default)
+| Token Category | Values & Specifications |
+|---|---|
+| **Backgrounds** | Deep Charcoal `#0B0F17` (Canvas base), Elevated Graphite `#131A26` (Surfaces), `#182232` (Hover/Active) |
+| **Borders** | Subtle border `#1F2937` (1px clean dividers) |
+| **Market Colors** | Bullish Emerald `#10B981`, Bearish Coral `#F43F5E`, Warning/Crosshair Gold `#F59E0B` |
+| **Typography** | Body/UI: **Vazirmatn** (Persian RTL & English), Numerics/Coordinates: **JetBrains Mono** (LTR tabular numbers) |
+| **Component Density** | Desktop: Compact 36-40px headers; Mobile: Touch-optimized 48px minimum touch targets |
 
 ---
 
-### سطح سوم: کاتالوگ نمادها و منابع داده (Dynamic Symbol Catalog)
+## 3. Desktop Web Experience (`host_subdomain/`)
 
-```
-┌───────────────────────────────────────┐
-│   Pre-populated Catalog (Defaults)    │  <-- طلا و نفت برنت (نقطه شروع آماده تست)
-└──────────────────┬────────────────────┘
-                   │
-                   ▼
-┌───────────────────────────────────────┐
-│   Add/Edit Symbol Dialog (Settings)   │  <-- ورودی: نماد، منبع داده، تعداد اعشار، نام
-└──────────────────┬────────────────────┘
-                   │
-                   ▼
-┌───────────────────────────────────────┐
-│   Dynamic Watchlist & Chart Workspace │  <-- باز شدن بلافاصله در واچ‌لیست و تب‌های نمودار
-└───────────────────────────────────────┘
-```
-
-1. **فرم افزودن/ویرایش نماد در تنظیمات:**
-   - فیلد نماد معاملاتی (مثلاً `BTCUSD`, `SILVER`)
-   - انتخاب منبع دریافت داده (`Twelve Data`, `Dukascopy`, `Yahoo Finance`, `EIA`)
-   - تعداد ارقام اعشار (مثلاً ۲ برای طلا، ۴ برای جفت‌ارزها)
-   - نام نمایشی دلخواه کاربر
-2. **پایداری داده‌ها:** لیست نمادها در فرمت JSON درون ذخیره‌ساز محلی ذخیره شده و بدون نیاز به کامپایل یا تغییر کد، نمادهای جدید اضافه، ویرایش یا حذف می‌شوند.
+### Key Components & Layout:
+1. **Compact Top Navigation Header:**
+   - Symbol badge and dropdown (XAUUSD, SPOTBRENT, custom symbols).
+   - Live price with real-time percentage change badge.
+   - Timeframe switchers: `M15`, `H1`, `H4`, `D1` (directly accessible, zero nested menus).
+   - Chart type toggle (Candlestick vs. Line).
+   - Actions: Fullscreen mode, Sync Now, Workspace Screen Switcher.
+2. **Left Vertical Tool Rail (TradingView-style):**
+   - Slim vertical dock with icons for Crosshair, Trendline, Horizontal Line, Vertical Line, Delete Selected, and Clear All.
+   - Active tool highlight indicator.
+3. **Dominant Chart Canvas:**
+   - Automatically occupies 100% of remaining viewport width and height.
+   - Floating OHLC pill at the top-left showing open, high, low, close of the hovered candle.
+   - Price scale on the right, time scale on the bottom.
+4. **Collapsible Secondary Panels:**
+   - Watchlist and settings slide out as side panels without squeezing the chart into unusable dimensions.
 
 ---
 
-## ۲. مراحل اجرایی پیاده‌سازی
+## 4. Android Mobile Experience (`host_subdomain/`)
 
-1. **گام اول:** ایجاد مدل `ChartDisplaySettings` و فرم‌های شخصی‌سازی رنگ‌ها و پارامترهای الگوریتم در بخش Settings (اندروید و وب).
-2. **گام دوم:** اضافه کردن فرم پاپ‌آپ/دیالوگ «افزودن نماد جدید» و «ویرایش نماد» در صفحه Settings با اعتبارسنجی ورودی‌ها.
-3. **گام سوم:** اتصال پالت رنگی پویا به بوم نمودار (`CandlestickCanvas` و `chartRenderer.js`) به طوری که با تغییر رنگ در تنظیمات، ظاهر نمودار بلافاصله تغییر کند.
-4. **گام چهارم:** اجرای تست‌های واحد و کامپایل برای راستی‌آزمایی پایداری تنظیمات و عملکرد نمادهای داینامیک.
+### Key Components & Layout:
+1. **Sticky Compact Header:**
+   - Ticker code, live price, +% badge, active timeframe chip, and fullscreen button.
+2. **Touch-First Fullscreen Chart:**
+   - Viewport lock using `touch-action: none` on the chart canvas to eliminate accidental page bounce or scrolling while panning or zooming.
+   - Support for pinch-to-zoom and horizontal swipe for historical candle navigation.
+3. **Drawing Toolbar:**
+   - Horizontal toolbar directly below the chart with icon chips for placing lines and markers.
+4. **Fixed Bottom Navigation Bar:**
+   - 4-tab navigation: **Watchlist**, **Chart**, **Analysis**, **Settings**.
+   - Accessible with one hand, minimum 48dp tap target size.
+5. **Landscape Mode:**
+   - Automatically maximizes canvas to 100% screen area with ultra-compact floating controls for full-screen analysis.
+
+---
+
+## 5. Android Native Compose Alignment (`app/`)
+
+- Ensure the Android native application (`ChartViewScreen.kt`, `CandlestickCanvas.kt`, `SettingsScreen.kt`, `WatchlistScreen.kt`) maintains 100% parity with the exact same visual tokens, color choices, and navigation paradigm.
+
+---
+
+## 6. Implementation Stages & Proposed Steps
+
+1. **Stage 1 — Core Design System (`theme.css`):**
+   - Implement the complete token system (deep charcoal palette, typography, responsive breakpoints, tool rail classes, and touch-action rules).
+2. **Stage 2 — Web Application Shell & Layout (`index.html` & `app.js`):**
+   - Restructure desktop layout with top ticker bar, left vertical drawing rail, and full-viewport chart area.
+   - Implement responsive breakpoints switching to mobile bottom navigation and compact sticky header under 768px.
+3. **Stage 3 — Chart Canvas Touch & Desktop Ergonomics:**
+   - Add mouse wheel zoom and canvas drag for desktop.
+   - Refine touch events (pinch-to-zoom, pan) without page scrolling on mobile.
+   - Implement full-screen mode toggle.
+4. **Stage 4 — Functional Verification:**
+   - Verify all existing features: real data sync (Dukascopy, Twelve Data, Yahoo, EIA), timeframe aggregation (M15 to H1/H4/D1), drawing tools persistence, dynamic color customization, and custom symbol creation.
+   - Run compilation and unit tests: `compile_applet` and `gradle :app:testDebugUnitTest`.
+
+---
+
+## User Confirmation & Next Steps
+Please review the generated visual mockups and this implementation plan. Click **Proceed** to begin implementation.

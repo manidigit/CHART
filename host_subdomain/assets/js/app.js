@@ -6,10 +6,11 @@ import { computeChartGeometry, renderCandlestickCanvas } from './components/char
 
 const i18n = new I18nManager();
 
-const DEFAULT_SYMBOLS = [
+const BASE_SYMBOLS = [
   {
     chartId: 'chart_xauusd_main',
     symbolCode: 'XAUUSD',
+    customTitle: null,
     decimals: 2,
     inWatchlist: true,
     activeProvider: 'twelve_data',
@@ -19,6 +20,7 @@ const DEFAULT_SYMBOLS = [
   {
     chartId: 'chart_spotbrent_main',
     symbolCode: 'SPOTBRENT',
+    customTitle: null,
     decimals: 2,
     inWatchlist: true,
     activeProvider: 'dukascopy',
@@ -28,6 +30,7 @@ const DEFAULT_SYMBOLS = [
   {
     chartId: 'chart_brent_futures',
     symbolCode: 'BRENT_FUTURES',
+    customTitle: null,
     decimals: 2,
     inWatchlist: false,
     activeProvider: 'yahoo_finance',
@@ -37,6 +40,7 @@ const DEFAULT_SYMBOLS = [
   {
     chartId: 'chart_xagusd_spot',
     symbolCode: 'XAGUSD',
+    customTitle: null,
     decimals: 3,
     inWatchlist: false,
     activeProvider: 'twelve_data',
@@ -46,6 +50,7 @@ const DEFAULT_SYMBOLS = [
   {
     chartId: 'chart_eurusd_spot',
     symbolCode: 'EURUSD',
+    customTitle: null,
     decimals: 4,
     inWatchlist: false,
     activeProvider: 'twelve_data',
@@ -63,11 +68,36 @@ const state = {
   ownerUsername: localStorage.getItem('ci_owner_username') || '',
   authErrorKey: null,
   statusBannerKey: null,
-  currentScreen: 'watchlist',
+  currentScreen: 'chart_view',
+  desktopSidePanel: 'watchlist', // 'watchlist' | 'analysis' | 'settings' | null (collapsed)
   symbols: [],
   openTabs: [],
   activeTabId: null,
+  chartPreferences: loadChartPreferences(),
+  showAddSymbolModal: false,
 };
+
+function loadChartPreferences() {
+  const defaults = {
+    bullColor: '#10B981',
+    bearColor: '#F43F5E',
+    trendColor: '#A855F7',
+    hlineColor: '#38BDF8',
+    vlineColor: '#F59E0B',
+    candleFetchLimit: 160,
+  };
+  try {
+    const saved = JSON.parse(localStorage.getItem('ci_chart_preferences') || '{}');
+    return { ...defaults, ...saved };
+  } catch (_) {
+    return defaults;
+  }
+}
+
+function saveChartPreferences(prefs) {
+  state.chartPreferences = { ...state.chartPreferences, ...prefs };
+  localStorage.setItem('ci_chart_preferences', JSON.stringify(state.chartPreferences));
+}
 
 function applyTheme() {
   document.documentElement.setAttribute('data-theme', state.isDarkTheme ? 'dark' : 'light');
@@ -102,7 +132,8 @@ function saveCandlesToCache(symbolCode, provider, timeframe, candles) {
   const exactKey = `${symbolCode}_${provider}_${normTf}`;
   candleCache.set(exactKey, candles);
   try {
-    localStorage.setItem(`ci_candles_v2_${exactKey}`, JSON.stringify(candles.slice(-160)));
+    const limit = state.chartPreferences.candleFetchLimit || 160;
+    localStorage.setItem(`ci_candles_v2_${exactKey}`, JSON.stringify(candles.slice(-limit)));
   } catch (_) {}
 }
 
@@ -123,10 +154,14 @@ function saveDrawings(chartId, drawings) {
 
 function loadSymbolsFromStorage() {
   let saved = null;
+  let custom = [];
   try {
     saved = JSON.parse(localStorage.getItem('ci_symbols') || 'null');
+    custom = JSON.parse(localStorage.getItem('ci_custom_symbols') || '[]');
   } catch (_) {}
-  state.symbols = DEFAULT_SYMBOLS.map((item) => {
+
+  const allDefinitions = [...BASE_SYMBOLS, ...(Array.isArray(custom) ? custom : [])];
+  state.symbols = allDefinitions.map((item) => {
     const match = Array.isArray(saved) ? saved.find((s) => s.symbolCode === item.symbolCode) : null;
     const activeProvider =
       match && item.allowedProviders.includes(match.activeProvider)
@@ -166,6 +201,44 @@ function saveSymbolsToStorage() {
       }))
     )
   );
+  const customSymbols = state.symbols.filter((s) => s.isCustom);
+  localStorage.setItem('ci_custom_symbols', JSON.stringify(customSymbols));
+}
+
+function addCustomSymbol(symbolCode, customTitle, decimals, provider) {
+  const cleanCode = symbolCode.trim().toUpperCase();
+  if (!cleanCode || state.symbols.some((s) => s.symbolCode === cleanCode)) return;
+
+  const newSym = {
+    chartId: `chart_${cleanCode.toLowerCase()}_custom`,
+    symbolCode: cleanCode,
+    customTitle: customTitle.trim() || cleanCode,
+    decimals: Math.max(0, Math.min(6, decimals || 2)),
+    inWatchlist: true,
+    activeProvider: provider || 'dukascopy',
+    allowedProviders: ['dukascopy', 'twelve_data', 'yahoo_finance'],
+    timeframe: 'M15',
+    isCustom: true,
+    candles: [],
+    lastClose: null,
+    lastCandleUtc: null,
+    isSyncing: false,
+    hasError: false,
+  };
+  state.symbols.push(newSym);
+  saveSymbolsToStorage();
+  openSymbolInTab(cleanCode);
+  syncSymbolNow(cleanCode);
+}
+
+function deleteSymbol(symbolCode) {
+  state.symbols = state.symbols.filter((s) => s.symbolCode !== symbolCode);
+  state.openTabs = state.openTabs.filter((t) => t.symbolCode !== symbolCode);
+  if (state.activeTabId && state.activeTabId.startsWith(symbolCode)) {
+    state.activeTabId = state.openTabs.length ? state.openTabs[state.openTabs.length - 1].tabId : null;
+  }
+  saveSymbolsToStorage();
+  renderApp();
 }
 
 async function checkBackendOwnerStatus() {
@@ -200,11 +273,12 @@ async function syncSymbolNow(symbolCode, requestedTimeframe = null) {
 
   let fetchedCandles = [];
   try {
+    const limit = state.chartPreferences.candleFetchLimit || 160;
     const url = `./api/v1/candles_sync.php?symbol=${encodeURIComponent(
       sym.symbolCode
     )}&provider=${encodeURIComponent(sym.activeProvider)}&timeframe=${encodeURIComponent(
       tf
-    )}&limit=160`;
+    )}&limit=${limit}`;
     const res = await fetch(url);
     const json = await res.json();
     if (json && json.ok && json.data && Array.isArray(json.data.candles)) {
@@ -248,26 +322,26 @@ function openSymbolInTab(symbolCode) {
   const tabId = `${sym.symbolCode}_${sym.activeProvider}`;
   let existing = state.openTabs.find((t) => t.tabId === tabId);
   if (!existing) {
-    const cached = getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, sym.timeframe);
     existing = {
       tabId,
-      chartId: sym.chartId,
       symbolCode: sym.symbolCode,
-      decimals: sym.decimals,
+      customTitle: sym.customTitle,
       provider: sym.activeProvider,
       timeframe: sym.timeframe,
-      chartType: 'candlestick',
-      candles: cached,
-      visibleCount: 48,
+      decimals: sym.decimals,
+      chartId: sym.chartId,
+      candles: sym.candles || [],
       scrollOffset: 0,
-      selectedCandleIndex: null,
-      isAutoScaleY: true,
-      yPriceScaleFactor: 1.0,
+      visibleCount: 48,
+      chartType: 'candlestick',
       activeDrawingTool: 'cursor',
       drawings: loadDrawings(sym.chartId),
       selectedDrawingId: null,
       pendingTrendPoint: null,
-      isLoading: cached.length === 0,
+      selectedCandleIndex: null,
+      isAutoScaleY: true,
+      yPriceScaleFactor: 1.0,
+      isLoading: (sym.candles || []).length === 0,
       hasError: false,
     };
     state.openTabs.push(existing);
@@ -275,289 +349,264 @@ function openSymbolInTab(symbolCode) {
   state.activeTabId = tabId;
   state.currentScreen = 'chart_view';
   renderApp();
-
-  if (existing.candles.length === 0) {
-    syncSymbolNow(sym.symbolCode, existing.timeframe);
-  }
 }
 
-function renderLanguageThemeBar() {
-  return `
-    <div class="chip-group" style="margin-bottom: 14px;">
-      <button class="chip ${i18n.lang === 'fa' ? 'active' : ''}" data-action="set-lang" data-lang="fa" data-testid="lang_fa_chip">
-        ${i18n.t('settings_lang_fa')}
-      </button>
-      <button class="chip ${i18n.lang === 'en' ? 'active' : ''}" data-action="set-lang" data-lang="en" data-testid="lang_en_chip">
-        ${i18n.t('settings_lang_en')}
-      </button>
-      <button class="chip ${state.isDarkTheme ? 'active' : ''}" data-action="set-theme" data-theme="dark" data-testid="theme_dark_chip">
-        ${i18n.t('settings_theme_dark')}
-      </button>
-      <button class="chip ${!state.isDarkTheme ? 'active' : ''}" data-action="set-theme" data-theme="light" data-testid="theme_light_chip">
-        ${i18n.t('settings_theme_light')}
-      </button>
-    </div>
-  `;
+function computeTechnicalAnalytics(candles) {
+  if (!candles || candles.length === 0) return null;
+  const slice = candles.slice(-24);
+  let highest = -Infinity;
+  let lowest = Infinity;
+  let bullCount = 0;
+  let bearCount = 0;
+  let totalVol = 0;
+
+  for (const c of slice) {
+    highest = Math.max(highest, Number(c.high));
+    lowest = Math.min(lowest, Number(c.low));
+    if (Number(c.close) >= Number(c.open)) bullCount++;
+    else bearCount++;
+    totalVol += Number(c.volume || 0);
+  }
+
+  // ATR (14 period)
+  let atr = 0;
+  if (candles.length >= 2) {
+    const atrSlice = candles.slice(-15);
+    let trSum = 0;
+    for (let i = 1; i < atrSlice.length; i++) {
+      const cur = atrSlice[i];
+      const prev = atrSlice[i - 1];
+      const hl = Number(cur.high) - Number(cur.low);
+      const hc = Math.abs(Number(cur.high) - Number(prev.close));
+      const lc = Math.abs(Number(cur.low) - Number(prev.close));
+      trSum += Math.max(hl, hc, lc);
+    }
+    atr = trSum / (atrSlice.length - 1);
+  }
+
+  // Classic Floor Pivot Points
+  const lastBar = candles[candles.length - 1];
+  const h = Number(lastBar.high);
+  const l = Number(lastBar.low);
+  const c = Number(lastBar.close);
+  const p = (h + l + c) / 3;
+  const r1 = 2 * p - l;
+  const s1 = 2 * p - h;
+  const r2 = p + (h - l);
+  const s2 = p - (h - l);
+
+  return {
+    periodHigh: highest,
+    periodLow: lowest,
+    spread: highest - lowest,
+    atr14: atr,
+    bullCount,
+    bearCount,
+    totalBars: slice.length,
+    bullRatio: Math.round((bullCount / Math.max(1, slice.length)) * 100),
+    pivot: p,
+    r1,
+    s1,
+    r2,
+    s2,
+    lastClose: c,
+    volume: totalVol,
+  };
 }
 
 function renderLoginScreen() {
-  const isSetup = !state.isOwnerRegistered;
+  const isReg = state.isOwnerRegistered;
   return `
-    <div class="app-container" style="max-width: 500px; margin-top: 24px;">
-      <h1 style="color: var(--primary); margin-bottom: 4px;">${i18n.t('app_name')}</h1>
-      <p style="color: var(--muted); margin-top: 0;">${i18n.t('app_subtitle')}</p>
-      ${renderLanguageThemeBar()}
-      <div class="card" data-testid="login_card">
-        <h2 style="margin-top: 0;">${i18n.t(isSetup ? 'login_setup_title' : 'login_signin_title')}</h2>
-        <p style="color: var(--muted);">${i18n.t(isSetup ? 'login_setup_subtitle' : 'login_signin_subtitle')}</p>
+    <div style="min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;">
+      <div class="card" style="max-width: 440px; width: 100%; padding: 28px;">
+        <div style="text-align: center; margin-bottom: 24px;">
+          <div style="font-size: 26px; font-weight: 800; letter-spacing: 1px; color: var(--primary);">${i18n.t('app_name')}</div>
+          <div style="font-size: 13px; color: var(--text-muted); margin-top: 6px;">${i18n.t('app_subtitle')}</div>
+        </div>
+        <h3 style="margin: 0 0 8px 0;">${isReg ? i18n.t('login_signin_title') : i18n.t('login_setup_title')}</h3>
+        <p style="font-size: 13px; color: var(--text-muted); margin: 0 0 20px 0;">
+          ${isReg ? i18n.t('login_signin_subtitle') : i18n.t('login_setup_subtitle')}
+        </p>
+        ${
+          state.authErrorKey
+            ? `<div style="background: var(--bear-bg); border: 1px solid var(--bear); color: var(--bear); padding: 10px 14px; border-radius: var(--radius-sm); font-size: 13px; margin-bottom: 16px;">
+                 ${i18n.t(state.authErrorKey)}
+               </div>`
+            : ''
+        }
         <form id="auth-form">
-          <input class="input-field" name="username" placeholder="${i18n.t('label_username')}" value="${state.ownerUsername}" data-testid="username_input" />
-          <input class="input-field" type="password" name="password" placeholder="${i18n.t('label_password')}" data-testid="password_input" />
+          <input class="input-field" type="text" name="username" placeholder="${i18n.t('label_username')}" value="${state.ownerUsername}" required autocomplete="username" />
+          <input class="input-field" type="password" name="password" placeholder="${i18n.t('label_password')}" required autocomplete="current-password" />
           ${
-            isSetup
-              ? `<input class="input-field" type="password" name="confirm_password" placeholder="${i18n.t('label_confirm_password')}" data-testid="confirm_password_input" />`
+            !isReg
+              ? `<input class="input-field" type="password" name="confirm_password" placeholder="${i18n.t('label_confirm_password')}" required autocomplete="new-password" />`
               : ''
           }
-          ${
-            state.authErrorKey
-              ? `<p style="color: var(--bear); font-weight: 600;">${i18n.t(state.authErrorKey)}</p>`
-              : ''
-          }
-          <button type="submit" class="btn btn-primary" style="width: 100%;" data-testid="login_submit_button">
-            ${i18n.t(isSetup ? 'action_create_owner_account' : 'action_sign_in')}
+          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 10px;">
+            ${isReg ? i18n.t('action_sign_in') : i18n.t('action_create_owner_account')}
           </button>
         </form>
+        <div style="margin-top: 24px; border-top: 1px solid var(--border); padding-top: 16px;">
+          ${renderLanguageThemeBar()}
+        </div>
       </div>
     </div>
   `;
 }
 
-function renderWatchlistScreen() {
+function renderLanguageThemeBar() {
+  const isFa = i18n.getCurrentLanguage() === 'fa';
+  return `
+    <div class="row-between" style="font-size: 13px;">
+      <div class="chip-group">
+        <button class="chip ${isFa ? 'active' : ''}" data-action="set-lang" data-lang="fa">فارسی</button>
+        <button class="chip ${!isFa ? 'active' : ''}" data-action="set-lang" data-lang="en">English</button>
+      </div>
+      <div class="chip-group">
+        <button class="chip ${state.isDarkTheme ? 'active' : ''}" data-action="set-theme" data-theme="dark">Dark</button>
+        <button class="chip ${!state.isDarkTheme ? 'active' : ''}" data-action="set-theme" data-theme="light">Light</button>
+      </div>
+    </div>
+  `;
+}
+
+function renderWatchlistContent() {
   const watchlist = state.symbols.filter((s) => s.inWatchlist);
   const cardsHtml = watchlist
-    .map(
-      (s) => `
-      <div class="card" data-testid="watchlist_card_${s.symbolCode.toLowerCase()}">
+    .map((s) => {
+      const title = s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode;
+      const pct = s.candles.length >= 2 ? PriceFormatter.formatSignedPct(s.candles[0].open, s.lastClose) : '+0.00%';
+      const isBull = !pct.startsWith('-');
+      return `
+      <div class="card-subtle" style="margin-bottom: 8px;">
         <div class="row-between">
           <div>
-            <div style="font-size: 16px; font-weight: 700;">${i18n.t('symbol_' + s.symbolCode)}</div>
-            <div style="margin-top: 6px; display: flex; gap: 8px; align-items: center;">
-              <span class="ltr-num" style="color: var(--muted); font-weight: 600;">${s.symbolCode}</span>
-              <span class="source-badge ltr-num">${s.activeProvider} · ${s.timeframe}</span>
+            <div style="font-weight: 700; font-size: 14px;">${title}</div>
+            <div class="ltr-num" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+              ${s.symbolCode} · ${s.activeProvider} (${s.timeframe})
             </div>
           </div>
-          <div class="ltr-num" style="text-align: right;">
-            <div style="font-size: 20px; font-weight: 700; color: var(--primary);">
+          <div style="text-align: end;">
+            <div class="ltr-num" style="font-weight: 700; font-size: 15px; color: var(--primary);">
               ${PriceFormatter.formatPrice(s.lastClose, s.decimals)}
             </div>
-            <div style="font-size: 12px; color: var(--muted);">${s.candles.length} bars</div>
+            <span class="pct-badge ${isBull ? 'bull' : 'bear'}">${pct}</span>
           </div>
         </div>
-        <div class="row-between" style="margin-top: 12px; font-size: 13px;">
-          <span style="color: var(--muted);">${i18n.t('label_last_candle_utc')}</span>
-          <span class="ltr-num" style="color: var(--bull);">${s.lastCandleUtc || i18n.t('status_never_synced')}</span>
-        </div>
-        <div class="btn-row" style="margin-top: 14px;">
-          <button class="btn" data-action="sync-symbol" data-symbol="${s.symbolCode}" ${s.isSyncing ? 'disabled' : ''} data-testid="sync_now_button_${s.symbolCode.toLowerCase()}">
+        <div class="btn-row" style="margin-top: 10px;">
+          <button class="btn btn-sm" data-action="sync-symbol" data-symbol="${s.symbolCode}" ${s.isSyncing ? 'disabled' : ''}>
             ${s.isSyncing ? i18n.t('action_syncing') : i18n.t('action_sync_now')}
           </button>
-          <button class="btn btn-primary" data-action="open-chart" data-symbol="${s.symbolCode}" data-testid="open_chart_button_${s.symbolCode.toLowerCase()}">
+          <button class="btn btn-sm btn-primary" data-action="open-chart" data-symbol="${s.symbolCode}">
             ${i18n.t('action_open_chart_view')}
           </button>
         </div>
       </div>
-    `
-    )
-    .join('');
-
-  return `
-    <div class="app-container">
-      <div class="row-between" style="margin-bottom: 12px;">
-        <div>
-          <h2 style="margin: 0;">${i18n.t('watchlist_title')}</h2>
-          <p style="color: var(--muted); margin: 4px 0 0 0;">${i18n.t('watchlist_subtitle')}</p>
-        </div>
-      </div>
-      <div class="btn-row" style="margin-bottom: 14px;">
-        <button class="btn btn-primary" data-action="sync-all" data-testid="sync_all_watchlist_button">
-          ${i18n.t('action_sync_all')}
-        </button>
-        <button class="btn" data-action="nav" data-screen="settings" style="flex: 0 0 auto;">
-          ${i18n.t('nav_settings')}
-        </button>
-      </div>
-      ${
-        state.statusBannerKey
-          ? `<p style="color: var(--bull); font-weight: 600;">${i18n.t(state.statusBannerKey)}</p>`
-          : ''
-      }
-      ${
-        watchlist.length === 0
-          ? `<div class="card"><h3>${i18n.t('watchlist_empty_title')}</h3><p style="color: var(--muted);">${i18n.t('watchlist_empty_hint')}</p></div>`
-          : cardsHtml
-      }
-    </div>
-  `;
-}
-
-function renderChartViewScreen() {
-  const activeTab = state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0] || null;
-  if (!activeTab) {
-    return `
-      <div class="app-container">
-        <div class="row-between" style="margin-bottom: 14px;">
-          <h2 style="margin: 0;">${i18n.t('chart_view_title')}</h2>
-          <button class="btn" data-action="nav" data-screen="watchlist" style="flex: 0 0 auto;">
-            ${i18n.t('chart_open_from_watchlist')}
-          </button>
-        </div>
-        <div class="card" style="text-align: center; padding: 42px 18px;">
-          <h3>${i18n.t('chart_view_no_tabs_title')}</h3>
-          <p style="color: var(--muted);">${i18n.t('chart_view_no_tabs_hint')}</p>
-          <button class="btn btn-primary" data-action="nav" data-screen="watchlist" style="max-width: 240px;">
-            ${i18n.t('chart_open_from_watchlist')}
-          </button>
-        </div>
-      </div>
     `;
-  }
-
-  const tabsHtml = state.openTabs
-    .map(
-      (t) => `
-      <div class="chart-tab ${t.tabId === activeTab.tabId ? 'active' : ''}" data-action="select-tab" data-tab="${t.tabId}" data-testid="chart_tab_${t.tabId.toLowerCase()}">
-        <strong>${t.symbolCode}</strong>
-        <span style="font-size: 12px; color: var(--muted);">${t.provider} (${t.timeframe})</span>
-        <button class="chart-tab-close" data-action="close-tab" data-tab="${t.tabId}" title="${i18n.t('chart_close_tab')}">×</button>
-      </div>
-    `
-    )
-    .join('');
-
-  const inspected =
-    activeTab.selectedCandleIndex !== null &&
-    activeTab.candles[activeTab.selectedCandleIndex]
-      ? activeTab.candles[activeTab.selectedCandleIndex]
-      : activeTab.candles[activeTab.candles.length - 1] || {};
-  const pct = PriceFormatter.formatSignedPct(inspected.open, inspected.close);
-  const allowedTfs = activeTab.provider === 'eia_brent_spot' ? ['D1'] : ['M15', 'H1', 'H4', 'D1'];
-
-  const tfButtonsHtml = ['M15', 'H1', 'H4', 'D1']
-    .map((tf) => {
-      const enabled = allowedTfs.includes(tf);
-      return `<button class="chip ltr-num ${activeTab.timeframe === tf ? 'active' : ''}" data-action="set-timeframe" data-tf="${tf}" ${!enabled ? 'disabled' : ''} data-testid="chart_tf_${tf.toLowerCase()}_button">${tf}</button>`;
     })
     .join('');
 
   return `
-    <div class="app-container">
-      <div class="row-between" style="margin-bottom: 10px;">
-        <h2 style="margin: 0;">${i18n.t('chart_view_title')}</h2>
-        <button class="btn" data-action="nav" data-screen="watchlist" style="flex: 0 0 auto;" data-testid="chart_back_to_watchlist_button">
-          ${i18n.t('chart_open_from_watchlist')}
+    <div>
+      <div class="row-between" style="margin-bottom: 12px;">
+        <h4 style="margin: 0;">${i18n.t('watchlist_title')} (${watchlist.length})</h4>
+        <button class="btn btn-sm btn-primary" data-action="sync-all">
+          ${i18n.t('action_sync_all')}
         </button>
       </div>
-      <div class="tab-bar">${tabsHtml}</div>
+      ${watchlist.length === 0 ? `<p style="color: var(--text-muted); font-size: 13px;">${i18n.t('watchlist_empty_hint')}</p>` : cardsHtml}
+    </div>
+  `;
+}
 
-      <!-- Timeframe, Chart Type & Navigation Toolbar -->
-      <div class="card-subtle" style="padding: 10px;">
-        <div class="row-between" style="gap: 8px;">
-          <div class="chip-group">${tfButtonsHtml}</div>
-          <div class="chip-group">
-            <button class="chip ${activeTab.chartType !== 'line' ? 'active' : ''}" data-action="set-chart-type" data-type="candlestick" data-testid="chart_type_candlestick_button">${i18n.t('chart_type_candles')}</button>
-            <button class="chip ${activeTab.chartType === 'line' ? 'active' : ''}" data-action="set-chart-type" data-type="line" data-testid="chart_type_line_button">${i18n.t('chart_type_line')}</button>
-          </div>
+function renderAnalysisContent(activeTab) {
+  if (!activeTab || !activeTab.candles || activeTab.candles.length === 0) {
+    return `<p style="color: var(--text-muted); font-size: 13px;">${i18n.t('analysis_no_data')}</p>`;
+  }
+  const stats = computeTechnicalAnalytics(activeTab.candles);
+  if (!stats) return `<p style="color: var(--text-muted); font-size: 13px;">${i18n.t('analysis_no_data')}</p>`;
+
+  const dec = activeTab.decimals;
+  return `
+    <div>
+      <h4 style="margin: 0 0 12px 0;">${i18n.t('analysis_title')}</h4>
+      <div class="card-subtle" style="margin-bottom: 10px;">
+        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">${i18n.t('analysis_key_stats')} (24 Bars)</div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+          <span>High / Low</span>
+          <strong>${PriceFormatter.formatPrice(stats.periodHigh, dec)} / ${PriceFormatter.formatPrice(stats.periodLow, dec)}</strong>
         </div>
-        <div class="chip-group" style="margin-top: 8px;">
-          <button class="chip" data-action="zoom-in" data-testid="chart_zoom_in_button">${i18n.t('chart_zoom_in')}</button>
-          <button class="chip" data-action="zoom-out" data-testid="chart_zoom_out_button">${i18n.t('chart_zoom_out')}</button>
-          <button class="chip" data-action="fit-content" data-testid="chart_fit_content_button">${i18n.t('chart_fit_content')}</button>
-          <button class="chip" data-action="reset-chart" data-testid="chart_reset_latest_button">${i18n.t('chart_reset_view')}</button>
-          <button class="chip ${activeTab.isAutoScaleY !== false ? 'active' : ''}" data-action="auto-scale-y" data-testid="chart_auto_scale_button">
-            ${activeTab.isAutoScaleY !== false ? i18n.t('chart_auto_scale') : i18n.t('chart_manual_scale')}
-          </button>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+          <span>Spread / Range</span>
+          <strong>${PriceFormatter.formatPrice(stats.spread, dec)}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+          <span>ATR (14)</span>
+          <strong style="color: var(--gold);">${PriceFormatter.formatPrice(stats.atr14, dec)}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px;">
+          <span>Sentiment</span>
+          <strong style="color: ${stats.bullRatio >= 50 ? 'var(--bull)' : 'var(--bear)'};">
+            ${stats.bullRatio}% Bullish (${stats.bullCount}/${stats.totalBars})
+          </strong>
         </div>
       </div>
 
-      <!-- Drawing Tools Bar -->
-      <div class="card-subtle" style="padding: 10px;">
-        <div class="chip-group">
-          <button class="chip ${activeTab.activeDrawingTool === 'cursor' ? 'active' : ''}" data-action="set-draw-tool" data-tool="cursor" data-testid="draw_tool_cursor_button">${i18n.t('draw_tool_cursor')}</button>
-          <button class="chip ${activeTab.activeDrawingTool === 'horizontal_line' ? 'active' : ''}" data-action="set-draw-tool" data-tool="horizontal_line" data-testid="draw_tool_hline_button">${i18n.t('draw_tool_hline')}</button>
-          <button class="chip ${activeTab.activeDrawingTool === 'vertical_line' ? 'active' : ''}" data-action="set-draw-tool" data-tool="vertical_line" data-testid="draw_tool_vline_button">${i18n.t('draw_tool_vline')}</button>
-          <button class="chip ${activeTab.activeDrawingTool === 'trend_line' ? 'active' : ''}" data-action="set-draw-tool" data-tool="trend_line" data-testid="draw_tool_trend_button">${i18n.t('draw_tool_trend')}</button>
-          ${
-            activeTab.selectedDrawingId
-              ? `<button class="chip" style="border-color: var(--bear); color: var(--bear);" data-action="delete-drawing" data-testid="draw_delete_selected_button">${i18n.t('draw_delete_selected')}</button>`
-              : ''
-          }
-          ${
-            (activeTab.drawings || []).length > 0
-              ? `<button class="chip" data-action="clear-drawings" data-testid="draw_clear_all_button">${i18n.t('draw_clear_all')} (${activeTab.drawings.length})</button>`
-              : ''
-          }
+      <div class="card-subtle">
+        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">${i18n.t('analysis_pivot_points')}</div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+          <span style="color: var(--bear);">R2</span>
+          <span>${PriceFormatter.formatPrice(stats.r2, dec)}</span>
         </div>
-      </div>
-
-      <!-- Main Chart Card -->
-      <div class="card" style="padding: 12px;">
-        <div class="row-between ltr-num" style="margin-bottom: 6px; font-size: 13px;">
-          <strong style="color: var(--primary);">${activeTab.symbolCode} · ${activeTab.provider} · ${activeTab.timeframe}</strong>
-          <span style="color: var(--muted);">${inspected.open_time_utc_iso || ''}</span>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+          <span style="color: var(--bear);">R1</span>
+          <span>${PriceFormatter.formatPrice(stats.r1, dec)}</span>
         </div>
-        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 10px;">
-          <span>O: ${PriceFormatter.formatPrice(inspected.open, activeTab.decimals)}</span>
-          <span style="color: var(--bull);">H: ${PriceFormatter.formatPrice(inspected.high, activeTab.decimals)}</span>
-          <span style="color: var(--bear);">L: ${PriceFormatter.formatPrice(inspected.low, activeTab.decimals)}</span>
-          <strong>C: ${PriceFormatter.formatPrice(inspected.close, activeTab.decimals)} (${pct})</strong>
-          ${inspected.volume ? `<span style="color: var(--muted);">V: ${Math.round(inspected.volume)}</span>` : ''}
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px; font-weight: 700; color: var(--gold);">
+          <span>Pivot (P)</span>
+          <span>${PriceFormatter.formatPrice(stats.pivot, dec)}</span>
         </div>
-        ${
-          activeTab.candles.length === 0
-            ? `<div style="height: 350px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;">
-                 <p style="color: ${activeTab.hasError ? 'var(--bear)' : 'var(--muted)'};">
-                   ${i18n.t(activeTab.isLoading ? 'chart_state_loading' : activeTab.hasError ? 'chart_state_error' : 'chart_state_empty')}
-                 </p>
-                 ${
-                   !activeTab.isLoading
-                     ? `<button class="btn btn-primary" style="max-width: 200px;" data-action="sync-symbol" data-symbol="${activeTab.symbolCode}">${i18n.t('chart_action_retry')}</button>`
-                     : ''
-                 }
-               </div>`
-            : `<canvas id="active-chart-canvas" class="trading-canvas"></canvas>`
-        }
-        <div class="btn-row" style="margin-top: 10px;">
-          <button class="btn btn-primary" data-action="sync-symbol" data-symbol="${activeTab.symbolCode}">
-            ${i18n.t('action_sync_now')}
-          </button>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+          <span style="color: var(--bull);">S1</span>
+          <span>${PriceFormatter.formatPrice(stats.s1, dec)}</span>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px;">
+          <span style="color: var(--bull);">S2</span>
+          <span>${PriceFormatter.formatPrice(stats.s2, dec)}</span>
         </div>
       </div>
     </div>
   `;
 }
 
-function renderSettingsScreen() {
-  const symbolsHtml = state.symbols
+function renderSettingsContent() {
+  const p = state.chartPreferences;
+  const symbolsList = state.symbols
     .map(
       (s) => `
-      <div class="card-subtle" data-testid="settings_symbol_card_${s.symbolCode.toLowerCase()}">
+      <div class="card-subtle" style="margin-bottom: 8px;">
         <div class="row-between">
           <div>
-            <strong>${i18n.t('symbol_' + s.symbolCode)}</strong>
-            <div class="ltr-num" style="font-size: 12px; color: var(--primary);">${s.symbolCode} · ${s.timeframe}</div>
+            <strong>${s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode}</strong>
+            <div class="ltr-num" style="font-size: 11px; color: var(--primary);">${s.symbolCode} · ${s.timeframe} · ${s.decimals} dec</div>
           </div>
-          <label style="display: flex; align-items: center; gap: 6px; cursor: pointer;">
-            <input type="checkbox" data-action="toggle-watchlist" data-symbol="${s.symbolCode}" ${s.inWatchlist ? 'checked' : ''} />
-            <span>${i18n.t('settings_in_watchlist')}</span>
-          </label>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <label style="display: flex; align-items: center; gap: 4px; cursor: pointer; font-size: 12px;">
+              <input type="checkbox" data-action="toggle-watchlist" data-symbol="${s.symbolCode}" ${s.inWatchlist ? 'checked' : ''} />
+            </label>
+            ${
+              s.isCustom
+                ? `<button class="btn btn-sm" style="color: var(--bear);" data-action="delete-symbol" data-symbol="${s.symbolCode}">✕</button>`
+                : ''
+            }
+          </div>
         </div>
-        <div style="margin-top: 8px; font-size: 13px; color: var(--muted);">${i18n.t('settings_select_provider')}</div>
         <div class="chip-group" style="margin-top: 6px;">
           ${s.allowedProviders
             .map(
-              (p) => `
-              <button class="chip ${s.activeProvider === p ? 'active' : ''}" data-action="select-provider" data-symbol="${s.symbolCode}" data-provider="${p}">
-                ${i18n.t('provider_' + p)}
+              (prov) => `
+              <button class="chip ${s.activeProvider === prov ? 'active' : ''}" style="font-size: 11px; min-height: 26px; padding: 2px 8px;" data-action="select-provider" data-symbol="${s.symbolCode}" data-provider="${prov}">
+                ${i18n.t('provider_' + prov)}
               </button>
             `
             )
@@ -569,44 +618,331 @@ function renderSettingsScreen() {
     .join('');
 
   return `
-    <div class="app-container">
-      <h2>${i18n.t('settings_title')}</h2>
-      <div class="card">
-        <h3 style="margin-top: 0;">${i18n.t('settings_appearance_section')}</h3>
-        ${renderLanguageThemeBar()}
-      </div>
-      <div class="card">
-        <h3 style="margin-top: 0;">${i18n.t('settings_symbols_section')}</h3>
-        <p style="color: var(--muted);">${i18n.t('settings_symbols_hint')}</p>
-        ${symbolsHtml}
-      </div>
-      <div class="card">
-        <h3 style="margin-top: 0;">${i18n.t('settings_account_section')} (${state.ownerUsername})</h3>
-        <button class="btn" data-action="sign-out" data-testid="settings_sign_out_button">
-          ${i18n.t('action_sign_out')}
+    <div>
+      <div class="row-between" style="margin-bottom: 12px;">
+        <h4 style="margin: 0;">${i18n.t('settings_symbols_section')}</h4>
+        <button class="btn btn-sm btn-primary" data-action="open-add-symbol-modal">
+          + ${i18n.t('settings_add_custom_symbol')}
         </button>
       </div>
+      ${symbolsList}
+
+      <div class="card-subtle" style="margin-top: 14px;">
+        <h5 style="margin: 0 0 10px 0;">${i18n.t('settings_chart_colors')}</h5>
+        <div style="font-size: 12px; margin-bottom: 4px;">Bullish Candle</div>
+        <div class="color-picker-row">
+          ${['#10B981', '#84CC16', '#06B6D4', '#22C55E', '#FFFFFF']
+            .map(
+              (c) => `<div class="color-dot ${p.bullColor === c ? 'active' : ''}" style="background: ${c};" data-action="set-color" data-target="bullColor" data-color="${c}"></div>`
+            )
+            .join('')}
+        </div>
+        <div style="font-size: 12px; margin: 10px 0 4px 0;">Bearish Candle</div>
+        <div class="color-picker-row">
+          ${['#F43F5E', '#E11D48', '#F97316', '#EC4899', '#A855F7']
+            .map(
+              (c) => `<div class="color-dot ${p.bearColor === c ? 'active' : ''}" style="background: ${c};" data-action="set-color" data-target="bearColor" data-color="${c}"></div>`
+            )
+            .join('')}
+        </div>
+      </div>
+
+      <div class="card-subtle" style="margin-top: 14px;">
+        <h5 style="margin: 0 0 8px 0;">${i18n.t('settings_appearance_section')}</h5>
+        ${renderLanguageThemeBar()}
+      </div>
+
+      <button class="btn" style="width: 100%; margin-top: 14px;" data-action="sign-out">
+        ${i18n.t('action_sign_out')} (${state.ownerUsername})
+      </button>
     </div>
   `;
 }
 
-function renderBottomNav() {
-  if (!state.isAuthenticated) return '';
-  const wlCount = state.symbols.filter((s) => s.inWatchlist).length;
-  const tabCount = state.openTabs.length;
-  return `
-    <nav class="bottom-nav">
-      <button class="nav-item ${state.currentScreen === 'watchlist' ? 'active' : ''}" data-action="nav" data-screen="watchlist" data-testid="nav_watchlist_item">
-        ${i18n.t('nav_watchlist')} (${wlCount})
-      </button>
-      <button class="nav-item ${state.currentScreen === 'chart_view' ? 'active' : ''}" data-action="nav" data-screen="chart_view" data-testid="nav_chart_view_item">
-        ${i18n.t('nav_chart_view')} (${tabCount})
-      </button>
-      <button class="nav-item ${state.currentScreen === 'settings' ? 'active' : ''}" data-action="nav" data-screen="settings" data-testid="nav_settings_item">
-        ${i18n.t('nav_settings')}
-      </button>
-    </nav>
+function renderApp() {
+  const root = document.getElementById('app-root');
+  if (!root) return;
+
+  if (!state.isAuthenticated) {
+    root.innerHTML = renderLoginScreen();
+    return;
+  }
+
+  const isDesktop = window.innerWidth >= 769;
+  const activeTab = state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0] || null;
+
+  if (!activeTab && state.symbols.length > 0) {
+    openSymbolInTab(state.symbols[0].symbolCode);
+    return;
+  }
+
+  // Active symbol inspected candle stats
+  const latestCandle = activeTab && activeTab.candles.length ? activeTab.candles[activeTab.candles.length - 1] : {};
+  const inspected =
+    activeTab && activeTab.selectedCandleIndex !== null && activeTab.candles[activeTab.selectedCandleIndex]
+      ? activeTab.candles[activeTab.selectedCandleIndex]
+      : latestCandle;
+  const pct = activeTab && latestCandle.open ? PriceFormatter.formatSignedPct(latestCandle.open, latestCandle.close) : '+0.00%';
+  const isBull = !pct.startsWith('-');
+  const allowedTfs = activeTab && activeTab.provider === 'eia_brent_spot' ? ['D1'] : ['M15', 'H1', 'H4', 'D1'];
+
+  // Topbar Timeframe Chips
+  const tfChipsHtml = ['M15', 'H1', 'H4', 'D1']
+    .map((tf) => {
+      const enabled = allowedTfs.includes(tf);
+      const isAct = activeTab && activeTab.timeframe === tf;
+      return `<button class="chip ltr-num ${isAct ? 'active' : ''}" data-action="set-timeframe" data-tf="${tf}" ${!enabled ? 'disabled' : ''}>${tf}</button>`;
+    })
+    .join('');
+
+  // Topbar Tabs for Open Charts
+  const tabsHtml = state.openTabs
+    .map(
+      (t) => `
+      <div class="chart-tab ${t.tabId === (activeTab ? activeTab.tabId : '') ? 'active' : ''}" data-action="select-tab" data-tab="${t.tabId}">
+        <strong>${t.symbolCode}</strong>
+        <span>${t.timeframe}</span>
+        <button class="chart-tab-close" data-action="close-tab" data-tab="${t.tabId}">×</button>
+      </div>
+    `
+    )
+    .join('');
+
+  // Side Panel Content on Desktop
+  let sidePanelHtml = '';
+  if (state.desktopSidePanel === 'watchlist') sidePanelHtml = renderWatchlistContent();
+  else if (state.desktopSidePanel === 'analysis') sidePanelHtml = renderAnalysisContent(activeTab);
+  else if (state.desktopSidePanel === 'settings') sidePanelHtml = renderSettingsContent();
+
+  const appHtml = `
+    <div class="terminal-layout">
+      <!-- Top Navigation & Ticker Header Bar -->
+      <header class="terminal-topbar">
+        <div class="topbar-left">
+          <div class="brand-badge">
+            <span class="live-dot"></span>
+            <span>CHART</span>
+          </div>
+
+          <!-- Symbol & Price Info Pill -->
+          ${
+            activeTab
+              ? `
+            <div class="symbol-selector-wrap" data-action="toggle-desktop-panel" data-panel="watchlist">
+              <span class="ticker-name">${activeTab.symbolCode}</span>
+              <span class="ticker-price ltr-num">${PriceFormatter.formatPrice(latestCandle.close, activeTab.decimals)}</span>
+              <span class="pct-badge ${isBull ? 'bull' : 'bear'}">${pct}</span>
+            </div>
+          `
+              : ''
+          }
+
+          <!-- Open Chart Tabs -->
+          <div class="tab-bar" style="max-width: 320px;">
+            ${tabsHtml}
+          </div>
+        </div>
+
+        <!-- Timeframe Controls -->
+        <div class="topbar-controls">
+          <div class="chip-group">
+            ${tfChipsHtml}
+          </div>
+          <div class="chip-group" style="margin-inline-start: 6px;">
+            <button class="chip ${activeTab && activeTab.chartType !== 'line' ? 'active' : ''}" data-action="set-chart-type" data-type="candlestick" title="${i18n.t('chart_type_candles')}">
+               شمعی
+            </button>
+            <button class="chip ${activeTab && activeTab.chartType === 'line' ? 'active' : ''}" data-action="set-chart-type" data-type="line" title="${i18n.t('chart_type_line')}">
+              خطی
+            </button>
+          </div>
+        </div>
+
+        <!-- Right Quick Actions -->
+        <div class="topbar-right">
+          <button class="btn btn-sm btn-icon" data-action="sync-symbol" data-symbol="${activeTab ? activeTab.symbolCode : ''}" title="${i18n.t('action_sync_now')}">
+            ↻
+          </button>
+          <button class="btn btn-sm btn-icon" data-action="toggle-fullscreen" title="${i18n.t('action_fullscreen')}">
+            ⛶
+          </button>
+          <button class="btn btn-sm ${state.desktopSidePanel === 'watchlist' ? 'btn-primary' : ''}" data-action="toggle-desktop-panel" data-panel="watchlist">
+            ${i18n.t('nav_watchlist')}
+          </button>
+          <button class="btn btn-sm ${state.desktopSidePanel === 'analysis' ? 'btn-primary' : ''}" data-action="toggle-desktop-panel" data-panel="analysis">
+            ${i18n.t('nav_analysis')}
+          </button>
+          <button class="btn btn-sm ${state.desktopSidePanel === 'settings' ? 'btn-primary' : ''}" data-action="toggle-desktop-panel" data-panel="settings">
+            ${i18n.t('nav_settings')}
+          </button>
+        </div>
+      </header>
+
+      <!-- Main Terminal Body -->
+      <div class="terminal-body">
+        <!-- Left Vertical Tool Rail (TradingView Style) -->
+        <aside class="left-tool-rail">
+          <button class="tool-rail-btn ${activeTab && activeTab.activeDrawingTool === 'cursor' ? 'active' : ''}" data-action="set-draw-tool" data-tool="cursor" title="${i18n.t('draw_tool_cursor')}">
+            +
+          </button>
+          <button class="tool-rail-btn ${activeTab && activeTab.activeDrawingTool === 'trend_line' ? 'active' : ''}" data-action="set-draw-tool" data-tool="trend_line" title="${i18n.t('draw_tool_trend')}">
+            ╱
+          </button>
+          <button class="tool-rail-btn ${activeTab && activeTab.activeDrawingTool === 'horizontal_line' ? 'active' : ''}" data-action="set-draw-tool" data-tool="horizontal_line" title="${i18n.t('draw_tool_hline')}">
+            ―
+          </button>
+          <button class="tool-rail-btn ${activeTab && activeTab.activeDrawingTool === 'vertical_line' ? 'active' : ''}" data-action="set-draw-tool" data-tool="vertical_line" title="${i18n.t('draw_tool_vline')}">
+            │
+          </button>
+          <div class="tool-rail-divider"></div>
+          ${
+            activeTab && activeTab.selectedDrawingId
+              ? `<button class="tool-rail-btn danger" data-action="delete-drawing" title="${i18n.t('draw_delete_selected')}">🗑</button>`
+              : ''
+          }
+          ${
+            activeTab && (activeTab.drawings || []).length > 0
+              ? `<button class="tool-rail-btn" data-action="clear-drawings" title="${i18n.t('draw_clear_all')}">✕</button>`
+              : ''
+          }
+          <div class="tool-rail-divider"></div>
+          <button class="tool-rail-btn" data-action="zoom-in" title="${i18n.t('chart_zoom_in')}">🔍+</button>
+          <button class="tool-rail-btn" data-action="zoom-out" title="${i18n.t('chart_zoom_out')}">🔍-</button>
+          <button class="tool-rail-btn" data-action="fit-content" title="${i18n.t('chart_fit_content')}">⤢</button>
+          <button class="tool-rail-btn" data-action="reset-chart" title="${i18n.t('chart_reset_view')}">↦</button>
+        </aside>
+
+        <!-- Mobile Horizontal Tools Bar (Under 768px) -->
+        <div class="mobile-chart-tools">
+          <button class="chip ${activeTab && activeTab.activeDrawingTool === 'cursor' ? 'active' : ''}" data-action="set-draw-tool" data-tool="cursor">${i18n.t('draw_tool_cursor')}</button>
+          <button class="chip ${activeTab && activeTab.activeDrawingTool === 'trend_line' ? 'active' : ''}" data-action="set-draw-tool" data-tool="trend_line">${i18n.t('draw_tool_trend')}</button>
+          <button class="chip ${activeTab && activeTab.activeDrawingTool === 'horizontal_line' ? 'active' : ''}" data-action="set-draw-tool" data-tool="horizontal_line">${i18n.t('draw_tool_hline')}</button>
+          <button class="chip ${activeTab && activeTab.activeDrawingTool === 'vertical_line' ? 'active' : ''}" data-action="set-draw-tool" data-tool="vertical_line">${i18n.t('draw_tool_vline')}</button>
+          <button class="chip" data-action="fit-content">${i18n.t('chart_fit_content')}</button>
+          <button class="chip" data-action="reset-chart">${i18n.t('chart_reset_view')}</button>
+        </div>
+
+        <!-- Central Chart Workspace -->
+        <main class="chart-workspace">
+          <!-- Floating OHLC Bar -->
+          ${
+            activeTab && inspected && inspected.close
+              ? `
+            <div class="floating-ohlc-bar">
+              <span style="color: var(--primary); font-weight: 700;">${activeTab.symbolCode} · ${activeTab.timeframe}</span>
+              <span>O: <span class="ohlc-val">${PriceFormatter.formatPrice(inspected.open, activeTab.decimals)}</span></span>
+              <span>H: <span class="ohlc-val bull">${PriceFormatter.formatPrice(inspected.high, activeTab.decimals)}</span></span>
+              <span>L: <span class="ohlc-val bear">${PriceFormatter.formatPrice(inspected.low, activeTab.decimals)}</span></span>
+              <span>C: <span class="ohlc-val">${PriceFormatter.formatPrice(inspected.close, activeTab.decimals)}</span></span>
+              ${inspected.volume ? `<span>V: <span class="ohlc-val">${Math.round(inspected.volume)}</span></span>` : ''}
+              <span style="color: var(--text-dim);">${inspected.open_time_utc_iso || ''}</span>
+            </div>
+          `
+              : ''
+          }
+
+          <!-- Canvas or Empty/Loading State -->
+          <div class="chart-canvas-container">
+            ${
+              !activeTab || activeTab.candles.length === 0
+                ? `<div style="height: 100%; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center;">
+                     <p style="color: ${activeTab && activeTab.hasError ? 'var(--bear)' : 'var(--text-muted)'}; font-size: 14px;">
+                       ${i18n.t(activeTab && activeTab.isLoading ? 'chart_state_loading' : activeTab && activeTab.hasError ? 'chart_state_error' : 'chart_state_empty')}
+                     </p>
+                     ${
+                       activeTab && !activeTab.isLoading
+                         ? `<button class="btn btn-primary" data-action="sync-symbol" data-symbol="${activeTab.symbolCode}">${i18n.t('chart_action_retry')}</button>`
+                         : ''
+                     }
+                   </div>`
+                : `<canvas id="active-chart-canvas" class="trading-canvas"></canvas>`
+            }
+          </div>
+        </main>
+
+        <!-- Right Collapsible Panel (Desktop) -->
+        <aside class="right-panel ${state.desktopSidePanel ? '' : 'collapsed'}">
+          <div class="panel-header">
+            <h4 class="panel-title">${i18n.t('nav_' + (state.desktopSidePanel || 'watchlist'))}</h4>
+            <button class="tool-rail-btn" data-action="toggle-desktop-panel" data-panel="${state.desktopSidePanel}">✕</button>
+          </div>
+          <div class="panel-content">
+            ${sidePanelHtml}
+          </div>
+        </aside>
+      </div>
+
+      <!-- Mobile Fixed Material 3 Bottom Navigation Bar -->
+      <nav class="bottom-nav">
+        <button class="nav-item ${state.currentScreen === 'watchlist' ? 'active' : ''}" data-action="nav" data-screen="watchlist">
+          <div class="nav-icon-pill">
+            <svg viewBox="0 0 24 24"><path d="M4 10.5c-.83 0-1.5.67-1.5 1.5s.67 1.5 1.5 1.5 1.5-.67 1.5-1.5-.67-1.5-1.5-1.5zm0-6c-.83 0-1.5.67-1.5 1.5S3.17 7.5 4 7.5 5.5 6.83 5.5 6 4.83 4.5 4 4.5zm0 12c-.83 0-1.5.68-1.5 1.5s.68 1.5 1.5 1.5 1.5-.68 1.5-1.5-.67-1.5-1.5-1.5zM7 19h14v-2H7v2zm0-6h14v-2H7v2zm0-8v2h14V5H7z"/></svg>
+          </div>
+          <span>${i18n.t('nav_watchlist')}</span>
+        </button>
+        <button class="nav-item ${state.currentScreen === 'chart_view' ? 'active' : ''}" data-action="nav" data-screen="chart_view">
+          <div class="nav-icon-pill">
+            <svg viewBox="0 0 24 24"><path d="M9 4H7v2H5v12h2v2h2v-2h2V6H9V4zm0 12H7V8h2v8zm10-8h-2V4h-2v2h-2v8h2v6h2v-6h2V8zm-2 4h-2v-2h2v2z"/></svg>
+          </div>
+          <span>${i18n.t('nav_chart_view')}</span>
+        </button>
+        <button class="nav-item ${state.currentScreen === 'analysis' ? 'active' : ''}" data-action="nav" data-screen="analysis">
+          <div class="nav-icon-pill">
+            <svg viewBox="0 0 24 24"><path d="M16 6l2.29 2.29-4.88 4.88-4-4L2 16.59 3.41 18l6-6 4 4 6.3-6.29L22 12V6z"/></svg>
+          </div>
+          <span>${i18n.t('nav_analysis')}</span>
+        </button>
+        <button class="nav-item ${state.currentScreen === 'settings' ? 'active' : ''}" data-action="nav" data-screen="settings">
+          <div class="nav-icon-pill">
+            <svg viewBox="0 0 24 24"><path d="M19.14 12.94c.04-.3.06-.61.06-.94 0-.32-.02-.64-.07-.94l2.03-1.58c.18-.14.23-.41.12-.61l-1.92-3.32c-.12-.22-.37-.29-.59-.22l-2.39.96c-.5-.38-1.03-.7-1.62-.94l-.36-2.54c-.04-.24-.24-.41-.48-.41h-3.84c-.24 0-.43.17-.47.41l-.36 2.54c-.59.24-1.13.57-1.62.94l-2.39-.96c-.22-.08-.47 0-.59.22L2.74 8.87c-.12.21-.08.47.12.61l2.03 1.58c-.05.3-.09.63-.09.94s.02.64.07.94l-2.03 1.58c-.18.14-.23.41-.12.61l1.92 3.32c.12.22.37.29.59.22l2.39-.96c.5.38 1.03.7 1.62.94l.36 2.54c.05.24.24.41.48.41h3.84c.24 0 .44-.17.47-.41l.36-2.54c.59-.24 1.13-.56 1.62-.94l2.39.96c.22.08.47 0 .59-.22l1.92-3.32c.12-.22.07-.47-.12-.61l-2.01-1.58zM12 15.6c-1.98 0-3.6-1.62-3.6-3.6s1.62-3.6 3.6-3.6 3.6 1.62 3.6 3.6-1.62 3.6-3.6 3.6z"/></svg>
+          </div>
+          <span>${i18n.t('nav_settings')}</span>
+        </button>
+      </nav>
+
+      <!-- Custom Symbol Modal Dialog -->
+      ${
+        state.showAddSymbolModal
+          ? `
+        <div class="modal-overlay">
+          <div class="modal-dialog">
+            <h4 style="margin: 0 0 14px 0;">${i18n.t('settings_add_custom_symbol')}</h4>
+            <form id="add-symbol-form">
+              <input class="input-field" type="text" name="symbol_code" placeholder="Symbol Code (e.g. BTCUSD, AAPL)" required />
+              <input class="input-field" type="text" name="custom_title" placeholder="Display Name (e.g. Bitcoin Spot)" />
+              <input class="input-field" type="number" name="decimals" placeholder="Decimals (0 - 6)" min="0" max="6" value="2" />
+              <div class="btn-row" style="margin-top: 14px;">
+                <button type="button" class="btn" data-action="close-modal" style="flex: 1;">Cancel</button>
+                <button type="submit" class="btn btn-primary" style="flex: 1;">Save</button>
+              </div>
+            </form>
+          </div>
+        </div>
+      `
+          : ''
+      }
+    </div>
   `;
+
+  root.innerHTML = appHtml;
+
+  // Initialize Canvas
+  if (activeTab && activeTab.candles.length > 0) {
+    const canvas = document.getElementById('active-chart-canvas');
+    if (canvas) {
+      renderCandlestickCanvas(canvas, activeTab, state.isDarkTheme);
+      attachCanvasInteractions(canvas, activeTab);
+
+      // Auto-resize observer
+      const container = canvas.parentElement;
+      if (container && window.ResizeObserver) {
+        const ro = new ResizeObserver(() => {
+          renderCandlestickCanvas(canvas, activeTab, state.isDarkTheme);
+        });
+        ro.observe(container);
+      }
+    }
+  }
 }
 
 function attachCanvasInteractions(canvas, activeTab) {
@@ -803,30 +1139,6 @@ function attachCanvasInteractions(canvas, activeTab) {
   );
 }
 
-function renderApp() {
-  const root = document.getElementById('app-root');
-  if (!root) return;
-
-  if (!state.isAuthenticated) {
-    root.innerHTML = renderLoginScreen();
-  } else {
-    let bodyHtml = '';
-    if (state.currentScreen === 'watchlist') bodyHtml = renderWatchlistScreen();
-    else if (state.currentScreen === 'chart_view') bodyHtml = renderChartViewScreen();
-    else bodyHtml = renderSettingsScreen();
-    root.innerHTML = bodyHtml + renderBottomNav();
-  }
-
-  if (state.isAuthenticated && state.currentScreen === 'chart_view') {
-    const activeTab = state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0];
-    const canvas = document.getElementById('active-chart-canvas');
-    if (canvas && activeTab && activeTab.candles.length > 0) {
-      renderCandlestickCanvas(canvas, activeTab, state.isDarkTheme);
-      attachCanvasInteractions(canvas, activeTab);
-    }
-  }
-}
-
 document.addEventListener('click', async (e) => {
   const btn = e.target.closest('[data-action]');
   if (!btn) return;
@@ -841,9 +1153,26 @@ document.addEventListener('click', async (e) => {
     applyTheme();
     renderApp();
   } else if (action === 'nav') {
-    state.currentScreen = btn.getAttribute('data-screen');
-    state.statusBannerKey = null;
+    const screen = btn.getAttribute('data-screen');
+    state.currentScreen = screen;
+    if (window.innerWidth >= 769) {
+      if (screen === 'chart_view') {
+        state.desktopSidePanel = null;
+      } else {
+        state.desktopSidePanel = screen;
+      }
+    }
     renderApp();
+  } else if (action === 'toggle-desktop-panel') {
+    const panel = btn.getAttribute('data-panel');
+    state.desktopSidePanel = state.desktopSidePanel === panel ? null : panel;
+    renderApp();
+  } else if (action === 'toggle-fullscreen') {
+    if (!document.fullscreenElement) {
+      document.documentElement.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
   } else if (action === 'sync-symbol') {
     await syncSymbolNow(btn.getAttribute('data-symbol'));
   } else if (action === 'sync-all') {
@@ -930,6 +1259,19 @@ document.addEventListener('click', async (e) => {
       renderApp();
       await syncSymbolNow(sym.symbolCode, sym.timeframe);
     }
+  } else if (action === 'set-color') {
+    const target = btn.getAttribute('data-target');
+    const color = btn.getAttribute('data-color');
+    saveChartPreferences({ [target]: color });
+    renderApp();
+  } else if (action === 'open-add-symbol-modal') {
+    state.showAddSymbolModal = true;
+    renderApp();
+  } else if (action === 'close-modal') {
+    state.showAddSymbolModal = false;
+    renderApp();
+  } else if (action === 'delete-symbol') {
+    deleteSymbol(btn.getAttribute('data-symbol'));
   } else if (action === 'sign-out') {
     state.isAuthenticated = false;
     renderApp();
@@ -949,6 +1291,20 @@ document.addEventListener('change', (e) => {
 });
 
 document.addEventListener('submit', async (e) => {
+  if (e.target.id === 'add-symbol-form') {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const code = (fd.get('symbol_code') || '').toString().trim();
+    const title = (fd.get('custom_title') || '').toString().trim();
+    const dec = parseInt(fd.get('decimals') || '2', 10);
+    if (code) {
+      addCustomSymbol(code, title, dec, 'dukascopy');
+      state.showAddSymbolModal = false;
+      renderApp();
+    }
+    return;
+  }
+
   if (e.target.id !== 'auth-form') return;
   e.preventDefault();
   const fd = new FormData(e.target);
@@ -1013,6 +1369,16 @@ document.addEventListener('submit', async (e) => {
     state.isAuthenticated = true;
     state.authErrorKey = null;
     renderApp();
+  }
+});
+
+window.addEventListener('resize', () => {
+  if (state.isAuthenticated && state.currentScreen === 'chart_view') {
+    const activeTab = state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0];
+    const canvas = document.getElementById('active-chart-canvas');
+    if (canvas && activeTab) {
+      renderCandlestickCanvas(canvas, activeTab, state.isDarkTheme);
+    }
   }
 });
 

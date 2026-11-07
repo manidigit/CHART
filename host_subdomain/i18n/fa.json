@@ -88,5 +88,17 @@
   "provider_twelve_data": "Twelve Data API (اولویت M15)",
   "provider_dukascopy": "Dukascopy (رایگان و مستقیم M15)",
   "provider_eia_brent_spot": "EIA Europe Brent Spot FOB (مرجع رسمی D1)",
-  "provider_yahoo_finance": "Yahoo Finance (فید بازار BZ=F)"
+  "provider_yahoo_finance": "Yahoo Finance (فید بازار BZ=F)",
+  "nav_analysis": "تحلیل بازار",
+  "action_fullscreen": "تمام‌صفحه",
+  "action_toggle_panel": "پنل کناری",
+  "settings_chart_colors": "شخصی‌سازی رنگ‌های نمودار",
+  "settings_add_custom_symbol": "افزودن نماد جدید",
+  "analysis_title": "تحلیل تکنیکال و محاسباتی نماد",
+  "analysis_key_stats": "آمار کلیدی و نوسانات بازار",
+  "analysis_pivot_points": "نقاط پیوت کلاسیک (Pivot Points)",
+  "analysis_atr": "دامنه واقعی نوسان (ATR 14)",
+  "analysis_high_low_range": "دامنه سقف و کف",
+  "analysis_candle_sentiment": "سنتیمنت کندل‌ها (صعودی / نزولی)",
+  "analysis_no_data": "برای محاسبه تحلیل، ابتدا داده‌های نماد را به‌روزرسانی کنید."
 }

@@ -88,5 +88,17 @@
   "provider_twelve_data": "Twelve Data API (M15 Priority)",
   "provider_dukascopy": "Dukascopy Bank Feed (Free M15)",
   "provider_eia_brent_spot": "EIA Europe Brent Spot FOB (Official D1)",
-  "provider_yahoo_finance": "Yahoo Finance (BZ=F / Market Feed)"
+  "provider_yahoo_finance": "Yahoo Finance (BZ=F / Market Feed)",
+  "nav_analysis": "Analysis",
+  "action_fullscreen": "Fullscreen",
+  "action_toggle_panel": "Side Panel",
+  "settings_chart_colors": "Chart Colors Customization",
+  "settings_add_custom_symbol": "Add Custom Symbol",
+  "analysis_title": "Market Technical & Statistical Analysis",
+  "analysis_key_stats": "Key Market Volatility & Metrics",
+  "analysis_pivot_points": "Classic Pivot Points (Floor Pivots)",
+  "analysis_atr": "Average True Range (ATR 14)",
+  "analysis_high_low_range": "Period High - Low Range",
+  "analysis_candle_sentiment": "Candle Sentiment (Bull / Bear Ratio)",
+  "analysis_no_data": "Please sync candles for this symbol first to compute technical analytics."
 }
