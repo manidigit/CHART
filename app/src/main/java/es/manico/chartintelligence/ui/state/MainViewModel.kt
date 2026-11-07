@@ -5,26 +5,25 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import es.manico.chartintelligence.R
-import es.manico.chartintelligence.algorithms.DrawingGeometryAlgorithm
 import es.manico.chartintelligence.config.AppConfig
-import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.CandleBar
-import es.manico.chartintelligence.data.model.ChartDrawing
+import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.ChartType
 import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
-import es.manico.chartintelligence.data.model.TrendAnchorPoint
 import es.manico.chartintelligence.data.repository.WorkspaceRepository
 import es.manico.chartintelligence.i18n.AppLanguage
+import es.manico.chartintelligence.ui.state.coordinators.ChartDrawingCoordinator
+import es.manico.chartintelligence.ui.state.coordinators.ChartPreferenceCoordinator
+import es.manico.chartintelligence.ui.state.coordinators.SymbolCatalogCoordinator
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import java.math.BigDecimal
-import java.util.UUID
 import kotlin.math.max
 import kotlin.math.roundToInt
 
@@ -59,6 +58,9 @@ data class Phase1UiState(
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = WorkspaceRepository(application)
+    private val drawingCoordinator = ChartDrawingCoordinator(repository)
+    private val symbolCoordinator = SymbolCatalogCoordinator(repository)
+    private val preferenceCoordinator = ChartPreferenceCoordinator(repository)
 
     private val _uiState = MutableStateFlow(
         Phase1UiState(
@@ -67,8 +69,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isOwnerRegistered = repository.isOwnerAccountRegistered(),
             isAuthenticated = false,
             ownerUsername = repository.getOwnerUsername(),
-            symbols = repository.loadSymbolCatalog(),
-            chartPreferences = repository.loadChartPreferences()
+            symbols = symbolCoordinator.loadInitialCatalog(),
+            chartPreferences = preferenceCoordinator.loadInitialPreferences()
         )
     )
     val uiState: StateFlow<Phase1UiState> = _uiState.asStateFlow()
@@ -159,10 +161,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleSymbolInWatchlist(symbolCode: String, enabled: Boolean) {
-        val updated = _uiState.value.symbols.map { item ->
-            if (item.symbolCode == symbolCode) item.copy(inWatchlist = enabled) else item
-        }
-        repository.saveSymbolCatalog(updated)
+        val updated = symbolCoordinator.toggleWatchlist(_uiState.value.symbols, symbolCode, enabled)
         _uiState.update { it.copy(symbols = updated) }
         if (enabled) {
             val target = updated.firstOrNull { it.symbolCode == symbolCode }
@@ -173,14 +172,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectProviderForSymbol(symbolCode: String, provider: ProviderId) {
-        val updated = _uiState.value.symbols.map { item ->
+        val (updated, targetTf) = symbolCoordinator.selectProviderForSymbol(_uiState.value.symbols, symbolCode, provider)
+        val candles = repository.getCachedOrAggregatedCandles(symbolCode, provider, targetTf)
+        val latest = candles.lastOrNull()
+        val enriched = updated.map { item ->
             if (item.symbolCode == symbolCode) {
-                val tf = if (provider == ProviderId.EIA_BRENT_SPOT) "D1" else "M15"
-                val candles = repository.getCachedOrAggregatedCandles(symbolCode, provider, tf)
-                val latest = candles.lastOrNull()
                 item.copy(
-                    activeProvider = provider,
-                    timeframe = tf,
                     lastClose = latest?.close,
                     lastCandleUtc = latest?.openTimeUtcIso,
                     storedCandleCount = candles.size
@@ -189,8 +186,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 item
             }
         }
-        repository.saveSymbolCatalog(updated)
-        _uiState.update { it.copy(symbols = updated) }
+        repository.saveSymbolCatalog(enriched)
+        _uiState.update { it.copy(symbols = enriched) }
         syncSingleSymbolUpToNow(symbolCode)
     }
 
@@ -608,14 +605,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) {
-                        tab.copy(
-                            activeDrawingTool = tool,
-                            pendingTrendPoint = null
-                        )
-                    } else {
-                        tab
-                    }
+                    if (tab.tabId == activeId) drawingCoordinator.selectDrawingTool(tab, tool) else tab
                 }
             )
         }
@@ -623,96 +613,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun placeDrawingAtCoordinate(timeUtcMillis: Long, price: BigDecimal) {
         val active = _uiState.value.activeTab ?: return
-        when (active.activeDrawingTool) {
-            DrawingTool.CURSOR -> return
-            DrawingTool.HORIZONTAL_LINE -> {
-                val newLine = ChartDrawing.HorizontalLine(
-                    id = "hl_${UUID.randomUUID()}",
-                    price = price
-                )
-                val updatedDrawings = active.drawings + newLine
-                repository.saveDrawingsForChart(active.chartId, updatedDrawings)
-                _uiState.update { state ->
-                    state.copy(
-                        openTabs = state.openTabs.map { tab ->
-                            if (tab.tabId == active.tabId) {
-                                tab.copy(
-                                    drawings = updatedDrawings,
-                                    selectedDrawingId = newLine.id,
-                                    activeDrawingTool = DrawingTool.CURSOR
-                                )
-                            } else {
-                                tab
-                            }
-                        }
-                    )
+        val updatedTab = drawingCoordinator.placeDrawingAtCoordinate(active, timeUtcMillis, price)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) updatedTab else tab
                 }
-            }
-            DrawingTool.VERTICAL_LINE -> {
-                val newLine = ChartDrawing.VerticalLine(
-                    id = "vl_${UUID.randomUUID()}",
-                    timeUtcMillis = timeUtcMillis
-                )
-                val updatedDrawings = active.drawings + newLine
-                repository.saveDrawingsForChart(active.chartId, updatedDrawings)
-                _uiState.update { state ->
-                    state.copy(
-                        openTabs = state.openTabs.map { tab ->
-                            if (tab.tabId == active.tabId) {
-                                tab.copy(
-                                    drawings = updatedDrawings,
-                                    selectedDrawingId = newLine.id,
-                                    activeDrawingTool = DrawingTool.CURSOR
-                                )
-                            } else {
-                                tab
-                            }
-                        }
-                    )
-                }
-            }
-            DrawingTool.TREND_LINE -> {
-                val firstPoint = active.pendingTrendPoint
-                if (firstPoint == null) {
-                    _uiState.update { state ->
-                        state.copy(
-                            openTabs = state.openTabs.map { tab ->
-                                if (tab.tabId == active.tabId) {
-                                    tab.copy(pendingTrendPoint = TrendAnchorPoint(timeUtcMillis, price))
-                                } else {
-                                    tab
-                                }
-                            }
-                        )
-                    }
-                } else {
-                    val newTrend = ChartDrawing.TrendLine(
-                        id = "tl_${UUID.randomUUID()}",
-                        startTimeUtcMillis = firstPoint.timeUtcMillis,
-                        startPrice = firstPoint.price,
-                        endTimeUtcMillis = timeUtcMillis,
-                        endPrice = price
-                    )
-                    val updatedDrawings = active.drawings + newTrend
-                    repository.saveDrawingsForChart(active.chartId, updatedDrawings)
-                    _uiState.update { state ->
-                        state.copy(
-                            openTabs = state.openTabs.map { tab ->
-                                if (tab.tabId == active.tabId) {
-                                    tab.copy(
-                                        drawings = updatedDrawings,
-                                        selectedDrawingId = newTrend.id,
-                                        pendingTrendPoint = null,
-                                        activeDrawingTool = DrawingTool.CURSOR
-                                    )
-                                } else {
-                                    tab
-                                }
-                            }
-                        )
-                    }
-                }
-            }
+            )
         }
     }
 
@@ -721,7 +628,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(selectedDrawingId = drawingId) else tab
+                    if (tab.tabId == activeId) drawingCoordinator.selectDrawing(tab, drawingId) else tab
                 }
             )
         }
@@ -729,19 +636,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun translateSelectedDrawing(deltaTimeMillis: Long, deltaPrice: BigDecimal) {
         val active = _uiState.value.activeTab ?: return
-        val selectedId = active.selectedDrawingId ?: return
-        val updatedDrawings = active.drawings.map { d ->
-            if (d.id == selectedId) {
-                DrawingGeometryAlgorithm.translateDrawing(d, deltaTimeMillis, deltaPrice)
-            } else {
-                d
-            }
-        }
-        repository.saveDrawingsForChart(active.chartId, updatedDrawings)
+        val updatedTab = drawingCoordinator.translateSelectedDrawing(active, deltaTimeMillis, deltaPrice)
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == active.tabId) tab.copy(drawings = updatedDrawings) else tab
+                    if (tab.tabId == active.tabId) updatedTab else tab
                 }
             )
         }
@@ -749,20 +648,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun deleteSelectedDrawingOnActiveTab() {
         val active = _uiState.value.activeTab ?: return
-        val selectedId = active.selectedDrawingId ?: return
-        val updatedDrawings = active.drawings.filterNot { it.id == selectedId }
-        repository.saveDrawingsForChart(active.chartId, updatedDrawings)
+        val updatedTab = drawingCoordinator.deleteSelectedDrawing(active)
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == active.tabId) {
-                        tab.copy(
-                            drawings = updatedDrawings,
-                            selectedDrawingId = null
-                        )
-                    } else {
-                        tab
-                    }
+                    if (tab.tabId == active.tabId) updatedTab else tab
                 }
             )
         }
@@ -770,19 +660,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun clearAllDrawingsOnActiveTab() {
         val active = _uiState.value.activeTab ?: return
-        repository.saveDrawingsForChart(active.chartId, emptyList())
+        val updatedTab = drawingCoordinator.clearAllDrawings(active)
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == active.tabId) {
-                        tab.copy(
-                            drawings = emptyList(),
-                            selectedDrawingId = null,
-                            pendingTrendPoint = null
-                        )
-                    } else {
-                        tab
-                    }
+                    if (tab.tabId == active.tabId) updatedTab else tab
                 }
             )
         }
@@ -792,37 +674,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun addCustomSymbol(symbolCode: String, customTitle: String, decimals: Int, provider: ProviderId) {
         val cleanCode = symbolCode.trim().uppercase()
-        if (cleanCode.isBlank()) return
-        val existing = _uiState.value.symbols.any { it.symbolCode == cleanCode }
-        if (existing) return
-
-        val newSymbol = SymbolConfig(
-            chartId = "chart_${cleanCode.lowercase()}_custom",
-            symbolCode = cleanCode,
-            titleResId = null,
-            customTitle = customTitle.ifBlank { cleanCode },
-            decimals = decimals.coerceIn(0, 6),
-            inWatchlist = true,
-            activeProvider = provider,
-            allowedProviders = listOf(
-                ProviderId.DUKASCOPY,
-                ProviderId.TWELVE_DATA,
-                ProviderId.YAHOO_FINANCE
-            ),
-            timeframe = "M15"
+        val updated = symbolCoordinator.addCustomSymbol(
+            _uiState.value.symbols,
+            cleanCode,
+            customTitle,
+            decimals,
+            provider
         )
-        val updated = _uiState.value.symbols + newSymbol
-        repository.saveSymbolCatalog(updated)
-        _uiState.update { it.copy(symbols = updated) }
-        syncSingleSymbolUpToNow(cleanCode)
+        if (updated != _uiState.value.symbols) {
+            _uiState.update { it.copy(symbols = updated) }
+            syncSingleSymbolUpToNow(cleanCode)
+        }
     }
 
     fun deleteSymbol(symbolCode: String) {
-        val target = _uiState.value.symbols.firstOrNull { it.symbolCode == symbolCode } ?: return
-        // Do not delete default base symbols like XAUUSD or SPOTBRENT if needed, but allow deleting custom ones
-        val updated = _uiState.value.symbols.filterNot { it.symbolCode == symbolCode }
+        val updated = symbolCoordinator.deleteSymbol(_uiState.value.symbols, symbolCode)
         val updatedTabs = _uiState.value.openTabs.filterNot { it.symbolCode == symbolCode }
-        repository.saveSymbolCatalog(updated)
         _uiState.update { state ->
             state.copy(
                 symbols = updated,
@@ -833,67 +700,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateBullCandleColor(colorHex: String) {
-        val next = _uiState.value.chartPreferences.copy(bullCandleColorHex = colorHex)
-        repository.saveChartPreferences(next)
+        val next = preferenceCoordinator.updateBullCandleColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
     }
 
     fun updateBearCandleColor(colorHex: String) {
-        val next = _uiState.value.chartPreferences.copy(bearCandleColorHex = colorHex)
-        repository.saveChartPreferences(next)
+        val next = preferenceCoordinator.updateBearCandleColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
     }
 
     fun updateTrendLineColor(colorHex: String) {
-        val next = _uiState.value.chartPreferences.copy(trendLineColorHex = colorHex)
-        repository.saveChartPreferences(next)
+        val next = preferenceCoordinator.updateTrendLineColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
     }
 
     fun updateHorizontalLineColor(colorHex: String) {
-        val next = _uiState.value.chartPreferences.copy(horizontalLineColorHex = colorHex)
-        repository.saveChartPreferences(next)
+        val next = preferenceCoordinator.updateHorizontalLineColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
     }
 
     fun updateVerticalLineColor(colorHex: String) {
-        val next = _uiState.value.chartPreferences.copy(verticalLineColorHex = colorHex)
-        repository.saveChartPreferences(next)
+        val next = preferenceCoordinator.updateVerticalLineColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
     }
 
     fun updateAlgorithmParams(fetchLimit: Int, zoomStep: Int, touchTolerance: Float) {
-        val next = _uiState.value.chartPreferences.copy(
-            candleFetchLimit = fetchLimit.coerceIn(20, 300),
-            zoomStepCandles = zoomStep.coerceIn(2, 24),
-            drawingHitTolerancePx = touchTolerance.coerceIn(12f, 48f)
-        )
-        repository.saveChartPreferences(next)
+        val next = preferenceCoordinator.updateAlgorithmParams(_uiState.value.chartPreferences, fetchLimit, zoomStep, touchTolerance)
         _uiState.update { it.copy(chartPreferences = next) }
     }
 
     fun resetChartColorsToDefault() {
-        val current = _uiState.value.chartPreferences
-        val next = current.copy(
-            bullCandleColorHex = "FF10B981",
-            bearCandleColorHex = "FFF43F5E",
-            trendLineColorHex = "FFA855F7",
-            horizontalLineColorHex = "FF38BDF8",
-            verticalLineColorHex = "FFF59E0B",
-            chartGridColorHex = "FF1E293B"
-        )
-        repository.saveChartPreferences(next)
+        val next = preferenceCoordinator.resetChartColorsToDefault(_uiState.value.chartPreferences)
         _uiState.update { it.copy(chartPreferences = next) }
     }
 
     fun resetAlgorithmParamsToDefault() {
-        val current = _uiState.value.chartPreferences
-        val next = current.copy(
-            candleFetchLimit = 160,
-            zoomStepCandles = 8,
-            drawingHitTolerancePx = 28f
-        )
-        repository.saveChartPreferences(next)
+        val next = preferenceCoordinator.resetAlgorithmParamsToDefault(_uiState.value.chartPreferences)
         _uiState.update { it.copy(chartPreferences = next) }
     }
 }
