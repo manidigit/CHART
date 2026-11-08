@@ -1707,7 +1707,15 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
 ### ب) معیار پذیرش و تست عملی فاز ۱ (`Phase 1 Acceptance Gate`)
 - نصب APK روی گوشی اندروید و باز کردن `https://chart.manico.es` در مرورگر.
 - تست تغییر زبان بین فارسی (`RTL`) و انگلیسی (`LTR`) و اطمینان از اینکه تمام نوشته‌ها از فایل‌های استرینگ خوانده می‌شوند.
-- ورود با یوزرنیم/پسورد شخصی ⬅ رفتن به تنظیمات و انتخاب نفت برنت و طلا و تعیین منبع داده هر کدام ⬅ مشاهده آن‌ها در واچ‌لیست ⬅ زدن دکمه «به‌روزرسانی تا این لحظه» و دریافت کندل‌های واقعی تا لحظه حال ⬅ باز کردن نفت در `Chart View` ⬅ برگشت به واچ‌لیست و باز کردن طلا ⬅ مشاهده هر دو نمودار در دو تب مستقل کنار هم و جابه‌جایی روان بین آن‌ها.
+- ورود با یوزرنیم/پسورد شخصی ⬅ رفتن به تنظیمات و انتخاب نفت برنت و طلا و تعیین منبع داده هر کدام ⬅ مشاهده آن‌ها در واچ‌لیست ⬅ زدن دکمه «به‌روزرسانی تا این لحظه» و دریافت کندل‌های واقعی تا لحظه حال ⬅ باز کردن نفت در `Chart View` ⬅ برگشت به واچ‌لیست و باز کردن طلا ⬅ مشاهده هر دو نمودار در دو تب مستقل کنار هم و جابه‌جا شدن روان بین ۴ تب اصلی (`Watchlist | Chart | Prediction | Settings`).
+
+### پ) بسته ارتقای تکمیلی و پولیش حرفه‌ای فاز ۱ به استاندارد TradingView (`Phase 1 Pro Upgrade Backlog`)
+برای تکمیل ۱۰۰٪ تجربه کاربری فاز ۱ پیش از آغاز فاز ۲، پنج بسته ارتقای زیر (شامل قابلیت‌های مستخرج از اسکرین‌شات‌های رسمی اپ موبایل TradingView) در اسناد `UI_UX_MOBILE_REDESIGN_SPEC.md` (بخش ۱۰) و `DESIGN_WORKSPACE_SPEC.md` (بخش ۶.۲) ثبت شده‌اند:
+1. **`P1-UPG-1` (Chart — Long-Press Crosshair & Haptics):** فعال‌سازی حرکت پیوسته کراس‌هیر روی کندل‌ها با نگه‌داشتن کوتاه انگشت، ذره‌بین اسکرول (`Show picker scroll magnifiers`) و بازخورد لرزشی قابل کنترل (`Chart vibrations` و `Picker vibrates`).
+2. **`P1-UPG-2` (Chart — Situational Awareness & Log Scale):** افزودن مقیاس لگاریتمی (`Logarithmic scale`)، خط‌چین قیمت بسته شدن قبلی (`Previous close line`)، تایمر شمارش معکوس بسته شدن کندل زیر برچسب قیمت جاری، برچسب‌های خودکار سقف و کف دید فعلی (`Visible High/Low Callouts`) روی بلندترین و پایین‌ترین فتیله، دکمه شناور پرش به کندل آخر (`»`) هنگام اسکرول به عقب، دستگیره لمسی تغییر ارتفاع پنل حجم و بج‌های `[Auto] [Log]` در ستون قیمت.
+3. **`P1-UPG-3` (Watchlist — Symbol Overview Sheet, Key Data Points, Seasonals & Hide Logos):** افزودن شیت خلاصه نماد (`Symbol Screen` — قابل کنترل با سوئیچ `Show symbol screen`) شامل هدر `SPOTBRENT • PEPPERSTONE`، مینی‌چارت با بازه‌های `1D..All` و دکمه تمام‌صفحه `[⛶]`، کارت `Key data points` (`Volume`, `Previous close`, `Open`, `Day's range`) و نمودار فصلی چندساله (`Seasonals: 2026 / 2025 / 2024`) به همراه سوئیچ `Hide logos` در تنظیمات واچ‌لیست.
+4. **`P1-UPG-4` (Prediction — Visual Price Ladder & Chart Projection):** نردبان گرافیکی نمایش قیمت فعلی بین سطوح `S2 — S1 — PP — R1 — R2` و دکمه «ترسیم سطوح سناریو روی چارت (`Project Levels on Chart`)» داخل BottomSheet هر سناریو.
+5. **`P1-UPG-5` (Settings — TradingView Chart & Watchlist Toggles + Live Preview):** افزودن سوئیچ‌های استاندارد TradingView (`Remember the last opened chart on this device`، `Hide the tab bar in landscape`، `Hide logos`، `Show symbol screen`، `Chart vibrations`، `Picker vibrates`، `Logarithmic scale`)، کادر پیش‌نمایش زنده ۳ کندلی در تنظیمات رنگ و نمایش تعداد کندل‌های کش‌شده هر منبع.
 
 ---
 
