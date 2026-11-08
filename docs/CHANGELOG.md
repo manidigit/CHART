@@ -10,11 +10,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [1.28.0] - 2026-11-08
 
 ### Added
+- **Consolidation of All Markdown Documentation into `docs/` Folder:**
+  - Relocated all markdown specification and architectural documents (`CHART_INTELLIGENCE_MASTER_SPEC.md`, `DESIGN_WORKSPACE_SPEC.md`, `UI_UX_MOBILE_REDESIGN_SPEC.md`, `ARCHITECTURE.md`, `INFRASTRUCTURE_INVENTORY.md`, `AGENTS.md`, `CHANGELOG.md`, `TRADING_STRATEGY_SPEC.md`, `CONTRIBUTING.md`, `SECURITY.md`) into the `docs/` directory to prevent clutter, reduce human error, and keep all specifications unified in one dedicated place, leaving exclusively `README.md` in the workspace root.
+  - Updated cross-document relative links in `README.md`, `docs/PROJECT_GUIDE.md`, and `docs/AGENTS.md`.
 - **Integration of Grok's Professional TradingView Design Recommendations (`UI_UX_MOBILE_REDESIGN_SPEC.md`):**
   - Incorporated official TradingView financial dark theme tokens into the specification: canvas background `#131722`, panel background `#1E222D`, grid lines `#2A2E39`, primary text `#D1D4DC`, muted text `#787B86`, bullish candlestick `#26A69A`, bearish candlestick `#EF5350`, and dotted crosshair `#758696`.
   - Added concrete Web `LightweightCharts.createChart` configuration parameters (scale margins, right price scale border `#2A2E39`, time scale visibility).
   - Specified interactive Multi-Pane synchronization with synchronized time scale scrolling and drag resize handles.
   - Formulated comprehensive Priority Matrix (P0 to P3) spanning Insets, Dark Palette, Flat Candle Filtering, Compact Watchlist, Live Legend, and Ergonomic Touch/Double-tap interactions across Android and Web.
+- **Chart Workspace Structural & Interactive Specification (`DESIGN_WORKSPACE_SPEC.md`):**
+  - Created comprehensive execution blueprint covering Desktop and Mobile structural layouts (ASCII wireframes), exact bar/panel dimensions, interactive behaviors for Top Header, Semantic Market Statuses, Unified Top Subbar, Live OHLC Legend, Drawing Toolbar & Object Lifecycle, Price/Time Scales, Multi-Pane Time-Scale Sync, Design Tokens, and P0–P3 implementation phases.
 - **Integration of GPT Architectural & UX Specifications (`UI_UX_MOBILE_REDESIGN_SPEC.md`):**
   - Added product differentiation triangle: TradingView in appearance + TradingView in interaction + CHART in intelligence (market structure & prediction engine).
   - Defined 5 semantic market states (`Live`, `Market Closed`, `Delayed`, `Cached`, `Error`) to replace simplistic green dot indicator.

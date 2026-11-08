@@ -25,10 +25,12 @@ Before modifying code, understand the primary files:
 
 | File | Purpose |
 |---|---|
-| `CHART_INTELLIGENCE_MASTER_SPEC.md` | Single source of truth for product scope, phase gates, and business logic. |
-| `ARCHITECTURE.md` | High-level system design, module responsibilities, and extension guidelines. |
+| `docs/CHART_INTELLIGENCE_MASTER_SPEC.md` | Single source of truth for product scope, phase gates, and business logic. |
+| `docs/DESIGN_WORKSPACE_SPEC.md` | Chart workspace structural layout, component responsibilities, layer hierarchy and redesign roadmap. |
+| `docs/UI_UX_MOBILE_REDESIGN_SPEC.md` | Mobile UI/UX redesign audit against TradingView standards and priority matrix. |
+| `docs/ARCHITECTURE.md` | High-level system design, module responsibilities, and extension guidelines. |
 | `docs/PROJECT_GUIDE.md` | Developer guide, hosting details, and engineering standards. |
-| `INFRASTRUCTURE_INVENTORY.md` | Verified server environment facts and deployment records. |
+| `docs/INFRASTRUCTURE_INVENTORY.md` | Verified server environment facts and deployment records. |
 | `app/src/main/java/` | Android native Jetpack Compose application code. |
 | `host_subdomain/` | Web application (Vanilla ES6 modules + PHP REST API). |
 

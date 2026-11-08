@@ -146,13 +146,21 @@ Provider availability, plan restrictions, licensing and timeframe coverage must 
 │   ├── i18n/                    # Web translations (fa/en)
 │   └── migrations/              # Database migrations
 ├── docs/
-│   ├── PROJECT_GUIDE.md         # Development and operational guide
-│   └── assets/chart-hero.svg    # README artwork
+│   ├── assets/chart-hero.svg             # README artwork
+│   ├── AGENTS.md                         # Operational rules and AI invariants
+│   ├── ARCHITECTURE.md                   # System design & layer diagrams
+│   ├── CHANGELOG.md                      # Release notes & version history
+│   ├── CHART_INTELLIGENCE_MASTER_SPEC.md # Master specification (Source of Truth)
+│   ├── CONTRIBUTING.md                   # Contribution guidelines
+│   ├── DESIGN_WORKSPACE_SPEC.md          # Chart workspace UI/UX & layout spec
+│   ├── INFRASTRUCTURE_INVENTORY.md       # Verified infrastructure & deployment inventory
+│   ├── PROJECT_GUIDE.md                  # Project & developer guide
+│   ├── SECURITY.md                       # Security policy
+│   ├── TRADING_STRATEGY_SPEC.md          # Strategy simulation module specification
+│   └── UI_UX_MOBILE_REDESIGN_SPEC.md     # Mobile UI/UX redesign roadmap (TradingView standard)
 ├── .github/workflows/
-│   └── build-apk.yml            # Manual Android APK build
-├── CHART_INTELLIGENCE_MASTER_SPEC.md
-├── INFRASTRUCTURE_INVENTORY.md
-└── TRADING_STRATEGY_SPEC.md
+│   └── build-apk.yml                     # Manual Android APK build
+└── README.md
 ```
 
 ## Build and delivery
@@ -163,17 +171,21 @@ Provider availability, plan restrictions, licensing and timeframe coverage must 
 
 ## Documentation
 
+All project documentation is consolidated within the `docs/` folder:
+
 | Document | Purpose |
 |---|---|
-| [System Architecture](ARCHITECTURE.md) | High-level system design, module responsibilities, layer diagrams and extension guides |
-| [Contributing Guide](CONTRIBUTING.md) | Contribution standards, local environment setup, code style and PR checklist |
-| [AI & Developer Instructions](AGENTS.md) | Operational rules, core invariants, zero-hardcoding rules and verification requirements |
-| [Security Policy](SECURITY.md) | Security vulnerability disclosure, zero-secrets policy and credential management |
-| [Changelog](CHANGELOG.md) | Structured release notes and feature history across versions |
+| [Master Specification](docs/CHART_INTELLIGENCE_MASTER_SPEC.md) | Product requirements, architecture, algorithms and authoritative project decisions |
+| [UI/UX Mobile Redesign Specification](docs/UI_UX_MOBILE_REDESIGN_SPEC.md) | TradingView mobile standard audit, requirements and priority matrix |
+| [Design Workspace Specification](docs/DESIGN_WORKSPACE_SPEC.md) | Chart workspace structural layout, component responsibilities, layer hierarchy and redesign roadmap |
+| [System Architecture](docs/ARCHITECTURE.md) | High-level system design, module responsibilities, layer diagrams and extension guides |
 | [Project & Development Guide](docs/PROJECT_GUIDE.md) | Engineering standards, secure configuration, roadmap details, provider matrix and workflow notes |
-| [Master Specification](CHART_INTELLIGENCE_MASTER_SPEC.md) | Product requirements, architecture, algorithms and authoritative project decisions |
-| [Infrastructure Inventory](INFRASTRUCTURE_INVENTORY.md) | Hosting environment, infrastructure evidence, limits and unresolved verification items |
-| [Trading Strategy Specification](TRADING_STRATEGY_SPEC.md) | Independent strategy-simulation module specification |
+| [Infrastructure Inventory](docs/INFRASTRUCTURE_INVENTORY.md) | Hosting environment, infrastructure evidence, limits and deployment records |
+| [AI & Developer Instructions](docs/AGENTS.md) | Operational rules, core invariants, zero-hardcoding rules and verification requirements |
+| [Changelog](docs/CHANGELOG.md) | Structured release notes and feature history across versions |
+| [Trading Strategy Specification](docs/TRADING_STRATEGY_SPEC.md) | Independent strategy-simulation module specification |
+| [Contributing Guide](docs/CONTRIBUTING.md) | Contribution standards, local environment setup, code style and PR checklist |
+| [Security Policy](docs/SECURITY.md) | Security vulnerability disclosure, zero-secrets policy and credential management |
 
 The Master Specification is the source of truth for product and architecture decisions. The Project Guide is a practical companion and must not override it.
 
