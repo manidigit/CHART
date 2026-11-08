@@ -54,39 +54,38 @@
 +--------------------------------------------------------------------------------------------------+
 ```
 
-### ۲.۲. طرح ساختاری نسخه موبایل و اندروید (Mobile / Compact Layout)
+### ۲.۲. طرح ساختاری نسخه موبایل و اندروید (Mobile / Compact 5-Layer Layout)
 
-در موبایل، اولویت مطلق با **حداکثر کردن فضای دید عمودی و افقی کندل‌ها** و رعایت کامل حریم نوار وضعیت گوشی (`statusBarsPadding`) است:
+در موبایل، صفحه چارت دقیقاً از **۵ لایه عمودی** تشکیل شده و اولویت مطلق با **حداکثر کردن فضای دید عمودی و افقی کندل‌ها (`>= 85%`)** و رعایت کامل حریم نوار وضعیت گوشی (`statusBarsPadding`) است:
 
 ```
 +---------------------------------------------------+
-| [SYSTEM STATUS BAR SAFE INSET - Camera/Battery]   |
+| [1] SYSTEM STATUS BAR SAFE INSET (Camera/Battery) |
 +---------------------------------------------------+
-| [1] COMPACT TOP TOOLBAR (48dp):                   |
-|     XAUUSD (TwelveData) | 4069.63 (-0.43%) | [●]  |
-+---------------------------------------------------+
-| [2] TABS & COMPACT SUBBAR (38dp):                 |
-|     [XAUUSD x] [BRENT x] | 15m v | Fx | Ranges    |
+| [2] COMPACT SYMBOL HEADER (48dp):                 |
+|     XAUUSD [TwelveData]  | 4069.63 (-0.43%) [Live]|
+|     *(Source badge is read-only; set in Settings)*|
 +---------------------------------------+-----------+
-| [3] LIVE OHLC LEGEND (Compact 2-Line) | [4]       |
+| [3] LIVE OHLC LEGEND (Compact 2-Line) |           |
 |     O 4068.1  H 4071.5  L 4067.0      | PRICE     |
 |                                       | AXIS      |
 |                                       | (60dp)    |
-|                                       |           |
-|           MAIN CHART CANVAS           | 4072.00   |
-|        (85%+ of Viewport Height)      | [4069.63] |
+|           MAIN CHART CANVAS           |           |
+|        (85%+ of Viewport Height)      | 4072.00   |
+|                                       | [4069.63] |
 |                                       | 4065.00   |
-|                                       |           |
-|  (✏) <-- [Side Drawing FAB]           |           |
 +---------------------------------------+-----------+
 | === DRAGGABLE PANE SPLITTER ===       |           |
 +---------------------------------------+-----------+
-| [5] VOLUME / INDICATOR SUB-PANE       | Vol Axis  |
+|     VOLUME / INDICATOR SUB-PANE       | Vol Axis  |
 +---------------------------------------+-----------+
-| [6] TIME AXIS (24dp): 15:00   18:00   21:00       |
+|     TIME AXIS (24dp): 15:00   18:00   21:00       |
 +---------------------------------------------------+
-| [7] BOTTOM NAVIGATION BAR (56dp):                 |
-|     [Watchlist]      [Chart View]      [Settings] |
+| [4] BOTTOM CHART CONTROL BAR (46dp):              |
+|     [XAUUSD ▾] | [15m] | [✏ Draw] | [fx] | [⋯]   |
++---------------------------------------------------+
+| [5] BOTTOM NAVIGATION BAR (56dp - 4 Tabs):        |
+|     [Watchlist] [Chart] [Prediction] [Settings]   |
 +---------------------------------------------------+
 ```
 

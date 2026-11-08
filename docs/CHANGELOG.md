@@ -35,6 +35,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Implemented 5 semantic market statuses (`Live`, `Market Closed`, `Delayed`, `Cached`, `Error`) in `UtcTimeAnchorAlgorithm.kt`, `ChartViewScreen.kt`, and `headerView.js`.
   - Fixed RTL/LTR OHLC Legend text collision (`04431687.22`) in `CandlestickCanvas.kt` by enforcing `LayoutDirection.Ltr` on the chart canvas container and reserving a `30.dp` top legend lane, and defaulted the mobile drawing dock to collapsed (`isDrawingDockCollapsed = true`) for a minimal floating pill.
   - Redesigned Watchlist rows (`WatchlistRowCard.kt`, `WatchlistScreen.kt`, `watchlistView.js`) into compact TradingView rows with circular asset badges (`Au`, `OIL`, `Ag`, `FX`) and full-row tap to open chart, and re-architected `SettingsScreen.kt` with a modal provider selector dialog.
+- **Holistic 4-Tab TradingView Architecture & Mandatory Mobile User Flow (`Watchlist | Chart | Prediction | Settings`):**
+  - Standardized bottom navigation across Android (`MainActivity.kt`) and Web (`navigationView.js`, `app.js`) into 4 coordinated tabs: `Watchlist` (default landing screen after login), `Chart`, `Prediction`, and `Settings`.
+  - Implemented the 5-layer mobile `Chart` screen (`ChartViewScreen.kt`): `48.dp` symbol/price header with a non-clickable (read-only) source badge, `>= 85%` canvas, and a `46.dp` bottom chart control bar (`[Symbol ▾ | Timeframe | Draw | fx | ⋯]`) with modal sheets for quick symbol switching, timeframe selection, drawing tools, indicators, and historical date ranges.
+  - Created the standalone `PredictionScreen.kt` (Android) and upgraded `analysisView.js` (Web) with Symbol and Timeframe selectors, interactive Bullish/Bearish/Range scenarios, and a clickable detail BottomSheet/modal showing target zones, invalidation levels, key S/R levels, and roadmap status.
+  - Reorganized `SettingsScreen.kt` and `settingsView.js` into 5 fixed-order groups (1. User Account, 2. Symbol Data Sources — exclusive location for changing providers, 3. Appearance & Language, 4. Chart Preferences, 5. About App) and enforced natural system `Back` navigation via `screenBackStack`.
+- **Integration of Filtered `crypto-claude-desk` Analytical Patterns into Roadmap (`CHART_INTELLIGENCE_MASTER_SPEC.md`):**
+  - Added `detect_gaps` timestamp integrity check to Phase 3, the 3-stage sequential analytical pipeline (`MarketStructureModule -> ConfluenceMatrixModule -> ScenarioGeneratorModule`) to Phase 4 (`Prediction Engine v1`), and the `Learning Evaluator & Pattern Track Record` schema to Phase 5 (`Live Feedback Loop`), while explicitly rejecting `Claude Code`/`MCP` runtime dependencies and trade-execution signals.
+
+### Fixed
+- **Android `IllegalStateException: Could not load font` Crash Fix:**
+  - Fixed corrupted ASCII 404 HTML bodies inside `app/src/main/res/font/vazirmatn.ttf` and `jetbrains_mono.ttf` by installing verified binary TrueType fonts via `font-util`, adding descriptive fallback logic in `Type.kt`, and adding an unconditional binary TTF/PNG asset restoration step in `.github/workflows/build-apk.yml`.
 
 ---
 

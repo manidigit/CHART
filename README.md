@@ -18,7 +18,7 @@ Detailed engineering and operational material: docs/PROJECT_GUIDE.md
   <a href="https://chart.manico.es"><img src="https://img.shields.io/badge/Web-chart.manico.es-172b3a?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web application"></a>
   <a href="https://github.com/manidigit/CHART/actions/workflows/build-apk.yml"><img src="https://img.shields.io/badge/Android-APK%20workflow-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK workflow"></a>
   <a href="https://github.com/manidigit/CHART"><img src="https://img.shields.io/badge/Platform-Web%20%7C%20Android-4C6FFF?style=for-the-badge" alt="Web and Android"></a>
-  <a href="https://github.com/manidigit/CHART/blob/main/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.25-8B6CEF?style=for-the-badge" alt="Master Spec version 1.25"></a>
+  <a href="https://github.com/manidigit/CHART/blob/main/docs/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.28-8B6CEF?style=for-the-badge" alt="Master Spec version 1.28"></a>
 </p>
 
 <p align="center">
@@ -44,23 +44,22 @@ The engineering direction prioritizes reliable market-series identity, consisten
 
 ### Current foundation — Phase 1
 
-- **Web + Android:** responsive web application and Android APK project.
-- **Bilingual interface:** Persian (RTL) and English (LTR), with Persian as the initial language.
-- **Watchlist:** initial Gold and Brent instruments with configurable data-source selection.
-- **Multi-tab chart workspace:** open and retain multiple chart tabs.
-- **Unified personal access & recovery:** cross-platform owner login synced across Web and Android (`auth.php`), recovery email registration, 2-step 6-digit email password reset, and top-bar quick sign-out.
-- **Centralized presentation:** dark/light theme foundation and shared design conventions.
-- **Market-data adapters:** provider integrations are organized as separate modules.
+- **Web + Android (TradingView Standard UI/UX):** responsive web application and native Android Jetpack Compose application engineered to the TradingView dark palette (`#131722`) and compact ergonomics.
+- **Holistic 4-Tab Architecture:** coordinated navigation across **Watchlist**, **Chart**, **Prediction** (standalone forecast & scenario workspace), and **Settings** with natural back-stack traversal (`Watchlist` as the default post-login landing screen).
+- **5-Layer Chart Workspace:** `48dp` symbol/price header with read-only provider badge and 5 semantic market states (`Live`, `Market Closed`, `Delayed`, `Cached`, `Error`), `>= 85%` viewport multi-pane canvas (`Candles` + `Volume`), and a `46dp` bottom chart control bar (`Symbol ▾ | Timeframe | Draw | fx | ⋯`).
+- **Bilingual interface:** Persian (RTL) and English (LTR), with Persian as the initial language and strict `LTR` tabular numeric formatting (`JetBrains Mono`) for prices, timestamps, and OHLC axes.
+- **Watchlist & 5,000-Candle Capacity:** pre-configured Gold (`XAUUSD`) and Spot Brent (`SPOTBRENT`) instruments with up to **5,000 closed candles** per timeframe (`M15`, `H1`, `H4`, `D1`), weekend synthetic flat-candle filtering, and exclusive per-symbol data-source assignment in **Settings**.
+- **Unified personal access & recovery:** cross-platform owner login synced across Web and Android (`auth.php`), recovery email registration, and 2-step 6-digit email password reset.
 
 ### Planned capabilities
 
 | Phase | Focus | Planned outcome |
 |---:|---|---|
-| 1 | Product foundation | Modular Web/Android app, localization, login, watchlist and multi-tab charts |
+| 1 | Product foundation | Modular Web/Android app, 4-tab TradingView UI, localization, login, watchlist and multi-pane charts |
 | 2 | Technical indicators | M15/M30/H1/H4/D1 and SMA, EMA, Bollinger Bands, RSI, MACD and ATR |
-| 3 | Data integrity | Gap detection, historical imports and encrypted backup/restore |
-| 4 | Prediction Engine v1 | Market-structure analysis, support/resistance and immutable forecasts |
-| 5 | Live feedback | Forecast scoring, Walk-Forward evaluation and controlled model governance |
+| 3 | Data integrity | Gap detection (`detect_gaps`), historical imports and encrypted backup/restore |
+| 4 | Prediction Engine v1 | 3-stage pipeline (Market Structure, Confluence Matrix, Scenario Generator) and immutable forecasts |
+| 5 | Live feedback | Forecast scoring, Learning Evaluator, Pattern Track Record, Walk-Forward and model governance |
 | 6 | Strategy simulator | Independent strategy simulation and multi-user administration |
 
 The roadmap is governed by a build → install → practical test → owner approval gate. Work on a later phase starts only after the current phase has been tested and approved.
@@ -83,6 +82,7 @@ flowchart TB
     end
 
     subgraph MarketData
+      TV[TradingView tvdatafeed]
       TD[Twelve Data]
       DK[Dukascopy]
       EIA[EIA historical benchmark]
@@ -93,6 +93,7 @@ flowchart TB
     W --> API
     API --> DB
     MIG --> DB
+    API --> TV
     API --> TD
     API --> DK
     API --> EIA
@@ -107,7 +108,7 @@ This diagram shows the repository's application boundaries and provider directio
 |---|---|
 | Android | Kotlin, Jetpack Compose |
 | Web | Modular Vanilla JavaScript (ES6+) |
-| Chart rendering | TradingView Lightweight Charts |
+| Chart rendering | TradingView Lightweight Charts (Web) · Custom Compose Canvas (Android) |
 | Backend API | PHP |
 | Database | MariaDB |
 | Automation | GitHub Actions |
@@ -115,13 +116,14 @@ This diagram shows the repository's application boundaries and provider directio
 
 ## Data sources
 
-CHART keeps market-series identity explicit. Spot, CFD and Futures prices are distinct instruments and must not be silently merged.
+CHART keeps market-series identity explicit. Spot, CFD and Futures prices are distinct instruments and must not be silently merged. Data sources are configured exclusively per symbol inside **Settings** (the Chart header displays the active source badge in read-only mode).
 
 | Market series | Provider symbol | Intended role |
 |---|---|---|
-| Gold Spot | Twelve Data `XAU/USD` | Primary configured source |
+| Gold Spot | Twelve Data `XAU/USD` | Primary configured source for `XAUUSD` |
 | Gold | Dukascopy `xauusd` | Alternative source |
-| Brent Oil CFD | Dukascopy `brentcmdusd` | Intraday source |
+| Spot Brent CFD | TradingView (`tvdatafeed`) `PEPPERSTONE:SPOTBRENT` | Primary configured source for `SPOTBRENT` (up to 5,000 candles across M15/H1/H4/D1) |
+| Brent Oil CFD | Dukascopy `brentcmdusd` | Alternative intraday source |
 | Brent | Twelve Data `XBR/USD` | Optional provider route; plan limits must be handled |
 | Brent Futures | Yahoo Finance `BZ=F` | Separate futures series |
 | Europe Brent Spot Price FOB | EIA `RBRTEd` | Daily historical benchmark |
@@ -132,22 +134,20 @@ Provider availability, plan restrictions, licensing and timeframe coverage must 
 
 ## Repository layout
 
+All markdown documentation (except `README.md`) is consolidated inside the `docs/` directory:
+
 ```text
 .
-├── ARCHITECTURE.md              # System architecture, layer boundaries and extension guide
-├── CONTRIBUTING.md              # Contributor guidelines, workflow and PR standards
-├── AGENTS.md                    # Core operational rules for AI and developer assistants
-├── SECURITY.md                  # Security policies and zero-secrets management
-├── CHANGELOG.md                 # Semantic versioning release history
 ├── app/                         # Android application (Kotlin, Compose, Coordinators)
 ├── host_subdomain/
 │   ├── api/v1/                  # PHP REST API (auth.php, candles_sync.php)
+│   ├── scripts/                 # Python/PHP tvdatafeed extraction & MariaDB sync scripts
 │   ├── assets/                  # Web Native ES6 modules, styles, and renderer
 │   ├── i18n/                    # Web translations (fa/en)
 │   └── migrations/              # Database migrations
 ├── docs/
 │   ├── assets/chart-hero.svg             # README artwork
-│   ├── AGENTS.md                         # Operational rules and AI invariants
+│   ├── AGENTS.md                         # Operational rules, design directives & user flow
 │   ├── ARCHITECTURE.md                   # System design & layer diagrams
 │   ├── CHANGELOG.md                      # Release notes & version history
 │   ├── CHART_INTELLIGENCE_MASTER_SPEC.md # Master specification (Source of Truth)
@@ -159,8 +159,8 @@ Provider availability, plan restrictions, licensing and timeframe coverage must 
 │   ├── TRADING_STRATEGY_SPEC.md          # Strategy simulation module specification
 │   └── UI_UX_MOBILE_REDESIGN_SPEC.md     # Mobile UI/UX redesign roadmap (TradingView standard)
 ├── .github/workflows/
-│   └── build-apk.yml                     # Manual Android APK build
-└── README.md
+│   └── build-apk.yml                     # Android APK build + Web/DB deployment workflow
+└── README.md                    # Project landing page
 ```
 
 ## Build and delivery

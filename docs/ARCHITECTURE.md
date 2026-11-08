@@ -1,7 +1,7 @@
 # CHART — Architecture & System Design
 
 > **Document Status:** Official Architectural Specification  
-> **Target Version:** 1.27+  
+> **Target Version:** 1.28+  
 > **Master Reference:** [CHART_INTELLIGENCE_MASTER_SPEC.md](./CHART_INTELLIGENCE_MASTER_SPEC.md)
 
 ---
@@ -24,9 +24,9 @@ The software architecture is governed by five core principles:
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Presentation Layer (UI)                         │
-│  • Multi-Pane Layered Chart Workspace (Main Price Pane + Volume Pane)  │
-│  • Unified Top Subbar (Timeframes 15m..1D + Date Ranges 1D..All + SMA) │
-│  • Android: Jetpack Compose full-viewport canvas & collapsible dock    │
+│  • 4-Tab TradingView Architecture (Watchlist, Chart, Prediction, Set.) │
+│  • 5-Layer Chart Workspace (48dp Header + 85% Canvas + 46dp Bottom Bar)│
+│  • Android: Jetpack Compose full-viewport canvas & modal BottomSheets  │
 │  • Web: Desktop terminal layout & mobile touch-locked workspace        │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Events & Actions
@@ -85,7 +85,7 @@ The software architecture is governed by five core principles:
 │   └── YahooFinanceAdapter.kt
 └── ui/
     ├── components/             # Reusable composables (CandlestickCanvas, ThemeSelector)
-    ├── screens/                # Top-level screen views (ChartView, Watchlist, Settings, Login)
+    ├── screens/                # Top-level screen views (Watchlist, ChartView, Prediction, Settings, Login)
     ├── state/                  # MainViewModel and Reactive UI State
     │   └── coordinators/       # Focused UI mutation coordinators
     │       ├── ChartDrawingCoordinator.kt

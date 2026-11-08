@@ -1,9 +1,9 @@
 # CHART — Project & Development Guide
 
-> راهنمای مکمل برای معرفی جزئیات اجرایی، استانداردهای توسعه و وضعیت پروژه. مرجع تصمیمات معماری و محصول همچنان [سند اصلی](../CHART_INTELLIGENCE_MASTER_SPEC.md) است.
+> راهنمای مکمل برای معرفی جزئیات اجرایی، استانداردهای توسعه و وضعیت پروژه. مرجع تصمیمات معماری و محصول همچنان [سند اصلی](CHART_INTELLIGENCE_MASTER_SPEC.md) است.
 
-**آخرین بازبینی:** 2026-11-07  
-**نسخه سند مرجع اصلی هنگام بازبینی:** 1.27  
+**آخرین بازبینی:** 2026-11-08  
+**نسخه سند مرجع اصلی هنگام بازبینی:** 1.28  
 **وب‌اپلیکیشن:** https://chart.manico.es
 
 ---
@@ -68,15 +68,15 @@
 9. **تست‌پذیری و دسترس‌پذیری:** شناسه‌های تست با الگوی `snake_case` و حداقل ابعاد لمسی Android برابر 48dp.
 10. **مهاجرت امن دیتابیس:** Migrationها باید غیرمخرب و تکرارپذیر باشند و مسیر Rollback برای استقرار در نظر گرفته شود.
 11. **معماری سه‌لایه عدم هاردکد (`Zero Hardcoding`):** تمام پارامترهای الگوریتم (سقف تاریخچه، گام زوم، خطای لمس) در Config مرکزی تعریف شده و با اسلایدرهای UI در تنظیمات قابل تغییرند؛ رنگ‌های بصری کندل‌ها و خطوط رسم در تم متمرکز و در صفحه تنظیمات با اعمال بلادرنگ قابل انتخاب هستند؛ و کاتالوگ نمادها کاملاً باز بوده و امکان ثبت نماد و اعشار و منبع جدید از داخل تنظیمات بدون هیچ کدنویسی مجدد فراهم است.
-12. **میز کار حرفه‌ای نمودار چندپنلی (`Multi-Pane Professional Chart Workspace`):** نمودار قلب اصلی برنامه است و ۸۰٪ تا ۸۵٪ فضای صفحه را بدون اسکرول عمودی صفحه به خود اختصاص می‌دهد؛ تایم‌فریم‌ها (`15m`, `1h`, `4h`, `1D`) و بازه‌های تاریخی (`1D`, `5D`, `1M`, `3M`, `YTD`, `1Y`, `All`) در یک ردیف واحد بالای نمودار ادغام شده‌اند؛ بوم نمودار دارای پنل اصلی قیمت (`~78%`)، خط افقی نقطه‌چین و برچسب رنگی قیمت فعلی روی محور راست، کراس‌هیر با کادر قیمت و کادر زمان UTC روی محورها، اندیکاتور `SMA 20` و پنل مستقل حجم معاملات (`~22%` قابل تغییر ارتفاع و جمع‌شدن) در پایین است؛ و ابزارهای ترسیم دارای انتخابگر رنگ و ضخامت اختصاصی برای هر خط هستند (در موبایل و اندروید به‌صورت نوار شناور تاشو بالای منوی پایین).
+12. **معماری ۴ صفحه‌ای استاندارد TradingView (`Watchlist | Chart | Prediction | Settings`):** نمودار قلب اصلی برنامه است و با چیدمان ۵ لایه‌ای (`48dp` هدر نماد با برچسب غیرقابل‌کلیک منبع داده، `>= 85%` بوم کندل و حجم، و نوار کنترل پایینی `46dp` شامل `[نماد ▾ | تایم‌فریم | ابزار رسم | fx | ⋯]`) طراحی شده است؛ صفحه `Watchlist` صفحه پیش‌فرض پس از ورود است؛ صفحه `Prediction` به‌صورت مستقل برای مشاهده و مدیریت پیش‌بینی‌ها و سناریوهای تحلیلی فعالیت می‌کند؛ و تغییر منبع داده هر نماد منحصراً در صفحه `Settings` انجام می‌شود.
 13. **ماژول تحلیل تکنیکال و محاسباتی:** ارزیابی شاخص‌های نوسان (دامنه، سقف/کف، ATR 14) و نقاط پیوت کلاسیک کف بازار بر اساس محاسبات ریاضی دقیق روی کندل‌های واقعی و بدون داده‌های شبیه‌سازی‌شده یا موک.
-14. **استانداردهای جامعه متن‌باز و نگهداری بلندمدت (`Open-Source Readiness`):** ۵ سند مرجع متن‌باز در ریشه (`ARCHITECTURE.md`، `CONTRIBUTING.md`، `AGENTS.md`، `SECURITY.md`، `CHANGELOG.md`)؛ تفکیک هماهنگ‌کننده‌های ویومدل اندروید در `ui/state/coordinators/` (`ChartDrawingCoordinator.kt`، `SymbolCatalogCoordinator.kt`، `ChartPreferenceCoordinator.kt`)؛ و ماژولارسازی کامل وب با Native ES6 Modules در `assets/js/` بدون باندلر خارجی.
-15. **احراز هویت یکپارچه وب و اندروید و بازیابی رمز با ایمیل (`Unified Auth & Recovery`):** همگام‌سازی حساب مالک بین اندروید و وب مستقیماً از طریق سرور اختصاصی (`api/v1/auth.php` بدون وابستگی به سرویس‌های خارجی مانند Firebase)، ذخیره ایمیل بازیابی، جریان ۲ مرحله‌ای بازیابی رمز عبور با کد ۶ رقمی ایمیل، و نمایش نشان کاربر فعال به همراه دکمه خروج (`Sign Out`) در نوار هدر بالای صفحه وب و اندروید.
+14. **استانداردهای جامعه متن‌باز و نگهداری بلندمدت (`Open-Source Readiness`):** تجمیع تمام اسناد مرجع `.md` در پوشه `docs/` (`ARCHITECTURE.md`، `CONTRIBUTING.md`، `AGENTS.md`، `SECURITY.md`، `CHANGELOG.md`، `CHART_INTELLIGENCE_MASTER_SPEC.md`، `DESIGN_WORKSPACE_SPEC.md`، `UI_UX_MOBILE_REDESIGN_SPEC.md`) و نگه‌داشتن تنها `README.md` در ریشه مخزن؛ تفکیک هماهنگ‌کننده‌های ویومدل اندروید در `ui/state/coordinators/`؛ و ماژولارسازی کامل وب با Native ES6 Modules در `assets/js/` بدون باندلر خارجی.
+15. **احراز هویت یکپارچه وب و اندروید و بازیابی رمز با ایمیل (`Unified Auth & Recovery`):** همگام‌سازی حساب مالک بین اندروید و وب مستقیماً از طریق سرور اختصاصی (`api/v1/auth.php` بدون وابستگی به سرویس‌های خارجی مانند Firebase)، ذخیره ایمیل بازیابی، و جریان ۲ مرحله‌ای بازیابی رمز عبور با کد ۶ رقمی ایمیل.
 
 ### نمونه جداسازی ماژول‌ها
 
-- **اسناد ریشه:** `ARCHITECTURE.md`, `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md`, `CHANGELOG.md`, `CHART_INTELLIGENCE_MASTER_SPEC.md`
-- **صفحات اندروید:** `LoginScreen`, `WatchlistScreen`, `ChartViewScreen`, `SettingsScreen`
+- **اسناد مستندات (`docs/`):** `CHART_INTELLIGENCE_MASTER_SPEC.md`, `DESIGN_WORKSPACE_SPEC.md`, `UI_UX_MOBILE_REDESIGN_SPEC.md`, `ARCHITECTURE.md`, `PROJECT_GUIDE.md`, `INFRASTRUCTURE_INVENTORY.md`, `TRADING_STRATEGY_SPEC.md`, `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md`, `CHANGELOG.md`
+- **صفحات اندروید (`ui/screens/`):** `LoginScreen`, `WatchlistScreen`, `ChartViewScreen`, `PredictionScreen`, `SettingsScreen`
 - **هماهنگ‌کننده‌ها و ریپازیتوری‌های اندروید:** `ChartDrawingCoordinator`, `SymbolCatalogCoordinator`, `ChartPreferenceCoordinator`, `MainViewModel`, `WorkspaceRepository`
 - **اجزای UI اندروید:** `MultiTabHeader`, `ChartTopBar`, `DrawingToolsRail`, `CandlestickCanvas`, `TabItemCard`, `ThemeSelector`, `TimeframeSelector`
 - **ماژول‌های وب (`host_subdomain/assets/js/`):**
