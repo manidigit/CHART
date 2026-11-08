@@ -158,4 +158,25 @@
     <string name="draw_width_label">ضخامت</string>
     <string name="draw_tools_toggle">ترسیم</string>
     <string name="settings_change_provider">تغییر منبع</string>
+    <string name="nav_prediction">پیش‌بینی</string>
+    <string name="nav_chart_short">نمودار</string>
+    <string name="chart_control_indicators">اندیکاتور</string>
+    <string name="chart_control_more">بیشتر</string>
+    <string name="chart_select_symbol_title">انتخاب نماد از واچ‌لیست</string>
+    <string name="chart_select_timeframe_title">انتخاب تایم‌فریم</string>
+    <string name="prediction_title">پیش‌بینی</string>
+    <string name="prediction_bias_bullish">ساختار صعودی</string>
+    <string name="prediction_bias_bearish">ساختار نزولی</string>
+    <string name="prediction_pivots_title">سطوح کلیدی و نقاط چرخش (Pivots)</string>
+    <string name="prediction_volatility_title">نوسان‌پذیری و دامنه (ATR 14)</string>
+    <string name="prediction_engine_title">سناریوهای پیش‌بینی ساختار بازار</string>
+    <string name="prediction_engine_desc">نواحی حمایت/مقاومت و اهداف حرکتی محاسبه‌شده از کندل‌های بسته‌شده واقعی بازار.</string>
+    <string name="prediction_bull_breakout">سناریوی صعودی (شکست بالای R1)</string>
+    <string name="prediction_bear_breakout">سناریوی نزولی (شکست زیر S1)</string>
+    <string name="settings_group_account">۱. حساب کاربری</string>
+    <string name="settings_group_appearance">۲. ظاهر و زبان</string>
+    <string name="settings_group_sources">۳. منبع داده و نمادها</string>
+    <string name="settings_group_params">۴. پارامترهای تحلیل</string>
+    <string name="settings_group_about">۵. درباره و پشتیبانی</string>
+    <string name="settings_about_version">نسخه ۱.۲۸.۰ · استاندارد حرفه‌ای TradingView</string>
 </resources>

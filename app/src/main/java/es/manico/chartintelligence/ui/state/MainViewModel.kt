@@ -30,6 +30,7 @@ import kotlin.math.roundToInt
 enum class WorkspaceScreen {
     WATCHLIST,
     CHART_VIEW,
+    PREDICTION,
     SETTINGS
 }
 
@@ -50,6 +51,7 @@ data class Phase1UiState(
     @param:StringRes val authErrorResId: Int? = null,
     @param:StringRes val authInfoResId: Int? = null,
     val currentScreen: WorkspaceScreen = WorkspaceScreen.WATCHLIST,
+    val screenBackStack: List<WorkspaceScreen> = emptyList(),
     val symbols: List<SymbolConfig> = emptyList(),
     val chartPreferences: ChartPreferences = ChartPreferences(),
     val isSyncingAll: Boolean = false,
@@ -117,7 +119,45 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateTo(screen: WorkspaceScreen) {
-        _uiState.update { it.copy(currentScreen = screen, statusBannerResId = null) }
+        val current = _uiState.value.currentScreen
+        if (current == screen) return
+
+        if (screen in listOf(WorkspaceScreen.CHART_VIEW, WorkspaceScreen.PREDICTION) && _uiState.value.openTabs.isEmpty()) {
+            val defaultSym = _uiState.value.watchlistSymbols.firstOrNull() ?: _uiState.value.symbols.firstOrNull()
+            if (defaultSym != null) {
+                activateSymbolTab(defaultSym, targetScreen = screen)
+                return
+            }
+        }
+
+        _uiState.update { state ->
+            val nextBackStack = if (screen == WorkspaceScreen.WATCHLIST) {
+                emptyList()
+            } else {
+                (state.screenBackStack + state.currentScreen).takeLast(6)
+            }
+            state.copy(
+                currentScreen = screen,
+                screenBackStack = nextBackStack,
+                statusBannerResId = null
+            )
+        }
+    }
+
+    fun navigateBack() {
+        _uiState.update { state ->
+            val previous = state.screenBackStack.lastOrNull() ?: WorkspaceScreen.WATCHLIST
+            val remainingStack = if (state.screenBackStack.isNotEmpty()) {
+                state.screenBackStack.dropLast(1)
+            } else {
+                emptyList()
+            }
+            state.copy(
+                currentScreen = previous,
+                screenBackStack = if (previous == WorkspaceScreen.WATCHLIST) emptyList() else remainingStack,
+                statusBannerResId = null
+            )
+        }
     }
 
     fun setAuthMode(mode: AuthScreenMode) {
@@ -311,7 +351,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 authMode = AuthScreenMode.LOGIN,
                 authErrorResId = null,
                 authInfoResId = null,
-                statusBannerResId = null
+                statusBannerResId = null,
+                currentScreen = WorkspaceScreen.WATCHLIST,
+                screenBackStack = emptyList()
             )
         }
     }
@@ -498,15 +540,32 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
      * Opens a symbol in Chart View inside its own persistent tab.
      */
     fun openSymbolInChartTab(symbol: SymbolConfig) {
+        activateSymbolTab(symbol, targetScreen = WorkspaceScreen.CHART_VIEW)
+    }
+
+    /**
+     * Switches the active symbol while staying inside the Prediction screen.
+     */
+    fun selectSymbolInPrediction(symbol: SymbolConfig) {
+        activateSymbolTab(symbol, targetScreen = WorkspaceScreen.PREDICTION)
+    }
+
+    private fun activateSymbolTab(symbol: SymbolConfig, targetScreen: WorkspaceScreen) {
         val tabId = "${symbol.symbolCode}_${symbol.activeProvider.id}"
         val currentTabs = _uiState.value.openTabs
         val existingTab = currentTabs.firstOrNull { it.tabId == tabId }
 
         if (existingTab != null) {
-            _uiState.update {
-                it.copy(
+            _uiState.update { state ->
+                val nextStack = if (state.currentScreen != targetScreen) {
+                    (state.screenBackStack + state.currentScreen).takeLast(6)
+                } else {
+                    state.screenBackStack
+                }
+                state.copy(
                     activeTabId = tabId,
-                    currentScreen = WorkspaceScreen.CHART_VIEW
+                    currentScreen = targetScreen,
+                    screenBackStack = nextStack
                 )
             }
             if (existingTab.candles.isEmpty() && !existingTab.isLoading) {
@@ -530,11 +589,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 drawings = savedDrawings,
                 isLoading = cachedCandles.isEmpty()
             )
-            _uiState.update {
-                it.copy(
-                    openTabs = it.openTabs + newTab,
+            _uiState.update { state ->
+                val nextStack = if (state.currentScreen != targetScreen) {
+                    (state.screenBackStack + state.currentScreen).takeLast(6)
+                } else {
+                    state.screenBackStack
+                }
+                state.copy(
+                    openTabs = state.openTabs + newTab,
                     activeTabId = tabId,
-                    currentScreen = WorkspaceScreen.CHART_VIEW
+                    currentScreen = targetScreen,
+                    screenBackStack = nextStack
                 )
             }
             if (cachedCandles.isEmpty()) {

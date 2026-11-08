@@ -120,7 +120,7 @@ export const state = {
   authErrorKey: null,
   authInfoKey: null,
   statusBannerKey: null,
-  currentScreen: 'chart_view',
+  currentScreen: 'watchlist',
   desktopSidePanel: 'watchlist',
   symbols: [],
   openTabs: [],

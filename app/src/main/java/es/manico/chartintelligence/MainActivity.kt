@@ -4,28 +4,16 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
-import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
-import androidx.compose.material.icons.automirrored.outlined.Logout
-import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.CandlestickChart
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material3.Badge
@@ -37,23 +25,19 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarDefaults
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
-import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import es.manico.chartintelligence.ui.screens.ChartViewScreen
 import es.manico.chartintelligence.ui.screens.LoginScreen
+import es.manico.chartintelligence.ui.screens.PredictionScreen
 import es.manico.chartintelligence.ui.screens.SettingsScreen
 import es.manico.chartintelligence.ui.screens.WatchlistScreen
 import es.manico.chartintelligence.ui.state.MainViewModel
@@ -91,80 +75,6 @@ fun ChartIntelligenceApp(
             modifier = Modifier.fillMaxSize(),
             containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets.safeDrawing,
-            topBar = {
-                if (state.isAuthenticated) {
-                    Surface(
-                        color = MaterialTheme.colorScheme.surface,
-                        tonalElevation = 0.dp,
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .statusBarsPadding()
-                        ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 44.dp)
-                                    .padding(horizontal = 12.dp, vertical = 4.dp),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Row(
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    modifier = Modifier.weight(1f, fill = false)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Outlined.AccountCircle,
-                                        contentDescription = state.ownerUsername,
-                                        tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = state.ownerUsername.ifBlank { state.ownerEmail },
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface,
-                                        maxLines = 1,
-                                        overflow = TextOverflow.Ellipsis,
-                                        modifier = Modifier.testTag("top_bar_user_badge")
-                                    )
-                                }
-
-                                OutlinedButton(
-                                    onClick = handleSignOut,
-                                    shape = RoundedCornerShape(8.dp),
-                                    border = BorderStroke(1.dp, financialPalette.cardBorder),
-                                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                                    modifier = Modifier
-                                        .height(32.dp)
-                                        .testTag("top_bar_sign_out_button")
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Outlined.Logout,
-                                        contentDescription = stringResource(R.string.action_sign_out),
-                                        tint = MaterialTheme.colorScheme.error,
-                                        modifier = Modifier.size(15.dp)
-                                    )
-                                    Spacer(modifier = Modifier.width(4.dp))
-                                    Text(
-                                        text = stringResource(R.string.action_logout_short),
-                                        color = MaterialTheme.colorScheme.error,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold
-                                    )
-                                }
-                            }
-                            HorizontalDivider(
-                                thickness = 1.dp,
-                                color = financialPalette.cardBorder
-                            )
-                        }
-                    }
-                }
-            },
             bottomBar = {
                 if (state.isAuthenticated) {
                     Column(modifier = Modifier.fillMaxWidth()) {
@@ -184,6 +94,8 @@ fun ChartIntelligenceApp(
                                 unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                             )
+
+                            // 1. Watchlist
                             NavigationBarItem(
                                 selected = state.currentScreen == WorkspaceScreen.WATCHLIST,
                                 onClick = { mainViewModel.navigateTo(WorkspaceScreen.WATCHLIST) },
@@ -216,28 +128,16 @@ fun ChartIntelligenceApp(
                                 modifier = Modifier.testTag("nav_watchlist_item")
                             )
 
+                            // 2. Chart
                             NavigationBarItem(
                                 selected = state.currentScreen == WorkspaceScreen.CHART_VIEW,
                                 onClick = { mainViewModel.navigateTo(WorkspaceScreen.CHART_VIEW) },
                                 colors = navColors,
                                 icon = {
-                                    BadgedBox(
-                                        badge = {
-                                            if (state.openTabs.isNotEmpty()) {
-                                                Badge(
-                                                    containerColor = MaterialTheme.colorScheme.primary,
-                                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                                ) {
-                                                    Text(state.openTabs.size.toString())
-                                                }
-                                            }
-                                        }
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.CandlestickChart,
-                                            contentDescription = stringResource(R.string.nav_chart_view)
-                                        )
-                                    }
+                                    Icon(
+                                        imageVector = Icons.Outlined.CandlestickChart,
+                                        contentDescription = stringResource(R.string.nav_chart_view)
+                                    )
                                 },
                                 label = {
                                     Text(
@@ -248,6 +148,27 @@ fun ChartIntelligenceApp(
                                 modifier = Modifier.testTag("nav_chart_view_item")
                             )
 
+                            // 3. Prediction
+                            NavigationBarItem(
+                                selected = state.currentScreen == WorkspaceScreen.PREDICTION,
+                                onClick = { mainViewModel.navigateTo(WorkspaceScreen.PREDICTION) },
+                                colors = navColors,
+                                icon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Outlined.TrendingUp,
+                                        contentDescription = stringResource(R.string.nav_prediction)
+                                    )
+                                },
+                                label = {
+                                    Text(
+                                        text = stringResource(R.string.nav_prediction),
+                                        style = MaterialTheme.typography.labelSmall
+                                    )
+                                },
+                                modifier = Modifier.testTag("nav_prediction_item")
+                            )
+
+                            // 4. Settings
                             NavigationBarItem(
                                 selected = state.currentScreen == WorkspaceScreen.SETTINGS,
                                 onClick = { mainViewModel.navigateTo(WorkspaceScreen.SETTINGS) },
@@ -298,22 +219,27 @@ fun ChartIntelligenceApp(
                     when (state.currentScreen) {
                         WorkspaceScreen.WATCHLIST -> WatchlistScreen(
                             watchlistSymbols = state.watchlistSymbols,
+                            allSymbols = state.symbols,
                             isSyncingAll = state.isSyncingAll,
                             statusBannerResId = state.statusBannerResId,
                             onSyncSymbolNow = mainViewModel::syncSingleSymbolUpToNow,
                             onSyncAllNow = mainViewModel::syncAllWatchlistUpToNow,
                             onOpenSymbolInChartTab = mainViewModel::openSymbolInChartTab,
+                            onToggleSymbolInWatchlist = mainViewModel::toggleSymbolInWatchlist,
+                            onAddCustomSymbol = mainViewModel::addCustomSymbol,
                             onNavigateToSettings = { mainViewModel.navigateTo(WorkspaceScreen.SETTINGS) }
                         )
 
                         WorkspaceScreen.CHART_VIEW -> ChartViewScreen(
                             openTabs = state.openTabs,
                             activeTab = state.activeTab,
+                            watchlistSymbols = state.watchlistSymbols,
                             preferences = state.chartPreferences,
                             onSelectTab = mainViewModel::selectChartTab,
                             onCloseTab = mainViewModel::closeChartTab,
+                            onOpenSymbolFromWatchlist = mainViewModel::openSymbolInChartTab,
                             onSyncActiveSymbolNow = mainViewModel::syncSingleSymbolUpToNow,
-                            onBackToWatchlist = { mainViewModel.navigateTo(WorkspaceScreen.WATCHLIST) },
+                            onBackToWatchlist = mainViewModel::navigateBack,
                             onSelectTimeframe = mainViewModel::selectTimeframeForActiveTab,
                             onSelectDateRange = mainViewModel::selectDateRangeForActiveTab,
                             onSelectChartType = mainViewModel::selectChartTypeForActiveTab,
@@ -339,6 +265,14 @@ fun ChartIntelligenceApp(
                             onClearAllDrawings = mainViewModel::clearAllDrawingsOnActiveTab
                         )
 
+                        WorkspaceScreen.PREDICTION -> PredictionScreen(
+                            activeTab = state.activeTab,
+                            watchlistSymbols = state.watchlistSymbols,
+                            onSelectSymbol = mainViewModel::selectSymbolInPrediction,
+                            onSelectTimeframe = mainViewModel::selectTimeframeForActiveTab,
+                            onBackToWatchlist = mainViewModel::navigateBack
+                        )
+
                         WorkspaceScreen.SETTINGS -> SettingsScreen(
                             currentLanguage = state.language,
                             isDarkTheme = state.isDarkTheme,
@@ -354,7 +288,7 @@ fun ChartIntelligenceApp(
                             onUpdateRecoveryEmail = mainViewModel::updateRecoveryEmail,
                             onUpdatePassword = mainViewModel::changePassword,
                             onSignOut = handleSignOut,
-                            onBackToWatchlist = { mainViewModel.navigateTo(WorkspaceScreen.WATCHLIST) },
+                            onBackToWatchlist = mainViewModel::navigateBack,
                             onUpdateBullColor = mainViewModel::updateBullCandleColor,
                             onUpdateBearColor = mainViewModel::updateBearCandleColor,
                             onUpdateTrendColor = mainViewModel::updateTrendLineColor,

@@ -5,7 +5,6 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -27,22 +26,30 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.Logout
+import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.Info
+import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Tune
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -75,7 +82,7 @@ import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 import kotlin.math.roundToInt
 
-@OptIn(ExperimentalLayoutApi::class)
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     currentLanguage: AppLanguage,
@@ -111,134 +118,330 @@ fun SettingsScreen(
     var recoveryEmailInput by rememberSaveable(ownerEmail) { mutableStateOf(ownerEmail) }
     var newPassword by rememberSaveable { mutableStateOf("") }
     var showAddSymbolDialog by rememberSaveable { mutableStateOf(false) }
+    var showColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var providerModalSymbolCode by rememberSaveable { mutableStateOf<String?>(null) }
 
     Column(
         modifier = modifier
             .fillMaxSize()
-            .verticalScroll(rememberScrollState())
-            .padding(horizontal = 12.dp, vertical = 10.dp),
-        horizontalAlignment = Alignment.CenterHorizontally
+            .background(MaterialTheme.colorScheme.background)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .widthIn(max = 680.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+        // [2] Compact 48.dp Header (TradingView Standard: Title only, zero extra buttons)
+        Surface(
+            color = MaterialTheme.colorScheme.surface,
+            tonalElevation = 0.dp,
+            modifier = Modifier.fillMaxWidth()
         ) {
-            Text(
-                text = stringResource(R.string.settings_title),
-                style = MaterialTheme.typography.titleLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onBackground
-            )
-
-            if (statusBannerResId != null) {
-                Text(
-                    text = stringResource(statusBannerResId),
-                    style = MaterialTheme.typography.labelLarge,
-                    color = financialPalette.bullCandle,
-                    modifier = Modifier.testTag("settings_status_banner")
-                )
-            }
-
-            // Section 1: Instant Language & Visual Theme
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, financialPalette.cardBorder)
-            ) {
-                Column(
+            Column(modifier = Modifier.fillMaxWidth()) {
+                Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .height(48.dp)
+                        .padding(horizontal = 14.dp),
+                    verticalAlignment = Alignment.CenterVertically
                 ) {
                     Text(
-                        text = stringResource(R.string.settings_appearance_section),
+                        text = stringResource(R.string.settings_title),
                         style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-                    LanguageThemeSelector(
-                        currentLanguage = currentLanguage,
-                        isDarkTheme = isDarkTheme,
-                        onLanguageSelected = onLanguageSelected,
-                        onThemeSelected = onThemeSelected
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
                     )
                 }
+                HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
             }
+        }
 
-            // Section 2: Symbol Catalog & Per-Symbol Data Source Setup (Clean TradingView Rows + Modal Source Picker)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, financialPalette.cardBorder)
+        // [3] Vertical Scroll Content — 5 Mandatory Groups in Fixed Order
+        Column(
+            modifier = Modifier
+                .weight(1f)
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 12.dp, vertical = 10.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .widthIn(max = 680.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Column(
+                if (statusBannerResId != null) {
+                    Text(
+                        text = stringResource(statusBannerResId),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = financialPalette.bullCandle,
+                        modifier = Modifier.testTag("settings_status_banner")
+                    )
+                }
+
+                // =========================================================================
+                // GROUP 1: 1. User Account (حساب کاربری)
+                // =========================================================================
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .testTag("settings_group_account"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
-                        Text(
-                            text = stringResource(R.string.settings_symbols_section),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            modifier = Modifier.weight(1f)
-                        )
-                        Button(
-                            onClick = { showAddSymbolDialog = true },
-                            shape = RoundedCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
-                            modifier = Modifier
-                                .heightIn(min = 38.dp)
-                                .testTag("add_custom_symbol_button")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Icon(
-                                imageVector = Icons.Outlined.Add,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = stringResource(R.string.settings_action_add_symbol),
-                                style = MaterialTheme.typography.labelMedium
-                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.AccountCircle,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                                Column {
+                                    Text(
+                                        text = stringResource(R.string.settings_group_account),
+                                        style = MaterialTheme.typography.titleSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    Text(
+                                        text = ownerUsername.ifBlank { ownerEmail },
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.testTag("top_bar_user_badge")
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = onSignOut,
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, financialPalette.cardBorder),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .testTag("settings_sign_out_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Outlined.Logout,
+                                    contentDescription = stringResource(R.string.action_sign_out),
+                                    tint = MaterialTheme.colorScheme.error,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.action_sign_out),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.error,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                            }
                         }
-                    }
 
-                    Text(
-                        text = stringResource(R.string.settings_symbols_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    for (symbol in symbols) {
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("settings_symbol_card_${symbol.symbolCode.lowercase()}"),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = CardDefaults.cardColors(
-                                containerColor = MaterialTheme.colorScheme.background
-                            ),
-                            border = BorderStroke(1.dp, financialPalette.cardBorder)
-                        ) {
-                            Column(
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            OutlinedTextField(
+                                value = recoveryEmailInput,
+                                onValueChange = { recoveryEmailInput = it },
+                                label = { Text(stringResource(R.string.label_recovery_email)) },
+                                singleLine = true,
                                 modifier = Modifier
                                     .fillMaxWidth()
-                                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    .testTag("settings_email_input")
+                            )
+                        }
+
+                        Button(
+                            onClick = { onUpdateRecoveryEmail(recoveryEmailInput) },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 42.dp)
+                                .testTag("settings_save_email_button")
+                        ) {
+                            Text(text = stringResource(R.string.action_save_email))
+                        }
+
+                        OutlinedTextField(
+                            value = newPassword,
+                            onValueChange = { newPassword = it },
+                            label = { Text(stringResource(R.string.settings_new_password)) },
+                            visualTransformation = PasswordVisualTransformation(),
+                            singleLine = true,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("settings_new_password_input")
+                        )
+
+                        Button(
+                            onClick = {
+                                onUpdatePassword(newPassword)
+                                newPassword = ""
+                            },
+                            shape = RoundedCornerShape(8.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 42.dp)
+                                .testTag("settings_update_password_button")
+                        ) {
+                            Text(text = stringResource(R.string.settings_change_password))
+                        }
+                    }
+                }
+
+                // =========================================================================
+                // GROUP 2: 2. Appearance & Language (ظاهر و زبان)
+                // =========================================================================
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_group_appearance"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_group_appearance),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        LanguageThemeSelector(
+                            currentLanguage = currentLanguage,
+                            isDarkTheme = isDarkTheme,
+                            onLanguageSelected = onLanguageSelected,
+                            onThemeSelected = onThemeSelected
+                        )
+                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.settings_chart_colors_section),
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = stringResource(R.string.settings_chart_colors_hint),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = { showColorsBottomSheet = true },
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, financialPalette.cardBorder),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier
+                                    .height(36.dp)
+                                    .testTag("open_chart_colors_sheet_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Palette,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(15.dp)
+                                )
+                                Spacer(modifier = Modifier.width(6.dp))
+                                Text(
+                                    text = stringResource(R.string.settings_chart_colors_section),
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
+                    }
+                }
+
+                // =========================================================================
+                // GROUP 3: 3. Data Sources & Symbols (منبع داده و نمادها)
+                // Exclusive place to configure per-symbol data source via clean BottomSheet
+                // =========================================================================
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_group_sources"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_group_sources),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Button(
+                                onClick = { showAddSymbolDialog = true },
+                                shape = RoundedCornerShape(8.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                modifier = Modifier
+                                    .heightIn(min = 36.dp)
+                                    .testTag("add_custom_symbol_button")
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.Add,
+                                    contentDescription = null,
+                                    modifier = Modifier.size(16.dp)
+                                )
+                                Spacer(modifier = Modifier.width(4.dp))
+                                Text(
+                                    text = stringResource(R.string.settings_action_add_symbol),
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
+
+                        Text(
+                            text = stringResource(R.string.settings_symbols_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        for (symbol in symbols) {
+                            Card(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("settings_symbol_card_${symbol.symbolCode.lowercase()}"),
+                                shape = RoundedCornerShape(8.dp),
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.background
+                                ),
+                                border = BorderStroke(1.dp, financialPalette.cardBorder)
                             ) {
                                 Row(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 10.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
@@ -254,7 +457,7 @@ fun SettingsScreen(
                                         )
                                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                             Text(
-                                                text = "${symbol.symbolCode} · ${symbol.activeProvider.badgeLabel} (${symbol.timeframe})",
+                                                text = "${symbol.symbolCode} · ${symbol.activeProvider.badgeLabel}",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontFamily = JetBrainsMonoFontFamily,
                                                 color = MaterialTheme.colorScheme.primary
@@ -271,7 +474,9 @@ fun SettingsScreen(
                                             shape = RoundedCornerShape(6.dp),
                                             border = BorderStroke(1.dp, financialPalette.cardBorder),
                                             contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                            modifier = Modifier.height(32.dp)
+                                            modifier = Modifier
+                                                .height(32.dp)
+                                                .testTag("change_provider_${symbol.symbolCode.lowercase()}")
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Outlined.Tune,
@@ -280,8 +485,9 @@ fun SettingsScreen(
                                             )
                                             Spacer(modifier = Modifier.width(4.dp))
                                             Text(
-                                                text = stringResource(R.string.settings_change_provider),
-                                                style = MaterialTheme.typography.labelSmall
+                                                text = symbol.activeProvider.badgeLabel,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = JetBrainsMonoFontFamily
                                             )
                                         }
 
@@ -310,455 +516,358 @@ fun SettingsScreen(
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
 
-                                // Compact 1-Line Horizontal Badge Strip (keeps direct 1-tap switching + testTag parity)
+                // =========================================================================
+                // GROUP 4: 4. Analysis Parameters (پارامترهای تحلیل)
+                // =========================================================================
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_group_params"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_group_params),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold
+                            )
+                            OutlinedButton(
+                                onClick = onResetAlgoParams,
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, financialPalette.cardBorder),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .testTag("reset_algo_params_button")
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.settings_action_reset_params),
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
+
+                        var currentFetchLimit by remember(chartPreferences.candleFetchLimit) {
+                            mutableFloatStateOf(chartPreferences.candleFetchLimit.toFloat())
+                        }
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.settings_param_fetch_limit),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
                                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .horizontalScroll(rememberScrollState()),
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        for (provider in symbol.allowedProviders) {
-                                            val isSelected = symbol.activeProvider == provider
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(
-                                                        if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.20f)
-                                                        else MaterialTheme.colorScheme.surface
-                                                    )
-                                                    .border(
-                                                        width = 1.dp,
-                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else financialPalette.cardBorder,
-                                                        shape = RoundedCornerShape(6.dp)
-                                                    )
-                                                    .clickable {
-                                                        onSelectProviderForSymbol(symbol.symbolCode, provider)
-                                                    }
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                    .testTag("provider_chip_${symbol.symbolCode.lowercase()}_${provider.id}")
-                                            ) {
-                                                Text(
-                                                    text = provider.badgeLabel,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontFamily = JetBrainsMonoFontFamily,
-                                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                    color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
-                                            }
-                                        }
-                                    }
+                                    Text(
+                                        text = currentFetchLimit.roundToInt().toString(),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
                                 }
                             }
+                            Slider(
+                                value = currentFetchLimit.coerceIn(40f, 5000f),
+                                onValueChange = {
+                                    val stepped = ((it / 20f).roundToInt() * 20).coerceIn(40, 5000)
+                                    currentFetchLimit = stepped.toFloat()
+                                },
+                                onValueChangeFinished = {
+                                    onUpdateAlgoParams(
+                                        currentFetchLimit.roundToInt().coerceIn(40, 5000),
+                                        chartPreferences.zoomStepCandles,
+                                        chartPreferences.drawingHitTolerancePx
+                                    )
+                                },
+                                valueRange = 40f..5000f,
+                                modifier = Modifier.testTag("slider_fetch_limit")
+                            )
+                        }
+
+                        var currentZoomStep by remember(chartPreferences.zoomStepCandles) {
+                            mutableFloatStateOf(chartPreferences.zoomStepCandles.toFloat())
+                        }
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.settings_param_zoom_step),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    Text(
+                                        text = currentZoomStep.roundToInt().toString(),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            Slider(
+                                value = currentZoomStep,
+                                onValueChange = { currentZoomStep = it },
+                                onValueChangeFinished = {
+                                    onUpdateAlgoParams(
+                                        chartPreferences.candleFetchLimit,
+                                        currentZoomStep.roundToInt(),
+                                        chartPreferences.drawingHitTolerancePx
+                                    )
+                                },
+                                valueRange = 2f..24f,
+                                steps = 10,
+                                modifier = Modifier.testTag("slider_zoom_step")
+                            )
+                        }
+
+                        var currentHitTolerance by remember(chartPreferences.drawingHitTolerancePx) {
+                            mutableFloatStateOf(chartPreferences.drawingHitTolerancePx)
+                        }
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.settings_param_touch_tolerance),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    Text(
+                                        text = "${currentHitTolerance.roundToInt()} px",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                            Slider(
+                                value = currentHitTolerance,
+                                onValueChange = { currentHitTolerance = it },
+                                onValueChangeFinished = {
+                                    onUpdateAlgoParams(
+                                        chartPreferences.candleFetchLimit,
+                                        chartPreferences.zoomStepCandles,
+                                        currentHitTolerance
+                                    )
+                                },
+                                valueRange = 14f..48f,
+                                steps = 16,
+                                modifier = Modifier.testTag("slider_touch_tolerance")
+                            )
                         }
                     }
                 }
-            }
 
-            // Section 3: Chart Visual Colors Customization (Official TradingView Presets)
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, financialPalette.cardBorder)
-            ) {
-                Column(
+                // =========================================================================
+                // GROUP 5: 5. About & Support (درباره و پشتیبانی)
+                // =========================================================================
+                Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .testTag("settings_group_about"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.settings_chart_colors_section),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OutlinedButton(
-                            onClick = onResetColors,
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, financialPalette.cardBorder),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier
-                                .height(34.dp)
-                                .testTag("reset_colors_button")
-                        ) {
-                            Text(
-                                text = stringResource(R.string.settings_action_reset_colors),
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = stringResource(R.string.settings_chart_colors_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    // Bullish candle color (TradingView #26A69A first)
-                    ColorOptionRow(
-                        title = stringResource(R.string.settings_color_bull),
-                        selectedHex = chartPreferences.bullCandleColorHex,
-                        presetHexes = listOf("FF26A69A", "FF10B981", "FF06B6D4", "FF22C55E", "FFD1D4DC"),
-                        onSelectHex = onUpdateBullColor
-                    )
-
-                    // Bearish candle color (TradingView #EF5350 first)
-                    ColorOptionRow(
-                        title = stringResource(R.string.settings_color_bear),
-                        selectedHex = chartPreferences.bearCandleColorHex,
-                        presetHexes = listOf("FFEF5350", "FFF43F5E", "FFE11D48", "FFF97316", "FFA855F7"),
-                        onSelectHex = onUpdateBearColor
-                    )
-
-                    // Trend line color (TradingView #2962FF first)
-                    ColorOptionRow(
-                        title = stringResource(R.string.settings_color_trend),
-                        selectedHex = chartPreferences.trendLineColorHex,
-                        presetHexes = listOf("FF2962FF", "FFA855F7", "FF38BDF8", "FFF59E0B", "FFD1D4DC"),
-                        onSelectHex = onUpdateTrendColor
-                    )
-
-                    // Horizontal line color
-                    ColorOptionRow(
-                        title = stringResource(R.string.settings_color_hline),
-                        selectedHex = chartPreferences.horizontalLineColorHex,
-                        presetHexes = listOf("FF38BDF8", "FF2962FF", "FF26A69A", "FFF59E0B", "FFD1D4DC"),
-                        onSelectHex = onUpdateHLineColor
-                    )
-
-                    // Vertical line color
-                    ColorOptionRow(
-                        title = stringResource(R.string.settings_color_vline),
-                        selectedHex = chartPreferences.verticalLineColorHex,
-                        presetHexes = listOf("FFF59E0B", "FFD946EF", "FF6366F1", "FF787B86", "FFD1D4DC"),
-                        onSelectHex = onUpdateVLineColor
-                    )
-                }
-            }
-
-            // Section 4: Algorithm & Calculation Parameters
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, financialPalette.cardBorder)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = stringResource(R.string.settings_algo_params_section),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OutlinedButton(
-                            onClick = onResetAlgoParams,
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, financialPalette.cardBorder),
-                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
-                            modifier = Modifier
-                                .height(34.dp)
-                                .testTag("reset_algo_params_button")
-                        ) {
-                            Text(
-                                text = stringResource(R.string.settings_action_reset_params),
-                                style = MaterialTheme.typography.labelSmall
-                            )
-                        }
-                    }
-
-                    Text(
-                        text = stringResource(R.string.settings_algo_params_hint),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-
-                    var currentFetchLimit by remember(chartPreferences.candleFetchLimit) {
-                        mutableFloatStateOf(chartPreferences.candleFetchLimit.toFloat())
-                    }
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = stringResource(R.string.settings_param_fetch_limit),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                Text(
-                                    text = currentFetchLimit.roundToInt().toString(),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                        Slider(
-                            value = currentFetchLimit.coerceIn(40f, 5000f),
-                            onValueChange = {
-                                val stepped = ((it / 20f).roundToInt() * 20).coerceIn(40, 5000)
-                                currentFetchLimit = stepped.toFloat()
-                            },
-                            onValueChangeFinished = {
-                                onUpdateAlgoParams(
-                                    currentFetchLimit.roundToInt().coerceIn(40, 5000),
-                                    chartPreferences.zoomStepCandles,
-                                    chartPreferences.drawingHitTolerancePx
-                                )
-                            },
-                            valueRange = 40f..5000f,
-                            modifier = Modifier.testTag("slider_fetch_limit")
-                        )
-                    }
-
-                    var currentZoomStep by remember(chartPreferences.zoomStepCandles) {
-                        mutableFloatStateOf(chartPreferences.zoomStepCandles.toFloat())
-                    }
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = stringResource(R.string.settings_param_zoom_step),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                Text(
-                                    text = currentZoomStep.roundToInt().toString(),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                        Slider(
-                            value = currentZoomStep,
-                            onValueChange = { currentZoomStep = it },
-                            onValueChangeFinished = {
-                                onUpdateAlgoParams(
-                                    chartPreferences.candleFetchLimit,
-                                    currentZoomStep.roundToInt(),
-                                    chartPreferences.drawingHitTolerancePx
-                                )
-                            },
-                            valueRange = 2f..24f,
-                            steps = 10,
-                            modifier = Modifier.testTag("slider_zoom_step")
-                        )
-                    }
-
-                    var currentHitTolerance by remember(chartPreferences.drawingHitTolerancePx) {
-                        mutableFloatStateOf(chartPreferences.drawingHitTolerancePx)
-                    }
-                    Column(modifier = Modifier.fillMaxWidth()) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text(
-                                text = stringResource(R.string.settings_param_touch_tolerance),
-                                style = MaterialTheme.typography.bodySmall,
-                                fontWeight = FontWeight.SemiBold
-                            )
-                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                Text(
-                                    text = "${currentHitTolerance.roundToInt()} px",
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                        Slider(
-                            value = currentHitTolerance,
-                            onValueChange = { currentHitTolerance = it },
-                            onValueChangeFinished = {
-                                onUpdateAlgoParams(
-                                    chartPreferences.candleFetchLimit,
-                                    chartPreferences.zoomStepCandles,
-                                    currentHitTolerance
-                                )
-                            },
-                            valueRange = 14f..48f,
-                            steps = 16,
-                            modifier = Modifier.testTag("slider_touch_tolerance")
-                        )
-                    }
-                }
-            }
-
-            // Section 5: Personal Account, Recovery Email & Password Management
-            Card(
-                modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(10.dp),
-                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                border = BorderStroke(1.dp, financialPalette.cardBorder)
-            ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    Text(
-                        text = "${stringResource(R.string.settings_account_section)} ($ownerUsername)",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold
-                    )
-
-                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                        OutlinedTextField(
-                            value = recoveryEmailInput,
-                            onValueChange = { recoveryEmailInput = it },
-                            label = { Text(stringResource(R.string.label_recovery_email)) },
-                            singleLine = true,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("settings_email_input")
-                        )
-                    }
-
-                    Button(
-                        onClick = { onUpdateRecoveryEmail(recoveryEmailInput) },
-                        shape = RoundedCornerShape(8.dp),
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .heightIn(min = 44.dp)
-                            .testTag("settings_save_email_button")
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Text(text = stringResource(R.string.action_save_email))
-                    }
-
-                    OutlinedTextField(
-                        value = newPassword,
-                        onValueChange = { newPassword = it },
-                        label = { Text(stringResource(R.string.settings_new_password)) },
-                        visualTransformation = PasswordVisualTransformation(),
-                        singleLine = true,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("settings_new_password_input")
-                    )
-
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Button(
-                            onClick = {
-                                onUpdatePassword(newPassword)
-                                newPassword = ""
-                            },
-                            shape = RoundedCornerShape(8.dp),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 44.dp)
-                                .testTag("settings_update_password_button")
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Text(text = stringResource(R.string.settings_change_password))
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_group_about),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
                         }
-
-                        OutlinedButton(
-                            onClick = onSignOut,
-                            shape = RoundedCornerShape(8.dp),
-                            border = BorderStroke(1.dp, financialPalette.cardBorder),
-                            modifier = Modifier
-                                .weight(1f)
-                                .heightIn(min = 44.dp)
-                                .testTag("settings_sign_out_button")
-                        ) {
-                            Text(text = stringResource(R.string.action_sign_out))
-                        }
+                        Text(
+                            text = stringResource(R.string.settings_about_version),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = stringResource(R.string.app_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
-            }
 
-            Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(12.dp))
+            }
         }
     }
 
-    // Modal Dialog for Detailed Per-Symbol Data Provider Selection
+    // BottomSheet for Per-Symbol Data Provider Selection (Group 3)
     val modalSymbol = symbols.firstOrNull { it.symbolCode == providerModalSymbolCode }
     if (modalSymbol != null) {
-        AlertDialog(
+        ModalBottomSheet(
             onDismissRequest = { providerModalSymbolCode = null },
-            title = {
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Text(
                     text = "${modalSymbol.symbolCode} · ${stringResource(R.string.settings_select_provider)}",
                     style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
-            },
-            text = {
-                Column(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalArrangement = Arrangement.spacedBy(6.dp)
-                ) {
-                    for (provider in modalSymbol.allowedProviders) {
-                        val isSelected = modalSymbol.activeProvider == provider
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable {
-                                    onSelectProviderForSymbol(modalSymbol.symbolCode, provider)
-                                    providerModalSymbolCode = null
-                                }
-                                .padding(vertical = 6.dp, horizontal = 4.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButton(
-                                selected = isSelected,
-                                onClick = {
-                                    onSelectProviderForSymbol(modalSymbol.symbolCode, provider)
-                                    providerModalSymbolCode = null
-                                }
-                            )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(provider.titleResId),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = provider.badgeLabel,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
+                for (provider in modalSymbol.allowedProviders) {
+                    val isSelected = modalSymbol.activeProvider == provider
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable {
+                                onSelectProviderForSymbol(modalSymbol.symbolCode, provider)
+                                providerModalSymbolCode = null
                             }
+                            .padding(vertical = 8.dp, horizontal = 6.dp)
+                            .testTag("provider_chip_${modalSymbol.symbolCode.lowercase()}_${provider.id}"),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        RadioButton(
+                            selected = isSelected,
+                            onClick = {
+                                onSelectProviderForSymbol(modalSymbol.symbolCode, provider)
+                                providerModalSymbolCode = null
+                            }
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = stringResource(provider.titleResId),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = provider.badgeLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                color = MaterialTheme.colorScheme.primary
+                            )
                         }
                     }
                 }
-            },
-            confirmButton = {
-                TextButton(onClick = { providerModalSymbolCode = null }) {
-                    Text(stringResource(R.string.action_cancel))
-                }
+                Spacer(modifier = Modifier.height(12.dp))
             }
-        )
+        }
+    }
+
+    // BottomSheet for Chart Visual Colors (Group 2)
+    if (showColorsBottomSheet) {
+        ModalBottomSheet(
+            onDismissRequest = { showColorsBottomSheet = false },
+            containerColor = MaterialTheme.colorScheme.surface
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = stringResource(R.string.settings_chart_colors_section),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                    OutlinedButton(
+                        onClick = onResetColors,
+                        shape = RoundedCornerShape(8.dp),
+                        border = BorderStroke(1.dp, financialPalette.cardBorder),
+                        contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                        modifier = Modifier
+                            .height(34.dp)
+                            .testTag("reset_colors_button")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_action_reset_colors),
+                            style = MaterialTheme.typography.labelSmall
+                        )
+                    }
+                }
+
+                ColorOptionRow(
+                    title = stringResource(R.string.settings_color_bull),
+                    selectedHex = chartPreferences.bullCandleColorHex,
+                    presetHexes = listOf("FF26A69A", "FF10B981", "FF06B6D4", "FF22C55E", "FFD1D4DC"),
+                    onSelectHex = onUpdateBullColor
+                )
+                ColorOptionRow(
+                    title = stringResource(R.string.settings_color_bear),
+                    selectedHex = chartPreferences.bearCandleColorHex,
+                    presetHexes = listOf("FFEF5350", "FFF43F5E", "FFE11D48", "FFF97316", "FFA855F7"),
+                    onSelectHex = onUpdateBearColor
+                )
+                ColorOptionRow(
+                    title = stringResource(R.string.settings_color_trend),
+                    selectedHex = chartPreferences.trendLineColorHex,
+                    presetHexes = listOf("FF2962FF", "FFA855F7", "FF38BDF8", "FFF59E0B", "FFD1D4DC"),
+                    onSelectHex = onUpdateTrendColor
+                )
+                ColorOptionRow(
+                    title = stringResource(R.string.settings_color_hline),
+                    selectedHex = chartPreferences.horizontalLineColorHex,
+                    presetHexes = listOf("FF38BDF8", "FF2962FF", "FF26A69A", "FFF59E0B", "FFD1D4DC"),
+                    onSelectHex = onUpdateHLineColor
+                )
+                ColorOptionRow(
+                    title = stringResource(R.string.settings_color_vline),
+                    selectedHex = chartPreferences.verticalLineColorHex,
+                    presetHexes = listOf("FFF59E0B", "FFD946EF", "FF6366F1", "FF787B86", "FFD1D4DC"),
+                    onSelectHex = onUpdateVLineColor
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
     }
 
     if (showAddSymbolDialog) {
@@ -877,11 +986,21 @@ private fun AddCustomSymbolDialog(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
-                    listOf(ProviderId.TVDATAFEED, ProviderId.DUKASCOPY, ProviderId.TWELVE_DATA, ProviderId.YAHOO_FINANCE).forEach { prov ->
+                    listOf(
+                        ProviderId.TVDATAFEED,
+                        ProviderId.DUKASCOPY,
+                        ProviderId.TWELVE_DATA,
+                        ProviderId.YAHOO_FINANCE
+                    ).forEach { prov ->
                         FilterChip(
                             selected = selectedProvider == prov,
                             onClick = { selectedProvider = prov },
-                            label = { Text(stringResource(prov.titleResId), style = MaterialTheme.typography.labelSmall) }
+                            label = {
+                                Text(
+                                    text = prov.badgeLabel,
+                                    style = MaterialTheme.typography.labelSmall
+                                )
+                            }
                         )
                     }
                 }
@@ -890,14 +1009,15 @@ private fun AddCustomSymbolDialog(
         confirmButton = {
             Button(
                 onClick = {
-                    if (symbolCode.isNotBlank()) {
-                        val dec = decimalsText.toIntOrNull()?.coerceIn(0, 6) ?: 2
-                        onConfirm(symbolCode.trim(), displayName.trim(), dec, selectedProvider)
+                    val cleanCode = symbolCode.trim().uppercase()
+                    if (cleanCode.length >= 2) {
+                        val dec = decimalsText.toIntOrNull()?.coerceIn(0, 8) ?: 2
+                        onConfirm(cleanCode, displayName.trim().ifBlank { cleanCode }, dec, selectedProvider)
                     }
                 },
-                enabled = symbolCode.isNotBlank()
+                enabled = symbolCode.trim().length >= 2
             ) {
-                Text(stringResource(R.string.action_save))
+                Text(stringResource(R.string.settings_action_add_symbol))
             }
         },
         dismissButton = {

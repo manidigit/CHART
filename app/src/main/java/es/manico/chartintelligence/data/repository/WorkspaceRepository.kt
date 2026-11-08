@@ -401,8 +401,10 @@ class WorkspaceRepository(context: Context) {
         return loadedList.map { symbol ->
             val candles = getCachedOrAggregatedCandles(symbol.symbolCode, symbol.activeProvider, symbol.timeframe)
             val latest = candles.lastOrNull()
+            val prev = if (candles.size >= 2) candles[candles.size - 2].close else latest?.open
             symbol.copy(
                 lastClose = latest?.close,
+                prevClose = prev,
                 lastCandleUtc = latest?.openTimeUtcIso,
                 storedCandleCount = candles.size
             )
@@ -507,9 +509,11 @@ class WorkspaceRepository(context: Context) {
         }
 
         val latest = merged.lastOrNull()
+        val prev = if (merged.size >= 2) merged[merged.size - 2].close else latest?.open
         val updatedSymbol = symbol.copy(
             timeframe = effectiveTimeframe,
             lastClose = latest?.close,
+            prevClose = prev,
             lastCandleUtc = latest?.openTimeUtcIso,
             storedCandleCount = merged.size,
             isSyncing = false,

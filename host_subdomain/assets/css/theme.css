@@ -572,15 +572,16 @@ html, body {
     z-index: 20;
   }
 
-  /* Collapsible Floating Mobile Drawing Dock right above Bottom Nav */
+  /* Floating Mobile Pencil FAB & Icon Strip over Bottom-Left of Chart Canvas (0px vertical height overhead) */
   .mobile-floating-dock {
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    padding: 4px 8px;
+    position: absolute;
+    bottom: 32px;
+    left: 8px;
+    background: transparent;
+    padding: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
-    flex-shrink: 0;
     z-index: 32;
   }
 
@@ -588,7 +589,11 @@ html, body {
   .mobile-dock-style-row {
     display: flex;
     align-items: center;
-    gap: 5px;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 20px;
+    background: rgba(30, 34, 45, 0.94);
+    border: 1px solid var(--border);
     overflow-x: auto;
     white-space: nowrap;
     scrollbar-width: none;

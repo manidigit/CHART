@@ -158,4 +158,25 @@
     <string name="draw_width_label">Width</string>
     <string name="draw_tools_toggle">Draw</string>
     <string name="settings_change_provider">Change Source</string>
+    <string name="nav_prediction">Prediction</string>
+    <string name="nav_chart_short">Chart</string>
+    <string name="chart_control_indicators">Indicators</string>
+    <string name="chart_control_more">More</string>
+    <string name="chart_select_symbol_title">Switch Symbol</string>
+    <string name="chart_select_timeframe_title">Select Timeframe</string>
+    <string name="prediction_title">Prediction</string>
+    <string name="prediction_bias_bullish">Bullish Structure</string>
+    <string name="prediction_bias_bearish">Bearish Structure</string>
+    <string name="prediction_pivots_title">Key Levels &amp; Floor Pivots</string>
+    <string name="prediction_volatility_title">Volatility &amp; Range (ATR 14)</string>
+    <string name="prediction_engine_title">Market Structure Scenarios</string>
+    <string name="prediction_engine_desc">Algorithmic support/resistance zones and breakout targets calculated from closed candles.</string>
+    <string name="prediction_bull_breakout">Bullish Breakout Above R1</string>
+    <string name="prediction_bear_breakout">Bearish Breakdown Below S1</string>
+    <string name="settings_group_account">1. User Account</string>
+    <string name="settings_group_appearance">2. Appearance &amp; Language</string>
+    <string name="settings_group_sources">3. Data Sources &amp; Symbols</string>
+    <string name="settings_group_params">4. Analysis Parameters</string>
+    <string name="settings_group_about">5. About &amp; Support</string>
+    <string name="settings_about_version">CHART Intelligence v1.28.0 · TradingView Standard</string>
 </resources>

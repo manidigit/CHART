@@ -18,6 +18,7 @@ data class SymbolConfig(
     ),
     val timeframe: String = "M15",
     val lastClose: BigDecimal? = null,
+    val prevClose: BigDecimal? = null,
     val lastCandleUtc: String? = null,
     val storedCandleCount: Int = 0,
     val isSyncing: Boolean = false,

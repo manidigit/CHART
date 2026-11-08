@@ -376,7 +376,7 @@ export function renderCandlestickCanvas(canvas, tab, isDarkTheme, i18n = null) {
           const cx = padLeft + (idx + 0.5) * slotW;
           const bh = Math.max(2, (volPlotH - 14) * volRatio);
           const isBull = Number(c.close) >= Number(c.open);
-          ctx.fillStyle = isBull ? 'rgba(16, 185, 129, 0.46)' : 'rgba(244, 63, 94, 0.46)';
+          ctx.fillStyle = isBull ? 'rgba(38, 166, 154, 0.44)' : 'rgba(239, 83, 80, 0.44)';
           ctx.fillRect(cx - bodyW / 2, volTop + volPlotH - bh, bodyW, bh);
         }
       });
@@ -437,7 +437,7 @@ export function renderCandlestickCanvas(canvas, tab, isDarkTheme, i18n = null) {
   }
 
   if (crossX !== null && crossY !== null) {
-    ctx.strokeStyle = isDarkTheme ? 'rgba(226, 232, 240, 0.55)' : 'rgba(15, 23, 42, 0.55)';
+    ctx.strokeStyle = '#758696';
     ctx.lineWidth = 1;
     ctx.setLineDash([4, 4]);
     ctx.beginPath();
@@ -451,11 +451,11 @@ export function renderCandlestickCanvas(canvas, tab, isDarkTheme, i18n = null) {
     // Right Y-Axis Crosshair Price Callout Pill
     if (crossPrice !== null) {
       const py = Math.max(padTop + 9, Math.min(padTop + pricePlotH - 9, crossY));
-      ctx.fillStyle = isDarkTheme ? '#334155' : '#0F172A';
+      ctx.fillStyle = isDarkTheme ? '#2A2E39' : '#131722';
       ctx.fillRect(padLeft + plotW + 1, py - 9, padRight - 2, 18);
-      ctx.strokeStyle = primaryCol;
+      ctx.strokeStyle = '#758696';
       ctx.strokeRect(padLeft + plotW + 1, py - 9, padRight - 2, 18);
-      ctx.fillStyle = '#F8FAFC';
+      ctx.fillStyle = '#D1D4DC';
       ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
       ctx.fillText(PriceFormatter.formatPrice(crossPrice, tab.decimals), padLeft + plotW + 5, py + 4);
     }
@@ -466,11 +466,11 @@ export function renderCandlestickCanvas(canvas, tab, isDarkTheme, i18n = null) {
       const pillW = Math.min(plotW, Math.max(88, timeStr.length * 6.8 + 12));
       const px = Math.max(padLeft, Math.min(padLeft + plotW - pillW, crossX - pillW / 2));
       const py = height - geom.padBottom + 2;
-      ctx.fillStyle = isDarkTheme ? '#334155' : '#0F172A';
+      ctx.fillStyle = isDarkTheme ? '#2A2E39' : '#131722';
       ctx.fillRect(px, py, pillW, geom.padBottom - 4);
-      ctx.strokeStyle = primaryCol;
+      ctx.strokeStyle = '#758696';
       ctx.strokeRect(px, py, pillW, geom.padBottom - 4);
-      ctx.fillStyle = '#F8FAFC';
+      ctx.fillStyle = '#D1D4DC';
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
       ctx.fillText(timeStr, px + 6, py + 14);
     }

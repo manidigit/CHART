@@ -34,7 +34,7 @@ import { renderBottomNav } from './views/navigationView.js';
 
 const i18n = new I18nManager();
 
-export function openSymbolInTab(symbolCode) {
+export function openSymbolInTab(symbolCode, targetScreen = 'chart_view') {
   const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
   if (!sym) return;
   const tabId = `${sym.symbolCode}_${sym.activeProvider}`;
@@ -73,7 +73,7 @@ export function openSymbolInTab(symbolCode) {
     state.openTabs.push(existing);
   }
   state.activeTabId = tabId;
-  state.currentScreen = 'chart_view';
+  state.currentScreen = targetScreen;
   renderApp();
 }
 
@@ -89,7 +89,7 @@ export function renderApp() {
   const activeTab = state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0] || null;
 
   if (!activeTab && state.symbols.length > 0) {
-    openSymbolInTab(state.symbols[0].symbolCode);
+    openSymbolInTab(state.symbols[0].symbolCode, state.currentScreen || 'watchlist');
     return;
   }
 
@@ -483,6 +483,7 @@ document.addEventListener('click', async (e) => {
     state.authMode = 'login';
     state.authErrorKey = null;
     state.authInfoKey = null;
+    state.currentScreen = 'watchlist';
     renderApp();
   }
 });
@@ -496,6 +497,15 @@ document.addEventListener('input', (e) => {
 });
 
 document.addEventListener('change', async (e) => {
+  const predSymSelect = e.target.closest('[data-action="select-prediction-symbol"]');
+  if (predSymSelect) {
+    const code = predSymSelect.value;
+    if (code) {
+      openSymbolInTab(code, 'analysis');
+    }
+    return;
+  }
+
   const slider = e.target.closest('[data-action="set-fetch-limit"]');
   if (slider) {
     const val = Math.max(40, Math.min(5000, parseInt(slider.value || '500', 10)));
@@ -505,6 +515,41 @@ document.addEventListener('change', async (e) => {
       await syncSymbolNow(activeTab.symbolCode, activeTab.timeframe, renderApp);
     } else {
       renderApp();
+    }
+    return;
+  }
+
+  const provSelect = e.target.closest('[data-action="select-provider-dropdown"]');
+  if (provSelect) {
+    const code = provSelect.getAttribute('data-symbol');
+    const prov = provSelect.value;
+    const sym = state.symbols.find((s) => s.symbolCode === code);
+    if (sym && prov) {
+      const oldProvider = sym.activeProvider;
+      sym.activeProvider = prov;
+      sym.timeframe = prov === 'eia_brent_spot' ? 'D1' : 'M15';
+      sym.candles = getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, sym.timeframe);
+      const latest = sym.candles[sym.candles.length - 1];
+      sym.lastClose = latest ? latest.close : null;
+      sym.lastCandleUtc = latest ? latest.open_time_utc_iso : null;
+
+      const oldTabId = `${sym.symbolCode}_${oldProvider}`;
+      const newTabId = `${sym.symbolCode}_${prov}`;
+      const openTab = state.openTabs.find((t) => t.tabId === oldTabId || t.symbolCode === sym.symbolCode);
+      if (openTab) {
+        const wasActive = state.activeTabId === openTab.tabId;
+        openTab.tabId = newTabId;
+        openTab.provider = prov;
+        openTab.timeframe = sym.timeframe;
+        openTab.candles = sym.candles;
+        openTab.scrollOffset = 0;
+        openTab.selectedCandleIndex = null;
+        if (wasActive) state.activeTabId = newTabId;
+      }
+
+      saveSymbolsToStorage();
+      renderApp();
+      await syncSymbolNow(sym.symbolCode, sym.timeframe, renderApp);
     }
     return;
   }
@@ -529,7 +574,6 @@ document.addEventListener('submit', async (e) => {
     const dec = parseInt(fd.get('decimals') || '2', 10);
     if (code) {
       addCustomSymbol(code, title, dec, 'dukascopy');
-      openSymbolInTab(code);
       state.showAddSymbolModal = false;
       renderApp();
       await syncSymbolNow(code, null, renderApp);
@@ -663,6 +707,7 @@ document.addEventListener('submit', async (e) => {
     state.ownerUsername = username;
     state.ownerEmail = email;
     state.isAuthenticated = true;
+    state.currentScreen = 'watchlist';
     state.authErrorKey = null;
     state.authInfoKey = null;
     renderApp();
@@ -674,6 +719,7 @@ document.addEventListener('submit', async (e) => {
       return;
     }
     state.isAuthenticated = true;
+    state.currentScreen = 'watchlist';
     state.authErrorKey = null;
     state.authInfoKey = null;
     renderApp();
