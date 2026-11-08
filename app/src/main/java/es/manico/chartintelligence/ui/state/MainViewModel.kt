@@ -123,7 +123,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (current == screen) return
 
         if (screen in listOf(WorkspaceScreen.CHART_VIEW, WorkspaceScreen.PREDICTION) && _uiState.value.openTabs.isEmpty()) {
-            val defaultSym = _uiState.value.watchlistSymbols.firstOrNull() ?: _uiState.value.symbols.firstOrNull()
+            val savedCode = if (_uiState.value.chartPreferences.rememberLastChartOnDevice) {
+                repository.loadLastOpenedSymbolCode()
+            } else null
+            val defaultSym = _uiState.value.symbols.firstOrNull { it.symbolCode == savedCode }
+                ?: _uiState.value.watchlistSymbols.firstOrNull()
+                ?: _uiState.value.symbols.firstOrNull()
             if (defaultSym != null) {
                 activateSymbolTab(defaultSym, targetScreen = screen)
                 return
@@ -551,6 +556,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun activateSymbolTab(symbol: SymbolConfig, targetScreen: WorkspaceScreen) {
+        repository.saveLastOpenedSymbolCode(symbol.symbolCode)
         val tabId = "${symbol.symbolCode}_${symbol.activeProvider.id}"
         val currentTabs = _uiState.value.openTabs
         val existingTab = currentTabs.firstOrNull { it.tabId == tabId }
@@ -1064,6 +1070,76 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 activeTabId = if (state.activeTabId?.startsWith(symbolCode) == true) updatedTabs.lastOrNull()?.tabId else state.activeTabId
             )
         }
+    }
+
+    fun toggleLogScaleOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(isLogScale = !tab.isLogScale) else tab
+                }
+            )
+        }
+    }
+
+    fun projectScenarioLevelsToChart(
+        pivot: BigDecimal,
+        r1: BigDecimal,
+        r2: BigDecimal,
+        s1: BigDecimal,
+        s2: BigDecimal
+    ) {
+        val active = _uiState.value.activeTab ?: return
+        val nonProjected = active.drawings.filterNot { it.id.startsWith("proj_") }
+        val projected = listOf(
+            es.manico.chartintelligence.data.model.ChartDrawing.HorizontalLine(
+                id = "proj_pivot",
+                price = pivot,
+                colorHex = "FF2962FF",
+                strokeWidthDp = 2.0f
+            ),
+            es.manico.chartintelligence.data.model.ChartDrawing.HorizontalLine(
+                id = "proj_r1",
+                price = r1,
+                colorHex = "FF26A69A",
+                strokeWidthDp = 1.8f
+            ),
+            es.manico.chartintelligence.data.model.ChartDrawing.HorizontalLine(
+                id = "proj_r2",
+                price = r2,
+                colorHex = "FF26A69A",
+                strokeWidthDp = 2.2f
+            ),
+            es.manico.chartintelligence.data.model.ChartDrawing.HorizontalLine(
+                id = "proj_s1",
+                price = s1,
+                colorHex = "FFEF5350",
+                strokeWidthDp = 1.8f
+            ),
+            es.manico.chartintelligence.data.model.ChartDrawing.HorizontalLine(
+                id = "proj_s2",
+                price = s2,
+                colorHex = "FFEF5350",
+                strokeWidthDp = 2.2f
+            )
+        )
+        val mergedDrawings = nonProjected + projected
+        repository.saveDrawingsForChart(active.chartId, mergedDrawings)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) tab.copy(drawings = mergedDrawings) else tab
+                },
+                currentScreen = WorkspaceScreen.CHART_VIEW,
+                statusBannerResId = R.string.prediction_levels_projected
+            )
+        }
+    }
+
+    fun updateTradingViewPreference(transform: (ChartPreferences) -> ChartPreferences) {
+        val next = preferenceCoordinator.updateTradingViewPreference(_uiState.value.chartPreferences, transform)
+        _uiState.update { it.copy(chartPreferences = next) }
     }
 
     fun updateBullCandleColor(colorHex: String) {

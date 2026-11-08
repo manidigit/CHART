@@ -2,7 +2,7 @@
 
 **Project:** Chart Intelligence  
 **Document status:** Public-safe infrastructure inventory — partially verified  
-**Last updated:** 2026-11-07  
+**Last updated:** 2026-11-08  
 **Source:** Hosting account's cPanel Server Information, Statistics, Processor Information and Service Status screens, supplied by the project owner.  
 **Purpose:** Provide a shared infrastructure reference for ChatGPT, other AI assistants and developers. This document records observed infrastructure facts, distinguishes them from assumptions, and lists items that still require verification.
 

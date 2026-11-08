@@ -82,4 +82,13 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
         repository.saveChartPreferences(next)
         return next
     }
+
+    fun updateTradingViewPreference(
+        current: ChartPreferences,
+        transform: (ChartPreferences) -> ChartPreferences
+    ): ChartPreferences {
+        val next = transform(current)
+        repository.saveChartPreferences(next)
+        return next
+    }
 }

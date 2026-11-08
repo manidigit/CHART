@@ -54,6 +54,8 @@ import java.math.BigDecimal
 fun WatchlistRowCard(
     symbol: SymbolConfig,
     onOpenChartClick: () -> Unit,
+    hideLogos: Boolean = false,
+    onOpenOverviewClick: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     val financialPalette = LocalFinancialPalette.current
@@ -91,40 +93,64 @@ fun WatchlistRowCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Circular Icon + Middle Column (Symbol Code + Full Name)
+                // Left: Circular Icon (unless hideLogos == true) + Middle Column (Symbol Code + Full Name)
                 Row(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Box(
-                        modifier = Modifier
-                            .size(36.dp)
-                            .clip(CircleShape)
-                            .background(badgeTint.copy(alpha = 0.16f))
-                            .border(1.dp, badgeTint.copy(alpha = 0.45f), CircleShape),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = badgeLabel,
-                            style = MaterialTheme.typography.labelMedium,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = badgeTint
-                        )
+                    if (!hideLogos) {
+                        Box(
+                            modifier = Modifier
+                                .size(36.dp)
+                                .clip(CircleShape)
+                                .background(badgeTint.copy(alpha = 0.16f))
+                                .border(1.dp, badgeTint.copy(alpha = 0.45f), CircleShape),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = badgeLabel,
+                                style = MaterialTheme.typography.labelMedium,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = badgeTint
+                            )
+                        }
+
+                        Spacer(modifier = Modifier.width(12.dp))
                     }
 
-                    Spacer(modifier = Modifier.width(12.dp))
-
                     Column(modifier = Modifier.weight(1f)) {
-                        Text(
-                            text = symbol.symbolCode,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onBackground,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = symbol.symbolCode,
+                                style = MaterialTheme.typography.titleMedium,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onBackground,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (onOpenOverviewClick != null) {
+                                Box(
+                                    modifier = Modifier
+                                        .clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
+                                        .clickable(onClick = onOpenOverviewClick)
+                                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                                        .testTag("watchlist_overview_${symbol.symbolCode.lowercase()}")
+                                ) {
+                                    Text(
+                                        text = "Overview",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
                         Spacer(modifier = Modifier.height(2.dp))
                         Text(
                             text = displayName,

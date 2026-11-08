@@ -23,7 +23,20 @@ data class ChartPreferences(
     val minVisibleCandles: Int = 12,
     val maxVisibleCandles: Int = 5000,
     val zoomStepCandles: Int = 8,
-    val drawingHitTolerancePx: Float = 28f
+    val drawingHitTolerancePx: Float = 28f,
+
+    // TradingView Pro Watchlist & Chart Toggles (P1-UPG-1..5)
+    val hideWatchlistLogos: Boolean = false,
+    val showSymbolScreen: Boolean = true,
+    val chartVibrations: Boolean = true,
+    val logarithmicScaleDefault: Boolean = false,
+    val rememberLastChartOnDevice: Boolean = true,
+    val hideTabBarInLandscape: Boolean = true,
+    val pickerVibrations: Boolean = true,
+    val showPickerScrollMagnifiers: Boolean = true,
+    val showCountdownToBarClose: Boolean = true,
+    val showPrevCloseLine: Boolean = true,
+    val showHighLowLabels: Boolean = true
 ) {
     fun parseColor(hex: String, fallback: Color): Color {
         return runCatching {

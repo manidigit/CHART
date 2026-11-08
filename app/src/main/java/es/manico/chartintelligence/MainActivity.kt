@@ -42,6 +42,8 @@ import es.manico.chartintelligence.ui.screens.SettingsScreen
 import es.manico.chartintelligence.ui.screens.WatchlistScreen
 import es.manico.chartintelligence.ui.state.MainViewModel
 import es.manico.chartintelligence.ui.state.WorkspaceScreen
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import es.manico.chartintelligence.ui.theme.ChartIntelligenceTheme
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 
@@ -60,6 +62,11 @@ fun ChartIntelligenceApp(
     mainViewModel: MainViewModel = viewModel()
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    val hideBottomBar = state.currentScreen == WorkspaceScreen.CHART_VIEW &&
+        state.chartPreferences.hideTabBarInLandscape &&
+        isLandscape
 
     val handleSignOut: () -> Unit = {
         mainViewModel.signOut()
@@ -76,7 +83,7 @@ fun ChartIntelligenceApp(
             containerColor = MaterialTheme.colorScheme.background,
             contentWindowInsets = WindowInsets.safeDrawing,
             bottomBar = {
-                if (state.isAuthenticated) {
+                if (state.isAuthenticated && !hideBottomBar) {
                     Column(modifier = Modifier.fillMaxWidth()) {
                         HorizontalDivider(
                             thickness = 1.dp,
@@ -222,6 +229,7 @@ fun ChartIntelligenceApp(
                             allSymbols = state.symbols,
                             isSyncingAll = state.isSyncingAll,
                             statusBannerResId = state.statusBannerResId,
+                            preferences = state.chartPreferences,
                             onSyncSymbolNow = mainViewModel::syncSingleSymbolUpToNow,
                             onSyncAllNow = mainViewModel::syncAllWatchlistUpToNow,
                             onOpenSymbolInChartTab = mainViewModel::openSymbolInChartTab,
@@ -253,6 +261,7 @@ fun ChartIntelligenceApp(
                             onResetLatest = mainViewModel::resetActiveTabPosition,
                             onScaleYAxisByDrag = mainViewModel::scaleYAxisByDrag,
                             onResetAutoScaleY = mainViewModel::resetAutoScaleY,
+                            onToggleLogScale = mainViewModel::toggleLogScaleOnActiveTab,
                             onSelectCandle = mainViewModel::selectCandleOnActiveTab,
                             onSelectDrawingTool = mainViewModel::selectDrawingTool,
                             onSelectDrawingColorHex = mainViewModel::setDrawingColorOnActiveTab,
@@ -270,6 +279,7 @@ fun ChartIntelligenceApp(
                             watchlistSymbols = state.watchlistSymbols,
                             onSelectSymbol = mainViewModel::selectSymbolInPrediction,
                             onSelectTimeframe = mainViewModel::selectTimeframeForActiveTab,
+                            onProjectLevelsToChart = mainViewModel::projectScenarioLevelsToChart,
                             onBackToWatchlist = mainViewModel::navigateBack
                         )
 
@@ -297,6 +307,7 @@ fun ChartIntelligenceApp(
                             onResetColors = mainViewModel::resetChartColorsToDefault,
                             onUpdateAlgoParams = mainViewModel::updateAlgorithmParams,
                             onResetAlgoParams = mainViewModel::resetAlgorithmParamsToDefault,
+                            onUpdateTradingViewPreference = mainViewModel::updateTradingViewPreference,
                             onAddCustomSymbol = mainViewModel::addCustomSymbol,
                             onDeleteSymbol = mainViewModel::deleteSymbol
                         )

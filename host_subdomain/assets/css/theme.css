@@ -1,823 +1,406 @@
 :root {
-  /* Design Tokens - Official TradingView Dark Financial Palette */
   --bg: #131722;
-  --bg-darker: #0E111A;
   --surface: #1E222D;
-  --surface-elevated: #242936;
-  --surface-hover: #2A2E39;
-  --border: #2A2E39;
-  --border-subtle: #2A2E39;
-  --primary: #2962FF;
-  --primary-hover: #1E53E5;
-  --primary-bg: rgba(41, 98, 255, 0.14);
-  --primary-border: rgba(41, 98, 255, 0.34);
-  --bull: #26A69A;
-  --bull-bg: rgba(38, 166, 154, 0.15);
-  --bear: #EF5350;
-  --bear-bg: rgba(239, 83, 80, 0.15);
-  --gold: #F59E0B;
-  --gold-bg: rgba(245, 158, 11, 0.14);
-  --purple: #A855F7;
+  --surface-elevated: #2A2E39;
   --text: #D1D4DC;
   --text-muted: #787B86;
   --text-dim: #5D606B;
-  --grid: #2A2E39;
-  --radius-sm: 6px;
-  --radius-md: 10px;
-  --radius-lg: 14px;
-  --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
-  --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
-  --font-sans: "Vazirmatn", -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif;
-  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-[data-theme="light"] {
-  --bg: #FFFFFF;
-  --bg-darker: #F8FAFC;
-  --surface: #F8FAFC;
-  --surface-elevated: #FFFFFF;
-  --surface-hover: #E0E3EB;
-  --border: #E0E3EB;
-  --border-subtle: #E0E3EB;
   --primary: #2962FF;
   --primary-hover: #1E53E5;
-  --primary-bg: rgba(41, 98, 255, 0.10);
-  --primary-border: rgba(41, 98, 255, 0.25);
-  --bull: #089981;
-  --bull-bg: rgba(8, 153, 129, 0.12);
-  --bear: #F23645;
-  --bear-bg: rgba(242, 54, 69, 0.12);
-  --gold: #D97706;
-  --gold-bg: rgba(217, 119, 6, 0.12);
-  --purple: #9333EA;
+  --gold: #F59E0B;
+  --bull: #26A69A;
+  --bear: #EF5350;
+  --border: #2A2E39;
+  --grid-line: rgba(42, 46, 57, 0.55);
+  --shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
+  --radius-lg: 8px;
+  --radius-md: 6px;
+  --radius-sm: 4px;
+}
+
+body.theme-light {
+  --bg: #F8FAFC;
+  --surface: #FFFFFF;
+  --surface-elevated: #F1F5F9;
   --text: #131722;
-  --text-muted: #787B86;
-  --text-dim: #9598A1;
-  --grid: #E0E3EB;
+  --text-muted: #475569;
+  --text-dim: #64748B;
+  --primary: #2962FF;
+  --primary-hover: #1E53E5;
+  --gold: #D97706;
+  --bull: #089981;
+  --bear: #F23645;
+  --border: #E0E3EB;
+  --grid-line: rgba(224, 227, 235, 0.9);
+  --shadow: 0 6px 20px rgba(15, 23, 42, 0.08);
 }
 
 * {
   box-sizing: border-box;
-  -webkit-tap-highlight-color: transparent;
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
-  height: 100%;
   width: 100%;
+  height: 100%;
+  overflow: hidden;
   background: var(--bg);
   color: var(--text);
-  font-family: var(--font-sans);
-  overflow-x: hidden;
+  font-family:
+    'Vazirmatn',
+    'Tahoma',
+    'Segoe UI',
+    system-ui,
+    -apple-system,
+    sans-serif;
+  line-height: 1.4;
+  -webkit-font-smoothing: antialiased;
 }
 
 .ltr-num {
-  direction: ltr !important;
+  direction: ltr;
   unicode-bidi: embed;
-  font-family: var(--font-mono);
+  font-family: 'JetBrains Mono', ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-variant-numeric: tabular-nums;
 }
 
-/* App Container - Adaptive Shell */
-#app-root {
-  height: 100%;
+/* Fullscreen TradingView Desktop / Tablet Layout */
+.tv-app-shell {
   display: flex;
   flex-direction: column;
+  width: 100vw;
+  height: 100vh;
+  overflow: hidden;
+  background: var(--bg);
 }
 
-/* =========================================================
-   SHARED CHART SUBBAR & DRAWING SWATCHES
-   ========================================================= */
-.unified-chart-subbar {
-  height: 36px;
-  background: var(--bg-darker);
+/* Compact 42px Top Header Bar */
+.tv-topbar {
+  height: 42px;
+  min-height: 42px;
+  background: var(--surface);
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: space-between;
   padding: 0 10px;
+  gap: 8px;
+  z-index: 40;
   overflow-x: auto;
-  white-space: nowrap;
   scrollbar-width: none;
-  flex-shrink: 0;
-  z-index: 35;
 }
-.unified-chart-subbar::-webkit-scrollbar {
+.tv-topbar::-webkit-scrollbar {
   display: none;
 }
 
-.subbar-group {
-  display: inline-flex;
+.tv-brand {
+  display: flex;
   align-items: center;
-  gap: 4px;
-  flex-shrink: 0;
-}
-
-.subbar-label {
-  font-size: 11px;
-  font-weight: 700;
-  color: var(--text-dim);
-  margin-inline-end: 2px;
-}
-
-.subbar-divider {
-  width: 1px;
-  height: 18px;
-  background: var(--border);
-  margin: 0 4px;
-  flex-shrink: 0;
-}
-
-.ticker-sub {
-  font-size: 10px;
-  color: var(--text-dim);
-  font-family: var(--font-mono);
-}
-
-.status-pill {
-  font-size: 10px;
-  padding: 1px 6px;
-  border-radius: 4px;
-  background: var(--surface);
-  color: var(--text-muted);
-  border: 1px solid var(--border);
-}
-
-.rail-color-grid {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
-  gap: 4px;
-  padding: 2px;
-}
-
-.rail-color-swatch {
-  width: 15px;
-  height: 15px;
-  border-radius: 50%;
-  border: 2px solid transparent;
-  cursor: pointer;
-  padding: 0;
-}
-.rail-color-swatch.active {
-  border-color: var(--text);
-  transform: scale(1.15);
-}
-
-/* =========================================================
-   DESKTOP TRADING TERMINAL LAYOUT (TradingView-Inspired)
-   ========================================================= */
-@media (min-width: 769px) {
-  body {
-    overflow: hidden;
-  }
-
-  .terminal-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100vh;
-    width: 100vw;
-    background: var(--bg);
-  }
-
-  .terminal-topbar {
-    height: 44px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 12px;
-    gap: 10px;
-    z-index: 40;
-    flex-shrink: 0;
-  }
-
-  .topbar-left {
-    display: flex;
-    align-items: center;
-    gap: 12px;
-    flex-shrink: 0;
-    min-width: 0;
-  }
-
-  .brand-badge {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 14px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
-    color: var(--text);
-  }
-
-  .brand-badge .live-dot {
-    width: 7px;
-    height: 7px;
-    border-radius: 50%;
-    background: var(--bull);
-    box-shadow: 0 0 8px var(--bull);
-  }
-
-  .symbol-selector-wrap {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    padding: 3px 10px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    cursor: pointer;
-  }
-
-  .ticker-name {
-    font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 13px;
-    color: var(--text);
-  }
-
-  .ticker-price {
-    font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 13px;
-    color: var(--primary);
-  }
-
-  .pct-badge {
-    padding: 2px 6px;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 11px;
-    font-weight: 700;
-  }
-  .pct-badge.bull { background: var(--bull-bg); color: var(--bull); }
-  .pct-badge.bear { background: var(--bear-bg); color: var(--bear); }
-
-  .topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
-  }
-
-  .terminal-body {
-    flex: 1;
-    display: flex;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .left-tool-rail {
-    width: 44px;
-    background: var(--surface);
-    border-inline-end: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    padding: 6px 0;
-    gap: 4px;
-    flex-shrink: 0;
-    z-index: 30;
-    overflow-y: auto;
-  }
-
-  .tool-rail-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: var(--radius-sm);
-    border: 1px solid transparent;
-    background: transparent;
-    color: var(--text-muted);
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 14px;
-    cursor: pointer;
-    transition: all 0.15s ease;
-  }
-
-  .tool-rail-btn:hover {
-    background: var(--surface-hover);
-    color: var(--text);
-  }
-
-  .tool-rail-btn.active {
-    background: var(--primary-bg);
-    border-color: var(--primary);
-    color: var(--primary);
-  }
-
-  .tool-rail-btn.danger {
-    color: var(--bear);
-  }
-  .tool-rail-btn.danger:hover {
-    background: var(--bear-bg);
-  }
-
-  .tool-rail-divider {
-    width: 24px;
-    height: 1px;
-    background: var(--border);
-    margin: 3px 0;
-  }
-
-  .chart-workspace {
-    flex: 1;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    overflow: hidden;
-    background: var(--bg);
-  }
-
-  .chart-canvas-container {
-    flex: 1;
-    position: relative;
-    width: 100%;
-    height: 100%;
-    overflow: hidden;
-  }
-
-  .trading-canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-    cursor: crosshair;
-    user-select: none;
-    touch-action: none;
-  }
-
-  .floating-ohlc-bar {
-    position: absolute;
-    top: 8px;
-    inset-inline-start: 10px;
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    padding: 4px 10px;
-    background: rgba(11, 15, 23, 0.84);
-    backdrop-filter: blur(6px);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: 11.5px;
-    font-family: var(--font-mono);
-    pointer-events: none;
-    z-index: 20;
-  }
-
-  .ohlc-val {
-    color: var(--text);
-    font-weight: 600;
-  }
-  .ohlc-val.bull { color: var(--bull); }
-  .ohlc-val.bear { color: var(--bear); }
-
-  .right-panel {
-    width: 310px;
-    background: var(--surface);
-    border-inline-start: 1px solid var(--border);
-    display: flex;
-    flex-direction: column;
-    flex-shrink: 0;
-    overflow-y: auto;
-    z-index: 30;
-  }
-
-  .right-panel.collapsed {
-    display: none;
-  }
-
-  .panel-header {
-    height: 44px;
-    padding: 0 14px;
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    border-bottom: 1px solid var(--border);
-    flex-shrink: 0;
-  }
-
-  .panel-title {
-    font-size: 13px;
-    font-weight: 700;
-    margin: 0;
-  }
-
-  .panel-content {
-    padding: 14px;
-    overflow-y: auto;
-    flex: 1;
-  }
-
-  .mobile-floating-dock,
-  .bottom-nav {
-    display: none;
-  }
-}
-
-/* =========================================================
-   MOBILE RESPONSIVE LAYOUT (Full-Viewport Touch Charting)
-   ========================================================= */
-@media (max-width: 768px) {
-  body {
-    overflow: hidden;
-  }
-
-  .desktop-only-btn,
-  .ticker-sub,
-  .status-pill,
-  .left-tool-rail {
-    display: none !important;
-  }
-
-  .terminal-layout {
-    display: flex;
-    flex-direction: column;
-    height: 100dvh;
-    width: 100vw;
-    padding-bottom: calc(58px + env(safe-area-inset-bottom, 0px));
-    background: var(--bg);
-    overflow: hidden;
-  }
-
-  .terminal-topbar {
-    height: 44px;
-    background: var(--surface);
-    border-bottom: 1px solid var(--border);
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 0 8px;
-    gap: 6px;
-    flex-shrink: 0;
-    z-index: 40;
-  }
-
-  .topbar-left {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    min-width: 0;
-    overflow-x: auto;
-    scrollbar-width: none;
-  }
-  .topbar-left::-webkit-scrollbar { display: none; }
-
-  .brand-badge span:last-child {
-    display: none;
-  }
-
-  .symbol-selector-wrap {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 7px;
-    background: var(--surface-elevated);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    white-space: nowrap;
-  }
-
-  .ticker-name {
-    font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 12.5px;
-  }
-
-  .ticker-price {
-    font-family: var(--font-mono);
-    font-weight: 700;
-    font-size: 12.5px;
-    color: var(--primary);
-  }
-
-  .pct-badge {
-    padding: 1px 5px;
-    border-radius: 4px;
-    font-family: var(--font-mono);
-    font-size: 10px;
-    font-weight: 700;
-  }
-  .pct-badge.bull { background: var(--bull-bg); color: var(--bull); }
-  .pct-badge.bear { background: var(--bear-bg); color: var(--bear); }
-
-  .topbar-right {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    flex-shrink: 0;
-  }
-
-  .user-chip {
-    display: none !important;
-  }
-
-  .terminal-body {
-    display: flex;
-    flex-direction: column;
-    flex: 1;
-    min-height: 0;
-    overflow: hidden;
-    position: relative;
-  }
-
-  .mobile-hidden {
-    display: none !important;
-  }
-
-  .chart-workspace {
-    width: 100%;
-    flex: 1;
-    min-height: 0;
-    display: flex;
-    flex-direction: column;
-    position: relative;
-    background: var(--bg);
-  }
-
-  .chart-canvas-container {
-    width: 100%;
-    flex: 1;
-    min-height: 0;
-    position: relative;
-    background: var(--bg);
-  }
-
-  .trading-canvas {
-    width: 100%;
-    height: 100%;
-    display: block;
-    touch-action: none;
-    user-select: none;
-    cursor: crosshair;
-  }
-
-  .floating-ohlc-bar {
-    position: absolute;
-    top: 4px;
-    inset-inline-start: 6px;
-    inset-inline-end: 68px;
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px;
-    padding: 3px 7px;
-    background: rgba(11, 15, 23, 0.82);
-    backdrop-filter: blur(4px);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-sm);
-    font-size: 10.5px;
-    font-family: var(--font-mono);
-    pointer-events: none;
-    z-index: 20;
-  }
-
-  /* Floating Mobile Pencil FAB & Icon Strip over Bottom-Left of Chart Canvas (0px vertical height overhead) */
-  .mobile-floating-dock {
-    position: absolute;
-    bottom: 32px;
-    left: 8px;
-    background: transparent;
-    padding: 0;
-    display: flex;
-    flex-direction: column;
-    gap: 4px;
-    z-index: 32;
-  }
-
-  .mobile-dock-main,
-  .mobile-dock-style-row {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-    padding: 4px;
-    border-radius: 20px;
-    background: rgba(30, 34, 45, 0.94);
-    border: 1px solid var(--border);
-    overflow-x: auto;
-    white-space: nowrap;
-    scrollbar-width: none;
-  }
-  .mobile-dock-main::-webkit-scrollbar,
-  .mobile-dock-style-row::-webkit-scrollbar {
-    display: none;
-  }
-
-  .right-panel {
-    width: 100%;
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
-    background: var(--bg);
-  }
-
-  /* Fixed Material 3 Bottom Navigation Bar */
-  .bottom-nav {
-    position: fixed;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    height: calc(58px + env(safe-area-inset-bottom, 0px));
-    background: var(--surface);
-    border-top: 1px solid var(--border);
-    display: flex;
-    justify-content: space-around;
-    align-items: center;
-    z-index: 50;
-    padding-bottom: env(safe-area-inset-bottom, 0px);
-  }
-
-  .nav-item {
-    background: transparent;
-    border: none;
-    color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 600;
-    cursor: pointer;
-    min-height: 48px;
-    min-width: 48px;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    gap: 3px;
-    padding: 4px 10px;
-    border-radius: var(--radius-sm);
-  }
-
-  .nav-item svg {
-    width: 19px;
-    height: 19px;
-    fill: currentColor;
-  }
-
-  .nav-item.active {
-    color: var(--primary);
-  }
-
-  .nav-item.active .nav-icon-pill {
-    background: var(--primary-bg);
-    color: var(--primary);
-  }
-
-  .nav-icon-pill {
-    padding: 2px 12px;
-    border-radius: 12px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-  }
-}
-
-/* =========================================================
-   GENERIC SHARED REUSABLE COMPONENTS
-   ========================================================= */
-
-/* Button System */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
   gap: 8px;
-  min-height: 38px;
-  padding: 0 14px;
+  flex-shrink: 0;
+}
+
+.tv-logo {
+  width: 26px;
+  height: 26px;
+  border-radius: 5px;
+  background: linear-gradient(135deg, var(--primary), #089981);
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-weight: 800;
+  font-size: 11px;
+  letter-spacing: 0.4px;
+}
+
+/* Sub-toolbar (Timeframe, Range, Chart Type, Volume, Auto-scale, Log Scale) */
+.tv-subbar {
+  height: 36px;
+  min-height: 36px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 10px;
+  gap: 8px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  z-index: 35;
+}
+.tv-subbar::-webkit-scrollbar {
+  display: none;
+}
+
+/* Main Workspace Area (Left Tool Rail + Canvas + Right Drawer)
+   CRITICAL: Force dir="ltr" layout on .tv-main-area and .chart-workspace so
+   Left Tool Rail is ALWAYS on the physical left, and Price Y-Axis is ALWAYS on the physical right */
+.tv-main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: row;
+  direction: ltr;
+  position: relative;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* Left Vertical Drawing Tool Rail (42px) */
+.left-tool-rail {
+  width: 42px;
+  min-width: 42px;
+  background: var(--surface);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 6px 4px;
+  gap: 4px;
+  overflow-y: auto;
+  z-index: 30;
+}
+
+/* Center Chart Canvas Container (90%+ Viewport) */
+.chart-workspace {
+  flex: 1;
+  position: relative;
+  min-width: 0;
+  min-height: 0;
+  background: var(--bg);
+  display: flex;
+  flex-direction: column;
+  direction: ltr;
+}
+
+.chart-canvas-box {
+  flex: 1;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  background: var(--bg);
+  overflow: hidden;
+  direction: ltr;
+}
+
+.chart-canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: crosshair;
+  direction: ltr;
+}
+
+/* Floating Transparent OHLC Legend Overlay — High Contrast in both Dark & Light Themes */
+.floating-ohlc-bar {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  z-index: 20;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 10px;
   border-radius: var(--radius-sm);
-  font-size: 13px;
-  font-weight: 600;
+  background: rgba(19, 23, 34, 0.88);
+  backdrop-filter: blur(6px);
+  border: 1px solid rgba(42, 46, 57, 0.9);
+  font-size: 11.5px;
+  color: #D1D4DC;
+  pointer-events: none;
+  max-width: calc(100% - 92px);
+  direction: ltr;
+}
+
+body.theme-light .floating-ohlc-bar {
+  background: rgba(255, 255, 255, 0.92);
+  border-color: #E0E3EB;
+  color: #131722;
+  box-shadow: 0 2px 8px rgba(15, 23, 42, 0.06);
+}
+
+/* Floating Scroll-to-Latest & Axis Scale Controls */
+.chart-floating-controls {
+  position: absolute;
+  bottom: 30px;
+  right: 84px;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chart-axis-scale-badges {
+  position: absolute;
+  bottom: 4px;
+  right: 4px;
+  z-index: 22;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.axis-badge-btn {
+  border: 1px solid var(--border);
+  background: var(--surface-elevated);
+  color: var(--text-muted);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  font-weight: 700;
+  padding: 2px 5px;
+  border-radius: 3px;
   cursor: pointer;
+  line-height: 1.1;
+}
+.axis-badge-btn.active {
+  background: var(--primary);
+  border-color: var(--primary);
+  color: #ffffff;
+}
+
+/* Collapsible Side Panel (Watchlist / Prediction / Settings) */
+.side-drawer {
+  width: 340px;
+  max-width: 90vw;
+  height: 100%;
+  background: var(--surface);
+  border-left: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  z-index: 35;
+  box-shadow: var(--shadow);
+  transition: transform 0.18s ease;
+}
+
+.side-drawer.closed {
+  display: none;
+}
+
+.side-drawer-header {
+  height: 40px;
+  min-height: 40px;
+  padding: 0 12px;
+  border-bottom: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.side-drawer-body {
+  flex: 1;
+  overflow-y: auto;
+  padding: 10px;
+}
+
+/* Buttons & Chips — TradingView Compact 28px Standard */
+.btn {
   border: 1px solid var(--border);
   background: var(--surface-elevated);
   color: var(--text);
-  transition: all 0.15s ease;
+  padding: 4px 10px;
+  min-height: 28px;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.14s ease;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  white-space: nowrap;
 }
 
 .btn:hover {
-  background: var(--surface-hover);
-  border-color: var(--primary-border);
-}
-
-.btn-sm {
-  min-height: 30px;
-  padding: 0 10px;
-  font-size: 12px;
+  border-color: var(--primary);
 }
 
 .btn-primary {
   background: var(--primary);
-  color: #070A0F;
   border-color: var(--primary);
+  color: #ffffff;
 }
+
 .btn-primary:hover {
   background: var(--primary-hover);
-  border-color: var(--primary-hover);
+}
+
+.btn-sm {
+  padding: 2px 8px;
+  min-height: 26px;
+  font-size: 11.5px;
 }
 
 .btn-icon {
-  width: 36px;
-  height: 36px;
-  min-height: 36px;
+  width: 30px;
+  height: 30px;
+  min-height: 30px;
   padding: 0;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  border-radius: var(--radius-sm);
 }
 
-.btn:disabled {
-  opacity: 0.45;
-  cursor: not-allowed;
+.btn-icon.active {
+  background: rgba(41, 98, 255, 0.22);
+  border-color: var(--primary);
+  color: #ffffff;
 }
 
-/* Chip Selector Group */
+body.theme-light .btn-icon.active {
+  color: var(--primary);
+}
+
 .chip-group {
-  display: flex;
-  gap: 6px;
+  display: inline-flex;
   align-items: center;
-  flex-wrap: wrap;
+  gap: 3px;
+  background: var(--bg);
+  padding: 2px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
 }
 
 .chip {
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  padding: 3px 8px;
+  min-height: 24px;
+  border-radius: 3px;
+  cursor: pointer;
+  font-family: inherit;
+  font-size: 11.5px;
+  font-weight: 600;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  min-height: 32px;
-  padding: 4px 10px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 12px;
-  font-weight: 600;
-  transition: all 0.12s ease;
+  gap: 4px;
+  white-space: nowrap;
 }
 
 .chip:hover {
-  background: var(--surface-hover);
   color: var(--text);
 }
 
 .chip.active {
-  background: var(--primary-bg);
-  border-color: var(--primary);
-  color: var(--primary);
+  background: var(--primary);
+  color: #ffffff;
 }
 
-/* Card System */
-.card {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 16px;
-  margin-bottom: 12px;
-}
-
-.card-subtle {
-  background: var(--surface-elevated);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-sm);
-  padding: 12px;
-  margin-bottom: 10px;
-}
-
-.row-between {
+/* Symbol Tabs inside Topbar */
+.tab-strip {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  gap: 10px;
-}
-
-.btn-row {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-}
-
-.input-field {
-  width: 100%;
-  min-height: 42px;
-  padding: 8px 12px;
-  border-radius: var(--radius-sm);
-  border: 1px solid var(--border);
-  background: var(--surface-elevated);
-  color: var(--text);
-  font-size: 13px;
-  margin-bottom: 10px;
-  transition: border-color 0.15s ease;
-}
-.input-field:focus {
-  outline: none;
-  border-color: var(--primary);
-}
-
-/* Tab Bar */
-.tab-bar {
-  display: flex;
-  gap: 6px;
+  gap: 4px;
   overflow-x: auto;
   scrollbar-width: none;
-  direction: ltr;
 }
-.tab-bar::-webkit-scrollbar {
+.tab-strip::-webkit-scrollbar {
   display: none;
 }
 
@@ -825,95 +408,134 @@ html, body {
   display: inline-flex;
   align-items: center;
   gap: 6px;
-  height: 32px;
-  padding: 0 10px;
+  padding: 3px 9px;
+  min-height: 26px;
   border-radius: var(--radius-sm);
   border: 1px solid var(--border);
-  background: var(--surface);
+  background: var(--bg);
   color: var(--text-muted);
-  font-size: 12px;
-  font-family: var(--font-mono);
   cursor: pointer;
+  font-size: 11.5px;
+  font-weight: 600;
   white-space: nowrap;
-  transition: all 0.12s ease;
-}
-
-.chart-tab:hover {
-  color: var(--text);
-  background: var(--surface-hover);
 }
 
 .chart-tab.active {
-  background: var(--primary-bg);
+  background: rgba(41, 98, 255, 0.16);
   border-color: var(--primary);
-  color: var(--primary);
-  font-weight: 700;
+  color: var(--text);
 }
 
-.chart-tab-close {
-  background: transparent;
-  border: none;
-  color: var(--text-muted);
-  font-size: 14px;
-  cursor: pointer;
-  padding: 0 2px;
-}
-.chart-tab-close:hover {
-  color: var(--bear);
+/* Cards & Inputs inside Drawer */
+.card-subtle {
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
 }
 
-/* Color Picker Circles */
+.input-field {
+  width: 100%;
+  padding: 6px 10px;
+  min-height: 34px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+}
+
+.row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Color Swatches */
 .color-picker-row {
   display: flex;
-  gap: 8px;
   align-items: center;
-  margin-top: 6px;
+  gap: 6px;
+  flex-wrap: wrap;
 }
 
 .color-dot {
-  width: 28px;
-  height: 28px;
+  width: 18px;
+  height: 18px;
   border-radius: 50%;
-  border: 2px solid transparent;
   cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  transition: transform 0.1s ease;
-}
-.color-dot:hover {
-  transform: scale(1.12);
-}
-.color-dot.active {
-  border-color: var(--text);
+  border: 2px solid transparent;
+  transition: transform 0.12s ease;
 }
 
-/* Modal Dialog */
-.modal-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0, 0, 0, 0.75);
-  backdrop-filter: blur(4px);
+.color-dot.active {
+  border-color: #ffffff;
+  transform: scale(1.16);
+}
+
+/* TradingView Switch Toggle Row */
+.tv-switch-row {
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 8px 0;
+  border-bottom: 1px solid var(--border);
+}
+.tv-switch-row:last-child {
+  border-bottom: none;
+}
+.tv-switch-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--text);
+}
+.tv-switch-sub {
+  font-size: 11px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+/* Modal Overlay (Auth / Add Symbol / Symbol Overview Sheet) */
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 12, 20, 0.78);
+  backdrop-filter: blur(4px);
+  display: grid;
+  place-items: center;
   z-index: 100;
   padding: 16px;
 }
 
-.modal-dialog {
+.modal-card {
+  width: 100%;
+  max-width: 420px;
+  max-height: 90vh;
+  overflow-y: auto;
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: var(--radius-md);
-  padding: 20px;
-  max-width: 440px;
-  width: 100%;
-  box-shadow: var(--shadow-lg);
+  border-radius: var(--radius-lg);
+  padding: 18px;
+  box-shadow: var(--shadow);
 }
 
-/* Fullscreen Mode Helper */
-:fullscreen .terminal-layout,
-:-webkit-full-screen .terminal-layout {
-  height: 100vh !important;
-  width: 100vw !important;
+.symbol-overview-modal {
+  max-width: 480px;
+  padding: 16px;
+  background: #131722;
+  color: #D1D4DC;
+  border: 1px solid #2A2E39;
+}
+
+@media (max-width: 768px) {
+  .side-drawer {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    right: 0;
+    width: 310px;
+  }
 }

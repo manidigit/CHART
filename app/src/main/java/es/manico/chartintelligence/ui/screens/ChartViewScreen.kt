@@ -56,6 +56,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -130,6 +132,7 @@ fun ChartViewScreen(
     onResetLatest: () -> Unit,
     onScaleYAxisByDrag: (Float) -> Unit,
     onResetAutoScaleY: () -> Unit,
+    onToggleLogScale: () -> Unit = {},
     onSelectCandle: (Int?) -> Unit,
     onSelectDrawingTool: (DrawingTool) -> Unit,
     onSelectDrawingColorHex: (String) -> Unit = {},
@@ -144,6 +147,7 @@ fun ChartViewScreen(
 ) {
     BackHandler(onBack = onBackToWatchlist)
     val palette = LocalFinancialPalette.current
+    val haptic = LocalHapticFeedback.current
     var activeSheet by rememberSaveable { mutableStateOf(ChartControlSheet.NONE) }
 
     Column(
@@ -335,6 +339,8 @@ fun ChartViewScreen(
                     onPanCandles = onPanCandles,
                     onScaleYAxisByDrag = onScaleYAxisByDrag,
                     onResetAutoScaleY = onResetAutoScaleY,
+                    onToggleLogScale = onToggleLogScale,
+                    onResetToLatest = onResetLatest,
                     onSelectCandle = onSelectCandle,
                     onPlaceDrawingAt = onPlaceDrawingAt,
                     onSelectDrawing = onSelectDrawing,
@@ -540,6 +546,9 @@ fun ChartViewScreen(
                                                     RoundedCornerShape(8.dp)
                                                 )
                                                 .clickable {
+                                                    if (preferences.pickerVibrations) {
+                                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                    }
                                                     activeSheet = ChartControlSheet.NONE
                                                     onOpenSymbolFromWatchlist(sym)
                                                 }
@@ -615,6 +624,9 @@ fun ChartViewScreen(
                                                         RoundedCornerShape(8.dp)
                                                     )
                                                     .clickable(enabled = enabled) {
+                                                        if (preferences.pickerVibrations) {
+                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                                        }
                                                         activeSheet = ChartControlSheet.NONE
                                                         onSelectTimeframe(tfCode)
                                                     }
@@ -870,6 +882,35 @@ fun ChartViewScreen(
                                                 Icon(Icons.Outlined.UnfoldMore, contentDescription = null, modifier = Modifier.size(15.dp))
                                                 Text(stringResource(R.string.chart_auto_scale), style = MaterialTheme.typography.labelSmall)
                                             }
+                                        }
+
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .height(38.dp)
+                                                .clip(RoundedCornerShape(6.dp))
+                                                .background(
+                                                    if (activeTab.isLogScale) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                                    else MaterialTheme.colorScheme.background
+                                                )
+                                                .border(
+                                                    1.dp,
+                                                    if (activeTab.isLogScale) MaterialTheme.colorScheme.primary else palette.cardBorder,
+                                                    RoundedCornerShape(6.dp)
+                                                )
+                                                .clickable {
+                                                    onToggleLogScale()
+                                                    activeSheet = ChartControlSheet.NONE
+                                                }
+                                                .testTag("chart_log_scale_button"),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = stringResource(R.string.chart_axis_log),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                fontWeight = FontWeight.Bold
+                                            )
                                         }
 
                                         Box(

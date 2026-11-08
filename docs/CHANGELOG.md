@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.1] - 2026-11-08
+
+### Added
+- **Phase 1 Pro Upgrade Pack (`P1-UPG-1` through `P1-UPG-5`) Across Android & Web:**
+  - **`P1-UPG-1` (Long-Press Crosshair Scrubbing, Magnifier & Haptics):** Implemented `detectDragGesturesAfterLongPress` in `CandlestickCanvas.kt` with candle-by-candle haptic feedback (`HapticFeedbackType.TextHandleMove`), floating scroll magnifier pill (`showScrollMagnifier`), and picker haptic feedback (`pickerVibrates`).
+  - **`P1-UPG-2` (Situational Awareness Overlays & Logarithmic Scale):** Added Logarithmic price scale (`ln(price)` / `exp(s)`), dashed `Previous close` line, live UTC `Candle Countdown Timer` (`mm:ss` / `hh:mm:ss` / `Closed`) under the current price pill, automatic `Visible High / Low` wick callout labels, draggable volume splitter handle, floating `Scroll-to-Latest («⏭»)` button when scrolled back `> 5` bars, and `[Auto] [Log]` quick axis badges.
+  - **`P1-UPG-3` (TradingView Symbol Overview Sheet, Key Data Points & Seasonals):** Added the Symbol Overview BottomSheet (`WatchlistScreen.kt` & `watchlistView.js`) featuring the `SYMBOL • PROVIDER` header, interactive mini-candlestick chart with dashed previous close line, `1D..All` range chips + `[⛶]` Open Full Chart button, `Key data points` card (`Volume`, `Previous close`, `Open`, `Day's range`), and `Seasonals` (`2026 / 2025 / 2024`) multi-year performance chart, plus Watchlist search filter, Day's range bar, and `Hide logos` switch.
+  - **`P1-UPG-4` (Prediction Visual Pivot Ladder & Direct Chart Level Projection):** Added the visual `S2 — S1 — P — R1 — R2` price position ladder and the **"Project Scenario Levels onto Chart"** action button inside `PredictionScreen.kt` and `analysisView.js` to draw labeled Pivot/Target/Invalidation horizontal lines directly on the symbol's chart.
+  - **`P1-UPG-5` (TradingView Behavior Switches, Live 3-Candle Color Preview & Sync Diagnostics):** Added all 8 TradingView switches (`Hide logos`, `Show symbol screen`, `Chart vibrations`, `Logarithmic scale`, `Remember the last opened chart on this device`, `Hide the tab bar in landscape`, `Picker vibrates`, `Show picker scroll magnifiers`), a live 3-candle color preview canvas, and cached bar count + UTC timestamp diagnostics in `SettingsScreen.kt` and `settingsView.js`.
+
+### Fixed
+- **Web Terminal Chrome & Firefox Overhaul (`P1-UPG-WEB`):**
+  - Fixed RTL `<canvas>` text-alignment corruption in Chrome and Firefox by enforcing `ctx.direction = 'ltr'; ctx.textAlign = 'left';` in `chartRenderer.js` and `dir="ltr"` on `.tv-main-area` and `.chart-workspace`, keeping right-axis price numbers inside the axis column, centering text inside current-price and crosshair pills, and preventing `Vol:` label clipping.
+  - Fixed black-on-black text contrast in `.floating-ohlc-bar`, locked TradingView Dark (`#131722`) as the default theme (`ci_theme_v2`), loaded `Vazirmatn` and `JetBrains Mono` Google Fonts in `host_subdomain/index.html` with `?v=1.28.1` cache-busting, replaced primitive emojis with crisp inline `SVG` icons, and removed the duplicate Watchlist drawer header.
+
+---
+
 ## [1.28.0] - 2026-11-08
 
 ### Added

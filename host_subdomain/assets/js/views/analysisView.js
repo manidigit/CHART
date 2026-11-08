@@ -18,7 +18,6 @@ export function computeTechnicalAnalytics(candles) {
     totalVol += Number(c.volume || 0);
   }
 
-  // ATR (14 period)
   let atr = 0;
   if (candles.length >= 2) {
     const atrSlice = candles.slice(-15);
@@ -34,7 +33,6 @@ export function computeTechnicalAnalytics(candles) {
     atr = trSum / (atrSlice.length - 1);
   }
 
-  // Classic Floor Pivot Points
   const lastBar = candles[candles.length - 1];
   const h = Number(lastBar.high);
   const l = Number(lastBar.low);
@@ -112,56 +110,71 @@ export function renderAnalysisContent(activeTab, i18n) {
   }
 
   const dec = activeTab.decimals;
+  const ladderSpan = Math.max(0.00001, stats.r2 - stats.s2);
+  const pricePosPct = Math.max(4, Math.min(96, Math.round(((stats.lastClose - stats.s2) / ladderSpan) * 100)));
+
   return `
     <div>
       ${headerHtml}
 
+      <!-- Bullish Scenario Card with Project Levels Button (P1-UPG-4) -->
       <details class="card-subtle" style="margin-bottom: 10px; cursor: pointer;" open>
         <summary class="row-between ltr-num" style="font-weight: 700; font-size: 13px; color: var(--bull); list-style: none;">
-          <span>Bullish Breakout (Above P)</span>
+          <span>▲ Bullish Breakout (Above P)</span>
           <span>${PriceFormatter.formatPrice(stats.r1, dec)} → ${PriceFormatter.formatPrice(stats.r2, dec)}</span>
         </summary>
         <div class="ltr-num" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12px;">
           <div class="row-between" style="margin-bottom: 4px;"><span>Entry Trigger (Pivot P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
           <div class="row-between" style="margin-bottom: 4px; color: var(--bull);"><span>Target 1 (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
           <div class="row-between" style="margin-bottom: 4px; color: var(--bull);"><span>Target 2 (R2)</span><strong>${PriceFormatter.formatPrice(stats.r2, dec)}</strong></div>
-          <div class="row-between" style="color: var(--bear);"><span>Invalidation (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
+          <div class="row-between" style="color: var(--bear); margin-bottom: 8px;"><span>Invalidation (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
+          <button
+            class="btn btn-sm btn-primary"
+            style="width: 100%;"
+            data-action="project-scenario-levels"
+            data-bias="bull"
+            data-entry="${stats.pivot}"
+            data-t1="${stats.r1}"
+            data-t2="${stats.r2}"
+            data-stop="${stats.s1}"
+          >
+            ${i18n.t('analysis_project_levels')}
+          </button>
         </div>
       </details>
 
+      <!-- Bearish Scenario Card with Project Levels Button (P1-UPG-4) -->
       <details class="card-subtle" style="margin-bottom: 10px; cursor: pointer;">
         <summary class="row-between ltr-num" style="font-weight: 700; font-size: 13px; color: var(--bear); list-style: none;">
-          <span>Bearish Breakdown (Below P)</span>
+          <span>▼ Bearish Breakdown (Below P)</span>
           <span>${PriceFormatter.formatPrice(stats.s1, dec)} → ${PriceFormatter.formatPrice(stats.s2, dec)}</span>
         </summary>
         <div class="ltr-num" style="margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 12px;">
           <div class="row-between" style="margin-bottom: 4px;"><span>Breakdown Trigger (Pivot P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
           <div class="row-between" style="margin-bottom: 4px; color: var(--bear);"><span>Target 1 (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
           <div class="row-between" style="margin-bottom: 4px; color: var(--bear);"><span>Target 2 (S2)</span><strong>${PriceFormatter.formatPrice(stats.s2, dec)}</strong></div>
-          <div class="row-between" style="color: var(--bull);"><span>Invalidation (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
+          <div class="row-between" style="color: var(--bull); margin-bottom: 8px;"><span>Invalidation (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
+          <button
+            class="btn btn-sm btn-primary"
+            style="width: 100%;"
+            data-action="project-scenario-levels"
+            data-bias="bear"
+            data-entry="${stats.pivot}"
+            data-t1="${stats.s1}"
+            data-t2="${stats.s2}"
+            data-stop="${stats.r1}"
+          >
+            ${i18n.t('analysis_project_levels')}
+          </button>
         </div>
       </details>
 
+      <!-- Visual Price Range & Pivot Ladder (S2 — S1 — P — R1 — R2) -->
       <div class="card-subtle" style="margin-bottom: 10px;">
-        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">${i18n.t('analysis_key_stats')} (24 Bars)</div>
-        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
-          <span>High / Low</span>
-          <strong>${PriceFormatter.formatPrice(stats.periodHigh, dec)} / ${PriceFormatter.formatPrice(stats.periodLow, dec)}</strong>
-        </div>
-        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
-          <span>ATR (14)</span>
-          <strong style="color: var(--gold);">${PriceFormatter.formatPrice(stats.atr14, dec)}</strong>
-        </div>
-        <div class="row-between ltr-num" style="font-size: 12px;">
-          <span>Sentiment</span>
-          <strong style="color: ${stats.bullRatio >= 50 ? 'var(--bull)' : 'var(--bear)'};">
-            ${stats.bullRatio}% Bullish (${stats.bullCount}/${stats.totalBars})
-          </strong>
-        </div>
-      </div>
-
-      <div class="card-subtle">
         <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 8px;">${i18n.t('analysis_pivot_points')}</div>
+        <div style="position: relative; height: 8px; background: linear-gradient(90deg, rgba(38,166,154,0.35), rgba(245,158,11,0.35), rgba(239,83,80,0.35)); border-radius: 4px; margin: 10px 0 14px 0;">
+          <div title="Close: ${PriceFormatter.formatPrice(stats.lastClose, dec)}" style="position: absolute; left: ${pricePosPct}%; top: -4px; width: 14px; height: 16px; margin-left: -7px; border-radius: 3px; background: var(--primary); border: 2px solid #fff;"></div>
+        </div>
         <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
           <span style="color: var(--bear);">R2</span>
           <span>${PriceFormatter.formatPrice(stats.r2, dec)}</span>
@@ -181,6 +194,25 @@ export function renderAnalysisContent(activeTab, i18n) {
         <div class="row-between ltr-num" style="font-size: 12px;">
           <span style="color: var(--bull);">S2</span>
           <span>${PriceFormatter.formatPrice(stats.s2, dec)}</span>
+        </div>
+      </div>
+
+      <!-- Key Volatility Stats -->
+      <div class="card-subtle">
+        <div style="font-size: 12px; color: var(--text-muted); margin-bottom: 6px;">${i18n.t('analysis_key_stats')} (24 Bars)</div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+          <span>High / Low</span>
+          <strong>${PriceFormatter.formatPrice(stats.periodHigh, dec)} / ${PriceFormatter.formatPrice(stats.periodLow, dec)}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+          <span>ATR (14)</span>
+          <strong style="color: var(--gold);">${PriceFormatter.formatPrice(stats.atr14, dec)}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px;">
+          <span>Sentiment</span>
+          <strong style="color: ${stats.bullRatio >= 50 ? 'var(--bull)' : 'var(--bear)'};">
+            ${stats.bullRatio}% Bullish (${stats.bullCount}/${stats.totalBars})
+          </strong>
         </div>
       </div>
     </div>

@@ -50,6 +50,7 @@ import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
+import androidx.compose.material3.Button
 import java.math.BigDecimal
 import java.math.RoundingMode
 import kotlin.math.abs
@@ -78,6 +79,7 @@ fun PredictionScreen(
     watchlistSymbols: List<SymbolConfig>,
     onSelectSymbol: (SymbolConfig) -> Unit,
     onSelectTimeframe: (String) -> Unit = {},
+    onProjectLevelsToChart: (BigDecimal, BigDecimal, BigDecimal, BigDecimal, BigDecimal) -> Unit = { _, _, _, _, _ -> },
     onBackToWatchlist: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -247,12 +249,49 @@ fun PredictionScreen(
                                     )
                                 }
                             }
+                            // Visual Bull/Bear Bias Progress Gauge Bar (P1-UPG-4)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(8.dp)
+                                    .clip(RoundedCornerShape(4.dp))
+                                    .background(palette.bearCandle.copy(alpha = 0.35f))
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .fillMaxWidth(metrics.bullPct.coerceIn(5, 95) / 100f)
+                                        .height(8.dp)
+                                        .background(palette.bullCandle)
+                                )
+                            }
                             Text(
                                 text = stringResource(R.string.prediction_engine_desc),
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
+                    }
+
+                    // One-Tap Action: Project Scenario Levels (P, R1, R2, S1, S2) onto Active Chart
+                    Button(
+                        onClick = {
+                            onProjectLevelsToChart(
+                                metrics.pivotRaw,
+                                metrics.r1Raw,
+                                metrics.r2Raw,
+                                metrics.s1Raw,
+                                metrics.s2Raw
+                            )
+                        },
+                        shape = RoundedCornerShape(8.dp),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("prediction_project_levels_button")
+                    ) {
+                        Text(
+                            text = stringResource(R.string.prediction_project_to_chart),
+                            fontWeight = FontWeight.Bold
+                        )
                     }
 
                     // Prediction Card 2: Bullish Breakout Scenario (Tap for details)
@@ -549,6 +588,28 @@ fun PredictionScreen(
                     }
                 }
 
+                Button(
+                    onClick = {
+                        selectedDetailType = null
+                        onProjectLevelsToChart(
+                            metrics.pivotRaw,
+                            metrics.r1Raw,
+                            metrics.r2Raw,
+                            metrics.s1Raw,
+                            metrics.s2Raw
+                        )
+                    },
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("prediction_sheet_project_levels_button")
+                ) {
+                    Text(
+                        text = stringResource(R.string.prediction_project_to_chart),
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
                 Spacer(modifier = Modifier.height(16.dp))
             }
         }
@@ -593,7 +654,12 @@ private data class PredictionMetrics(
     val s2: String,
     val atr14: String,
     val periodHigh: String,
-    val periodLow: String
+    val periodLow: String,
+    val pivotRaw: BigDecimal,
+    val r1Raw: BigDecimal,
+    val r2Raw: BigDecimal,
+    val s1Raw: BigDecimal,
+    val s2Raw: BigDecimal
 )
 
 private fun computePredictionMetrics(
@@ -636,10 +702,8 @@ private fun computePredictionMetrics(
     val maxHigh = window.maxOf { it.high }
     val minLow = window.minOf { it.low }
 
-    fun fmt(v: Double): String = PriceFormatterAlgorithm.formatPrice(
-        BigDecimal.valueOf(v).setScale(decimals, RoundingMode.HALF_UP),
-        decimals
-    )
+    fun bd(v: Double): BigDecimal = BigDecimal.valueOf(v).setScale(decimals, RoundingMode.HALF_UP)
+    fun fmt(v: Double): String = PriceFormatterAlgorithm.formatPrice(bd(v), decimals)
 
     return PredictionMetrics(
         lastClose = PriceFormatterAlgorithm.formatPrice(latestBar.close, decimals),
@@ -651,6 +715,11 @@ private fun computePredictionMetrics(
         s2 = fmt(s2),
         atr14 = fmt(atr),
         periodHigh = PriceFormatterAlgorithm.formatPrice(maxHigh, decimals),
-        periodLow = PriceFormatterAlgorithm.formatPrice(minLow, decimals)
+        periodLow = PriceFormatterAlgorithm.formatPrice(minLow, decimals),
+        pivotRaw = bd(p),
+        r1Raw = bd(r1),
+        r2Raw = bd(r2),
+        s1Raw = bd(s1),
+        s2Raw = bd(s2)
     )
 }

@@ -117,6 +117,16 @@ Chart Intelligence یک **موتور مستقل تحلیل و پیش‌بینی 
 
 تا زمانی که هر فاز ساخته، بیلد، نصب و در تست عملی توسط مالک پروژه تأیید نشود، کدنویسی فاز بعدی آغاز نمی‌گردد.
 
+### پ) بسته ارتقای تکمیلی و پولیش حرفه‌ای فاز ۱ پیش از ورود به فاز ۲ (`P1-UPG-WEB` و `P1-UPG-1` تا `P1-UPG-5` — `DECIDED & COMPLETED`)
+تمامی ۶ بسته ارتقای تکمیلی فاز ۱ در هر دو پلتفرم اندروید (`app/`) و وب (`host_subdomain/`) پیاده‌سازی و تکمیل شدند:
+1. **`P1-UPG-WEB` (بازطراحی ترمینال وب و رفع باگ‌های Chrome و Firefox):** اعمال `ctx.direction = 'ltr'` و `ctx.textAlign = 'left'` در `chartRenderer.js`، ایزوله‌سازی `dir="ltr"` روی بوم چارت و نوار رسم چپ، رفع کنتراست `.floating-ohlc-bar`، افزودن فونت‌های `Vazirmatn` و `JetBrains Mono` به همراه Cache-Busting (`?v=1.28.1`)، جایگزینی ایموجی‌ها با آیکون‌های `SVG` و حذف تیتر تکراری پنل واچ‌لیست.
+2. **`P1-UPG-1` (کراس‌هیر پیوسته و ویبره لمسی):** افزودن ژست نگه‌داشتن انگشت و اسکرول افقی کندل‌به‌کندل (`detectDragGesturesAfterLongPress`) همراه با ویبره لمسی (`Chart vibrations` / `Picker vibrates`) و ذره‌بین قیمت/زمان (`Show picker scroll magnifiers`).
+3. **`P1-UPG-2` (آگاهی لحظه‌ای بوم و مقیاس لگاریتمی):** افزودن مقیاس لگاریتمی (`Logarithmic scale` / `[Log]`), خط‌چین قیمت بسته شدن روز قبل (`Previous close`), شمارنده معکوس UTC بسته شدن کندل جاری زیر برچسب قیمت، برچسب‌های خودکار سقف و کف کندل‌های قابل‌مشاهده (`Visible High / Low Callouts`), دستگیره لمسی تغییر ارتفاع پنل حجم و دکمه شناور پرش به کندل آخر (`⏭`).
+4. **`P1-UPG-3` (شیت خلاصه نماد `Symbol Overview` و تنظیمات واچ‌لیست):** پیاده‌سازی شیت خلاصه نماد (منطبق با اسکرین‌شات TradingView شامل مینی‌چارت با بازه‌های `1D..All` و دکمه باز کردن چارت تمام‌صفحه `[⛶]`, کارت `Key data points` شامل `Volume`, `Previous close`, `Open`, `Day's range` و کارت مقایسه فصلی چندساله `Seasonals 2026/2025/2024`), نوار دامنه روزانه و فیلتر جستجوی نماد + سوئیچ `Hide logos`.
+5. **`P1-UPG-4` (اتصال تعاملی `Prediction` به `Chart`):** افزودن نردبان گرافیکی قیمت (`S2 — S1 — P — R1 — R2`) و دکمه عملیاتی «ترسیم سطوح سناریو روی چارت (`Project Scenario Levels onto Chart`)» که سطوح ورود، اهداف و حد ابطال را مستقیماً روی بوم چارت همان نماد رسم می‌کند.
+6. **`P1-UPG-5` (سوئیچ‌های TradingView و پیش‌نمایش زنده در `Settings`):** افزودن ۸ سوئیچ رسمی TradingView (`Hide logos`, `Show symbol screen`, `Chart vibrations`, `Logarithmic scale`, `Remember the last opened chart on this device`, `Hide the tab bar in landscape`, `Picker vibrates`, `Show picker scroll magnifiers`)، پیش‌نمایش زنده ۳ کندلی در تنظیمات رنگ و نمایش تعداد کندل‌های کش‌شده هر نماد.
+
+
 
 ## 1.3 نمودار، واحد اصلی محصول و استقلال کامل سری‌ها
 
@@ -1710,7 +1720,8 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
 - ورود با یوزرنیم/پسورد شخصی ⬅ رفتن به تنظیمات و انتخاب نفت برنت و طلا و تعیین منبع داده هر کدام ⬅ مشاهده آن‌ها در واچ‌لیست ⬅ زدن دکمه «به‌روزرسانی تا این لحظه» و دریافت کندل‌های واقعی تا لحظه حال ⬅ باز کردن نفت در `Chart View` ⬅ برگشت به واچ‌لیست و باز کردن طلا ⬅ مشاهده هر دو نمودار در دو تب مستقل کنار هم و جابه‌جا شدن روان بین ۴ تب اصلی (`Watchlist | Chart | Prediction | Settings`).
 
 ### پ) بسته ارتقای تکمیلی و پولیش حرفه‌ای فاز ۱ به استاندارد TradingView (`Phase 1 Pro Upgrade Backlog`)
-برای تکمیل ۱۰۰٪ تجربه کاربری فاز ۱ پیش از آغاز فاز ۲، پنج بسته ارتقای زیر (شامل قابلیت‌های مستخرج از اسکرین‌شات‌های رسمی اپ موبایل TradingView) در اسناد `UI_UX_MOBILE_REDESIGN_SPEC.md` (بخش ۱۰) و `DESIGN_WORKSPACE_SPEC.md` (بخش ۶.۲) ثبت شده‌اند:
+برای تکمیل ۱۰۰٪ تجربه کاربری فاز ۱ پیش از آغاز فاز ۲، شش بسته ارتقای زیر (شامل بازطراحی کامل نسخه وب در کروم/فایرفاکس و قابلیت‌های مستخرج از اسکرین‌شات‌های رسمی اپ موبایل TradingView) در اسناد `UI_UX_MOBILE_REDESIGN_SPEC.md` (بخش ۱۰) و `DESIGN_WORKSPACE_SPEC.md` (بخش ۶.۲ و ۶.۳) ثبت شده‌اند:
+0. **`P1-UPG-WEB` (Web Terminal & Chrome/Firefox Overhaul):** رفع باگ جهت متون `<canvas>` در حالت `RTL` (`ctx.direction = 'ltr'`, `ctx.textAlign = 'left'` که باعث بیرون افتادن اعداد قیمت از کادر محور راست و بریده شدن `Vol` در چپ شده بود)، رفع تضاد رنگ سیاه روی سیاه در `.floating-ohlc-bar`، افزودن فونت‌های `Vazirmatn` و `JetBrains Mono` و `Cache-Busting` برای رفع به‌هم‌ریختگی در Chrome، جایگزینی تمام ایموجی‌ها با آیکون‌های برداری `SVG`، حذف هدر تکراری «واچ‌لیست» و ایزوله‌سازی چیدمان `LTR` بوم چارت.
 1. **`P1-UPG-1` (Chart — Long-Press Crosshair & Haptics):** فعال‌سازی حرکت پیوسته کراس‌هیر روی کندل‌ها با نگه‌داشتن کوتاه انگشت، ذره‌بین اسکرول (`Show picker scroll magnifiers`) و بازخورد لرزشی قابل کنترل (`Chart vibrations` و `Picker vibrates`).
 2. **`P1-UPG-2` (Chart — Situational Awareness & Log Scale):** افزودن مقیاس لگاریتمی (`Logarithmic scale`)، خط‌چین قیمت بسته شدن قبلی (`Previous close line`)، تایمر شمارش معکوس بسته شدن کندل زیر برچسب قیمت جاری، برچسب‌های خودکار سقف و کف دید فعلی (`Visible High/Low Callouts`) روی بلندترین و پایین‌ترین فتیله، دکمه شناور پرش به کندل آخر (`»`) هنگام اسکرول به عقب، دستگیره لمسی تغییر ارتفاع پنل حجم و بج‌های `[Auto] [Log]` در ستون قیمت.
 3. **`P1-UPG-3` (Watchlist — Symbol Overview Sheet, Key Data Points, Seasonals & Hide Logos):** افزودن شیت خلاصه نماد (`Symbol Screen` — قابل کنترل با سوئیچ `Show symbol screen`) شامل هدر `SPOTBRENT • PEPPERSTONE`، مینی‌چارت با بازه‌های `1D..All` و دکمه تمام‌صفحه `[⛶]`، کارت `Key data points` (`Volume`, `Previous close`, `Open`, `Day's range`) و نمودار فصلی چندساله (`Seasonals: 2026 / 2025 / 2024`) به همراه سوئیچ `Hide logos` در تنظیمات واچ‌لیست.

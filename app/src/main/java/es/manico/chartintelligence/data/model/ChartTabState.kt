@@ -19,6 +19,7 @@ data class ChartTabState(
     val scrollOffsetFromRight: Int = 0,
     val selectedCandleIndex: Int? = null,
     val isAutoScaleY: Boolean = true,
+    val isLogScale: Boolean = false,
     val yPriceScaleFactor: Float = 1.0f,
     val activeDateRange: String? = null,
     val showVolume: Boolean = true,
@@ -47,7 +48,7 @@ data class ChartTabState(
     fun computeDateRangePresets(): List<DateRangePresetOption> {
         val total = candles.size
         if (total == 0) {
-            return listOf("1D", "5D", "1M", "3M", "YTD", "1Y", "All").map {
+            return listOf("1D", "5D", "1M", "3M", "YTD", "1Y", "5Y", "All").map {
                 DateRangePresetOption(it, it, false, AppConfig.MIN_VISIBLE_CANDLES)
             }
         }
@@ -66,6 +67,7 @@ data class ChartTabState(
             Spec("3M", 90L * dayMs, 25L * dayMs),
             Spec("YTD", max(dayMs, lastTs - ytdStartMs), 14L * dayMs),
             Spec("1Y", 365L * dayMs, 90L * dayMs),
+            Spec("5Y", 1825L * dayMs, 365L * dayMs),
             Spec("All", max(dayMs, spanMs), 0L)
         )
 

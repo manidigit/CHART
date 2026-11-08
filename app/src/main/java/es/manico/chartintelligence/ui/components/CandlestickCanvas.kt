@@ -74,6 +74,15 @@ import kotlin.math.min
 import kotlin.math.roundToInt
 import kotlin.math.roundToLong
 
+import androidx.compose.foundation.clickable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.mutableLongStateOf
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import kotlinx.coroutines.delay
+import kotlin.math.exp
+import kotlin.math.ln
+
 private fun parseDrawingColor(hex: String?, fallback: Color): Color {
     if (hex.isNullOrBlank()) return fallback
     return runCatching {
@@ -91,6 +100,8 @@ fun CandlestickCanvas(
     onPanCandles: (Int) -> Unit,
     onScaleYAxisByDrag: (Float) -> Unit,
     onResetAutoScaleY: () -> Unit,
+    onToggleLogScale: () -> Unit = {},
+    onResetToLatest: () -> Unit = {},
     onSelectCandle: (Int?) -> Unit,
     onPlaceDrawingAt: (Long, BigDecimal) -> Unit,
     onSelectDrawing: (String?) -> Unit,
@@ -100,6 +111,18 @@ fun CandlestickCanvas(
 ) {
     val financialPalette = LocalFinancialPalette.current
     val density = LocalDensity.current
+    val haptic = LocalHapticFeedback.current
+    val useLogScale = tab.isLogScale || (tab.activeDateRange == "All" && preferences.logarithmicScaleDefault)
+
+    var nowEpochMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(preferences.showCountdownToBarClose) {
+        if (preferences.showCountdownToBarClose) {
+            while (true) {
+                nowEpochMillis = System.currentTimeMillis()
+                delay(1000L)
+            }
+        }
+    }
     val bullColor = preferences.bullCandleColor
     val bearColor = preferences.bearCandleColor
     val trendColor = preferences.trendLineColor
@@ -160,6 +183,27 @@ fun CandlestickCanvas(
     val paddedMin = midPrice - effectiveHalfSpan
     val paddedMax = midPrice + effectiveHalfSpan
     val paddedSpan = (paddedMax - paddedMin).coerceAtLeast(1e-6)
+    val safeLogMin = ln(max(paddedMin, 1e-6))
+    val safeLogMax = ln(max(paddedMax, 1e-5))
+    val safeLogSpan = (safeLogMax - safeLogMin).coerceAtLeast(1e-6)
+
+    fun mapPriceToNormRatio(price: Double): Float {
+        return if (useLogScale && paddedMin > 0.0) {
+            val lp = ln(max(price, 1e-6))
+            ((safeLogMax - lp) / safeLogSpan).toFloat().coerceIn(0f, 1f)
+        } else {
+            ((paddedMax - price) / paddedSpan).toFloat().coerceIn(0f, 1f)
+        }
+    }
+
+    fun mapNormRatioToPrice(ratio: Double): Double {
+        val r = ratio.coerceIn(0.0, 1.0)
+        return if (useLogScale && paddedMin > 0.0) {
+            exp(safeLogMax - r * safeLogSpan)
+        } else {
+            paddedMax - r * paddedSpan
+        }
+    }
 
     val maxRawVolume = visibleSlice.maxOfOrNull { it.volume.toDouble() } ?: 0.0
     val hasRealVolume = maxRawVolume > 0.0
@@ -258,13 +302,12 @@ fun CandlestickCanvas(
                                 val pricePaneH = (h * priceRatio).coerceAtLeast(1f)
 
                                 fun priceToY(p: Double): Float {
-                                    val ratio = ((paddedMax - p) / paddedSpan).toFloat()
-                                    return (ratio * pricePaneH).coerceIn(0f, pricePaneH)
+                                    return (mapPriceToNormRatio(p) * pricePaneH).coerceIn(0f, pricePaneH)
                                 }
 
                                 fun yToPrice(y: Float): BigDecimal {
                                     val clampedRatio = (y / pricePaneH).coerceIn(0f, 1f).toDouble()
-                                    val raw = paddedMax - clampedRatio * paddedSpan
+                                    val raw = mapNormRatioToPrice(clampedRatio)
                                     return CandleValidatorAlgorithm.normalizeDecimal(BigDecimal.valueOf(raw))
                                 }
 
@@ -303,6 +346,9 @@ fun CandlestickCanvas(
                                         val slotW = w / visibleSlice.size.toFloat()
                                         val localIdx = (tapOffset.x / slotW).toInt()
                                             .coerceIn(0, visibleSlice.lastIndex)
+                                        if (preferences.chartVibrations) {
+                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        }
                                         onSelectCandle(startIndex + localIdx)
                                     }
                                 }
@@ -404,8 +450,7 @@ fun CandlestickCanvas(
                     val bodyW = (slotW * 0.68f).coerceIn(2.5f, 18f)
 
                     fun priceToY(p: Double): Float {
-                        val ratio = ((paddedMax - p) / paddedSpan).toFloat()
-                        return (ratio * pricePaneH).coerceIn(0f, pricePaneH)
+                        return (mapPriceToNormRatio(p) * pricePaneH).coerceIn(0f, pricePaneH)
                     }
 
                     fun timeToX(timeMs: Long): Float {
@@ -508,7 +553,20 @@ fun CandlestickCanvas(
                             }
                         }
 
-                        // 6. Current Price Horizontal Dashed Line across Main Price Pane
+                        // 6a. Previous Close Horizontal Dashed Line across Main Price Pane
+                        if (preferences.showPrevCloseLine && candles.size >= 2) {
+                            val prevCloseCandle = candles[candles.size - 2]
+                            val prevY = priceToY(prevCloseCandle.close.toDouble())
+                            drawLine(
+                                color = Color(0xFF787B86).copy(alpha = 0.65f),
+                                start = Offset(0f, prevY),
+                                end = Offset(canvasW, prevY),
+                                strokeWidth = 1.0f,
+                                pathEffect = dashEffect
+                            )
+                        }
+
+                        // 6b. Current Price Horizontal Dashed Line across Main Price Pane
                         val latestCandle = candles.lastOrNull()
                         if (latestCandle != null) {
                             val curY = priceToY(latestCandle.close.toDouble())
@@ -792,7 +850,7 @@ fun CandlestickCanvas(
                         horizontalAlignment = Alignment.End
                     ) {
                         for (g in 0..4) {
-                            val levelPrice = paddedMax - (paddedSpan * (g / 4.0))
+                            val levelPrice = mapNormRatioToPrice(g / 4.0)
                             Text(
                                 text = PriceFormatterAlgorithm.formatPrice(
                                     BigDecimal.valueOf(levelPrice),
@@ -837,14 +895,23 @@ fun CandlestickCanvas(
                         }
                     }
 
-                    // Current Price Pill Badge on Right Y-Axis
+                    // Current Price Pill Badge + Live UTC Countdown on Right Y-Axis
                     val latestCandle = candles.lastOrNull()
                     if (latestCandle != null) {
                         val curPriceDouble = latestCandle.close.toDouble()
-                        val curRatio = ((paddedMax - curPriceDouble) / paddedSpan).toFloat().coerceIn(0f, 1f)
+                        val curRatio = mapPriceToNormRatio(curPriceDouble)
                         val curOffsetPx = with(density) { (pricePaneHeightDp * curRatio - 9.dp).roundToPx() }
                         val curBg = if (latestCandle.isBullish) bullColor else bearColor
-                        Box(
+                        val remSec = max(0L, ((stepMillis - (nowEpochMillis % stepMillis)) % stepMillis) / 1000L)
+                        val countdownText = remember(remSec, stepMillis) {
+                            val hrs = remSec / 3600L
+                            val mins = (remSec % 3600L) / 60L
+                            val secs = remSec % 60L
+                            if (hrs > 0L) String.format(java.util.Locale.US, "%02d:%02d:%02d", hrs, mins, secs)
+                            else String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
+                        }
+                        Column(
+                            horizontalAlignment = Alignment.End,
                             modifier = Modifier
                                 .align(Alignment.TopEnd)
                                 .offset { IntOffset(0, curOffsetPx) }
@@ -861,6 +928,15 @@ fun CandlestickCanvas(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
+                            if (preferences.showCountdownToBarClose) {
+                                Text(
+                                    text = countdownText,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 8.sp,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    color = Color.White.copy(alpha = 0.9f)
+                                )
+                            }
                         }
                     }
 
@@ -868,7 +944,7 @@ fun CandlestickCanvas(
                     val selIdx = tab.selectedCandleIndex
                     if (selIdx != null && selIdx in startIndex until endIndexExclusive) {
                         val selCandle = visibleSlice[selIdx - startIndex]
-                        val selRatio = ((paddedMax - selCandle.close.toDouble()) / paddedSpan).toFloat().coerceIn(0f, 1f)
+                        val selRatio = mapPriceToNormRatio(selCandle.close.toDouble())
                         val selOffsetPx = with(density) { (pricePaneHeightDp * selRatio - 9.dp).roundToPx() }
                         Box(
                             modifier = Modifier
@@ -889,6 +965,126 @@ fun CandlestickCanvas(
                                 color = Color(0xFFD1D4DC)
                             )
                         }
+                    }
+
+                    // Bottom Right Axis [Auto] & [Log] TradingView Mini-Badges
+                    Row(
+                        modifier = Modifier.align(Alignment.BottomEnd),
+                        horizontalArrangement = Arrangement.spacedBy(3.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(
+                                    if (tab.isAutoScaleY) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                                    else MaterialTheme.colorScheme.surface
+                                )
+                                .border(
+                                    1.dp,
+                                    if (tab.isAutoScaleY) MaterialTheme.colorScheme.primary else financialPalette.cardBorder,
+                                    RoundedCornerShape(3.dp)
+                                )
+                                .clickable(onClick = onResetAutoScaleY)
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .testTag("chart_auto_axis_badge")
+                        ) {
+                            Text(
+                                text = stringResource(R.string.chart_axis_auto),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 8.5.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = if (tab.isAutoScaleY) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(3.dp))
+                                .background(
+                                    if (useLogScale) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                                    else MaterialTheme.colorScheme.surface
+                                )
+                                .border(
+                                    1.dp,
+                                    if (useLogScale) MaterialTheme.colorScheme.primary else financialPalette.cardBorder,
+                                    RoundedCornerShape(3.dp)
+                                )
+                                .clickable(onClick = onToggleLogScale)
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .testTag("chart_log_axis_badge")
+                        ) {
+                            Text(
+                                text = stringResource(R.string.chart_axis_log),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 8.5.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = if (useLogScale) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                }
+
+                // Visible High / Low Callout Labels in Main Price Pane
+                if (preferences.showHighLowLabels && visibleSlice.size >= 3) {
+                    val highestBar = remember(visibleSlice) { visibleSlice.maxByOrNull { it.high } }
+                    val lowestBar = remember(visibleSlice) { visibleSlice.minByOrNull { it.low } }
+                    if (highestBar != null && lowestBar != null) {
+                        val highRatio = mapPriceToNormRatio(highestBar.high.toDouble())
+                        val lowRatio = mapPriceToNormRatio(lowestBar.low.toDouble())
+                        val highOffsetY = plotTopPadDp + (pricePaneHeightDp * highRatio).coerceIn(4.dp, pricePaneHeightDp - 16.dp)
+                        val lowOffsetY = plotTopPadDp + (pricePaneHeightDp * lowRatio).coerceIn(4.dp, pricePaneHeightDp - 16.dp)
+                        Text(
+                            text = "High ${PriceFormatterAlgorithm.formatPrice(highestBar.high, tab.decimals)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 8.5.sp,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            color = bullColor.copy(alpha = 0.9f),
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(end = plotRightPadDp + 6.dp)
+                                .offset(y = highOffsetY)
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                        Text(
+                            text = "Low ${PriceFormatterAlgorithm.formatPrice(lowestBar.low, tab.decimals)}",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 8.5.sp,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            color = bearColor.copy(alpha = 0.9f),
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .padding(end = plotRightPadDp + 6.dp)
+                                .offset(y = lowOffsetY)
+                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), RoundedCornerShape(3.dp))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        )
+                    }
+                }
+
+                // Floating Scroll-to-Latest («⏭») Pill Button when scrolled back in history
+                if (tab.scrollOffsetFromRight > 0) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.BottomEnd)
+                            .padding(end = plotRightPadDp + 10.dp, bottom = plotBottomPadDp + 10.dp)
+                            .clip(RoundedCornerShape(16.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.92f))
+                            .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(16.dp))
+                            .clickable(onClick = onResetToLatest)
+                            .padding(horizontal = 10.dp, vertical = 4.dp)
+                            .testTag("chart_scroll_to_latest_fab"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "⏭",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
                     }
                 }
 

@@ -289,6 +289,14 @@ class WorkspaceRepository(context: Context) {
             remoteOk
         }
 
+    fun loadLastOpenedSymbolCode(): String? {
+        return prefs.getString("last_opened_symbol_code", null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun saveLastOpenedSymbolCode(symbolCode: String) {
+        prefs.edit().putString("last_opened_symbol_code", symbolCode.trim().uppercase()).apply()
+    }
+
     fun loadChartPreferences(): ChartPreferences {
         val raw = prefs.getString(AppConfig.KEY_CHART_PREFERENCES_JSON, null) ?: return ChartPreferences()
         return runCatching {
@@ -307,7 +315,18 @@ class WorkspaceRepository(context: Context) {
                 minVisibleCandles = obj.optInt("minVisibleCandles", 12),
                 maxVisibleCandles = obj.optInt("maxVisibleCandles", AppConfig.MAX_VISIBLE_CANDLES).coerceAtLeast(5000),
                 zoomStepCandles = obj.optInt("zoomStepCandles", 8),
-                drawingHitTolerancePx = obj.optDouble("drawingHitTolerancePx", 28.0).toFloat()
+                drawingHitTolerancePx = obj.optDouble("drawingHitTolerancePx", 28.0).toFloat(),
+                hideWatchlistLogos = obj.optBoolean("hideWatchlistLogos", false),
+                showSymbolScreen = obj.optBoolean("showSymbolScreen", true),
+                chartVibrations = obj.optBoolean("chartVibrations", true),
+                logarithmicScaleDefault = obj.optBoolean("logarithmicScaleDefault", false),
+                rememberLastChartOnDevice = obj.optBoolean("rememberLastChartOnDevice", true),
+                hideTabBarInLandscape = obj.optBoolean("hideTabBarInLandscape", true),
+                pickerVibrations = obj.optBoolean("pickerVibrations", true),
+                showPickerScrollMagnifiers = obj.optBoolean("showPickerScrollMagnifiers", true),
+                showCountdownToBarClose = obj.optBoolean("showCountdownToBarClose", true),
+                showPrevCloseLine = obj.optBoolean("showPrevCloseLine", true),
+                showHighLowLabels = obj.optBoolean("showHighLowLabels", true)
             )
         }.getOrDefault(ChartPreferences())
     }
@@ -325,6 +344,17 @@ class WorkspaceRepository(context: Context) {
         obj.put("maxVisibleCandles", prefsObj.maxVisibleCandles.coerceAtLeast(5000))
         obj.put("zoomStepCandles", prefsObj.zoomStepCandles)
         obj.put("drawingHitTolerancePx", prefsObj.drawingHitTolerancePx.toDouble())
+        obj.put("hideWatchlistLogos", prefsObj.hideWatchlistLogos)
+        obj.put("showSymbolScreen", prefsObj.showSymbolScreen)
+        obj.put("chartVibrations", prefsObj.chartVibrations)
+        obj.put("logarithmicScaleDefault", prefsObj.logarithmicScaleDefault)
+        obj.put("rememberLastChartOnDevice", prefsObj.rememberLastChartOnDevice)
+        obj.put("hideTabBarInLandscape", prefsObj.hideTabBarInLandscape)
+        obj.put("pickerVibrations", prefsObj.pickerVibrations)
+        obj.put("showPickerScrollMagnifiers", prefsObj.showPickerScrollMagnifiers)
+        obj.put("showCountdownToBarClose", prefsObj.showCountdownToBarClose)
+        obj.put("showPrevCloseLine", prefsObj.showPrevCloseLine)
+        obj.put("showHighLowLabels", prefsObj.showHighLowLabels)
         prefs.edit().putString(AppConfig.KEY_CHART_PREFERENCES_JSON, obj.toString()).apply()
     }
 

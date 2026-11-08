@@ -248,5 +248,31 @@ class Phase1AlgorithmsTest {
         )
         assertTrue(filtered.isEmpty())
     }
+
+    @Test
+    fun phase1ProUpgrades_supportsTradingViewTogglesLogScaleAnd5YRange() {
+        val prefs = es.manico.chartintelligence.data.model.ChartPreferences()
+        assertFalse(prefs.hideWatchlistLogos)
+        assertTrue(prefs.showSymbolScreen)
+        assertTrue(prefs.chartVibrations)
+        assertFalse(prefs.logarithmicScaleDefault)
+        assertTrue(prefs.rememberLastChartOnDevice)
+        assertTrue(prefs.hideTabBarInLandscape)
+        assertTrue(prefs.pickerVibrations)
+        assertTrue(prefs.showPickerScrollMagnifiers)
+
+        val tab = es.manico.chartintelligence.data.model.ChartTabState(
+            tabId = "SPOTBRENT_tvdatafeed",
+            chartId = "chart_spotbrent_main",
+            symbolCode = "SPOTBRENT",
+            decimals = 3,
+            provider = es.manico.chartintelligence.data.model.ProviderId.TVDATAFEED,
+            isLogScale = true
+        )
+        assertTrue(tab.isLogScale)
+        val presetIds = tab.computeDateRangePresets().map { it.id }
+        assertTrue("5Y" in presetIds)
+        assertTrue("All" in presetIds)
+    }
 }
 

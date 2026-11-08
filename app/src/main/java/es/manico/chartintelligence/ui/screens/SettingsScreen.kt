@@ -108,6 +108,7 @@ fun SettingsScreen(
     onResetColors: () -> Unit,
     onUpdateAlgoParams: (Int, Int, Float) -> Unit,
     onResetAlgoParams: () -> Unit,
+    onUpdateTradingViewPreference: ((ChartPreferences) -> ChartPreferences) -> Unit = {},
     onAddCustomSymbol: (String, String, Int, ProviderId) -> Unit,
     onDeleteSymbol: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -365,6 +366,48 @@ fun SettingsScreen(
                                 Text(
                                     text = stringResource(R.string.settings_chart_colors_section),
                                     style = MaterialTheme.typography.labelSmall
+                                )
+                            }
+                        }
+
+                        // Live 3-Candle Theme Preview Box (P1-UPG-5)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.background)
+                                .border(1.dp, financialPalette.cardBorder, RoundedCornerShape(8.dp))
+                                .padding(horizontal = 12.dp, vertical = 10.dp)
+                                .testTag("settings_live_candle_preview"),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_live_preview_title),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 12.dp, height = 24.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(chartPreferences.bullCandleColor)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 12.dp, height = 18.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(chartPreferences.bearCandleColor)
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .size(width = 12.dp, height = 28.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(chartPreferences.bullCandleColor)
                                 )
                             }
                         }
@@ -679,6 +722,105 @@ fun SettingsScreen(
                                 modifier = Modifier.testTag("slider_touch_tolerance")
                             )
                         }
+
+                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+
+                        // TradingView Watchlist & Symbol Screen Toggles (Screenshot 1)
+                        Text(
+                            text = stringResource(R.string.settings_tv_watchlist_section),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_hide_logos),
+                            subtitle = null,
+                            checked = chartPreferences.hideWatchlistLogos,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(hideWatchlistLogos = v) } },
+                            testTag = "switch_tv_hide_logos"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_show_symbol_screen),
+                            subtitle = null,
+                            checked = chartPreferences.showSymbolScreen,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showSymbolScreen = v) } },
+                            testTag = "switch_tv_show_symbol_screen"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_chart_vibrations),
+                            subtitle = stringResource(R.string.settings_tv_chart_vibrations_sub),
+                            checked = chartPreferences.chartVibrations,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(chartVibrations = v) } },
+                            testTag = "switch_tv_chart_vibrations"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_log_scale),
+                            subtitle = stringResource(R.string.settings_tv_log_scale_sub),
+                            checked = chartPreferences.logarithmicScaleDefault,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(logarithmicScaleDefault = v) } },
+                            testTag = "switch_tv_log_scale"
+                        )
+
+                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+
+                        // TradingView Chart & Picker Behavior Toggles (Screenshot 2)
+                        Text(
+                            text = stringResource(R.string.settings_tv_chart_section),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_remember_last_chart),
+                            subtitle = stringResource(R.string.settings_tv_remember_last_chart_sub),
+                            checked = chartPreferences.rememberLastChartOnDevice,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(rememberLastChartOnDevice = v) } },
+                            testTag = "switch_tv_remember_last_chart"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_hide_tab_bar),
+                            subtitle = stringResource(R.string.settings_tv_hide_tab_bar_sub),
+                            checked = chartPreferences.hideTabBarInLandscape,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(hideTabBarInLandscape = v) } },
+                            testTag = "switch_tv_hide_tab_bar"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_picker_vibrates),
+                            subtitle = null,
+                            checked = chartPreferences.pickerVibrations,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(pickerVibrations = v) } },
+                            testTag = "switch_tv_picker_vibrates"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_picker_magnifiers),
+                            subtitle = null,
+                            checked = chartPreferences.showPickerScrollMagnifiers,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showPickerScrollMagnifiers = v) } },
+                            testTag = "switch_tv_picker_magnifiers"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_countdown_bar_close),
+                            subtitle = null,
+                            checked = chartPreferences.showCountdownToBarClose,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showCountdownToBarClose = v) } },
+                            testTag = "switch_tv_countdown"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_prev_close_line),
+                            subtitle = null,
+                            checked = chartPreferences.showPrevCloseLine,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showPrevCloseLine = v) } },
+                            testTag = "switch_tv_prev_close"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_high_low_labels),
+                            subtitle = null,
+                            checked = chartPreferences.showHighLowLabels,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showHighLowLabels = v) } },
+                            testTag = "switch_tv_high_low_labels"
+                        )
                     }
                 }
 
@@ -1026,4 +1168,43 @@ private fun AddCustomSymbolDialog(
             }
         }
     )
+}
+
+@Composable
+private fun TradingViewSwitchRow(
+    title: String,
+    subtitle: String?,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    testTag: String
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 4.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f).padding(end = 12.dp)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyMedium,
+                fontWeight = FontWeight.Medium,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            if (!subtitle.isNullOrBlank()) {
+                Text(
+                    text = subtitle,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            modifier = Modifier.testTag(testTag)
+        )
+    }
 }

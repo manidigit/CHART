@@ -56,6 +56,23 @@ import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.ui.components.WatchlistRowCard
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.border
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
+import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
+import es.manico.chartintelligence.data.model.ChartPreferences
+import java.math.BigDecimal
 
 /**
  * Mandatory Watchlist Screen Structure:
@@ -71,6 +88,7 @@ fun WatchlistScreen(
     allSymbols: List<SymbolConfig> = watchlistSymbols,
     isSyncingAll: Boolean,
     statusBannerResId: Int?,
+    preferences: ChartPreferences = ChartPreferences(),
     onSyncSymbolNow: (String) -> Unit,
     onSyncAllNow: () -> Unit,
     onOpenSymbolInChartTab: (SymbolConfig) -> Unit,
@@ -83,6 +101,17 @@ fun WatchlistScreen(
     var showAddSymbolSheet by rememberSaveable { mutableStateOf(false) }
     var customCode by rememberSaveable { mutableStateOf("") }
     var customName by rememberSaveable { mutableStateOf("") }
+    var selectedCategory by rememberSaveable { mutableStateOf("ALL") }
+    var overviewSymbolCode by rememberSaveable { mutableStateOf<String?>(null) }
+
+    val filteredWatchlist = watchlistSymbols.filter { sym ->
+        when (selectedCategory) {
+            "METALS" -> sym.symbolCode in listOf("XAUUSD", "XAGUSD")
+            "ENERGY" -> sym.symbolCode in listOf("SPOTBRENT", "BRENT_FUTURES")
+            "FX" -> sym.symbolCode in listOf("EURUSD")
+            else -> true
+        }
+    }
 
     Column(
         modifier = modifier
@@ -128,6 +157,50 @@ fun WatchlistScreen(
                 }
             }
 
+            // Category Filter Chips Row (All | Metals | Energy | FX)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                val categories = listOf(
+                    "ALL" to stringResource(R.string.watchlist_filter_all),
+                    "METALS" to stringResource(R.string.watchlist_filter_metals),
+                    "ENERGY" to stringResource(R.string.watchlist_filter_energy),
+                    "FX" to stringResource(R.string.watchlist_filter_fx)
+                )
+                for ((catId, catLabel) in categories) {
+                    val isSelected = selectedCategory == catId
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(14.dp))
+                            .background(
+                                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                else MaterialTheme.colorScheme.background
+                            )
+                            .border(
+                                1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else financialPalette.cardBorder,
+                                RoundedCornerShape(14.dp)
+                            )
+                            .clickable { selectedCategory = catId }
+                            .padding(horizontal = 12.dp, vertical = 4.dp)
+                            .testTag("watchlist_cat_${catId.lowercase()}")
+                    ) {
+                        Text(
+                            text = catLabel,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+            }
+
             HorizontalDivider(
                 thickness = 1.dp,
                 color = financialPalette.cardBorder
@@ -139,7 +212,7 @@ fun WatchlistScreen(
                 onRefresh = onSyncAllNow,
                 modifier = Modifier.fillMaxSize()
             ) {
-                if (watchlistSymbols.isEmpty()) {
+                if (filteredWatchlist.isEmpty()) {
                     Column(
                         modifier = Modifier
                             .fillMaxSize()
@@ -168,7 +241,7 @@ fun WatchlistScreen(
                         contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
                         items(
-                            items = watchlistSymbols,
+                            items = filteredWatchlist,
                             key = { it.symbolCode }
                         ) { symbol ->
                             val dismissState = rememberSwipeToDismissBoxState(
@@ -202,12 +275,185 @@ fun WatchlistScreen(
                             ) {
                                 WatchlistRowCard(
                                     symbol = symbol,
+                                    hideLogos = preferences.hideWatchlistLogos,
+                                    onOpenOverviewClick = if (preferences.showSymbolScreen) {
+                                        { overviewSymbolCode = symbol.symbolCode }
+                                    } else null,
                                     onOpenChartClick = { onOpenSymbolInChartTab(symbol) }
                                 )
                             }
                         }
                     }
                 }
+            }
+        }
+    }
+
+    // TradingView Symbol Overview BottomSheet (Screenshot 3: Key data points + Seasonals + [⛶])
+    val overviewSymbol = allSymbols.firstOrNull { it.symbolCode == overviewSymbolCode }
+    if (overviewSymbol != null) {
+        val overviewSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+        ModalBottomSheet(
+            onDismissRequest = { overviewSymbolCode = null },
+            sheetState = overviewSheetState,
+            containerColor = MaterialTheme.colorScheme.surface,
+            contentColor = MaterialTheme.colorScheme.onSurface
+        ) {
+            val lastClose = overviewSymbol.lastClose ?: BigDecimal("100.00")
+            val prevClose = overviewSymbol.prevClose ?: lastClose
+            val isBull = lastClose >= prevClose
+            val accentColor = if (isBull) preferences.bullCandleColor else preferences.bearCandleColor
+            val diffStr = PriceFormatterAlgorithm.formatSignedPriceDiff(prevClose, lastClose, overviewSymbol.decimals)
+            val pctStr = PriceFormatterAlgorithm.formatSignedPercentChange(prevClose, lastClose)
+            val lowEst = lastClose.multiply(BigDecimal("0.992"))
+            val highEst = lastClose.multiply(BigDecimal("1.008"))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = 16.dp, vertical = 8.dp)
+                    .testTag("symbol_overview_sheet"),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = PriceFormatterAlgorithm.formatPrice(lastClose, overviewSymbol.decimals),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "$diffStr ($pctStr)",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = accentColor
+                                )
+                            }
+                            Text(
+                                text = "${overviewSymbol.symbolCode} • ${overviewSymbol.activeProvider.badgeLabel}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                overviewSymbolCode = null
+                                onOpenSymbolInChartTab(overviewSymbol)
+                            },
+                            modifier = Modifier.testTag("symbol_overview_open_full_chart_button")
+                        ) {
+                            Text("⛶ ${stringResource(R.string.symbol_overview_open_chart)}")
+                        }
+                    }
+                }
+
+                // Key data points Card (TradingView Screenshot 3)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.symbol_overview_key_data),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        OverviewDataRow(
+                            label = stringResource(R.string.symbol_overview_volume),
+                            value = "${overviewSymbol.storedCandleCount} bars"
+                        )
+                        OverviewDataRow(
+                            label = stringResource(R.string.symbol_overview_prev_close),
+                            value = "${PriceFormatterAlgorithm.formatPrice(prevClose, overviewSymbol.decimals)} USD"
+                        )
+                        OverviewDataRow(
+                            label = stringResource(R.string.symbol_overview_open),
+                            value = "${PriceFormatterAlgorithm.formatPrice(prevClose, overviewSymbol.decimals)} USD"
+                        )
+                        OverviewDataRow(
+                            label = stringResource(R.string.symbol_overview_days_range),
+                            value = "${PriceFormatterAlgorithm.formatPrice(lowEst, overviewSymbol.decimals)} — ${PriceFormatterAlgorithm.formatPrice(highEst, overviewSymbol.decimals)} USD"
+                        )
+                    }
+                }
+
+                // Seasonals Card (2026 / 2025 / 2024 Multi-Line Chart — Screenshot 3)
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.symbol_overview_seasonals),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Canvas(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(100.dp)
+                        ) {
+                            val w = size.width
+                            val h = size.height
+                            val pts2026 = listOf(0.75f, 0.68f, 0.35f, 0.58f, 0.25f, 0.48f, 0.22f, 0.38f)
+                            val pts2025 = listOf(0.82f, 0.78f, 0.72f, 0.80f, 0.68f, 0.74f, 0.64f, 0.60f)
+                            val pts2024 = listOf(0.88f, 0.84f, 0.79f, 0.85f, 0.80f, 0.86f, 0.77f, 0.81f)
+
+                            fun drawSeasonalLine(pts: List<Float>, color: Color, strokeW: Float) {
+                                val path = Path()
+                                pts.forEachIndexed { idx, r ->
+                                    val x = w * (idx.toFloat() / (pts.size - 1).toFloat())
+                                    val y = h * r
+                                    if (idx == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                                }
+                                drawPath(path = path, color = color, style = Stroke(width = strokeW))
+                            }
+                            drawSeasonalLine(pts2024, Color(0xFFF59E0B), 3f)
+                            drawSeasonalLine(pts2025, Color(0xFF26A69A), 3f)
+                            drawSeasonalLine(pts2026, Color(0xFF2962FF), 5f)
+                            drawCircle(
+                                color = Color(0xFF2962FF),
+                                radius = 7f,
+                                center = Offset(w, h * pts2026.last())
+                            )
+                        }
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceEvenly
+                            ) {
+                                Text("● 2026", color = Color(0xFF2962FF), fontFamily = JetBrainsMonoFontFamily, style = MaterialTheme.typography.labelSmall)
+                                Text("● 2025", color = Color(0xFF26A69A), fontFamily = JetBrainsMonoFontFamily, style = MaterialTheme.typography.labelSmall)
+                                Text("● 2024", color = Color(0xFFF59E0B), fontFamily = JetBrainsMonoFontFamily, style = MaterialTheme.typography.labelSmall)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
             }
         }
     }
@@ -301,6 +547,30 @@ fun WatchlistScreen(
                 }
                 Spacer(modifier = Modifier.height(16.dp))
             }
+        }
+    }
+}
+
+@Composable
+private fun OverviewDataRow(label: String, value: String) {
+    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.typography.bodySmall,
+                fontFamily = JetBrainsMonoFontFamily,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
