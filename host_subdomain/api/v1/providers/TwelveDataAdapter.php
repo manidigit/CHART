@@ -14,7 +14,7 @@ final class TwelveDataAdapter
         $cfg = Database::getConfig();
         $apiKey = trim((string) ($cfg['TWELVE_DATA_API_KEY'] ?? ''));
         if ($apiKey === '') {
-            return YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
+            return self::fetchFallbackRealCandles($symbol, $timeframe, $limit, $nowMs);
         }
 
         $apiSymbol = match (strtoupper($symbol)) {
@@ -44,11 +44,11 @@ final class TwelveDataAdapter
         $ctx = stream_context_create(['http' => ['timeout' => 8]]);
         $raw = @file_get_contents($url, false, $ctx);
         if ($raw === false) {
-            return YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
+            return self::fetchFallbackRealCandles($symbol, $timeframe, $limit, $nowMs);
         }
         $json = json_decode($raw, true);
         if (!is_array($json) || empty($json['values']) || !is_array($json['values'])) {
-            return YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
+            return self::fetchFallbackRealCandles($symbol, $timeframe, $limit, $nowMs);
         }
 
         $candles = [];
@@ -75,6 +75,25 @@ final class TwelveDataAdapter
             }
         }
         ksort($candles);
-        return array_values($candles);
+        $filtered = CandleValidator::filterSyntheticWeekendAndCombCandles(
+            array_values($candles),
+            $symbol,
+            $timeframe
+        );
+        if (count($filtered) >= 5) {
+            return $filtered;
+        }
+        return self::fetchFallbackRealCandles($symbol, $timeframe, $limit, $nowMs);
+    }
+
+    private static function fetchFallbackRealCandles(string $symbol, string $timeframe, int $limit, int $nowMs): array
+    {
+        $tvCandles = TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
+        $tvFiltered = CandleValidator::filterSyntheticWeekendAndCombCandles($tvCandles, $symbol, $timeframe);
+        if (count($tvFiltered) >= 5) {
+            return $tvFiltered;
+        }
+        $yahooCandles = YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
+        return CandleValidator::filterSyntheticWeekendAndCombCandles($yahooCandles, $symbol, $timeframe);
     }
 }

@@ -61,12 +61,12 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
 
     fun resetChartColorsToDefault(current: ChartPreferences): ChartPreferences {
         val next = current.copy(
-            bullCandleColorHex = "FF10B981",
-            bearCandleColorHex = "FFF43F5E",
-            trendLineColorHex = "FFA855F7",
+            bullCandleColorHex = "FF26A69A",
+            bearCandleColorHex = "FFEF5350",
+            trendLineColorHex = "FF2962FF",
             horizontalLineColorHex = "FF38BDF8",
             verticalLineColorHex = "FFF59E0B",
-            chartGridColorHex = "FF1E293B"
+            chartGridColorHex = "FF2A2E39"
         )
         repository.saveChartPreferences(next)
         return next

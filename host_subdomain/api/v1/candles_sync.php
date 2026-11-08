@@ -37,7 +37,25 @@ $nowMs = (int) round(microtime(true) * 1000);
 $pdo = Database::getPdo();
 $chartId = 'chart_' . strtolower($symbol) . '_main';
 
-// For tvdatafeed, check if MariaDB already has stored candles, and also merge any newly synced tvdatafeed files
+// Purge any previously persisted synthetic weekend micro-spread rows from MariaDB for intraday timeframes
+if ($pdo !== null && $timeframe !== 'D1') {
+    try {
+        $purgeStmt = $pdo->prepare(
+            "DELETE FROM candles
+             WHERE chart_id = :chart_id
+               AND timeframe = :tf
+               AND volume = 0
+               AND (high_price - low_price) < (open_price * 0.00018)"
+        );
+        $purgeStmt->execute([
+            ':chart_id' => $chartId,
+            ':tf' => $timeframe,
+        ]);
+    } catch (Throwable) {
+        // Non-fatal cleanup
+    }
+}
+
 $candles = match ($provider) {
     'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, isset($_GET['refresh'])),
     'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs),
@@ -46,6 +64,8 @@ $candles = match ($provider) {
     'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs),
     default => [],
 };
+
+$candles = CandleValidator::filterSyntheticWeekendAndCombCandles($candles, $symbol, $timeframe);
 
 // Persist real candles to MariaDB in a fast batch transaction, then query up to $limit (up to 5,000) candles from MariaDB
 if ($pdo !== null && !empty($candles)) {
@@ -116,7 +136,8 @@ if ($pdo !== null) {
                 $dbCandles[] = $c;
             }
         }
-        if (!empty($dbCandles)) {
+        $dbCandles = CandleValidator::filterSyntheticWeekendAndCombCandles($dbCandles, $symbol, $timeframe);
+        if (count($dbCandles) >= 5) {
             $candles = $dbCandles;
         }
     }

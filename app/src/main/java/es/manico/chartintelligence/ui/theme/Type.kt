@@ -11,13 +11,17 @@ import es.manico.chartintelligence.R
 val VazirmatnFontFamily = FontFamily(
     Font(R.font.vazirmatn, FontWeight.Normal),
     Font(R.font.vazirmatn, FontWeight.Medium),
-    Font(R.font.vazirmatn, FontWeight.Bold)
+    Font(R.font.vazirmatn, FontWeight.SemiBold),
+    Font(R.font.vazirmatn, FontWeight.Bold),
+    Font(R.font.vazirmatn, FontWeight.ExtraBold)
 )
 
 val JetBrainsMonoFontFamily = FontFamily(
     Font(R.font.jetbrains_mono, FontWeight.Normal),
     Font(R.font.jetbrains_mono, FontWeight.Medium),
-    Font(R.font.jetbrains_mono, FontWeight.Bold)
+    Font(R.font.jetbrains_mono, FontWeight.SemiBold),
+    Font(R.font.jetbrains_mono, FontWeight.Bold),
+    Font(R.font.jetbrains_mono, FontWeight.ExtraBold)
 )
 
 val AppTypography = Typography(

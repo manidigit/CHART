@@ -5,7 +5,8 @@ namespace ChartIntelligence\Algorithms;
 
 /**
  * Independent Backend Algorithm Module:
- * Enforces OHLC invariants and DECIMAL(18,8) formatting without floating-point drift.
+ * Enforces OHLC invariants, DECIMAL(18,8) formatting without floating-point drift,
+ * and filters synthetic weekend micro-spread "comb/barcode" ticks.
  */
 final class CandleValidator
 {
@@ -38,5 +39,70 @@ final class CandleValidator
             'volume' => number_format($v, 8, '.', ''),
             'is_closed' => true,
         ];
+    }
+
+    /**
+     * Filters out synthetic weekend off-market micro-spread bars (e.g., Twelve Data weekend XAU/USD
+     * flat bars with volume=0 and high-low < 0.018% of open) that cause comb/barcode distortion.
+     */
+    public static function filterSyntheticWeekendAndCombCandles(
+        array $candles,
+        string $symbolCode = 'XAUUSD',
+        string $timeframe = 'M15'
+    ): array {
+        if (empty($candles)) {
+            return [];
+        }
+        $normTf = strtoupper($timeframe);
+        $isIntraday = $normTf !== 'D1';
+
+        $step1 = [];
+        foreach ($candles as $bar) {
+            $openMs = (int) ($bar['open_time_utc_ms'] ?? 0);
+            $o = (float) ($bar['open'] ?? 0.0);
+            $h = (float) ($bar['high'] ?? 0.0);
+            $l = (float) ($bar['low'] ?? 0.0);
+            $v = (float) ($bar['volume'] ?? 0.0);
+            $range = $h - $l;
+            $isMicroRange = $o > 0.0 && ($range / $o) < 0.00018;
+            $isWeekend = $isIntraday && UtcTimeAnchor::isOtcWeekendClosed($openMs, $symbolCode);
+            if ($isWeekend && ($v <= 0.0 || $isMicroRange)) {
+                continue;
+            }
+            $step1[] = $bar;
+        }
+
+        $n = count($step1);
+        if ($n < 4) {
+            return $step1;
+        }
+
+        $result = [];
+        $i = 0;
+        while ($i < $n) {
+            $anchor = $step1[$i];
+            $anchorOpen = (float) ($anchor['open'] ?? 0.0);
+            $runEnd = $i;
+            while ($runEnd < $n) {
+                $cur = $step1[$runEnd];
+                $curOpen = (float) ($cur['open'] ?? 0.0);
+                $curRange = (float) ($cur['high'] ?? 0.0) - (float) ($cur['low'] ?? 0.0);
+                $curVol = (float) ($cur['volume'] ?? 0.0);
+                $sameOpen = $anchorOpen > 0.0 && (abs($curOpen - $anchorOpen) / $anchorOpen) < 0.00005;
+                $microSpread = $anchorOpen > 0.0 && ($curRange / $anchorOpen) < 0.00018;
+                if ($sameOpen && $microSpread && $curVol <= 0.0) {
+                    $runEnd++;
+                } else {
+                    break;
+                }
+            }
+            if (($runEnd - $i) >= 3) {
+                $i = $runEnd;
+            } else {
+                $result[] = $anchor;
+                $i++;
+            }
+        }
+        return $result;
     }
 }

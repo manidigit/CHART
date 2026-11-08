@@ -5,6 +5,7 @@ import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.ui.graphics.Color
 import es.manico.chartintelligence.i18n.AppLanguage
 import es.manico.chartintelligence.i18n.ProvideAppLanguage
 
@@ -15,7 +16,7 @@ private val DarkColorScheme = darkColorScheme(
     background = DarkBackground,
     surface = DarkSurface,
     surfaceVariant = DarkSurfaceVariant,
-    onPrimary = DarkBackground,
+    onPrimary = Color.White,
     onBackground = DarkTextPrimary,
     onSurface = DarkTextPrimary,
     onSurfaceVariant = DarkTextSecondary,

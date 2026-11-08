@@ -8,7 +8,7 @@ export const BASE_SYMBOLS = [
     decimals: 2,
     inWatchlist: true,
     activeProvider: 'twelve_data',
-    allowedProviders: ['twelve_data', 'dukascopy', 'yahoo_finance'],
+    allowedProviders: ['twelve_data', 'tvdatafeed', 'dukascopy', 'yahoo_finance'],
     timeframe: 'M15',
   },
   {
@@ -55,6 +55,61 @@ export const BASE_SYMBOLS = [
 
 export const candleCache = new Map();
 
+export function isOtcWeekendClosedUtc(epochMs, symbolCode) {
+  const code = String(symbolCode || '').trim().toUpperCase();
+  if (!['XAUUSD', 'XAGUSD', 'EURUSD', 'SPOTBRENT', 'BRENT_FUTURES'].includes(code)) return false;
+  const d = new Date(Number(epochMs));
+  const dow = d.getUTCDay(); // 0 = Sun, 5 = Fri, 6 = Sat
+  const hr = d.getUTCHours();
+  if (dow === 6) return true;
+  if (dow === 5 && hr >= 22) return true;
+  if (dow === 0 && hr < 22) return true;
+  return false;
+}
+
+export function filterSyntheticWeekendAndCombCandles(candles, symbolCode, timeframe) {
+  if (!Array.isArray(candles) || candles.length === 0) return [];
+  const tf = String(timeframe || 'M15').toUpperCase();
+  if (tf === 'D1') return candles;
+
+  const afterWeekend = candles.filter((c) => {
+    const ms = Number(c.open_time_utc_ms);
+    if (!isOtcWeekendClosedUtc(ms, symbolCode)) return true;
+    const open = Number(c.open);
+    const high = Number(c.high);
+    const low = Number(c.low);
+    const vol = Number(c.volume || 0);
+    const relRange = open > 0 ? Math.abs(high - low) / open : 0;
+    return !(vol <= 0 && relRange < 0.0005);
+  });
+
+  if (afterWeekend.length < 4) return afterWeekend;
+  const dropIndices = new Set();
+  let runStart = 0;
+  for (let i = 1; i <= afterWeekend.length; i++) {
+    const prev = afterWeekend[runStart];
+    const curr = i < afterWeekend.length ? afterWeekend[i] : null;
+    const sameSyntheticCluster =
+      curr !== null &&
+      Number(curr.volume || 0) <= 0 &&
+      Number(prev.volume || 0) <= 0 &&
+      Number(prev.open) > 0 &&
+      Math.abs(Number(curr.open) - Number(prev.open)) / Number(prev.open) < 0.00001 &&
+      Math.abs(Number(curr.high) - Number(curr.low)) / Number(curr.open) < 0.00018 &&
+      Math.abs(Number(prev.high) - Number(prev.low)) / Number(prev.open) < 0.00018;
+
+    if (!sameSyntheticCluster) {
+      const runLen = i - runStart;
+      if (runLen >= 3) {
+        for (let k = runStart; k < i; k++) dropIndices.add(k);
+      }
+      runStart = i;
+    }
+  }
+  if (dropIndices.size === 0) return afterWeekend;
+  return afterWeekend.filter((_, idx) => !dropIndices.has(idx));
+}
+
 export const state = {
   isDarkTheme: (localStorage.getItem('ci_theme') || 'dark') === 'dark',
   isOwnerRegistered: Boolean(localStorage.getItem('ci_owner_username')),
@@ -76,9 +131,9 @@ export const state = {
 
 export function loadChartPreferences() {
   const defaults = {
-    bullColor: '#10B981',
-    bearColor: '#F43F5E',
-    trendColor: '#A855F7',
+    bullColor: '#26A69A',
+    bearColor: '#EF5350',
+    trendColor: '#2962FF',
     hlineColor: '#38BDF8',
     vlineColor: '#F59E0B',
     candleFetchLimit: 500,
@@ -86,6 +141,8 @@ export function loadChartPreferences() {
   try {
     const saved = JSON.parse(localStorage.getItem('ci_chart_preferences') || '{}');
     const merged = { ...defaults, ...saved };
+    if (merged.bullColor === '#10B981') merged.bullColor = '#26A69A';
+    if (merged.bearColor === '#F43F5E') merged.bearColor = '#EF5350';
     merged.candleFetchLimit = Math.max(40, Math.min(5000, Number(merged.candleFetchLimit) || 500));
     return merged;
   } catch (_) {
@@ -115,8 +172,9 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
   try {
     const saved = JSON.parse(localStorage.getItem(`ci_candles_v2_${exactKey}`) || 'null');
     if (Array.isArray(saved) && saved.length > 0) {
-      candleCache.set(exactKey, saved);
-      return saved;
+      const cleaned = filterSyntheticWeekendAndCombCandles(saved, symbolCode, normTf);
+      candleCache.set(exactKey, cleaned);
+      return cleaned;
     }
   } catch (_) {}
 
@@ -133,8 +191,9 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
 export function saveCandlesToCache(symbolCode, provider, timeframe, candles) {
   const normTf = provider === 'eia_brent_spot' ? 'D1' : String(timeframe || 'M15').toUpperCase();
   const exactKey = `${symbolCode}_${provider}_${normTf}`;
+  const cleaned = filterSyntheticWeekendAndCombCandles(candles, symbolCode, normTf);
   const limit = Math.max(40, Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 500));
-  const cappedInMemory = candles.slice(-limit);
+  const cappedInMemory = cleaned.slice(-limit);
   candleCache.set(exactKey, cappedInMemory);
   try {
     // Store up to 1500 in browser localStorage to avoid QuotaExceededError while keeping up to 5000 in memory & MariaDB

@@ -148,9 +148,14 @@
     <string name="chart_volume_resize">Vol Size</string>
     <string name="chart_volume_unavailable">No volume data provided by source</string>
     <string name="chart_indicator_sma20">SMA 20</string>
-    <string name="chart_status_live">Synced</string>
+    <string name="chart_status_live">Live</string>
+    <string name="chart_status_market_closed">Market Closed</string>
+    <string name="chart_status_delayed">Delayed</string>
+    <string name="chart_status_cached">Cached</string>
+    <string name="chart_status_error">Feed Error</string>
     <string name="chart_status_syncing">Syncing…</string>
     <string name="draw_color_label">Color</string>
     <string name="draw_width_label">Width</string>
     <string name="draw_tools_toggle">Draw</string>
+    <string name="settings_change_provider">Change Source</string>
 </resources>

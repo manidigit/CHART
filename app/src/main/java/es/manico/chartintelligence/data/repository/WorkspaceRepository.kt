@@ -293,13 +293,16 @@ class WorkspaceRepository(context: Context) {
         val raw = prefs.getString(AppConfig.KEY_CHART_PREFERENCES_JSON, null) ?: return ChartPreferences()
         return runCatching {
             val obj = JSONObject(raw)
+            val rawBull = obj.optString("bullCandleColorHex", "FF26A69A")
+            val rawBear = obj.optString("bearCandleColorHex", "FFEF5350")
+            val rawGrid = obj.optString("chartGridColorHex", "FF2A2E39")
             ChartPreferences(
-                bullCandleColorHex = obj.optString("bullCandleColorHex", "FF10B981"),
-                bearCandleColorHex = obj.optString("bearCandleColorHex", "FFF43F5E"),
-                trendLineColorHex = obj.optString("trendLineColorHex", "FFA855F7"),
+                bullCandleColorHex = if (rawBull == "FF10B981") "FF26A69A" else rawBull,
+                bearCandleColorHex = if (rawBear == "FFF43F5E") "FFEF5350" else rawBear,
+                trendLineColorHex = obj.optString("trendLineColorHex", "FF2962FF"),
                 horizontalLineColorHex = obj.optString("horizontalLineColorHex", "FF38BDF8"),
                 verticalLineColorHex = obj.optString("verticalLineColorHex", "FFF59E0B"),
-                chartGridColorHex = obj.optString("chartGridColorHex", "FF1E293B"),
+                chartGridColorHex = if (rawGrid == "FF1E293B") "FF2A2E39" else rawGrid,
                 candleFetchLimit = obj.optInt("candleFetchLimit", AppConfig.DEFAULT_CANDLE_FETCH_LIMIT).coerceIn(40, 5000),
                 minVisibleCandles = obj.optInt("minVisibleCandles", 12),
                 maxVisibleCandles = obj.optInt("maxVisibleCandles", AppConfig.MAX_VISIBLE_CANDLES).coerceAtLeast(5000),
@@ -604,6 +607,7 @@ class WorkspaceRepository(context: Context) {
 
     private fun loadCandlesFromPrefs(key: String, timeframe: String): List<CandleBar> {
         val raw = prefs.getString("${AppConfig.KEY_CANDLES_CACHE_PREFIX}$key", null) ?: return emptyList()
+        val symbolCode = key.substringBefore("_")
         return runCatching {
             val arr = JSONArray(raw)
             val result = ArrayList<CandleBar>(arr.length())
@@ -619,7 +623,11 @@ class WorkspaceRepository(context: Context) {
                     volume = BigDecimal(obj.optString("v", "0"))
                 )?.let { result.add(it) }
             }
-            result.sortedBy { it.openTimeUtcMillis }
+            CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
+                result.sortedBy { it.openTimeUtcMillis },
+                symbolCode,
+                timeframe
+            )
         }.getOrDefault(emptyList())
     }
 
@@ -653,6 +661,7 @@ class WorkspaceRepository(context: Context) {
                 activeProvider = ProviderId.TWELVE_DATA,
                 allowedProviders = listOf(
                     ProviderId.TWELVE_DATA,
+                    ProviderId.TVDATAFEED,
                     ProviderId.DUKASCOPY,
                     ProviderId.YAHOO_FINANCE
                 ),

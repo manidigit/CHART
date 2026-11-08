@@ -21,7 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AdsClick
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DeleteSweep
-import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.Timeline
@@ -47,12 +47,13 @@ import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 import kotlin.math.abs
 
 private val DRAWING_COLOR_SWATCHES = listOf(
+    "FF2962FF" to Color(0xFF2962FF),
     "FF38BDF8" to Color(0xFF38BDF8),
     "FFA855F7" to Color(0xFFA855F7),
     "FFF59E0B" to Color(0xFFF59E0B),
-    "FF10B981" to Color(0xFF10B981),
-    "FFF43F5E" to Color(0xFFF43F5E),
-    "FFF8FAFC" to Color(0xFFF8FAFC)
+    "FF26A69A" to Color(0xFF26A69A),
+    "FFEF5350" to Color(0xFFEF5350),
+    "FFD1D4DC" to Color(0xFFD1D4DC)
 )
 
 private val DRAWING_WIDTH_OPTIONS = listOf(
@@ -64,8 +65,8 @@ private val DRAWING_WIDTH_OPTIONS = listOf(
 
 /**
  * Collapsible Floating Touch Drawing Dock:
- * - Sits compactly above the bottom navigation bar in ChartViewScreen
- * - Provides Crosshair, H-Line, V-Line, Trend Line, Delete Selected, and Clear All
+ * - Defaults to a minimal single-button pill (`isCollapsed = true`) so the chart canvas occupies ~85%+ of the viewport
+ * - Expands on tap or when a line is selected to show Crosshair, H-Line, V-Line, Trend Line, Delete Selected, and Clear All
  * - Automatically expands the Color Swatch Picker & Line Thickness Selector row when any drawing tool
  *   is active or an existing line is selected on the chart.
  */
@@ -75,9 +76,9 @@ fun DrawingToolbar(
     hasSelectedDrawing: Boolean,
     totalDrawingsCount: Int,
     pendingTrendPoint: TrendAnchorPoint?,
-    activeDrawingColorHex: String = "FF38BDF8",
+    activeDrawingColorHex: String = "FF2962FF",
     activeDrawingWidthDp: Float = 2.2f,
-    isCollapsed: Boolean = false,
+    isCollapsed: Boolean = true,
     onSelectTool: (DrawingTool) -> Unit,
     onSelectColorHex: (String) -> Unit = {},
     onSelectWidthDp: (Float) -> Unit = {},
@@ -89,12 +90,44 @@ fun DrawingToolbar(
     val palette = LocalFinancialPalette.current
     val showStyleRow = !isCollapsed && (activeTool != DrawingTool.CURSOR || hasSelectedDrawing)
 
+    if (isCollapsed && activeTool == DrawingTool.CURSOR && !hasSelectedDrawing) {
+        // Minimal Floating Pill Mode (TradingView Mobile Style)
+        Row(
+            modifier = modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            DrawingToolChip(
+                label = if (totalDrawingsCount > 0) {
+                    "${stringResource(R.string.draw_tools_toggle)} ($totalDrawingsCount)"
+                } else {
+                    stringResource(R.string.draw_tools_toggle)
+                },
+                icon = Icons.Outlined.Edit,
+                selected = false,
+                onClick = onToggleCollapsed,
+                testTag = "draw_dock_collapse_button"
+            )
+
+            if (totalDrawingsCount > 0) {
+                DrawingToolChip(
+                    label = stringResource(R.string.draw_clear_all),
+                    icon = Icons.Outlined.DeleteSweep,
+                    selected = false,
+                    onClick = onClearAll,
+                    testTag = "draw_clear_all_button"
+                )
+            }
+        }
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
+            .clip(RoundedCornerShape(8.dp))
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f))
-            .border(1.dp, palette.cardBorder, RoundedCornerShape(10.dp))
+            .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
             .padding(horizontal = 6.dp, vertical = 4.dp),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
@@ -117,7 +150,7 @@ fun DrawingToolbar(
                     val isColorSelected = activeDrawingColorHex.equals(hex, ignoreCase = true)
                     Box(
                         modifier = Modifier
-                            .size(24.dp)
+                            .size(22.dp)
                             .clip(CircleShape)
                             .background(swatchColor)
                             .border(
@@ -152,7 +185,7 @@ fun DrawingToolbar(
                                 shape = RoundedCornerShape(6.dp)
                             )
                             .clickable { onSelectWidthDp(widthDp) }
-                            .padding(horizontal = 8.dp, vertical = 3.dp)
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
                             .testTag("draw_width_${label}_button"),
                         contentAlignment = Alignment.Center
                     ) {
@@ -178,67 +211,64 @@ fun DrawingToolbar(
         ) {
             DrawingToolChip(
                 label = stringResource(R.string.draw_tools_toggle),
-                icon = if (isCollapsed) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
-                selected = !isCollapsed,
+                icon = Icons.Outlined.ExpandMore,
+                selected = true,
                 onClick = onToggleCollapsed,
                 testTag = "draw_dock_collapse_button"
             )
 
-            if (!isCollapsed) {
-                DrawingToolChip(
-                    label = stringResource(R.string.draw_tool_cursor),
-                    icon = Icons.Outlined.AdsClick,
-                    selected = activeTool == DrawingTool.CURSOR,
-                    onClick = { onSelectTool(DrawingTool.CURSOR) },
-                    testTag = "draw_tool_cursor_button"
-                )
-                DrawingToolChip(
-                    label = stringResource(R.string.draw_tool_hline),
-                    icon = Icons.Outlined.HorizontalRule,
-                    selected = activeTool == DrawingTool.HORIZONTAL_LINE,
-                    onClick = { onSelectTool(DrawingTool.HORIZONTAL_LINE) },
-                    testTag = "draw_tool_hline_button"
-                )
-                DrawingToolChip(
-                    label = stringResource(R.string.draw_tool_vline),
-                    icon = Icons.Outlined.VerticalAlignCenter,
-                    selected = activeTool == DrawingTool.VERTICAL_LINE,
-                    onClick = { onSelectTool(DrawingTool.VERTICAL_LINE) },
-                    testTag = "draw_tool_vline_button"
-                )
-                DrawingToolChip(
-                    label = stringResource(R.string.draw_tool_trend),
-                    icon = Icons.Outlined.Timeline,
-                    selected = activeTool == DrawingTool.TREND_LINE,
-                    onClick = { onSelectTool(DrawingTool.TREND_LINE) },
-                    testTag = "draw_tool_trend_button"
-                )
+            DrawingToolChip(
+                label = stringResource(R.string.draw_tool_cursor),
+                icon = Icons.Outlined.AdsClick,
+                selected = activeTool == DrawingTool.CURSOR,
+                onClick = { onSelectTool(DrawingTool.CURSOR) },
+                testTag = "draw_tool_cursor_button"
+            )
+            DrawingToolChip(
+                label = stringResource(R.string.draw_tool_hline),
+                icon = Icons.Outlined.HorizontalRule,
+                selected = activeTool == DrawingTool.HORIZONTAL_LINE,
+                onClick = { onSelectTool(DrawingTool.HORIZONTAL_LINE) },
+                testTag = "draw_tool_hline_button"
+            )
+            DrawingToolChip(
+                label = stringResource(R.string.draw_tool_vline),
+                icon = Icons.Outlined.VerticalAlignCenter,
+                selected = activeTool == DrawingTool.VERTICAL_LINE,
+                onClick = { onSelectTool(DrawingTool.VERTICAL_LINE) },
+                testTag = "draw_tool_vline_button"
+            )
+            DrawingToolChip(
+                label = stringResource(R.string.draw_tool_trend),
+                icon = Icons.Outlined.Timeline,
+                selected = activeTool == DrawingTool.TREND_LINE,
+                onClick = { onSelectTool(DrawingTool.TREND_LINE) },
+                testTag = "draw_tool_trend_button"
+            )
 
-                if (hasSelectedDrawing) {
-                    DrawingToolChip(
-                        label = stringResource(R.string.draw_delete_selected),
-                        icon = Icons.Outlined.DeleteOutline,
-                        selected = false,
-                        accentColor = palette.bearCandle,
-                        onClick = onDeleteSelected,
-                        testTag = "draw_delete_selected_button"
-                    )
-                }
+            if (hasSelectedDrawing) {
+                DrawingToolChip(
+                    label = stringResource(R.string.draw_delete_selected),
+                    icon = Icons.Outlined.DeleteOutline,
+                    selected = false,
+                    accentColor = palette.bearCandle,
+                    onClick = onDeleteSelected,
+                    testTag = "draw_delete_selected_button"
+                )
+            }
 
-                if (totalDrawingsCount > 0) {
-                    DrawingToolChip(
-                        label = "${stringResource(R.string.draw_clear_all)} ($totalDrawingsCount)",
-                        icon = Icons.Outlined.DeleteSweep,
-                        selected = false,
-                        onClick = onClearAll,
-                        testTag = "draw_clear_all_button"
-                    )
-                }
+            if (totalDrawingsCount > 0) {
+                DrawingToolChip(
+                    label = "${stringResource(R.string.draw_clear_all)} ($totalDrawingsCount)",
+                    icon = Icons.Outlined.DeleteSweep,
+                    selected = false,
+                    onClick = onClearAll,
+                    testTag = "draw_clear_all_button"
+                )
             }
         }
 
         val hintText = when {
-            isCollapsed -> null
             activeTool == DrawingTool.TREND_LINE && pendingTrendPoint == null ->
                 stringResource(R.string.draw_hint_trend_point1)
             activeTool == DrawingTool.TREND_LINE && pendingTrendPoint != null ->
@@ -275,19 +305,19 @@ private fun DrawingToolChip(
     val bgColor = if (selected) {
         baseAccent.copy(alpha = 0.18f)
     } else {
-        MaterialTheme.colorScheme.surfaceVariant
+        MaterialTheme.colorScheme.surface
     }
     val borderColor = if (selected || accentColor != null) baseAccent else palette.cardBorder
     val textColor = if (selected || accentColor != null) baseAccent else MaterialTheme.colorScheme.onSurface
 
     Box(
         modifier = Modifier
-            .heightIn(min = 38.dp)
-            .clip(RoundedCornerShape(7.dp))
+            .heightIn(min = 34.dp)
+            .clip(RoundedCornerShape(6.dp))
             .background(bgColor)
-            .border(1.dp, borderColor, RoundedCornerShape(7.dp))
+            .border(1.dp, borderColor, RoundedCornerShape(6.dp))
             .clickable(onClick = onClick)
-            .padding(horizontal = 9.dp, vertical = 4.dp)
+            .padding(horizontal = 8.dp, vertical = 3.dp)
             .testTag(testTag),
         contentAlignment = Alignment.Center
     ) {
@@ -299,7 +329,7 @@ private fun DrawingToolChip(
                 imageVector = icon,
                 contentDescription = label,
                 tint = textColor,
-                modifier = Modifier.size(15.dp)
+                modifier = Modifier.size(14.dp)
             )
             Text(
                 text = label,

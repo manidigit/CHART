@@ -15,7 +15,6 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -34,6 +33,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -41,7 +41,9 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import es.manico.chartintelligence.R
+import es.manico.chartintelligence.algorithms.MarketStatus
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
+import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
 import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.ChartType
@@ -57,9 +59,9 @@ import java.math.BigDecimal
 /**
  * Full-Viewport Professional Chart Workspace:
  * - Zero outer vertical page scrolling when a symbol tab is active
- * - Compact Header Row: Symbol + Provider Badge + Live Close Price + Signed Diff + Signed % + Status Dot + Sync & Back actions
+ * - Compact Header Row: Symbol + Provider Badge + Live Close Price + Signed Diff + Signed % + Semantic Market Status Pill + Sync & Back actions
  * - Unified Single-Row Top Subbar: Timeframes (15m..1D) + Historical Date Ranges (1D..All) + Chart Type + Volume Toggle/Resize + SMA 20 + Scale
- * - Multi-Pane CandlestickCanvas filling Modifier.weight(1f) (~80%+ of screen height)
+ * - Multi-Pane CandlestickCanvas filling Modifier.weight(1f) (~85%+ of screen height)
  * - Collapsible Floating Touch Drawing Dock at the bottom with auto-expanding Color & Thickness controls
  */
 @Composable
@@ -102,10 +104,9 @@ fun ChartViewScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 8.dp, vertical = 4.dp)
+            .padding(horizontal = 6.dp, vertical = 2.dp)
     ) {
         if (openTabs.isEmpty() || activeTab == null) {
-            // Empty state when no symbol tabs are open
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -180,7 +181,33 @@ fun ChartViewScreen(
                 activeTab.computeDateRangePresets()
             }
 
-            // Row 1: Compact Symbol + Live Price + Change + Parallel Tabs + Sync & Back
+            val marketStatus = remember(
+                activeTab.symbolCode,
+                activeTab.timeframe,
+                latestCandle?.openTimeUtcMillis,
+                activeTab.hasError
+            ) {
+                UtcTimeAnchorAlgorithm.determineMarketStatus(
+                    symbolCode = activeTab.symbolCode,
+                    timeframe = activeTab.timeframe,
+                    lastCandleOpenUtcMillis = latestCandle?.openTimeUtcMillis,
+                    hasError = activeTab.hasError
+                )
+            }
+
+            val (statusColor, statusText) = if (activeTab.isLoading) {
+                MaterialTheme.colorScheme.primary to stringResource(R.string.chart_status_syncing)
+            } else {
+                when (marketStatus) {
+                    MarketStatus.LIVE -> preferences.bullCandleColor to stringResource(R.string.chart_status_live)
+                    MarketStatus.MARKET_CLOSED -> Color(0xFFF59E0B) to stringResource(R.string.chart_status_market_closed)
+                    MarketStatus.DELAYED -> Color(0xFFF59E0B) to stringResource(R.string.chart_status_delayed)
+                    MarketStatus.CACHED -> MaterialTheme.colorScheme.onSurfaceVariant to stringResource(R.string.chart_status_cached)
+                    MarketStatus.ERROR -> preferences.bearCandleColor to stringResource(R.string.chart_status_error)
+                }
+            }
+
+            // Row 1: Compact Symbol + Live Price + Change + Semantic Market Status + Sync & Back
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -230,28 +257,27 @@ fun ChartViewScreen(
                                 color = priceColor
                             )
                         }
-                        // Status Dot + Label
+                        // Semantic Market Status Dot + Label
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            horizontalArrangement = Arrangement.spacedBy(4.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(statusColor.copy(alpha = 0.14f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .testTag("chart_market_status_pill")
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .size(7.dp)
+                                    .size(6.dp)
                                     .clip(CircleShape)
-                                    .background(
-                                        if (activeTab.isLoading) MaterialTheme.colorScheme.primary
-                                        else preferences.bullCandleColor
-                                    )
+                                    .background(statusColor)
                             )
                             Text(
-                                text = if (activeTab.isLoading) {
-                                    stringResource(R.string.chart_status_syncing)
-                                } else {
-                                    stringResource(R.string.chart_status_live)
-                                },
+                                text = statusText,
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontWeight = FontWeight.SemiBold,
+                                color = statusColor
                             )
                         }
                     }
@@ -265,33 +291,33 @@ fun ChartViewScreen(
                         onClick = { onSyncActiveSymbolNow(activeTab.symbolCode) },
                         enabled = !activeTab.isLoading,
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(34.dp)
                             .testTag("chart_sync_active_tab_button")
                     ) {
                         Icon(
                             imageVector = Icons.Outlined.Sync,
                             contentDescription = stringResource(R.string.action_sync_now),
                             tint = MaterialTheme.colorScheme.primary,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                     IconButton(
                         onClick = onBackToWatchlist,
                         modifier = Modifier
-                            .size(36.dp)
+                            .size(34.dp)
                             .testTag("chart_back_to_watchlist_button")
                     ) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
                             contentDescription = stringResource(R.string.chart_open_from_watchlist),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(17.dp)
                         )
                     }
                 }
             }
 
-            // Optional compact tab switcher if multiple tabs are open (or always accessible for testTag parity)
+            // Compact parallel tab switcher
             ChartTabBar(
                 tabs = openTabs,
                 activeTabId = activeTab.tabId,
@@ -323,7 +349,7 @@ fun ChartViewScreen(
                 onResetAutoScaleY = onResetAutoScaleY
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
             // Main Full-Viewport Multi-Pane Chart Canvas (expands to fill all remaining screen height)
             CandlestickCanvas(
@@ -343,7 +369,7 @@ fun ChartViewScreen(
                     .fillMaxWidth()
             )
 
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(3.dp))
 
             // Bottom Collapsible Floating Touch Drawing Dock (with auto-expanding Color & Width row)
             DrawingToolbar(

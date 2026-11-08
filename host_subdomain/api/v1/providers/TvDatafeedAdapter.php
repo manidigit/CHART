@@ -8,9 +8,9 @@ use ChartIntelligence\Algorithms\TimeframeAggregator;
 use ChartIntelligence\Algorithms\UtcTimeAnchor;
 
 /**
- * Provider Adapter for TradingView `tvdatafeed` (`PEPPERSTONE:SPOTBRENT`).
+ * Provider Adapter for TradingView `tvdatafeed` (`PEPPERSTONE:SPOTBRENT`, `OANDA:XAUUSD`).
  * Reads closed candles extracted by `scripts/sync_tvdatafeed.py` (stored in MariaDB `candles` table
- * and `data/tvdatafeed/SPOTBRENT_{TF}.json` / `.csv`), and optionally triggers an on-demand CLI refresh
+ * and `data/tvdatafeed/{SYMBOL}_{TF}.json` / `.csv`), and optionally triggers an on-demand CLI refresh
  * if Python 3 + tvdatafeed is available on the host.
  */
 final class TvDatafeedAdapter
@@ -23,6 +23,11 @@ final class TvDatafeedAdapter
             $normTf = 'M15';
         }
 
+        $exchange = match ($cleanSymbol) {
+            'XAUUSD', 'XAGUSD', 'EURUSD' => 'OANDA',
+            default => 'PEPPERSTONE',
+        };
+
         $baseDir = dirname(__DIR__, 3);
         $dataDir = $baseDir . '/data/tvdatafeed';
         $scriptPath = $baseDir . '/scripts/sync_tvdatafeed.py';
@@ -33,9 +38,10 @@ final class TvDatafeedAdapter
             $isStale = !is_file($jsonTarget) || (time() - (int) @filemtime($jsonTarget)) > 600;
             if ($isStale) {
                 $cmd = sprintf(
-                    'python3 %s --symbol %s --exchange PEPPERSTONE --bars %d --output-dir %s 2>/dev/null',
+                    'python3 %s --symbol %s --exchange %s --bars %d --output-dir %s 2>/dev/null',
                     escapeshellarg($scriptPath),
                     escapeshellarg($cleanSymbol),
+                    escapeshellarg($exchange),
                     max(160, min(5000, $limit)),
                     escapeshellarg($dataDir)
                 );
@@ -46,13 +52,13 @@ final class TvDatafeedAdapter
         // 1. Read from normalized JSON produced by sync_tvdatafeed.py
         $candles = self::readFromNormalizedJson($dataDir, $cleanSymbol, $normTf, $limit, $nowMs);
         if (!empty($candles)) {
-            return $candles;
+            return CandleValidator::filterSyntheticWeekendAndCombCandles($candles, $cleanSymbol, $normTf);
         }
 
-        // 2. Or read from the CSV files (SPOTBRENT_15m.csv, SPOTBRENT_1h.csv, SPOTBRENT_4h.csv, SPOTBRENT_1d.csv)
+        // 2. Or read from the CSV files ({SYMBOL}_15m.csv, {SYMBOL}_1h.csv, {SYMBOL}_4h.csv, {SYMBOL}_1d.csv)
         $candles = self::readFromCsvFile($dataDir, $cleanSymbol, $normTf, $limit, $nowMs);
         if (!empty($candles)) {
-            return $candles;
+            return CandleValidator::filterSyntheticWeekendAndCombCandles($candles, $cleanSymbol, $normTf);
         }
 
         // 3. If higher timeframe (H1/H4/D1) is requested and M15 exists, aggregate from M15
@@ -62,7 +68,8 @@ final class TvDatafeedAdapter
                 $m15 = self::readFromCsvFile($dataDir, $cleanSymbol, 'M15', 5000, $nowMs);
             }
             if (!empty($m15)) {
-                $aggregated = TimeframeAggregator::aggregate($m15, $normTf, $nowMs);
+                $cleanM15 = CandleValidator::filterSyntheticWeekendAndCombCandles($m15, $cleanSymbol, 'M15');
+                $aggregated = TimeframeAggregator::aggregate($cleanM15, $normTf, $nowMs);
                 return array_slice($aggregated, -$limit);
             }
         }
@@ -156,7 +163,7 @@ final class TvDatafeedAdapter
             if ($tsSec === false || $tsSec <= 0) {
                 continue;
             }
-            $openMs = UtcTimeAnchor::snapToCandleOpenUtc($tsSec * 1000, $timeframe);
+            $openMs = UtcTimeAnchor::snapToOpenUtcMs($tsSec * 1000, $timeframe);
             if (!UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
                 continue;
             }

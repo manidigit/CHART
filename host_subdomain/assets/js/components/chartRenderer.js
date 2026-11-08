@@ -8,7 +8,7 @@ export function computeChartGeometry(canvas, tab) {
   const height = Math.max(280, rect.height || canvas.clientHeight || 520);
   const padRight = width < 520 ? 64 : 74;
   const padBottom = 26;
-  const padTop = 12;
+  const padTop = 30;
   const padLeft = 8;
   const plotW = Math.max(120, width - padLeft - padRight);
   const totalPlotH = Math.max(160, height - padTop - padBottom);
@@ -44,7 +44,8 @@ export function computeChartGeometry(canvas, tab) {
   }
 
   const mid = (rawMin + rawMax) / 2;
-  const baseHalf = Math.max(1e-6, (rawMax - rawMin) / 2) * 1.12;
+  const minHalfFloor = Math.max(1e-4, Math.abs(mid) * 0.0008);
+  const baseHalf = Math.max((rawMax - rawMin) / 2, minHalfFloor) * 1.16;
   const scaleFactor =
     tab.isAutoScaleY === false ? Math.max(0.2, Math.min(4.5, tab.yPriceScaleFactor || 1.0)) : 1.0;
   const halfSpan = baseHalf * scaleFactor;
@@ -123,14 +124,14 @@ export function renderCandlestickCanvas(canvas, tab, isDarkTheme, i18n = null) {
   ctx.scale(dpr, dpr);
 
   const prefs = state.chartPreferences || {};
-  const bg = isDarkTheme ? '#0B0F17' : '#FFFFFF';
-  const axisBg = isDarkTheme ? '#0E1420' : '#F8FAFC';
-  const grid = isDarkTheme ? 'rgba(148, 163, 184, 0.08)' : 'rgba(100, 116, 139, 0.14)';
-  const dividerCol = isDarkTheme ? '#1E293B' : '#CBD5E1';
-  const textCol = isDarkTheme ? '#94A3B8' : '#475569';
-  const primaryCol = isDarkTheme ? '#38BDF8' : '#0284C7';
-  const bull = prefs.bullColor || (isDarkTheme ? '#10B981' : '#059669');
-  const bear = prefs.bearColor || (isDarkTheme ? '#F43F5E' : '#E11D48');
+  const bg = isDarkTheme ? '#131722' : '#FFFFFF';
+  const axisBg = isDarkTheme ? '#1E222D' : '#F8FAFC';
+  const grid = isDarkTheme ? '#2A2E39' : '#E0E3EB';
+  const dividerCol = isDarkTheme ? '#2A2E39' : '#CBD5E1';
+  const textCol = isDarkTheme ? '#787B86' : '#475569';
+  const primaryCol = '#2962FF';
+  const bull = prefs.bullColor || (isDarkTheme ? '#26A69A' : '#089981');
+  const bear = prefs.bearColor || (isDarkTheme ? '#EF5350' : '#F23645');
 
   ctx.fillStyle = bg;
   ctx.fillRect(0, 0, width, height);

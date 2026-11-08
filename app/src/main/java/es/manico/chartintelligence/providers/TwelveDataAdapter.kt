@@ -20,7 +20,8 @@ import java.util.concurrent.TimeUnit
 /**
  * Independent Data Provider Adapter: Twelve Data API (`twelve_data`).
  * Priority channel for XAU/USD candles; queries chart.manico.es proxy or direct Twelve Data API,
- * and falls back to real Yahoo Finance market feed if no API key is configured.
+ * filters out weekend synthetic micro-spread ticks, and falls back to real Yahoo Finance market
+ * feed if Twelve Data only returns weekend flat bars or no API key is configured.
  * Never fabricates synthetic data.
  */
 class TwelveDataAdapter(
@@ -42,15 +43,22 @@ class TwelveDataAdapter(
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
         val primaryCandles = runCatching {
-            fetchFromBackendOrTwelveData(symbolCode, timeframe, limit, nowMillis)
+            val raw = fetchFromBackendOrTwelveData(symbolCode, timeframe, limit, nowMillis)
+            CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(raw, symbolCode, timeframe)
         }.getOrNull().orEmpty()
 
-        val realCandles = if (primaryCandles.isNotEmpty()) {
+        val realCandles = if (primaryCandles.size >= 5) {
             primaryCandles
         } else {
-            runCatching {
+            val fallbackRaw = runCatching {
                 yahooFallback.fetchYahooChartCandles(symbolCode, timeframe, limit, nowMillis)
             }.getOrNull().orEmpty()
+            val cleanedFallback = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
+                fallbackRaw,
+                symbolCode,
+                timeframe
+            )
+            if (cleanedFallback.isNotEmpty()) cleanedFallback else primaryCandles
         }
 
         ProviderSyncResult(
@@ -90,8 +98,12 @@ class TwelveDataAdapter(
             httpClient.newCall(proxyRequest).execute().use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string().orEmpty()
-                    val parsed = parseProxyCandles(body, timeframe, nowMillis)
-                    if (parsed.isNotEmpty()) return parsed
+                    val parsed = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
+                        parseProxyCandles(body, timeframe, nowMillis),
+                        symbolCode,
+                        timeframe
+                    )
+                    if (parsed.size >= 5) return parsed
                 }
             }
         }
@@ -127,7 +139,11 @@ class TwelveDataAdapter(
                     volume = BigDecimal(item.optString("volume", "0"))
                 )?.let { result.add(it) }
             }
-            return result.sortedBy { it.openTimeUtcMillis }
+            return CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
+                result.sortedBy { it.openTimeUtcMillis },
+                symbolCode,
+                timeframe
+            )
         }
     }
 

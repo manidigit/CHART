@@ -186,8 +186,8 @@ class Phase1AlgorithmsTest {
     @Test
     fun chartPreferences_parsesColorsAndSafeguardsNonHardcodedConfig() {
         val defaultPrefs = es.manico.chartintelligence.data.model.ChartPreferences()
-        assertEquals("FF10B981", defaultPrefs.bullCandleColorHex)
-        assertEquals("FFF43F5E", defaultPrefs.bearCandleColorHex)
+        assertEquals("FF26A69A", defaultPrefs.bullCandleColorHex)
+        assertEquals("FFEF5350", defaultPrefs.bearCandleColorHex)
         assertEquals(500, defaultPrefs.candleFetchLimit)
         assertEquals(5000, defaultPrefs.maxVisibleCandles)
         assertEquals(8, defaultPrefs.zoomStepCandles)
@@ -221,6 +221,32 @@ class Phase1AlgorithmsTest {
         )
         assertEquals("SPOTBRENT_tvdatafeed_M15", spotBrent.compositeTabKey)
         assertEquals("101.198", PriceFormatterAlgorithm.formatPrice(BigDecimal("101.198"), spotBrent.decimals))
+    }
+
+    @Test
+    fun candleValidator_filtersSyntheticWeekendCombBarsAndDetectsWeekendStatus() {
+        // Sunday 2026-11-08 12:00 UTC = 1794139200000L (OTC Weekend Closed)
+        val sundayMillis = 1794139200000L
+        assertTrue(UtcTimeAnchorAlgorithm.isOtcWeekendClosed(sundayMillis, "XAUUSD"))
+
+        val m15Step = 15L * 60L * 1000L
+        val syntheticWeekendBars = (0 until 6).map { idx ->
+            CandleValidatorAlgorithm.sanitizeAndValidate(
+                rawOpenTimeMillis = sundayMillis - (6 - idx) * m15Step,
+                timeframe = "M15",
+                open = BigDecimal("4065.98607000"),
+                high = BigDecimal("4066.16800000"),
+                low = BigDecimal("4065.92500000"),
+                close = BigDecimal("4065.97000000"),
+                volume = BigDecimal.ZERO
+            )!!
+        }
+        val filtered = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
+            syntheticWeekendBars,
+            "XAUUSD",
+            "M15"
+        )
+        assertTrue(filtered.isEmpty())
     }
 }
 

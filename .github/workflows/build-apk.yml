@@ -46,21 +46,16 @@ jobs:
           keytool -list -v -keystore debug.keystore -storepass android | grep -E "SHA1|SHA256"
           ls -la debug.keystore
 
-      - name: Ensure Fonts and Mipmap Resources Exist
+      - name: Ensure Clean Binary Fonts and Mipmap Resources
         run: |
           mkdir -p app/src/main/res/font
-          if [ ! -f app/src/main/res/font/vazirmatn.ttf ]; then
-            curl -fsSL "https://fonts.gstatic.com/s/vazirmatn/v16/Dxx78j6PP2D_kU2muijPEe1n2vVbfJRklWgzCRCT6w.ttf" -o app/src/main/res/font/vazirmatn.ttf
-          fi
-          if [ ! -f app/src/main/res/font/jetbrains_mono.ttf ]; then
-            curl -fsSL "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOQ.ttf" -o app/src/main/res/font/jetbrains_mono.ttf
-          fi
-          if [ ! -f app/src/main/res/mipmap-mdpi/ic_launcher.png ]; then
-            python3 - << 'EOF'
+          curl -fsSL "https://fonts.gstatic.com/s/vazirmatn/v16/Dxx78j6PP2D_kU2muijPEe1n2vVbfJRklWgzCRCT6w.ttf" -o app/src/main/res/font/vazirmatn.ttf
+          curl -fsSL "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOQ.ttf" -o app/src/main/res/font/jetbrains_mono.ttf
+          python3 - << 'EOF'
           import os, struct, zlib
           def make_png(path, width, height):
               os.makedirs(os.path.dirname(path), exist_ok=True)
-              raw = b"".join(b"\x00" + b"\x0b\x0f\x17\xff" * width for _ in range(height))
+              raw = b"".join(b"\x00" + b"\x13\x17\x22\xff" * width for _ in range(height))
               def chunk(tag, data):
                   return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
               ihdr = struct.pack("!IIBBBBB", width, height, 8, 6, 0, 0, 0)
@@ -71,7 +66,6 @@ jobs:
               make_png(f"app/src/main/res/mipmap-{folder}/ic_launcher.png", sz, sz)
               make_png(f"app/src/main/res/mipmap-{folder}/ic_launcher_round.png", sz, sz)
           EOF
-          fi
 
       - name: Prepare .env for Secrets Gradle Plugin
         env:
@@ -107,12 +101,17 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
 
-      - name: Extract PEPPERSTONE:SPOTBRENT Candles via tvdatafeed (5,000 Bars)
+      - name: Extract PEPPERSTONE:SPOTBRENT and OANDA:XAUUSD Candles via tvdatafeed (5,000 Bars)
         run: |
           pip install --upgrade --no-cache-dir git+https://github.com/rongardF/tvdatafeed.git pandas || true
           python3 host_subdomain/scripts/sync_tvdatafeed.py \
             --symbol SPOTBRENT \
             --exchange PEPPERSTONE \
+            --bars 5000 \
+            --output-dir host_subdomain/data/tvdatafeed || true
+          python3 host_subdomain/scripts/sync_tvdatafeed.py \
+            --symbol XAUUSD \
+            --exchange OANDA \
             --bars 5000 \
             --output-dir host_subdomain/data/tvdatafeed || true
 
@@ -178,6 +177,7 @@ jobs:
               $pdo = \\ChartIntelligence\\Core\\Database::getPdo();
               $seededCandles = 0;
               if ($pdo !== null) {{
+                  @$pdo->exec("DELETE FROM candles WHERE timeframe != 'D1' AND volume = 0 AND (high_price - low_price) < (open_price * 0.00018)");
                   $sql = "INSERT INTO candles
                       (chart_id, provider_id, timeframe, open_time_utc,
                        open_price, high_price, low_price, close_price, volume, is_closed)
@@ -189,27 +189,33 @@ jobs:
                       close_price = VALUES(close_price),
                       volume     = VALUES(volume)";
                   $stmt = $pdo->prepare($sql);
-                  foreach (['M15', 'H1', 'H4', 'D1'] as $tf) {{
-                      $jsonPath = __DIR__ . '/data/tvdatafeed/SPOTBRENT_' . $tf . '.json';
-                      if (is_file($jsonPath)) {{
-                          $decoded = json_decode((string) file_get_contents($jsonPath), true);
-                          $rows = $decoded['candles'] ?? [];
-                          if (is_array($rows) && count($rows) > 0) {{
-                              $pdo->beginTransaction();
-                              foreach ($rows as $bar) {{
-                                  $stmt->execute([
-                                      ':cid'     => 'chart_spotbrent_main',
-                                      ':tf'      => $tf,
-                                      ':open_ms' => (int) ($bar['open_time_utc_ms'] ?? 0),
-                                      ':o'       => (string) ($bar['open'] ?? '0'),
-                                      ':h'       => (string) ($bar['high'] ?? '0'),
-                                      ':l'       => (string) ($bar['low'] ?? '0'),
-                                      ':c'       => (string) ($bar['close'] ?? '0'),
-                                      ':v'       => (string) ($bar['volume'] ?? '0'),
-                                  ]);
-                                  $seededCandles++;
+                  $symbolMap = [
+                      'SPOTBRENT' => 'chart_spotbrent_main',
+                      'XAUUSD'    => 'chart_xauusd_main',
+                  ];
+                  foreach ($symbolMap as $sym => $cid) {{
+                      foreach (['M15', 'H1', 'H4', 'D1'] as $tf) {{
+                          $jsonPath = __DIR__ . '/data/tvdatafeed/' . $sym . '_' . $tf . '.json';
+                          if (is_file($jsonPath)) {{
+                              $decoded = json_decode((string) file_get_contents($jsonPath), true);
+                              $rows = $decoded['candles'] ?? [];
+                              if (is_array($rows) && count($rows) > 0) {{
+                                  $pdo->beginTransaction();
+                                  foreach ($rows as $bar) {{
+                                      $stmt->execute([
+                                          ':cid'     => $cid,
+                                          ':tf'      => $tf,
+                                          ':open_ms' => (int) ($bar['open_time_utc_ms'] ?? 0),
+                                          ':o'       => (string) ($bar['open'] ?? '0'),
+                                          ':h'       => (string) ($bar['high'] ?? '0'),
+                                          ':l'       => (string) ($bar['low'] ?? '0'),
+                                          ':c'       => (string) ($bar['close'] ?? '0'),
+                                          ':v'       => (string) ($bar['volume'] ?? '0'),
+                                      ]);
+                                      $seededCandles++;
+                                  }}
+                                  $pdo->commit();
                               }}
-                              $pdo->commit();
                           }}
                       }}
                   }}

@@ -1,5 +1,5 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js';
-import { state } from '../core/store.js';
+import { state, isOtcWeekendClosedUtc } from '../core/store.js';
 
 export function renderTerminalTopBar(
   activeTab,
@@ -16,18 +16,39 @@ export function renderTerminalTopBar(
   const symTitle = activeTab
     ? activeTab.customTitle || i18n.t(`symbol_${activeTab.symbolCode}`) || activeTab.symbolCode
     : '';
-  const statusLabel =
-    activeTab && activeTab.isLoading
-      ? i18n.t('chart_status_syncing')
-      : activeTab && activeTab.candles && activeTab.candles.length > 0
-      ? i18n.t('chart_status_live')
-      : i18n.t('chart_status_cached');
+  let statusLabel = i18n.t('chart_status_cached');
+  let statusDotCol = 'var(--text-muted)';
+  if (activeTab) {
+    if (activeTab.isLoading) {
+      statusLabel = i18n.t('chart_status_syncing');
+      statusDotCol = 'var(--primary)';
+    } else if (activeTab.hasError) {
+      statusLabel = i18n.t('chart_status_error');
+      statusDotCol = 'var(--bear)';
+    } else if (isOtcWeekendClosedUtc(Date.now(), activeTab.symbolCode)) {
+      statusLabel = i18n.t('chart_status_market_closed');
+      statusDotCol = 'var(--gold)';
+    } else if (latestCandle && latestCandle.open_time_utc_ms) {
+      const ageMs = Math.max(0, Date.now() - Number(latestCandle.open_time_utc_ms));
+      const stepMs = PriceFormatter.stepMilliseconds(activeTab.timeframe || 'M15');
+      if (ageMs <= stepMs * 2) {
+        statusLabel = i18n.t('chart_status_live');
+        statusDotCol = 'var(--bull)';
+      } else if (ageMs <= stepMs * 16) {
+        statusLabel = i18n.t('chart_status_delayed');
+        statusDotCol = 'var(--gold)';
+      } else {
+        statusLabel = i18n.t('chart_status_cached');
+        statusDotCol = 'var(--text-muted)';
+      }
+    }
+  }
 
   return `
     <header class="terminal-topbar">
       <div class="topbar-left">
         <div class="brand-badge">
-          <span class="live-dot"></span>
+          <span class="live-dot" style="background: ${statusDotCol}; box-shadow: 0 0 8px ${statusDotCol};"></span>
           <span>CHART</span>
         </div>
 
@@ -39,7 +60,7 @@ export function renderTerminalTopBar(
             <span class="ticker-sub">${activeTab.provider}</span>
             <span class="ticker-price ltr-num">${PriceFormatter.formatPrice(latestCandle.close, activeTab.decimals)}</span>
             <span class="pct-badge ltr-num ${isBull ? 'bull' : 'bear'}">${priceDiff} (${pct})</span>
-            <span class="status-pill">${statusLabel}</span>
+            <span class="status-pill" style="color: ${statusDotCol};">${statusLabel}</span>
           </div>
         `
             : ''

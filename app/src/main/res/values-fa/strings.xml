@@ -148,9 +148,14 @@
     <string name="chart_volume_resize">ارتفاع حجم</string>
     <string name="chart_volume_unavailable">عدم ارائه حجم توسط منبع</string>
     <string name="chart_indicator_sma20">SMA 20</string>
-    <string name="chart_status_live">به‌روز</string>
+    <string name="chart_status_live">زنده (به‌روز)</string>
+    <string name="chart_status_market_closed">بازار بسته</string>
+    <string name="chart_status_delayed">با تأخیر</string>
+    <string name="chart_status_cached">کش محلی</string>
+    <string name="chart_status_error">خطای ارتباط</string>
     <string name="chart_status_syncing">دریافت…</string>
     <string name="draw_color_label">رنگ</string>
     <string name="draw_width_label">ضخامت</string>
     <string name="draw_tools_toggle">ترسیم</string>
+    <string name="settings_change_provider">تغییر منبع</string>
 </resources>

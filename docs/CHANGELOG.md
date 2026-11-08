@@ -25,9 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Defined 5 semantic market states (`Live`, `Market Closed`, `Delayed`, `Cached`, `Error`) to replace simplistic green dot indicator.
   - Specified interactive drawing object lifecycle (Hit-testing, translation/drag handles, quick floating toolbar for color/width, and coordinate anchoring to UTC time and price).
   - Formulated desktop vs. mobile ergonomic parity (vertical left drawing toolbar on desktop, floating pencil action button + BottomSheets on mobile).
-- **Root Cause Diagnosis of XAUUSD M15 Weekend Anomaly:**
+- **Root Cause Diagnosis & Full Resolution of XAUUSD M15 Weekend Anomaly:**
   - Diagnosed flat-candle comb/barcode artifact on 15m Gold chart caused by Twelve Data weekend bid/ask spread ticks with static open price (`4065.98607000`) and 0 volume triggering canvas auto-scale over-zoom.
-  - Outlined solution: integrating real TradingView (`OANDA:XAUUSD`) / Yahoo Finance feeds and adding zero-range weekend anomaly filtering in `CandleValidator`.
+  - Implemented `filterSyntheticWeekendAndCombCandles` across Android (`CandleValidatorAlgorithm.kt`), PHP Backend (`CandleValidator.php`), and Web (`store.js`), plus automatic SQL purge of zero-volume micro-spread weekend bars in `candles_sync.php` and `.github/workflows/build-apk.yml`.
+  - Added automatic fallback from Twelve Data to real market candles (`OANDA:XAUUSD` via `TvDatafeedAdapter` and `GC=F` via `YahooFinanceAdapter`) whenever weekend filtering leaves `< 5` valid bars, and enforced a minimum price span floor (`0.16%` of mid-price) in both Android (`CandlestickCanvas.kt`) and Web (`chartRenderer.js`).
+- **Complete Execution of Phase 1 UI/UX Redesign (Android & Web Parity):**
+  - Applied `.statusBarsPadding()` to the Android top header in `MainActivity.kt` with compact `44.dp` height and `#2A2E39` divider so the top bar never clips under the status bar or camera cutout.
+  - Applied official TradingView Dark tokens (`#131722` canvas, `#1E222D` surface, `#2A2E39` grid/border, `#2962FF` accent, `#D1D4DC` primary text, `#787B86` secondary text, `#26A69A` bullish, `#EF5350` bearish) across Android (`Color.kt`, `Theme.kt`, `ChartPreferences.kt`) and Web (`theme.css`, `store.js`, `chartRenderer.js`).
+  - Implemented 5 semantic market statuses (`Live`, `Market Closed`, `Delayed`, `Cached`, `Error`) in `UtcTimeAnchorAlgorithm.kt`, `ChartViewScreen.kt`, and `headerView.js`.
+  - Fixed RTL/LTR OHLC Legend text collision (`04431687.22`) in `CandlestickCanvas.kt` by enforcing `LayoutDirection.Ltr` on the chart canvas container and reserving a `30.dp` top legend lane, and defaulted the mobile drawing dock to collapsed (`isDrawingDockCollapsed = true`) for a minimal floating pill.
+  - Redesigned Watchlist rows (`WatchlistRowCard.kt`, `WatchlistScreen.kt`, `watchlistView.js`) into compact TradingView rows with circular asset badges (`Au`, `OIL`, `Ag`, `FX`) and full-row tap to open chart, and re-architected `SettingsScreen.kt` with a modal provider selector dialog.
 
 ---
 

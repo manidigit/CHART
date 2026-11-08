@@ -1,5 +1,6 @@
 package es.manico.chartintelligence.ui.screens
 
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
@@ -15,6 +16,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Settings
 import androidx.compose.material.icons.outlined.Sync
@@ -52,7 +54,7 @@ fun WatchlistScreen(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(horizontal = 16.dp, vertical = 12.dp),
+            .padding(horizontal = 12.dp, vertical = 10.dp),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {
         Column(
@@ -68,77 +70,93 @@ fun WatchlistScreen(
                 Column(modifier = Modifier.weight(1f)) {
                     Text(
                         text = stringResource(R.string.watchlist_title),
-                        style = MaterialTheme.typography.headlineMedium,
+                        style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground
                     )
                     Text(
                         text = stringResource(R.string.watchlist_subtitle),
-                        style = MaterialTheme.typography.bodyMedium,
+                        style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
                     onClick = onSyncAllNow,
                     enabled = !isSyncingAll && watchlistSymbols.isNotEmpty(),
+                    shape = RoundedCornerShape(8.dp),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     modifier = Modifier
                         .weight(1f)
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = 42.dp)
                         .testTag("sync_all_watchlist_button")
                 ) {
                     if (isSyncingAll) {
                         CircularProgressIndicator(
-                            modifier = Modifier.size(18.dp),
-                            strokeWidth = 2.dp
+                            modifier = Modifier.size(16.dp),
+                            strokeWidth = 2.dp,
+                            color = MaterialTheme.colorScheme.onPrimary
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = stringResource(R.string.action_syncing))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.action_syncing),
+                            style = MaterialTheme.typography.labelMedium
+                        )
                     } else {
                         Icon(
                             imageVector = Icons.Outlined.Sync,
                             contentDescription = stringResource(R.string.action_sync_all),
-                            modifier = Modifier.size(18.dp)
+                            modifier = Modifier.size(16.dp)
                         )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(text = stringResource(R.string.action_sync_all))
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = stringResource(R.string.action_sync_all),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontWeight = FontWeight.SemiBold
+                        )
                     }
                 }
 
                 OutlinedButton(
                     onClick = onNavigateToSettings,
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     modifier = Modifier
-                        .heightIn(min = 48.dp)
+                        .heightIn(min = 42.dp)
                         .testTag("watchlist_to_settings_button")
                 ) {
                     Icon(
                         imageVector = Icons.Outlined.Settings,
                         contentDescription = stringResource(R.string.nav_settings),
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier.size(16.dp)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
-                    Text(text = stringResource(R.string.nav_settings))
+                    Text(
+                        text = stringResource(R.string.nav_settings),
+                        style = MaterialTheme.typography.labelMedium
+                    )
                 }
             }
 
             if (statusBannerResId != null) {
-                Spacer(modifier = Modifier.height(8.dp))
+                Spacer(modifier = Modifier.height(6.dp))
                 Text(
                     text = stringResource(statusBannerResId),
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelMedium,
                     color = financialPalette.bullCandle,
                     modifier = Modifier.testTag("watchlist_status_banner")
                 )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(10.dp))
 
             if (watchlistSymbols.isEmpty()) {
                 Column(
@@ -164,8 +182,8 @@ fun WatchlistScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .testTag("watchlist_lazy_column"),
-                    contentPadding = PaddingValues(bottom = 24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    contentPadding = PaddingValues(bottom = 20.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     items(
                         items = watchlistSymbols,

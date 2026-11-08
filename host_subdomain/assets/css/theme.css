@@ -1,60 +1,60 @@
 :root {
-  /* Design Tokens - Deep Charcoal & Financial Dark Palette */
-  --bg: #0B0F17;
-  --bg-darker: #070A0F;
-  --surface: #111722;
-  --surface-elevated: #161F2E;
-  --surface-hover: #1C273A;
-  --border: #1E293B;
-  --border-subtle: #172030;
-  --primary: #38BDF8;
-  --primary-hover: #0EA5E9;
-  --primary-bg: rgba(56, 189, 248, 0.12);
-  --primary-border: rgba(56, 189, 248, 0.28);
-  --bull: #10B981;
-  --bull-bg: rgba(16, 185, 129, 0.14);
-  --bear: #F43F5E;
-  --bear-bg: rgba(244, 63, 94, 0.14);
+  /* Design Tokens - Official TradingView Dark Financial Palette */
+  --bg: #131722;
+  --bg-darker: #0E111A;
+  --surface: #1E222D;
+  --surface-elevated: #242936;
+  --surface-hover: #2A2E39;
+  --border: #2A2E39;
+  --border-subtle: #2A2E39;
+  --primary: #2962FF;
+  --primary-hover: #1E53E5;
+  --primary-bg: rgba(41, 98, 255, 0.14);
+  --primary-border: rgba(41, 98, 255, 0.34);
+  --bull: #26A69A;
+  --bull-bg: rgba(38, 166, 154, 0.15);
+  --bear: #EF5350;
+  --bear-bg: rgba(239, 83, 80, 0.15);
   --gold: #F59E0B;
   --gold-bg: rgba(245, 158, 11, 0.14);
   --purple: #A855F7;
-  --text: #F8FAFC;
-  --text-muted: #94A3B8;
-  --text-dim: #64748B;
-  --grid: #172033;
+  --text: #D1D4DC;
+  --text-muted: #787B86;
+  --text-dim: #5D606B;
+  --grid: #2A2E39;
   --radius-sm: 6px;
   --radius-md: 10px;
   --radius-lg: 14px;
   --shadow-sm: 0 1px 2px rgba(0, 0, 0, 0.3);
   --shadow-md: 0 4px 12px rgba(0, 0, 0, 0.4);
   --shadow-lg: 0 8px 24px rgba(0, 0, 0, 0.6);
-  --font-sans: "Vazirmatn", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-sans: "Vazirmatn", -apple-system, BlinkMacSystemFont, "Trebuchet MS", Roboto, Ubuntu, sans-serif;
   --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
 }
 
 [data-theme="light"] {
-  --bg: #F1F5F9;
-  --bg-darker: #E2E8F0;
-  --surface: #FFFFFF;
-  --surface-elevated: #F8FAFC;
-  --surface-hover: #E2E8F0;
-  --border: #CBD5E1;
-  --border-subtle: #E2E8F0;
-  --primary: #0284C7;
-  --primary-hover: #0369A1;
-  --primary-bg: rgba(2, 132, 199, 0.10);
-  --primary-border: rgba(2, 132, 199, 0.25);
-  --bull: #059669;
-  --bull-bg: rgba(5, 150, 105, 0.12);
-  --bear: #E11D48;
-  --bear-bg: rgba(225, 29, 72, 0.12);
+  --bg: #FFFFFF;
+  --bg-darker: #F8FAFC;
+  --surface: #F8FAFC;
+  --surface-elevated: #FFFFFF;
+  --surface-hover: #E0E3EB;
+  --border: #E0E3EB;
+  --border-subtle: #E0E3EB;
+  --primary: #2962FF;
+  --primary-hover: #1E53E5;
+  --primary-bg: rgba(41, 98, 255, 0.10);
+  --primary-border: rgba(41, 98, 255, 0.25);
+  --bull: #089981;
+  --bull-bg: rgba(8, 153, 129, 0.12);
+  --bear: #F23645;
+  --bear-bg: rgba(242, 54, 69, 0.12);
   --gold: #D97706;
   --gold-bg: rgba(217, 119, 6, 0.12);
   --purple: #9333EA;
-  --text: #0F172A;
-  --text-muted: #475569;
-  --text-dim: #64748B;
-  --grid: #E2E8F0;
+  --text: #131722;
+  --text-muted: #787B86;
+  --text-dim: #9598A1;
+  --grid: #E0E3EB;
 }
 
 * {
