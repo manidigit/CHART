@@ -13,8 +13,9 @@
 پیش از هر تغییر در معماری، کدنویسی یا تنظیمات، اسناد زیر باید بررسی شوند:
 
 1. [CHART INTELLIGENCE MASTER SPEC](../CHART_INTELLIGENCE_MASTER_SPEC.md) — مرجع اصلی محصول، معماری داده، استانداردهای مهندسی، ساختار فایل‌ها، الگوریتم‌ها، فرمول‌ها، فازبندی و قرارداد خروجی پیش‌بینی.
-2. [INFRASTRUCTURE INVENTORY](../INFRASTRUCTURE_INVENTORY.md) — وضعیت هاست cPanel، ساب‌دامین، MariaDB، محدودیت‌ها و شواهد راستی‌آزمایی زیرساخت.
-3. [TRADING STRATEGY SPEC](../TRADING_STRATEGY_SPEC.md) — مشخصات ماژول مستقل شبیه‌سازی استراتژی معاملاتی، مربوط به فاز ۶.
+2. [UI UX MOBILE REDESIGN SPEC](../UI_UX_MOBILE_REDESIGN_SPEC.md) — سند الزامات و نقشه راه بازطراحی حرفه‌ای تجربه کاربری موبایل بر اساس استاندارد TradingView (پیش‌نیاز اجباری پیش از آغاز فاز ۲).
+3. [INFRASTRUCTURE INVENTORY](../INFRASTRUCTURE_INVENTORY.md) — وضعیت هاست cPanel، ساب‌دامین، MariaDB، محدودیت‌ها و شواهد راستی‌آزمایی زیرساخت.
+4. [TRADING STRATEGY SPEC](../TRADING_STRATEGY_SPEC.md) — مشخصات ماژول مستقل شبیه‌سازی استراتژی معاملاتی، مربوط به فاز ۶.
 
 ### قاعده نگهداری اسناد
 
