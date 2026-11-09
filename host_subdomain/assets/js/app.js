@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.28.3';
+import { I18nManager } from './core/i18n.js?v=1.28.4';
 import {
   state,
   savePreferences,
@@ -6,7 +6,7 @@ import {
   saveDrawings,
   saveLastOpenedSymbol,
   getCachedOrAggregatedCandles,
-} from './core/store.js?v=1.28.3';
+} from './core/store.js?v=1.28.4';
 import {
   syncServerAuthStatus,
   loginOrRegisterOwner,
@@ -17,16 +17,16 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.28.3';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.3';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.3';
-import { renderLoginScreen } from './views/loginView.js?v=1.28.3';
-import { renderTopHeaderBar, renderBottomChartBar } from './views/headerView.js?v=1.28.3';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.3';
-import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.3';
-import { renderPredictionModal } from './views/analysisView.js?v=1.28.3';
-import { renderSettingsModal } from './views/settingsView.js?v=1.28.3';
-import { renderRightIconRail, renderBottomNav } from './views/navigationView.js?v=1.28.3';
+} from './services/apiService.js?v=1.28.4';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.4';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.4';
+import { renderLoginScreen } from './views/loginView.js?v=1.28.4';
+import { renderTopHeaderBar, renderBottomChartBar } from './views/headerView.js?v=1.28.4';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.4';
+import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.4';
+import { renderPredictionModal } from './views/analysisView.js?v=1.28.4';
+import { renderSettingsModal } from './views/settingsView.js?v=1.28.4';
+import { renderRightIconRail, renderBottomNav } from './views/navigationView.js?v=1.28.4';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;

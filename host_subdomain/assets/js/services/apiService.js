@@ -5,9 +5,9 @@ import {
   saveSymbolsToStorage,
   mergeCandlesIdempotent,
   normalizeCandle,
-} from '../core/store.js?v=1.28.3';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.3';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.3';
+} from '../core/store.js?v=1.28.4';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.4';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.4';
 
 export async function syncServerAuthStatus() {
   try {
