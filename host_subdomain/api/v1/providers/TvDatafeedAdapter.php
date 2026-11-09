@@ -73,7 +73,7 @@ final class TvDatafeedAdapter
             if ($normTf === 'H4') {
                 $liveH1 = self::fetchLiveFromTradingViewWs($tvSymbol, $exchange, 'H1', min(1500, $barsToFetch * 4), $nowMs);
                 if (!empty($liveH1)) {
-                    $aggH4 = TimeframeAggregator::aggregate($liveH1, 'H4', $nowMs);
+                    $aggH4 = TimeframeAggregator::aggregateCandles($liveH1, 'H4', $nowMs);
                     $liveCandles = self::mergeCandlesByOpenMs($liveCandles, $aggH4, 'H4', $nowMs);
                 }
             }
@@ -118,7 +118,7 @@ final class TvDatafeedAdapter
             $m15 = self::readFromNormalizedJson($dataDir, $cleanSymbol, 'M15', 1500, $nowMs);
             if (!empty($m15)) {
                 $cleanM15 = CandleValidator::filterSyntheticWeekendAndCombCandles($m15, $cleanSymbol, 'M15');
-                $aggregated = TimeframeAggregator::aggregate($cleanM15, $normTf, $nowMs);
+                $aggregated = TimeframeAggregator::aggregateCandles($cleanM15, $normTf, $nowMs);
                 if (!empty($aggregated)) {
                     $existing = self::mergeCandlesByOpenMs($existing, $aggregated, $normTf, $nowMs);
                 }

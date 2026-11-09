@@ -5,6 +5,9 @@ import { PriceFormatter } from './priceFormatter.js?v=1.28.3';
  * Deterministic 00:00:00 UTC OHLCV candle aggregation across M15, H1, H4, and D1.
  */
 export const TimeframeAggregator = {
+  aggregate(sourceCandles, targetTimeframe, nowMs = Date.now()) {
+    return this.aggregateCandles(sourceCandles, targetTimeframe, nowMs);
+  },
   aggregateCandles(sourceCandles, targetTimeframe, nowMs = Date.now()) {
     if (!Array.isArray(sourceCandles) || sourceCandles.length === 0) return [];
     const targetStep = PriceFormatter.stepMilliseconds(targetTimeframe);

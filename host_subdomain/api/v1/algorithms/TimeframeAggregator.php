@@ -8,6 +8,11 @@ namespace ChartIntelligence\Algorithms;
  */
 final class TimeframeAggregator
 {
+    public static function aggregate(array $sourceCandles, string $targetTimeframe, int $nowMs): array
+    {
+        return self::aggregateCandles($sourceCandles, $targetTimeframe, $nowMs);
+    }
+
     public static function aggregateCandles(array $sourceCandles, string $targetTimeframe, int $nowMs): array
     {
         if (empty($sourceCandles)) {
