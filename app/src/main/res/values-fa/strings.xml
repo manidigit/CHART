@@ -227,4 +227,7 @@
     <string name="settings_tv_countdown_bar_close">شمارش معکوس بسته شدن کندل (Countdown to bar close)</string>
     <string name="settings_tv_prev_close_line">خط نقطه‌چین قیمت پایانی قبلی (Previous close line)</string>
     <string name="settings_tv_high_low_labels">برچسب سقف و کف دیده‌شده (Visible High / Low)</string>
+    <string name="login_remember_credentials">ذخیره رمز عبور و ورود خودکار در این دستگاه</string>
+    <string name="login_show_password">نمایش رمز عبور</string>
+    <string name="login_hide_password">مخفی کردن رمز عبور</string>
 </resources>

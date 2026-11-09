@@ -5,13 +5,18 @@ import {
   saveSymbolsToStorage,
   mergeCandlesIdempotent,
   normalizeCandle,
-} from '../core/store.js';
-import { PriceFormatter } from '../algorithms/priceFormatter.js';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js';
+} from '../core/store.js?v=1.28.3';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.3';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.3';
 
 export async function syncServerAuthStatus() {
   try {
-    const res = await fetch('./api/v1/auth.php?action=status&_t=' + Date.now());
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 3500) : null;
+    const res = await fetch('./api/v1/auth.php?action=status&_t=' + Date.now(), {
+      signal: controller ? controller.signal : undefined,
+    });
+    if (timer) clearTimeout(timer);
     const json = await res.json();
     if (json && json.ok && json.data) {
       state.isOwnerRegistered = Boolean(json.data.is_owner_registered);
@@ -24,6 +29,12 @@ export async function syncServerAuthStatus() {
         localStorage.setItem('ci_owner_email', state.ownerEmail);
       }
       if (json.data.is_authenticated) {
+        state.isAuthenticated = true;
+      } else if (
+        state.rememberCredentials &&
+        localStorage.getItem('ci_auto_authenticated') === 'true' &&
+        state.ownerUsername
+      ) {
         state.isAuthenticated = true;
       }
     }
@@ -48,6 +59,15 @@ export async function loginOrRegisterOwner(username, email, password) {
       state.ownerEmail = (json.data && json.data.owner_email) || email || state.ownerEmail;
       localStorage.setItem('ci_owner_username', state.ownerUsername);
       if (state.ownerEmail) localStorage.setItem('ci_owner_email', state.ownerEmail);
+      if (state.rememberCredentials) {
+        state.savedPassword = password;
+        localStorage.setItem('ci_saved_password', password);
+        localStorage.setItem('ci_auto_authenticated', 'true');
+      } else {
+        state.savedPassword = '';
+        localStorage.removeItem('ci_saved_password');
+        localStorage.removeItem('ci_auto_authenticated');
+      }
       return { ok: true };
     }
     return {
@@ -58,6 +78,17 @@ export async function loginOrRegisterOwner(username, email, password) {
           : 'login_error_invalid_credentials',
     };
   } catch {
+    // Fallback offline verification if server is temporarily unreachable
+    if (
+      state.ownerUsername &&
+      username.toLowerCase() === state.ownerUsername.toLowerCase() &&
+      state.savedPassword &&
+      password === state.savedPassword
+    ) {
+      state.isAuthenticated = true;
+      localStorage.setItem('ci_auto_authenticated', 'true');
+      return { ok: true };
+    }
     return { ok: false, errorKey: 'login_error_invalid_credentials' };
   }
 }
@@ -91,6 +122,10 @@ export async function updateOwnerPasswordOnServer(newPassword) {
       body: JSON.stringify({ new_password: newPassword }),
     });
     const json = await res.json();
+    if (json && json.ok && state.rememberCredentials) {
+      state.savedPassword = newPassword;
+      localStorage.setItem('ci_saved_password', newPassword);
+    }
     return Boolean(json && json.ok);
   } catch {
     return false;
@@ -119,6 +154,10 @@ export async function confirmPasswordResetCode(email, code, newPassword) {
       body: JSON.stringify({ email, code, new_password: newPassword }),
     });
     const json = await res.json();
+    if (json && json.ok && state.rememberCredentials) {
+      state.savedPassword = newPassword;
+      localStorage.setItem('ci_saved_password', newPassword);
+    }
     return Boolean(json && json.ok);
   } catch {
     return false;
@@ -131,6 +170,7 @@ export async function logoutOwnerOnServer() {
   } catch {
     // Ignore network error on logout
   }
+  localStorage.setItem('ci_auto_authenticated', 'false');
   state.isAuthenticated = false;
 }
 
@@ -141,7 +181,7 @@ function computeExpectedLastClosedOpenMs(timeframe, nowMs = Date.now()) {
   const candidateOpenMs = currentBucketOpenMs - stepMs;
 
   const d = new Date(nowMs);
-  const dow = d.getUTCDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  const dow = d.getUTCDay();
   const hour = d.getUTCHours();
 
   if (normTf === 'D1') {
@@ -163,10 +203,6 @@ function computeExpectedLastClosedOpenMs(timeframe, nowMs = Date.now()) {
   return candidateOpenMs;
 }
 
-/**
- * Browser-side TradingView WebSocket fallback (`wss://data.tradingview.com/socket.io/websocket`)
- * in case the PHP host has outbound sockets disabled or returns a cached pre-weekend JSON file.
- */
 function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300, nowMs = Date.now()) {
   return new Promise((resolve) => {
     if (typeof WebSocket === 'undefined') {
@@ -316,7 +352,6 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
     candles = [];
   }
 
-  // Fallback to static JSON in data/tvdatafeed if PHP API is not running in static preview mode
   if (candles.length === 0 && provider === 'tvdatafeed') {
     try {
       const staticRes = await fetch(
@@ -332,7 +367,6 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
     }
   }
 
-  // Check if the returned candles are behind the current expected closed UTC candle
   const lastStoredOpenMs = candles.length > 0 ? Number(candles[candles.length - 1].open_time_utc_ms) : 0;
   const expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMs);
 
@@ -364,11 +398,6 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
   return candles.slice(-safeLimit);
 }
 
-/**
- * Syncs a symbol from its last stored candle right up to now across M15, H1, and H4
- * (plus D1 when requested), ensuring all intraday timeframes immediately reflect
- * every closed candle after market open.
- */
 export async function syncSymbolNow(symbolCode, requestedTf, renderCallback) {
   const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
   if (!sym) return;
@@ -407,7 +436,6 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback) {
       syncedByTf[tf] = merged;
     }
 
-    // Cross-aggregate M15 -> H1 -> H4 so H1 and H4 always include all newly closed M15/H1 buckets
     const m15Bars = syncedByTf.M15 || [];
     if (m15Bars.length > 0) {
       saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_M15`, m15Bars, fetchLimit);
@@ -450,7 +478,6 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback) {
       sym.syncError = true;
     }
 
-    // Refresh all open workspace tabs for this symbol across M15, H1, H4, D1
     for (const tab of state.openTabs) {
       if (tab.symbolCode === symbolCode) {
         const tabTf = sym.activeProvider === 'eia_brent_spot' ? 'D1' : tab.timeframe;

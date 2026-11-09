@@ -1,6 +1,6 @@
 {
-  "summary":  "Implementation plan for fixing Android in-place APK updates by embedding the canonical debug keystore from manidigit/Yadin (CANONICAL_B64) and enabling automatic monotonic versionCode increments across GitHub Actions builds.",
-  "updatedAt":  "2026-11-07T15:39:00.563519090Z",
+  "summary":  "بازطراحی کامل رابط کاربری نسخه وب (TradingView Desktop Pro UI) شامل صفحه ورود حرفه‌ای، هدر یک‌طبقه استاندارد، نوار پایین چارت (1D..All + ساعت زنده UTC + دکمه‌های log/auto)، ستون راست دو‌بخشی تاشو با نوار آیکون باریک، و پنجره‌های مودال وسط صفحه برای تنظیمات و پیش‌بینی.",
+  "updatedAt":  "2026-11-09T16:57:57.089427516Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

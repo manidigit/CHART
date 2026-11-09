@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.3';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.3';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -199,12 +199,19 @@ function loadDrawingsByKey() {
   }
 }
 
+const isAutoAuthSaved =
+  localStorage.getItem('ci_remember_creds') !== 'false' &&
+  localStorage.getItem('ci_auto_authenticated') === 'true' &&
+  Boolean(localStorage.getItem('ci_owner_username'));
+
 export const state = {
   isDarkTheme: localStorage.getItem(STORAGE_KEY_THEME) !== 'false',
-  isAuthenticated: false,
-  isOwnerRegistered: false,
+  isAuthenticated: isAutoAuthSaved,
+  isOwnerRegistered: Boolean(localStorage.getItem('ci_owner_username')),
   ownerUsername: localStorage.getItem('ci_owner_username') || '',
   ownerEmail: localStorage.getItem('ci_owner_email') || '',
+  savedPassword: localStorage.getItem('ci_saved_password') || '',
+  rememberCredentials: localStorage.getItem('ci_remember_creds') !== 'false',
   authMode: 'login',
   authErrorKey: '',
   authInfoKey: '',
@@ -214,6 +221,9 @@ export const state = {
   activeNav: 'watchlist',
   isSideDrawerOpen: true,
   isFullscreen: false,
+  activeModal: null,
+  settingsTab: 'sources',
+  showLoginPassword: false,
 
   watchlistSearchQuery: '',
   symbolOverviewCode: null,
@@ -281,7 +291,6 @@ export function saveCandlesToCache(key, candles, maxLimit = 5000) {
   const normalized = mergeCandlesIdempotent([], candles, tf).slice(-Math.max(40, Math.min(5000, maxLimit)));
   state.candleCache[key] = normalized;
   try {
-    // Store up to 1500 bars in localStorage to avoid quota overflow while keeping full 5000 in memory
     localStorage.setItem(STORAGE_CANDLES_PREFIX + key, JSON.stringify(normalized.slice(-1500)));
   } catch {
     // Ignore storage quota warnings
@@ -299,8 +308,6 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
     }
   }
 
-  // For H1 and H4, also merge any newer closed bars aggregated from cached M15 / H1
-  // so stale cached H1/H4 entries never hide newly synced intraday candles
   if (normTf === 'H1' || normTf === 'H4') {
     const m15Key = `${symbolCode}_${provider}_M15`;
     const m15 = state.candleCache[m15Key] || loadCandlesFromLocalStorage(m15Key, 'M15');

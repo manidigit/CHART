@@ -47,6 +47,8 @@ data class Phase1UiState(
     val isAuthenticated: Boolean = false,
     val ownerUsername: String = "",
     val ownerEmail: String = "",
+    val savedPassword: String = "",
+    val rememberCredentials: Boolean = true,
     val authMode: AuthScreenMode = AuthScreenMode.LOGIN,
     @param:StringRes val authErrorResId: Int? = null,
     @param:StringRes val authInfoResId: Int? = null,
@@ -78,9 +80,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             language = repository.loadLanguage(),
             isDarkTheme = repository.loadDarkTheme(),
             isOwnerRegistered = repository.isOwnerAccountRegistered(),
-            isAuthenticated = false,
+            isAuthenticated = repository.isSessionAuthenticated(),
             ownerUsername = repository.getOwnerUsername(),
             ownerEmail = repository.getOwnerEmail(),
+            savedPassword = repository.getSavedPassword(),
+            rememberCredentials = repository.loadRememberCredentials(),
             symbols = symbolCoordinator.loadInitialCatalog(),
             chartPreferences = preferenceCoordinator.loadInitialPreferences()
         )
@@ -116,6 +120,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setDarkTheme(isDark: Boolean) {
         repository.saveDarkTheme(isDark)
         _uiState.update { it.copy(isDarkTheme = isDark) }
+    }
+
+    fun setRememberCredentials(remember: Boolean) {
+        repository.saveRememberCredentials(remember)
+        _uiState.update {
+            it.copy(
+                rememberCredentials = remember,
+                savedPassword = if (remember) it.savedPassword else ""
+            )
+        }
     }
 
     fun navigateTo(screen: WorkspaceScreen) {
@@ -200,12 +214,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         repository.registerOwnerAccount(cleanUser, password, cleanEmail)
+        val shouldRemember = _uiState.value.rememberCredentials
+        repository.saveOwnerPasswordIfRemembered(password, shouldRemember)
         _uiState.update {
             it.copy(
                 isOwnerRegistered = true,
                 isAuthenticated = true,
                 ownerUsername = cleanUser,
                 ownerEmail = cleanEmail,
+                savedPassword = if (shouldRemember) password else "",
                 authMode = AuthScreenMode.LOGIN,
                 authErrorResId = null,
                 authInfoResId = null,
@@ -223,10 +240,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(authErrorResId = R.string.error_empty_credentials) }
             return
         }
+        val shouldRemember = _uiState.value.rememberCredentials
         if (repository.verifyOwnerCredentials(cleanUser, password)) {
+            repository.saveOwnerPasswordIfRemembered(password, shouldRemember)
             _uiState.update {
                 it.copy(
                     isAuthenticated = true,
+                    savedPassword = if (shouldRemember) password else "",
                     authMode = AuthScreenMode.LOGIN,
                     authErrorResId = null,
                     authInfoResId = null,
@@ -241,12 +261,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update { it.copy(authErrorResId = R.string.error_invalid_credentials) }
                 return@launch
             }
+            repository.saveOwnerPasswordIfRemembered(password, shouldRemember)
             _uiState.update {
                 it.copy(
                     isOwnerRegistered = true,
                     isAuthenticated = true,
                     ownerUsername = repository.getOwnerUsername().ifBlank { cleanUser },
                     ownerEmail = repository.getOwnerEmail(),
+                    savedPassword = if (shouldRemember) password else "",
                     authMode = AuthScreenMode.LOGIN,
                     authErrorResId = null,
                     authInfoResId = null,
@@ -312,9 +334,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val ok = repository.confirmPasswordResetOnServer(cleanEmail, cleanCode, newPassword)
             if (ok) {
+                val shouldRemember = _uiState.value.rememberCredentials
+                if (shouldRemember) {
+                    repository.saveOwnerPasswordIfRemembered(newPassword, true)
+                }
                 _uiState.update {
                     it.copy(
                         ownerEmail = cleanEmail,
+                        savedPassword = if (shouldRemember) newPassword else "",
                         authMode = AuthScreenMode.LOGIN,
                         authErrorResId = null,
                         authInfoResId = R.string.status_password_reset_success
@@ -350,6 +377,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun signOut() {
+        repository.setSessionAuthenticated(false)
         _uiState.update {
             it.copy(
                 isAuthenticated = false,

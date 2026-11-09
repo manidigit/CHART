@@ -1,4 +1,4 @@
-import { PriceFormatter } from './priceFormatter.js';
+import { PriceFormatter } from './priceFormatter.js?v=1.28.3';
 
 /**
  * Independent Web Algorithm Module:
@@ -24,7 +24,9 @@ export const TimeframeAggregator = {
         buckets.set(bucketOpen, []);
       }
       const arr = buckets.get(bucketOpen);
-      const lastOpen = arr.length ? Number(arr[arr.length - 1].open_time_utc_ms || arr[arr.length - 1].openTimeSec * 1000) : 0;
+      const lastOpen = arr.length
+        ? Number(arr[arr.length - 1].open_time_utc_ms || arr[arr.length - 1].openTimeSec * 1000)
+        : 0;
       if (arr.length === 0 || lastOpen !== openMs) {
         arr.push(bar);
       } else {

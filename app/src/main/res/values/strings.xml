@@ -227,4 +227,7 @@
     <string name="settings_tv_countdown_bar_close">Countdown to bar close</string>
     <string name="settings_tv_prev_close_line">Previous close line</string>
     <string name="settings_tv_high_low_labels">Visible High / Low labels</string>
+    <string name="login_remember_credentials">Save password &amp; keep me signed in</string>
+    <string name="login_show_password">Show password</string>
+    <string name="login_hide_password">Hide password</string>
 </resources>

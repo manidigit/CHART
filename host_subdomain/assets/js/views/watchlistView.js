@@ -1,16 +1,16 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js';
-import { state } from '../core/store.js';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.3';
+import { state } from '../core/store.js?v=1.28.3';
 
-function getAssetBadge(symbolCode) {
-  if (symbolCode === 'XAUUSD') return { label: 'Au', color: '#F59E0B', providerTag: 'OANDA' };
-  if (symbolCode === 'SPOTBRENT') return { label: 'OIL', color: '#2962FF', providerTag: 'PEPPERSTONE' };
-  if (symbolCode === 'BRENT_FUTURES') return { label: 'BZ', color: '#06B6D4', providerTag: 'NYMEX' };
-  if (symbolCode === 'XAGUSD') return { label: 'Ag', color: '#94A3B8', providerTag: 'OANDA' };
-  if (symbolCode === 'EURUSD') return { label: 'FX', color: '#26A69A', providerTag: 'FOREX' };
-  return { label: String(symbolCode || '').slice(0, 3), color: '#2962FF', providerTag: 'MARKET' };
+export function getAssetBadge(symbolCode) {
+  if (symbolCode === 'XAUUSD') return { label: 'Au', color: '#F59E0B', providerTag: 'FX_IDC / TWELVE_DATA', category: 'Commodity · Spot Gold' };
+  if (symbolCode === 'SPOTBRENT') return { label: 'OIL', color: '#2962FF', providerTag: 'PEPPERSTONE', category: 'Commodity · CFD Crude Oil' };
+  if (symbolCode === 'BRENT_FUTURES') return { label: 'BZ', color: '#06B6D4', providerTag: 'NYMEX', category: 'Futures · Brent Crude' };
+  if (symbolCode === 'XAGUSD') return { label: 'Ag', color: '#94A3B8', providerTag: 'OANDA', category: 'Commodity · Spot Silver' };
+  if (symbolCode === 'EURUSD') return { label: 'FX', color: '#26A69A', providerTag: 'FOREX', category: 'Forex · Major Currency' };
+  return { label: String(symbolCode || '').slice(0, 3), color: '#2962FF', providerTag: 'MARKET', category: 'Financial Instrument' };
 }
 
-function computeDayStats(s) {
+export function computeDayStats(s) {
   const candles = s.candles || [];
   const lastClose = Number(s.lastClose || (candles.length ? candles[candles.length - 1].close : 0));
   if (candles.length === 0) {
@@ -49,7 +49,7 @@ function computeDayStats(s) {
   };
 }
 
-export function renderWatchlistContent(i18n) {
+export function renderRightSplitPanel(activeTab, i18n) {
   const query = (state.watchlistSearchQuery || '').trim().toUpperCase();
   const hideLogos = Boolean(state.chartPreferences.hideWatchlistLogos);
   const watchlist = state.symbols.filter((s) => {
@@ -59,88 +59,175 @@ export function renderWatchlistContent(i18n) {
     return s.symbolCode.toUpperCase().includes(query) || title.includes(query);
   });
 
-  const cardsHtml = watchlist
+  const rowsHtml = watchlist
     .map((s) => {
-      const title = s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode;
       const d = computeDayStats(s);
       const diff = d.lastClose - d.prevClose;
       const pct = d.prevClose > 0 ? PriceFormatter.formatSignedPct(d.prevClose, d.lastClose) : '+0.00%';
       const isBull = diff >= 0;
       const sign = isBull ? '+' : '';
-      const diffStr = `${sign}${PriceFormatter.formatPrice(diff, s.decimals)} (${pct})`;
       const badge = getAssetBadge(s.symbolCode);
-      const rangeSpan = Math.max(0.00001, d.dayHigh - d.dayLow);
-      const posPct = Math.max(4, Math.min(96, Math.round(((d.lastClose - d.dayLow) / rangeSpan) * 100)));
-      const clickAction = state.chartPreferences.showSymbolScreen ? 'open-symbol-overview' : 'open-chart';
+      const isSelected = activeTab && activeTab.symbolCode === s.symbolCode;
 
       return `
-      <div class="card-subtle" data-action="${clickAction}" data-symbol="${s.symbolCode}" style="min-height: 60px; margin-bottom: 4px; padding: 9px 11px; cursor: pointer;">
-        <div class="row-between">
-          <div style="display: flex; align-items: center; gap: 9px; min-width: 0;">
+        <div class="tv-wl-row ${isSelected ? 'active' : ''}" data-action="open-chart" data-symbol="${s.symbolCode}" dir="ltr">
+          <div class="tv-wl-sym-cell">
             ${
               hideLogos
-                ? ''
-                : `<span class="ltr-num" style="width: 32px; height: 32px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 10.5px; color: ${badge.color}; background: ${badge.color}22; border: 1px solid ${badge.color}55; flex-shrink: 0;">
-                    ${badge.label}
-                  </span>`
+                ? `<span style="width: 7px; height: 7px; border-radius: 50%; background: ${d.isLive ? 'var(--bull)' : 'var(--text-muted)'}; flex-shrink: 0;"></span>`
+                : `<span class="tv-wl-badge ltr-num" style="color: ${badge.color}; background: ${badge.color}22; border: 1px solid ${badge.color}55;">
+                     ${badge.label}
+                   </span>`
             }
-            <div style="min-width: 0;">
-              <div style="display: flex; align-items: center; gap: 6px;">
-                <span style="width: 6px; height: 6px; border-radius: 50%; background: ${d.isLive ? 'var(--bull)' : 'var(--text-muted)'}; display: inline-block;"></span>
-                <span class="ltr-num" style="font-weight: 800; font-size: 13px; color: var(--text);">
-                  ${s.symbolCode}
-                </span>
-                <span class="ltr-num" style="font-size: 9.5px; color: var(--text-muted); padding: 0 4px; border-radius: 3px; background: var(--surface-elevated);">
-                  ${badge.providerTag}
-                </span>
-              </div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                ${title}
-              </div>
-            </div>
+            <span class="tv-wl-ticker ltr-num">${s.symbolCode}</span>
           </div>
-          <div style="text-align: end; flex-shrink: 0;">
-            <div class="ltr-num" style="font-weight: 700; font-size: 13.5px; color: var(--text);">
-              ${PriceFormatter.formatPrice(d.lastClose, s.decimals)}
-            </div>
-            <div class="ltr-num" style="font-size: 11px; font-weight: 600; color: ${isBull ? 'var(--bull)' : 'var(--bear)'}; margin-top: 1px;">
-              ${diffStr}
-            </div>
+          <div class="tv-wl-num ltr-num" style="color: var(--text);">
+            ${PriceFormatter.formatPrice(d.lastClose, s.decimals)}
+          </div>
+          <div class="tv-wl-num ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'};">
+            ${sign}${PriceFormatter.formatPrice(diff, s.decimals)}
+          </div>
+          <div class="tv-wl-num ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'};">
+            ${pct}
           </div>
         </div>
-        <!-- Subtle Day's Low-High Range Bar -->
-        <div style="margin-top: 6px; display: flex; align-items: center; gap: 6px;">
-          <span class="ltr-num" style="font-size: 9.5px; color: var(--text-dim);">${PriceFormatter.formatPrice(d.dayLow, s.decimals)}</span>
-          <div style="flex: 1; height: 3px; background: var(--surface-elevated); border-radius: 2px; position: relative;">
-            <div style="position: absolute; left: 0; top: 0; bottom: 0; width: ${posPct}%; background: ${isBull ? 'var(--bull)' : 'var(--bear)'}; border-radius: 2px;"></div>
-          </div>
-          <span class="ltr-num" style="font-size: 9.5px; color: var(--text-dim);">${PriceFormatter.formatPrice(d.dayHigh, s.decimals)}</span>
-        </div>
-      </div>
-    `;
+      `;
     })
     .join('');
 
-  return `
-    <div>
-      <div class="row-between" style="margin-bottom: 8px; gap: 6px;">
-        <input
-          type="text"
-          class="input-field"
-          style="min-height: 30px; padding: 4px 9px; font-size: 11.5px;"
-          placeholder="${i18n.t('watchlist_search_placeholder')}"
-          value="${state.watchlistSearchQuery || ''}"
-          data-action="watchlist-search"
-        />
-        <button class="btn btn-sm btn-icon" data-action="sync-all" title="${i18n.t('action_sync_all')}">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
-        </button>
-        <button class="btn btn-sm btn-primary" data-action="open-add-symbol-modal" title="${i18n.t('settings_add_custom_symbol')}">
-          +
-        </button>
+  // Selected Symbol Details (Bottom Half of Right Panel, matching TradingView Desktop)
+  const sym = activeTab
+    ? state.symbols.find((s) => s.symbolCode === activeTab.symbolCode) || state.symbols[0]
+    : state.symbols[0];
+  let detailsHtml = '';
+  if (sym) {
+    const d = computeDayStats(sym);
+    const diff = d.lastClose - d.prevClose;
+    const pct = d.prevClose > 0 ? PriceFormatter.formatSignedPct(d.prevClose, d.lastClose) : '+0.00%';
+    const isBull = diff >= 0;
+    const sign = isBull ? '+' : '';
+    const badge = getAssetBadge(sym.symbolCode);
+    const title = sym.customTitle || i18n.t('symbol_' + sym.symbolCode) || sym.symbolCode;
+    const rangeSpan = Math.max(0.00001, d.dayHigh - d.dayLow);
+    const posPct = Math.max(4, Math.min(96, Math.round(((d.lastClose - d.dayLow) / rangeSpan) * 100)));
+
+    detailsHtml = `
+      <div class="tv-symbol-details-pane" dir="ltr">
+        <div class="row-between" style="margin-bottom: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span class="tv-wl-badge ltr-num" style="width: 24px; height: 24px; font-size: 10px; color: ${badge.color}; background: ${badge.color}22; border: 1px solid ${badge.color}55;">
+              ${badge.label}
+            </span>
+            <strong class="ltr-num" style="font-size: 14px; color: var(--text);">${sym.symbolCode}</strong>
+          </div>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button class="tv-tool-btn" data-action="open-symbol-overview" data-symbol="${sym.symbolCode}" title="Seasonals & Key Data">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 2px;">
+          ${title} · <span class="ltr-num" style="color: var(--text);">${sym.activeProvider.toUpperCase()}</span>
+        </div>
+        <div class="ltr-num" style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px;">
+          ${badge.category}
+        </div>
+
+        <div class="tv-detail-price ltr-num">
+          ${PriceFormatter.formatPrice(d.lastClose, sym.decimals)}
+          <span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">USD</span>
+        </div>
+        <div class="tv-detail-chg ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'};">
+          ${sign}${PriceFormatter.formatPrice(diff, sym.decimals)} (${pct})
+        </div>
+
+        <div class="ltr-num" style="font-size: 11px; color: ${d.isLive ? 'var(--bull)' : 'var(--text-muted)'}; margin-top: 5px; display: flex; align-items: center; gap: 5px;">
+          <span>●</span>
+          <span>${d.isLive ? i18n.t('chart_status_live') : i18n.t('chart_status_market_closed')}</span>
+        </div>
+
+        <!-- Day's Range Bar -->
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);">
+          <div class="row-between ltr-num" style="font-size: 10.5px; color: var(--text-muted); margin-bottom: 4px;">
+            <span>Low: <strong style="color: var(--text);">${PriceFormatter.formatPrice(d.dayLow, sym.decimals)}</strong></span>
+            <span>Day's Range</span>
+            <span>High: <strong style="color: var(--text);">${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)}</strong></span>
+          </div>
+          <div style="height: 4px; background: var(--surface-elevated); border-radius: 2px; position: relative; margin-bottom: 10px;">
+            <div style="position: absolute; left: 0; top: 0; bottom: 0; width: ${posPct}%; background: ${isBull ? 'var(--bull)' : 'var(--bear)'}; border-radius: 2px;"></div>
+          </div>
+
+          <div class="tv-detail-grid ltr-num">
+            <div class="tv-detail-stat">
+              <span>Volume (24B)</span>
+              <strong>${PriceFormatter.formatVolume(d.volume)}</strong>
+            </div>
+            <div class="tv-detail-stat">
+              <span>Prev Close</span>
+              <strong>${PriceFormatter.formatPrice(d.prevClose, sym.decimals)}</strong>
+            </div>
+            <div class="tv-detail-stat">
+              <span>Open</span>
+              <strong>${PriceFormatter.formatPrice(d.openPrice, sym.decimals)}</strong>
+            </div>
+            <div class="tv-detail-stat">
+              <span>Timeframe</span>
+              <strong>${PriceFormatter.displayTimeframeLabel(activeTab ? activeTab.timeframe : sym.timeframe)}</strong>
+            </div>
+          </div>
+
+          <button class="btn btn-sm" style="width: 100%; margin-top: 10px;" data-action="open-symbol-overview" data-symbol="${sym.symbolCode}">
+            <span>📊 ${i18n.t('symbol_overview_seasonals')} & ${i18n.t('symbol_overview_key_data')}</span>
+          </button>
+        </div>
       </div>
-      ${watchlist.length === 0 ? `<p style="color: var(--text-muted); font-size: 12.5px;">${i18n.t('watchlist_empty_hint')}</p>` : cardsHtml}
-    </div>
+    `;
+  }
+
+  return `
+    <aside class="tv-right-panel ${state.isSideDrawerOpen ? '' : 'collapsed'}">
+      <div class="tv-watchlist-pane">
+        <div class="tv-pane-header">
+          <span>${i18n.t('nav_watchlist')}</span>
+          <div style="display: flex; align-items: center; gap: 4px;">
+            <button class="tv-tool-btn" data-action="open-add-symbol-modal" title="${i18n.t('settings_add_custom_symbol')}">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            </button>
+            <button class="tv-tool-btn" data-action="sync-all" title="${i18n.t('action_sync_all')}">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M21 12a9 9 0 0 0-9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M3 12a9 9 0 0 0 9 9 9.75 9.75 0 0 0 6.74-2.74L21 16"/><path d="M16 16h5v5"/></svg>
+            </button>
+            <button class="tv-tool-btn" data-action="toggle-right-panel" title="Collapse Panel">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
+            </button>
+          </div>
+        </div>
+
+        <div style="padding: 6px 10px; border-bottom: 1px solid var(--border);">
+          <input
+            type="text"
+            class="input-field"
+            style="min-height: 26px; padding: 3px 8px; font-size: 11px;"
+            placeholder="${i18n.t('watchlist_search_placeholder')}"
+            value="${state.watchlistSearchQuery || ''}"
+            data-action="watchlist-search"
+          />
+        </div>
+
+        <div class="tv-wl-table-head" dir="ltr">
+          <span>Symbol</span>
+          <span style="text-align: right;">Last</span>
+          <span style="text-align: right;">Chg</span>
+          <span style="text-align: right;">Chg%</span>
+        </div>
+
+        <div class="tv-wl-list">
+          ${watchlist.length === 0 ? `<div style="padding: 14px; font-size: 12px; color: var(--text-muted);">${i18n.t('watchlist_empty_hint')}</div>` : rowsHtml}
+        </div>
+      </div>
+
+      ${detailsHtml}
+    </aside>
   `;
 }
 
@@ -156,7 +243,6 @@ export function renderSymbolOverviewModal(i18n) {
   const isBull = diff >= 0;
   const badge = getAssetBadge(sym.symbolCode);
 
-  // Build interactive Mini-Candlestick SVG for the selected range
   const candles = (sym.candles || []).slice(-42);
   let minP = Infinity;
   let maxP = -Infinity;
@@ -193,15 +279,13 @@ export function renderSymbolOverviewModal(i18n) {
   const ranges = ['1D', '5D', '1M', '3M', 'YTD', '1Y', '5Y', 'All'];
   const activeRange = state.symbolOverviewRange || '5D';
 
-  // Build Seasonals (2026 / 2025 / 2024) multi-line SVG
   const seasonalPoints2026 = '10,95 45,92 80,42 115,58 150,34 185,84 220,54 255,66 290,38 325,28 355,50';
   const seasonalPoints2025 = '10,96 60,90 120,98 180,92 240,95 300,89 360,96 400,98';
   const seasonalPoints2024 = '10,95 55,88 110,80 165,86 220,82 275,92 330,90 390,94';
 
   return `
     <div class="modal-backdrop" data-action="close-symbol-overview-backdrop">
-      <div class="modal-card symbol-overview-modal" dir="ltr">
-        <!-- Top Header matching TradingView Screenshot 3 -->
+      <div class="modal-card symbol-overview-modal" dir="ltr" style="padding: 18px;">
         <div class="row-between" style="margin-bottom: 10px;">
           <div style="display: flex; align-items: center; gap: 10px;">
             <span class="ltr-num" style="width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; color: ${badge.color}; background: ${badge.color}24; border: 1px solid ${badge.color}55;">
@@ -209,10 +293,10 @@ export function renderSymbolOverviewModal(i18n) {
             </span>
             <div>
               <div class="ltr-num" style="display: flex; align-items: baseline; gap: 8px;">
-                <span style="font-size: 20px; font-weight: 800; color: #FFFFFF;">${PriceFormatter.formatPrice(d.lastClose, sym.decimals)}</span>
+                <span style="font-size: 20px; font-weight: 800; color: var(--text);">${PriceFormatter.formatPrice(d.lastClose, sym.decimals)}</span>
                 <span style="font-size: 15px; font-weight: 700; color: ${isBull ? '#26A69A' : '#EF5350'};">${pct}</span>
               </div>
-              <div class="ltr-num" style="font-size: 11px; color: #787B86; font-weight: 600;">
+              <div class="ltr-num" style="font-size: 11px; color: var(--text-muted); font-weight: 600;">
                 ${sym.symbolCode} • ${badge.providerTag}
               </div>
             </div>
@@ -220,14 +304,12 @@ export function renderSymbolOverviewModal(i18n) {
           <button class="btn btn-sm btn-icon" data-action="close-symbol-overview">✕</button>
         </div>
 
-        <!-- Mini Candlestick Chart with Dashed Previous Close Line -->
-        <div style="background: #0E111A; border: 1px solid #2A2E39; border-radius: 6px; padding: 6px; margin-bottom: 10px;">
+        <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; margin-bottom: 10px;">
           <svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="140" style="display: block;">
             <line x1="0" y1="${prevCloseY.toFixed(1)}" x2="${svgW}" y2="${prevCloseY.toFixed(1)}" stroke="#787B86" stroke-dasharray="4 4" stroke-width="1"/>
             ${miniCandlesSvg}
           </svg>
-          <!-- Range Bar + Fullscreen [⛶] Button -->
-          <div class="row-between" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid #1E222D;">
+          <div class="row-between" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);">
             <div style="display: flex; align-items: center; gap: 3px; flex-wrap: wrap;">
               ${ranges
                 .map(
@@ -236,38 +318,35 @@ export function renderSymbolOverviewModal(i18n) {
                 .join('')}
             </div>
             <button class="btn btn-sm btn-primary" data-action="open-chart" data-symbol="${sym.symbolCode}" title="${i18n.t('action_open_chart_view')}">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/></svg>
               <span>${i18n.t('action_open_chart_view')}</span>
             </button>
           </div>
         </div>
 
-        <!-- Key Data Points Card (TradingView Screenshot 3) -->
-        <div style="background: #1E222D; border: 1px solid #2A2E39; border-radius: 8px; padding: 12px; margin-bottom: 10px;">
-          <div style="font-size: 13.5px; font-weight: 700; color: #FFFFFF; margin-bottom: 10px;">
+        <div class="card-subtle" style="margin-bottom: 10px;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px;">
             ${i18n.t('symbol_overview_key_data')}
           </div>
-          <div class="row-between ltr-num" style="font-size: 12.5px; margin-bottom: 7px;">
-            <span style="color: #9598A1;">Volume</span>
-            <strong style="color: #FFFFFF;">${PriceFormatter.formatVolume(d.volume)}</strong>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+            <span style="color: var(--text-muted);">Volume</span>
+            <strong>${PriceFormatter.formatVolume(d.volume)}</strong>
           </div>
-          <div class="row-between ltr-num" style="font-size: 12.5px; margin-bottom: 7px;">
-            <span style="color: #9598A1;">${i18n.t('symbol_overview_prev_close')}</span>
-            <strong style="color: #FFFFFF;">${PriceFormatter.formatPrice(d.prevClose, sym.decimals)} <span style="font-size: 10px; color: #787B86;">USD</span></strong>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_prev_close')}</span>
+            <strong>${PriceFormatter.formatPrice(d.prevClose, sym.decimals)} USD</strong>
           </div>
-          <div class="row-between ltr-num" style="font-size: 12.5px; margin-bottom: 7px;">
-            <span style="color: #9598A1;">${i18n.t('symbol_overview_open')}</span>
-            <strong style="color: #FFFFFF;">${PriceFormatter.formatPrice(d.openPrice, sym.decimals)} <span style="font-size: 10px; color: #787B86;">USD</span></strong>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_open')}</span>
+            <strong>${PriceFormatter.formatPrice(d.openPrice, sym.decimals)} USD</strong>
           </div>
-          <div class="row-between ltr-num" style="font-size: 12.5px;">
-            <span style="color: #9598A1;">${i18n.t('symbol_overview_days_range')}</span>
-            <strong style="color: #FFFFFF;">${PriceFormatter.formatPrice(d.dayLow, sym.decimals)} — ${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)} <span style="font-size: 10px; color: #787B86;">USD</span></strong>
+          <div class="row-between ltr-num" style="font-size: 12px;">
+            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_days_range')}</span>
+            <strong>${PriceFormatter.formatPrice(d.dayLow, sym.decimals)} — ${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)} USD</strong>
           </div>
         </div>
 
-        <!-- Seasonals Card (2026 / 2025 / 2024) -->
-        <div style="background: #1E222D; border: 1px solid #2A2E39; border-radius: 8px; padding: 12px;">
-          <div style="font-size: 13.5px; font-weight: 700; color: #FFFFFF; margin-bottom: 8px;">
+        <div class="card-subtle">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px;">
             ${i18n.t('symbol_overview_seasonals')}
           </div>
           <svg viewBox="0 0 410 110" width="100%" height="105" style="display: block;">
@@ -279,7 +358,7 @@ export function renderSymbolOverviewModal(i18n) {
             <polyline fill="none" stroke="#2962FF" stroke-width="2.2" points="${seasonalPoints2026}"/>
             <circle cx="355" cy="50" r="3.5" fill="#2962FF"/>
           </svg>
-          <div class="row-between ltr-num" style="font-size: 10.5px; color: #787B86; margin-top: 4px; padding: 0 8px;">
+          <div class="row-between ltr-num" style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px; padding: 0 8px;">
             <span>Jan</span>
             <span>Apr</span>
             <span>Jul</span>
@@ -295,3 +374,6 @@ export function renderSymbolOverviewModal(i18n) {
     </div>
   `;
 }
+
+export const renderWatchlistContent = renderRightSplitPanel;
+

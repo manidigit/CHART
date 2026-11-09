@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js';
+import { I18nManager } from './core/i18n.js?v=1.28.3';
 import {
   state,
   savePreferences,
@@ -6,7 +6,7 @@ import {
   saveDrawings,
   saveLastOpenedSymbol,
   getCachedOrAggregatedCandles,
-} from './core/store.js';
+} from './core/store.js?v=1.28.3';
 import {
   syncServerAuthStatus,
   loginOrRegisterOwner,
@@ -17,22 +17,28 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js';
-import { PriceFormatter } from './algorithms/priceFormatter.js';
-import { renderCandlestickCanvas } from './components/chartRenderer.js';
-import { renderLoginScreen } from './views/loginView.js';
-import { renderTopHeaderBar, renderSubToolbar } from './views/headerView.js';
-import { renderLeftToolRail } from './views/toolRailView.js';
-import { renderWatchlistContent, renderSymbolOverviewModal } from './views/watchlistView.js';
-import { renderAnalysisContent } from './views/analysisView.js';
-import { renderSettingsContent } from './views/settingsView.js';
-import { renderBottomNav } from './views/navigationView.js';
+} from './services/apiService.js?v=1.28.3';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.3';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.3';
+import { renderLoginScreen } from './views/loginView.js?v=1.28.3';
+import { renderTopHeaderBar, renderBottomChartBar } from './views/headerView.js?v=1.28.3';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.3';
+import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.3';
+import { renderPredictionModal } from './views/analysisView.js?v=1.28.3';
+import { renderSettingsModal } from './views/settingsView.js?v=1.28.3';
+import { renderRightIconRail, renderBottomNav } from './views/navigationView.js?v=1.28.3';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
+let canvasResizeObserver = null;
 
 function applyTheme() {
-  document.documentElement.setAttribute('data-theme', state.isDarkTheme ? 'dark' : 'light');
+  const mode = state.isDarkTheme ? 'dark' : 'light';
+  document.documentElement.setAttribute('data-theme', mode);
+  if (document.body) {
+    document.body.classList.toggle('theme-dark', state.isDarkTheme);
+    document.body.classList.toggle('theme-light', !state.isDarkTheme);
+  }
   localStorage.setItem('ci_theme_dark', state.isDarkTheme ? 'true' : 'false');
 }
 
@@ -133,11 +139,10 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     state.activeTabId = tabId;
   }
 
-  // Trigger live multi-timeframe sync (M15, H1, H4) if cache is empty or needs update
   syncSymbolNow(symbolCode, tf, renderApp);
 }
 
-function renderOhlcvRibbon(activeTab) {
+function renderOhlcvOverlay(activeTab) {
   if (!activeTab || !activeTab.candles || activeTab.candles.length === 0) return '';
   const visibleCount = Math.max(15, Math.min(180, Math.round(activeTab.visibleCount || 48)));
   const maxOffset = Math.max(0, activeTab.candles.length - 5);
@@ -152,20 +157,45 @@ function renderOhlcvRibbon(activeTab) {
       : activeTab.candles[activeTab.candles.length - 1];
   if (!c) return '';
 
+  const sym = state.symbols.find((s) => s.symbolCode === activeTab.symbolCode);
+  const title = sym ? sym.customTitle || i18n.t('symbol_' + sym.symbolCode) || sym.symbolCode : activeTab.symbolCode;
   const dec = activeTab.decimals;
   const isBull = Number(c.close) >= Number(c.open);
   const col = isBull ? 'var(--bull)' : 'var(--bear)';
-  const utcText = PriceFormatter.formatCandleUtc(c.openTimeUtc || c.open_time_utc_iso);
+  const diff = Number(c.close) - Number(c.open);
+  const pct = Number(c.open) > 0 ? PriceFormatter.formatSignedPct(c.open, c.close) : '+0.00%';
+  const lastClose = Number(activeTab.candles[activeTab.candles.length - 1].close || c.close);
+  const spreadStep = Math.pow(10, -dec) * 2;
+  const sellPrice = PriceFormatter.formatPrice(lastClose - spreadStep, dec);
+  const buyPrice = PriceFormatter.formatPrice(lastClose + spreadStep, dec);
 
   return `
-    <div class="ohlcv-ribbon ltr-num" dir="ltr">
-      <strong style="color: var(--primary);">${activeTab.symbolCode} · ${PriceFormatter.displayTimeframeLabel(activeTab.timeframe)}</strong>
-      <span>O <strong style="color: ${col};">${PriceFormatter.formatPrice(c.open, dec)}</strong></span>
-      <span>H <strong style="color: var(--bull);">${PriceFormatter.formatPrice(c.high, dec)}</strong></span>
-      <span>L <strong style="color: var(--bear);">${PriceFormatter.formatPrice(c.low, dec)}</strong></span>
-      <span>C <strong style="color: ${col};">${PriceFormatter.formatPrice(c.close, dec)}</strong></span>
-      <span>V <strong>${PriceFormatter.formatVolume(c.volume)}</strong></span>
-      <span style="color: var(--text-dim);">${utcText}</span>
+    <div class="tv-ohlc-overlay ltr-num" dir="ltr">
+      <div class="tv-ohlc-main-line">
+        <span class="tv-ohlc-symbol-title">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--bull); display: inline-block;"></span>
+          <span>${title}</span>
+          <span style="color: var(--text-muted); font-weight: 600;">· ${PriceFormatter.displayTimeframeLabel(activeTab.timeframe)} · ${activeTab.provider.toUpperCase()}</span>
+        </span>
+        <span>O<strong style="color: ${col}; margin-left: 2px;">${PriceFormatter.formatPrice(c.open, dec)}</strong></span>
+        <span>H<strong style="color: var(--bull); margin-left: 2px;">${PriceFormatter.formatPrice(c.high, dec)}</strong></span>
+        <span>L<strong style="color: var(--bear); margin-left: 2px;">${PriceFormatter.formatPrice(c.low, dec)}</strong></span>
+        <span>C<strong style="color: ${col}; margin-left: 2px;">${PriceFormatter.formatPrice(c.close, dec)}</strong></span>
+        <span style="color: ${col}; font-weight: 700;">${diff >= 0 ? '+' : ''}${PriceFormatter.formatPrice(diff, dec)} (${pct})</span>
+        <span style="color: var(--text-muted);">Vol <strong style="color: var(--text);">${PriceFormatter.formatVolume(c.volume)}</strong></span>
+      </div>
+
+      <div class="tv-bid-ask-strip">
+        <div class="tv-order-box sell">
+          <span>${sellPrice}</span>
+          <span class="tv-order-sub">SELL</span>
+        </div>
+        <span style="font-size: 10px; color: var(--text-muted); font-weight: 600;">${(spreadStep * 2 * Math.pow(10, dec)).toFixed(0)}</span>
+        <div class="tv-order-box buy">
+          <span>${buyPrice}</span>
+          <span class="tv-order-sub">BUY</span>
+        </div>
+      </div>
     </div>
   `;
 }
@@ -174,24 +204,35 @@ function renderAddSymbolModal() {
   if (!state.isAddSymbolModalOpen) return '';
   return `
     <div class="modal-backdrop" data-action="close-add-symbol-modal">
-      <div class="modal-card" style="max-width: 400px; padding: 18px;">
-        <div class="row-between" style="margin-bottom: 12px;">
-          <h4 style="margin: 0;">${i18n.t('settings_add_custom_symbol')}</h4>
+      <div class="modal-card" style="max-width: 420px;">
+        <div class="tv-modal-header">
+          <div class="tv-modal-title">${i18n.t('settings_add_custom_symbol')}</div>
           <button class="btn btn-sm btn-icon" data-action="close-add-symbol-modal">✕</button>
         </div>
-        <form id="add-symbol-form">
-          <input class="input-field ltr-num" type="text" name="symbol_code" placeholder="${i18n.t('settings_custom_symbol_code_hint')}" required />
-          <input class="input-field" type="text" name="symbol_title" placeholder="${i18n.t('settings_custom_symbol_title_hint')}" required />
-          <select class="input-field ltr-num" name="provider">
-            <option value="tvdatafeed">TradingView (tvdatafeed)</option>
-            <option value="twelve_data">Twelve Data</option>
-            <option value="dukascopy">Dukascopy</option>
-            <option value="yahoo_finance">Yahoo Finance</option>
-          </select>
-          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
-            ${i18n.t('settings_custom_symbol_save')}
-          </button>
-        </form>
+        <div class="tv-modal-body">
+          <form id="add-symbol-form" style="display: flex; flex-direction: column; gap: 10px;">
+            <div>
+              <label class="tv-input-label">${i18n.t('settings_custom_symbol_code_hint')}</label>
+              <input class="input-field ltr-num" type="text" name="symbol_code" placeholder="e.g. BTCUSD, USOIL" required />
+            </div>
+            <div>
+              <label class="tv-input-label">${i18n.t('settings_custom_symbol_title_hint')}</label>
+              <input class="input-field" type="text" name="symbol_title" placeholder="${i18n.t('settings_custom_symbol_title_hint')}" required />
+            </div>
+            <div>
+              <label class="tv-input-label">Data Provider</label>
+              <select class="input-field ltr-num" name="provider">
+                <option value="tvdatafeed">TradingView (tvdatafeed)</option>
+                <option value="twelve_data">Twelve Data</option>
+                <option value="dukascopy">Dukascopy</option>
+                <option value="yahoo_finance">Yahoo Finance</option>
+              </select>
+            </div>
+            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 6px; min-height: 36px;">
+              ${i18n.t('settings_custom_symbol_save')}
+            </button>
+          </form>
+        </div>
       </div>
     </div>
   `;
@@ -199,7 +240,7 @@ function renderAddSymbolModal() {
 
 export function renderApp() {
   applyTheme();
-  const root = document.getElementById('app-root');
+  const root = document.getElementById('app') || document.getElementById('app-root');
   if (!root) return;
 
   if (!state.isAuthenticated) {
@@ -221,46 +262,28 @@ export function renderApp() {
     }
   }
 
-  let drawerTitle = i18n.t('nav_watchlist');
-  let drawerBody = '';
-  if (state.activeNav === 'watchlist') {
-    drawerTitle = i18n.t('nav_watchlist');
-    drawerBody = renderWatchlistContent(i18n);
-  } else if (state.activeNav === 'prediction') {
-    drawerTitle = i18n.t('nav_prediction');
-    drawerBody = renderAnalysisContent(activeTab, i18n);
-  } else if (state.activeNav === 'settings') {
-    drawerTitle = i18n.t('nav_settings');
-    drawerBody = renderSettingsContent(i18n);
-  }
-
   root.innerHTML = `
-    <div class="workspace-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
+    <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
       ${renderTopHeaderBar(activeTab, i18n)}
-      ${renderSubToolbar(activeTab, i18n)}
 
-      <div class="workspace-body">
+      <div class="tv-main-area">
         ${renderLeftToolRail(activeTab, i18n)}
 
-        <main class="chart-stage">
-          ${renderOhlcvRibbon(activeTab)}
-          <div class="chart-canvas-wrap">
+        <main class="chart-workspace">
+          <div class="chart-canvas-box">
+            ${renderOhlcvOverlay(activeTab)}
             <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
           </div>
+          ${renderBottomChartBar(activeTab, i18n)}
         </main>
 
-        <aside class="right-drawer ${state.isSideDrawerOpen ? '' : 'collapsed'}">
-          <div class="drawer-header">
-            <strong>${drawerTitle}</strong>
-            <button class="btn btn-sm btn-icon" data-action="close-drawer" title="Close">✕</button>
-          </div>
-          <div class="drawer-body">
-            ${drawerBody}
-          </div>
-        </aside>
+        ${renderRightSplitPanel(activeTab, i18n)}
+        ${renderRightIconRail(i18n)}
       </div>
 
       ${renderBottomNav(i18n)}
+      ${renderSettingsModal(i18n)}
+      ${renderPredictionModal(activeTab, i18n)}
       ${renderSymbolOverviewModal(i18n)}
       ${renderAddSymbolModal()}
     </div>
@@ -276,14 +299,14 @@ function redrawActiveCanvas() {
   const activeTab = getActiveTab();
   if (canvas && activeTab) {
     renderCandlestickCanvas(canvas, activeTab, i18n);
-    const wrap = canvas.closest('.chart-stage');
-    if (wrap) {
-      const oldRibbon = wrap.querySelector('.ohlcv-ribbon');
-      if (oldRibbon) {
+    const box = canvas.closest('.chart-canvas-box');
+    if (box) {
+      const oldOverlay = box.querySelector('.tv-ohlc-overlay');
+      if (oldOverlay) {
         const temp = document.createElement('div');
-        temp.innerHTML = renderOhlcvRibbon(activeTab);
+        temp.innerHTML = renderOhlcvOverlay(activeTab);
         if (temp.firstElementChild) {
-          oldRibbon.replaceWith(temp.firstElementChild);
+          oldOverlay.replaceWith(temp.firstElementChild);
         }
       }
     }
@@ -293,6 +316,17 @@ function redrawActiveCanvas() {
 function bindCanvasEvents(activeTab) {
   const canvas = document.getElementById('main-chart-canvas');
   if (!canvas || !activeTab) return;
+
+  const box = canvas.closest('.chart-canvas-box');
+  if (box && typeof ResizeObserver !== 'undefined') {
+    if (canvasResizeObserver) {
+      canvasResizeObserver.disconnect();
+    }
+    canvasResizeObserver = new ResizeObserver(() => {
+      redrawActiveCanvas();
+    });
+    canvasResizeObserver.observe(box);
+  }
 
   let isDragging = false;
   let dragStartX = 0;
@@ -582,8 +616,18 @@ document.addEventListener('click', async (e) => {
   if (action === 'set-lang') {
     i18n.setLanguage(el.getAttribute('data-lang'));
     renderApp();
+  } else if (action === 'toggle-lang-quick') {
+    const nextLang = i18n.getCurrentLanguage() === 'fa' ? 'en' : 'fa';
+    i18n.setLanguage(nextLang);
+    renderApp();
   } else if (action === 'set-theme') {
     state.isDarkTheme = el.getAttribute('data-theme') === 'dark';
+    renderApp();
+  } else if (action === 'toggle-theme-quick') {
+    state.isDarkTheme = !state.isDarkTheme;
+    renderApp();
+  } else if (action === 'toggle-password-vis') {
+    state.showLoginPassword = !state.showLoginPassword;
     renderApp();
   } else if (action === 'set-auth-mode') {
     state.authMode = el.getAttribute('data-mode') || 'login';
@@ -592,29 +636,24 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'sign-out') {
     await logoutOwnerOnServer();
+    state.activeModal = null;
     renderApp();
-  } else if (action === 'open-drawer') {
-    const nav = el.getAttribute('data-nav') || 'watchlist';
-    if (state.isSideDrawerOpen && state.activeNav === nav) {
-      state.isSideDrawerOpen = false;
-    } else {
-      state.activeNav = nav;
-      state.isSideDrawerOpen = true;
-    }
+  } else if (action === 'toggle-right-panel') {
+    state.isSideDrawerOpen = !state.isSideDrawerOpen;
     renderApp();
-  } else if (action === 'close-drawer') {
-    state.isSideDrawerOpen = false;
+  } else if (action === 'open-modal') {
+    const modalName = el.getAttribute('data-modal');
+    state.activeModal = state.activeModal === modalName ? null : modalName;
+    state.statusBannerKey = '';
     renderApp();
-  } else if (action === 'nav') {
-    const scr = el.getAttribute('data-screen');
-    if (scr === 'chart_view') {
-      state.currentScreen = 'chart_view';
-      state.isSideDrawerOpen = false;
-    } else {
-      state.currentScreen = scr;
-      state.activeNav = scr === 'analysis' ? 'prediction' : scr;
-      state.isSideDrawerOpen = true;
-    }
+  } else if (action === 'close-modal' || action === 'close-modal-backdrop') {
+    if (action === 'close-modal-backdrop' && e.target !== el) return;
+    state.activeModal = null;
+    state.statusBannerKey = '';
+    renderApp();
+  } else if (action === 'set-settings-tab') {
+    state.settingsTab = el.getAttribute('data-tab') || 'sources';
+    state.statusBannerKey = '';
     renderApp();
   } else if (action === 'toggle-fullscreen') {
     state.isFullscreen = !state.isFullscreen;
@@ -634,6 +673,9 @@ document.addEventListener('click', async (e) => {
     }
   } else if (action === 'open-symbol-overview') {
     state.symbolOverviewCode = el.getAttribute('data-symbol');
+    renderApp();
+  } else if (action === 'open-active-symbol-overview') {
+    state.symbolOverviewCode = activeTab ? activeTab.symbolCode : 'SPOTBRENT';
     renderApp();
   } else if (action === 'close-symbol-overview' || action === 'close-symbol-overview-backdrop') {
     if (action === 'close-symbol-overview-backdrop' && e.target !== el) return;
@@ -662,7 +704,7 @@ document.addEventListener('click', async (e) => {
     const rk = el.getAttribute('data-range') || 'All';
     activeTab.selectedRangePreset = rk;
     activeTab.scrollOffset = 0;
-    const mapCount = { '1D': 24, '5D': 48, '1M': 90, '3M': 130, YTD: 150, '1Y': 170, All: 180 };
+    const mapCount = { '1D': 24, '5D': 48, '1M': 90, '3M': 125, '6M': 145, YTD: 155, '1Y': 170, '5Y': 180, All: 180 };
     activeTab.visibleCount = Math.min((activeTab.candles || []).length || 48, mapCount[rk] || 60);
     renderApp();
   } else if (action === 'set-chart-type' && activeTab) {
@@ -736,6 +778,7 @@ document.addEventListener('click', async (e) => {
       { id: 'proj_stop', type: 'hline', price1: stop, colorHex: stopCol, lineWidthPx: 2, label: 'Invalidation' },
     ];
     saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    state.activeModal = null;
     renderApp();
   } else if (action === 'sync-active-tab' && activeTab) {
     await syncSymbolNow(activeTab.symbolCode, activeTab.timeframe, renderApp);
@@ -745,6 +788,7 @@ document.addEventListener('click', async (e) => {
     state.isAddSymbolModalOpen = true;
     renderApp();
   } else if (action === 'close-add-symbol-modal') {
+    if (e.target !== el && !el.classList.contains('btn-icon')) return;
     state.isAddSymbolModalOpen = false;
     renderApp();
   } else if (action === 'set-color') {
@@ -781,7 +825,15 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', async (e) => {
   const el = e.target;
   const action = el.getAttribute('data-action');
-  if (action === 'select-provider-dropdown') {
+  if (action === 'toggle-remember-creds') {
+    state.rememberCredentials = Boolean(el.checked);
+    localStorage.setItem('ci_remember_creds', state.rememberCredentials ? 'true' : 'false');
+    if (!state.rememberCredentials) {
+      state.savedPassword = '';
+      localStorage.removeItem('ci_saved_password');
+      localStorage.removeItem('ci_auto_authenticated');
+    }
+  } else if (action === 'select-provider-dropdown') {
     const code = el.getAttribute('data-symbol');
     const prov = el.value;
     const sym = state.symbols.find((s) => s.symbolCode === code);
@@ -818,16 +870,30 @@ window.addEventListener('resize', () => {
 });
 
 async function bootstrap() {
-  await i18n.init();
-  await syncServerAuthStatus();
+  // Render immediately using built-in fallback dictionary so screen is NEVER blank
   renderApp();
-  if (state.isAuthenticated) {
-    await syncAllWatchlistSymbols(renderApp);
+  try {
+    await i18n.init();
     renderApp();
+  } catch {
+    // Ignore i18n network error
+  }
+  try {
+    await syncServerAuthStatus();
+    renderApp();
+  } catch {
+    // Ignore auth status network error
+  }
+  if (state.isAuthenticated) {
+    syncAllWatchlistSymbols(renderApp).catch(() => {});
   }
   if (!countdownIntervalId) {
     countdownIntervalId = setInterval(() => {
       if (state.isAuthenticated) {
+        const clockEl = document.getElementById('tv-live-utc-clock');
+        if (clockEl) {
+          clockEl.textContent = new Date().toISOString().slice(11, 19) + ' UTC';
+        }
         redrawActiveCanvas();
       }
     }, 1000);

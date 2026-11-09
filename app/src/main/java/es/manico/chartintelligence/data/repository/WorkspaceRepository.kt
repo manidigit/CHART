@@ -99,6 +99,46 @@ class WorkspaceRepository(context: Context) {
         return prefs.getString(AppConfig.KEY_OWNER_EMAIL, "") ?: ""
     }
 
+    fun loadRememberCredentials(): Boolean {
+        return prefs.getBoolean(AppConfig.KEY_REMEMBER_CREDENTIALS, true)
+    }
+
+    fun saveRememberCredentials(remember: Boolean) {
+        val editor = prefs.edit().putBoolean(AppConfig.KEY_REMEMBER_CREDENTIALS, remember)
+        if (!remember) {
+            editor.remove(AppConfig.KEY_SAVED_PASSWORD)
+            editor.putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, false)
+        }
+        editor.apply()
+    }
+
+    fun getSavedPassword(): String {
+        if (!loadRememberCredentials()) return ""
+        return prefs.getString(AppConfig.KEY_SAVED_PASSWORD, "") ?: ""
+    }
+
+    fun saveOwnerPasswordIfRemembered(password: String, remember: Boolean) {
+        val editor = prefs.edit().putBoolean(AppConfig.KEY_REMEMBER_CREDENTIALS, remember)
+        if (remember) {
+            editor.putString(AppConfig.KEY_SAVED_PASSWORD, password)
+            editor.putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, true)
+        } else {
+            editor.remove(AppConfig.KEY_SAVED_PASSWORD)
+            editor.putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, false)
+        }
+        editor.apply()
+    }
+
+    fun isSessionAuthenticated(): Boolean {
+        return loadRememberCredentials() &&
+            isOwnerAccountRegistered() &&
+            prefs.getBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, false)
+    }
+
+    fun setSessionAuthenticated(authenticated: Boolean) {
+        prefs.edit().putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, authenticated).apply()
+    }
+
     suspend fun syncOwnerStatusFromServer(): ServerOwnerStatus = withContext(Dispatchers.IO) {
         runCatching {
             val req = Request.Builder()

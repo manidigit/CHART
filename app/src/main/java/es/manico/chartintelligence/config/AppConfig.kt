@@ -19,6 +19,9 @@ object AppConfig {
     const val KEY_CANDLES_CACHE_PREFIX: String = "pref_candles_cache_v2_"
     const val KEY_DRAWINGS_CACHE_PREFIX: String = "pref_drawings_cache_v1_"
     const val KEY_SPOTBRENT_TV_MIGRATED: String = "pref_spotbrent_tvdatafeed_migrated_v1"
+    const val KEY_REMEMBER_CREDENTIALS: String = "pref_remember_credentials"
+    const val KEY_SAVED_PASSWORD: String = "pref_saved_owner_password"
+    const val KEY_SESSION_AUTHENTICATED: String = "pref_session_authenticated"
 
     const val DEFAULT_LANGUAGE_CODE: String = "fa"
     const val DEFAULT_DARK_THEME: Boolean = true
