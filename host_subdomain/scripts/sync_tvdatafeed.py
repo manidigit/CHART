@@ -235,6 +235,7 @@ def fetch_and_export(symbol: str, exchange: str, n_bars: int, output_dir: str) -
     os.makedirs(output_dir, exist_ok=True)
     now_ms = int(time.time() * 1000)
     total_saved = 0
+    closed_by_tf: Dict[str, Dict[int, dict]] = {}
 
     for tf_code, csv_suffix, tv_code, step_ms in TIMEFRAME_SPECS:
         print(f"[sync_tvdatafeed] Fetching {exchange}:{symbol} timeframe={tf_code} (n_bars={n_bars})...")
@@ -271,9 +272,24 @@ def fetch_and_export(symbol: str, exchange: str, n_bars: int, output_dir: str) -
         # 2. Normalize closed candles for MariaDB & API ingestion
         candles_by_open_ms: Dict[int, dict] = {}
         for epoch_sec, o_val, h_val, l_val, c_val, v_val in raw_rows:
-            open_ms = snap_open_utc_ms(epoch_sec * 1000, step_ms)
-            if open_ms + step_ms > now_ms:
-                continue
+            raw_ms = epoch_sec * 1000
+            if tf_code == "D1":
+                # TradingView daily sessions that open at 21:00-23:59 UTC belong to the next UTC calendar day
+                dt_utc = datetime.datetime.fromtimestamp(epoch_sec, tz=datetime.timezone.utc)
+                adjusted_ms = raw_ms + (4 * 3600 * 1000) if dt_utc.hour >= 21 else raw_ms
+                open_ms = snap_open_utc_ms(adjusted_ms, step_ms)
+                if raw_ms + step_ms > now_ms or open_ms + step_ms > now_ms:
+                    continue
+            elif tf_code == "H4":
+                # Require both raw bar and snapped 4h bucket to be closed
+                open_ms = snap_open_utc_ms(raw_ms, step_ms)
+                if raw_ms + step_ms > now_ms or open_ms + step_ms > now_ms:
+                    continue
+            else:
+                open_ms = snap_open_utc_ms(raw_ms, step_ms)
+                if open_ms + step_ms > now_ms:
+                    continue
+
             if min(o_val, h_val, l_val, c_val) <= 0.0:
                 continue
 
@@ -293,6 +309,36 @@ def fetch_and_export(symbol: str, exchange: str, n_bars: int, output_dir: str) -
                 "is_closed": True,
             }
 
+        # For H4, aggregate closed H1 candles into exact 00:00/04:00/08:00/12:00/16:00/20:00 UTC buckets
+        # so recent 4H bars match UTC-anchored H1/M15 candles up to the latest closed 4H bar.
+        if tf_code == "H4" and "H1" in closed_by_tf and closed_by_tf["H1"]:
+            h4_buckets: Dict[int, List[dict]] = {}
+            for h1_ms in sorted(closed_by_tf["H1"].keys()):
+                b_open = snap_open_utc_ms(h1_ms, step_ms)
+                if b_open + step_ms > now_ms:
+                    continue
+                h4_buckets.setdefault(b_open, []).append(closed_by_tf["H1"][h1_ms])
+            for b_open, b_list in h4_buckets.items():
+                if not b_list:
+                    continue
+                o_v = float(b_list[0]["open"])
+                c_v = float(b_list[-1]["close"])
+                h_v = max(float(x["high"]) for x in b_list)
+                l_v = min(float(x["low"]) for x in b_list)
+                v_v = sum(float(x["volume"]) for x in b_list)
+                candles_by_open_ms[b_open] = {
+                    "open_time_utc_ms": b_open,
+                    "open_time_utc_iso": format_utc_iso(b_open),
+                    "timeframe": "H4",
+                    "open": f"{o_v:.8f}",
+                    "high": f"{h_v:.8f}",
+                    "low": f"{l_v:.8f}",
+                    "close": f"{c_v:.8f}",
+                    "volume": f"{v_v:.8f}",
+                    "is_closed": True,
+                }
+
+        closed_by_tf[tf_code] = candles_by_open_ms
         sorted_candles = [candles_by_open_ms[k] for k in sorted(candles_by_open_ms.keys())][-n_bars:]
         json_filename = os.path.join(output_dir, f"{symbol}_{tf_code}.json")
         with open(json_filename, "w", encoding="utf-8") as jf:

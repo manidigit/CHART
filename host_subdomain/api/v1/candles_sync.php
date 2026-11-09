@@ -57,7 +57,7 @@ if ($pdo !== null && $timeframe !== 'D1') {
 }
 
 $candles = match ($provider) {
-    'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, isset($_GET['refresh'])),
+    'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, !empty($_GET['refresh'])),
     'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs),
     'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs),
     'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $limit, $nowMs),
@@ -105,7 +105,7 @@ if ($pdo !== null && !empty($candles)) {
     }
 }
 
-// Always read the canonical merged series from MariaDB if available (up to $limit = 5,000 candles)
+// Always read and merge the canonical series from MariaDB if available (up to $limit = 5,000 candles)
 if ($pdo !== null) {
     $q = $pdo->prepare(
         "SELECT open_time_utc, open_price, high_price, low_price, close_price, volume
@@ -121,10 +121,20 @@ if ($pdo !== null) {
     $q->execute();
     $rows = array_reverse($q->fetchAll(PDO::FETCH_ASSOC));
     if (!empty($rows)) {
-        $dbCandles = [];
+        $mergedMap = [];
         foreach ($rows as $r) {
+            $openMs = (int) $r['open_time_utc'];
+            if (!\ChartIntelligence\Algorithms\UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
+                continue;
+            }
+            if ($timeframe === 'D1') {
+                $dow = (int) gmdate('w', (int) floor($openMs / 1000));
+                if ($dow === 0 || $dow === 6) {
+                    continue;
+                }
+            }
             $c = CandleValidator::sanitizeCandle(
-                (int) $r['open_time_utc'],
+                $openMs,
                 $timeframe,
                 $r['open_price'],
                 $r['high_price'],
@@ -133,12 +143,19 @@ if ($pdo !== null) {
                 $r['volume']
             );
             if ($c !== null) {
-                $dbCandles[] = $c;
+                $mergedMap[$c['open_time_utc_ms']] = $c;
             }
         }
-        $dbCandles = CandleValidator::filterSyntheticWeekendAndCombCandles($dbCandles, $symbol, $timeframe);
+        foreach ($candles as $c) {
+            $openMs = (int) ($c['open_time_utc_ms'] ?? 0);
+            if ($openMs > 0 && \ChartIntelligence\Algorithms\UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
+                $mergedMap[$openMs] = $c;
+            }
+        }
+        ksort($mergedMap);
+        $dbCandles = CandleValidator::filterSyntheticWeekendAndCombCandles(array_values($mergedMap), $symbol, $timeframe);
         if (count($dbCandles) >= 5) {
-            $candles = $dbCandles;
+            $candles = array_slice($dbCandles, -$limit);
         }
     }
 }

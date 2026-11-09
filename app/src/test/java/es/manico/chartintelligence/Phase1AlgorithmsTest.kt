@@ -274,5 +274,31 @@ class Phase1AlgorithmsTest {
         assertTrue("5Y" in presetIds)
         assertTrue("All" in presetIds)
     }
+
+    @Test
+    fun tvDatafeedAdapter_detectsMondayIntradayReopenForM15H1H4WhileKeepingMondayD1Unclosed() {
+        val adapter = es.manico.chartintelligence.providers.TvDatafeedAdapter()
+        // Monday 2026-11-09 08:50:00 UTC = 1794214200000L
+        val mondayMorningMs = 1794214200000L
+        // Friday 2026-11-06 21:45:00 UTC = 1794001500000L
+        val fridayLastM15Ms = 1794001500000L
+
+        val expectedM15 = adapter.computeExpectedLastClosedOpenMs("M15", mondayMorningMs)
+        val expectedH1 = adapter.computeExpectedLastClosedOpenMs("H1", mondayMorningMs)
+        val expectedH4 = adapter.computeExpectedLastClosedOpenMs("H4", mondayMorningMs)
+        val expectedD1 = adapter.computeExpectedLastClosedOpenMs("D1", mondayMorningMs)
+
+        // M15 (08:30 UTC), H1 (07:00 UTC), and H4 (04:00 UTC) must all be strictly newer than Friday 21:45 UTC
+        assertTrue(expectedM15 > fridayLastM15Ms)
+        assertTrue(expectedH1 > fridayLastM15Ms)
+        assertTrue(expectedH4 > fridayLastM15Ms)
+        assertEquals("2026-11-09 08:30 UTC", UtcTimeAnchorAlgorithm.formatUtcIso(expectedM15))
+        assertEquals("2026-11-09 07:00 UTC", UtcTimeAnchorAlgorithm.formatUtcIso(expectedH1))
+        assertEquals("2026-11-09 04:00 UTC", UtcTimeAnchorAlgorithm.formatUtcIso(expectedH4))
+
+        // Meanwhile, Monday's D1 candle is not yet closed, so expected last closed D1 is Friday 2026-11-06 00:00 UTC
+        assertEquals("2026-11-06 00:00 UTC", UtcTimeAnchorAlgorithm.formatUtcIso(expectedD1))
+    }
 }
+
 

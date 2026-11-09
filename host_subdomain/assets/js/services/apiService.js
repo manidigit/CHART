@@ -1,154 +1,482 @@
-import { state, saveCandlesToCache, getCachedOrAggregatedCandles, saveSymbolsToStorage } from '../core/store.js';
+import {
+  state,
+  saveCandlesToCache,
+  getCachedOrAggregatedCandles,
+  saveSymbolsToStorage,
+  mergeCandlesIdempotent,
+  normalizeCandle,
+} from '../core/store.js';
+import { PriceFormatter } from '../algorithms/priceFormatter.js';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js';
 
-export async function checkBackendOwnerStatus() {
+export async function syncServerAuthStatus() {
   try {
-    const res = await fetch('./api/v1/auth.php?action=status');
+    const res = await fetch('./api/v1/auth.php?action=status&_t=' + Date.now());
     const json = await res.json();
-    if (json && json.ok && json.data && json.data.is_owner_registered) {
-      state.isOwnerRegistered = true;
-      state.ownerUsername = json.data.owner_username || state.ownerUsername;
-      state.ownerEmail = json.data.owner_email || state.ownerEmail;
-      if (state.ownerUsername) localStorage.setItem('ci_owner_username', state.ownerUsername);
-      if (state.ownerEmail) localStorage.setItem('ci_owner_email', state.ownerEmail);
+    if (json && json.ok && json.data) {
+      state.isOwnerRegistered = Boolean(json.data.is_owner_registered);
+      if (json.data.owner_username) {
+        state.ownerUsername = json.data.owner_username;
+        localStorage.setItem('ci_owner_username', state.ownerUsername);
+      }
+      if (json.data.owner_email) {
+        state.ownerEmail = json.data.owner_email;
+        localStorage.setItem('ci_owner_email', state.ownerEmail);
+      }
+      if (json.data.is_authenticated) {
+        state.isAuthenticated = true;
+      }
     }
-  } catch (_) {}
+  } catch {
+    state.isOwnerRegistered = Boolean(localStorage.getItem('ci_owner_username'));
+  }
 }
 
-export async function registerOwner(username, email, password) {
-  const res = await fetch('./api/v1/auth.php?action=register_owner', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ username, email, password }),
-  });
-  return res.json().catch(() => ({ ok: false }));
-}
-
-export async function loginOwner(username, password) {
+export async function loginOrRegisterOwner(username, email, password) {
+  const action = state.isOwnerRegistered ? 'login' : 'register_owner';
   try {
-    const res = await fetch('./api/v1/auth.php?action=login', {
+    const res = await fetch(`./api/v1/auth.php?action=${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password }),
+      body: JSON.stringify({ username, email, password }),
     });
     const json = await res.json();
     if (json && json.ok) {
-      if (json.data) {
-        state.ownerUsername = json.data.owner_username || state.ownerUsername || username;
-        state.ownerEmail = json.data.owner_email || state.ownerEmail;
-        localStorage.setItem('ci_owner_username', state.ownerUsername);
-        if (state.ownerEmail) localStorage.setItem('ci_owner_email', state.ownerEmail);
-      }
+      state.isOwnerRegistered = true;
+      state.isAuthenticated = true;
+      state.ownerUsername = (json.data && json.data.owner_username) || username;
+      state.ownerEmail = (json.data && json.data.owner_email) || email || state.ownerEmail;
+      localStorage.setItem('ci_owner_username', state.ownerUsername);
+      if (state.ownerEmail) localStorage.setItem('ci_owner_email', state.ownerEmail);
+      return { ok: true };
+    }
+    return {
+      ok: false,
+      errorKey:
+        json && json.error && json.error.code === 'ERR_INVALID_CREDENTIALS'
+          ? 'login_error_invalid_credentials'
+          : 'login_error_invalid_credentials',
+    };
+  } catch {
+    return { ok: false, errorKey: 'login_error_invalid_credentials' };
+  }
+}
+
+export async function updateOwnerEmailOnServer(email) {
+  try {
+    const res = await fetch('./api/v1/auth.php?action=update_profile', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const json = await res.json();
+    if (json && json.ok) {
+      state.ownerEmail = email;
+      localStorage.setItem('ci_owner_email', email);
       return true;
     }
-  } catch (_) {}
-
-  // Fallback for offline/local personal owner
-  const savedPass = localStorage.getItem('ci_owner_pass_b64');
-  if (
-    username.toLowerCase() === (state.ownerUsername || '').toLowerCase() &&
-    savedPass === btoa(unescape(encodeURIComponent(password)))
-  ) {
-    return true;
+  } catch {
+    // Fallback local
   }
-  return false;
+  state.ownerEmail = email;
+  localStorage.setItem('ci_owner_email', email);
+  return true;
 }
 
-export async function updateOwnerEmail(email) {
-  const res = await fetch('./api/v1/auth.php?action=update_profile', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  });
-  return res.json().catch(() => ({ ok: false }));
-}
-
-export async function updateOwnerPassword(newPassword) {
-  const res = await fetch('./api/v1/auth.php?action=change_password', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ new_password: newPassword }),
-  });
-  return res.json().catch(() => ({ ok: false }));
-}
-
-export async function requestPasswordReset(email) {
-  const res = await fetch('./api/v1/auth.php?action=request_password_reset', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email }),
-  });
-  return res.json().catch(() => ({ ok: false }));
-}
-
-export async function confirmPasswordReset(email, code, newPassword) {
-  const res = await fetch('./api/v1/auth.php?action=confirm_password_reset', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email, code, new_password: newPassword }),
-  });
-  return res.json().catch(() => ({ ok: false }));
-}
-
-export async function syncSymbolNow(symbolCode, requestedTimeframe = null, onUpdate = null) {
-  const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
-  if (!sym) return;
-  const tf =
-    sym.activeProvider === 'eia_brent_spot'
-      ? 'D1'
-      : String(requestedTimeframe || sym.timeframe || 'M15').toUpperCase();
-  sym.timeframe = tf;
-  sym.isSyncing = true;
-  sym.hasError = false;
-
-  const tabId = `${sym.symbolCode}_${sym.activeProvider}`;
-  const openTab = state.openTabs.find((t) => t.tabId === tabId);
-  if (openTab) {
-    openTab.isLoading = openTab.candles.length === 0;
-    openTab.hasError = false;
-  }
-  if (onUpdate) onUpdate();
-
-  let fetchedCandles = [];
+export async function updateOwnerPasswordOnServer(newPassword) {
   try {
-    const limit = state.chartPreferences.candleFetchLimit || 160;
-    const url = `./api/v1/candles_sync.php?symbol=${encodeURIComponent(
-      sym.symbolCode
-    )}&provider=${encodeURIComponent(sym.activeProvider)}&timeframe=${encodeURIComponent(
-      tf
-    )}&limit=${limit}`;
-    const res = await fetch(url);
+    const res = await fetch('./api/v1/auth.php?action=change_password', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ new_password: newPassword }),
+    });
+    const json = await res.json();
+    return Boolean(json && json.ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function requestPasswordResetCode(email) {
+  try {
+    const res = await fetch('./api/v1/auth.php?action=request_password_reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email }),
+    });
+    const json = await res.json();
+    return Boolean(json && json.ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function confirmPasswordResetCode(email, code, newPassword) {
+  try {
+    const res = await fetch('./api/v1/auth.php?action=confirm_password_reset', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, code, new_password: newPassword }),
+    });
+    const json = await res.json();
+    return Boolean(json && json.ok);
+  } catch {
+    return false;
+  }
+}
+
+export async function logoutOwnerOnServer() {
+  try {
+    await fetch('./api/v1/auth.php?action=logout', { method: 'POST' });
+  } catch {
+    // Ignore network error on logout
+  }
+  state.isAuthenticated = false;
+}
+
+function computeExpectedLastClosedOpenMs(timeframe, nowMs = Date.now()) {
+  const normTf = String(timeframe || 'M15').toUpperCase();
+  const stepMs = PriceFormatter.stepMilliseconds(normTf);
+  const currentBucketOpenMs = Math.floor(nowMs / stepMs) * stepMs;
+  const candidateOpenMs = currentBucketOpenMs - stepMs;
+
+  const d = new Date(nowMs);
+  const dow = d.getUTCDay(); // 0 = Sun, 1 = Mon, ..., 6 = Sat
+  const hour = d.getUTCHours();
+
+  if (normTf === 'D1') {
+    const todayMidnightMs = Math.floor(nowMs / 86400000) * 86400000;
+    if (dow === 1) return todayMidnightMs - 3 * 86400000;
+    if (dow === 0) return todayMidnightMs - 2 * 86400000;
+    if (dow === 6) return todayMidnightMs - 86400000;
+    return todayMidnightMs - 86400000;
+  }
+
+  if (dow === 6 || (dow === 0 && hour < 23)) {
+    const daysBackToFriday = dow === 6 ? 1 : 2;
+    const fridayMidnightMs = Math.floor(nowMs / 86400000) * 86400000 - daysBackToFriday * 86400000;
+    if (normTf === 'H4') return fridayMidnightMs + 20 * 3600000;
+    if (normTf === 'H1') return fridayMidnightMs + 21 * 3600000;
+    return fridayMidnightMs + 21 * 3600000 + 45 * 60000;
+  }
+
+  return candidateOpenMs;
+}
+
+/**
+ * Browser-side TradingView WebSocket fallback (`wss://data.tradingview.com/socket.io/websocket`)
+ * in case the PHP host has outbound sockets disabled or returns a cached pre-weekend JSON file.
+ */
+function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300, nowMs = Date.now()) {
+  return new Promise((resolve) => {
+    if (typeof WebSocket === 'undefined') {
+      resolve([]);
+      return;
+    }
+    const normTf = String(timeframe || 'M15').toUpperCase();
+    const tvInterval =
+      normTf === 'M15' ? '15' : normTf === 'H1' ? '60' : normTf === 'H4' ? '240' : '1D';
+    const stepMs = PriceFormatter.stepMilliseconds(normTf);
+
+    let exchange = 'PEPPERSTONE';
+    let tvTicker = symbolCode;
+    if (symbolCode === 'XAUUSD' || symbolCode === 'XAGUSD' || symbolCode === 'EURUSD') {
+      exchange = 'OANDA';
+    } else if (symbolCode === 'BRENT_FUTURES') {
+      exchange = 'NYMEX';
+      tvTicker = 'BZ1!';
+    }
+
+    const packMsg = (m, p) => {
+      const s = JSON.stringify({ m, p });
+      return `~m~${s.length}~m~${s}`;
+    };
+
+    let rawBuffer = '';
+    let settled = false;
+    let ws = null;
+    const finish = (bars) => {
+      if (settled) return;
+      settled = true;
+      try {
+        if (ws && ws.readyState <= 1) ws.close();
+      } catch {
+        // Ignore
+      }
+      resolve(bars);
+    };
+
+    const timer = setTimeout(() => finish([]), 6500);
+
+    try {
+      ws = new WebSocket('wss://data.tradingview.com/socket.io/websocket?from=chart%2F');
+      const chartSession = 'cs_' + Math.random().toString(36).slice(2, 14);
+      ws.onopen = () => {
+        const symArg = JSON.stringify({
+          symbol: `${exchange}:${tvTicker}`,
+          adjustment: 'splits',
+          session: 'regular',
+        });
+        ws.send(packMsg('set_auth_token', ['unauthorized_user_token']));
+        ws.send(packMsg('chart_create_session', [chartSession, '']));
+        ws.send(packMsg('switch_timezone', [chartSession, 'Etc/UTC']));
+        ws.send(packMsg('resolve_symbol', [chartSession, 'symbol_1', `=${symArg}`]));
+        ws.send(packMsg('create_series', [chartSession, 's1', 's1', 'symbol_1', tvInterval, nBars]));
+      };
+
+      ws.onmessage = (ev) => {
+        const text = String(ev.data || '');
+        if (text.startsWith('~m~') && text.includes('~h~')) {
+          ws.send(text);
+          return;
+        }
+        rawBuffer += text;
+        if (rawBuffer.includes('"series_completed"') || text.includes('"symbol_error"')) {
+          clearTimeout(timer);
+          const out = [];
+          const regex = /"s":\[(\{"i":.*?\})\]/gs;
+          let m;
+          while ((m = regex.exec(rawBuffer)) !== null) {
+            try {
+              const items = JSON.parse('[' + m[1] + ']');
+              for (const item of items) {
+                const v = item && item.v;
+                if (!Array.isArray(v) || v.length < 5) continue;
+                const epochSec = Math.round(Number(v[0]));
+                const rawMs = epochSec * 1000;
+                let openMs;
+                if (normTf === 'D1') {
+                  const hourUtc = new Date(rawMs).getUTCHours();
+                  const adjustedMs = hourUtc >= 21 ? rawMs + 4 * 3600000 : rawMs;
+                  openMs = Math.floor(adjustedMs / stepMs) * stepMs;
+                  if (rawMs + stepMs > nowMs || openMs + stepMs > nowMs) continue;
+                } else if (normTf === 'H4') {
+                  openMs = Math.floor(rawMs / stepMs) * stepMs;
+                  if (rawMs + stepMs > nowMs || openMs + stepMs > nowMs) continue;
+                } else {
+                  openMs = Math.floor(rawMs / stepMs) * stepMs;
+                  if (openMs + stepMs > nowMs) continue;
+                }
+                const norm = normalizeCandle(
+                  {
+                    open_time_utc_ms: openMs,
+                    open: v[1],
+                    high: v[2],
+                    low: v[3],
+                    close: v[4],
+                    volume: v[5] || 0,
+                  },
+                  normTf,
+                  nowMs
+                );
+                if (norm) out.push(norm);
+              }
+            } catch {
+              // Ignore malformed chunk
+            }
+          }
+          finish(out);
+        }
+      };
+
+      ws.onerror = () => {
+        clearTimeout(timer);
+        finish([]);
+      };
+      ws.onclose = () => {
+        clearTimeout(timer);
+        finish([]);
+      };
+    } catch {
+      clearTimeout(timer);
+      finish([]);
+    }
+  });
+}
+
+async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, forceRefresh = true) {
+  const normTf = provider === 'eia_brent_spot' ? 'D1' : String(timeframe || 'M15').toUpperCase();
+  const safeLimit = Math.max(40, Math.min(5000, Number(limit) || 500));
+  const nowMs = Date.now();
+  const refreshParam = forceRefresh ? '&refresh=1' : '';
+  const url = `./api/v1/candles_sync.php?symbol=${encodeURIComponent(
+    symbolCode
+  )}&provider=${encodeURIComponent(provider)}&timeframe=${encodeURIComponent(
+    normTf
+  )}&limit=${safeLimit}${refreshParam}&_t=${nowMs}`;
+
+  let candles = [];
+  try {
+    const res = await fetch(url, { cache: 'no-store' });
     const json = await res.json();
     if (json && json.ok && json.data && Array.isArray(json.data.candles)) {
-      fetchedCandles = json.data.candles;
+      candles = mergeCandlesIdempotent([], json.data.candles, normTf, nowMs);
     }
-  } catch (_) {}
-
-  if (fetchedCandles.length > 0) {
-    saveCandlesToCache(sym.symbolCode, sym.activeProvider, tf, fetchedCandles);
-    sym.candles = fetchedCandles;
-    sym.hasError = false;
-    state.statusBannerKey = 'status_synced_ok';
-  } else {
-    sym.candles = getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, tf);
-    sym.hasError = sym.candles.length === 0;
+  } catch {
+    candles = [];
   }
 
-  const latest = sym.candles[sym.candles.length - 1];
-  sym.lastClose = latest ? latest.close : null;
-  sym.lastCandleUtc = latest ? latest.open_time_utc_iso : null;
-  sym.isSyncing = false;
-
-  if (openTab) {
-    const oldLen = (openTab.candles || []).length;
-    const newLen = sym.candles.length;
-    if (openTab.timeframe === tf && openTab.scrollOffset > 0 && oldLen > 0 && newLen >= oldLen) {
-      openTab.scrollOffset += newLen - oldLen;
+  // Fallback to static JSON in data/tvdatafeed if PHP API is not running in static preview mode
+  if (candles.length === 0 && provider === 'tvdatafeed') {
+    try {
+      const staticRes = await fetch(
+        `./data/tvdatafeed/${encodeURIComponent(symbolCode)}_${encodeURIComponent(normTf)}.json?_t=${nowMs}`,
+        { cache: 'no-store' }
+      );
+      const staticJson = await staticRes.json();
+      if (staticJson && Array.isArray(staticJson.candles)) {
+        candles = mergeCandlesIdempotent([], staticJson.candles, normTf, nowMs).slice(-safeLimit);
+      }
+    } catch {
+      // Ignore static fallback error
     }
-    openTab.timeframe = tf;
-    openTab.candles = sym.candles;
-    openTab.isLoading = false;
-    openTab.hasError = sym.candles.length === 0;
   }
-  saveSymbolsToStorage();
-  if (onUpdate) onUpdate();
+
+  // Check if the returned candles are behind the current expected closed UTC candle
+  const lastStoredOpenMs = candles.length > 0 ? Number(candles[candles.length - 1].open_time_utc_ms) : 0;
+  const expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMs);
+
+  if (provider === 'tvdatafeed' && (candles.length === 0 || lastStoredOpenMs < expectedLastClosedOpenMs)) {
+    const stepMs = PriceFormatter.stepMilliseconds(normTf);
+    const gapBars =
+      lastStoredOpenMs > 0
+        ? Math.min(1500, Math.max(120, Math.ceil((nowMs - lastStoredOpenMs) / stepMs) + 32))
+        : Math.min(1500, safeLimit);
+
+    const liveWsBars = await fetchDirectFromTradingViewBrowserWs(symbolCode, normTf, gapBars, nowMs);
+    if (liveWsBars.length > 0) {
+      candles = mergeCandlesIdempotent(candles, liveWsBars, normTf, nowMs);
+    }
+    if (normTf === 'H4') {
+      const liveH1Bars = await fetchDirectFromTradingViewBrowserWs(
+        symbolCode,
+        'H1',
+        Math.min(1500, gapBars * 4),
+        nowMs
+      );
+      if (liveH1Bars.length > 0) {
+        const aggH4 = TimeframeAggregator.aggregateCandles(liveH1Bars, 'H4', nowMs);
+        candles = mergeCandlesIdempotent(candles, aggH4, 'H4', nowMs);
+      }
+    }
+  }
+
+  return candles.slice(-safeLimit);
+}
+
+/**
+ * Syncs a symbol from its last stored candle right up to now across M15, H1, and H4
+ * (plus D1 when requested), ensuring all intraday timeframes immediately reflect
+ * every closed candle after market open.
+ */
+export async function syncSymbolNow(symbolCode, requestedTf, renderCallback) {
+  const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
+  if (!sym) return;
+
+  sym.isSyncing = true;
+  sym.syncError = false;
+  if (typeof renderCallback === 'function') renderCallback();
+
+  const effectiveTf =
+    sym.activeProvider === 'eia_brent_spot'
+      ? 'D1'
+      : String(requestedTf || sym.timeframe || 'M15').toUpperCase();
+  const fetchLimit = Math.max(40, Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 500));
+
+  const timeframesToSync =
+    sym.activeProvider === 'eia_brent_spot'
+      ? ['D1']
+      : Array.from(new Set(['M15', 'H1', 'H4', effectiveTf]));
+
+  try {
+    const results = await Promise.all(
+      timeframesToSync.map(async (tf) => {
+        const incoming = await fetchFromBackend(symbolCode, sym.activeProvider, tf, fetchLimit, true);
+        return [tf, incoming];
+      })
+    );
+
+    const syncedByTf = {};
+    for (const [tf, incoming] of results) {
+      const cacheKey = `${symbolCode}_${sym.activeProvider}_${tf}`;
+      const existing = state.candleCache[cacheKey] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
+      const merged =
+        incoming && incoming.length > 0
+          ? mergeCandlesIdempotent(existing, incoming, tf).slice(-fetchLimit)
+          : existing;
+      syncedByTf[tf] = merged;
+    }
+
+    // Cross-aggregate M15 -> H1 -> H4 so H1 and H4 always include all newly closed M15/H1 buckets
+    const m15Bars = syncedByTf.M15 || [];
+    if (m15Bars.length > 0) {
+      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_M15`, m15Bars, fetchLimit);
+      const aggH1 = TimeframeAggregator.aggregateCandles(m15Bars, 'H1');
+      syncedByTf.H1 = mergeCandlesIdempotent(syncedByTf.H1 || [], aggH1, 'H1').slice(-fetchLimit);
+    }
+
+    const h1Bars = syncedByTf.H1 || [];
+    if (h1Bars.length > 0) {
+      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_H1`, h1Bars, fetchLimit);
+      const aggH4 = TimeframeAggregator.aggregateCandles(h1Bars, 'H4');
+      syncedByTf.H4 = mergeCandlesIdempotent(syncedByTf.H4 || [], aggH4, 'H4').slice(-fetchLimit);
+    }
+
+    for (const tf of Object.keys(syncedByTf)) {
+      const bars = syncedByTf[tf] || [];
+      if (bars.length > 0) {
+        saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_${tf}`, bars, fetchLimit);
+      }
+    }
+
+    const activeCandles =
+      syncedByTf[effectiveTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, effectiveTf);
+
+    sym.timeframe = effectiveTf;
+    sym.candles = activeCandles;
+    const latestQuoteBar =
+      effectiveTf === 'D1' && m15Bars.length > 0
+        ? m15Bars[m15Bars.length - 1]
+        : activeCandles[activeCandles.length - 1];
+
+    if (latestQuoteBar) {
+      sym.lastClose = Number(latestQuoteBar.close);
+      sym.lastCandleUtc =
+        (activeCandles[activeCandles.length - 1] &&
+          activeCandles[activeCandles.length - 1].open_time_utc_iso) ||
+        latestQuoteBar.open_time_utc_iso;
+      sym.syncError = false;
+    } else {
+      sym.syncError = true;
+    }
+
+    // Refresh all open workspace tabs for this symbol across M15, H1, H4, D1
+    for (const tab of state.openTabs) {
+      if (tab.symbolCode === symbolCode) {
+        const tabTf = sym.activeProvider === 'eia_brent_spot' ? 'D1' : tab.timeframe;
+        tab.provider = sym.activeProvider;
+        tab.timeframe = tabTf;
+        tab.candles =
+          syncedByTf[tabTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tabTf);
+      }
+    }
+
+    saveSymbolsToStorage();
+  } catch {
+    sym.syncError = true;
+  } finally {
+    sym.isSyncing = false;
+    if (typeof renderCallback === 'function') renderCallback();
+  }
+}
+
+export async function syncAllWatchlistSymbols(renderCallback) {
+  const watchlist = state.symbols.filter((s) => s.inWatchlist);
+  for (const sym of watchlist) {
+    const activeTab = state.openTabs.find(
+      (t) => t.tabId === state.activeTabId && t.symbolCode === sym.symbolCode
+    );
+    const tf = activeTab ? activeTab.timeframe : sym.timeframe || 'M15';
+    await syncSymbolNow(sym.symbolCode, tf, renderCallback);
+  }
 }

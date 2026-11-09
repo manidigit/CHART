@@ -418,22 +418,44 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // User Drawings (H-Line, V-Line, Trend Line)
+  // User Drawings (supports both hline/horizontal_line, vline/vertical_line, trend/trend_line)
   const drawings = tab.drawings || [];
+  const visibleTimestamps = visible.map((c) =>
+    Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0))
+  );
+  const stepMs = PriceFormatter.stepMilliseconds(tab.timeframe);
+  const timeToX = (tMs) => {
+    const numMs = Number(tMs);
+    const idx = visibleTimestamps.findIndex((vt) => vt >= numMs);
+    if (idx !== -1) return idxToX(idx);
+    if (visibleTimestamps.length > 0 && numMs < visibleTimestamps[0]) return 0;
+    return chartW;
+  };
+  const xToTime = (xPx) => {
+    if (!visibleTimestamps.length) return 0;
+    const i = Math.max(0, Math.min(visibleTimestamps.length - 1, Math.floor(xPx / Math.max(1, slotW))));
+    return visibleTimestamps[i];
+  };
+
   drawings.forEach((d) => {
     const isSel = tab.selectedDrawingId === d.id;
+    const isHLine = d.type === 'hline' || d.type === 'horizontal_line';
+    const isVLine = d.type === 'vline' || d.type === 'vertical_line';
+    const isTrend = d.type === 'trend' || d.type === 'trend_line';
     const strokeCol =
       d.colorHex ||
-      (d.type === 'hline'
+      (isHLine
         ? prefs.hLineColor || '#F59E0B'
-        : d.type === 'vline'
+        : isVLine
           ? prefs.vLineColor || '#A855F7'
           : prefs.trendColor || '#2962FF');
+    const baseW = Number(d.lineWidthPx || d.strokeWidthPx || 2);
     ctx.strokeStyle = isSel ? '#FFFFFF' : strokeCol;
-    ctx.lineWidth = isSel ? (d.lineWidthPx || 2) + 1.2 : d.lineWidthPx || 1.8;
+    ctx.lineWidth = isSel ? baseW + 1.2 : baseW;
 
-    if (d.type === 'hline') {
-      const y = priceToY(d.price1);
+    if (isHLine) {
+      const pVal = Number(d.price1 !== undefined ? d.price1 : d.price);
+      const y = priceToY(pVal);
       if (y >= topPad && y <= topPad + chartH) {
         ctx.beginPath();
         ctx.moveTo(0, y);
@@ -445,22 +467,24 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           ctx.fillText(d.label, 12, Math.max(topPad + 12, y - 4));
         }
       }
-    } else if (d.type === 'vline') {
-      const idx = visible.findIndex((c) => Number(c.openTimeSec) >= Number(d.time1EpochSec));
-      if (idx !== -1) {
-        const x = idxToX(idx);
+    } else if (isVLine) {
+      const tMs = Number(d.timeUtcMillis || (d.time1EpochSec ? d.time1EpochSec * 1000 : 0));
+      const x = timeToX(tMs);
+      if (x >= 0 && x <= chartW) {
         ctx.beginPath();
         ctx.moveTo(x, topPad);
         ctx.lineTo(x, topPad + totalChartH);
         ctx.stroke();
       }
-    } else if (d.type === 'trend') {
-      const idx1 = visible.findIndex((c) => Number(c.openTimeSec) >= Number(d.time1EpochSec));
-      const idx2 = visible.findIndex((c) => Number(c.openTimeSec) >= Number(d.time2EpochSec));
-      const x1 = idx1 !== -1 ? idxToX(idx1) : 0;
-      const x2 = idx2 !== -1 ? idxToX(idx2) : chartW;
-      const y1 = priceToY(d.price1);
-      const y2 = priceToY(d.price2);
+    } else if (isTrend) {
+      const t1Ms = Number(d.startTimeUtcMillis || (d.time1EpochSec ? d.time1EpochSec * 1000 : 0));
+      const t2Ms = Number(d.endTimeUtcMillis || (d.time2EpochSec ? d.time2EpochSec * 1000 : 0));
+      const p1 = Number(d.startPrice !== undefined ? d.startPrice : d.price1);
+      const p2 = Number(d.endPrice !== undefined ? d.endPrice : d.price2);
+      const x1 = timeToX(t1Ms);
+      const x2 = timeToX(t2Ms);
+      const y1 = priceToY(p1);
+      const y2 = priceToY(p2);
       ctx.beginPath();
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
@@ -469,12 +493,21 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   });
 
   // Crosshair (Vertical + Horizontal + Price Pill + UTC Time Pill)
-  if (tab.hoverIndex !== null && tab.hoverIndex >= 0 && tab.hoverIndex < visible.length) {
-    const hc = visible[tab.hoverIndex];
-    const hx = idxToX(tab.hoverIndex);
+  const hoverIdx =
+    tab.hoverIndex !== null && tab.hoverIndex !== undefined
+      ? tab.hoverIndex
+      : tab.crosshairX !== null && tab.crosshairX !== undefined
+        ? Math.max(0, Math.min(visible.length - 1, Math.floor(tab.crosshairX / Math.max(1, slotW))))
+        : null;
+  const hoverYVal =
+    tab.hoverY !== null && tab.hoverY !== undefined ? tab.hoverY : tab.crosshairY;
+
+  if (hoverIdx !== null && hoverIdx >= 0 && hoverIdx < visible.length) {
+    const hc = visible[hoverIdx];
+    const hx = idxToX(hoverIdx);
     const hy =
-      tab.hoverY !== null && tab.hoverY >= topPad && tab.hoverY <= topPad + chartH
-        ? tab.hoverY
+      hoverYVal !== null && hoverYVal !== undefined && hoverYVal >= topPad && hoverYVal <= topPad + chartH
+        ? hoverYVal
         : priceToY(Number(hc.close));
     const hoverPrice = yToPrice(hy);
 
@@ -500,7 +533,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.fillText(PriceFormatter.formatPrice(hoverPrice, tab.decimals), chartW + 6, hy + 4);
 
     // Bottom-axis Crosshair UTC Timestamp Pill
-    const timeText = PriceFormatter.formatCandleUtc(hc.openTimeUtc);
+    const timeText = PriceFormatter.formatCandleUtc(hc.openTimeUtc || hc.open_time_utc_iso);
     ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
     const tw = ctx.measureText(timeText).width + 14;
     const tx = Math.max(2, Math.min(chartW - tw - 2, hx - tw / 2));
@@ -521,5 +554,22 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     maxP,
     yToPrice,
     priceToY,
+  };
+
+  canvas._chartLayout = {
+    padLeft: 0,
+    padTop: topPad,
+    plotW: chartW,
+    plotH: chartH,
+    visible,
+    visibleTimestamps,
+    stepMs,
+    minP,
+    maxP,
+    spanP: Math.max(maxP - minP, 0.0001),
+    priceToY,
+    yToPrice,
+    timeToX,
+    xToTime,
   };
 }

@@ -1,191 +1,143 @@
-import { I18nManager } from './i18n.js';
-import { AuthManager } from './auth.js';
-import { MarketDataClient } from './marketData.js';
-import { CandleAggregator } from './algorithms/candleAggregator.js';
-import { PriceFormatter } from './algorithms/priceFormatter.js';
-import { DrawingGeometry } from './algorithms/drawingGeometry.js';
-import { TechnicalIndicators } from './algorithms/technicalIndicators.js';
+import { I18nManager } from './core/i18n.js';
 import {
   state,
-  saveChartPreferences,
-  registerRenderCallback,
-  triggerRender,
+  savePreferences,
+  saveSymbolsToStorage,
+  saveDrawings,
+  saveLastOpenedSymbol,
+  getCachedOrAggregatedCandles,
 } from './core/store.js';
+import {
+  syncServerAuthStatus,
+  loginOrRegisterOwner,
+  updateOwnerEmailOnServer,
+  updateOwnerPasswordOnServer,
+  requestPasswordResetCode,
+  confirmPasswordResetCode,
+  logoutOwnerOnServer,
+  syncSymbolNow,
+  syncAllWatchlistSymbols,
+} from './services/apiService.js';
+import { PriceFormatter } from './algorithms/priceFormatter.js';
 import { renderCandlestickCanvas } from './components/chartRenderer.js';
-import { renderAuthModal } from './views/authView.js';
+import { renderLoginScreen } from './views/loginView.js';
+import { renderTopHeaderBar, renderSubToolbar } from './views/headerView.js';
+import { renderLeftToolRail } from './views/toolRailView.js';
 import { renderWatchlistContent, renderSymbolOverviewModal } from './views/watchlistView.js';
 import { renderAnalysisContent } from './views/analysisView.js';
 import { renderSettingsContent } from './views/settingsView.js';
-import { renderTopHeaderBar, renderSubToolbar } from './views/headerView.js';
-import { renderLeftToolRail } from './views/toolRailView.js';
+import { renderBottomNav } from './views/navigationView.js';
 
-const i18n = new I18nManager('fa');
-const auth = new AuthManager();
-const marketClient = new MarketDataClient('./api/candles.php');
+const i18n = new I18nManager();
+let countdownIntervalId = null;
 
-function applyThemeClass() {
-  document.body.classList.toggle('theme-light', !state.isDarkTheme);
+function applyTheme() {
+  document.documentElement.setAttribute('data-theme', state.isDarkTheme ? 'dark' : 'light');
+  localStorage.setItem('ci_theme_dark', state.isDarkTheme ? 'true' : 'false');
 }
 
-async function persistRemoteWorkspaceNow() {
-  if (!auth.isAuthenticated()) return;
-  await auth.saveRemoteWorkspace({
-    symbols: state.symbols.map((s) => ({
-      symbolCode: s.symbolCode,
-      inWatchlist: s.inWatchlist,
-      activeProvider: s.activeProvider,
-      allowedProviders: s.allowedProviders,
-      decimals: s.decimals,
-      isCustom: Boolean(s.isCustom),
-      customTitle: s.customTitle || '',
-    })),
-    chartPreferences: state.chartPreferences,
-    openTabs: state.openTabs.map((t) => ({
-      tabId: t.tabId,
-      symbolCode: t.symbolCode,
-      provider: t.provider,
-      timeframe: t.timeframe,
-      chartType: t.chartType,
-      showVolume: t.showVolume !== false,
-      volumePaneRatio: t.volumePaneRatio || 0.22,
-      showSma20: Boolean(t.showSma20),
-      isLogScale: Boolean(t.isLogScale ?? state.chartPreferences.isLogScale),
-      selectedRangePreset: t.selectedRangePreset || null,
-      activeDrawingColorHex: t.activeDrawingColorHex || '#2962FF',
-      activeDrawingWidthPx: t.activeDrawingWidthPx || 2.0,
-      drawings: t.drawings || [],
-    })),
-    activeTabId: state.activeTabId,
-  });
+function getActiveTab() {
+  return state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0] || null;
 }
 
-async function applyRemoteWorkspaceIfPresent() {
-  const ws = await auth.fetchRemoteWorkspace();
-  if (!ws || typeof ws !== 'object') return;
-  if (ws.chartPreferences && typeof ws.chartPreferences === 'object') {
-    state.chartPreferences = { ...state.chartPreferences, ...ws.chartPreferences };
-    saveChartPreferences(state.chartPreferences);
-  }
-  if (Array.isArray(ws.symbols)) {
-    ws.symbols.forEach((remoteSym) => {
-      const existing = state.symbols.find((s) => s.symbolCode === remoteSym.symbolCode);
-      if (existing) {
-        existing.inWatchlist = Boolean(remoteSym.inWatchlist);
-        if (remoteSym.activeProvider) existing.activeProvider = remoteSym.activeProvider;
-      } else if (remoteSym.symbolCode) {
-        state.symbols.push({
-          symbolCode: remoteSym.symbolCode,
-          inWatchlist: Boolean(remoteSym.inWatchlist),
-          activeProvider: remoteSym.activeProvider || 'twelve_data',
-          allowedProviders: remoteSym.allowedProviders || ['twelve_data', 'yahoo_finance'],
-          decimals: Number(remoteSym.decimals ?? 2),
-          lastClose: 0,
-          lastCandleUtc: '',
-          candles: [],
-          isSyncing: false,
-          syncError: false,
-          isCustom: true,
-          customTitle: remoteSym.customTitle || remoteSym.symbolCode,
-        });
-      }
-    });
-  }
-}
+function ensureInitialTabs() {
+  if (state.openTabs.length > 0) return;
+  const watchlist = state.symbols.filter((s) => s.inWatchlist);
+  const listToOpen = watchlist.length > 0 ? watchlist.slice(0, 2) : state.symbols.slice(0, 2);
 
-async function syncSymbolUpToNow(symbolCode) {
-  const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
-  if (!sym) return;
-  sym.isSyncing = true;
-  sym.syncError = false;
-  triggerRender();
-
-  const baseTf = sym.activeProvider === 'eia_brent_spot' ? 'D1' : 'M15';
-  const fetchLimit = state.chartPreferences.candleFetchLimit || 500;
-  try {
-    const candles = await marketClient.fetchClosedCandles({
-      symbol: sym.symbolCode,
+  listToOpen.forEach((sym) => {
+    const tf = sym.activeProvider === 'eia_brent_spot' ? 'D1' : sym.timeframe || 'M15';
+    const tabId = `tab_${sym.symbolCode}_${tf}`;
+    const drawKey = `${sym.symbolCode}_${tf}`;
+    const cached = getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, tf);
+    state.openTabs.push({
+      tabId,
+      symbolCode: sym.symbolCode,
       provider: sym.activeProvider,
-      timeframe: baseTf,
-      limit: fetchLimit,
+      timeframe: tf,
+      decimals: sym.decimals,
+      candles: cached.length > 0 ? cached : sym.candles || [],
+      chartType: 'candles',
+      showVolume: true,
+      volumePaneRatio: 0.22,
+      showSma20: false,
+      isLogScale: Boolean(state.chartPreferences.isLogScale),
+      selectedRangePreset: null,
+      visibleCount: 48,
+      scrollOffset: 0,
+      priceScaleFactor: 1.0,
+      verticalPriceOffset: 0.0,
+      hoverIndex: null,
+      hoverY: null,
+      activeTool: 'cursor',
+      activeDrawingColorHex: '#2962FF',
+      activeDrawingWidthPx: 2.0,
+      selectedDrawingId: null,
+      pendingTrendStart: null,
+      drawings: state.drawingsByChartId[drawKey] || [],
     });
-    sym.isSyncing = false;
-    if (candles.length > 0) {
-      sym.candles = candles;
-      const last = candles[candles.length - 1];
-      sym.lastClose = Number(last.close);
-      sym.lastCandleUtc = PriceFormatter.formatCandleUtc(last.openTimeUtc);
-      sym.syncError = false;
-    }
-  } catch (e) {
-    sym.isSyncing = false;
-    sym.syncError = true;
-  }
+  });
 
-  for (const tab of state.openTabs) {
-    if (tab.symbolCode === symbolCode) {
-      tab.provider = sym.activeProvider;
-      if (sym.activeProvider === 'eia_brent_spot') tab.timeframe = 'D1';
-      tab.candles = CandleAggregator.aggregate(sym.candles, tab.timeframe);
-    }
+  if (state.openTabs.length > 0) {
+    const preferred = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
+    state.activeTabId = preferred ? preferred.tabId : state.openTabs[0].tabId;
   }
-  triggerRender();
 }
 
-async function syncAllWatchlist() {
-  const active = state.symbols.filter((s) => s.inWatchlist);
-  await Promise.all(active.map((s) => syncSymbolUpToNow(s.symbolCode)));
-}
-
-async function openSymbolInTab(symbolCode) {
+function openOrFocusSymbolTab(symbolCode, requestedTf) {
   const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
   if (!sym) return;
+  const tf =
+    sym.activeProvider === 'eia_brent_spot'
+      ? 'D1'
+      : requestedTf || sym.timeframe || 'M15';
+  saveLastOpenedSymbol(symbolCode);
 
-  const existing = state.openTabs.find((t) => t.symbolCode === symbolCode);
+  let existing = state.openTabs.find((t) => t.symbolCode === symbolCode);
+  const cached = getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
   if (existing) {
+    existing.timeframe = tf;
+    existing.provider = sym.activeProvider;
+    existing.candles = cached.length > 0 ? cached : sym.candles || [];
+    existing.drawings = state.drawingsByChartId[`${symbolCode}_${tf}`] || [];
     state.activeTabId = existing.tabId;
-    state.symbolOverviewCode = null;
-    triggerRender();
-    return;
+  } else {
+    const tabId = `tab_${symbolCode}_${Date.now()}`;
+    const newTab = {
+      tabId,
+      symbolCode: sym.symbolCode,
+      provider: sym.activeProvider,
+      timeframe: tf,
+      decimals: sym.decimals,
+      candles: cached.length > 0 ? cached : sym.candles || [],
+      chartType: 'candles',
+      showVolume: true,
+      volumePaneRatio: 0.22,
+      showSma20: false,
+      isLogScale: Boolean(state.chartPreferences.isLogScale),
+      selectedRangePreset: null,
+      visibleCount: 48,
+      scrollOffset: 0,
+      priceScaleFactor: 1.0,
+      verticalPriceOffset: 0.0,
+      hoverIndex: null,
+      hoverY: null,
+      activeTool: 'cursor',
+      activeDrawingColorHex: '#2962FF',
+      activeDrawingWidthPx: 2.0,
+      selectedDrawingId: null,
+      pendingTrendStart: null,
+      drawings: state.drawingsByChartId[`${symbolCode}_${tf}`] || [],
+    };
+    state.openTabs.push(newTab);
+    state.activeTabId = tabId;
   }
 
-  const defaultTf = sym.activeProvider === 'eia_brent_spot' ? 'D1' : 'M15';
-  if (sym.candles.length === 0) {
-    await syncSymbolUpToNow(symbolCode);
-  }
-
-  const tabId = `${symbolCode}_${Date.now()}`;
-  state.openTabs.push({
-    tabId,
-    symbolCode,
-    provider: sym.activeProvider,
-    decimals: sym.decimals,
-    timeframe: defaultTf,
-    chartType: 'candles',
-    activeTool: 'cursor',
-    candles: CandleAggregator.aggregate(sym.candles, defaultTf),
-    visibleCount: 48,
-    scrollOffset: 0,
-    priceScaleFactor: 1.0,
-    verticalPriceOffset: 0.0,
-    showVolume: true,
-    volumePaneRatio: 0.22,
-    showSma20: false,
-    isLogScale: Boolean(state.chartPreferences.isLogScale),
-    selectedRangePreset: null,
-    activeDrawingColorHex: state.chartPreferences.defaultLineColor || '#2962FF',
-    activeDrawingWidthPx: state.chartPreferences.defaultLineWidthPx || 2.0,
-    hoverIndex: null,
-    hoverY: null,
-    drawings: [],
-    selectedDrawingId: null,
-    pendingTrendStart: null,
-  });
-  state.activeTabId = tabId;
-  state.symbolOverviewCode = null;
-  triggerRender();
+  // Trigger live multi-timeframe sync (M15, H1, H4) if cache is empty or needs update
+  syncSymbolNow(symbolCode, tf, renderApp);
 }
 
-function renderFloatingOhlcBar(activeTab) {
+function renderOhlcvRibbon(activeTab) {
   if (!activeTab || !activeTab.candles || activeTab.candles.length === 0) return '';
   const visibleCount = Math.max(15, Math.min(180, Math.round(activeTab.visibleCount || 48)));
   const maxOffset = Math.max(0, activeTab.candles.length - 5);
@@ -193,74 +145,80 @@ function renderFloatingOhlcBar(activeTab) {
   const endIdx = Math.max(1, activeTab.candles.length - offset);
   const startIdx = Math.max(0, endIdx - visibleCount);
   const visible = activeTab.candles.slice(startIdx, endIdx);
-  const ref =
+
+  const c =
     activeTab.hoverIndex !== null && visible[activeTab.hoverIndex]
       ? visible[activeTab.hoverIndex]
-      : visible[visible.length - 1] || activeTab.candles[activeTab.candles.length - 1];
-  if (!ref) return '';
+      : activeTab.candles[activeTab.candles.length - 1];
+  if (!c) return '';
 
-  const isBull = Number(ref.close) >= Number(ref.open);
-  const valColor = isBull ? 'var(--bull)' : 'var(--bear)';
-  const d = activeTab.decimals;
-  const smaArr = activeTab.showSma20 ? TechnicalIndicators.computeSma(activeTab.candles, 20) : [];
-  const smaVal =
-    activeTab.showSma20 && smaArr.length > 0 ? smaArr[smaArr.length - 1 - offset] : null;
+  const dec = activeTab.decimals;
+  const isBull = Number(c.close) >= Number(c.open);
+  const col = isBull ? 'var(--bull)' : 'var(--bear)';
+  const utcText = PriceFormatter.formatCandleUtc(c.openTimeUtc || c.open_time_utc_iso);
 
   return `
-    <div class="floating-ohlc-bar ltr-num">
+    <div class="ohlcv-ribbon ltr-num" dir="ltr">
       <strong style="color: var(--primary);">${activeTab.symbolCode} · ${PriceFormatter.displayTimeframeLabel(activeTab.timeframe)}</strong>
-      <span>O: <strong style="color:${valColor}">${PriceFormatter.formatPrice(ref.open, d)}</strong></span>
-      <span>H: <strong style="color:${valColor}">${PriceFormatter.formatPrice(ref.high, d)}</strong></span>
-      <span>L: <strong style="color:${valColor}">${PriceFormatter.formatPrice(ref.low, d)}</strong></span>
-      <span>C: <strong style="color:${valColor}">${PriceFormatter.formatPrice(ref.close, d)}</strong></span>
-      <span>V: <strong>${PriceFormatter.formatVolume(ref.volume)}</strong></span>
-      ${smaVal ? `<span style="color: var(--gold);">SMA20: <strong>${PriceFormatter.formatPrice(smaVal, d)}</strong></span>` : ''}
-      <span style="opacity: 0.75;">${PriceFormatter.formatCandleUtc(ref.openTimeUtc)}</span>
+      <span>O <strong style="color: ${col};">${PriceFormatter.formatPrice(c.open, dec)}</strong></span>
+      <span>H <strong style="color: var(--bull);">${PriceFormatter.formatPrice(c.high, dec)}</strong></span>
+      <span>L <strong style="color: var(--bear);">${PriceFormatter.formatPrice(c.low, dec)}</strong></span>
+      <span>C <strong style="color: ${col};">${PriceFormatter.formatPrice(c.close, dec)}</strong></span>
+      <span>V <strong>${PriceFormatter.formatVolume(c.volume)}</strong></span>
+      <span style="color: var(--text-dim);">${utcText}</span>
     </div>
   `;
 }
 
-function renderAddSymbolModal(i18n) {
+function renderAddSymbolModal() {
   if (!state.isAddSymbolModalOpen) return '';
   return `
     <div class="modal-backdrop" data-action="close-add-symbol-modal">
-      <div class="modal-card" onclick="event.stopPropagation()">
+      <div class="modal-card" style="max-width: 400px; padding: 18px;">
         <div class="row-between" style="margin-bottom: 12px;">
           <h4 style="margin: 0;">${i18n.t('settings_add_custom_symbol')}</h4>
           <button class="btn btn-sm btn-icon" data-action="close-add-symbol-modal">✕</button>
         </div>
         <form id="add-symbol-form">
-          <div style="margin-bottom: 10px;">
-            <input class="input-field ltr-num" type="text" name="symbol_code" placeholder="Symbol Code (e.g. BTCUSD)" required />
-          </div>
-          <div style="margin-bottom: 10px;">
-            <input class="input-field" type="text" name="custom_title" placeholder="Title (e.g. Bitcoin Spot)" required />
-          </div>
-          <div style="margin-bottom: 12px;">
-            <input class="input-field ltr-num" type="number" name="decimals" min="0" max="6" value="2" required />
-          </div>
-          <button type="submit" class="btn btn-primary" style="width: 100%;">${i18n.t('settings_add_custom_symbol')}</button>
+          <input class="input-field ltr-num" type="text" name="symbol_code" placeholder="${i18n.t('settings_custom_symbol_code_hint')}" required />
+          <input class="input-field" type="text" name="symbol_title" placeholder="${i18n.t('settings_custom_symbol_title_hint')}" required />
+          <select class="input-field ltr-num" name="provider">
+            <option value="tvdatafeed">TradingView (tvdatafeed)</option>
+            <option value="twelve_data">Twelve Data</option>
+            <option value="dukascopy">Dukascopy</option>
+            <option value="yahoo_finance">Yahoo Finance</option>
+          </select>
+          <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 8px;">
+            ${i18n.t('settings_custom_symbol_save')}
+          </button>
         </form>
       </div>
     </div>
   `;
 }
 
-function renderApp() {
-  applyThemeClass();
-  const root = document.getElementById('app');
+export function renderApp() {
+  applyTheme();
+  const root = document.getElementById('app-root');
   if (!root) return;
 
   if (!state.isAuthenticated) {
-    root.innerHTML = renderAuthModal(i18n);
-    bindAuthEvents();
+    root.innerHTML = renderLoginScreen(i18n);
+    bindAuthForms();
     return;
   }
 
-  const activeTab =
-    state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0] || null;
-  if (activeTab && state.activeTabId !== activeTab.tabId) {
-    state.activeTabId = activeTab.tabId;
+  ensureInitialTabs();
+  const activeTab = getActiveTab();
+  if (activeTab) {
+    const latestCached = getCachedOrAggregatedCandles(
+      activeTab.symbolCode,
+      activeTab.provider,
+      activeTab.timeframe
+    );
+    if (latestCached.length > 0) {
+      activeTab.candles = latestCached;
+    }
   }
 
   let drawerTitle = i18n.t('nav_watchlist');
@@ -276,417 +234,309 @@ function renderApp() {
     drawerBody = renderSettingsContent(i18n);
   }
 
-  const isScrolledBack = activeTab && Number(activeTab.scrollOffset || 0) > 5;
-  const isAutoScale =
-    activeTab &&
-    Number(activeTab.priceScaleFactor || 1) === 1 &&
-    Number(activeTab.verticalPriceOffset || 0) === 0;
-  const isLogScale =
-    activeTab && Boolean(activeTab.isLogScale ?? state.chartPreferences.isLogScale);
-
   root.innerHTML = `
-    <div class="tv-app-shell">
-      ${state.isFullscreen ? '' : renderTopHeaderBar(activeTab, i18n)}
-      ${state.isFullscreen ? '' : renderSubToolbar(activeTab, i18n)}
+    <div class="workspace-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
+      ${renderTopHeaderBar(activeTab, i18n)}
+      ${renderSubToolbar(activeTab, i18n)}
 
-      <div class="tv-main-area">
+      <div class="workspace-body">
         ${renderLeftToolRail(activeTab, i18n)}
 
-        <main class="chart-workspace" dir="ltr">
-          <div class="chart-canvas-box" dir="ltr">
-            ${renderFloatingOhlcBar(activeTab)}
-            <canvas id="main-chart-canvas" class="chart-canvas" dir="ltr"></canvas>
-
-            ${
-              isScrolledBack
-                ? `<div class="chart-floating-controls">
-                    <button class="btn btn-sm btn-primary ltr-num" data-action="reset-view" title="${i18n.t('chart_reset_view')}">
-                      ⏭ Latest
-                    </button>
-                  </div>`
-                : ''
-            }
-
-            ${
-              activeTab
-                ? `<div class="chart-axis-scale-badges">
-                    <button class="axis-badge-btn ${isAutoScale ? 'active' : ''}" data-action="reset-price-scale" title="${i18n.t('chart_auto_scale')}">Auto</button>
-                    <button class="axis-badge-btn ${isLogScale ? 'active' : ''}" data-action="toggle-log-scale" title="${i18n.t('tv_log_scale')}">Log</button>
-                  </div>`
-                : ''
-            }
+        <main class="chart-stage">
+          ${renderOhlcvRibbon(activeTab)}
+          <div class="chart-canvas-wrap">
+            <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
           </div>
         </main>
 
-        <aside class="side-drawer ${state.isSideDrawerOpen ? '' : 'closed'}" dir="${i18n.getCurrentLanguage() === 'fa' ? 'rtl' : 'ltr'}">
-          <div class="side-drawer-header">
-            <span>${drawerTitle}</span>
-            <button class="btn btn-sm btn-icon" data-action="close-drawer">✕</button>
+        <aside class="right-drawer ${state.isSideDrawerOpen ? '' : 'collapsed'}">
+          <div class="drawer-header">
+            <strong>${drawerTitle}</strong>
+            <button class="btn btn-sm btn-icon" data-action="close-drawer" title="Close">✕</button>
           </div>
-          <div class="side-drawer-body">
+          <div class="drawer-body">
             ${drawerBody}
           </div>
         </aside>
       </div>
-      ${renderAddSymbolModal(i18n)}
+
+      ${renderBottomNav(i18n)}
       ${renderSymbolOverviewModal(i18n)}
+      ${renderAddSymbolModal()}
     </div>
   `;
 
-  bindWorkspaceEvents(activeTab);
+  bindSettingsForms();
+  bindCanvasEvents(activeTab);
+  redrawActiveCanvas();
+}
 
+function redrawActiveCanvas() {
   const canvas = document.getElementById('main-chart-canvas');
+  const activeTab = getActiveTab();
   if (canvas && activeTab) {
     renderCandlestickCanvas(canvas, activeTab, i18n);
-    bindCanvasInteractions(canvas, activeTab);
+    const wrap = canvas.closest('.chart-stage');
+    if (wrap) {
+      const oldRibbon = wrap.querySelector('.ohlcv-ribbon');
+      if (oldRibbon) {
+        const temp = document.createElement('div');
+        temp.innerHTML = renderOhlcvRibbon(activeTab);
+        if (temp.firstElementChild) {
+          oldRibbon.replaceWith(temp.firstElementChild);
+        }
+      }
+    }
   }
 }
 
-function bindAuthEvents() {
-  const setupForm = document.getElementById('setup-form');
-  if (setupForm) {
-    setupForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fd = new FormData(setupForm);
-      const u = String(fd.get('username') || '').trim();
-      const em = String(fd.get('email') || '').trim();
-      const p = String(fd.get('password') || '');
-      const c = String(fd.get('confirm') || '');
-      if (!u || !p) {
-        state.authErrorKey = 'error_empty_credentials';
-        return triggerRender();
-      }
-      if (p.length < 4) {
-        state.authErrorKey = 'error_password_short';
-        return triggerRender();
-      }
-      if (p !== c) {
-        state.authErrorKey = 'error_password_mismatch';
-        return triggerRender();
-      }
-      const res = await auth.createOwnerAccount(u, p, em);
-      if (res.ok) {
-        state.hasOwnerAccount = true;
-        state.isAuthenticated = true;
-        state.ownerUsername = auth.getOwnerUsername();
-        state.ownerEmail = auth.getOwnerEmail();
-        await syncAllWatchlist();
-        await openSymbolInTab('SPOTBRENT');
-      } else {
-        state.authErrorKey = res.errorKey;
-        triggerRender();
-      }
-    });
-  }
+function bindCanvasEvents(activeTab) {
+  const canvas = document.getElementById('main-chart-canvas');
+  if (!canvas || !activeTab) return;
 
-  const signinForm = document.getElementById('signin-form');
-  if (signinForm) {
-    signinForm.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const fd = new FormData(signinForm);
-      const u = String(fd.get('username') || '').trim();
-      const p = String(fd.get('password') || '');
-      const res = await auth.signIn(u, p);
-      if (res.ok) {
-        state.isAuthenticated = true;
-        state.ownerUsername = auth.getOwnerUsername();
-        state.ownerEmail = auth.getOwnerEmail();
-        await applyRemoteWorkspaceIfPresent();
-        await syncAllWatchlist();
-        await openSymbolInTab('SPOTBRENT');
-      } else {
-        state.authErrorKey = res.errorKey;
-        triggerRender();
-      }
-    });
-  }
+  let isDragging = false;
+  let dragStartX = 0;
+  let dragStartOffset = 0;
+  let isScalingAxis = false;
+  let scaleStartY = 0;
+  let scaleStartFactor = 1.0;
 
-  document.querySelectorAll('[data-action]').forEach((el) => {
-    el.addEventListener('click', (e) => {
-      const act = e.currentTarget.getAttribute('data-action');
-      if (act === 'set-lang') {
-        i18n.setLanguage(e.currentTarget.getAttribute('data-lang'));
-        triggerRender();
-      } else if (act === 'set-theme') {
-        state.isDarkTheme = e.currentTarget.getAttribute('data-theme') === 'dark';
-        localStorage.setItem('ci_theme_v2', state.isDarkTheme ? 'dark' : 'light');
-        triggerRender();
-      } else if (act === 'open-forgot-password') {
-        state.authViewMode = 'forgot_request';
-        triggerRender();
-      } else if (act === 'back-to-login') {
-        state.authViewMode = 'login';
-        triggerRender();
-      }
-    });
-  });
-}
+  canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const meta = canvas._chartMeta;
+    if (!meta) return;
 
-function bindWorkspaceEvents(activeTab) {
-  const searchInput = document.querySelector('[data-action="watchlist-search"]');
-  if (searchInput) {
-    searchInput.addEventListener('input', (e) => {
-      state.watchlistSearchQuery = e.target.value;
-      triggerRender();
-      const el = document.querySelector('[data-action="watchlist-search"]');
-      if (el) {
-        el.focus();
-        el.setSelectionRange(el.value.length, el.value.length);
-      }
-    });
-  }
-
-  document.querySelectorAll('[data-action]').forEach((el) => {
-    const action = el.getAttribute('data-action');
-    if (
-      action === 'select-provider-dropdown' ||
-      action === 'toggle-watchlist' ||
-      action === 'set-fetch-limit' ||
-      action === 'select-prediction-symbol' ||
-      action === 'toggle-tv-pref' ||
-      action === 'watchlist-search'
-    ) {
+    if (x > meta.chartW) {
+      isScalingAxis = true;
+      scaleStartY = y;
+      scaleStartFactor = Number(activeTab.priceScaleFactor || 1.0);
       return;
     }
-    el.addEventListener('click', async (e) => {
-      e.stopPropagation();
-      if (action === 'open-drawer') {
-        const nav = el.getAttribute('data-nav');
-        if (state.isSideDrawerOpen && state.activeNav === nav) {
-          state.isSideDrawerOpen = false;
+
+    if (activeTab.activeTool && activeTab.activeTool !== 'cursor') {
+      const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
+      const candle = meta.visible[idx];
+      const price = meta.yToPrice(y);
+      if (!candle) return;
+      const openSec = Number(
+        candle.openTimeSec || Math.floor(Number(candle.open_time_utc_ms || 0) / 1000)
+      );
+
+      if (activeTab.activeTool === 'hline') {
+        activeTab.drawings.push({
+          id: 'd_' + Date.now(),
+          type: 'hline',
+          price1: price,
+          colorHex: activeTab.activeDrawingColorHex,
+          lineWidthPx: activeTab.activeDrawingWidthPx,
+        });
+        activeTab.activeTool = 'cursor';
+        saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+        renderApp();
+        return;
+      }
+      if (activeTab.activeTool === 'vline') {
+        activeTab.drawings.push({
+          id: 'd_' + Date.now(),
+          type: 'vline',
+          time1EpochSec: openSec,
+          colorHex: activeTab.activeDrawingColorHex,
+          lineWidthPx: activeTab.activeDrawingWidthPx,
+        });
+        activeTab.activeTool = 'cursor';
+        saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+        renderApp();
+        return;
+      }
+      if (activeTab.activeTool === 'trend') {
+        if (!activeTab.pendingTrendStart) {
+          activeTab.pendingTrendStart = { time1EpochSec: openSec, price1: price };
         } else {
-          state.activeNav = nav;
-          state.isSideDrawerOpen = true;
+          activeTab.drawings.push({
+            id: 'd_' + Date.now(),
+            type: 'trend',
+            time1EpochSec: activeTab.pendingTrendStart.time1EpochSec,
+            price1: activeTab.pendingTrendStart.price1,
+            time2EpochSec: openSec,
+            price2: price,
+            colorHex: activeTab.activeDrawingColorHex,
+            lineWidthPx: activeTab.activeDrawingWidthPx,
+          });
+          activeTab.pendingTrendStart = null;
+          activeTab.activeTool = 'cursor';
+          saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+          renderApp();
         }
-        triggerRender();
-      } else if (action === 'close-drawer') {
-        state.isSideDrawerOpen = false;
-        triggerRender();
-      } else if (action === 'toggle-fullscreen') {
-        state.isFullscreen = !state.isFullscreen;
-        triggerRender();
-      } else if (action === 'open-symbol-overview') {
-        state.symbolOverviewCode = el.getAttribute('data-symbol');
-        triggerRender();
-      } else if (
-        action === 'close-symbol-overview' ||
-        (action === 'close-symbol-overview-backdrop' && e.target === el)
-      ) {
-        state.symbolOverviewCode = null;
-        triggerRender();
-      } else if (action === 'set-overview-range') {
-        state.symbolOverviewRange = el.getAttribute('data-range') || '5D';
-        triggerRender();
-      } else if (action === 'open-chart') {
-        const symCode = el.getAttribute('data-symbol');
-        state.symbolOverviewCode = null;
-        await openSymbolInTab(symCode);
-      } else if (action === 'select-tab') {
-        state.activeTabId = el.getAttribute('data-tab-id');
-        triggerRender();
-      } else if (action === 'close-tab') {
-        const id = el.getAttribute('data-tab-id');
-        state.openTabs = state.openTabs.filter((t) => t.tabId !== id);
-        if (state.activeTabId === id) {
-          state.activeTabId = state.openTabs[0] ? state.openTabs[0].tabId : null;
-        }
-        triggerRender();
-      } else if (action === 'set-timeframe' && activeTab) {
-        const tf = el.getAttribute('data-tf');
-        activeTab.timeframe = tf;
-        const sym = state.symbols.find((s) => s.symbolCode === activeTab.symbolCode);
-        if (sym) {
-          activeTab.candles = CandleAggregator.aggregate(sym.candles, tf);
-          activeTab.scrollOffset = 0;
-        }
-        triggerRender();
-      } else if (action === 'set-date-range' && activeTab) {
-        const rk = el.getAttribute('data-range');
-        activeTab.selectedRangePreset = rk;
-        activeTab.scrollOffset = 0;
-        const map = { '1D': 24, '5D': 48, '1M': 72, '3M': 100, YTD: 120, '1Y': 150, All: 180 };
-        activeTab.visibleCount = map[rk] || 48;
-        triggerRender();
-      } else if (action === 'set-chart-type' && activeTab) {
-        activeTab.chartType = el.getAttribute('data-type');
-        triggerRender();
-      } else if (action === 'toggle-volume' && activeTab) {
-        activeTab.showVolume = activeTab.showVolume === false;
-        triggerRender();
-      } else if (action === 'cycle-volume-height' && activeTab) {
-        const cur = Number(activeTab.volumePaneRatio || 0.22);
-        activeTab.volumePaneRatio = cur < 0.18 ? 0.22 : cur < 0.26 ? 0.3 : 0.15;
-        triggerRender();
-      } else if (action === 'toggle-sma20' && activeTab) {
-        activeTab.showSma20 = !activeTab.showSma20;
-        triggerRender();
-      } else if (action === 'toggle-log-scale' && activeTab) {
-        const nextLog = !Boolean(activeTab.isLogScale ?? state.chartPreferences.isLogScale);
-        activeTab.isLogScale = nextLog;
-        state.chartPreferences.isLogScale = nextLog;
-        saveChartPreferences(state.chartPreferences);
-        triggerRender();
-      } else if (action === 'reset-price-scale' && activeTab) {
-        activeTab.priceScaleFactor = 1.0;
-        activeTab.verticalPriceOffset = 0.0;
-        triggerRender();
-      } else if (action === 'fit-content' && activeTab) {
-        activeTab.visibleCount = Math.min(180, Math.max(15, activeTab.candles.length));
-        activeTab.scrollOffset = 0;
-        triggerRender();
-      } else if (action === 'reset-view' && activeTab) {
-        activeTab.visibleCount = 48;
-        activeTab.scrollOffset = 0;
-        triggerRender();
-      } else if (action === 'set-tool' && activeTab) {
-        activeTab.activeTool = el.getAttribute('data-tool');
-        activeTab.pendingTrendStart = null;
-        triggerRender();
-      } else if (action === 'set-draw-color' && activeTab) {
-        const c = el.getAttribute('data-color');
-        activeTab.activeDrawingColorHex = c;
-        if (activeTab.selectedDrawingId) {
-          activeTab.drawings = activeTab.drawings.map((d) =>
-            d.id === activeTab.selectedDrawingId ? { ...d, colorHex: c } : d
-          );
-        }
-        triggerRender();
-      } else if (action === 'set-draw-width' && activeTab) {
-        const w = Number(el.getAttribute('data-width') || 2);
-        activeTab.activeDrawingWidthPx = w;
-        if (activeTab.selectedDrawingId) {
-          activeTab.drawings = activeTab.drawings.map((d) =>
-            d.id === activeTab.selectedDrawingId ? { ...d, lineWidthPx: w } : d
-          );
-        }
-        triggerRender();
-      } else if (action === 'zoom-in' && activeTab) {
-        activeTab.visibleCount = Math.max(15, activeTab.visibleCount - 10);
-        triggerRender();
-      } else if (action === 'zoom-out' && activeTab) {
-        activeTab.visibleCount = Math.min(180, activeTab.visibleCount + 10);
-        triggerRender();
-      } else if (action === 'delete-drawing' && activeTab) {
-        activeTab.drawings = activeTab.drawings.filter((d) => d.id !== activeTab.selectedDrawingId);
-        activeTab.selectedDrawingId = null;
-        persistRemoteWorkspaceNow();
-        triggerRender();
-      } else if (action === 'clear-drawings' && activeTab) {
-        activeTab.drawings = [];
-        activeTab.selectedDrawingId = null;
-        persistRemoteWorkspaceNow();
-        triggerRender();
-      } else if (action === 'project-scenario-levels' && activeTab) {
-        const entry = Number(el.getAttribute('data-entry'));
-        const t1 = Number(el.getAttribute('data-t1'));
-        const t2 = Number(el.getAttribute('data-t2'));
-        const stop = Number(el.getAttribute('data-stop'));
-        const bias = el.getAttribute('data-bias');
-        const targetCol = bias === 'bull' ? '#26A69A' : '#EF5350';
-        const stopCol = bias === 'bull' ? '#EF5350' : '#26A69A';
-        const nowId = Date.now();
-        activeTab.drawings = [
-          ...(activeTab.drawings || []).filter((d) => !String(d.id).startsWith('proj_')),
-          { id: `proj_p_${nowId}`, type: 'hline', price1: entry, colorHex: '#F59E0B', lineWidthPx: 1.8, label: 'Pivot P' },
-          { id: `proj_t1_${nowId}`, type: 'hline', price1: t1, colorHex: targetCol, lineWidthPx: 2.0, label: 'Target 1' },
-          { id: `proj_t2_${nowId}`, type: 'hline', price1: t2, colorHex: targetCol, lineWidthPx: 2.2, label: 'Target 2' },
-          { id: `proj_sl_${nowId}`, type: 'hline', price1: stop, colorHex: stopCol, lineWidthPx: 1.8, label: 'Invalidation' },
-        ];
-        persistRemoteWorkspaceNow();
-        triggerRender();
-      } else if (action === 'sync-active-tab' && activeTab) {
-        await syncSymbolUpToNow(activeTab.symbolCode);
-      } else if (action === 'sync-all') {
-        await syncAllWatchlist();
-      } else if (action === 'set-lang') {
-        i18n.setLanguage(el.getAttribute('data-lang'));
-        triggerRender();
-      } else if (action === 'set-theme') {
-        state.isDarkTheme = el.getAttribute('data-theme') === 'dark';
-        localStorage.setItem('ci_theme_v2', state.isDarkTheme ? 'dark' : 'light');
-        triggerRender();
-      } else if (action === 'set-color') {
-        const target = el.getAttribute('data-target');
-        const col = el.getAttribute('data-color');
-        state.chartPreferences[target] = col;
-        saveChartPreferences(state.chartPreferences);
-        persistRemoteWorkspaceNow();
-        triggerRender();
-      } else if (action === 'open-add-symbol-modal') {
-        state.isAddSymbolModalOpen = true;
-        triggerRender();
-      } else if (action === 'close-add-symbol-modal') {
-        state.isAddSymbolModalOpen = false;
-        triggerRender();
-      } else if (action === 'delete-symbol') {
-        const code = el.getAttribute('data-symbol');
-        state.symbols = state.symbols.filter((s) => s.symbolCode !== code);
-        persistRemoteWorkspaceNow();
-        triggerRender();
-      } else if (action === 'sign-out') {
-        await auth.signOut();
-        state.isAuthenticated = false;
-        triggerRender();
+        return;
       }
-    });
+    }
+
+    isDragging = true;
+    dragStartX = x;
+    dragStartOffset = Number(activeTab.scrollOffset || 0);
   });
 
-  document.querySelectorAll('[data-action="select-provider-dropdown"]').forEach((sel) => {
-    sel.addEventListener('change', async (e) => {
-      const symCode = e.currentTarget.getAttribute('data-symbol');
-      const prov = e.currentTarget.value;
-      const sym = state.symbols.find((s) => s.symbolCode === symCode);
-      if (sym) {
-        sym.activeProvider = prov;
-        await syncSymbolUpToNow(symCode);
-        await persistRemoteWorkspaceNow();
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const meta = canvas._chartMeta;
+    if (!meta) return;
+
+    if (isScalingAxis) {
+      const dy = y - scaleStartY;
+      activeTab.priceScaleFactor = Math.max(0.25, Math.min(4.0, scaleStartFactor * (1 + dy * 0.005)));
+      redrawActiveCanvas();
+      return;
+    }
+
+    if (isDragging) {
+      const dx = x - dragStartX;
+      const deltaBars = Math.round(dx / Math.max(2, meta.slotW));
+      const maxOffset = Math.max(0, (activeTab.candles || []).length - 5);
+      activeTab.scrollOffset = Math.max(0, Math.min(maxOffset, dragStartOffset + deltaBars));
+      redrawActiveCanvas();
+      return;
+    }
+
+    if (x <= meta.chartW) {
+      const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
+      activeTab.hoverIndex = idx;
+      activeTab.hoverY = y;
+      redrawActiveCanvas();
+    }
+  });
+
+  window.addEventListener('mouseup', () => {
+    isDragging = false;
+    isScalingAxis = false;
+  });
+
+  canvas.addEventListener('mouseleave', () => {
+    activeTab.hoverIndex = null;
+    activeTab.hoverY = null;
+    redrawActiveCanvas();
+  });
+
+  canvas.addEventListener('dblclick', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const meta = canvas._chartMeta;
+    if (meta && x > meta.chartW) {
+      activeTab.priceScaleFactor = 1.0;
+      activeTab.verticalPriceOffset = 0.0;
+      renderApp();
+    }
+  });
+
+  canvas.addEventListener(
+    'wheel',
+    (e) => {
+      e.preventDefault();
+      const step = e.deltaY > 0 ? 6 : -6;
+      activeTab.visibleCount = Math.max(15, Math.min(180, (activeTab.visibleCount || 48) + step));
+      redrawActiveCanvas();
+    },
+    { passive: false }
+  );
+}
+
+function bindAuthForms() {
+  const authForm = document.getElementById('auth-form');
+  if (authForm) {
+    authForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(authForm);
+      const username = String(fd.get('username') || '').trim();
+      const email = String(fd.get('email') || '').trim();
+      const password = String(fd.get('password') || '');
+      const confirm = String(fd.get('confirm_password') || '');
+
+      if (!state.isOwnerRegistered && password !== confirm) {
+        state.authErrorKey = 'login_error_password_mismatch';
+        renderApp();
+        return;
       }
-    });
-  });
-
-  document.querySelectorAll('[data-action="select-prediction-symbol"]').forEach((sel) => {
-    sel.addEventListener('change', async (e) => {
-      await openSymbolInTab(e.currentTarget.value);
-    });
-  });
-
-  document.querySelectorAll('[data-action="toggle-watchlist"]').forEach((chk) => {
-    chk.addEventListener('change', (e) => {
-      const symCode = e.currentTarget.getAttribute('data-symbol');
-      const sym = state.symbols.find((s) => s.symbolCode === symCode);
-      if (sym) {
-        sym.inWatchlist = e.currentTarget.checked;
-        persistRemoteWorkspaceNow();
-        triggerRender();
+      const res = await loginOrRegisterOwner(username, email, password);
+      if (!res.ok) {
+        state.authErrorKey = res.errorKey || 'login_error_invalid_credentials';
+      } else {
+        state.authErrorKey = '';
+        await syncAllWatchlistSymbols(renderApp);
       }
+      renderApp();
     });
-  });
+  }
 
-  document.querySelectorAll('[data-action="toggle-tv-pref"]').forEach((chk) => {
-    chk.addEventListener('change', (e) => {
-      const key = e.currentTarget.getAttribute('data-pref-key');
-      const val = Boolean(e.currentTarget.checked);
-      state.chartPreferences[key] = val;
-      if (key === 'isLogScale' && activeTab) {
-        activeTab.isLogScale = val;
+  const forgotReq = document.getElementById('forgot-request-form');
+  if (forgotReq) {
+    forgotReq.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(forgotReq);
+      const email = String(fd.get('email') || '').trim();
+      const ok = await requestPasswordResetCode(email);
+      if (ok) {
+        state.authMode = 'forgot_verify';
+        state.authInfoKey = 'forgot_code_sent_success';
+        state.authErrorKey = '';
+      } else {
+        state.authErrorKey = 'forgot_error_email_not_found';
       }
-      saveChartPreferences(state.chartPreferences);
-      persistRemoteWorkspaceNow();
-      triggerRender();
+      renderApp();
     });
-  });
+  }
 
-  const fetchSlider = document.querySelector('[data-action="set-fetch-limit"]');
-  if (fetchSlider) {
-    fetchSlider.addEventListener('input', (e) => {
-      const val = Number(e.currentTarget.value || 500);
-      state.chartPreferences.candleFetchLimit = val;
-      const lbl = document.getElementById('fetch-limit-value-label');
-      if (lbl) lbl.textContent = String(val);
+  const forgotVer = document.getElementById('forgot-verify-form');
+  if (forgotVer) {
+    forgotVer.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(forgotVer);
+      const email = String(fd.get('email') || '').trim();
+      const code = String(fd.get('recovery_code') || '').trim();
+      const np = String(fd.get('new_password') || '');
+      const cp = String(fd.get('confirm_password') || '');
+      if (np !== cp) {
+        state.authErrorKey = 'login_error_password_mismatch';
+        renderApp();
+        return;
+      }
+      const ok = await confirmPasswordResetCode(email, code, np);
+      if (ok) {
+        state.authMode = 'login';
+        state.authInfoKey = 'forgot_reset_success';
+        state.authErrorKey = '';
+      } else {
+        state.authErrorKey = 'forgot_error_invalid_code';
+      }
+      renderApp();
     });
-    fetchSlider.addEventListener('change', () => {
-      saveChartPreferences(state.chartPreferences);
-      persistRemoteWorkspaceNow();
+  }
+}
+
+function bindSettingsForms() {
+  const emailForm = document.getElementById('settings-email-form');
+  if (emailForm) {
+    emailForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(emailForm);
+      const email = String(fd.get('recovery_email') || '').trim();
+      await updateOwnerEmailOnServer(email);
+      state.statusBannerKey = 'settings_email_updated_toast';
+      renderApp();
+    });
+  }
+
+  const passForm = document.getElementById('settings-password-form');
+  if (passForm) {
+    passForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(passForm);
+      const np = String(fd.get('new_password') || '');
+      await updateOwnerPasswordOnServer(np);
+      state.statusBannerKey = 'settings_password_updated_toast';
+      renderApp();
     });
   }
 
@@ -695,224 +545,293 @@ function bindWorkspaceEvents(activeTab) {
     addSymForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(addSymForm);
-      const code = String(fd.get('symbol_code') || '').trim().toUpperCase();
-      const title = String(fd.get('custom_title') || '').trim();
-      const dec = Number(fd.get('decimals') || 2);
+      const code = String(fd.get('symbol_code') || '')
+        .trim()
+        .toUpperCase();
+      const title = String(fd.get('symbol_title') || '').trim();
+      const provider = String(fd.get('provider') || 'tvdatafeed');
       if (code && !state.symbols.some((s) => s.symbolCode === code)) {
         state.symbols.push({
           symbolCode: code,
+          customTitle: title || code,
+          decimals: 2,
           inWatchlist: true,
-          activeProvider: 'twelve_data',
-          allowedProviders: ['twelve_data', 'yahoo_finance'],
-          decimals: dec,
+          activeProvider: provider,
+          allowedProviders: ['tvdatafeed', 'twelve_data', 'dukascopy', 'yahoo_finance'],
+          timeframe: 'M15',
           lastClose: 0,
           lastCandleUtc: '',
           candles: [],
-          isSyncing: false,
-          syncError: false,
           isCustom: true,
-          customTitle: title || code,
         });
+        saveSymbolsToStorage();
         state.isAddSymbolModalOpen = false;
-        await syncSymbolUpToNow(code);
-        await persistRemoteWorkspaceNow();
+        await syncSymbolNow(code, 'M15', renderApp);
       }
-      triggerRender();
+      renderApp();
     });
   }
 }
 
-function bindCanvasInteractions(canvas, tab) {
-  let isDragging = false;
-  let isRightAxisDrag = false;
-  let lastX = 0;
-  let lastY = 0;
+document.addEventListener('click', async (e) => {
+  const el = e.target.closest('[data-action]');
+  if (!el) return;
+  const action = el.getAttribute('data-action');
+  const activeTab = getActiveTab();
 
-  canvas.addEventListener(
-    'wheel',
-    (e) => {
-      e.preventDefault();
-      const delta = e.deltaY > 0 ? 6 : -6;
-      tab.visibleCount = Math.max(15, Math.min(180, (tab.visibleCount || 48) + delta));
-      renderCandlestickCanvas(canvas, tab, i18n);
-    },
-    { passive: false }
-  );
-
-  canvas.addEventListener('pointerdown', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const meta = canvas._chartMeta;
-    if (!meta) return;
-
-    if (x > meta.chartW) {
-      isRightAxisDrag = true;
-      lastY = y;
-      return;
+  if (action === 'set-lang') {
+    i18n.setLanguage(el.getAttribute('data-lang'));
+    renderApp();
+  } else if (action === 'set-theme') {
+    state.isDarkTheme = el.getAttribute('data-theme') === 'dark';
+    renderApp();
+  } else if (action === 'set-auth-mode') {
+    state.authMode = el.getAttribute('data-mode') || 'login';
+    state.authErrorKey = '';
+    state.authInfoKey = '';
+    renderApp();
+  } else if (action === 'sign-out') {
+    await logoutOwnerOnServer();
+    renderApp();
+  } else if (action === 'open-drawer') {
+    const nav = el.getAttribute('data-nav') || 'watchlist';
+    if (state.isSideDrawerOpen && state.activeNav === nav) {
+      state.isSideDrawerOpen = false;
+    } else {
+      state.activeNav = nav;
+      state.isSideDrawerOpen = true;
     }
-
-    const tool = tab.activeTool || 'cursor';
-    if (tool !== 'cursor') {
-      const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
-      const candle = meta.visible[idx];
-      const price = meta.yToPrice(y);
-      if (!candle) return;
-
-      if (tool === 'hline') {
-        tab.drawings.push({
-          id: 'hl_' + Date.now(),
-          type: 'hline',
-          price1: price,
-          time1EpochSec: Number(candle.openTimeSec),
-          colorHex: tab.activeDrawingColorHex || '#F59E0B',
-          lineWidthPx: tab.activeDrawingWidthPx || 2.0,
-        });
-        tab.activeTool = 'cursor';
-        persistRemoteWorkspaceNow();
-        triggerRender();
-      } else if (tool === 'vline') {
-        tab.drawings.push({
-          id: 'vl_' + Date.now(),
-          type: 'vline',
-          price1: price,
-          time1EpochSec: Number(candle.openTimeSec),
-          colorHex: tab.activeDrawingColorHex || '#A855F7',
-          lineWidthPx: tab.activeDrawingWidthPx || 2.0,
-        });
-        tab.activeTool = 'cursor';
-        persistRemoteWorkspaceNow();
-        triggerRender();
-      } else if (tool === 'trend') {
-        if (!tab.pendingTrendStart) {
-          tab.pendingTrendStart = { price, timeEpochSec: Number(candle.openTimeSec) };
-        } else {
-          tab.drawings.push({
-            id: 'tr_' + Date.now(),
-            type: 'trend',
-            price1: tab.pendingTrendStart.price,
-            time1EpochSec: tab.pendingTrendStart.timeEpochSec,
-            price2: price,
-            time2EpochSec: Number(candle.openTimeSec),
-            colorHex: tab.activeDrawingColorHex || '#2962FF',
-            lineWidthPx: tab.activeDrawingWidthPx || 2.0,
-          });
-          tab.pendingTrendStart = null;
-          tab.activeTool = 'cursor';
-          persistRemoteWorkspaceNow();
-          triggerRender();
-        }
+    renderApp();
+  } else if (action === 'close-drawer') {
+    state.isSideDrawerOpen = false;
+    renderApp();
+  } else if (action === 'nav') {
+    const scr = el.getAttribute('data-screen');
+    if (scr === 'chart_view') {
+      state.currentScreen = 'chart_view';
+      state.isSideDrawerOpen = false;
+    } else {
+      state.currentScreen = scr;
+      state.activeNav = scr === 'analysis' ? 'prediction' : scr;
+      state.isSideDrawerOpen = true;
+    }
+    renderApp();
+  } else if (action === 'toggle-fullscreen') {
+    state.isFullscreen = !state.isFullscreen;
+    renderApp();
+  } else if (action === 'select-tab') {
+    state.activeTabId = el.getAttribute('data-tab-id');
+    renderApp();
+  } else if (action === 'close-tab') {
+    e.stopPropagation();
+    const id = el.getAttribute('data-tab-id');
+    if (state.openTabs.length > 1) {
+      state.openTabs = state.openTabs.filter((t) => t.tabId !== id);
+      if (state.activeTabId === id) {
+        state.activeTabId = state.openTabs[0].tabId;
       }
-      return;
+      renderApp();
     }
-
-    const hitId = DrawingGeometry.findHitDrawing(tab.drawings, x, y, meta, 18);
-    if (hitId) {
-      tab.selectedDrawingId = hitId;
-      triggerRender();
-      return;
-    } else if (tab.selectedDrawingId) {
-      tab.selectedDrawingId = null;
-      triggerRender();
+  } else if (action === 'open-symbol-overview') {
+    state.symbolOverviewCode = el.getAttribute('data-symbol');
+    renderApp();
+  } else if (action === 'close-symbol-overview' || action === 'close-symbol-overview-backdrop') {
+    if (action === 'close-symbol-overview-backdrop' && e.target !== el) return;
+    state.symbolOverviewCode = null;
+    renderApp();
+  } else if (action === 'set-overview-range') {
+    state.symbolOverviewRange = el.getAttribute('data-range') || '5D';
+    renderApp();
+  } else if (action === 'open-chart') {
+    const code = el.getAttribute('data-symbol');
+    state.symbolOverviewCode = null;
+    openOrFocusSymbolTab(code);
+    renderApp();
+  } else if (action === 'set-timeframe' && activeTab) {
+    const newTf = el.getAttribute('data-tf') || 'M15';
+    activeTab.timeframe = newTf;
+    activeTab.scrollOffset = 0;
+    activeTab.drawings = state.drawingsByChartId[`${activeTab.symbolCode}_${newTf}`] || [];
+    const cached = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
+    if (cached.length > 0) {
+      activeTab.candles = cached;
     }
+    renderApp();
+    await syncSymbolNow(activeTab.symbolCode, newTf, renderApp);
+  } else if (action === 'set-date-range' && activeTab) {
+    const rk = el.getAttribute('data-range') || 'All';
+    activeTab.selectedRangePreset = rk;
+    activeTab.scrollOffset = 0;
+    const mapCount = { '1D': 24, '5D': 48, '1M': 90, '3M': 130, YTD: 150, '1Y': 170, All: 180 };
+    activeTab.visibleCount = Math.min((activeTab.candles || []).length || 48, mapCount[rk] || 60);
+    renderApp();
+  } else if (action === 'set-chart-type' && activeTab) {
+    activeTab.chartType = el.getAttribute('data-type') || 'candles';
+    renderApp();
+  } else if (action === 'toggle-volume' && activeTab) {
+    activeTab.showVolume = activeTab.showVolume === false;
+    renderApp();
+  } else if (action === 'cycle-volume-height' && activeTab) {
+    const cur = Number(activeTab.volumePaneRatio || 0.22);
+    activeTab.volumePaneRatio = cur < 0.19 ? 0.22 : cur < 0.26 ? 0.3 : 0.16;
+    renderApp();
+  } else if (action === 'toggle-sma20' && activeTab) {
+    activeTab.showSma20 = !activeTab.showSma20;
+    renderApp();
+  } else if (action === 'toggle-log-scale' && activeTab) {
+    activeTab.isLogScale = !activeTab.isLogScale;
+    state.chartPreferences.isLogScale = activeTab.isLogScale;
+    savePreferences();
+    renderApp();
+  } else if (action === 'reset-price-scale' && activeTab) {
+    activeTab.priceScaleFactor = 1.0;
+    activeTab.verticalPriceOffset = 0.0;
+    renderApp();
+  } else if (action === 'fit-content' && activeTab) {
+    activeTab.scrollOffset = 0;
+    activeTab.visibleCount = Math.min(140, Math.max(24, (activeTab.candles || []).length));
+    activeTab.priceScaleFactor = 1.0;
+    renderApp();
+  } else if (action === 'reset-view' && activeTab) {
+    activeTab.scrollOffset = 0;
+    activeTab.visibleCount = 48;
+    activeTab.priceScaleFactor = 1.0;
+    activeTab.verticalPriceOffset = 0.0;
+    renderApp();
+  } else if (action === 'set-tool' && activeTab) {
+    activeTab.activeTool = el.getAttribute('data-tool') || 'cursor';
+    activeTab.pendingTrendStart = null;
+    renderApp();
+  } else if (action === 'set-draw-color' && activeTab) {
+    activeTab.activeDrawingColorHex = el.getAttribute('data-color') || '#2962FF';
+    renderApp();
+  } else if (action === 'set-draw-width' && activeTab) {
+    activeTab.activeDrawingWidthPx = Number(el.getAttribute('data-width') || 2.0);
+    renderApp();
+  } else if (action === 'zoom-in' && activeTab) {
+    activeTab.visibleCount = Math.max(15, (activeTab.visibleCount || 48) - 8);
+    renderApp();
+  } else if (action === 'zoom-out' && activeTab) {
+    activeTab.visibleCount = Math.min(180, (activeTab.visibleCount || 48) + 8);
+    renderApp();
+  } else if (action === 'clear-drawings' && activeTab) {
+    activeTab.drawings = [];
+    activeTab.selectedDrawingId = null;
+    saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, []);
+    renderApp();
+  } else if (action === 'project-scenario-levels' && activeTab) {
+    const entry = Number(el.getAttribute('data-entry'));
+    const t1 = Number(el.getAttribute('data-t1'));
+    const t2 = Number(el.getAttribute('data-t2'));
+    const stop = Number(el.getAttribute('data-stop'));
+    const bias = el.getAttribute('data-bias') || 'bull';
+    const targetCol = bias === 'bull' ? '#26A69A' : '#EF5350';
+    const stopCol = bias === 'bull' ? '#EF5350' : '#26A69A';
 
-    isDragging = true;
-    lastX = x;
-    lastY = y;
-  });
-
-  canvas.addEventListener('pointermove', (e) => {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const meta = canvas._chartMeta;
-    if (!meta) return;
-
-    if (isRightAxisDrag) {
-      const dy = y - lastY;
-      lastY = y;
-      tab.priceScaleFactor = Math.max(
-        0.25,
-        Math.min(4.0, (tab.priceScaleFactor || 1.0) * (1 + dy * 0.005))
-      );
-      renderCandlestickCanvas(canvas, tab, i18n);
-      return;
+    activeTab.drawings = [
+      ...(activeTab.drawings || []).filter((d) => !String(d.id).startsWith('proj_')),
+      { id: 'proj_entry', type: 'hline', price1: entry, colorHex: '#F59E0B', lineWidthPx: 2, label: 'Pivot Entry' },
+      { id: 'proj_t1', type: 'hline', price1: t1, colorHex: targetCol, lineWidthPx: 2, label: 'Target 1' },
+      { id: 'proj_t2', type: 'hline', price1: t2, colorHex: targetCol, lineWidthPx: 2, label: 'Target 2' },
+      { id: 'proj_stop', type: 'hline', price1: stop, colorHex: stopCol, lineWidthPx: 2, label: 'Invalidation' },
+    ];
+    saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    renderApp();
+  } else if (action === 'sync-active-tab' && activeTab) {
+    await syncSymbolNow(activeTab.symbolCode, activeTab.timeframe, renderApp);
+  } else if (action === 'sync-all') {
+    await syncAllWatchlistSymbols(renderApp);
+  } else if (action === 'open-add-symbol-modal') {
+    state.isAddSymbolModalOpen = true;
+    renderApp();
+  } else if (action === 'close-add-symbol-modal') {
+    state.isAddSymbolModalOpen = false;
+    renderApp();
+  } else if (action === 'set-color') {
+    const target = el.getAttribute('data-target');
+    const col = el.getAttribute('data-color');
+    if (target && col) {
+      state.chartPreferences[target] = col;
+      savePreferences();
+      renderApp();
     }
+  } else if (action === 'delete-symbol') {
+    const code = el.getAttribute('data-symbol');
+    state.symbols = state.symbols.filter((s) => s.symbolCode !== code);
+    saveSymbolsToStorage();
+    renderApp();
+  }
+});
 
-    if (isDragging) {
-      const dx = x - lastX;
-      const dy = y - lastY;
-      lastX = x;
-      lastY = y;
-      const candleShift = dx / Math.max(4, meta.slotW);
-      const maxOff = Math.max(0, tab.candles.length - 5);
-      tab.scrollOffset = Math.max(0, Math.min(maxOff, (tab.scrollOffset || 0) + candleShift));
+document.addEventListener('input', (e) => {
+  const el = e.target;
+  const action = el.getAttribute('data-action');
+  if (action === 'watchlist-search') {
+    state.watchlistSearchQuery = el.value;
+    renderApp();
+  } else if (action === 'set-fetch-limit') {
+    const val = Math.max(40, Math.min(5000, Number(el.value) || 500));
+    state.chartPreferences.candleFetchLimit = val;
+    savePreferences();
+    const lbl = document.getElementById('fetch-limit-value-label');
+    if (lbl) lbl.textContent = String(val);
+  }
+});
 
-      const priceRange = meta.maxP - meta.minP;
-      const priceShift = (dy / Math.max(1, meta.chartH)) * priceRange;
-      tab.verticalPriceOffset = (tab.verticalPriceOffset || 0) + priceShift;
-      renderCandlestickCanvas(canvas, tab, i18n);
-      return;
+document.addEventListener('change', async (e) => {
+  const el = e.target;
+  const action = el.getAttribute('data-action');
+  if (action === 'select-provider-dropdown') {
+    const code = el.getAttribute('data-symbol');
+    const prov = el.value;
+    const sym = state.symbols.find((s) => s.symbolCode === code);
+    if (sym) {
+      sym.activeProvider = prov;
+      if (prov === 'eia_brent_spot') sym.timeframe = 'D1';
+      saveSymbolsToStorage();
+      await syncSymbolNow(code, sym.timeframe, renderApp);
+      renderApp();
     }
-
-    if (x <= meta.chartW) {
-      const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
-      if (tab.hoverIndex !== idx && state.chartPreferences.chartVibrations && navigator.vibrate) {
-        try {
-          navigator.vibrate(4);
-        } catch (_) {}
-      }
-      tab.hoverIndex = idx;
-      tab.hoverY = y;
-      renderCandlestickCanvas(canvas, tab, i18n);
-      const ohlcContainer = document.querySelector('.floating-ohlc-bar');
-      if (ohlcContainer) {
-        const tmp = document.createElement('div');
-        tmp.innerHTML = renderFloatingOhlcBar(tab);
-        if (tmp.firstElementChild) {
-          ohlcContainer.replaceWith(tmp.firstElementChild);
-        }
-      }
+  } else if (action === 'toggle-watchlist') {
+    const code = el.getAttribute('data-symbol');
+    const sym = state.symbols.find((s) => s.symbolCode === code);
+    if (sym) {
+      sym.inWatchlist = Boolean(el.checked);
+      saveSymbolsToStorage();
+      renderApp();
     }
-  });
+  } else if (action === 'toggle-tv-pref') {
+    const key = el.getAttribute('data-pref-key');
+    if (key) {
+      state.chartPreferences[key] = Boolean(el.checked);
+      savePreferences();
+      renderApp();
+    }
+  } else if (action === 'select-prediction-symbol') {
+    openOrFocusSymbolTab(el.value);
+    renderApp();
+  }
+});
 
-  const stopDrag = () => {
-    isDragging = false;
-    isRightAxisDrag = false;
-  };
-  canvas.addEventListener('pointerup', stopDrag);
-  canvas.addEventListener('pointerleave', () => {
-    stopDrag();
-    tab.hoverIndex = null;
-    tab.hoverY = null;
-    renderCandlestickCanvas(canvas, tab, i18n);
-  });
-}
+window.addEventListener('resize', () => {
+  redrawActiveCanvas();
+});
 
 async function bootstrap() {
-  registerRenderCallback(renderApp);
-  await i18n.init('fa');
-  const sessionInfo = await auth.checkSession();
-  state.hasOwnerAccount = sessionInfo.hasOwnerAccount;
-  state.isAuthenticated = sessionInfo.isAuthenticated;
-  state.ownerUsername = sessionInfo.username || '';
-  state.ownerEmail = sessionInfo.email || '';
-
+  await i18n.init();
+  await syncServerAuthStatus();
+  renderApp();
   if (state.isAuthenticated) {
-    await applyRemoteWorkspaceIfPresent();
-    await syncAllWatchlist();
-    await openSymbolInTab('SPOTBRENT');
-  } else {
-    triggerRender();
+    await syncAllWatchlistSymbols(renderApp);
+    renderApp();
   }
-
-  window.addEventListener('resize', () => {
-    const canvas = document.getElementById('main-chart-canvas');
-    const activeTab = state.openTabs.find((t) => t.tabId === state.activeTabId);
-    if (canvas && activeTab) {
-      renderCandlestickCanvas(canvas, activeTab, i18n);
-    }
-  });
+  if (!countdownIntervalId) {
+    countdownIntervalId = setInterval(() => {
+      if (state.isAuthenticated) {
+        redrawActiveCanvas();
+      }
+    }, 1000);
+  }
 }
 
 bootstrap();

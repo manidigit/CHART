@@ -9,12 +9,14 @@ export const TimeframeAggregator = {
     if (!Array.isArray(sourceCandles) || sourceCandles.length === 0) return [];
     const targetStep = PriceFormatter.stepMilliseconds(targetTimeframe);
     const sorted = [...sourceCandles].sort(
-      (a, b) => Number(a.open_time_utc_ms) - Number(b.open_time_utc_ms)
+      (a, b) =>
+        Number(a.open_time_utc_ms || a.openTimeSec * 1000 || 0) -
+        Number(b.open_time_utc_ms || b.openTimeSec * 1000 || 0)
     );
 
     const buckets = new Map();
     for (const bar of sorted) {
-      const openMs = Number(bar.open_time_utc_ms);
+      const openMs = Number(bar.open_time_utc_ms || (bar.openTimeSec ? bar.openTimeSec * 1000 : 0));
       if (!openMs) continue;
       const bucketOpen = Math.floor(openMs / targetStep) * targetStep;
       if (bucketOpen + targetStep > nowMs) continue;
@@ -22,8 +24,11 @@ export const TimeframeAggregator = {
         buckets.set(bucketOpen, []);
       }
       const arr = buckets.get(bucketOpen);
-      if (arr.length === 0 || arr[arr.length - 1].open_time_utc_ms !== openMs) {
+      const lastOpen = arr.length ? Number(arr[arr.length - 1].open_time_utc_ms || arr[arr.length - 1].openTimeSec * 1000) : 0;
+      if (arr.length === 0 || lastOpen !== openMs) {
         arr.push(bar);
+      } else {
+        arr[arr.length - 1] = bar;
       }
     }
 
@@ -44,6 +49,8 @@ export const TimeframeAggregator = {
       result.push({
         open_time_utc_ms: bucketOpen,
         open_time_utc_iso: iso,
+        openTimeSec: Math.floor(bucketOpen / 1000),
+        openTimeUtc: iso,
         open,
         high,
         low,
