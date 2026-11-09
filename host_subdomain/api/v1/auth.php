@@ -26,8 +26,110 @@ if ($pdo !== null) {
         $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(120) NULL AFTER username");
         $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_hash VARCHAR(255) NULL AFTER password_hash");
         $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires_at_utc DATETIME NULL AFTER reset_code_hash");
+        $pdo->exec("CREATE TABLE IF NOT EXISTS user_sessions (
+            id INT AUTO_INCREMENT PRIMARY KEY,
+            token VARCHAR(64) NOT NULL UNIQUE,
+            username VARCHAR(64) NOT NULL,
+            email VARCHAR(120) NULL,
+            expires_at_utc DATETIME NOT NULL,
+            created_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            INDEX idx_token (token),
+            INDEX idx_expires (expires_at_utc)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4");
     } catch (\Throwable $e) {
-        // Ignore if columns already exist or DB user lacks ALTER privilege
+        // Ignore if columns or table already exist
+    }
+}
+
+$sessionsFile = dirname(__DIR__, 2) . '/config/sessions.local.json';
+
+function createSessionToken(?PDO $pdo, string $sessionsFile, string $username, string $email): string
+{
+    $token = bin2hex(random_bytes(32));
+    $expiresSec = time() + (30 * 86400); // 30 days remember me
+    $expiresUtc = gmdate('Y-m-d H:i:s', $expiresSec);
+
+    if ($pdo !== null) {
+        try {
+            $stmt = $pdo->prepare("INSERT INTO user_sessions (token, username, email, expires_at_utc) VALUES (:t, :u, :e, :exp)");
+            $stmt->execute([':t' => $token, ':u' => $username, ':e' => $email !== '' ? $email : null, ':exp' => $expiresUtc]);
+        } catch (\Throwable) {}
+    }
+
+    $sessions = [];
+    if (is_file($sessionsFile)) {
+        $data = json_decode((string) file_get_contents($sessionsFile), true);
+        if (is_array($data)) {
+            $now = time();
+            foreach ($data as $t => $s) {
+                if (isset($s['expires_ts']) && (int) $s['expires_ts'] > $now) {
+                    $sessions[$t] = $s;
+                }
+            }
+        }
+    }
+    $sessions[$token] = [
+        'username' => $username,
+        'email' => $email,
+        'expires_ts' => $expiresSec,
+        'created_at_utc' => gmdate('Y-m-d\TH:i:s\Z'),
+    ];
+    $dir = dirname($sessionsFile);
+    if (!is_dir($dir)) @mkdir($dir, 0755, true);
+    @file_put_contents($sessionsFile, json_encode($sessions, JSON_UNESCAPED_UNICODE));
+
+    return $token;
+}
+
+function verifySessionToken(?PDO $pdo, string $sessionsFile, string $token): ?array
+{
+    if ($token === '') return null;
+    $nowUtc = gmdate('Y-m-d H:i:s');
+
+    if ($pdo !== null) {
+        try {
+            $stmt = $pdo->prepare("SELECT username, email FROM user_sessions WHERE token = :t AND expires_at_utc > :now LIMIT 1");
+            $stmt->execute([':t' => $token, ':now' => $nowUtc]);
+            $row = $stmt->fetch();
+            if ($row && !empty($row['username'])) {
+                return [
+                    'username' => (string) $row['username'],
+                    'email' => (string) ($row['email'] ?? ''),
+                ];
+            }
+        } catch (\Throwable) {}
+    }
+
+    if (is_file($sessionsFile)) {
+        $data = json_decode((string) file_get_contents($sessionsFile), true);
+        if (is_array($data) && isset($data[$token])) {
+            $s = $data[$token];
+            if (isset($s['expires_ts']) && (int) $s['expires_ts'] > time()) {
+                return [
+                    'username' => (string) ($s['username'] ?? ''),
+                    'email' => (string) ($s['email'] ?? ''),
+                ];
+            }
+        }
+    }
+    return null;
+}
+
+function revokeSessionToken(?PDO $pdo, string $sessionsFile, string $token): void
+{
+    if ($token === '') return;
+    if ($pdo !== null) {
+        try {
+            $stmt = $pdo->prepare("DELETE FROM user_sessions WHERE token = :t");
+            $stmt->execute([':t' => $token]);
+        } catch (\Throwable) {}
+    }
+    if (is_file($sessionsFile)) {
+        $data = json_decode((string) file_get_contents($sessionsFile), true);
+        if (is_array($data) && isset($data[$token])) {
+            unset($data[$token]);
+            @file_put_contents($sessionsFile, json_encode($data, JSON_UNESCAPED_UNICODE));
+        }
     }
 }
 
@@ -120,11 +222,46 @@ if ($action === 'register_owner') {
         $stmt->execute([':u' => $username, ':e' => $email !== '' ? $email : null, ':h' => $hash]);
     }
     saveFallbackOwner($fallbackFile, $username, $hash, $email);
+    $token = createSessionToken($pdo, $sessionsFile, $username, $email);
     ApiEnvelope::sendSuccess([
+        'authenticated' => true,
+        'session_token' => $token,
         'is_owner_registered' => true,
         'owner_username' => $username,
         'owner_email' => $email,
     ]);
+}
+
+if ($action === 'validate_session') {
+    $token = trim((string) ($payload['session_token'] ?? ($_GET['session_token'] ?? '')));
+    if ($token === '') {
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+        if (preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
+            $token = $matches[1];
+        }
+    }
+    $session = verifySessionToken($pdo, $sessionsFile, $token);
+    if ($session !== null) {
+        ApiEnvelope::sendSuccess([
+            'authenticated' => true,
+            'session_token' => $token,
+            'owner_username' => $session['username'],
+            'owner_email' => $session['email'],
+        ]);
+    }
+    ApiEnvelope::sendError('INVALID_SESSION', 'error_invalid_credentials', 401);
+}
+
+if ($action === 'logout') {
+    $token = trim((string) ($payload['session_token'] ?? ($_GET['session_token'] ?? '')));
+    if ($token === '') {
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+        if (preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
+            $token = $matches[1];
+        }
+    }
+    revokeSessionToken($pdo, $sessionsFile, $token);
+    ApiEnvelope::sendSuccess(['logged_out' => true]);
 }
 
 if ($action === 'login') {
@@ -143,10 +280,14 @@ if ($action === 'login') {
         $stmt->execute([':u' => $identifier, ':e' => $identifier]);
         $row = $stmt->fetch();
         if ($row && password_verify($password, (string) $row['password_hash'])) {
+            $u = (string) $row['username'];
+            $e = (string) ($row['email'] ?? '');
+            $token = createSessionToken($pdo, $sessionsFile, $u, $e);
             ApiEnvelope::sendSuccess([
                 'authenticated' => true,
-                'owner_username' => (string) $row['username'],
-                'owner_email' => (string) ($row['email'] ?? ''),
+                'session_token' => $token,
+                'owner_username' => $u,
+                'owner_email' => $e,
             ]);
         }
     }
@@ -158,10 +299,14 @@ if ($action === 'login') {
             (!empty($fb['email']) && strcasecmp((string) $fb['email'], $identifier) === 0)) &&
         password_verify($password, (string) $fb['password_hash'])
     ) {
+        $u = (string) $fb['username'];
+        $e = (string) ($fb['email'] ?? '');
+        $token = createSessionToken($pdo, $sessionsFile, $u, $e);
         ApiEnvelope::sendSuccess([
             'authenticated' => true,
-            'owner_username' => (string) $fb['username'],
-            'owner_email' => (string) ($fb['email'] ?? ''),
+            'session_token' => $token,
+            'owner_username' => $u,
+            'owner_email' => $e,
         ]);
     }
 
@@ -187,10 +332,13 @@ if ($action === 'google_sign_in') {
                 $ownerEmail = $email;
             }
             if (strcasecmp($ownerEmail, $email) === 0) {
+                $u = (string) $row['username'];
+                $token = createSessionToken($pdo, $sessionsFile, $u, $ownerEmail);
                 ApiEnvelope::sendSuccess([
                     'authenticated' => true,
+                    'session_token' => $token,
                     'is_owner_registered' => true,
-                    'owner_username' => (string) $row['username'],
+                    'owner_username' => $u,
                     'owner_email' => $ownerEmail,
                 ]);
             }
@@ -201,8 +349,10 @@ if ($action === 'google_sign_in') {
             $ins = $pdo->prepare("INSERT INTO users (username, email, password_hash, role) VALUES (:u, :e, :h, 'owner')");
             $ins->execute([':u' => $fallbackUsername, ':e' => $email, ':h' => $randomHash]);
             saveFallbackOwner($fallbackFile, $fallbackUsername, $randomHash, $email);
+            $token = createSessionToken($pdo, $sessionsFile, $fallbackUsername, $email);
             ApiEnvelope::sendSuccess([
                 'authenticated' => true,
+                'session_token' => $token,
                 'is_owner_registered' => true,
                 'owner_username' => $fallbackUsername,
                 'owner_email' => $email,
@@ -215,10 +365,13 @@ if ($action === 'google_sign_in') {
         $fbEmail = strtolower(trim((string) ($fb['email'] ?? '')));
         if ($fbEmail === '' || strcasecmp($fbEmail, $email) === 0) {
             saveFallbackOwner($fallbackFile, (string) $fb['username'], (string) $fb['password_hash'], $email);
+            $u = (string) $fb['username'];
+            $token = createSessionToken($pdo, $sessionsFile, $u, $email);
             ApiEnvelope::sendSuccess([
                 'authenticated' => true,
+                'session_token' => $token,
                 'is_owner_registered' => true,
-                'owner_username' => (string) $fb['username'],
+                'owner_username' => $u,
                 'owner_email' => $email,
             ]);
         }
@@ -227,8 +380,10 @@ if ($action === 'google_sign_in') {
         $hashAlgo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT;
         $randomHash = password_hash(bin2hex(random_bytes(16)), $hashAlgo);
         saveFallbackOwner($fallbackFile, $fallbackUsername, $randomHash, $email);
+        $token = createSessionToken($pdo, $sessionsFile, $fallbackUsername, $email);
         ApiEnvelope::sendSuccess([
             'authenticated' => true,
+            'session_token' => $token,
             'is_owner_registered' => true,
             'owner_username' => $fallbackUsername,
             'owner_email' => $email,

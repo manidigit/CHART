@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.28.4';
+import { I18nManager } from './core/i18n.js?v=1.28.5';
 import {
   state,
   savePreferences,
@@ -6,7 +6,7 @@ import {
   saveDrawings,
   saveLastOpenedSymbol,
   getCachedOrAggregatedCandles,
-} from './core/store.js?v=1.28.4';
+} from './core/store.js?v=1.28.5';
 import {
   syncServerAuthStatus,
   loginOrRegisterOwner,
@@ -17,16 +17,16 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.28.4';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.4';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.4';
-import { renderLoginScreen } from './views/loginView.js?v=1.28.4';
-import { renderTopHeaderBar, renderBottomChartBar } from './views/headerView.js?v=1.28.4';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.4';
-import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.4';
-import { renderPredictionModal } from './views/analysisView.js?v=1.28.4';
-import { renderSettingsModal } from './views/settingsView.js?v=1.28.4';
-import { renderRightIconRail, renderBottomNav } from './views/navigationView.js?v=1.28.4';
+} from './services/apiService.js?v=1.28.5';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.5';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.5';
+import { renderLoginScreen } from './views/loginView.js?v=1.28.5';
+import { renderTopHeaderBar, renderBottomChartBar } from './views/headerView.js?v=1.28.5';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.5';
+import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.5';
+import { renderPredictionModal } from './views/analysisView.js?v=1.28.5';
+import { renderSettingsModal } from './views/settingsView.js?v=1.28.5';
+import { renderRightIconRail, renderBottomNav } from './views/navigationView.js?v=1.28.5';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -238,60 +238,95 @@ function renderAddSymbolModal() {
   `;
 }
 
-export function renderApp() {
-  applyTheme();
+function renderFallbackErrorBoundary(err) {
   const root = document.getElementById('app') || document.getElementById('app-root');
   if (!root) return;
-
-  if (!state.isAuthenticated) {
-    root.innerHTML = renderLoginScreen(i18n);
-    bindAuthForms();
-    return;
-  }
-
-  ensureInitialTabs();
-  const activeTab = getActiveTab();
-  if (activeTab) {
-    const latestCached = getCachedOrAggregatedCandles(
-      activeTab.symbolCode,
-      activeTab.provider,
-      activeTab.timeframe
-    );
-    if (latestCached.length > 0) {
-      activeTab.candles = latestCached;
-    }
-  }
-
+  const msg = err && err.message ? err.message : 'Unknown UI Error';
   root.innerHTML = `
-    <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
-      ${renderTopHeaderBar(activeTab, i18n)}
-
-      <div class="tv-main-area">
-        ${renderLeftToolRail(activeTab, i18n)}
-
-        <main class="chart-workspace">
-          <div class="chart-canvas-box">
-            ${renderOhlcvOverlay(activeTab)}
-            <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
-          </div>
-          ${renderBottomChartBar(activeTab, i18n)}
-        </main>
-
-        ${renderRightSplitPanel(activeTab, i18n)}
-        ${renderRightIconRail(i18n)}
+    <div class="tv-auth-screen" dir="rtl">
+      <div class="tv-auth-card" style="text-align: center; max-width: 460px;">
+        <div class="tv-auth-emblem" style="background: linear-gradient(135deg, #EF5350, #B71C1C); color: #fff;">!</div>
+        <h2 class="tv-auth-title" style="color: var(--bear); font-size: 18px;">بازیابی خودکار محیط کاری</h2>
+        <div class="tv-auth-sub" style="margin-top: 8px;">
+          یک خطای غیرمنتظره در رندرینگ شناسایی شد، اما تنظیمات و داده‌های شما در حافظه امن مرورگر حفظ شده‌اند.
+        </div>
+        <div style="margin: 14px 0; background: var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 8px; font-family: monospace; font-size: 11px; color: var(--text-muted); text-align: left; direction: ltr; overflow-x: auto;">
+          ${msg}
+        </div>
+        <div style="display: flex; gap: 8px; justify-content: center; margin-top: 16px;">
+          <button class="tv-auth-submit" style="margin: 0; width: auto; padding: 0 20px;" onclick="location.reload(true);">
+            بارگذاری مجدد
+          </button>
+          <button class="tv-auth-submit" style="margin: 0; width: auto; padding: 0 20px; background: var(--surface-elevated); color: var(--text-strong); border: 1px solid var(--border);" onclick="localStorage.removeItem('ci_theme_dark'); location.reload();">
+            بازنشانی تنظیمات
+          </button>
+        </div>
       </div>
-
-      ${renderBottomNav(i18n)}
-      ${renderSettingsModal(i18n)}
-      ${renderPredictionModal(activeTab, i18n)}
-      ${renderSymbolOverviewModal(i18n)}
-      ${renderAddSymbolModal()}
     </div>
   `;
+}
 
-  bindSettingsForms();
-  bindCanvasEvents(activeTab);
-  redrawActiveCanvas();
+export function renderApp() {
+  try {
+    applyTheme();
+    const root = document.getElementById('app') || document.getElementById('app-root');
+    if (!root) return;
+
+    if (!state.isAuthenticated) {
+      root.innerHTML = renderLoginScreen(i18n);
+      bindAuthForms();
+      window.__CI_APP_MOUNTED__ = true;
+      return;
+    }
+
+    ensureInitialTabs();
+    const activeTab = getActiveTab();
+    if (activeTab) {
+      const latestCached = getCachedOrAggregatedCandles(
+        activeTab.symbolCode,
+        activeTab.provider,
+        activeTab.timeframe
+      );
+      if (latestCached.length > 0) {
+        activeTab.candles = latestCached;
+      }
+    }
+
+    root.innerHTML = `
+      <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
+        ${renderTopHeaderBar(activeTab, i18n)}
+
+        <div class="tv-main-area">
+          ${renderLeftToolRail(activeTab, i18n)}
+
+          <main class="chart-workspace">
+            <div class="chart-canvas-box">
+              ${renderOhlcvOverlay(activeTab)}
+              <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
+            </div>
+            ${renderBottomChartBar(activeTab, i18n)}
+          </main>
+
+          ${renderRightSplitPanel(activeTab, i18n)}
+          ${renderRightIconRail(i18n)}
+        </div>
+
+        ${renderBottomNav(i18n)}
+        ${renderSettingsModal(i18n)}
+        ${renderPredictionModal(activeTab, i18n)}
+        ${renderSymbolOverviewModal(i18n)}
+        ${renderAddSymbolModal()}
+      </div>
+    `;
+
+    bindSettingsForms();
+    bindCanvasEvents(activeTab);
+    redrawActiveCanvas();
+    window.__CI_APP_MOUNTED__ = true;
+  } catch (err) {
+    console.error('[Chart Intelligence] Render failed:', err);
+    renderFallbackErrorBoundary(err);
+  }
 }
 
 function redrawActiveCanvas() {
@@ -870,23 +905,35 @@ window.addEventListener('resize', () => {
 });
 
 async function bootstrap() {
-  // Render immediately using built-in fallback dictionary so screen is NEVER blank
-  renderApp();
+  try {
+    // Render immediately using built-in fallback dictionary so screen is NEVER blank
+    renderApp();
+    window.__CI_APP_MOUNTED__ = true;
+  } catch (err) {
+    console.error('[Chart Intelligence] Initial render failed:', err);
+    renderFallbackErrorBoundary(err);
+  }
+
   try {
     await i18n.init();
     renderApp();
   } catch {
-    // Ignore i18n network error
+    // Non-blocking i18n fallback
   }
+
   try {
     await syncServerAuthStatus();
     renderApp();
   } catch {
-    // Ignore auth status network error
+    // Non-blocking auth status fallback
   }
+
+  window.__CI_APP_MOUNTED__ = true;
+
   if (state.isAuthenticated) {
     syncAllWatchlistSymbols(renderApp).catch(() => {});
   }
+
   if (!countdownIntervalId) {
     countdownIntervalId = setInterval(() => {
       if (state.isAuthenticated) {
@@ -900,4 +947,7 @@ async function bootstrap() {
   }
 }
 
-bootstrap();
+bootstrap().catch((err) => {
+  console.error('[Chart Intelligence] Bootstrap unhandled exception:', err);
+  renderFallbackErrorBoundary(err);
+});

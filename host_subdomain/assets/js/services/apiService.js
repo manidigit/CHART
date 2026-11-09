@@ -5,11 +5,45 @@ import {
   saveSymbolsToStorage,
   mergeCandlesIdempotent,
   normalizeCandle,
-} from '../core/store.js?v=1.28.4';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.4';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.4';
+} from '../core/store.js?v=1.28.5';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.5';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.5';
 
 export async function syncServerAuthStatus() {
+  const token = localStorage.getItem('ci_session_token');
+  const remember = state.rememberCredentials;
+
+  // First, if user opted into Remember Me and has a stored session token, validate the persistent token
+  if (remember && token) {
+    try {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const timer = controller ? setTimeout(() => controller.abort(), 3500) : null;
+      const res = await fetch('./api/v1/auth.php?action=validate_session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_token: token }),
+        signal: controller ? controller.signal : undefined,
+      });
+      if (timer) clearTimeout(timer);
+      const json = await res.json();
+      if (json && json.ok && json.data) {
+        state.isAuthenticated = true;
+        state.isOwnerRegistered = true;
+        state.ownerUsername = json.data.owner_username || state.ownerUsername;
+        state.ownerEmail = json.data.owner_email || state.ownerEmail;
+        localStorage.setItem('ci_auto_authenticated', 'true');
+        return;
+      }
+    } catch {
+      // Offline fallback: if previously auto-authenticated, stay logged in
+      if (localStorage.getItem('ci_auto_authenticated') === 'true' && state.ownerUsername) {
+        state.isAuthenticated = true;
+        state.isOwnerRegistered = true;
+        return;
+      }
+    }
+  }
+
   try {
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timer = controller ? setTimeout(() => controller.abort(), 3500) : null;
@@ -40,6 +74,9 @@ export async function syncServerAuthStatus() {
     }
   } catch {
     state.isOwnerRegistered = Boolean(localStorage.getItem('ci_owner_username'));
+    if (state.rememberCredentials && localStorage.getItem('ci_auto_authenticated') === 'true') {
+      state.isAuthenticated = true;
+    }
   }
 }
 
@@ -59,6 +96,12 @@ export async function loginOrRegisterOwner(username, email, password) {
       state.ownerEmail = (json.data && json.data.owner_email) || email || state.ownerEmail;
       localStorage.setItem('ci_owner_username', state.ownerUsername);
       if (state.ownerEmail) localStorage.setItem('ci_owner_email', state.ownerEmail);
+
+      const token = json.data && json.data.session_token;
+      if (token) {
+        localStorage.setItem('ci_session_token', token);
+      }
+
       if (state.rememberCredentials) {
         state.savedPassword = password;
         localStorage.setItem('ci_saved_password', password);
@@ -67,6 +110,7 @@ export async function loginOrRegisterOwner(username, email, password) {
         state.savedPassword = '';
         localStorage.removeItem('ci_saved_password');
         localStorage.removeItem('ci_auto_authenticated');
+        localStorage.removeItem('ci_session_token');
       }
       return { ok: true };
     }
@@ -165,11 +209,17 @@ export async function confirmPasswordResetCode(email, code, newPassword) {
 }
 
 export async function logoutOwnerOnServer() {
+  const token = localStorage.getItem('ci_session_token');
   try {
-    await fetch('./api/v1/auth.php?action=logout', { method: 'POST' });
+    await fetch('./api/v1/auth.php?action=logout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ session_token: token }),
+    });
   } catch {
     // Ignore network error on logout
   }
+  localStorage.removeItem('ci_session_token');
   localStorage.setItem('ci_auto_authenticated', 'false');
   state.isAuthenticated = false;
 }

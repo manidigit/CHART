@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.4';
-import { state } from '../core/store.js?v=1.28.4';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.5';
+import { state } from '../core/store.js?v=1.28.5';
 
 export function getAssetBadge(symbolCode) {
   if (symbolCode === 'XAUUSD') return { label: 'Au', color: '#F59E0B', providerTag: 'FX_IDC / TWELVE_DATA', category: 'Commodity · Spot Gold' };
