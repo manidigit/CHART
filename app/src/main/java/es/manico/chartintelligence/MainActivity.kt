@@ -269,6 +269,7 @@ fun ChartIntelligenceApp(
                             onToggleLogScale = mainViewModel::toggleLogScaleOnActiveTab,
                             onSelectCandle = mainViewModel::selectCandleOnActiveTab,
                             onSelectDrawingTool = mainViewModel::selectDrawingTool,
+                            onToggleMagnetMode = mainViewModel::toggleMagnetModeOnActiveTab,
                             onSelectDrawingColorHex = mainViewModel::setDrawingColorOnActiveTab,
                             onSelectDrawingWidthDp = mainViewModel::setDrawingWidthOnActiveTab,
                             onToggleDrawingDockCollapsed = mainViewModel::toggleDrawingDockOnActiveTab,

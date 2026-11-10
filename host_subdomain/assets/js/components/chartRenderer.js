@@ -1,5 +1,6 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.29.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.29.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.30.0';
 import { state } from '../core/store.js?v=1.29.0';
 
 function getTimeframeDurationSeconds(tf) {
@@ -577,6 +578,160 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.moveTo(x1, y1);
       ctx.lineTo(x2, y2);
       ctx.stroke();
+    } else if (d.type === 'fib' || d.type === 'fib_retracement') {
+      const t1Ms = Number(d.startTimeUtcMillis || (d.time1EpochSec ? d.time1EpochSec * 1000 : 0));
+      const t2Ms = Number(d.endTimeUtcMillis || (d.time2EpochSec ? d.time2EpochSec * 1000 : 0));
+      const p1 = Number(d.startPrice !== undefined ? d.startPrice : d.price1);
+      const p2 = Number(d.endPrice !== undefined ? d.endPrice : d.price2);
+      const x1 = timeToX(t1Ms);
+      const x2 = timeToX(t2Ms);
+      const y1 = priceToY(p1);
+      const y2 = priceToY(p2);
+      const minX = Math.min(x1, x2);
+      const maxX = Math.max(x1, x2, minX + 50);
+
+      const levels = DrawingGeometry.computeFibLevels(p1, p2);
+
+      // Golden Pocket (0.5 to 0.618)
+      const p05 = levels.find((l) => l.ratio === 0.5)?.price || p1;
+      const p0618 = levels.find((l) => l.ratio === 0.618)?.price || p2;
+      const y05 = priceToY(p05);
+      const y0618 = priceToY(p0618);
+      ctx.fillStyle = 'rgba(245, 158, 11, 0.20)';
+      ctx.fillRect(minX, Math.min(y05, y0618), maxX - minX, Math.max(2, Math.abs(y0618 - y05)));
+
+      // 0.382 - 0.500 zone
+      const p0382 = levels.find((l) => l.ratio === 0.382)?.price;
+      if (p0382 !== undefined) {
+        const y0382 = priceToY(p0382);
+        ctx.fillStyle = 'rgba(38, 166, 154, 0.10)';
+        ctx.fillRect(minX, Math.min(y0382, y05), maxX - minX, Math.max(2, Math.abs(y05 - y0382)));
+      }
+
+      // Diagonal anchor line (dashed)
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x1, y1);
+      ctx.lineTo(x2, y2);
+      ctx.stroke();
+      ctx.restore();
+
+      // Levels
+      levels.forEach((lvl) => {
+        const ly = priceToY(lvl.price);
+        const isGolden = lvl.ratio === 0.5 || lvl.ratio === 0.618;
+        ctx.strokeStyle = isGolden ? '#F59E0B' : isSel ? '#FFFFFF' : strokeCol;
+        ctx.lineWidth = isGolden ? baseW + 0.4 : baseW;
+        ctx.beginPath();
+        ctx.moveTo(minX, ly);
+        ctx.lineTo(maxX, ly);
+        ctx.stroke();
+
+        ctx.fillStyle = isGolden ? '#F59E0B' : '#758696';
+        ctx.font = '600 9px "JetBrains Mono", monospace';
+        ctx.fillText(lvl.label, minX + 4, ly - 3);
+      });
+    } else if (d.type === 'long_position') {
+      const x1 = timeToX(d.startTimeUtcMillis);
+      const x2 = timeToX(d.endTimeUtcMillis);
+      const leftX = Math.min(x1, x2);
+      const rightX = Math.max(x1, x2, leftX + 50);
+      const boxW = rightX - leftX;
+      const yEntry = priceToY(d.entryPrice);
+      const yTarget = priceToY(d.targetPrice);
+      const yStop = priceToY(d.stopPrice);
+
+      // Target (Green)
+      const targetTop = Math.min(yTarget, yEntry);
+      const targetH = Math.max(2, Math.abs(yEntry - yTarget));
+      ctx.fillStyle = 'rgba(38, 166, 154, 0.22)';
+      ctx.fillRect(leftX, targetTop, boxW, targetH);
+      ctx.strokeStyle = '#26A69A';
+      ctx.lineWidth = baseW + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(leftX, yTarget);
+      ctx.lineTo(rightX, yTarget);
+      ctx.stroke();
+
+      // Stop (Red)
+      const stopTop = Math.min(yEntry, yStop);
+      const stopH = Math.max(2, Math.abs(yStop - yEntry));
+      ctx.fillStyle = 'rgba(239, 83, 80, 0.22)';
+      ctx.fillRect(leftX, stopTop, boxW, stopH);
+      ctx.strokeStyle = '#EF5350';
+      ctx.lineWidth = baseW + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(leftX, yStop);
+      ctx.lineTo(rightX, yStop);
+      ctx.stroke();
+
+      // Entry (White)
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = baseW;
+      ctx.beginPath();
+      ctx.moveTo(leftX, yEntry);
+      ctx.lineTo(rightX, yEntry);
+      ctx.stroke();
+
+      // R/R badge
+      const risk = Math.abs(d.entryPrice - d.stopPrice);
+      const reward = Math.abs(d.targetPrice - d.entryPrice);
+      const rr = risk > 1e-8 ? (reward / risk).toFixed(2) : '1.00';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.fillText(`Long · R/R: ${rr}`, leftX + 4, yEntry - 4);
+    } else if (d.type === 'short_position') {
+      const x1 = timeToX(d.startTimeUtcMillis);
+      const x2 = timeToX(d.endTimeUtcMillis);
+      const leftX = Math.min(x1, x2);
+      const rightX = Math.max(x1, x2, leftX + 50);
+      const boxW = rightX - leftX;
+      const yEntry = priceToY(d.entryPrice);
+      const yTarget = priceToY(d.targetPrice);
+      const yStop = priceToY(d.stopPrice);
+
+      // Target (Green - below entry)
+      const targetTop = Math.min(yEntry, yTarget);
+      const targetH = Math.max(2, Math.abs(yTarget - yEntry));
+      ctx.fillStyle = 'rgba(38, 166, 154, 0.22)';
+      ctx.fillRect(leftX, targetTop, boxW, targetH);
+      ctx.strokeStyle = '#26A69A';
+      ctx.lineWidth = baseW + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(leftX, yTarget);
+      ctx.lineTo(rightX, yTarget);
+      ctx.stroke();
+
+      // Stop (Red - above entry)
+      const stopTop = Math.min(yStop, yEntry);
+      const stopH = Math.max(2, Math.abs(yEntry - yStop));
+      ctx.fillStyle = 'rgba(239, 83, 80, 0.22)';
+      ctx.fillRect(leftX, stopTop, boxW, stopH);
+      ctx.strokeStyle = '#EF5350';
+      ctx.lineWidth = baseW + 0.5;
+      ctx.beginPath();
+      ctx.moveTo(leftX, yStop);
+      ctx.lineTo(rightX, yStop);
+      ctx.stroke();
+
+      // Entry (White)
+      ctx.strokeStyle = '#FFFFFF';
+      ctx.lineWidth = baseW;
+      ctx.beginPath();
+      ctx.moveTo(leftX, yEntry);
+      ctx.lineTo(rightX, yEntry);
+      ctx.stroke();
+
+      // R/R badge
+      const risk = Math.abs(d.stopPrice - d.entryPrice);
+      const reward = Math.abs(d.entryPrice - d.targetPrice);
+      const rr = risk > 1e-8 ? (reward / risk).toFixed(2) : '1.00';
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.fillText(`Short · R/R: ${rr}`, leftX + 4, yEntry - 4);
     }
   });
 

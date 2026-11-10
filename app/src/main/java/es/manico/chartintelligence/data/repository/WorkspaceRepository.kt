@@ -736,6 +736,47 @@ class WorkspaceRepository(context: Context) {
                             )
                         )
                     }
+                    "fib_retracement" -> {
+                        list.add(
+                            ChartDrawing.FibRetracement(
+                                id = id,
+                                startTimeUtcMillis = obj.optLong("startTimeUtcMillis", 0L),
+                                startPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("startPrice", "0"))),
+                                endTimeUtcMillis = obj.optLong("endTimeUtcMillis", 0L),
+                                endPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("endPrice", "0"))),
+                                colorHex = colorHex,
+                                strokeWidthDp = strokeWidthDp
+                            )
+                        )
+                    }
+                    "long_position" -> {
+                        list.add(
+                            ChartDrawing.LongPosition(
+                                id = id,
+                                startTimeUtcMillis = obj.optLong("startTimeUtcMillis", 0L),
+                                endTimeUtcMillis = obj.optLong("endTimeUtcMillis", 0L),
+                                entryPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("entryPrice", "0"))),
+                                targetPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("targetPrice", "0"))),
+                                stopPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("stopPrice", "0"))),
+                                colorHex = colorHex,
+                                strokeWidthDp = strokeWidthDp
+                            )
+                        )
+                    }
+                    "short_position" -> {
+                        list.add(
+                            ChartDrawing.ShortPosition(
+                                id = id,
+                                startTimeUtcMillis = obj.optLong("startTimeUtcMillis", 0L),
+                                endTimeUtcMillis = obj.optLong("endTimeUtcMillis", 0L),
+                                entryPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("entryPrice", "0"))),
+                                targetPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("targetPrice", "0"))),
+                                stopPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("stopPrice", "0"))),
+                                colorHex = colorHex,
+                                strokeWidthDp = strokeWidthDp
+                            )
+                        )
+                    }
                 }
             }
             list
@@ -769,6 +810,29 @@ class WorkspaceRepository(context: Context) {
                     obj.put("startPrice", d.startPrice.toPlainString())
                     obj.put("endTimeUtcMillis", d.endTimeUtcMillis)
                     obj.put("endPrice", d.endPrice.toPlainString())
+                }
+                is ChartDrawing.FibRetracement -> {
+                    obj.put("type", "fib_retracement")
+                    obj.put("startTimeUtcMillis", d.startTimeUtcMillis)
+                    obj.put("startPrice", d.startPrice.toPlainString())
+                    obj.put("endTimeUtcMillis", d.endTimeUtcMillis)
+                    obj.put("endPrice", d.endPrice.toPlainString())
+                }
+                is ChartDrawing.LongPosition -> {
+                    obj.put("type", "long_position")
+                    obj.put("startTimeUtcMillis", d.startTimeUtcMillis)
+                    obj.put("endTimeUtcMillis", d.endTimeUtcMillis)
+                    obj.put("entryPrice", d.entryPrice.toPlainString())
+                    obj.put("targetPrice", d.targetPrice.toPlainString())
+                    obj.put("stopPrice", d.stopPrice.toPlainString())
+                }
+                is ChartDrawing.ShortPosition -> {
+                    obj.put("type", "short_position")
+                    obj.put("startTimeUtcMillis", d.startTimeUtcMillis)
+                    obj.put("endTimeUtcMillis", d.endTimeUtcMillis)
+                    obj.put("entryPrice", d.entryPrice.toPlainString())
+                    obj.put("targetPrice", d.targetPrice.toPlainString())
+                    obj.put("stopPrice", d.stopPrice.toPlainString())
                 }
             }
             arr.put(obj)
@@ -978,6 +1042,29 @@ class WorkspaceRepository(context: Context) {
                                 .put("startPrice", d.startPrice.toPlainString())
                                 .put("endTimeUtcMillis", d.endTimeUtcMillis)
                                 .put("endPrice", d.endPrice.toPlainString())
+                        }
+                        is ChartDrawing.FibRetracement -> {
+                            dObj.put("type", "fib_retracement")
+                                .put("startTimeUtcMillis", d.startTimeUtcMillis)
+                                .put("startPrice", d.startPrice.toPlainString())
+                                .put("endTimeUtcMillis", d.endTimeUtcMillis)
+                                .put("endPrice", d.endPrice.toPlainString())
+                        }
+                        is ChartDrawing.LongPosition -> {
+                            dObj.put("type", "long_position")
+                                .put("startTimeUtcMillis", d.startTimeUtcMillis)
+                                .put("endTimeUtcMillis", d.endTimeUtcMillis)
+                                .put("entryPrice", d.entryPrice.toPlainString())
+                                .put("targetPrice", d.targetPrice.toPlainString())
+                                .put("stopPrice", d.stopPrice.toPlainString())
+                        }
+                        is ChartDrawing.ShortPosition -> {
+                            dObj.put("type", "short_position")
+                                .put("startTimeUtcMillis", d.startTimeUtcMillis)
+                                .put("endTimeUtcMillis", d.endTimeUtcMillis)
+                                .put("entryPrice", d.entryPrice.toPlainString())
+                                .put("targetPrice", d.targetPrice.toPlainString())
+                                .put("stopPrice", d.stopPrice.toPlainString())
                         }
                     }
                     arr.put(dObj)

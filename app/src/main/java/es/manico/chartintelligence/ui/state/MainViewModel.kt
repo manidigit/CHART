@@ -1172,6 +1172,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun toggleMagnetModeOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) {
+                        drawingCoordinator.toggleMagnetMode(tab)
+                    } else {
+                        tab
+                    }
+                }
+            )
+        }
+    }
+
     // --- Dynamic Symbol & Preference Management (Anti-Hardcoding) ---
 
     fun addCustomSymbol(symbolCode: String, customTitle: String, decimals: Int, provider: ProviderId) {

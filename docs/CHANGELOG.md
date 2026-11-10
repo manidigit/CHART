@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.30.0] - 2026-11-10
+
+### Added
+- **Fib Retracement Tool (اصلاح فیبوناچی) Across Web & Android:**
+  - Implemented 2-point market-coordinate Fibonacci Retracement drawing tool computing all 7 standard levels (`0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0`).
+  - Added dedicated Golden Pocket highlight (`0.500 - 0.618`) shaded in translucent amber (`#F59E0B`), secondary zone shading (`0.382 - 0.500`), dashed anchor trend line, and level pills with exact market prices.
+  - Full persistence across database, local cache, and cloud workspace sync (`fib_retracement`).
+- **Long Position & Short Position Tools (موقعیت خرید و فروش) Across Web & Android:**
+  - Implemented trade planning and simulation tools with Take Profit (`#26A69A` green zone), Stop Loss (`#EF5350` red zone), Entry divider (neutral white), and dynamic Risk/Reward ($R/R$) ratio badges.
+  - Automatically calculates Risk/Reward ratio, Target %, and Stop % in real time based on candle prices.
+  - Full persistence across database, local cache, and cloud workspace sync (`long_position`, `short_position`).
+- **Magnet Mode (حالت آهنربا - آیکون آهنربا 🧲) Across Web & Android:**
+  - Added cursor and touch magnet snapping in `DrawingGeometryAlgorithm.kt` and `drawingGeometry.js` (`snapToCandleOhlc`).
+  - When active, taps and cursor placements snap with zero jitter to the closest candle Open, High, Low, or Close (OHLC) level on the nearest candle bar.
+  - Added haptic pulse on Android when magnet snaps to a wick or candle body.
+  - Added dedicated 🧲 button in Android floating toolbar & bottom sheet (`DrawingToolbar.kt`) and Web left rail (`toolRailView.js`).
+- **Algorithm Unit Tests (`Phase1AlgorithmsTest.kt`):**
+  - Added comprehensive test cases for `drawingGeometry_magnetSnap_snapsToNearestOhlc` and `chartDrawing_fibRetracementAndPositions_computeExactFormulas` (12/12 passing).
+
+---
+
 ## [1.29.1] - 2026-11-10
 
 ### Added

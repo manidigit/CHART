@@ -237,4 +237,10 @@
     <string name="server_status_btn_sync">همگام‌سازی ابری فضای کاری</string>
     <string name="server_status_syncing">در حال همگام‌سازی…</string>
     <string name="server_status_local_synced">همگام‌سازی محلی</string>
+    <string name="draw_tool_fib">اصلاح فیبوناچی (Fib Retracement)</string>
+    <string name="draw_tool_long_pos">موقعیت خرید (Long Position)</string>
+    <string name="draw_tool_short_pos">موقعیت فروش (Short Position)</string>
+    <string name="draw_tool_magnet">حالت آهنربا (Magnet Mode)</string>
+    <string name="draw_hint_fib_point1">نقطه اول فیبوناچی (۱ از ۲) را لمس کنید</string>
+    <string name="draw_hint_fib_point2">نقطه دوم فیبوناچی (۲ از ۲) را لمس کنید</string>
 </resources>

@@ -1,5 +1,6 @@
 import { computeChartGeometry, renderCandlestickCanvas } from '../components/chartRenderer.js';
 import { DrawingGeometry } from '../algorithms/drawingGeometry.js';
+import { PriceFormatter } from '../algorithms/priceFormatter.js';
 import { state, saveDrawings } from '../core/store.js';
 
 export function attachCanvasInteractions(canvas, activeTab, onRenderApp, i18n = null) {
@@ -28,8 +29,30 @@ export function attachCanvasInteractions(canvas, activeTab, onRenderApp, i18n = 
     const geom = computeChartGeometry(canvas, activeTab);
     if (x > geom.padLeft + geom.plotW || y > geom.padTop + geom.pricePlotH) return;
 
-    const tappedTime = geom.xToTime(x);
-    const tappedPrice = geom.yToPrice(y);
+    let tappedTime = geom.xToTime(x);
+    let tappedPrice = geom.yToPrice(y);
+
+    if (activeTab.isMagnetMode && geom.slice && geom.slice.length > 0) {
+      const slotW = Math.max(1, geom.plotW / Math.max(1, geom.slice.length));
+      const localIdx = Math.max(
+        0,
+        Math.min(geom.slice.length - 1, Math.floor((x - geom.padLeft) / slotW))
+      );
+      const candle = geom.slice[localIdx];
+      if (candle) {
+        tappedPrice = DrawingGeometry.snapToCandleOhlc(
+          candle.open,
+          candle.high,
+          candle.low,
+          candle.close,
+          tappedPrice
+        );
+        tappedTime = Number(
+          candle.open_time_utc_ms || (candle.openTimeSec ? candle.openTimeSec * 1000 : tappedTime)
+        );
+      }
+    }
+
     const strokeW = Number(activeTab.activeDrawingWidth || 2);
     const color = getDefaultColorForTool(activeTab.activeDrawingTool);
 
@@ -81,6 +104,70 @@ export function attachCanvasInteractions(canvas, activeTab, onRenderApp, i18n = 
         saveDrawings(activeTab.chartId, activeTab.drawings);
         onRenderApp();
       }
+    } else if (activeTab.activeDrawingTool === 'fib' || activeTab.activeDrawingTool === 'fib_retracement') {
+      if (!activeTab.pendingTrendPoint) {
+        activeTab.pendingTrendPoint = { timeUtcMillis: tappedTime, price: tappedPrice };
+        renderCandlestickCanvas(canvas, activeTab, state.isDarkTheme, i18n);
+      } else {
+        const d = {
+          id: 'fib_' + Date.now(),
+          type: 'fib_retracement',
+          startTimeUtcMillis: activeTab.pendingTrendPoint.timeUtcMillis,
+          startPrice: activeTab.pendingTrendPoint.price,
+          endTimeUtcMillis: tappedTime,
+          endPrice: tappedPrice,
+          color: color || '#2962FF',
+          strokeWidth: strokeW,
+        };
+        activeTab.drawings = [...(activeTab.drawings || []), d];
+        activeTab.selectedDrawingId = d.id;
+        activeTab.pendingTrendPoint = null;
+        activeTab.activeDrawingTool = 'cursor';
+        saveDrawings(activeTab.chartId, activeTab.drawings);
+        onRenderApp();
+      }
+    } else if (activeTab.activeDrawingTool === 'long_position') {
+      const stepMs = PriceFormatter.stepMilliseconds(activeTab.timeframe);
+      const dec = activeTab.decimals || 2;
+      const target = Number((tappedPrice * 1.02).toFixed(dec));
+      const stop = Number((tappedPrice * 0.99).toFixed(dec));
+      const d = {
+        id: 'long_' + Date.now(),
+        type: 'long_position',
+        startTimeUtcMillis: tappedTime,
+        endTimeUtcMillis: tappedTime + 16 * stepMs,
+        entryPrice: tappedPrice,
+        targetPrice: target,
+        stopPrice: stop,
+        color: '#26A69A',
+        strokeWidth: strokeW,
+      };
+      activeTab.drawings = [...(activeTab.drawings || []), d];
+      activeTab.selectedDrawingId = d.id;
+      activeTab.activeDrawingTool = 'cursor';
+      saveDrawings(activeTab.chartId, activeTab.drawings);
+      onRenderApp();
+    } else if (activeTab.activeDrawingTool === 'short_position') {
+      const stepMs = PriceFormatter.stepMilliseconds(activeTab.timeframe);
+      const dec = activeTab.decimals || 2;
+      const target = Number((tappedPrice * 0.98).toFixed(dec));
+      const stop = Number((tappedPrice * 1.01).toFixed(dec));
+      const d = {
+        id: 'short_' + Date.now(),
+        type: 'short_position',
+        startTimeUtcMillis: tappedTime,
+        endTimeUtcMillis: tappedTime + 16 * stepMs,
+        entryPrice: tappedPrice,
+        targetPrice: target,
+        stopPrice: stop,
+        color: '#EF5350',
+        strokeWidth: strokeW,
+      };
+      activeTab.drawings = [...(activeTab.drawings || []), d];
+      activeTab.selectedDrawingId = d.id;
+      activeTab.activeDrawingTool = 'cursor';
+      saveDrawings(activeTab.chartId, activeTab.drawings);
+      onRenderApp();
     } else {
       const hit = DrawingGeometry.hitTestDrawing(
         activeTab.drawings || [],

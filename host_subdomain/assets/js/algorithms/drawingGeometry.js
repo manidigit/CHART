@@ -1,8 +1,35 @@
 /**
  * Independent Web Algorithm Module:
- * Geometric hit-testing and coordinate conversion for market-anchored chart drawings.
+ * Geometric hit-testing, snapping, and coordinate conversion for market-anchored chart drawings.
  */
 export const DrawingGeometry = {
+  snapToCandleOhlc(open, high, low, close, rawPrice) {
+    const p = Number(rawPrice);
+    const candidates = [Number(open), Number(high), Number(low), Number(close)];
+    let best = candidates[0];
+    let minDiff = Math.abs(p - best);
+    for (let i = 1; i < candidates.length; i++) {
+      const diff = Math.abs(p - candidates[i]);
+      if (diff < minDiff) {
+        minDiff = diff;
+        best = candidates[i];
+      }
+    }
+    return best;
+  },
+
+  computeFibLevels(startPrice, endPrice) {
+    const s = Number(startPrice);
+    const e = Number(endPrice);
+    const diff = e - s;
+    const ratios = [0.0, 0.236, 0.382, 0.5, 0.618, 0.786, 1.0];
+    return ratios.map((r) => ({
+      ratio: r,
+      price: s + r * diff,
+      label: r === 0.5 ? '0.500 (Mid)' : r === 0.618 ? '0.618 (Golden)' : r.toFixed(3),
+    }));
+  },
+
   distanceToSegmentPx(px, py, x1, y1, x2, y2) {
     const dx = x2 - x1;
     const dy = y2 - y1;
@@ -72,6 +99,35 @@ export const DrawingGeometry = {
           timeToX(d.endTimeUtcMillis),
           priceToY(d.endPrice)
         );
+      } else if (d.type === 'fib_retracement') {
+        const x1 = timeToX(d.startTimeUtcMillis);
+        const y1 = priceToY(d.startPrice);
+        const x2 = timeToX(d.endTimeUtcMillis);
+        const y2 = priceToY(d.endPrice);
+        dist = this.distanceToSegmentPx(px, py, x1, y1, x2, y2);
+        const minX = Math.min(x1, x2) - tolerancePx;
+        const maxX = Math.max(x1, x2) + tolerancePx;
+        if (px >= minX && px <= maxX) {
+          const levels = this.computeFibLevels(d.startPrice, d.endPrice);
+          for (const lvl of levels) {
+            const ly = priceToY(lvl.price);
+            const ldist = Math.abs(py - ly);
+            if (ldist < dist) dist = ldist;
+          }
+        }
+      } else if (d.type === 'long_position' || d.type === 'short_position') {
+        const x1 = timeToX(d.startTimeUtcMillis);
+        const x2 = timeToX(d.endTimeUtcMillis);
+        const leftX = Math.min(x1, x2) - tolerancePx;
+        const rightX = Math.max(x1, x2) + tolerancePx;
+        const yEntry = priceToY(d.entryPrice);
+        const yTarget = priceToY(d.targetPrice);
+        const yStop = priceToY(d.stopPrice);
+        const minY = Math.min(yEntry, yTarget, yStop) - tolerancePx;
+        const maxY = Math.max(yEntry, yTarget, yStop) + tolerancePx;
+        if (px >= leftX && px <= rightX && py >= minY && py <= maxY) {
+          dist = 0;
+        }
       }
       if (dist <= tolerancePx) return d;
     }
@@ -91,13 +147,23 @@ export const DrawingGeometry = {
         timeUtcMillis: Math.max(0, Number(drawing.timeUtcMillis) + deltaTimeMs),
       };
     }
-    if (drawing.type === 'trend_line') {
+    if (drawing.type === 'trend_line' || drawing.type === 'fib_retracement') {
       return {
         ...drawing,
         startTimeUtcMillis: Math.max(0, Number(drawing.startTimeUtcMillis) + deltaTimeMs),
         startPrice: Math.max(0.00000001, Number(drawing.startPrice) + deltaPrice),
         endTimeUtcMillis: Math.max(0, Number(drawing.endTimeUtcMillis) + deltaTimeMs),
         endPrice: Math.max(0.00000001, Number(drawing.endPrice) + deltaPrice),
+      };
+    }
+    if (drawing.type === 'long_position' || drawing.type === 'short_position') {
+      return {
+        ...drawing,
+        startTimeUtcMillis: Math.max(0, Number(drawing.startTimeUtcMillis) + deltaTimeMs),
+        endTimeUtcMillis: Math.max(0, Number(drawing.endTimeUtcMillis) + deltaTimeMs),
+        entryPrice: Math.max(0.00000001, Number(drawing.entryPrice) + deltaPrice),
+        targetPrice: Math.max(0.00000001, Number(drawing.targetPrice) + deltaPrice),
+        stopPrice: Math.max(0.00000001, Number(drawing.stopPrice) + deltaPrice),
       };
     }
     return drawing;

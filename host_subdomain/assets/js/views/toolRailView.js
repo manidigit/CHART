@@ -1,8 +1,9 @@
 export function renderLeftToolRail(activeTab, i18n) {
   if (!activeTab) return '';
-  const tool = activeTab.activeTool || 'cursor';
-  const curColor = activeTab.activeDrawingColorHex || '#2962FF';
-  const curWidth = Number(activeTab.activeDrawingWidthPx || 2.0);
+  const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
+  const curColor = activeTab.activeDrawingColorHex || activeTab.activeDrawingColor || '#2962FF';
+  const curWidth = Number(activeTab.activeDrawingWidthPx || activeTab.activeDrawingWidth || 2.0);
+  const isMagnet = !!activeTab.isMagnetMode;
   const colors = ['#2962FF', '#26A69A', '#F59E0B', '#EF5350', '#A855F7', '#D1D4DC'];
   const widths = [1.0, 2.0, 3.0, 4.0];
 
@@ -11,14 +12,28 @@ export function renderLeftToolRail(activeTab, i18n) {
       <button class="btn btn-icon ${tool === 'cursor' ? 'active' : ''}" data-action="set-tool" data-tool="cursor" title="${i18n.t('draw_tool_cursor')}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M12 2v6m0 8v6M2 12h6m8 0h6"/></svg>
       </button>
-      <button class="btn btn-icon ${tool === 'trend' ? 'active' : ''}" data-action="set-tool" data-tool="trend" title="${i18n.t('draw_tool_trend')}">
+      <button class="btn btn-icon ${tool === 'trend' || tool === 'trend_line' ? 'active' : ''}" data-action="set-tool" data-tool="trend_line" title="${i18n.t('draw_tool_trend')}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="20" x2="20" y2="4"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/></svg>
       </button>
-      <button class="btn btn-icon ${tool === 'hline' ? 'active' : ''}" data-action="set-tool" data-tool="hline" title="${i18n.t('draw_tool_hline')}">
+      <button class="btn btn-icon ${tool === 'fib' || tool === 'fib_retracement' ? 'active' : ''}" data-action="set-tool" data-tool="fib_retracement" title="${i18n.t('draw_tool_fib')}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><line x1="3" y1="5" x2="21" y2="5"/><line x1="3" y1="10" x2="21" y2="10" stroke="#F59E0B"/><line x1="3" y1="14" x2="21" y2="14" stroke="#F59E0B"/><line x1="3" y1="19" x2="21" y2="19"/><line x1="4" y1="19" x2="20" y2="5" stroke="#2962FF" stroke-dasharray="2 2"/></svg>
+      </button>
+      <button class="btn btn-icon ${tool === 'long_position' ? 'active' : ''}" data-action="set-tool" data-tool="long_position" title="${i18n.t('draw_tool_long_pos')}">
+        <svg width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="9" fill="#26A69A" opacity="0.9" rx="1"/><rect x="3" y="12" width="18" height="9" fill="#EF5350" opacity="0.9" rx="1"/><line x1="3" y1="12" x2="21" y2="12" stroke="#FFFFFF" stroke-width="1.5"/></svg>
+      </button>
+      <button class="btn btn-icon ${tool === 'short_position' ? 'active' : ''}" data-action="set-tool" data-tool="short_position" title="${i18n.t('draw_tool_short_pos')}">
+        <svg width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="9" fill="#EF5350" opacity="0.9" rx="1"/><rect x="3" y="12" width="18" height="9" fill="#26A69A" opacity="0.9" rx="1"/><line x1="3" y1="12" x2="21" y2="12" stroke="#FFFFFF" stroke-width="1.5"/></svg>
+      </button>
+      <button class="btn btn-icon ${tool === 'hline' || tool === 'horizontal_line' ? 'active' : ''}" data-action="set-tool" data-tool="horizontal_line" title="${i18n.t('draw_tool_hline')}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="3" y1="12" x2="21" y2="12"/><circle cx="12" cy="12" r="2"/></svg>
       </button>
-      <button class="btn btn-icon ${tool === 'vline' ? 'active' : ''}" data-action="set-tool" data-tool="vline" title="${i18n.t('draw_tool_vline')}">
+      <button class="btn btn-icon ${tool === 'vline' || tool === 'vertical_line' ? 'active' : ''}" data-action="set-tool" data-tool="vertical_line" title="${i18n.t('draw_tool_vline')}">
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="3" x2="12" y2="21"/><circle cx="12" cy="12" r="2"/></svg>
+      </button>
+
+      <!-- Magnet Mode Toggle -->
+      <button class="btn btn-icon ${isMagnet ? 'active' : ''}" style="${isMagnet ? 'background: rgba(41, 98, 255, 0.25); border-color: var(--primary);' : ''}" data-action="toggle-magnet" title="${i18n.t('draw_tool_magnet')}">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="${isMagnet ? '#2962FF' : 'currentColor'}" stroke-width="2" stroke-linecap="round"><path d="M4 5v6a8 8 0 0 0 16 0V5"/><line x1="4" y1="5" x2="8" y2="5" stroke="#EF5350" stroke-width="3"/><line x1="16" y1="5" x2="20" y2="5" stroke="#2962FF" stroke-width="3"/></svg>
       </button>
 
       <div style="width: 24px; height: 1px; background: var(--border); margin: 4px 0;"></div>

@@ -89,7 +89,92 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                     )
                 }
             }
+            DrawingTool.FIB_RETRACEMENT -> {
+                if (tab.pendingTrendPoint == null) {
+                    tab.copy(
+                        pendingTrendPoint = TrendAnchorPoint(
+                            timeUtcMillis = timeUtcMillis,
+                            price = price
+                        )
+                    )
+                } else {
+                    val p1 = tab.pendingTrendPoint
+                    val newDrawing = ChartDrawing.FibRetracement(
+                        id = "fib_${UUID.randomUUID()}",
+                        startTimeUtcMillis = p1.timeUtcMillis,
+                        startPrice = p1.price,
+                        endTimeUtcMillis = timeUtcMillis,
+                        endPrice = price,
+                        colorHex = tab.activeDrawingColorHex,
+                        strokeWidthDp = tab.activeDrawingWidthDp
+                    )
+                    val updatedDrawings = tab.drawings + newDrawing
+                    repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
+                    tab.copy(
+                        drawings = updatedDrawings,
+                        selectedDrawingId = newDrawing.id,
+                        pendingTrendPoint = null,
+                        activeDrawingTool = DrawingTool.CURSOR
+                    )
+                }
+            }
+            DrawingTool.LONG_POSITION -> {
+                val stepMs = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.timeframeStepMillis(tab.timeframe)
+                val target = es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm.normalizeDecimal(
+                    price.multiply(BigDecimal("1.02"))
+                )
+                val stop = es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm.normalizeDecimal(
+                    price.multiply(BigDecimal("0.99"))
+                )
+                val newDrawing = ChartDrawing.LongPosition(
+                    id = "long_${UUID.randomUUID()}",
+                    startTimeUtcMillis = timeUtcMillis,
+                    endTimeUtcMillis = timeUtcMillis + (16L * stepMs),
+                    entryPrice = price,
+                    targetPrice = target,
+                    stopPrice = stop,
+                    colorHex = tab.activeDrawingColorHex,
+                    strokeWidthDp = tab.activeDrawingWidthDp
+                )
+                val updatedDrawings = tab.drawings + newDrawing
+                repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
+                tab.copy(
+                    drawings = updatedDrawings,
+                    selectedDrawingId = newDrawing.id,
+                    activeDrawingTool = DrawingTool.CURSOR
+                )
+            }
+            DrawingTool.SHORT_POSITION -> {
+                val stepMs = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.timeframeStepMillis(tab.timeframe)
+                val target = es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm.normalizeDecimal(
+                    price.multiply(BigDecimal("0.98"))
+                )
+                val stop = es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm.normalizeDecimal(
+                    price.multiply(BigDecimal("1.01"))
+                )
+                val newDrawing = ChartDrawing.ShortPosition(
+                    id = "short_${UUID.randomUUID()}",
+                    startTimeUtcMillis = timeUtcMillis,
+                    endTimeUtcMillis = timeUtcMillis + (16L * stepMs),
+                    entryPrice = price,
+                    targetPrice = target,
+                    stopPrice = stop,
+                    colorHex = tab.activeDrawingColorHex,
+                    strokeWidthDp = tab.activeDrawingWidthDp
+                )
+                val updatedDrawings = tab.drawings + newDrawing
+                repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
+                tab.copy(
+                    drawings = updatedDrawings,
+                    selectedDrawingId = newDrawing.id,
+                    activeDrawingTool = DrawingTool.CURSOR
+                )
+            }
         }
+    }
+
+    fun toggleMagnetMode(tab: ChartTabState): ChartTabState {
+        return tab.copy(isMagnetMode = !tab.isMagnetMode)
     }
 
     fun selectDrawing(tab: ChartTabState, drawingId: String?): ChartTabState {
@@ -110,6 +195,9 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                     is ChartDrawing.HorizontalLine -> d.copy(colorHex = colorHex)
                     is ChartDrawing.VerticalLine -> d.copy(colorHex = colorHex)
                     is ChartDrawing.TrendLine -> d.copy(colorHex = colorHex)
+                    is ChartDrawing.FibRetracement -> d.copy(colorHex = colorHex)
+                    is ChartDrawing.LongPosition -> d.copy(colorHex = colorHex)
+                    is ChartDrawing.ShortPosition -> d.copy(colorHex = colorHex)
                 }
             }.also { repository.saveDrawingsForChart(tab.chartId, it) }
         } else {
@@ -130,6 +218,9 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                     is ChartDrawing.HorizontalLine -> d.copy(strokeWidthDp = clamped)
                     is ChartDrawing.VerticalLine -> d.copy(strokeWidthDp = clamped)
                     is ChartDrawing.TrendLine -> d.copy(strokeWidthDp = clamped)
+                    is ChartDrawing.FibRetracement -> d.copy(strokeWidthDp = clamped)
+                    is ChartDrawing.LongPosition -> d.copy(strokeWidthDp = clamped)
+                    is ChartDrawing.ShortPosition -> d.copy(strokeWidthDp = clamped)
                 }
             }.also { repository.saveDrawingsForChart(tab.chartId, it) }
         } else {

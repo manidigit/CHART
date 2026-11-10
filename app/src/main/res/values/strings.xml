@@ -237,4 +237,10 @@
     <string name="server_status_btn_sync">Sync Workspace Cloud</string>
     <string name="server_status_syncing">Syncing…</string>
     <string name="server_status_local_synced">Local Synced</string>
+    <string name="draw_tool_fib">Fib Retracement</string>
+    <string name="draw_tool_long_pos">Long Position</string>
+    <string name="draw_tool_short_pos">Short Position</string>
+    <string name="draw_tool_magnet">Magnet Mode</string>
+    <string name="draw_hint_fib_point1">Tap first anchor point for Fib Retracement</string>
+    <string name="draw_hint_fib_point2">Tap second anchor point for Fib Retracement</string>
 </resources>

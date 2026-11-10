@@ -299,6 +299,70 @@ class Phase1AlgorithmsTest {
         // Meanwhile, Monday's D1 candle is not yet closed, so expected last closed D1 is Friday 2026-11-06 00:00 UTC
         assertEquals("2026-11-06 00:00 UTC", UtcTimeAnchorAlgorithm.formatUtcIso(expectedD1))
     }
+
+    @Test
+    fun drawingGeometry_magnetSnap_snapsToNearestOhlc() {
+        val open = BigDecimal("2700.00")
+        val high = BigDecimal("2750.00")
+        val low = BigDecimal("2680.00")
+        val close = BigDecimal("2720.00")
+
+        // Closer to High (2750)
+        val snapped1 = DrawingGeometryAlgorithm.snapToCandleOhlc(open, high, low, close, BigDecimal("2746.00"))
+        assertEquals("2750.00000000", snapped1.toPlainString())
+
+        // Closer to Low (2680)
+        val snapped2 = DrawingGeometryAlgorithm.snapToCandleOhlc(open, high, low, close, BigDecimal("2684.00"))
+        assertEquals("2680.00000000", snapped2.toPlainString())
+
+        // Closer to Close (2720)
+        val snapped3 = DrawingGeometryAlgorithm.snapToCandleOhlc(open, high, low, close, BigDecimal("2718.50"))
+        assertEquals("2720.00000000", snapped3.toPlainString())
+    }
+
+    @Test
+    fun chartDrawing_fibRetracementAndPositions_computeExactFormulas() {
+        // Fib Retracement from 100 to 200
+        val fib = ChartDrawing.FibRetracement(
+            id = "fib_test",
+            startTimeUtcMillis = 1000L,
+            startPrice = BigDecimal("100.00"),
+            endTimeUtcMillis = 2000L,
+            endPrice = BigDecimal("200.00")
+        )
+        val levels = fib.computeLevels()
+        assertEquals(7, levels.size)
+        val lvl05 = levels.first { it.ratio == 0.5 }
+        val lvl0618 = levels.first { it.ratio == 0.618 }
+        assertEquals("150.00", PriceFormatterAlgorithm.formatPrice(lvl05.price, 2))
+        assertEquals("161.80", PriceFormatterAlgorithm.formatPrice(lvl0618.price, 2))
+
+        // Long Position: entry 100, target 110 (+10%), stop 95 (-5%) -> R/R = 2.0
+        val longPos = ChartDrawing.LongPosition(
+            id = "long_test",
+            startTimeUtcMillis = 1000L,
+            endTimeUtcMillis = 5000L,
+            entryPrice = BigDecimal("100.00"),
+            targetPrice = BigDecimal("110.00"),
+            stopPrice = BigDecimal("95.00")
+        )
+        assertEquals(2.0, longPos.riskRewardRatio.toDouble(), 0.001)
+        assertEquals(10.0, longPos.targetPercent.toDouble(), 0.001)
+        assertEquals(5.0, longPos.stopPercent.toDouble(), 0.001)
+
+        // Short Position: entry 100, target 90 (-10%), stop 105 (+5%) -> R/R = 2.0
+        val shortPos = ChartDrawing.ShortPosition(
+            id = "short_test",
+            startTimeUtcMillis = 1000L,
+            endTimeUtcMillis = 5000L,
+            entryPrice = BigDecimal("100.00"),
+            targetPrice = BigDecimal("90.00"),
+            stopPrice = BigDecimal("105.00")
+        )
+        assertEquals(2.0, shortPos.riskRewardRatio.toDouble(), 0.001)
+        assertEquals(10.0, shortPos.targetPercent.toDouble(), 0.001)
+        assertEquals(5.0, shortPos.stopPercent.toDouble(), 0.001)
+    }
 }
 
 

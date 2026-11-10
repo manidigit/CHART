@@ -65,12 +65,81 @@ object DrawingGeometryAlgorithm {
                     val y2 = priceToY(drawing.endPrice.toDouble())
                     distanceToSegmentPx(tapX, tapY, x1, y1, x2, y2)
                 }
+                is ChartDrawing.FibRetracement -> {
+                    val x1 = timeToX(drawing.startTimeUtcMillis)
+                    val y1 = priceToY(drawing.startPrice.toDouble())
+                    val x2 = timeToX(drawing.endTimeUtcMillis)
+                    val y2 = priceToY(drawing.endPrice.toDouble())
+                    val trendDist = distanceToSegmentPx(tapX, tapY, x1, y1, x2, y2)
+                    val minX = min(x1, x2) - hitTolerancePx
+                    val maxX = max(x1, x2) + hitTolerancePx
+                    var minLvlDist = trendDist
+                    if (tapX in minX..maxX) {
+                        for (lvl in drawing.computeLevels()) {
+                            val lvlY = priceToY(lvl.price.toDouble())
+                            val dY = abs(tapY - lvlY)
+                            if (dY < minLvlDist) minLvlDist = dY
+                        }
+                    }
+                    minLvlDist
+                }
+                is ChartDrawing.LongPosition -> {
+                    val x1 = timeToX(drawing.startTimeUtcMillis)
+                    val x2 = timeToX(drawing.endTimeUtcMillis)
+                    val yEntry = priceToY(drawing.entryPrice.toDouble())
+                    val yTarget = priceToY(drawing.targetPrice.toDouble())
+                    val yStop = priceToY(drawing.stopPrice.toDouble())
+                    val minX = min(x1, x2)
+                    val maxX = max(x1, x2)
+                    val minY = minOf(yEntry, yTarget, yStop)
+                    val maxY = maxOf(yEntry, yTarget, yStop)
+                    if (tapX in (minX - hitTolerancePx)..(maxX + hitTolerancePx) &&
+                        tapY in (minY - hitTolerancePx)..(maxY + hitTolerancePx)
+                    ) {
+                        0f
+                    } else {
+                        Float.MAX_VALUE
+                    }
+                }
+                is ChartDrawing.ShortPosition -> {
+                    val x1 = timeToX(drawing.startTimeUtcMillis)
+                    val x2 = timeToX(drawing.endTimeUtcMillis)
+                    val yEntry = priceToY(drawing.entryPrice.toDouble())
+                    val yTarget = priceToY(drawing.targetPrice.toDouble())
+                    val yStop = priceToY(drawing.stopPrice.toDouble())
+                    val minX = min(x1, x2)
+                    val maxX = max(x1, x2)
+                    val minY = minOf(yEntry, yTarget, yStop)
+                    val maxY = maxOf(yEntry, yTarget, yStop)
+                    if (tapX in (minX - hitTolerancePx)..(maxX + hitTolerancePx) &&
+                        tapY in (minY - hitTolerancePx)..(maxY + hitTolerancePx)
+                    ) {
+                        0f
+                    } else {
+                        Float.MAX_VALUE
+                    }
+                }
             }
             if (distance <= hitTolerancePx) {
                 return drawing
             }
         }
         return null
+    }
+
+    /**
+     * Magnet Mode snap: Finds the closest price among {Open, High, Low, Close} of the given candle.
+     */
+    fun snapToCandleOhlc(
+        open: BigDecimal,
+        high: BigDecimal,
+        low: BigDecimal,
+        close: BigDecimal,
+        rawPrice: BigDecimal
+    ): BigDecimal {
+        val candidates = listOf(open, high, low, close)
+        val best = candidates.minByOrNull { (it.subtract(rawPrice)).abs() } ?: close
+        return CandleValidatorAlgorithm.normalizeDecimal(best)
     }
 
     /**
@@ -105,6 +174,56 @@ object DrawingGeometryAlgorithm {
                     startPrice = nextStartPrice,
                     endTimeUtcMillis = max(0L, drawing.endTimeUtcMillis + deltaTimeMillis),
                     endPrice = nextEndPrice
+                )
+            }
+            is ChartDrawing.FibRetracement -> {
+                val nextStartPrice = CandleValidatorAlgorithm.normalizeDecimal(
+                    drawing.startPrice.add(deltaPrice).max(BigDecimal("0.00000001"))
+                )
+                val nextEndPrice = CandleValidatorAlgorithm.normalizeDecimal(
+                    drawing.endPrice.add(deltaPrice).max(BigDecimal("0.00000001"))
+                )
+                drawing.copy(
+                    startTimeUtcMillis = max(0L, drawing.startTimeUtcMillis + deltaTimeMillis),
+                    startPrice = nextStartPrice,
+                    endTimeUtcMillis = max(0L, drawing.endTimeUtcMillis + deltaTimeMillis),
+                    endPrice = nextEndPrice
+                )
+            }
+            is ChartDrawing.LongPosition -> {
+                val nextEntry = CandleValidatorAlgorithm.normalizeDecimal(
+                    drawing.entryPrice.add(deltaPrice).max(BigDecimal("0.00000001"))
+                )
+                val nextTarget = CandleValidatorAlgorithm.normalizeDecimal(
+                    drawing.targetPrice.add(deltaPrice).max(BigDecimal("0.00000001"))
+                )
+                val nextStop = CandleValidatorAlgorithm.normalizeDecimal(
+                    drawing.stopPrice.add(deltaPrice).max(BigDecimal("0.00000001"))
+                )
+                drawing.copy(
+                    startTimeUtcMillis = max(0L, drawing.startTimeUtcMillis + deltaTimeMillis),
+                    endTimeUtcMillis = max(0L, drawing.endTimeUtcMillis + deltaTimeMillis),
+                    entryPrice = nextEntry,
+                    targetPrice = nextTarget,
+                    stopPrice = nextStop
+                )
+            }
+            is ChartDrawing.ShortPosition -> {
+                val nextEntry = CandleValidatorAlgorithm.normalizeDecimal(
+                    drawing.entryPrice.add(deltaPrice).max(BigDecimal("0.00000001"))
+                )
+                val nextTarget = CandleValidatorAlgorithm.normalizeDecimal(
+                    drawing.targetPrice.add(deltaPrice).max(BigDecimal("0.00000001"))
+                )
+                val nextStop = CandleValidatorAlgorithm.normalizeDecimal(
+                    drawing.stopPrice.add(deltaPrice).max(BigDecimal("0.00000001"))
+                )
+                drawing.copy(
+                    startTimeUtcMillis = max(0L, drawing.startTimeUtcMillis + deltaTimeMillis),
+                    endTimeUtcMillis = max(0L, drawing.endTimeUtcMillis + deltaTimeMillis),
+                    entryPrice = nextEntry,
+                    targetPrice = nextTarget,
+                    stopPrice = nextStop
                 )
             }
         }

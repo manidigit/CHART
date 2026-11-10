@@ -361,13 +361,33 @@ fun CandlestickCanvas(
                                     )
                                 }
 
-                                val tappedTimeUtc = DrawingGeometryAlgorithm.canvasXToTimeUtc(
+                                val rawTappedTimeUtc = DrawingGeometryAlgorithm.canvasXToTimeUtc(
                                     x = tapOffset.x,
                                     visibleTimestamps = visibleTimestamps,
                                     timeframeStepMillis = stepMillis,
                                     canvasWidth = w
                                 )
-                                val tappedPrice = yToPrice(tapOffset.y.coerceAtMost(pricePaneH))
+                                val rawTappedPrice = yToPrice(tapOffset.y.coerceAtMost(pricePaneH))
+
+                                val slotW = (w / visibleSlice.size.toFloat()).coerceAtLeast(1f)
+                                val localCandleIdx = (tapOffset.x / slotW).toInt().coerceIn(0, visibleSlice.lastIndex)
+                                val nearestCandle = visibleSlice.getOrNull(localCandleIdx)
+
+                                val (tappedTimeUtc, tappedPrice) = if (tab.isMagnetMode && nearestCandle != null) {
+                                    val snappedP = DrawingGeometryAlgorithm.snapToCandleOhlc(
+                                        open = nearestCandle.open,
+                                        high = nearestCandle.high,
+                                        low = nearestCandle.low,
+                                        close = nearestCandle.close,
+                                        rawPrice = rawTappedPrice
+                                    )
+                                    if (preferences.chartVibrations) {
+                                        haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                    }
+                                    Pair(nearestCandle.openTimeUtcMillis, snappedP)
+                                } else {
+                                    Pair(rawTappedTimeUtc, rawTappedPrice)
+                                }
 
                                 if (tab.activeDrawingTool != DrawingTool.CURSOR) {
                                     onPlaceDrawingAt(tappedTimeUtc, tappedPrice)
@@ -762,6 +782,178 @@ fun CandlestickCanvas(
                                         radius = if (isSelected) 6.5f else 4.5f,
                                         center = Offset(x2, y2)
                                     )
+                                }
+                                is ChartDrawing.FibRetracement -> {
+                                    val levels = drawing.computeLevels()
+                                    val x1 = timeToX(drawing.startTimeUtcMillis)
+                                    val y1 = priceToY(drawing.startPrice.toDouble())
+                                    val x2 = timeToX(drawing.endTimeUtcMillis)
+                                    val y2 = priceToY(drawing.endPrice.toDouble())
+                                    val minX = min(x1, x2)
+                                    val maxX = max(x1, x2).coerceAtLeast(minX + 32f)
+                                    val baseColor = parseDrawingColor(drawing.colorHex, Color(0xFF2962FF))
+                                    val color = if (isSelected) baseColor.copy(alpha = 0.95f) else baseColor
+
+                                    // Golden pocket shading (0.5 to 0.618)
+                                    val p05 = levels.firstOrNull { it.ratio == 0.5 }?.price ?: drawing.startPrice
+                                    val p0618 = levels.firstOrNull { it.ratio == 0.618 }?.price ?: drawing.endPrice
+                                    val y05 = priceToY(p05.toDouble())
+                                    val y0618 = priceToY(p0618.toDouble())
+                                    drawRect(
+                                        color = Color(0xFFF59E0B).copy(alpha = 0.20f),
+                                        topLeft = Offset(minX, min(y05, y0618)),
+                                        size = Size(maxX - minX, abs(y0618 - y05).coerceAtLeast(1f))
+                                    )
+
+                                    // Subtle 0.382-0.5 shading
+                                    val p0382 = levels.firstOrNull { it.ratio == 0.382 }?.price
+                                    if (p0382 != null) {
+                                        val y0382 = priceToY(p0382.toDouble())
+                                        drawRect(
+                                            color = Color(0xFF26A69A).copy(alpha = 0.10f),
+                                            topLeft = Offset(minX, min(y0382, y05)),
+                                            size = Size(maxX - minX, abs(y05 - y0382).coerceAtLeast(1f))
+                                        )
+                                    }
+
+                                    // Anchor trend dashed line
+                                    drawLine(
+                                        color = color.copy(alpha = 0.6f),
+                                        start = Offset(x1, y1),
+                                        end = Offset(x2, y2),
+                                        strokeWidth = 1.2f,
+                                        pathEffect = selectedDashEffect
+                                    )
+
+                                    // Retracement level lines
+                                    for (spec in levels) {
+                                        val ly = priceToY(spec.price.toDouble())
+                                        val isGolden = spec.ratio == 0.5 || spec.ratio == 0.618
+                                        val lvlColor = if (isGolden) Color(0xFFF59E0B) else color.copy(alpha = 0.85f)
+                                        drawLine(
+                                            color = lvlColor,
+                                            start = Offset(minX, ly),
+                                            end = Offset(maxX, ly),
+                                            strokeWidth = if (isGolden) strokeW + 0.4f else strokeW
+                                        )
+                                        drawCircle(
+                                            color = lvlColor,
+                                            radius = if (isSelected) 4.5f else 3f,
+                                            center = Offset(minX, ly)
+                                        )
+                                    }
+
+                                    // Anchor handles
+                                    drawCircle(color = color, radius = if (isSelected) 6.5f else 4.5f, center = Offset(x1, y1))
+                                    drawCircle(color = color, radius = if (isSelected) 6.5f else 4.5f, center = Offset(x2, y2))
+                                }
+                                is ChartDrawing.LongPosition -> {
+                                    val entryY = priceToY(drawing.entryPrice.toDouble())
+                                    val targetY = priceToY(drawing.targetPrice.toDouble())
+                                    val stopY = priceToY(drawing.stopPrice.toDouble())
+                                    val startX = timeToX(drawing.startTimeUtcMillis)
+                                    val endX = timeToX(drawing.endTimeUtcMillis)
+                                    val leftX = min(startX, endX)
+                                    val rightX = max(startX, endX).coerceAtLeast(leftX + 45f)
+                                    val boxW = rightX - leftX
+
+                                    // Target box (Green / Bullish)
+                                    val targetTop = min(targetY, entryY)
+                                    val targetH = abs(entryY - targetY).coerceAtLeast(2f)
+                                    drawRect(
+                                        color = Color(0xFF26A69A).copy(alpha = 0.22f),
+                                        topLeft = Offset(leftX, targetTop),
+                                        size = Size(boxW, targetH)
+                                    )
+                                    drawLine(
+                                        color = Color(0xFF26A69A),
+                                        start = Offset(leftX, targetY),
+                                        end = Offset(rightX, targetY),
+                                        strokeWidth = strokeW + 0.5f
+                                    )
+
+                                    // Stop box (Red / Bearish)
+                                    val stopTop = min(entryY, stopY)
+                                    val stopH = abs(stopY - entryY).coerceAtLeast(2f)
+                                    drawRect(
+                                        color = Color(0xFFEF5350).copy(alpha = 0.22f),
+                                        topLeft = Offset(leftX, stopTop),
+                                        size = Size(boxW, stopH)
+                                    )
+                                    drawLine(
+                                        color = Color(0xFFEF5350),
+                                        start = Offset(leftX, stopY),
+                                        end = Offset(rightX, stopY),
+                                        strokeWidth = strokeW + 0.5f
+                                    )
+
+                                    // Entry Line (White / Neutral)
+                                    drawLine(
+                                        color = Color.White.copy(alpha = 0.90f),
+                                        start = Offset(leftX, entryY),
+                                        end = Offset(rightX, entryY),
+                                        strokeWidth = strokeW
+                                    )
+
+                                    if (isSelected) {
+                                        drawCircle(color = Color.White, radius = 5.5f, center = Offset(leftX, entryY))
+                                        drawCircle(color = Color(0xFF26A69A), radius = 5.5f, center = Offset(rightX, targetY))
+                                        drawCircle(color = Color(0xFFEF5350), radius = 5.5f, center = Offset(rightX, stopY))
+                                    }
+                                }
+                                is ChartDrawing.ShortPosition -> {
+                                    val entryY = priceToY(drawing.entryPrice.toDouble())
+                                    val targetY = priceToY(drawing.targetPrice.toDouble())
+                                    val stopY = priceToY(drawing.stopPrice.toDouble())
+                                    val startX = timeToX(drawing.startTimeUtcMillis)
+                                    val endX = timeToX(drawing.endTimeUtcMillis)
+                                    val leftX = min(startX, endX)
+                                    val rightX = max(startX, endX).coerceAtLeast(leftX + 45f)
+                                    val boxW = rightX - leftX
+
+                                    // Target box (Green / Bullish profit below entry)
+                                    val targetTop = min(entryY, targetY)
+                                    val targetH = abs(targetY - entryY).coerceAtLeast(2f)
+                                    drawRect(
+                                        color = Color(0xFF26A69A).copy(alpha = 0.22f),
+                                        topLeft = Offset(leftX, targetTop),
+                                        size = Size(boxW, targetH)
+                                    )
+                                    drawLine(
+                                        color = Color(0xFF26A69A),
+                                        start = Offset(leftX, targetY),
+                                        end = Offset(rightX, targetY),
+                                        strokeWidth = strokeW + 0.5f
+                                    )
+
+                                    // Stop box (Red / Bearish loss above entry)
+                                    val stopTop = min(stopY, entryY)
+                                    val stopH = abs(entryY - stopY).coerceAtLeast(2f)
+                                    drawRect(
+                                        color = Color(0xFFEF5350).copy(alpha = 0.22f),
+                                        topLeft = Offset(leftX, stopTop),
+                                        size = Size(boxW, stopH)
+                                    )
+                                    drawLine(
+                                        color = Color(0xFFEF5350),
+                                        start = Offset(leftX, stopY),
+                                        end = Offset(rightX, stopY),
+                                        strokeWidth = strokeW + 0.5f
+                                    )
+
+                                    // Entry Line (White / Neutral)
+                                    drawLine(
+                                        color = Color.White.copy(alpha = 0.90f),
+                                        start = Offset(leftX, entryY),
+                                        end = Offset(rightX, entryY),
+                                        strokeWidth = strokeW
+                                    )
+
+                                    if (isSelected) {
+                                        drawCircle(color = Color.White, radius = 5.5f, center = Offset(leftX, entryY))
+                                        drawCircle(color = Color(0xFF26A69A), radius = 5.5f, center = Offset(rightX, targetY))
+                                        drawCircle(color = Color(0xFFEF5350), radius = 5.5f, center = Offset(rightX, stopY))
+                                    }
                                 }
                             }
                         }

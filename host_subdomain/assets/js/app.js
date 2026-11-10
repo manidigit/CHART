@@ -1051,9 +1051,22 @@ document.addEventListener('click', async (e) => {
     activeTab.verticalPriceOffset = 0.0;
     renderApp();
   } else if (action === 'set-tool' && activeTab) {
-    activeTab.activeTool = el.getAttribute('data-tool') || 'cursor';
+    const t = el.getAttribute('data-tool') || 'cursor';
+    activeTab.activeTool = t;
+    activeTab.activeDrawingTool = t;
     activeTab.pendingTrendStart = null;
+    activeTab.pendingTrendPoint = null;
     renderApp();
+  } else if (action === 'toggle-magnet' && activeTab) {
+    activeTab.isMagnetMode = !activeTab.isMagnetMode;
+    renderApp();
+  } else if (action === 'delete-drawing' && activeTab) {
+    if (activeTab.selectedDrawingId) {
+      activeTab.drawings = (activeTab.drawings || []).filter((d) => d.id !== activeTab.selectedDrawingId);
+      activeTab.selectedDrawingId = null;
+      saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+      renderApp();
+    }
   } else if (action === 'set-draw-color' && activeTab) {
     activeTab.activeDrawingColorHex = el.getAttribute('data-color') || '#2962FF';
     renderApp();

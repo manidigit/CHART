@@ -31,6 +31,7 @@ data class ChartTabState(
     val activeDrawingColorHex: String = "FF2962FF",
     val activeDrawingWidthDp: Float = 2.2f,
     val isDrawingDockCollapsed: Boolean = true,
+    val isMagnetMode: Boolean = false,
     val drawings: List<ChartDrawing> = emptyList(),
     val selectedDrawingId: String? = null,
     val pendingTrendPoint: TrendAnchorPoint? = null,
