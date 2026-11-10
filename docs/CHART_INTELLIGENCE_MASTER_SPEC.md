@@ -1742,6 +1742,8 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
    - گیج پیش‌بینی و رتبه‌بندی تحلیل‌گران `Analyst Rating & Price Target Gauge` (`396.11 USD (+39.09%)`)
    - کارت آمار نیروهای انسانی `Employees & Key Metrics` (`Revenue / Employee`, `Net income / Employee`)
    - کارت پروفایل نماد/شرکت `About Profile Details` (`Sector`, `Industry`, `CEO`, `Website`, `Headquarters`, شناسه `ISIN`, `CUSIP`, `FIGI`, `CFI`, `IPO date`).
+7. **`P1-UPG-7` (Watchlist Gestures & Accessibility Polish):** ژست‌های حرکتی `Swipe-to-Delete` و `Pull-to-Refresh` در واچ‌لیست + ممیزی کادرهای لمسی حداقل `48×48dp` + پشتیبانی از `reduce-motion` سیستم‌عامل.
+8. **`P1-UPG-8` (Phase 1 Acceptance Gate Checklist & Sign-off Protocol):** تدوین چک‌لیست ۱۰ امتیازی گیت پذیرش نهایی فاز ۱ شامل تست سلامت دیتابیس، همسانی ۱۰۰٪ وب/موبایل، فیلتر تعطیلات `00:00 UTC` و تست حرکتی روی دستگاه واقعی.
 
 ---
 
