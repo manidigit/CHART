@@ -244,6 +244,10 @@
      - کارت آمار نیروهای انسانی `Employees & Key Metrics` (`Revenue / Employee`, `Net income / Employee`)
      - کارت شناسنامه نماد/شرکت `About Profile Details` (`Sector`, `Industry`, `CEO`, `Website`, `Headquarters`, `ISIN`, `CUSIP`, `FIGI`, `CFI`, `IPO date`).
 
+7. **`P1-UPG-10` — عیب‌یابی و اصلاح خطای همگام‌سازی و بارگذاری ماژول‌های وب (`Web Workspace Sync & Top-Level ES Module Export Error Resolution`):**
+   - اصلاح نحوه اعلام و رندر ماژول‌ها در `index.html` و اسکریپت‌های `host_subdomain/js/` جهت تضمین اجرای دستورات `export` صرفاً در لایه اصلی ماژول (`top level`).
+   - جداسازی لایه هندلینگ خطای همگام‌سازی `workspaceService.js` / `workspace_sync.php` از زنجیره لود ماژول‌ها تا در صورت بروز قطع ارتباط شبکه یا بازیابی وضعیت MariaDB، پاپ‌آپ `محیط کاری در حال همگام‌سازی است` شکست سنتاکسی ایجاد نکند.
+
 ### ۶.۳. بازطراحی کامل نسخه وب و رفع ایرادات رندر در Chrome و Firefox (`P1-UPG-WEB` — انجام شد / COMPLETED)
 
 بر اساس بررسی اسکرین‌شات نسخه وب در فایرفاکس و کروم، ۶ ایراد ریشه‌ای شناسایی شده و طبق مشخصات زیر در نسخه وب (`host_subdomain/`) به‌طور کامل برطرف شدند:

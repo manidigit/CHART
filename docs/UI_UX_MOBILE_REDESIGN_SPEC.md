@@ -447,7 +447,21 @@ timeScale: {
 
 ---
 
-### ۱۰.۱۰. جدول اولویت‌بندی اجرایی ارتقاهای تکمیلی فاز ۱
+### ۱۰.۱۰. عیب‌یابی و اصلاح خطای همگام‌سازی و بارگذاری ماژول‌های وب (Web Workspace Sync & Top-Level ES Module Export Error Resolution — `P1-UPG-10` — **اولویت بالا / HIGH PRIORITY**)
+
+پیرو گزارش تصویری خطای همگام‌سازی محیط کاری در نسخه وب (`خطایی در بارگذاری ماژول‌ها رخ داد: SyntaxError: export declarations may only appear at top level of a module`) در پاپ‌آپ toast: `محیط کاری در حال همگام‌سازی است`، الزامات زیر در لیست اولویت‌های اجرایی ثبت می‌شود:
+
+1. **اصلاح رندرینگ و بارگذاری ES Modules در وب (`ES Module Export Syntax Enforcement`):**
+   - تضمین این‌که تمام ماژول‌های جاوااسکریپت در `host_subdomain/js/` فقط به‌صورت `type="module"` بارگذاری شوند و هیچ دستور `export` یا `import` در داخل توابع، بلاک‌های شرطی، ایونت‌ها یا اسکریپت‌های دینامیک غیرماژولار قرار نگیرد.
+2. **مرز مدیریت خطای همگام‌سازی محیط کاری (`Workspace Sync Error Boundary & Recovery`):**
+   - جداسازی منطق بازخوانی وضعیت محیط کاری از MariaDB (`workspace_sync.php`) به نحوی که رخ‌داد خطای شبکه یا ناهماهنگی داده، موجب شکست بارگذاری ماژول‌ها یا رندر مجدد اسکریپت‌ها نشود.
+   - نمایش پیام خطای شفاف همراه با دکمه بازخوانی امن (`Retry Workspace Sync`) بدون ایجاد حلقه ریلود یا خطای سنتاکس.
+3. **همگام‌سازی ۱۰۰٪ بازیابی داده در وب و اندروید (`P0-CORE-SYNC` Parity):**
+   - تطبیق کامل هندلینگ خطای لایه شبکه و همگام‌سازی در `WorkspaceRepository.kt` (اندروید) و `workspaceService.js` (وب) برای پایداری کامل داده‌های کاربر.
+
+---
+
+### ۱۰.۱۱. جدول اولویت‌بندی اجرایی ارتقاهای تکمیلی فاز ۱
 
 | اولویت | کد بسته | عنوان ارتقا | بخش هدف | پلتفرم | وضعیت |
 | :---: | :---: | :--- | :---: | :---: | :---: |
@@ -462,6 +476,7 @@ timeScale: {
 | **۷** | `P1-UPG-7` | **افزودن ژست‌های Swipe-to-Delete و Pull-to-Refresh در واچ‌لیست + ممیزی 48dp Touch Targets و حمایت از reduce-motion** | `Watchlist` & `UX` | Android & Web | **مستندسازی شد (DOCUMENTED)** |
 | **۸** | `P1-UPG-8` | **تدوین چک‌لیست ۱۰ امتیازی گیت تأیید عملی فاز ۱ (Phase 1 Acceptance Gate & Sign-off Protocol)** | `System & Gate` | Android & Web | **مستندسازی شد (DOCUMENTED)** |
 | **۹** | `P1-UPG-9` | **بازطراحی و مرتب‌سازی شلختگی صفحه تنظیمات اندروید با نوار تب‌های ۵ گانه دسته‌بندی‌شده (Segmented Category Tabs: حساب، ظاهر، نمادها، پارامترها، سلامت)** | `Settings` | Android (**HIGH PRIORITY**) | **مستندسازی شد (DOCUMENTED)** |
+| **۱۰** | `P1-UPG-10` | **اصلاح خطای همگام‌سازی و بارگذاری ES Module در وب (`SyntaxError: export declarations may only appear at top level`) + لایه ایزوله بازیابی sync** | `Web & Sync` | Web (**HIGH PRIORITY**) | **مستندسازی شد (DOCUMENTED)** |
 
 
 

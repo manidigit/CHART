@@ -46,6 +46,7 @@ To eliminate fragmentation between Android and Web platforms, the project strict
 1. **Single Data & Algorithm Authority:** All business logic (Fibonacci levels, Risk/Reward position math, Heckbert Y-axis ticks, magnet snapping, time anchors, and indicator formulas) originates from a single deterministic algorithm specification. Neither Android nor Web may implement divergent calculations.
 2. **Cross-Platform Layout & Feature Mirroring:** Any UX improvement, layout reorganization (such as the 5-category tabbed Settings redesign `P1-UPG-9`), new drawing tool, indicator, or configuration switch implemented on one platform MUST be mirrored on the other.
 3. **Unified Workspace State Schema:** User preferences, active chart tabs, drawings, and watchlist configurations are serialized to a standardized JSON schema backed by MariaDB (`user_workspace` table via `/api/v1/workspace_sync.php`) ensuring seamless cross-device synchronization.
+4. **Workspace Sync Module & Error Isolation (`P1-UPG-10`):** Synchronization state restoration between Web (`workspaceService.js`) and MariaDB (`workspace_sync.php`) must isolate ES Module imports strictly at top-level scope (`type="module"`), ensuring dynamic sync recovery or network reconnects never produce unhandled syntax errors or disrupt the core UI loop.
 
 ---
 

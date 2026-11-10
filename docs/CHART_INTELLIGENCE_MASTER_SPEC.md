@@ -1750,8 +1750,10 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
 7. **`P1-UPG-7` (Watchlist Gestures & Accessibility Polish):** ژست‌های حرکتی `Swipe-to-Delete` و `Pull-to-Refresh` در واچ‌لیست + ممیزی کادرهای لمسی حداقل `48×48dp` + پشتیبانی از `reduce-motion` سیستم‌عامل.
 8. **`P1-UPG-8` (Phase 1 Acceptance Gate Checklist & Sign-off Protocol):** تدوین چک‌لیست ۱۰ امتیازی گیت پذیرش نهایی فاز ۱ شامل تست سلامت دیتابیس، همسانی ۱۰۰٪ وب/موبایل، فیلتر تعطیلات `00:00 UTC` و تست حرکتی روی دستگاه واقعی.
 9. **`P1-UPG-9` (Android Settings Categorized Tab Restructuring — HIGH PRIORITY):** بازطراحی ساختار صفحه تنظیمات اندروید (`SettingsScreen.kt`) با نوار زبانه‌های ۵‌گانه افقی بالای صفحه (`حساب`, `ظاهر`, `نمادها`, `پارامترها`, `سلامت`) جهت رفع شلختگی و اسکرول طولانی ۵ کارت روی هم و ایجاد همسانی ۱۰۰٪ با مدال تنظیمات نسخه وب.
+10. **`P1-UPG-10` (Web Workspace Sync & Top-Level ES Module Export Error Resolution — HIGH PRIORITY):** عیب‌یابی و رفع خطای سنتاکس همگام‌سازی ماژول‌های جاوااسکریپت در وب (`SyntaxError: export declarations may only appear at top level of a module`) در پاپ‌آپ `محیط کاری در حال همگام‌سازی است` از طریق اطمینان از اعلام `type="module"`، انتقال تمامی تعاریف `export` به لایه اصلی ماژول، و ایجاد لایه مدیریت خطای شبکه و بازیابی خودکار وضعیت در `workspaceService.js` و `workspace_sync.php`.
 
 ---
+
 
 ## فاز ۲: افزودن ۶ گروه اندیکاتور تکنیکال پایه (با فرمول ریاضی قطعی) و تغییر تایم‌فریم روی تب‌های `Chart View`
 
