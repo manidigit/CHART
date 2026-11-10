@@ -423,10 +423,35 @@ timeScale: {
 
 ---
 
-### ۱۰.۹. جدول اولویت‌بندی اجرایی ارتقاهای تکمیلی فاز ۱
+---
+
+### ۱۰.۹. بازطراحی ساختار صفحه تنظیمات اندروید با زبانه/تب‌های دسته‌بندی‌شده (Android Settings Categorized Tab & Section Restructuring — `P1-UPG-9` — **اولویت بالا / HIGH PRIORITY**)
+
+پیرو بازخورد مالک پروژه و بررسی شتاسایی شلختگی صفحه تنظیمات در نسخه اندروید (اسکرول طولانی یک‌تکه ۵ بخش روی هم)، مشخصات بازطراحی صفحه تنظیمات اندروید (`SettingsScreen.kt`) جهت تفکیک و گروه‌بندی منظم المان‌ها پیش از ورود به فاز ۲ به شرح زیر تدوین می‌گردد:
+
+1. **نوار زبانه‌های دسته‌بندی بالای صفحه (`Top Segmented Category Tab Bar`):**
+   - جایگزینی لیست اسکرولی طولانی با یک نوار افقی فشرده از تب‌های بیضی‌شکل TradingView در بالای صفحه تنظیمات:
+     - `حساب` (Account)
+     - `ظاهر` (Appearance)
+     - `نمادها` (Symbols & Data)
+     - `پارامترها` (TradingView & Params)
+     - `سلامت` (Diagnostics & Server)
+   - با انتخاب هر زبانه، منحصراً کارت‌ها و کنترل‌های همان گروه نمایش داده می‌شوند تا شلختگی به‌طور کامل برطرف شود.
+
+2. **گروه‌بندی منظم سویچ‌های TradingView در ۲ زیرکارت (Collapsible Sub-Cards):**
+   - **زیرکارت ۱: تنظیمات واچ‌لیست (`Watchlist Settings`):** شامل سویچ‌های `مخفی‌سازی لوگوهای واچ‌لیست (Hide logos)`، `نمایش صفحه خلاصه نماد (Show symbol screen)`، `لرزش لمسی روی چارت (Chart vibrations)` و `مقیاس لگاریتمی خودکار (Logarithmic scale)`.
+   - **زیرکارت ۲: تنظیمات بوم چارت (`Chart & Pickers Settings`):** شامل سویچ‌های `به خاطر سپردن آخرین چارت بازشده در این دستگاه` و `مخفی‌سازی نوار تب پایین در حالت افقی (Hide tab bar)`.
+
+3. **همسانی ۱۰۰٪ با مدال تنظیمات نسخه وب (`Web Modal Parity`):**
+   - ایجاد ساختار دات کامپوز متناظر با ۵ تب مدال وب (`settingsView.js`) تا تجربه کاربری در وب و اندروید کاملاً یکدست و منظم گردد.
+
+---
+
+### ۱۰.۱۰. جدول اولویت‌بندی اجرایی ارتقاهای تکمیلی فاز ۱
 
 | اولویت | کد بسته | عنوان ارتقا | بخش هدف | پلتفرم | وضعیت |
 | :---: | :---: | :--- | :---: | :---: | :---: |
+| **P0 (TOP)** | `P0-CORE-SYNC` | **قانون الزام‌آور هسته مرکزی واحد و همگام‌سازی کامل وب ↔ اندروید (Single Central Core Engine Authority & 100% Cross-Platform Parity)** | `System Architecture` | Core Architecture | **الزام اولویت اول (TOP PRIORITY)** |
 | **۰** | `P1-UPG-WEB` | **بازطراحی کامل ظاهر وب، رفع باگ تراز اعداد Canvas در RTL، فونت و Cache-Busting کروم، حذف ایموجی‌ها با آیکون SVG و حذف هدر تکراری واچ‌لیست** | `Web Terminal` | Web (Chrome & Firefox) | **انجام شد (COMPLETED)** |
 | **۱** | `P1-UPG-1` | **کراس‌هیر پیوسته با نگه‌داشتن انگشت (`Long-Press & Drag`) + ویبره لمسی قابل تنظیم (`Chart vibrations` / `Picker vibrates`)** | `Chart` & `Settings` | Android & Web | **انجام شد (COMPLETED)** |
 | **۲** | `P1-UPG-2` | **مقیاس لگاریتمی (`Logarithmic scale`) + خط‌چین `Previous close` + تایمر کندل + برچسب سقف/کف دید (`High/Low`) + دکمه شناور `»` برگشت به کندل آخر** | `Chart` | Android & Web | **انجام شد (COMPLETED)** |
@@ -436,6 +461,8 @@ timeScale: {
 | **۶** | `P1-UPG-6` | **مستندسازی و تدوین کارت‌های تحلیل فاندامنتال، تکمیلی، فصلی و گیج‌های آمپری تکنیکال (Seasonals, Key Data Points, Technicals Gauge, Income Statement, Dividends, Analyst Rating)** | `Watchlist / Overview` | Android & Web | **مستندسازی شد (DOCUMENTED)** |
 | **۷** | `P1-UPG-7` | **افزودن ژست‌های Swipe-to-Delete و Pull-to-Refresh در واچ‌لیست + ممیزی 48dp Touch Targets و حمایت از reduce-motion** | `Watchlist` & `UX` | Android & Web | **مستندسازی شد (DOCUMENTED)** |
 | **۸** | `P1-UPG-8` | **تدوین چک‌لیست ۱۰ امتیازی گیت تأیید عملی فاز ۱ (Phase 1 Acceptance Gate & Sign-off Protocol)** | `System & Gate` | Android & Web | **مستندسازی شد (DOCUMENTED)** |
+| **۹** | `P1-UPG-9` | **بازطراحی و مرتب‌سازی شلختگی صفحه تنظیمات اندروید با نوار تب‌های ۵ گانه دسته‌بندی‌شده (Segmented Category Tabs: حساب، ظاهر، نمادها، پارامترها، سلامت)** | `Settings` | Android (**HIGH PRIORITY**) | **مستندسازی شد (DOCUMENTED)** |
+
 
 
 

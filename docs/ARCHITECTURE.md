@@ -10,12 +10,42 @@
 
 CHART is engineered as a modular, extensible, multi-horizon financial charting and analytics platform for both **Android Native (Kotlin/Compose)** and **Responsive Web (ES6+ / PHP / MariaDB)**.
 
-The software architecture is governed by five core principles:
-1. **Separation of Concerns:** Strict isolation between presentation (UI), coordination/state, business domain algorithms, and data persistence.
-2. **Modularity & High Cohesion:** Each algorithmic calculation, provider adapter, and UI component lives in its own dedicated, focused file.
-3. **Loose Coupling:** Components interact via typed models, unambiguous interfaces, and contract definitions, never through direct internal state mutation.
-4. **Zero Hardcoding:** Colors, algorithm parameters (zoom step, history limits, touch tolerance), and symbol definitions are decoupled into configuration defaults and runtime user customization.
-5. **Simplicity over Overengineering:** No unnecessary bundlers or complex microservices. Web uses native ES modules; Android uses standard Jetpack Compose MVVM.
+The software architecture is governed by six core principles:
+1. **Single Central Core Engine Authority (TOP PRIORITY):** The entire application ecosystem is governed by a single unified central core domain (data models, calculation algorithms, drawing tools, indicator contracts, and server state). Both Android and Web platforms consume, reflect, and synchronize strictly from this central core with 100% feature and visual parity.
+2. **Separation of Concerns:** Strict isolation between presentation (UI), coordination/state, business domain algorithms, and data persistence.
+3. **Modularity & High Cohesion:** Each algorithmic calculation, provider adapter, and UI component lives in its own dedicated, focused file.
+4. **Loose Coupling:** Components interact via typed models, unambiguous interfaces, and contract definitions, never through direct internal state mutation.
+5. **Zero Hardcoding:** Colors, algorithm parameters (zoom step, history limits, touch tolerance), and symbol definitions are decoupled into configuration defaults and runtime user customization.
+6. **Simplicity over Overengineering:** No unnecessary bundlers or complex microservices. Web uses native ES modules; Android uses standard Jetpack Compose MVVM.
+
+---
+
+## 1.1 Single Central Core Engine & Cross-Platform Parity Protocol (`P0-CORE-SYNC` — **CRITICAL TOP PRIORITY**)
+
+To eliminate fragmentation between Android and Web platforms, the project strictly enforces a **Single Central Core Architecture**:
+
+```
+                              ┌────────────────────────────────────────────────────────┐
+                              │            SINGLE CENTRAL CORE ENGINE                  │
+                              │  • Unified Domain Models (OHLCV, Drawings, Tabs)       │
+                              │  • Shared Pure Algorithms (Fib, Magnet, Heckbert Y-Axis)│
+                              │  • MariaDB / PHP Workspace Sync Contract               │
+                              └───────────────────────────┬────────────────────────────┘
+                                                          │
+                                ┌─────────────────────────┴─────────────────────────┐
+                                ▼                                                   ▼
+                ┌───────────────────────────────┐                   ┌───────────────────────────────┐
+                │    Android Native Platform    │                   │      Web Terminal Platform    │
+                │  (Jetpack Compose Viewport)   │                   │   (Vanilla ES6 + Canvas UI)   │
+                │  • Consumes Central Core      │                   │  • Consumes Central Core      │
+                │  • 100% Feature & UI Parity   │                   │  • 100% Feature & UI Parity   │
+                └───────────────────────────────┘                   └───────────────────────────────┘
+```
+
+### Core Synchronization Rules:
+1. **Single Data & Algorithm Authority:** All business logic (Fibonacci levels, Risk/Reward position math, Heckbert Y-axis ticks, magnet snapping, time anchors, and indicator formulas) originates from a single deterministic algorithm specification. Neither Android nor Web may implement divergent calculations.
+2. **Cross-Platform Layout & Feature Mirroring:** Any UX improvement, layout reorganization (such as the 5-category tabbed Settings redesign `P1-UPG-9`), new drawing tool, indicator, or configuration switch implemented on one platform MUST be mirrored on the other.
+3. **Unified Workspace State Schema:** User preferences, active chart tabs, drawings, and watchlist configurations are serialized to a standardized JSON schema backed by MariaDB (`user_workspace` table via `/api/v1/workspace_sync.php`) ensuring seamless cross-device synchronization.
 
 ---
 
