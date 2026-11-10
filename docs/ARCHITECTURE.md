@@ -1,7 +1,7 @@
 # CHART — Architecture & System Design
 
 > **Document Status:** Official Architectural Specification  
-> **Target Version:** 1.28+  
+> **Target Version:** 1.28.8  
 > **Master Reference:** [CHART_INTELLIGENCE_MASTER_SPEC.md](./CHART_INTELLIGENCE_MASTER_SPEC.md)
 
 ---
@@ -24,8 +24,8 @@ The software architecture is governed by five core principles:
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        Presentation Layer (UI)                         │
-│  • 4-Tab TradingView Architecture (Watchlist, Chart, Prediction, Set.) │
-│  • 5-Layer Chart Workspace (48dp Header + 85% Canvas + 46dp Bottom Bar)│
+│  • 4-Section TradingView Pro Architecture (Watchlist, Chart, Pred, Set)│
+│  • Desktop Split-Pane Resizers, Unified Indicators Modal & Vector Icons│
 │  • Android: Jetpack Compose full-viewport canvas & modal BottomSheets  │
 │  • Web: Desktop terminal layout & mobile touch-locked workspace        │
 └───────────────────────────────────┬────────────────────────────────────┘
@@ -41,11 +41,11 @@ The software architecture is governed by five core principles:
 ┌────────────────────────────────────────────────────────────────────────┐
 │                       Domain & Algorithms Layer                        │
 │  Deterministic, pure business calculations (No UI / No DB dependencies)│
-│  • TimeframeAggregator: Exact OHLCV aggregation (M15 ➔ H1/H4/D1)       │
+│  • TimeframeAggregator: Exact OHLCV aggregation (M15 ➔ H1/H4/D1/W1)    │
 │  • DrawingGeometry: Market-coordinate anchoring, color/width & hit test│
-│  • TechnicalAnalytics: SMA (20), ATR (14), Classic Pivots, Sentiment   │
-│  • PriceFormatter: Signed diff/pct, compact volume & date range bounds │
-│  • CandleValidator: Strict timestamp alignment & decimal sanitization  │
+│  • TechnicalAnalytics: SMA(20), EMA(50), BB(20,2), ATR(14), Pivots     │
+│  • PriceFormatter: Heckbert nice Y-ticks & smart span-aware X-axis     │
+│  • CandleValidator: Strict timestamp alignment & weekend comb filter   │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ Data Queries & Sync
                                     ▼

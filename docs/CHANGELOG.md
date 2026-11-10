@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.28.8] - 2026-11-10
+
+### Added
+- **Smart Span-Aware Horizontal Time Axis & Automatic Date-Range Timeframe Resolution (`priceFormatter.js`, `chartRenderer.js`, `app.js`):**
+  - Implemented `PriceFormatter.computeSmartTimeAxisTicks(visible, chartW, timeframe)` which inspects both the active timeframe (`M15`, `H1`, `H4`, `D1`, `W1`) and the visible calendar span (`spanDays`) to snap vertical grid lines and X-axis labels onto exact UTC **Year** boundaries (`2025`, `2026`), **Month** starts (`Mar`, `May`, `Jul`, `Sep`, `Nov`), **Day** boundaries (`4 Nov`, `5 Nov`), or **Round Hours** (`02:00`, `04:00`) with collision prevention (`minPxGap = 82px`).
+  - Clicking bottom Date Range presets (`1D`, `5D`, `1W`, `1M`, `3M`, `6M`, `9M`, `YTD`, `1Y`, `5Y`, `All`) now automatically switches to the appropriate candle resolution (`M15` for `1D`, `H1` for `5D`/`1W`, `H4` for `1M`, `D1` for `3M`/`6M`/`9M`/`YTD`/`1Y`, `W1` for `5Y`/`All`) and computes the exact `visibleCount` covering that historical cutoff (`up to 600 bars`).
+  - Added `W1` (`1W` Weekly) candle aggregation across `TimeframeAggregator` (`timeframeAggregator.js` and `TimeframeAggregator.php`) and added `1W` to the top timeframe selector bar.
+- **Heckbert Nice-Number Y-Axis Price Scaling (`priceFormatter.js` & `PriceFormatterAlgorithm.kt`):**
+  - Implemented Heckbert's nice-number step algorithm (`1, 2, 2.5, 5 × 10^n`) on both Web (`computeNicePriceTicks`) and Android (`computeNiceAxisBounds`) so the right-hand vertical price axis always renders clean, human-readable round numbers (e.g., `120.00, 110.00, 100.00, 90.00, 80.00, 70.00` for Brent Crude and `4100.00, 4050.00` for Gold) instead of arbitrary fractional numbers.
+- **Watchlist Circular Vector Asset Icons (`watchlistView.js` & `theme.css`):**
+  - Replaced plain text badges (`Au`, `OIL`) in the Watchlist and Symbol Details pane with custom circular gradient SVG icons: Gold Bullion (`XAUUSD`), Crude Oil Droplet (`SPOTBRENT`, `BRENT_FUTURES`), Silver Bullion (`XAGUSD`), and Forex Emblem (`EURUSD`).
+- **Consolidated TradingView Desktop Workspace, Unified Indicators Modal & Interactive Drag Resizers:**
+  - Unified all 4 core workspace navigation items (**Watchlist**, **Chart / Symbol Overview**, **Prediction**, **Settings**) exclusively inside the Right Dock Rail (`navigationView.js`), eliminating duplicate Settings/Prediction buttons from the top header and removing redundant mobile bottom bars on desktop.
+  - Removed multi-tab symbol clutter from the top header bar; the top header now displays the active symbol search/selector (`SPOTBRENT`), candle timeframes (`15m`, `1h`, `4h`, `1D`, `1W`), chart type (`Candles` / `Line`), and a single unified **Indicators (`اندیکاتورها`)** button opening the Indicators Modal (`SMA 20`, `EMA 50`, `Bollinger Bands (20, 2)`, and `Volume Histogram` with `16% / 22% / 30%` height presets).
+  - Added interactive drag resizer handles for the Right Panel width (`.tv-col-resizer`, `220px..520px`) and the Watchlist / Symbol Details vertical split ratio (`.tv-row-resizer`, `22%..78%`), persisted in `localStorage`.
+- **Session Persistence (`Remember Me`), Modern Auth Landing Dashboard & Startup Watchdog (`loginView.js`, `LoginScreen.kt`, `index.html`, `app.js`):**
+  - Added persistent session & credential storage (`ذخیره نام کاربری و رمز عبور / ورود خودکار`) and password visibility toggle across Web (`localStorage` + `auth.php`) and Android (`WorkspaceRepository` + `LoginScreen.kt`).
+  - Replaced the static startup screen in `host_subdomain/index.html` with a TradingView Pro landing shell featuring a live market preview card, startup watchdog timer, and fallback error boundary (`renderFallbackErrorBoundary`).
+
+### Fixed
+- **Backend PHP Fatal Error (`TimeframeAggregator::aggregate()`):**
+  - Added the static `aggregate(array $candles, string $targetTf): array` method in `host_subdomain/api/v1/algorithms/TimeframeAggregator.php` and `host_subdomain/assets/js/algorithms/timeframeAggregator.js`, resolving the fatal error in `TvDatafeedAdapter.php` during `candles_sync.php`.
+- **High-DPI Canvas Overflow & Bottom Bar Clipping (`theme.css`, `watchlistView.js`, `chartRenderer.js`):**
+  - Positioned `#main-chart-canvas` with `position: absolute; inset: 0;` inside `.chart-canvas-box` (`flex: 1; min-height: 0; overflow: hidden;`) so high-DPI `<canvas>` scaling never pushes `.tv-bottom-bar` (`1D..All`, `UTC`, `log`, `auto`) below the viewport.
+  - Enforced single-line flex alignment on `.tv-wl-sym-cell` so Watchlist asset icons and ticker names (`SPOTBRENT`) never wrap onto two lines, fixed `Day's Range` progress bar alignment in `computeDayStats`, and constrained `.tv-details-overview-btn` (`عملکرد فصلی و داده‌های کلیدی`) with `text-overflow: ellipsis` so it never overflows the right panel.
+  - Suppressed the intraday `HH:MM:SS` countdown label on `1D` and `1W` timeframes so daily/weekly price pills display only the live price.
+
+---
+
 ## [1.28.1] - 2026-11-08
 
 ### Added
