@@ -1,12 +1,13 @@
-import { I18nManager } from './core/i18n.js?v=1.28.6';
+import { I18nManager } from './core/i18n.js?v=1.28.7';
 import {
   state,
   savePreferences,
   saveSymbolsToStorage,
   saveDrawings,
   saveLastOpenedSymbol,
+  savePanelLayout,
   getCachedOrAggregatedCandles,
-} from './core/store.js?v=1.28.6';
+} from './core/store.js?v=1.28.7';
 import {
   syncServerAuthStatus,
   loginOrRegisterOwner,
@@ -17,16 +18,20 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.28.6';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.6';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.6';
-import { renderLoginScreen } from './views/loginView.js?v=1.28.6';
-import { renderTopHeaderBar, renderBottomChartBar } from './views/headerView.js?v=1.28.6';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.6';
-import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.6';
-import { renderPredictionModal } from './views/analysisView.js?v=1.28.6';
-import { renderSettingsModal } from './views/settingsView.js?v=1.28.6';
-import { renderRightIconRail } from './views/navigationView.js?v=1.28.6';
+} from './services/apiService.js?v=1.28.7';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.7';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.7';
+import { renderLoginScreen } from './views/loginView.js?v=1.28.7';
+import {
+  renderTopHeaderBar,
+  renderBottomChartBar,
+  renderIndicatorsModal,
+} from './views/headerView.js?v=1.28.7';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.7';
+import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.7';
+import { renderPredictionModal } from './views/analysisView.js?v=1.28.7';
+import { renderSettingsModal } from './views/settingsView.js?v=1.28.7';
+import { renderRightIconRail } from './views/navigationView.js?v=1.28.7';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -169,6 +174,23 @@ function renderOhlcvOverlay(activeTab) {
   const sellPrice = PriceFormatter.formatPrice(lastClose - spreadStep, dec);
   const buyPrice = PriceFormatter.formatPrice(lastClose + spreadStep, dec);
 
+  const indPills = [];
+  if (activeTab.showSma20) {
+    indPills.push(
+      `<span class="tv-ind-pill" style="color: #F59E0B;">SMA 20 <span style="cursor:pointer; opacity:0.8;" data-action="toggle-sma20">✕</span></span>`
+    );
+  }
+  if (activeTab.showEma50) {
+    indPills.push(
+      `<span class="tv-ind-pill" style="color: #06B6D4;">EMA 50 <span style="cursor:pointer; opacity:0.8;" data-action="toggle-ema50">✕</span></span>`
+    );
+  }
+  if (activeTab.showBollinger) {
+    indPills.push(
+      `<span class="tv-ind-pill" style="color: #A855F7;">BB (20, 2) <span style="cursor:pointer; opacity:0.8;" data-action="toggle-bollinger">✕</span></span>`
+    );
+  }
+
   return `
     <div class="tv-ohlc-overlay ltr-num" dir="ltr">
       <div class="tv-ohlc-main-line">
@@ -184,6 +206,11 @@ function renderOhlcvOverlay(activeTab) {
         <span style="color: ${col}; font-weight: 700;">${diff >= 0 ? '+' : ''}${PriceFormatter.formatPrice(diff, dec)} (${pct})</span>
         <span style="color: var(--text-muted);">Vol <strong style="color: var(--text);">${PriceFormatter.formatVolume(c.volume)}</strong></span>
       </div>
+      ${
+        indPills.length > 0
+          ? `<div class="tv-ohlc-indicators-line">${indPills.join('')}</div>`
+          : ''
+      }
     </div>
   `;
 }
@@ -301,18 +328,83 @@ export function renderApp() {
 
         ${renderSettingsModal(i18n)}
         ${renderPredictionModal(activeTab, i18n)}
+        ${renderIndicatorsModal(activeTab, i18n)}
         ${renderSymbolOverviewModal(i18n)}
         ${renderAddSymbolModal()}
       </div>
     `;
 
     bindSettingsForms();
+    bindPanelResizers();
     bindCanvasEvents(activeTab);
     redrawActiveCanvas();
     window.__CI_APP_MOUNTED__ = true;
   } catch (err) {
     console.error('[Chart Intelligence] Render failed:', err);
     renderFallbackErrorBoundary(err);
+  }
+}
+
+function bindPanelResizers() {
+  const colResizer = document.getElementById('tv-right-col-resizer');
+  const rightPanel = document.getElementById('tv-right-split-panel');
+  if (colResizer && rightPanel) {
+    colResizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      colResizer.classList.add('dragging');
+      const startX = e.clientX;
+      const startW = rightPanel.getBoundingClientRect().width;
+
+      const onMove = (moveEv) => {
+        // Right panel is on the right side in LTR layout, so dragging left (negative dx) increases its width
+        const dx = startX - moveEv.clientX;
+        const nextW = Math.max(220, Math.min(520, Math.round(startW + dx)));
+        state.rightPanelWidth = nextW;
+        rightPanel.style.width = `${nextW}px`;
+        rightPanel.style.minWidth = `${nextW}px`;
+        redrawActiveCanvas();
+      };
+
+      const onUp = () => {
+        colResizer.classList.remove('dragging');
+        savePanelLayout();
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
+  }
+
+  const rowResizer = document.getElementById('tv-right-row-resizer');
+  const topPane = document.getElementById('tv-watchlist-top-pane');
+  if (rowResizer && rightPanel && topPane) {
+    rowResizer.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      rowResizer.classList.add('dragging');
+      const panelRect = rightPanel.getBoundingClientRect();
+
+      const onMove = (moveEv) => {
+        if (panelRect.height <= 100) return;
+        const relY = moveEv.clientY - panelRect.top;
+        const ratio = Math.max(0.22, Math.min(0.78, relY / panelRect.height));
+        state.watchlistTopRatio = ratio;
+        const pct = Math.round(ratio * 100);
+        topPane.style.flex = `0 0 ${pct}%`;
+        topPane.style.height = `${pct}%`;
+      };
+
+      const onUp = () => {
+        rowResizer.classList.remove('dragging');
+        savePanelLayout();
+        window.removeEventListener('mousemove', onMove);
+        window.removeEventListener('mouseup', onUp);
+      };
+
+      window.addEventListener('mousemove', onMove);
+      window.addEventListener('mouseup', onUp);
+    });
   }
 }
 
@@ -726,7 +818,19 @@ document.addEventListener('click', async (e) => {
     const rk = el.getAttribute('data-range') || 'All';
     activeTab.selectedRangePreset = rk;
     activeTab.scrollOffset = 0;
-    const mapCount = { '1D': 24, '5D': 48, '1M': 90, '3M': 125, '6M': 145, YTD: 155, '1Y': 170, '5Y': 180, All: 180 };
+    const mapCount = {
+      '1D': 24,
+      '5D': 48,
+      '1W': 64,
+      '1M': 90,
+      '3M': 120,
+      '6M': 140,
+      '9M': 152,
+      YTD: 160,
+      '1Y': 170,
+      '5Y': 180,
+      All: 180,
+    };
     activeTab.visibleCount = Math.min((activeTab.candles || []).length || 48, mapCount[rk] || 60);
     renderApp();
   } else if (action === 'set-chart-type' && activeTab) {
@@ -739,8 +843,17 @@ document.addEventListener('click', async (e) => {
     const cur = Number(activeTab.volumePaneRatio || 0.22);
     activeTab.volumePaneRatio = cur < 0.19 ? 0.22 : cur < 0.26 ? 0.3 : 0.16;
     renderApp();
+  } else if (action === 'set-volume-height' && activeTab) {
+    activeTab.volumePaneRatio = Math.max(0.12, Math.min(0.35, Number(el.getAttribute('data-ratio') || 0.22)));
+    renderApp();
   } else if (action === 'toggle-sma20' && activeTab) {
     activeTab.showSma20 = !activeTab.showSma20;
+    renderApp();
+  } else if (action === 'toggle-ema50' && activeTab) {
+    activeTab.showEma50 = !activeTab.showEma50;
+    renderApp();
+  } else if (action === 'toggle-bollinger' && activeTab) {
+    activeTab.showBollinger = !activeTab.showBollinger;
     renderApp();
   } else if (action === 'toggle-log-scale' && activeTab) {
     activeTab.isLogScale = !activeTab.isLogScale;

@@ -547,39 +547,27 @@ html[data-theme='dark'] .tv-tool-btn.active {
   color: var(--primary);
 }
 
-/* Open Symbol Tabs Strip inside Topbar */
-.tab-strip {
+.tv-toolbar-group {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
+  gap: 2px;
+  background: rgba(120, 123, 134, 0.06);
+  padding: 2px;
+  border-radius: 5px;
 }
 
-.chart-tab {
+.tv-badge-count {
   display: inline-flex;
   align-items: center;
-  gap: 5px;
-  height: 26px;
-  padding: 0 8px;
-  border-radius: 4px;
-  border: 1px solid var(--border);
-  background: var(--bg);
-  color: var(--text-muted);
-  cursor: pointer;
-  font-size: 11.5px;
-  font-weight: 600;
-  white-space: nowrap;
-  transition: all 0.12s ease;
-}
-
-.chart-tab:hover {
-  color: var(--text-strong);
-  border-color: var(--text-muted);
-}
-
-.chart-tab.active {
-  background: var(--primary-soft);
-  border-color: var(--primary);
-  color: var(--text-strong);
+  justify-content: center;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--primary);
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 700;
 }
 
 /* ============================================================================
@@ -620,14 +608,16 @@ html[data-theme='dark'] .tv-tool-btn.active {
   position: relative;
   min-width: 0;
   min-height: 0;
+  height: 100%;
   background: var(--bg);
   display: flex;
   flex-direction: column;
+  overflow: hidden;
   direction: ltr;
 }
 
 .chart-canvas-box {
-  flex: 1;
+  flex: 1 1 0%;
   position: relative;
   width: 100%;
   min-height: 0;
@@ -636,7 +626,11 @@ html[data-theme='dark'] .tv-tool-btn.active {
   direction: ltr;
 }
 
+/* CRITICAL FIX: position: absolute; inset: 0 prevents high-DPI canvas.height attribute
+   from inflating the flex container and pushing .tv-bottom-bar off the bottom of the screen */
 .chart-canvas {
+  position: absolute;
+  inset: 0;
   width: 100%;
   height: 100%;
   display: block;
@@ -645,7 +639,7 @@ html[data-theme='dark'] .tv-tool-btn.active {
   direction: ltr;
 }
 
-/* TradingView Top-Left Floating Instrument, OHLC & Bid/Ask Spread Overlay */
+/* TradingView Top-Left Floating Instrument & OHLCV Legend Overlay */
 .tv-ohlc-overlay {
   position: absolute;
   top: 8px;
@@ -653,12 +647,13 @@ html[data-theme='dark'] .tv-tool-btn.active {
   z-index: 20;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 4px;
   pointer-events: none;
   max-width: calc(100% - 92px);
   direction: ltr;
 }
 
+.tv-ohlc-main-line,
 .tv-ohlc-row {
   display: inline-flex;
   flex-wrap: wrap;
@@ -674,6 +669,8 @@ html[data-theme='dark'] .tv-tool-btn.active {
   pointer-events: auto;
 }
 
+html[data-theme='light'] .tv-ohlc-main-line,
+body.theme-light .tv-ohlc-main-line,
 html[data-theme='light'] .tv-ohlc-row,
 body.theme-light .tv-ohlc-row {
   background: rgba(255, 255, 255, 0.9);
@@ -681,50 +678,50 @@ body.theme-light .tv-ohlc-row {
   color: #131722;
 }
 
-.tv-spread-row {
+.tv-ohlc-symbol-title {
   display: inline-flex;
   align-items: center;
   gap: 6px;
+  font-weight: 700;
+  color: var(--text-strong);
+  margin-right: 4px;
+}
+
+.tv-ohlc-indicators-line {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  font-size: 10.5px;
   pointer-events: auto;
 }
 
-.tv-quote-box {
+.tv-ind-pill {
   display: inline-flex;
-  flex-direction: column;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-family: 'JetBrains Mono', monospace;
-  line-height: 1.15;
-  border: 1px solid;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(19, 23, 34, 0.75);
+  border: 1px solid var(--border);
+  font-weight: 600;
 }
 
-.tv-quote-box.sell {
-  border-color: rgba(239, 83, 80, 0.65);
-  background: rgba(239, 83, 80, 0.12);
-  color: var(--bear);
-}
-
-.tv-quote-box.buy {
-  border-color: rgba(41, 98, 255, 0.65);
-  background: rgba(41, 98, 255, 0.12);
-  color: #5b8def;
-}
-
-html[data-theme='light'] .tv-quote-box.buy,
-body.theme-light .tv-quote-box.buy {
-  color: var(--primary);
+html[data-theme='light'] .tv-ind-pill,
+body.theme-light .tv-ind-pill {
+  background: rgba(255, 255, 255, 0.88);
 }
 
 .bottom-nav {
   display: none !important;
 }
 
-/* TradingView Bottom Date Range, UTC Clock & Scale Bar (32px) */
+/* TradingView Bottom Date Range, UTC Clock & Scale Bar (32px Fixed) */
 .tv-bottom-bar {
   height: 32px;
   min-height: 32px;
   max-height: 32px;
-  flex-shrink: 0;
+  flex: 0 0 32px;
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
@@ -743,45 +740,101 @@ body.theme-light .tv-quote-box.buy {
   display: none;
 }
 
-.tv-range-btn {
-  border: none;
+.tv-bottom-ranges,
+.tv-bottom-scales {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+  height: 100%;
+}
+
+.tv-range-btn,
+.tv-scale-btn {
+  border: 1px solid transparent;
   background: transparent;
   color: var(--text-muted);
   font-family: 'JetBrains Mono', 'Inter', sans-serif;
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 600;
-  padding: 3px 7px;
+  height: 22px;
+  padding: 0 6px;
   border-radius: 4px;
   cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  white-space: nowrap;
   transition: all 0.12s ease;
 }
 
-.tv-range-btn:hover {
+.tv-range-btn:hover,
+.tv-scale-btn:hover {
   color: var(--text-strong);
   background: var(--surface-elevated);
 }
 
-.tv-range-btn.active {
+.tv-range-btn.active,
+.tv-scale-btn.active {
   color: var(--primary);
   background: var(--primary-soft);
+  border-color: rgba(41, 98, 255, 0.35);
   font-weight: 700;
 }
 
 /* ============================================================================
-   4. RIGHT COLLAPSIBLE SPLIT PANEL (Watchlist Top + Symbol Details Bottom)
+   4. RIGHT COLLAPSIBLE & RESIZABLE SPLIT PANEL (Watchlist Top + Symbol Details Bottom)
       & PERMANENT 42px RIGHT ICON DOCK RAIL
    ============================================================================ */
+.tv-col-resizer {
+  width: 5px;
+  min-width: 5px;
+  height: 100%;
+  cursor: col-resize;
+  background: transparent;
+  border-left: 1px solid var(--border);
+  position: relative;
+  z-index: 34;
+  transition: background 0.12s ease;
+  flex-shrink: 0;
+}
+
+.tv-col-resizer:hover,
+.tv-col-resizer.dragging {
+  background: var(--primary);
+  border-left-color: var(--primary);
+}
+
+.tv-row-resizer {
+  height: 5px;
+  min-height: 5px;
+  width: 100%;
+  cursor: row-resize;
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border);
+  position: relative;
+  z-index: 34;
+  transition: background 0.12s ease;
+  flex-shrink: 0;
+}
+
+.tv-row-resizer:hover,
+.tv-row-resizer.dragging {
+  background: var(--primary);
+  border-color: var(--primary);
+}
+
 .tv-right-panel {
   width: 310px;
-  min-width: 310px;
+  min-width: 220px;
+  max-width: 520px;
   height: 100%;
   background: var(--surface);
-  border-left: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   z-index: 32;
   overflow: hidden;
-  transition: width 0.16s ease, min-width 0.16s ease;
 }
 
 .tv-right-panel.collapsed {
@@ -792,11 +845,9 @@ body.theme-light .tv-quote-box.buy {
 
 /* Top Half: Compact Tabular Watchlist */
 .tv-watchlist-pane {
-  flex: 1.15;
-  min-height: 180px;
+  min-height: 120px;
   display: flex;
   flex-direction: column;
-  border-bottom: 1px solid var(--border);
   overflow: hidden;
 }
 
@@ -852,8 +903,8 @@ body.theme-light .tv-quote-box.buy {
 }
 
 .tv-symbol-details-pane {
-  flex: 1;
-  min-height: 210px;
+  flex: 1 1 0%;
+  min-height: 110px;
   overflow-y: auto;
   overflow-x: hidden;
   padding: 12px;

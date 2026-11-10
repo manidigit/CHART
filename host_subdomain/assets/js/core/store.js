@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.6';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.6';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.7';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.7';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -238,7 +238,21 @@ export const state = {
   openTabs: [],
   activeTabId: null,
   lastOpenedSymbolCode: localStorage.getItem(STORAGE_KEY_LAST_SYMBOL) || 'SPOTBRENT',
+
+  rightPanelWidth: Math.max(
+    220,
+    Math.min(520, Number(localStorage.getItem('ci_right_panel_w') || 310))
+  ),
+  watchlistTopRatio: Math.max(
+    0.22,
+    Math.min(0.78, Number(localStorage.getItem('ci_wl_top_ratio') || 0.52))
+  ),
 };
+
+export function savePanelLayout() {
+  localStorage.setItem('ci_right_panel_w', String(Math.round(state.rightPanelWidth || 310)));
+  localStorage.setItem('ci_wl_top_ratio', String(Number(state.watchlistTopRatio || 0.52).toFixed(3)));
+}
 
 export function savePreferences() {
   localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(state.chartPreferences));
@@ -334,6 +348,17 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
     const h1 = state.candleCache[h1Key] || loadCandlesFromLocalStorage(h1Key, 'H1');
     if (h1 && h1.length > 0) {
       return TimeframeAggregator.aggregateCandles(h1, 'D1');
+    }
+  } else if (normTf === 'W1' && (!current || current.length === 0)) {
+    const d1Key = `${symbolCode}_${provider}_D1`;
+    const d1 = state.candleCache[d1Key] || loadCandlesFromLocalStorage(d1Key, 'D1');
+    if (d1 && d1.length > 0) {
+      return TimeframeAggregator.aggregateCandles(d1, 'W1');
+    }
+    const h4Key = `${symbolCode}_${provider}_H4`;
+    const h4 = state.candleCache[h4Key] || loadCandlesFromLocalStorage(h4Key, 'H4');
+    if (h4 && h4.length > 0) {
+      return TimeframeAggregator.aggregateCandles(h4, 'W1');
     }
   }
 

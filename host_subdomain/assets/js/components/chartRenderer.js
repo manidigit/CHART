@@ -1,12 +1,13 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.6';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.28.6';
-import { state } from '../core/store.js?v=1.28.6';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.7';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.28.7';
+import { state } from '../core/store.js?v=1.28.7';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;
   if (tf === 'H1') return 60 * 60;
   if (tf === 'H4') return 4 * 3600;
   if (tf === 'D1') return 24 * 3600;
+  if (tf === 'W1') return 7 * 24 * 3600;
   return 15 * 60;
 }
 
@@ -35,13 +36,13 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
   const rect = canvas.getBoundingClientRect();
-  canvas.width = rect.width * dpr;
-  canvas.height = rect.height * dpr;
+  if (rect.width <= 0 || rect.height <= 0) return;
+
+  canvas.width = Math.round(rect.width * dpr);
+  canvas.height = Math.round(rect.height * dpr);
   ctx.scale(dpr, dpr);
 
-  // CRITICAL FIX FOR CHROME & FIREFOX IN RTL DOCUMENTS:
-  // Force Canvas 2D context text direction and alignment to LTR so price numbers
-  // never draw backward into the chart area or clip outside right-axis pills.
+  // Force Canvas 2D context text direction and alignment to LTR
   ctx.direction = 'ltr';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -56,6 +57,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const gridColor = isDark ? 'rgba(42, 46, 57, 0.55)' : 'rgba(224, 227, 235, 0.9)';
   const axisBgColor = isDark ? '#1E222D' : '#F8FAFC';
   const textColor = isDark ? '#9598A1' : '#475569';
+  const majorTickColor = isDark ? '#D1D4DC' : '#0F172A';
   const bullColor = prefs.bullColor || '#26A69A';
   const bearColor = prefs.bearColor || '#EF5350';
 
@@ -65,12 +67,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const candles = tab.candles || [];
   if (candles.length === 0) return;
 
-  const rightAxisW = 76;
+  const rightAxisW = 78;
   const bottomAxisH = 26;
   const topPad = 16;
   const totalChartH = Math.max(100, h - topPad - bottomAxisH);
   const showVol = tab.showVolume !== false;
-  const volRatio = Math.max(0.12, Math.min(0.32, Number(tab.volumePaneRatio || 0.22)));
+  const volRatio = Math.max(0.12, Math.min(0.35, Number(tab.volumePaneRatio || 0.22)));
   const volPaneH = showVol ? totalChartH * volRatio : 0;
   const pricePaneH = totalChartH - volPaneH;
   const chartW = Math.max(120, w - rightAxisW);
@@ -142,14 +144,19 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   ctx.lineTo(w, topPad + totalChartH);
   ctx.stroke();
 
-  // Horizontal Price Grid + Right Y-Axis Price Labels
-  const gridSteps = 5;
+  // Horizontal Price Grid + Institutional Round Y-Axis Price Labels (Heckbert Nice Numbers)
+  const targetTicks = Math.max(4, Math.min(8, Math.floor(chartH / 48)));
+  const { ticks: niceTicks, step: niceStep } = PriceFormatter.computeNicePriceTicks(
+    minP,
+    maxP,
+    targetTicks
+  );
   ctx.font = '11px "JetBrains Mono", monospace';
   ctx.textAlign = 'left';
-  for (let i = 0; i <= gridSteps; i++) {
-    const ratio = i / gridSteps;
-    const y = topPad + chartH * ratio;
-    const priceVal = fromScaleVal(maxS - ratio * scaleSpan);
+
+  for (const priceVal of niceTicks) {
+    const y = priceToY(priceVal);
+    if (y < topPad + 6 || y > topPad + chartH - 6) continue;
 
     ctx.strokeStyle = gridColor;
     ctx.beginPath();
@@ -158,28 +165,51 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.stroke();
 
     ctx.fillStyle = textColor;
-    ctx.fillText(PriceFormatter.formatPrice(priceVal, tab.decimals), chartW + 6, y + 4);
+    ctx.fillText(
+      PriceFormatter.formatAxisRoundPrice(priceVal, tab.decimals, niceStep),
+      chartW + 6,
+      y + 4
+    );
   }
 
   const slotW = chartW / visible.length;
   const bodyW = Math.max(2, Math.min(20, slotW * 0.68));
   const idxToX = (idx) => (idx + 0.5) * slotW;
 
-  // Vertical Time Grid + Bottom X-Axis UTC Time Labels
-  const vStep = Math.max(1, Math.floor(visible.length / 5));
+  // Vertical Time Grid + Adaptive Timeframe X-Axis Labels (M15, H1, H4, D1, W1)
+  const maxLabels = Math.max(4, Math.min(9, Math.floor(chartW / 115)));
+  const vStep = Math.max(1, Math.ceil(visible.length / maxLabels));
+  let prevTickMs = null;
+  let lastLabelRightPx = -100;
+
   for (let i = 0; i < visible.length; i += vStep) {
     const x = idxToX(i);
+    const c = visible[i];
+    const curMs = Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0));
+
     ctx.strokeStyle = gridColor;
     ctx.beginPath();
     ctx.moveTo(x, topPad);
     ctx.lineTo(x, topPad + totalChartH);
     ctx.stroke();
 
-    const lbl = PriceFormatter.formatCompactAxisUtc(visible[i].openTimeUtc, tab.timeframe);
-    ctx.fillStyle = textColor;
+    const tickInfo = PriceFormatter.formatAdaptiveAxisTick(curMs, prevTickMs, tab.timeframe);
+    const lbl = tickInfo.text;
+    if (!lbl) continue;
+
+    ctx.font = tickInfo.isMajor
+      ? 'bold 11px "JetBrains Mono", monospace'
+      : '11px "JetBrains Mono", monospace';
     const lblW = ctx.measureText(lbl).width;
-    const lblX = Math.max(4, Math.min(chartW - lblW - 4, x - lblW / 2));
-    ctx.fillText(lbl, lblX, topPad + totalChartH + 17);
+    const lblX = Math.max(6, Math.min(chartW - lblW - 6, x - lblW / 2));
+
+    // Avoid overlapping labels on narrow viewports
+    if (lblX > lastLabelRightPx + 12) {
+      ctx.fillStyle = tickInfo.isMajor ? majorTickColor : textColor;
+      ctx.fillText(lbl, lblX, topPad + totalChartH + 17);
+      lastLabelRightPx = lblX + lblW;
+      prevTickMs = curMs;
+    }
   }
 
   // Data Boundary Marker when scrolled to beginning of loaded history
@@ -195,7 +225,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.restore();
     ctx.fillStyle = '#F59E0B';
     ctx.font = '600 10px "JetBrains Mono", sans-serif';
-    ctx.fillText(i18n ? i18n.t('chart_data_boundary') : 'Start of history', Math.max(8, firstX + 6), topPad + 14);
+    ctx.fillText(
+      i18n ? i18n.t('chart_data_boundary') : 'Start of history',
+      Math.max(8, firstX + 6),
+      topPad + 14
+    );
   }
 
   // Dashed Previous Close Reference Line (TradingView Standard)
@@ -213,6 +247,44 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
       ctx.restore();
     }
+  }
+
+  // Bollinger Bands (20, 2) Overlay (if enabled in Indicators Modal)
+  if (tab.showBollinger && candles.length >= 20) {
+    const bbArr = TechnicalIndicators.computeBollingerBands(candles, 20, 2.0);
+    ctx.save();
+    const upperPts = [];
+    const lowerPts = [];
+    visible.forEach((c, idx) => {
+      const bb = bbArr[startIdx + idx];
+      if (bb) {
+        const x = idxToX(idx);
+        upperPts.push({ x, y: priceToY(bb.upper) });
+        lowerPts.push({ x, y: priceToY(bb.lower) });
+      }
+    });
+
+    if (upperPts.length > 1) {
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.08)';
+      ctx.beginPath();
+      upperPts.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
+      for (let i = lowerPts.length - 1; i >= 0; i--) {
+        ctx.lineTo(lowerPts[i].x, lowerPts[i].y);
+      }
+      ctx.closePath();
+      ctx.fill();
+
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.65)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      upperPts.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
+      ctx.stroke();
+
+      ctx.beginPath();
+      lowerPts.forEach((pt, i) => (i === 0 ? ctx.moveTo(pt.x, pt.y) : ctx.lineTo(pt.x, pt.y)));
+      ctx.stroke();
+    }
+    ctx.restore();
   }
 
   // Candles or Line Plot
@@ -256,11 +328,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     });
   }
 
-  // Visible High / Low Callout Labels on Highest & Lowest Visible Wicks (P1-UPG-2)
+  // Visible High / Low Callout Labels on Highest & Lowest Visible Wicks
   if (visible.length >= 4) {
     ctx.save();
     ctx.font = '600 10px "JetBrains Mono", monospace';
-    // Highest Visible Wick Callout
     const hiX = idxToX(highCandleIdx);
     const hiY = Math.max(topPad + 10, priceToY(rawMax));
     const hiText = PriceFormatter.formatPrice(rawMax, tab.decimals);
@@ -281,7 +352,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fillText(hiText, Math.min(chartW - hiTw - 4, hiX + 13), hiY + 3);
     }
 
-    // Lowest Visible Wick Callout
     const loX = idxToX(lowCandleIdx);
     const loY = Math.min(topPad + chartH - 6, priceToY(rawMin));
     const loText = PriceFormatter.formatPrice(rawMin, tab.decimals);
@@ -311,8 +381,32 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.beginPath();
     let started = false;
     visible.forEach((c, idx) => {
-      const globalIdx = startIdx + idx;
-      const val = smaArr[globalIdx];
+      const val = smaArr[startIdx + idx];
+      if (val !== null && Number.isFinite(val)) {
+        const x = idxToX(idx);
+        const y = priceToY(val);
+        if (!started) {
+          ctx.moveTo(x, y);
+          started = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+    });
+    ctx.stroke();
+    ctx.restore();
+  }
+
+  // EMA 50 Overlay
+  if (tab.showEma50 && candles.length >= 50) {
+    const emaArr = TechnicalIndicators.computeEma(candles, 50);
+    ctx.save();
+    ctx.strokeStyle = '#06B6D4';
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    let started = false;
+    visible.forEach((c, idx) => {
+      const val = emaArr[startIdx + idx];
       if (val !== null && Number.isFinite(val)) {
         const x = idxToX(idx);
         const y = priceToY(val);
@@ -418,7 +512,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // User Drawings (supports both hline/horizontal_line, vline/vertical_line, trend/trend_line)
+  // User Drawings
   const drawings = tab.drawings || [];
   const visibleTimestamps = visible.map((c) =>
     Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0))
@@ -433,7 +527,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   };
   const xToTime = (xPx) => {
     if (!visibleTimestamps.length) return 0;
-    const i = Math.max(0, Math.min(visibleTimestamps.length - 1, Math.floor(xPx / Math.max(1, slotW))));
+    const i = Math.max(
+      0,
+      Math.min(visibleTimestamps.length - 1, Math.floor(xPx / Math.max(1, slotW)))
+    );
     return visibleTimestamps[i];
   };
 
@@ -492,7 +589,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   });
 
-  // Crosshair (Vertical + Horizontal + Price Pill + UTC Time Pill)
+  // Crosshair (Vertical + Horizontal + Price Pill + Adaptive UTC Time Pill)
   const hoverIdx =
     tab.hoverIndex !== null && tab.hoverIndex !== undefined
       ? tab.hoverIndex
@@ -506,7 +603,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     const hc = visible[hoverIdx];
     const hx = idxToX(hoverIdx);
     const hy =
-      hoverYVal !== null && hoverYVal !== undefined && hoverYVal >= topPad && hoverYVal <= topPad + chartH
+      hoverYVal !== null &&
+      hoverYVal !== undefined &&
+      hoverYVal >= topPad &&
+      hoverYVal <= topPad + chartH
         ? hoverYVal
         : priceToY(Number(hc.close));
     const hoverPrice = yToPrice(hy);
@@ -533,7 +633,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.fillText(PriceFormatter.formatPrice(hoverPrice, tab.decimals), chartW + 6, hy + 4);
 
     // Bottom-axis Crosshair UTC Timestamp Pill
-    const timeText = PriceFormatter.formatCandleUtc(hc.openTimeUtc || hc.open_time_utc_iso);
+    const timeText = PriceFormatter.formatCandleUtc(
+      hc.open_time_utc_ms || hc.openTimeUtc || hc.open_time_utc_iso,
+      tab.timeframe
+    );
     ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
     const tw = ctx.measureText(timeText).width + 14;
     const tx = Math.max(2, Math.min(chartW - tw - 2, hx - tw / 2));

@@ -82,12 +82,43 @@ object PriceFormatterAlgorithm {
         return result
     }
 
+    private val m15H1AxisTimeFormatter: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("dd MMM HH:mm", Locale.US).withZone(ZoneOffset.UTC)
+
+    private val h4AxisTimeFormatter: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("dd MMM HH:00", Locale.US).withZone(ZoneOffset.UTC)
+
+    private val d1W1AxisTimeFormatter: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.US).withZone(ZoneOffset.UTC)
+
+    fun computeNiceAxisBounds(rawLow: Double, rawHigh: Double, intervals: Int = 4): Pair<Double, Double> {
+        if (!rawLow.isFinite() || !rawHigh.isFinite() || rawHigh <= rawLow) {
+            return Pair(rawLow, rawLow + 1.0)
+        }
+        val span = (rawHigh - rawLow).coerceAtLeast(1e-5)
+        val roughStep = span / intervals.coerceAtLeast(2).toDouble()
+        val mag = kotlin.math.floor(kotlin.math.log10(roughStep))
+        val magPow = Math.pow(10.0, mag)
+        val residual = roughStep / magPow
+        val niceFraction = when {
+            residual <= 1.2 -> 1.0
+            residual <= 2.2 -> 2.0
+            residual <= 3.0 -> 2.5
+            residual <= 6.0 -> 5.0
+            else -> 10.0
+        }
+        val niceStep = niceFraction * magPow
+        val niceMin = kotlin.math.floor(rawLow / niceStep) * niceStep
+        val niceMax = kotlin.math.ceil(rawHigh / niceStep) * niceStep
+        return if (niceMax > niceMin) Pair(niceMin, niceMax) else Pair(rawLow, rawHigh)
+    }
+
     fun formatAxisTimestamp(epochMillis: Long, timeframe: String): String {
         val instant = Instant.ofEpochMilli(epochMillis)
-        return if (timeframe.equals("D1", ignoreCase = true)) {
-            dailyAxisTimeFormatter.format(instant)
-        } else {
-            shortAxisTimeFormatter.format(instant)
+        return when (timeframe.uppercase(Locale.US)) {
+            "D1", "W1" -> d1W1AxisTimeFormatter.format(instant)
+            "H4" -> h4AxisTimeFormatter.format(instant)
+            else -> m15H1AxisTimeFormatter.format(instant)
         }
     }
 }

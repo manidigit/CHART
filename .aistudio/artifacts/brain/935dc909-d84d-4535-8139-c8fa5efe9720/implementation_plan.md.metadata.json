@@ -1,6 +1,6 @@
 {
-  "summary":  "بازطراحی کامل رابط کاربری نسخه وب (TradingView Desktop Pro UI) شامل صفحه ورود حرفه‌ای، هدر یک‌طبقه استاندارد، نوار پایین چارت (1D..All + ساعت زنده UTC + دکمه‌های log/auto)، ستون راست دو‌بخشی تاشو با نوار آیکون باریک، و پنجره‌های مودال وسط صفحه برای تنظیمات و پیش‌بینی.",
-  "updatedAt":  "2026-11-09T16:57:57.089427516Z",
+  "summary":  "Architectural and UX plan for unifying menus in the right dock rail, fixing bottom bar viewport clipping, adding resizable split panes, introducing a dedicated Indicators modal in the top bar, removing duplicate top symbol tabs, and implementing TradingView-grade Nice-Number Y-axis and adaptive timeframe X-axis formatting.",
+  "updatedAt":  "2026-11-10T11:50:39.038812402Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

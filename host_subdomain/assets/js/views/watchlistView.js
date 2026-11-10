@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.6';
-import { state } from '../core/store.js?v=1.28.6';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.7';
+import { state } from '../core/store.js?v=1.28.7';
 
 export function getAssetBadge(symbolCode) {
   if (symbolCode === 'XAUUSD') return { label: 'Au', color: '#F59E0B', providerTag: 'FX_IDC / TWELVE_DATA', category: 'Commodity · Spot Gold' };
@@ -185,9 +185,21 @@ export function renderRightSplitPanel(activeTab, i18n) {
     `;
   }
 
+  const panelW = Math.max(220, Math.min(520, Math.round(state.rightPanelWidth || 310)));
+  const topPct = Math.round(Math.max(0.22, Math.min(0.78, Number(state.watchlistTopRatio || 0.52))) * 100);
+
   return `
-    <aside class="tv-right-panel ${state.isSideDrawerOpen ? '' : 'collapsed'}">
-      <div class="tv-watchlist-pane">
+    ${
+      state.isSideDrawerOpen
+        ? `<div class="tv-col-resizer" id="tv-right-col-resizer" title="Drag to resize Watchlist width"></div>`
+        : ''
+    }
+    <aside
+      id="tv-right-split-panel"
+      class="tv-right-panel ${state.isSideDrawerOpen ? '' : 'collapsed'}"
+      style="${state.isSideDrawerOpen ? `width: ${panelW}px; min-width: ${panelW}px;` : ''}"
+    >
+      <div class="tv-watchlist-pane" id="tv-watchlist-top-pane" style="flex: 0 0 ${topPct}%; height: ${topPct}%;">
         <div class="tv-pane-header">
           <span>${i18n.t('nav_watchlist')}</span>
           <div style="display: flex; align-items: center; gap: 4px;">
@@ -225,6 +237,8 @@ export function renderRightSplitPanel(activeTab, i18n) {
           ${watchlist.length === 0 ? `<div style="padding: 14px; font-size: 12px; color: var(--text-muted);">${i18n.t('watchlist_empty_hint')}</div>` : rowsHtml}
         </div>
       </div>
+
+      <div class="tv-row-resizer" id="tv-right-row-resizer" title="Drag to resize Watchlist / Details height"></div>
 
       ${detailsHtml}
     </aside>

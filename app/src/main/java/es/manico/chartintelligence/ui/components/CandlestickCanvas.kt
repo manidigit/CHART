@@ -180,8 +180,9 @@ fun CandlestickCanvas(
     val baseHalfSpan = max(rawHalfSpan, minHalfSpanFloor) * 1.16
     val scaleFactor = if (tab.isAutoScaleY) 1.0 else tab.yPriceScaleFactor.coerceIn(0.25f, 4.0f).toDouble()
     val effectiveHalfSpan = baseHalfSpan * scaleFactor
-    val paddedMin = midPrice - effectiveHalfSpan
-    val paddedMax = midPrice + effectiveHalfSpan
+    val rawPaddedMin = midPrice - effectiveHalfSpan
+    val rawPaddedMax = midPrice + effectiveHalfSpan
+    val (paddedMin, paddedMax) = PriceFormatterAlgorithm.computeNiceAxisBounds(rawPaddedMin, rawPaddedMax, 4)
     val paddedSpan = (paddedMax - paddedMin).coerceAtLeast(1e-6)
     val safeLogMin = ln(max(paddedMin, 1e-6))
     val safeLogMax = ln(max(paddedMax, 1e-5))
