@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.8';
-import { state } from '../core/store.js?v=1.28.8';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
+import { state } from '../core/store.js?v=1.28.9';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -55,14 +55,10 @@ export function renderTopHeaderBar(activeTab, i18n) {
           <div class="tv-logo">CI</div>
         </div>
 
-        <!-- Active Symbol Selector & Overview Button (Scalable: no duplicate tab strip) -->
-        <button class="tv-symbol-btn ltr-num" data-action="open-active-symbol-overview" title="Symbol Overview & Seasonals">
+        <!-- Active Symbol Title Badge (Non-duplicate: focuses Watchlist search when clicked) -->
+        <button class="tv-symbol-btn ltr-num" data-action="focus-watchlist-search" title="${isFa ? 'جستجو و انتخاب نماد در واچ‌لیست' : 'Search & switch symbol in Watchlist'}">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
           <span>${sym ? sym.symbolCode : 'SPOTBRENT'}</span>
-        </button>
-
-        <button class="tv-tool-btn" data-action="open-add-symbol-modal" title="${i18n.t('settings_add_custom_symbol')}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         </button>
 
         <div class="tv-divider"></div>

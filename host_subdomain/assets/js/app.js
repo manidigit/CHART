@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.28.8';
+import { I18nManager } from './core/i18n.js?v=1.28.9';
 import {
   state,
   savePreferences,
@@ -7,7 +7,7 @@ import {
   saveLastOpenedSymbol,
   savePanelLayout,
   getCachedOrAggregatedCandles,
-} from './core/store.js?v=1.28.8';
+} from './core/store.js?v=1.28.9';
 import {
   syncServerAuthStatus,
   loginOrRegisterOwner,
@@ -18,20 +18,20 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.28.8';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.8';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.8';
-import { renderLoginScreen } from './views/loginView.js?v=1.28.8';
+} from './services/apiService.js?v=1.28.9';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.9';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.9';
+import { renderLoginScreen } from './views/loginView.js?v=1.28.9';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.28.8';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.8';
-import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.8';
-import { renderPredictionModal } from './views/analysisView.js?v=1.28.8';
-import { renderSettingsModal } from './views/settingsView.js?v=1.28.8';
-import { renderRightIconRail } from './views/navigationView.js?v=1.28.8';
+} from './views/headerView.js?v=1.28.9';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.9';
+import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.9';
+import { renderPredictionModal } from './views/analysisView.js?v=1.28.9';
+import { renderSettingsModal } from './views/settingsView.js?v=1.28.9';
+import { renderRightIconRail } from './views/navigationView.js?v=1.28.9';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -256,7 +256,7 @@ function renderOhlcvOverlay(activeTab) {
         <span class="tv-ohlc-symbol-title">
           <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--bull); display: inline-block;"></span>
           <span>${title}</span>
-          <span style="color: var(--text-muted); font-weight: 600;">· ${PriceFormatter.displayTimeframeLabel(activeTab.timeframe)} · ${activeTab.provider.toUpperCase()}</span>
+          <span style="color: var(--text-muted); font-weight: 600;">· ${PriceFormatter.displayTimeframeLabel(activeTab.timeframe)}</span>
         </span>
         <span>O<strong style="color: ${col}; margin-left: 2px;">${PriceFormatter.formatPrice(c.open, dec)}</strong></span>
         <span>H<strong style="color: var(--bull); margin-left: 2px;">${PriceFormatter.formatPrice(c.high, dec)}</strong></span>
@@ -417,7 +417,7 @@ function bindPanelResizers() {
       const onMove = (moveEv) => {
         // Right panel is on the right side in LTR layout, so dragging left (negative dx) increases its width
         const dx = startX - moveEv.clientX;
-        const nextW = Math.max(220, Math.min(520, Math.round(startW + dx)));
+        const nextW = Math.max(185, Math.min(520, Math.round(startW + dx)));
         state.rightPanelWidth = nextW;
         rightPanel.style.width = `${nextW}px`;
         rightPanel.style.minWidth = `${nextW}px`;
@@ -843,6 +843,16 @@ document.addEventListener('click', async (e) => {
         state.activeTabId = state.openTabs[0].tabId;
       }
       renderApp();
+    }
+  } else if (action === 'focus-watchlist-search') {
+    if (!state.isSideDrawerOpen) {
+      state.isSideDrawerOpen = true;
+      renderApp();
+    }
+    const searchInput = document.getElementById('tv-watchlist-search-input');
+    if (searchInput) {
+      searchInput.focus();
+      searchInput.select();
     }
   } else if (action === 'open-symbol-overview') {
     state.symbolOverviewCode = el.getAttribute('data-symbol');

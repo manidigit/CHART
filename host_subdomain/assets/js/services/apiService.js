@@ -5,9 +5,9 @@ import {
   saveSymbolsToStorage,
   mergeCandlesIdempotent,
   normalizeCandle,
-} from '../core/store.js?v=1.28.8';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.8';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.8';
+} from '../core/store.js?v=1.28.9';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.9';
 
 export async function syncServerAuthStatus() {
   const token = localStorage.getItem('ci_session_token');

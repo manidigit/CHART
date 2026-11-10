@@ -1,4 +1,4 @@
-import { state } from '../core/store.js?v=1.28.8';
+import { state } from '../core/store.js?v=1.28.9';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';

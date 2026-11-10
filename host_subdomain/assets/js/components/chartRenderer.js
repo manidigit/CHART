@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.8';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.28.8';
-import { state } from '../core/store.js?v=1.28.8';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.28.9';
+import { state } from '../core/store.js?v=1.28.9';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;

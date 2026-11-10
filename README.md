@@ -18,7 +18,7 @@ Detailed engineering and operational material: docs/PROJECT_GUIDE.md
   <a href="https://chart.manico.es"><img src="https://img.shields.io/badge/Web-chart.manico.es-172b3a?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web application"></a>
   <a href="https://github.com/manidigit/CHART/actions/workflows/build-apk.yml"><img src="https://img.shields.io/badge/Android-APK%20workflow-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK workflow"></a>
   <a href="https://github.com/manidigit/CHART"><img src="https://img.shields.io/badge/Platform-Web%20%7C%20Android-4C6FFF?style=for-the-badge" alt="Web and Android"></a>
-  <a href="https://github.com/manidigit/CHART/blob/main/docs/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.28.8-8B6CEF?style=for-the-badge" alt="Master Spec version 1.28.8"></a>
+  <a href="https://github.com/manidigit/CHART/blob/main/docs/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.28.9-8B6CEF?style=for-the-badge" alt="Master Spec version 1.28.9"></a>
 </p>
 
 <p align="center">

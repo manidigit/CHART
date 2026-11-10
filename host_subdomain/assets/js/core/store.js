@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.8';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.8';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.9';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -240,7 +240,7 @@ export const state = {
   lastOpenedSymbolCode: localStorage.getItem(STORAGE_KEY_LAST_SYMBOL) || 'SPOTBRENT',
 
   rightPanelWidth: Math.max(
-    220,
+    185,
     Math.min(520, Number(localStorage.getItem('ci_right_panel_w') || 310))
   ),
   watchlistTopRatio: Math.max(

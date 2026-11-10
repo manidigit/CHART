@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.8';
-import { state } from '../core/store.js?v=1.28.8';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
+import { state } from '../core/store.js?v=1.28.9';
 
 export function computeTechnicalAnalytics(candles) {
   if (!candles || candles.length === 0) return null;
