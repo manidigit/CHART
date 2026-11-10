@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.28.5';
+import { I18nManager } from './core/i18n.js?v=1.28.6';
 import {
   state,
   savePreferences,
@@ -6,7 +6,7 @@ import {
   saveDrawings,
   saveLastOpenedSymbol,
   getCachedOrAggregatedCandles,
-} from './core/store.js?v=1.28.5';
+} from './core/store.js?v=1.28.6';
 import {
   syncServerAuthStatus,
   loginOrRegisterOwner,
@@ -17,16 +17,16 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.28.5';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.5';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.5';
-import { renderLoginScreen } from './views/loginView.js?v=1.28.5';
-import { renderTopHeaderBar, renderBottomChartBar } from './views/headerView.js?v=1.28.5';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.5';
-import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.5';
-import { renderPredictionModal } from './views/analysisView.js?v=1.28.5';
-import { renderSettingsModal } from './views/settingsView.js?v=1.28.5';
-import { renderRightIconRail, renderBottomNav } from './views/navigationView.js?v=1.28.5';
+} from './services/apiService.js?v=1.28.6';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.6';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.6';
+import { renderLoginScreen } from './views/loginView.js?v=1.28.6';
+import { renderTopHeaderBar, renderBottomChartBar } from './views/headerView.js?v=1.28.6';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.6';
+import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.6';
+import { renderPredictionModal } from './views/analysisView.js?v=1.28.6';
+import { renderSettingsModal } from './views/settingsView.js?v=1.28.6';
+import { renderRightIconRail } from './views/navigationView.js?v=1.28.6';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -184,18 +184,6 @@ function renderOhlcvOverlay(activeTab) {
         <span style="color: ${col}; font-weight: 700;">${diff >= 0 ? '+' : ''}${PriceFormatter.formatPrice(diff, dec)} (${pct})</span>
         <span style="color: var(--text-muted);">Vol <strong style="color: var(--text);">${PriceFormatter.formatVolume(c.volume)}</strong></span>
       </div>
-
-      <div class="tv-bid-ask-strip">
-        <div class="tv-order-box sell">
-          <span>${sellPrice}</span>
-          <span class="tv-order-sub">SELL</span>
-        </div>
-        <span style="font-size: 10px; color: var(--text-muted); font-weight: 600;">${(spreadStep * 2 * Math.pow(10, dec)).toFixed(0)}</span>
-        <div class="tv-order-box buy">
-          <span>${buyPrice}</span>
-          <span class="tv-order-sub">BUY</span>
-        </div>
-      </div>
     </div>
   `;
 }
@@ -311,7 +299,6 @@ export function renderApp() {
           ${renderRightIconRail(i18n)}
         </div>
 
-        ${renderBottomNav(i18n)}
         ${renderSettingsModal(i18n)}
         ${renderPredictionModal(activeTab, i18n)}
         ${renderSymbolOverviewModal(i18n)}

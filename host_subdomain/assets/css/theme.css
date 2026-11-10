@@ -715,21 +715,29 @@ body.theme-light .tv-quote-box.buy {
   color: var(--primary);
 }
 
+.bottom-nav {
+  display: none !important;
+}
+
 /* TradingView Bottom Date Range, UTC Clock & Scale Bar (32px) */
 .tv-bottom-bar {
   height: 32px;
   min-height: 32px;
+  max-height: 32px;
+  flex-shrink: 0;
   background: var(--surface);
   border-top: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 8px;
+  padding: 0 10px;
   gap: 8px;
   direction: ltr;
   overflow-x: auto;
+  overflow-y: hidden;
   scrollbar-width: none;
   z-index: 25;
+  box-sizing: border-box;
 }
 .tv-bottom-bar::-webkit-scrollbar {
   display: none;
@@ -843,14 +851,46 @@ body.theme-light .tv-quote-box.buy {
   padding-left: 7px;
 }
 
-/* Bottom Half: Selected Symbol Details (TradingView Right-Bottom Pane) */
 .tv-symbol-details-pane {
   flex: 1;
   min-height: 210px;
   overflow-y: auto;
+  overflow-x: hidden;
   padding: 12px;
   background: var(--surface);
   direction: ltr;
+  box-sizing: border-box;
+}
+
+.tv-detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 12px;
+  margin-top: 8px;
+}
+
+.tv-detail-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow: hidden;
+}
+
+.tv-detail-stat span {
+  font-size: 10.5px;
+  color: var(--text-muted);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.tv-detail-stat strong {
+  font-size: 12px;
+  color: var(--text);
+  font-weight: 600;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* Permanent 42px Far-Right Icon Dock Rail */
