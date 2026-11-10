@@ -231,6 +231,18 @@
    - سوئیچ `Remember the last opened chart on this device` (به خاطر سپردن آخرین چارت بازشده).
    - سوئیچ `Hide the tab bar in landscape` (مخفی کردن نوار تب پایین هنگام چرخش افقی گوشی برای اختصاص ۱۰۰٪ صفحه به چارت).
    - مینی‌چارت پیش‌نمایش زنده رنگ کندل‌ها و خطوط + نمایش تعداد کندل‌های کش‌شده هر نماد در بخش منابع داده.
+6. **`P1-UPG-6` — تدوین مشخصات کامل کارت‌ها و نمودارهای تحلیل بنیادی، مالی، فصلی و تکنیکال (`Symbol Overview Analytical Cards`):**
+   - مستندسازی کامل ۱۰ کارت و مولفه بصری شیت خلاصه نماد TradingView شامل:
+     - هدر قیمت و تغییر روزانه + لوگو دایره‌ای نماد + مینی چارت کندلی و بازه‌های `1D..All` + دکمه بیضی معامله `Trade` + ۴ تب داخلی `Overview`, `News`, `Minds`, `Ideas`.
+     - بنر اخبار آنی صاعقه‌ای `Flash News`
+     - کارت نکات کلیدی داده `Key data points` (شامل `Volume`, `Previous close`, `Open`, `Day's range` با اسلایدر تراز افقی)
+     - کارت مقایسه عملکرد فصلی چندساله `Seasonals` (منحنی‌های ۲0۲۶، ۲0۲۵ و ۲0۲۴)
+     - کارت سود سهام `Dividends` (چارت دوناتی، `Payout ratio`, `Dividends yield TTM`, `Next payment date`, `Next ex-dividend date`)
+     - کارت صورت سود و زیان `Income statement` (سوئیچ `Annual/Quarterly` با میله‌های `Revenue`, `Net income` و خط `Net margin %`)
+     - گیج آمپری نیم‌دایره‌ای تکنیکال `Technicals Speedometer Gauge` (از `Strong sell` تا `Strong buy`)
+     - گیج پیش‌بینی و رتبه‌بندی تحلیل‌گران `Analyst Rating & Price Target Gauge` (`396.11 USD (+39.09%)`)
+     - کارت آمار نیروهای انسانی `Employees & Key Metrics` (`Revenue / Employee`, `Net income / Employee`)
+     - کارت شناسنامه نماد/شرکت `About Profile Details` (`Sector`, `Industry`, `CEO`, `Website`, `Headquarters`, `ISIN`, `CUSIP`, `FIGI`, `CFI`, `IPO date`).
 
 ### ۶.۳. بازطراحی کامل نسخه وب و رفع ایرادات رندر در Chrome و Firefox (`P1-UPG-WEB` — انجام شد / COMPLETED)
 

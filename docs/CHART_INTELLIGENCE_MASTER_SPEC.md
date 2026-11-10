@@ -1732,6 +1732,16 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
 3. **`P1-UPG-3` (Watchlist — Symbol Overview Sheet, Key Data Points, Seasonals & Hide Logos):** افزودن شیت خلاصه نماد (`Symbol Screen` — قابل کنترل با سوئیچ `Show symbol screen`) شامل هدر `SPOTBRENT • PEPPERSTONE`، مینی‌چارت با بازه‌های `1D..All` و دکمه تمام‌صفحه `[⛶]`، کارت `Key data points` (`Volume`, `Previous close`, `Open`, `Day's range`) و نمودار فصلی چندساله (`Seasonals: 2026 / 2025 / 2024`) به همراه سوئیچ `Hide logos` در تنظیمات واچ‌لیست.
 4. **`P1-UPG-4` (Prediction — Visual Price Ladder & Chart Projection):** نردبان گرافیکی نمایش قیمت فعلی بین سطوح `S2 — S1 — PP — R1 — R2` و دکمه «ترسیم سطوح سناریو روی چارت (`Project Levels on Chart`)» داخل BottomSheet هر سناریو.
 5. **`P1-UPG-5` (Settings — TradingView Chart & Watchlist Toggles + Live Preview):** افزودن سوئیچ‌های استاندارد TradingView (`Remember the last opened chart on this device`، `Hide the tab bar in landscape`، `Hide logos`، `Show symbol screen`، `Chart vibrations`، `Picker vibrates`، `Logarithmic scale`)، کادر پیش‌نمایش زنده ۳ کندلی در تنظیمات رنگ و نمایش تعداد کندل‌های کش‌شده هر منبع.
+6. **`P1-UPG-6` (Symbol Overview — Complete Fundamental & Technical Cards Specification):** تدوین دقیق مستندات و مشخصات بصری کارت‌ها و نمودارهای تحلیل بنیادی، فصلی، مالی و تکنیکال شامل:
+   - هدر قیمت و تغییرات روزانه، مینی‌چارت بازه‌های زمانی `1D..All` و دکمه معامله `Trade`
+   - کارت داده‌های کلیدی بازار `Key data points` (`Volume`, `Previous close`, `Open`, `Day's range` با اسلایدر افقی)
+   - کارت مقایسه عملکرد فصلی چندساله `Seasonals` (منحنی‌های `2026` vs `2025` vs `2024`)
+   - کارت سود سهام `Dividends` (چارت دوناتی، `Payout ratio`, `Dividends yield TTM`, `Next payment date`)
+   - کارت صورت سود و زیان `Income statement` (سوئیچ `Annual/Quarterly` با میله‌های `Revenue`, `Net income` و خط `Net margin %`)
+   - گیج نیم‌دایره‌ای آمپر تکنیکال `Technicals Speedometer Gauge` (از `Strong sell` تا `Strong buy`)
+   - گیج پیش‌بینی و رتبه‌بندی تحلیل‌گران `Analyst Rating & Price Target Gauge` (`396.11 USD (+39.09%)`)
+   - کارت آمار نیروهای انسانی `Employees & Key Metrics` (`Revenue / Employee`, `Net income / Employee`)
+   - کارت پروفایل نماد/شرکت `About Profile Details` (`Sector`, `Industry`, `CEO`, `Website`, `Headquarters`, شناسه `ISIN`, `CUSIP`, `FIGI`, `CFI`, `IPO date`).
 
 ---
 
