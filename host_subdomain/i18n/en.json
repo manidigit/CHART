@@ -187,5 +187,8 @@
   "symbol_overview_prev_close": "Previous close",
   "symbol_overview_open": "Open",
   "symbol_overview_days_range": "Day's range",
-  "symbol_overview_seasonals": "Seasonals"
+  "symbol_overview_seasonals": "Seasonals",
+  "status_system_healthy": "Server and database are healthy and connected.",
+  "status_workspace_synced": "Workspace (drawings, symbols & preferences) synced to cloud.",
+  "status_workspace_loaded": "Workspace successfully loaded from cloud."
 }

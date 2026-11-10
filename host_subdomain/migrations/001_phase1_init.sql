@@ -104,3 +104,12 @@ CREATE TABLE IF NOT EXISTS user_open_tabs (
     UNIQUE KEY uq_user_tab (user_id, tab_key),
     CONSTRAINT fk_tabs_user FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+CREATE TABLE IF NOT EXISTS user_workspace (
+    id BIGINT UNSIGNED AUTO_INCREMENT PRIMARY KEY,
+    username VARCHAR(64) NOT NULL UNIQUE,
+    workspace_json MEDIUMTEXT NOT NULL,
+    updated_at_utc DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    INDEX idx_ws_user (username)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+

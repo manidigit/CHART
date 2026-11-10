@@ -230,4 +230,11 @@
     <string name="login_remember_credentials">ذخیره رمز عبور و ورود خودکار در این دستگاه</string>
     <string name="login_show_password">نمایش رمز عبور</string>
     <string name="login_hide_password">مخفی کردن رمز عبور</string>
+    <string name="server_status_title">وضعیت زنده دیتابیس MariaDB و سرور هاست</string>
+    <string name="server_status_db_candles">کل کندل‌های دیتابیس</string>
+    <string name="server_status_server_utc">ساعت سرور UTC</string>
+    <string name="server_status_cloud_sync">وضعیت همگام‌سازی ابری</string>
+    <string name="server_status_btn_sync">همگام‌سازی ابری فضای کاری</string>
+    <string name="server_status_syncing">در حال همگام‌سازی…</string>
+    <string name="server_status_local_synced">همگام‌سازی محلی</string>
 </resources>

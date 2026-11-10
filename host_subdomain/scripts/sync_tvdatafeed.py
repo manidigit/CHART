@@ -39,6 +39,7 @@ TIMEFRAME_SPECS = [
     ("H1", "1h", "60", 60 * 60 * 1000),
     ("H4", "4h", "240", 4 * 60 * 60 * 1000),
     ("D1", "1d", "1D", 24 * 60 * 60 * 1000),
+    ("W1", "1w", "1W", 7 * 24 * 60 * 60 * 1000),
 ]
 
 
@@ -201,6 +202,7 @@ def fetch_bars_for_timeframe(symbol: str, exchange: str, tv_code: str, n_bars: i
             "60": Interval.in_1_hour,
             "240": Interval.in_4_hour,
             "1D": Interval.in_daily,
+            "1W": getattr(Interval, "in_weekly", Interval.in_daily),
         }
         tv = TvDatafeed()
         df = tv.get_hist(
@@ -285,6 +287,12 @@ def fetch_and_export(symbol: str, exchange: str, n_bars: int, output_dir: str) -
                 open_ms = snap_open_utc_ms(raw_ms, step_ms)
                 if raw_ms + step_ms > now_ms or open_ms + step_ms > now_ms:
                     continue
+            elif tf_code == "W1":
+                dt_utc = datetime.datetime.fromtimestamp(epoch_sec, tz=datetime.timezone.utc)
+                adjusted_ms = raw_ms + (4 * 3600 * 1000) if dt_utc.weekday() == 6 else raw_ms
+                open_ms = snap_open_utc_ms(adjusted_ms, step_ms)
+                if raw_ms + step_ms > now_ms or open_ms + step_ms > now_ms:
+                    continue
             else:
                 open_ms = snap_open_utc_ms(raw_ms, step_ms)
                 if open_ms + step_ms > now_ms:
@@ -310,7 +318,6 @@ def fetch_and_export(symbol: str, exchange: str, n_bars: int, output_dir: str) -
             }
 
         # For H4, aggregate closed H1 candles into exact 00:00/04:00/08:00/12:00/16:00/20:00 UTC buckets
-        # so recent 4H bars match UTC-anchored H1/M15 candles up to the latest closed 4H bar.
         if tf_code == "H4" and "H1" in closed_by_tf and closed_by_tf["H1"]:
             h4_buckets: Dict[int, List[dict]] = {}
             for h1_ms in sorted(closed_by_tf["H1"].keys()):
@@ -330,6 +337,36 @@ def fetch_and_export(symbol: str, exchange: str, n_bars: int, output_dir: str) -
                     "open_time_utc_ms": b_open,
                     "open_time_utc_iso": format_utc_iso(b_open),
                     "timeframe": "H4",
+                    "open": f"{o_v:.8f}",
+                    "high": f"{h_v:.8f}",
+                    "low": f"{l_v:.8f}",
+                    "close": f"{c_v:.8f}",
+                    "volume": f"{v_v:.8f}",
+                    "is_closed": True,
+                }
+
+        # For W1, if raw bars count is small, aggregate closed D1 bars into Monday UTC buckets
+        if tf_code == "W1" and len(candles_by_open_ms) < 20 and "D1" in closed_by_tf and closed_by_tf["D1"]:
+            w1_buckets: Dict[int, List[dict]] = {}
+            for d1_ms in sorted(closed_by_tf["D1"].keys()):
+                dt_d1 = datetime.datetime.fromtimestamp(d1_ms / 1000.0, tz=datetime.timezone.utc)
+                mon_dt = dt_d1 - datetime.timedelta(days=dt_d1.weekday())
+                mon_open = int(datetime.datetime(mon_dt.year, mon_dt.month, mon_dt.day, tzinfo=datetime.timezone.utc).timestamp() * 1000)
+                if mon_open + step_ms > now_ms:
+                    continue
+                w1_buckets.setdefault(mon_open, []).append(closed_by_tf["D1"][d1_ms])
+            for b_open, b_list in w1_buckets.items():
+                if not b_list:
+                    continue
+                o_v = float(b_list[0]["open"])
+                c_v = float(b_list[-1]["close"])
+                h_v = max(float(x["high"]) for x in b_list)
+                l_v = min(float(x["low"]) for x in b_list)
+                v_v = sum(float(x["volume"]) for x in b_list)
+                candles_by_open_ms[b_open] = {
+                    "open_time_utc_ms": b_open,
+                    "open_time_utc_iso": format_utc_iso(b_open),
+                    "timeframe": "W1",
                     "open": f"{o_v:.8f}",
                     "high": f"{h_v:.8f}",
                     "low": f"{l_v:.8f}",

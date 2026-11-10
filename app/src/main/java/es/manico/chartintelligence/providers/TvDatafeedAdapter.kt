@@ -168,6 +168,13 @@ class TvDatafeedAdapter(
             }
         }
 
+        if (normTf == "W1") {
+            val todayMidnightMs = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(nowMillis, "D1")
+            val daysSinceSunday = (dow.value % 7).toLong()
+            val currentWeekSundayMs = todayMidnightMs - (daysSinceSunday * 86_400_000L)
+            return currentWeekSundayMs - (7L * 86_400_000L)
+        }
+
         if (dow == DayOfWeek.SATURDAY || (dow == DayOfWeek.SUNDAY && hour < 23)) {
             val daysBackToFriday = if (dow == DayOfWeek.SATURDAY) 1L else 2L
             val fridayMidnightMs = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(nowMillis, "D1") - (daysBackToFriday * 86_400_000L)
@@ -197,6 +204,7 @@ class TvDatafeedAdapter(
             "H1" -> "60"
             "H4" -> "240"
             "D1" -> "1D"
+            "W1", "1W" -> "1W"
             else -> "15"
         }
         val (exchange, tvTicker) = when (symbolCode) {

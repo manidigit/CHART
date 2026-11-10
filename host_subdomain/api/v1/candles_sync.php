@@ -24,7 +24,7 @@ use ChartIntelligence\Providers\YahooFinanceAdapter;
 $symbol = preg_replace('/[^A-Za-z0-9_]/', '', $_GET['symbol'] ?? 'XAUUSD');
 $provider = preg_replace('/[^a-z0-9_]/', '', $_GET['provider'] ?? 'twelve_data');
 $timeframe = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['timeframe'] ?? 'M15'));
-if (!in_array($timeframe, ['M15', 'H1', 'H4', 'D1'], true)) {
+if (!in_array($timeframe, ['M15', 'H1', 'H4', 'D1', 'W1'], true)) {
     $timeframe = 'M15';
 }
 if ($provider === 'eia_brent_spot') {

@@ -59,6 +59,9 @@ data class Phase1UiState(
     val isSyncingAll: Boolean = false,
     val openTabs: List<ChartTabState> = emptyList(),
     val activeTabId: String? = null,
+    val systemStatus: es.manico.chartintelligence.data.repository.SystemStatusDto? = null,
+    val isWorkspaceSyncing: Boolean = false,
+    val lastWorkspaceSyncedAt: String? = null,
     @param:StringRes val statusBannerResId: Int? = null
 ) {
     val watchlistSymbols: List<SymbolConfig>
@@ -103,6 +106,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
+            val status = repository.fetchSystemStatus()
+            _uiState.update { it.copy(systemStatus = status) }
         }
 
         // Proactively fetch real market data for watchlist symbols that have an empty cache
@@ -1304,5 +1309,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun resetAlgorithmParamsToDefault() {
         val next = preferenceCoordinator.resetAlgorithmParamsToDefault(_uiState.value.chartPreferences)
         _uiState.update { it.copy(chartPreferences = next) }
+    }
+
+    fun refreshSystemStatus() {
+        viewModelScope.launch {
+            val status = repository.fetchSystemStatus()
+            _uiState.update { it.copy(systemStatus = status) }
+        }
+    }
+
+    fun syncCloudWorkspace() {
+        if (_uiState.value.isWorkspaceSyncing) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isWorkspaceSyncing = true) }
+            val symbols = _uiState.value.symbols
+            val prefs = _uiState.value.chartPreferences
+            val chartIds = symbols.map { it.chartId }
+            val drawings = repository.getAllCachedDrawings(chartIds)
+            val success = repository.syncWorkspaceToCloud(symbols, prefs, drawings)
+            val nowTimeStr = java.time.LocalTime.now().toString().take(5)
+            _uiState.update {
+                it.copy(
+                    isWorkspaceSyncing = false,
+                    lastWorkspaceSyncedAt = if (success) nowTimeStr else it.lastWorkspaceSyncedAt
+                )
+            }
+        }
     }
 }

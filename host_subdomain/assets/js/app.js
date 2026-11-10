@@ -5,6 +5,7 @@ import {
   saveSymbolsToStorage,
   saveDrawings,
   saveLastOpenedSymbol,
+  saveOpenTabs,
   savePanelLayout,
   getCachedOrAggregatedCandles,
   resetColorsToDefault,
@@ -12,6 +13,9 @@ import {
 } from './core/store.js?v=1.29.0';
 import {
   syncServerAuthStatus,
+  fetchSystemStatus,
+  uploadWorkspaceSync,
+  downloadWorkspaceSync,
   loginOrRegisterOwner,
   updateOwnerEmailOnServer,
   updateOwnerPasswordOnServer,
@@ -58,7 +62,21 @@ function getActiveTab() {
 }
 
 function ensureInitialTabs() {
-  if (state.openTabs.length > 0) return;
+  if (state.openTabs && state.openTabs.length > 0) {
+    state.openTabs.forEach((tab) => {
+      const sym = state.symbols.find((s) => s.symbolCode === tab.symbolCode);
+      const prov = tab.provider || (sym ? sym.activeProvider : 'tvdatafeed');
+      const tf = tab.timeframe || 'M15';
+      const cached = getCachedOrAggregatedCandles(tab.symbolCode, prov, tf);
+      tab.candles = cached.length > 0 ? cached : (sym && sym.candles) || [];
+      tab.drawings = state.drawingsByChartId[`${tab.symbolCode}_${tf}`] || tab.drawings || [];
+    });
+    if (!state.activeTabId || !state.openTabs.some((t) => t.tabId === state.activeTabId)) {
+      const preferred = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
+      state.activeTabId = preferred ? preferred.tabId : state.openTabs[0].tabId;
+    }
+    return;
+  }
   const watchlist = state.symbols.filter((s) => s.inWatchlist);
   const listToOpen = watchlist.length > 0 ? watchlist.slice(0, 2) : state.symbols.slice(0, 2);
 
@@ -101,24 +119,26 @@ function ensureInitialTabs() {
     const preferred = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
     state.activeTabId = preferred ? preferred.tabId : state.openTabs[0].tabId;
   }
+  saveOpenTabs();
 }
 
 function openOrFocusSymbolTab(symbolCode, requestedTf) {
   const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
   if (!sym) return;
-  const tf =
-    sym.activeProvider === 'eia_brent_spot'
-      ? 'D1'
-      : requestedTf || sym.timeframe || 'M15';
   saveLastOpenedSymbol(symbolCode);
 
   let existing = state.openTabs.find((t) => t.symbolCode === symbolCode);
+  const tf =
+    sym.activeProvider === 'eia_brent_spot'
+      ? 'D1'
+      : requestedTf || (existing ? existing.timeframe : (sym.timeframe || 'M15'));
+
   const cached = getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
   if (existing) {
     existing.timeframe = tf;
     existing.provider = sym.activeProvider;
     existing.candles = cached.length > 0 ? cached : sym.candles || [];
-    existing.drawings = state.drawingsByChartId[`${symbolCode}_${tf}`] || [];
+    existing.drawings = state.drawingsByChartId[`${symbolCode}_${tf}`] || existing.drawings || [];
     state.activeTabId = existing.tabId;
   } else {
     const tabId = `tab_${symbolCode}_${Date.now()}`;
@@ -154,6 +174,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     state.activeTabId = tabId;
   }
 
+  saveOpenTabs();
   syncSymbolNow(symbolCode, tf, renderApp);
 }
 
@@ -880,8 +901,16 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'toggle-fullscreen') {
     state.isFullscreen = !state.isFullscreen;
     renderApp();
+  } else if (action === 'sync-cloud-workspace') {
+    state.isWorkspaceSyncing = true;
+    renderApp();
+    const ok = await uploadWorkspaceSync();
+    await fetchSystemStatus();
+    state.statusBannerKey = ok ? 'status_workspace_synced' : '';
+    renderApp();
   } else if (action === 'select-tab') {
     state.activeTabId = el.getAttribute('data-tab-id');
+    saveOpenTabs();
     renderApp();
   } else if (action === 'close-tab') {
     e.stopPropagation();
@@ -891,6 +920,7 @@ document.addEventListener('click', async (e) => {
       if (state.activeTabId === id) {
         state.activeTabId = state.openTabs[0].tabId;
       }
+      saveOpenTabs();
       renderApp();
     }
   } else if (action === 'focus-watchlist-search') {
@@ -1194,6 +1224,17 @@ async function bootstrap() {
     renderApp();
   } catch {
     // Non-blocking auth status fallback
+  }
+
+  try {
+    await fetchSystemStatus();
+    if (state.isAuthenticated) {
+      await downloadWorkspaceSync();
+      ensureInitialTabs();
+    }
+    renderApp();
+  } catch {
+    // Non-blocking status/workspace fallback
   }
 
   window.__CI_APP_MOUNTED__ = true;

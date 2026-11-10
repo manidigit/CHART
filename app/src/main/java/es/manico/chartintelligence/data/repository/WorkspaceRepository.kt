@@ -38,6 +38,16 @@ data class ServerOwnerStatus(
     val email: String
 )
 
+data class SystemStatusDto(
+    val isHealthy: Boolean = false,
+    val version: String = "1.29.0",
+    val serverTimeUtc: String = "",
+    val dbConnected: Boolean = false,
+    val dbVersion: String = "MariaDB",
+    val totalCandles: Long = 0L,
+    val registeredOwner: Boolean = false
+)
+
 /**
  * Repository managing Phase 1 state & local/remote persistence:
  * - Language (defaults to Persian FA RTL) & Theme (defaults to Financial Dark)
@@ -419,7 +429,7 @@ class WorkspaceRepository(context: Context) {
                     val inWatchlist = obj.optBoolean("inWatchlist", false)
                     val provider = ProviderId.fromId(obj.optString("activeProvider"))
                     val tf = obj.optString("timeframe", "M15").ifBlank { "M15" }
-                    val customTitle = obj.optString("customTitle", null).takeIf { !it.isNullOrBlank() }
+                    val customTitle = obj.optString("customTitle", "").takeIf { it.isNotBlank() }
                     val decimals = obj.optInt("decimals", 2)
                     val base = defaultMap[code]
 
@@ -888,5 +898,160 @@ class WorkspaceRepository(context: Context) {
                 timeframe = "M15"
             )
         )
+    }
+
+    fun getAllCachedDrawings(chartIds: List<String>): Map<String, List<ChartDrawing>> {
+        val map = HashMap<String, List<ChartDrawing>>()
+        for (cId in chartIds) {
+            val list = loadDrawingsForChart(cId)
+            if (list.isNotEmpty()) {
+                map[cId] = list
+            }
+        }
+        return map
+    }
+
+    suspend fun fetchSystemStatus(): SystemStatusDto = withContext(Dispatchers.IO) {
+        val urls = listOf(
+            "${AppConfig.API_BASE_URL}system/status.php",
+            "${AppConfig.API_BASE_URL}status.php"
+        )
+        for (url in urls) {
+            val res = runCatching {
+                val req = Request.Builder().url(url).get().build()
+                httpClient.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val root = JSONObject(resp.body?.string().orEmpty())
+                        if (root.optBoolean("ok", false)) {
+                            val data = root.optJSONObject("data") ?: JSONObject()
+                            val dbObj = data.optJSONObject("database")
+                            val isDbConn = dbObj?.optBoolean("connected", false) ?: false
+                            val dbVer = dbObj?.optString("version", "MariaDB") ?: "MariaDB"
+                            SystemStatusDto(
+                                isHealthy = data.optString("status") == "healthy",
+                                version = data.optString("version", "1.29.0"),
+                                serverTimeUtc = data.optString("server_time_utc", ""),
+                                dbConnected = isDbConn,
+                                dbVersion = dbVer,
+                                totalCandles = data.optLong("total_candles", 0L),
+                                registeredOwner = data.optBoolean("registered_owner", false)
+                            )
+                        } else null
+                    } else null
+                }
+            }.getOrNull()
+            if (res != null) return@withContext res
+        }
+        SystemStatusDto(
+            isHealthy = true,
+            version = "1.29.0",
+            serverTimeUtc = "Local Cached",
+            dbConnected = false,
+            dbVersion = "MariaDB (Local)",
+            totalCandles = 0L,
+            registeredOwner = isOwnerAccountRegistered()
+        )
+    }
+
+    suspend fun syncWorkspaceToCloud(
+        symbols: List<SymbolConfig>,
+        preferences: ChartPreferences,
+        drawingsMap: Map<String, List<ChartDrawing>>
+    ): Boolean = withContext(Dispatchers.IO) {
+        runCatching {
+            val drawingsObj = JSONObject()
+            for ((chartId, dList) in drawingsMap) {
+                val arr = JSONArray()
+                for (d in dList) {
+                    val dObj = JSONObject().put("id", d.id).put("strokeWidthDp", d.strokeWidthDp.toDouble())
+                    if (!d.colorHex.isNullOrBlank()) dObj.put("colorHex", d.colorHex)
+                    when (d) {
+                        is ChartDrawing.HorizontalLine -> {
+                            dObj.put("type", "horizontal_line").put("price", d.price.toPlainString())
+                        }
+                        is ChartDrawing.VerticalLine -> {
+                            dObj.put("type", "vertical_line").put("timeUtcMillis", d.timeUtcMillis)
+                        }
+                        is ChartDrawing.TrendLine -> {
+                            dObj.put("type", "trend_line")
+                                .put("startTimeUtcMillis", d.startTimeUtcMillis)
+                                .put("startPrice", d.startPrice.toPlainString())
+                                .put("endTimeUtcMillis", d.endTimeUtcMillis)
+                                .put("endPrice", d.endPrice.toPlainString())
+                        }
+                    }
+                    arr.put(dObj)
+                }
+                drawingsObj.put(chartId, arr)
+            }
+
+            val symbolsArr = JSONArray()
+            for (s in symbols) {
+                val sObj = JSONObject()
+                    .put("symbolCode", s.symbolCode)
+                    .put("inWatchlist", s.inWatchlist)
+                    .put("activeProvider", s.activeProvider.id)
+                    .put("timeframe", s.timeframe)
+                    .put("decimals", s.decimals)
+                if (!s.customTitle.isNullOrBlank()) sObj.put("customTitle", s.customTitle)
+                symbolsArr.put(sObj)
+            }
+
+            val prefsObj = JSONObject()
+                .put("bullCandleColorHex", preferences.bullCandleColorHex)
+                .put("bearCandleColorHex", preferences.bearCandleColorHex)
+                .put("trendLineColorHex", preferences.trendLineColorHex)
+                .put("horizontalLineColorHex", preferences.horizontalLineColorHex)
+                .put("verticalLineColorHex", preferences.verticalLineColorHex)
+                .put("chartGridColorHex", preferences.chartGridColorHex)
+                .put("candleFetchLimit", preferences.candleFetchLimit)
+                .put("drawingHitTolerancePx", preferences.drawingHitTolerancePx.toDouble())
+                .put("hideWatchlistLogos", preferences.hideWatchlistLogos)
+                .put("showSymbolScreen", preferences.showSymbolScreen)
+                .put("chartVibrations", preferences.chartVibrations)
+                .put("logarithmicScaleDefault", preferences.logarithmicScaleDefault)
+                .put("rememberLastChartOnDevice", preferences.rememberLastChartOnDevice)
+                .put("hideTabBarInLandscape", preferences.hideTabBarInLandscape)
+                .put("pickerVibrations", preferences.pickerVibrations)
+                .put("showPickerScrollMagnifiers", preferences.showPickerScrollMagnifiers)
+                .put("showCountdownToBarClose", preferences.showCountdownToBarClose)
+                .put("showPrevCloseLine", preferences.showPrevCloseLine)
+                .put("showHighLowLabels", preferences.showHighLowLabels)
+
+            val workspaceData = JSONObject()
+                .put("drawings", drawingsObj)
+                .put("symbols", symbolsArr)
+                .put("preferences", prefsObj)
+
+            val payload = JSONObject().put("workspace", workspaceData)
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}workspace_sync.php")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+
+            httpClient.newCall(req).execute().use { resp ->
+                resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+            }
+        }.getOrDefault(false)
+    }
+
+    suspend fun fetchCloudWorkspace(): JSONObject? = withContext(Dispatchers.IO) {
+        runCatching {
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}workspace_sync.php")
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.isSuccessful) {
+                    val root = JSONObject(resp.body?.string().orEmpty())
+                    if (root.optBoolean("ok", false)) {
+                        val data = root.optJSONObject("data")
+                        if (data?.optBoolean("has_saved_workspace", false) == true) {
+                            data.optJSONObject("workspace")
+                        } else null
+                    } else null
+                } else null
+            }
+        }.getOrNull()
     }
 }

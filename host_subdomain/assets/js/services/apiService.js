@@ -224,6 +224,99 @@ export async function logoutOwnerOnServer() {
   state.isAuthenticated = false;
 }
 
+export async function fetchSystemStatus() {
+  try {
+    const res = await fetch(`./api/v1/system/status.php?_t=${Date.now()}`);
+    const json = await res.json();
+    if (json && json.ok && json.data) {
+      state.systemStatus = json.data;
+      return json.data;
+    }
+  } catch {
+    // Offline or fallback
+  }
+  return state.systemStatus;
+}
+
+export async function uploadWorkspaceSync() {
+  if (state.isWorkspaceSyncing) return false;
+  state.isWorkspaceSyncing = true;
+  const token = localStorage.getItem('ci_session_token') || '';
+  try {
+    const workspace = {
+      drawings: state.drawingsByChartId || {},
+      preferences: state.chartPreferences || {},
+      symbols: (state.symbols || []).map((s) => ({
+        symbolCode: s.symbolCode,
+        customTitle: s.customTitle || '',
+        decimals: s.decimals,
+        inWatchlist: s.inWatchlist,
+        activeProvider: s.activeProvider,
+        timeframe: s.timeframe,
+        isCustom: Boolean(s.isCustom),
+      })),
+      open_tabs: (state.openTabs || []).map((t) => ({
+        symbolCode: t.symbolCode,
+        provider: t.provider,
+        timeframe: t.timeframe,
+        chartType: t.chartType,
+        visibleCount: t.visibleCount,
+        scrollOffset: t.scrollOffset,
+        showSma20: t.showSma20,
+        showEma50: t.showEma50,
+        showBollinger: t.showBollinger,
+        showVolume: t.showVolume,
+      })),
+    };
+    const res = await fetch('./api/v1/workspace_sync.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: token ? `Bearer ${token}` : '',
+      },
+      body: JSON.stringify({ session_token: token, workspace }),
+    });
+    const json = await res.json();
+    if (json && json.ok) {
+      state.lastWorkspaceSyncedAt = (json.data && json.data.updated_at_utc) || new Date().toISOString();
+      return true;
+    }
+  } catch {
+    // Non-fatal
+  } finally {
+    state.isWorkspaceSyncing = false;
+  }
+  return false;
+}
+
+export async function downloadWorkspaceSync() {
+  const token = localStorage.getItem('ci_session_token') || '';
+  try {
+    const res = await fetch(`./api/v1/workspace_sync.php?_t=${Date.now()}`, {
+      headers: {
+        Authorization: token ? `Bearer ${token}` : '',
+      },
+    });
+    const json = await res.json();
+    if (json && json.ok && json.data && json.data.workspace) {
+      const ws = json.data.workspace;
+      if (ws.drawings && typeof ws.drawings === 'object') {
+        state.drawingsByChartId = { ...state.drawingsByChartId, ...ws.drawings };
+        localStorage.setItem('ci_drawings_v2', JSON.stringify(state.drawingsByChartId));
+      }
+      if (ws.preferences && typeof ws.preferences === 'object') {
+        state.chartPreferences = { ...state.chartPreferences, ...ws.preferences };
+        localStorage.setItem('ci_chart_prefs_v4', JSON.stringify(state.chartPreferences));
+      }
+      state.lastWorkspaceSyncedAt = json.data.updated_at_utc || new Date().toISOString();
+      return true;
+    }
+  } catch {
+    // Non-fatal
+  }
+  return false;
+}
+
 function computeExpectedLastClosedOpenMs(timeframe, nowMs = Date.now()) {
   const normTf = String(timeframe || 'M15').toUpperCase();
   const stepMs = PriceFormatter.stepMilliseconds(normTf);

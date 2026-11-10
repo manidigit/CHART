@@ -21,7 +21,7 @@ class Phase1AlgorithmsTest {
     @Test
     fun utcTimeAnchor_snapsM15H1H4D1AndFiltersOpenCandles() {
         val rawMillis = 1793966852000L
-        for (tf in listOf("M15", "H1", "H4", "D1")) {
+        for (tf in listOf("M15", "H1", "H4", "D1", "W1")) {
             val step = UtcTimeAnchorAlgorithm.timeframeStepMillis(tf)
             val snapped = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(rawMillis, tf)
             assertEquals(0L, snapped % step)

@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.29.1] - 2026-11-10
+
+### Added
+- **Live Host MariaDB & Server Health Diagnostics (`/api/v1/system/status.php` & `/api/v1/status.php`):**
+  - Added system health endpoint providing real-time MariaDB connection status, engine version (`MariaDB 10.6.28`), total candles stored in database, per-symbol/timeframe candle statistics, server UTC clock, and registered owner status.
+  - Added live Diagnostic Health Card in Settings on both Web (`settingsView.js`) and Android (`SettingsScreen.kt`) with live connection indicators, DB candle count badges, server UTC timestamps, and one-tap cloud sync.
+- **Cross-Device Cloud Workspace Synchronization (`/api/v1/workspace_sync.php`):**
+  - Created idempotent cloud sync endpoint backed by MariaDB `user_workspace` table (`001_phase1_init.sql`) with session token authentication and local fallback (`config/workspace.local.json`).
+  - Implemented bidirectional workspace upload and download on Web (`apiService.uploadWorkspaceSync` / `downloadWorkspaceSync`) and Android (`WorkspaceRepository.syncWorkspaceToCloud` / `loadWorkspaceFromCloud`) for drawings, watchlist, and preferences.
+- **Weekly (`W1`) Timeframe in Python Background Sync & GitHub Actions Seeding (`sync_tvdatafeed.py` & `build-apk.yml`):**
+  - Added `W1` specification (`7 * 24 * 60 * 60 * 1000 ms`), TradingView `1W` resolution mapping, weekly UTC boundary snapping, and `D1`-to-`W1` aggregation fallback to `sync_tvdatafeed.py`.
+  - Added `W1` to the automated database seeding loop in `.github/workflows/build-apk.yml` (`['M15', 'H1', 'H4', 'D1', 'W1']`).
+- **Multi-Tab Chart Viewport State Persistence (`ci_open_tabs_v2`):**
+  - Added persistence for active tabs, timeframe, zoom (`visibleCount`), scroll offset, drawings, and indicators per symbol tab in Web `store.js` (`ci_open_tabs_v2`) and Android `ChartTabState`, ensuring switching between Gold and Oil never resets custom chart viewport settings.
+
+---
+
 ## [1.29.0] - 2026-11-10
 
 ### Added

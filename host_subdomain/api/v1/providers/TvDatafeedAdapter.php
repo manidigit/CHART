@@ -31,7 +31,7 @@ final class TvDatafeedAdapter
     ): array {
         $cleanSymbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $symbol));
         $normTf = strtoupper($timeframe);
-        if (!in_array($normTf, ['M15', 'H1', 'H4', 'D1'], true)) {
+        if (!in_array($normTf, ['M15', 'H1', 'H4', 'D1', 'W1'], true)) {
             $normTf = 'M15';
         }
 
@@ -193,6 +193,7 @@ final class TvDatafeedAdapter
             'H1' => '60',
             'H4' => '240',
             'D1' => '1D',
+            'W1' => '1W',
             default => '15',
         };
         $stepMs = UtcTimeAnchor::stepMilliseconds($timeframe);

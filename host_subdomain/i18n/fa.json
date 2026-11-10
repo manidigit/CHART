@@ -187,5 +187,8 @@
   "symbol_overview_prev_close": "بسته قبلی (Previous close)",
   "symbol_overview_open": "قیمت باز شدن (Open)",
   "symbol_overview_days_range": "دامنه روز (Day's range)",
-  "symbol_overview_seasonals": "عملکرد فصلی چندساله (Seasonals)"
+  "symbol_overview_seasonals": "عملکرد فصلی چندساله (Seasonals)",
+  "status_system_healthy": "سرور و دیتابیس در وضعیت سالم و متصل قرار دارند.",
+  "status_workspace_synced": "فضای کاری (خطوط، نمادها و تنظیمات) با سرور ابری همگام‌سازی شد.",
+  "status_workspace_loaded": "فضای کاری با موفقیت از سرور ابری بارگذاری شد."
 }

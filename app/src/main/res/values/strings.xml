@@ -230,4 +230,11 @@
     <string name="login_remember_credentials">Save password &amp; keep me signed in</string>
     <string name="login_show_password">Show password</string>
     <string name="login_hide_password">Hide password</string>
+    <string name="server_status_title">Host MariaDB &amp; Server Health</string>
+    <string name="server_status_db_candles">DB Candles</string>
+    <string name="server_status_server_utc">Server UTC</string>
+    <string name="server_status_cloud_sync">Cloud Sync Status</string>
+    <string name="server_status_btn_sync">Sync Workspace Cloud</string>
+    <string name="server_status_syncing">Syncing…</string>
+    <string name="server_status_local_synced">Local Synced</string>
 </resources>

@@ -194,7 +194,7 @@ jobs:
                       'XAUUSD'    => 'chart_xauusd_main',
                   ];
                   foreach ($symbolMap as $sym => $cid) {{
-                      foreach (['M15', 'H1', 'H4', 'D1'] as $tf) {{
+                      foreach (['M15', 'H1', 'H4', 'D1', 'W1'] as $tf) {{
                           $jsonPath = __DIR__ . '/data/tvdatafeed/' . $sym . '_' . $tf . '.json';
                           if (is_file($jsonPath)) {{
                               $decoded = json_decode((string) file_get_contents($jsonPath), true);

@@ -6,6 +6,7 @@ const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
 const STORAGE_KEY_SYMBOLS = 'ci_symbols_v4';
 const STORAGE_KEY_DRAWINGS = 'ci_drawings_v2';
 const STORAGE_KEY_LAST_SYMBOL = 'ci_last_opened_symbol';
+const STORAGE_KEY_OPEN_TABS = 'ci_open_tabs_v2';
 const STORAGE_CANDLES_PREFIX = 'ci_candles_v4_';
 
 export const DEFAULT_PREFS = {
@@ -202,6 +203,13 @@ function loadDrawingsByKey() {
   } catch {
     return {};
   }
+function loadOpenTabsFromStorage() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_OPEN_TABS);
+    return raw ? JSON.parse(raw) : [];
+  } catch {
+    return [];
+  }
 }
 
 const isAutoAuthSaved =
@@ -241,9 +249,13 @@ export const state = {
   drawingsByChartId: loadDrawingsByKey(),
   candleCache: {},
 
-  openTabs: [],
+  openTabs: loadOpenTabsFromStorage(),
   activeTabId: null,
   lastOpenedSymbolCode: localStorage.getItem(STORAGE_KEY_LAST_SYMBOL) || 'SPOTBRENT',
+
+  systemStatus: null,
+  isWorkspaceSyncing: false,
+  lastWorkspaceSyncedAt: null,
 
   rightPanelWidth: Math.max(
     185,
@@ -304,10 +316,27 @@ export function saveDrawings(chartKey, drawingsList) {
   localStorage.setItem(STORAGE_KEY_DRAWINGS, JSON.stringify(state.drawingsByChartId));
 }
 
-export function saveLastOpenedSymbol(code) {
-  state.lastOpenedSymbolCode = code;
-  localStorage.setItem(STORAGE_KEY_LAST_SYMBOL, code);
+export function saveOpenTabsToStorage() {
+  const clean = state.openTabs.map((t) => ({
+    tabId: t.tabId,
+    symbolCode: t.symbolCode,
+    provider: t.provider,
+    timeframe: t.timeframe,
+    chartType: t.chartType || 'candles',
+    visibleCount: t.visibleCount || 48,
+    scrollOffset: t.scrollOffset || 0,
+    priceScaleFactor: t.priceScaleFactor || 1.0,
+    verticalPriceOffset: t.verticalPriceOffset || 0.0,
+    selectedRangePreset: t.selectedRangePreset || null,
+    showSma20: Boolean(t.showSma20),
+    showEma50: Boolean(t.showEma50),
+    showBollinger: Boolean(t.showBollinger),
+    showVolume: t.showVolume !== false,
+  }));
+  localStorage.setItem(STORAGE_KEY_OPEN_TABS, JSON.stringify(clean));
 }
+
+export const saveOpenTabs = saveOpenTabsToStorage;
 
 function loadCandlesFromLocalStorage(key, timeframe) {
   try {
