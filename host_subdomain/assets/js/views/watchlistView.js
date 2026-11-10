@@ -1,50 +1,114 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.7';
-import { state } from '../core/store.js?v=1.28.7';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.8';
+import { state } from '../core/store.js?v=1.28.8';
 
 export function getAssetBadge(symbolCode) {
-  if (symbolCode === 'XAUUSD') return { label: 'Au', color: '#F59E0B', providerTag: 'FX_IDC / TWELVE_DATA', category: 'Commodity · Spot Gold' };
-  if (symbolCode === 'SPOTBRENT') return { label: 'OIL', color: '#2962FF', providerTag: 'PEPPERSTONE', category: 'Commodity · CFD Crude Oil' };
-  if (symbolCode === 'BRENT_FUTURES') return { label: 'BZ', color: '#06B6D4', providerTag: 'NYMEX', category: 'Futures · Brent Crude' };
-  if (symbolCode === 'XAGUSD') return { label: 'Ag', color: '#94A3B8', providerTag: 'OANDA', category: 'Commodity · Spot Silver' };
-  if (symbolCode === 'EURUSD') return { label: 'FX', color: '#26A69A', providerTag: 'FOREX', category: 'Forex · Major Currency' };
-  return { label: String(symbolCode || '').slice(0, 3), color: '#2962FF', providerTag: 'MARKET', category: 'Financial Instrument' };
+  const code = String(symbolCode || '').toUpperCase();
+  if (code === 'XAUUSD') {
+    return {
+      label: 'Au',
+      color: '#F59E0B',
+      bgGradient: 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)',
+      providerTag: 'FX_IDC / TWELVE_DATA',
+      category: 'Commodity · Spot Gold',
+      // Gold bullion bars + sparkle SVG icon
+      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 14 18 14 21 20 3 20 6 14" fill="rgba(255,255,255,0.28)"/><polygon points="8 7 16 7 18 12 6 12 8 7" fill="rgba(255,255,255,0.28)"/><path d="M12 2v2"/></svg>`,
+    };
+  }
+  if (code === 'SPOTBRENT' || code === 'BRENT_FUTURES' || code.includes('OIL') || code.includes('BRENT')) {
+    const isFutures = code === 'BRENT_FUTURES';
+    return {
+      label: isFutures ? 'BZ' : 'OIL',
+      color: isFutures ? '#06B6D4' : '#2962FF',
+      bgGradient: isFutures
+        ? 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)'
+        : 'linear-gradient(135deg, #2962FF 0%, #1D4ED8 100%)',
+      providerTag: isFutures ? 'NYMEX' : 'PEPPERSTONE',
+      category: isFutures ? 'Futures · Brent Crude' : 'Commodity · CFD Crude Oil',
+      // Crude oil droplet SVG icon
+      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.26)" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5" stroke-width="1.8"/></svg>`,
+    };
+  }
+  if (code === 'XAGUSD') {
+    return {
+      label: 'Ag',
+      color: '#94A3B8',
+      bgGradient: 'linear-gradient(135deg, #94A3B8 0%, #475569 100%)',
+      providerTag: 'OANDA',
+      category: 'Commodity · Spot Silver',
+      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.25)" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 15 19 15 22 20 2 20 5 15"/><polygon points="8 8 16 8 18 13 6 13 8 8"/></svg>`,
+    };
+  }
+  if (code === 'EURUSD') {
+    return {
+      label: 'FX',
+      color: '#26A69A',
+      bgGradient: 'linear-gradient(135deg, #26A69A 0%, #0F766E 100%)',
+      providerTag: 'FOREX',
+      category: 'Forex · Major Currency',
+      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 3.5 0 1 0 0 6"/><line x1="8" y1="11" x2="13" y2="11"/><line x1="8" y1="13" x2="13" y2="13"/></svg>`,
+    };
+  }
+  return {
+    label: code.slice(0, 3) || 'SYM',
+    color: '#2962FF',
+    bgGradient: 'linear-gradient(135deg, #2962FF 0%, #1E40AF 100%)',
+    providerTag: 'MARKET',
+    category: 'Financial Instrument',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+  };
 }
 
-export function computeDayStats(s) {
-  const candles = s.candles || [];
-  const lastClose = Number(s.lastClose || (candles.length ? candles[candles.length - 1].close : 0));
+export function computeDayStats(s, overrideCandles = null) {
+  const candles =
+    Array.isArray(overrideCandles) && overrideCandles.length > 0
+      ? overrideCandles
+      : s.candles || [];
   if (candles.length === 0) {
+    const fallback = Number(s.lastClose || 0);
     return {
-      lastClose,
-      prevClose: lastClose,
-      openPrice: lastClose,
-      dayLow: lastClose,
-      dayHigh: lastClose,
+      lastClose: fallback,
+      prevClose: fallback,
+      openPrice: fallback,
+      dayLow: fallback,
+      dayHigh: fallback,
       volume: 0,
       isLive: false,
     };
   }
+
+  const latestCandle = candles[candles.length - 1];
+  const lastClose = Number(latestCandle.close || s.lastClose || 0);
   const daySlice = candles.slice(-24);
-  let dayLow = Infinity;
-  let dayHigh = -Infinity;
+  let dayLow = lastClose;
+  let dayHigh = lastClose;
   let volSum = 0;
+
   for (const c of daySlice) {
-    dayLow = Math.min(dayLow, Number(c.low));
-    dayHigh = Math.max(dayHigh, Number(c.high));
+    const lo = Number(c.low);
+    const hi = Number(c.high);
+    if (Number.isFinite(lo) && lo > 0) dayLow = Math.min(dayLow, lo);
+    if (Number.isFinite(hi) && hi > 0) dayHigh = Math.max(dayHigh, hi);
     volSum += Number(c.volume || 0);
   }
-  const prevClose = candles.length >= 2 ? Number(candles[candles.length - 2].close) : Number(daySlice[0].open);
-  const openPrice = Number(daySlice[0].open);
-  const lastSec = Number(candles[candles.length - 1].openTimeSec || 0);
+
+  const prevClose =
+    candles.length >= 2 ? Number(candles[candles.length - 2].close) : Number(daySlice[0].open);
+  const openPrice = Number(latestCandle.open || daySlice[0].open || lastClose);
+  const lastSec = Number(
+    latestCandle.openTimeSec ||
+      Math.floor(Number(latestCandle.open_time_utc_ms || 0) / 1000) ||
+      0
+  );
   const nowSec = Math.floor(Date.now() / 1000);
-  const isLive = nowSec - lastSec < 86400 * 2;
+  const isLive = nowSec - lastSec < 86400 * 3;
+
   return {
     lastClose,
     prevClose,
     openPrice,
     dayLow: Number.isFinite(dayLow) ? dayLow : lastClose,
     dayHigh: Number.isFinite(dayHigh) ? dayHigh : lastClose,
-    volume: volSum,
+    volume: Number(latestCandle.volume || volSum || 0),
     isLive,
   };
 }
@@ -52,6 +116,8 @@ export function computeDayStats(s) {
 export function renderRightSplitPanel(activeTab, i18n) {
   const query = (state.watchlistSearchQuery || '').trim().toUpperCase();
   const hideLogos = Boolean(state.chartPreferences.hideWatchlistLogos);
+  const isFa = i18n.getCurrentLanguage() === 'fa';
+
   const watchlist = state.symbols.filter((s) => {
     if (!s.inWatchlist) return false;
     if (!query) return true;
@@ -61,13 +127,13 @@ export function renderRightSplitPanel(activeTab, i18n) {
 
   const rowsHtml = watchlist
     .map((s) => {
-      const d = computeDayStats(s);
+      const isSelected = activeTab && activeTab.symbolCode === s.symbolCode;
+      const d = computeDayStats(s, isSelected ? activeTab.candles : null);
       const diff = d.lastClose - d.prevClose;
       const pct = d.prevClose > 0 ? PriceFormatter.formatSignedPct(d.prevClose, d.lastClose) : '+0.00%';
       const isBull = diff >= 0;
       const sign = isBull ? '+' : '';
       const badge = getAssetBadge(s.symbolCode);
-      const isSelected = activeTab && activeTab.symbolCode === s.symbolCode;
 
       return `
         <div class="tv-wl-row ${isSelected ? 'active' : ''}" data-action="open-chart" data-symbol="${s.symbolCode}" dir="ltr">
@@ -75,19 +141,19 @@ export function renderRightSplitPanel(activeTab, i18n) {
             ${
               hideLogos
                 ? `<span style="width: 7px; height: 7px; border-radius: 50%; background: ${d.isLive ? 'var(--bull)' : 'var(--text-muted)'}; flex-shrink: 0;"></span>`
-                : `<span class="tv-wl-badge ltr-num" style="color: ${badge.color}; background: ${badge.color}22; border: 1px solid ${badge.color}55;">
-                     ${badge.label}
+                : `<span class="tv-wl-icon-badge" style="background: ${badge.bgGradient};" title="${badge.category}">
+                     ${badge.svgIcon}
                    </span>`
             }
             <span class="tv-wl-ticker ltr-num">${s.symbolCode}</span>
           </div>
-          <div class="tv-wl-num ltr-num" style="color: var(--text);">
+          <div class="tv-wl-num ltr-num" style="color: var(--text-strong); font-weight: 600;">
             ${PriceFormatter.formatPrice(d.lastClose, s.decimals)}
           </div>
           <div class="tv-wl-num ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'};">
             ${sign}${PriceFormatter.formatPrice(diff, s.decimals)}
           </div>
-          <div class="tv-wl-num ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'};">
+          <div class="tv-wl-num ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'}; font-weight: 600;">
             ${pct}
           </div>
         </div>
@@ -101,7 +167,10 @@ export function renderRightSplitPanel(activeTab, i18n) {
     : state.symbols[0];
   let detailsHtml = '';
   if (sym) {
-    const d = computeDayStats(sym);
+    const d = computeDayStats(
+      sym,
+      activeTab && activeTab.symbolCode === sym.symbolCode ? activeTab.candles : null
+    );
     const diff = d.lastClose - d.prevClose;
     const pct = d.prevClose > 0 ? PriceFormatter.formatSignedPct(d.prevClose, d.lastClose) : '+0.00%';
     const isBull = diff >= 0;
@@ -110,57 +179,62 @@ export function renderRightSplitPanel(activeTab, i18n) {
     const title = sym.customTitle || i18n.t('symbol_' + sym.symbolCode) || sym.symbolCode;
     const rangeSpan = Math.max(0.00001, d.dayHigh - d.dayLow);
     const posPct = Math.max(4, Math.min(96, Math.round(((d.lastClose - d.dayLow) / rangeSpan) * 100)));
+    const seasonalsBtnLabel = isFa
+      ? 'عملکرد فصلی و داده‌های کلیدی'
+      : 'Seasonals & Key Data';
 
     detailsHtml = `
       <div class="tv-symbol-details-pane" dir="ltr">
         <div class="row-between" style="margin-bottom: 6px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span class="tv-wl-badge ltr-num" style="width: 24px; height: 24px; font-size: 10px; color: ${badge.color}; background: ${badge.color}22; border: 1px solid ${badge.color}55;">
-              ${badge.label}
+          <div style="display: flex; align-items: center; gap: 8px; min-width: 0;">
+            <span class="tv-wl-icon-badge" style="width: 26px; height: 26px; background: ${badge.bgGradient};">
+              ${badge.svgIcon}
             </span>
-            <strong class="ltr-num" style="font-size: 14px; color: var(--text);">${sym.symbolCode}</strong>
+            <strong class="ltr-num" style="font-size: 14px; color: var(--text-strong); overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${sym.symbolCode}</strong>
           </div>
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <button class="tv-tool-btn" data-action="open-symbol-overview" data-symbol="${sym.symbolCode}" title="Seasonals & Key Data">
+          <div style="display: flex; align-items: center; gap: 4px; flex-shrink: 0;">
+            <button class="tv-tool-btn" data-action="open-symbol-overview" data-symbol="${sym.symbolCode}" title="${seasonalsBtnLabel}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
             </button>
           </div>
         </div>
 
-        <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 2px;">
+        <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
           ${title} · <span class="ltr-num" style="color: var(--text);">${sym.activeProvider.toUpperCase()}</span>
         </div>
-        <div class="ltr-num" style="font-size: 11px; color: var(--text-dim); margin-bottom: 8px;">
+        <div class="ltr-num" style="font-size: 10.5px; color: var(--text-dim); margin-bottom: 8px;">
           ${badge.category}
         </div>
 
-        <div class="tv-detail-price ltr-num">
-          ${PriceFormatter.formatPrice(d.lastClose, sym.decimals)}
-          <span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">USD</span>
-        </div>
-        <div class="tv-detail-chg ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'};">
-          ${sign}${PriceFormatter.formatPrice(diff, sym.decimals)} (${pct})
+        <div style="display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;">
+          <div class="tv-detail-price ltr-num" style="font-size: 18px; font-weight: 800; color: var(--text-strong);">
+            ${PriceFormatter.formatPrice(d.lastClose, sym.decimals)}
+            <span style="font-size: 11px; font-weight: 600; color: var(--text-muted);">USD</span>
+          </div>
+          <div class="tv-detail-chg ltr-num" style="font-size: 12.5px; font-weight: 700; color: ${isBull ? 'var(--bull)' : 'var(--bear)'};">
+            ${sign}${PriceFormatter.formatPrice(diff, sym.decimals)} (${pct})
+          </div>
         </div>
 
-        <div class="ltr-num" style="font-size: 11px; color: ${d.isLive ? 'var(--bull)' : 'var(--text-muted)'}; margin-top: 5px; display: flex; align-items: center; gap: 5px;">
+        <div class="ltr-num" style="font-size: 11px; color: ${d.isLive ? 'var(--bull)' : 'var(--text-muted)'}; margin-top: 4px; display: flex; align-items: center; gap: 5px;">
           <span>●</span>
           <span>${d.isLive ? i18n.t('chart_status_live') : i18n.t('chart_status_market_closed')}</span>
         </div>
 
         <!-- Day's Range Bar -->
-        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border);">
-          <div class="row-between ltr-num" style="font-size: 10.5px; color: var(--text-muted); margin-bottom: 4px;">
-            <span>Low: <strong style="color: var(--text);">${PriceFormatter.formatPrice(d.dayLow, sym.decimals)}</strong></span>
+        <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border);">
+          <div class="row-between ltr-num" style="font-size: 10.5px; color: var(--text-muted); margin-bottom: 5px;">
+            <span>L: <strong style="color: var(--text);">${PriceFormatter.formatPrice(d.dayLow, sym.decimals)}</strong></span>
             <span>Day's Range</span>
-            <span>High: <strong style="color: var(--text);">${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)}</strong></span>
+            <span>H: <strong style="color: var(--text);">${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)}</strong></span>
           </div>
-          <div style="height: 4px; background: var(--surface-elevated); border-radius: 2px; position: relative; margin-bottom: 10px;">
-            <div style="position: absolute; left: 0; top: 0; bottom: 0; width: ${posPct}%; background: ${isBull ? 'var(--bull)' : 'var(--bear)'}; border-radius: 2px;"></div>
+          <div style="height: 5px; background: var(--surface-elevated); border-radius: 3px; position: relative; margin-bottom: 10px; overflow: hidden;">
+            <div style="position: absolute; left: 0; top: 0; bottom: 0; width: ${posPct}%; background: ${isBull ? 'var(--bull)' : 'var(--bear)'}; border-radius: 3px;"></div>
           </div>
 
           <div class="tv-detail-grid ltr-num">
             <div class="tv-detail-stat">
-              <span>Volume (24B)</span>
+              <span>Volume</span>
               <strong>${PriceFormatter.formatVolume(d.volume)}</strong>
             </div>
             <div class="tv-detail-stat">
@@ -177,8 +251,13 @@ export function renderRightSplitPanel(activeTab, i18n) {
             </div>
           </div>
 
-          <button class="btn btn-sm" style="width: 100%; margin-top: 10px;" data-action="open-symbol-overview" data-symbol="${sym.symbolCode}">
-            <span>📊 ${i18n.t('symbol_overview_seasonals')} & ${i18n.t('symbol_overview_key_data')}</span>
+          <button
+            class="btn btn-sm tv-details-overview-btn"
+            data-action="open-symbol-overview"
+            data-symbol="${sym.symbolCode}"
+          >
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            <span>${seasonalsBtnLabel}</span>
           </button>
         </div>
       </div>
@@ -302,8 +381,8 @@ export function renderSymbolOverviewModal(i18n) {
       <div class="modal-card symbol-overview-modal" dir="ltr" style="padding: 18px;">
         <div class="row-between" style="margin-bottom: 10px;">
           <div style="display: flex; align-items: center; gap: 10px;">
-            <span class="ltr-num" style="width: 36px; height: 36px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-weight: 800; font-size: 12px; color: ${badge.color}; background: ${badge.color}24; border: 1px solid ${badge.color}55;">
-              ${badge.label}
+            <span class="tv-wl-icon-badge" style="width: 36px; height: 36px; background: ${badge.bgGradient};">
+              ${badge.svgIcon}
             </span>
             <div>
               <div class="ltr-num" style="display: flex; align-items: baseline; gap: 8px;">
@@ -390,4 +469,3 @@ export function renderSymbolOverviewModal(i18n) {
 }
 
 export const renderWatchlistContent = renderRightSplitPanel;
-

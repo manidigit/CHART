@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.7';
-import { state } from '../core/store.js?v=1.28.7';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.8';
+import { state } from '../core/store.js?v=1.28.8';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab

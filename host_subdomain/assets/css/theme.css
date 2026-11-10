@@ -866,7 +866,7 @@ body.theme-light .tv-ind-pill {
 
 .tv-wl-table-head {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 0.9fr 0.9fr;
+  grid-template-columns: 1.45fr 0.95fr 0.85fr 0.85fr;
   padding: 5px 10px;
   border-bottom: 1px solid var(--border);
   font-size: 10.5px;
@@ -878,18 +878,21 @@ body.theme-light .tv-ind-pill {
 .tv-wl-list {
   flex: 1;
   overflow-y: auto;
+  overflow-x: hidden;
   direction: ltr;
 }
 
 .tv-wl-row {
   display: grid;
-  grid-template-columns: 1.5fr 1fr 0.9fr 0.9fr;
+  grid-template-columns: 1.45fr 0.95fr 0.85fr 0.85fr;
   align-items: center;
-  padding: 7px 10px;
-  border-bottom: 1px solid rgba(42, 46, 57, 0.4);
+  gap: 4px;
+  padding: 6px 10px;
+  border-bottom: 1px solid rgba(42, 46, 57, 0.35);
   cursor: pointer;
   transition: background 0.12s ease;
-  font-size: 12px;
+  font-size: 11.5px;
+  min-width: 0;
 }
 
 .tv-wl-row:hover {
@@ -900,6 +903,44 @@ body.theme-light .tv-ind-pill {
   background: var(--primary-soft);
   border-left: 3px solid var(--primary);
   padding-left: 7px;
+}
+
+.tv-wl-sym-cell {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.tv-wl-icon-badge {
+  width: 22px;
+  height: 22px;
+  min-width: 22px;
+  border-radius: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 2px 5px rgba(0, 0, 0, 0.22);
+  flex-shrink: 0;
+}
+
+.tv-wl-ticker {
+  font-weight: 700;
+  color: var(--text-strong);
+  font-size: 11.5px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tv-wl-num {
+  text-align: right;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  font-size: 11.5px;
 }
 
 .tv-symbol-details-pane {
@@ -942,6 +983,21 @@ body.theme-light .tv-ind-pill {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+}
+
+.tv-details-overview-btn {
+  width: 100%;
+  max-width: 100%;
+  margin-top: 10px;
+  padding: 6px 10px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  box-sizing: border-box;
 }
 
 /* Permanent 42px Far-Right Icon Dock Rail */

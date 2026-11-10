@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.7';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.28.7';
-import { state } from '../core/store.js?v=1.28.7';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.8';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.28.8';
+import { state } from '../core/store.js?v=1.28.8';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;
@@ -13,7 +13,12 @@ function getTimeframeDurationSeconds(tf) {
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf) {
   if (!lastOpenEpochSec) return '';
-  const tfSec = getTimeframeDurationSeconds(tf);
+  const normTf = String(tf || 'M15').toUpperCase();
+  // On Daily (D1) and Weekly (W1) timeframes, do not show intraday HH:MM:SS clock under the price pill
+  if (normTf === 'D1' || normTf === 'W1') {
+    return '';
+  }
+  const tfSec = getTimeframeDurationSeconds(normTf);
   const nowSec = Math.floor(Date.now() / 1000);
   const currentBucketStart = Math.floor(nowSec / tfSec) * tfSec;
   const nextCloseSec = currentBucketStart + tfSec;
@@ -79,7 +84,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const chartH = pricePaneH;
   const volTopY = topPad + pricePaneH;
 
-  const visibleCount = Math.max(15, Math.min(180, Math.round(tab.visibleCount || 48)));
+  const visibleCount = Math.max(12, Math.min(600, Math.round(tab.visibleCount || 48)));
   const maxOffset = Math.max(0, candles.length - 5);
   const offset = Math.max(0, Math.min(maxOffset, Math.round(tab.scrollOffset || 0)));
 
@@ -173,43 +178,26 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
 
   const slotW = chartW / visible.length;
-  const bodyW = Math.max(2, Math.min(20, slotW * 0.68));
+  const bodyW = Math.max(1.2, Math.min(20, slotW * 0.68));
   const idxToX = (idx) => (idx + 0.5) * slotW;
 
-  // Vertical Time Grid + Adaptive Timeframe X-Axis Labels (M15, H1, H4, D1, W1)
-  const maxLabels = Math.max(4, Math.min(9, Math.floor(chartW / 115)));
-  const vStep = Math.max(1, Math.ceil(visible.length / maxLabels));
-  let prevTickMs = null;
-  let lastLabelRightPx = -100;
-
-  for (let i = 0; i < visible.length; i += vStep) {
-    const x = idxToX(i);
-    const c = visible[i];
-    const curMs = Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0));
-
+  // Vertical Time Grid + Smart Calendar-Aligned X-Axis Labels (Year, Month, Day, or Hour by Span & Timeframe)
+  const smartTicks = PriceFormatter.computeSmartTimeAxisTicks(visible, chartW, tab.timeframe);
+  for (const tick of smartTicks) {
+    const x = idxToX(tick.index);
     ctx.strokeStyle = gridColor;
     ctx.beginPath();
     ctx.moveTo(x, topPad);
     ctx.lineTo(x, topPad + totalChartH);
     ctx.stroke();
 
-    const tickInfo = PriceFormatter.formatAdaptiveAxisTick(curMs, prevTickMs, tab.timeframe);
-    const lbl = tickInfo.text;
-    if (!lbl) continue;
-
-    ctx.font = tickInfo.isMajor
+    ctx.font = tick.isMajor
       ? 'bold 11px "JetBrains Mono", monospace'
       : '11px "JetBrains Mono", monospace';
-    const lblW = ctx.measureText(lbl).width;
+    const lblW = ctx.measureText(tick.text).width;
     const lblX = Math.max(6, Math.min(chartW - lblW - 6, x - lblW / 2));
-
-    // Avoid overlapping labels on narrow viewports
-    if (lblX > lastLabelRightPx + 12) {
-      ctx.fillStyle = tickInfo.isMajor ? majorTickColor : textColor;
-      ctx.fillText(lbl, lblX, topPad + totalChartH + 17);
-      lastLabelRightPx = lblX + lblW;
-      prevTickMs = curMs;
-    }
+    ctx.fillStyle = tick.isMajor ? majorTickColor : textColor;
+    ctx.fillText(tick.text, lblX, topPad + totalChartH + 17);
   }
 
   // Data Boundary Marker when scrolled to beginning of loaded history

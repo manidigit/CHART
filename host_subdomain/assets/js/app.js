@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.28.7';
+import { I18nManager } from './core/i18n.js?v=1.28.8';
 import {
   state,
   savePreferences,
@@ -7,7 +7,7 @@ import {
   saveLastOpenedSymbol,
   savePanelLayout,
   getCachedOrAggregatedCandles,
-} from './core/store.js?v=1.28.7';
+} from './core/store.js?v=1.28.8';
 import {
   syncServerAuthStatus,
   loginOrRegisterOwner,
@@ -18,20 +18,20 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.28.7';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.7';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.7';
-import { renderLoginScreen } from './views/loginView.js?v=1.28.7';
+} from './services/apiService.js?v=1.28.8';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.8';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.8';
+import { renderLoginScreen } from './views/loginView.js?v=1.28.8';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.28.7';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.7';
-import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.7';
-import { renderPredictionModal } from './views/analysisView.js?v=1.28.7';
-import { renderSettingsModal } from './views/settingsView.js?v=1.28.7';
-import { renderRightIconRail } from './views/navigationView.js?v=1.28.7';
+} from './views/headerView.js?v=1.28.8';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.8';
+import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.8';
+import { renderPredictionModal } from './views/analysisView.js?v=1.28.8';
+import { renderSettingsModal } from './views/settingsView.js?v=1.28.8';
+import { renderRightIconRail } from './views/navigationView.js?v=1.28.8';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -147,9 +147,68 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
   syncSymbolNow(symbolCode, tf, renderApp);
 }
 
+function computePresetBarCount(candles, rk) {
+  const fallbackMap = {
+    '1D': 64,
+    '5D': 85,
+    '1W': 120,
+    '1M': 125,
+    '3M': 66,
+    '6M': 132,
+    '9M': 198,
+    YTD: 210,
+    '1Y': 260,
+    '5Y': 260,
+    All: 320,
+  };
+  if (!candles || candles.length === 0) return fallbackMap[rk] || 64;
+  if (rk === 'All') return Math.min(600, Math.max(24, candles.length));
+
+  const lastC = candles[candles.length - 1];
+  const lastMs =
+    Number(lastC.open_time_utc_ms) ||
+    Number(lastC.openTimeSec || 0) * 1000 ||
+    Date.parse(lastC.open_time_utc || '') ||
+    Date.now();
+
+  let cutoffMs = lastMs - 86400000 * 7;
+  if (rk === '1D') cutoffMs = lastMs - 86400000 * 1.5;
+  else if (rk === '5D') cutoffMs = lastMs - 86400000 * 5.5;
+  else if (rk === '1W') cutoffMs = lastMs - 86400000 * 7.5;
+  else if (rk === '1M') cutoffMs = lastMs - 86400000 * 31;
+  else if (rk === '3M') cutoffMs = lastMs - 86400000 * 92;
+  else if (rk === '6M') cutoffMs = lastMs - 86400000 * 183;
+  else if (rk === '9M') cutoffMs = lastMs - 86400000 * 274;
+  else if (rk === 'YTD') {
+    const yr = new Date(lastMs).getUTCFullYear();
+    cutoffMs = Date.UTC(yr, 0, 1, 0, 0, 0);
+  } else if (rk === '1Y') cutoffMs = lastMs - 86400000 * 366;
+  else if (rk === '5Y') cutoffMs = lastMs - 86400000 * 365 * 5;
+
+  let count = 0;
+  for (let i = candles.length - 1; i >= 0; i--) {
+    const c = candles[i];
+    const ms =
+      Number(c.open_time_utc_ms) ||
+      Number(c.openTimeSec || 0) * 1000 ||
+      Date.parse(c.open_time_utc || '') ||
+      0;
+    if (ms >= cutoffMs) {
+      count++;
+    } else {
+      break;
+    }
+  }
+
+  if (count < 15) {
+    count = Math.min(candles.length, fallbackMap[rk] || 64);
+  }
+  return Math.max(15, Math.min(600, count));
+}
+
 function renderOhlcvOverlay(activeTab) {
   if (!activeTab || !activeTab.candles || activeTab.candles.length === 0) return '';
-  const visibleCount = Math.max(15, Math.min(180, Math.round(activeTab.visibleCount || 48)));
+  const visibleCount = Math.max(15, Math.min(600, Math.round(activeTab.visibleCount || 48)));
   const maxOffset = Math.max(0, activeTab.candles.length - 5);
   const offset = Math.max(0, Math.min(maxOffset, Math.round(activeTab.scrollOffset || 0)));
   const endIdx = Math.max(1, activeTab.candles.length - offset);
@@ -584,7 +643,7 @@ function bindCanvasEvents(activeTab) {
     (e) => {
       e.preventDefault();
       const step = e.deltaY > 0 ? 6 : -6;
-      activeTab.visibleCount = Math.max(15, Math.min(180, (activeTab.visibleCount || 48) + step));
+      activeTab.visibleCount = Math.max(15, Math.min(600, (activeTab.visibleCount || 48) + step));
       redrawActiveCanvas();
     },
     { passive: false }
@@ -806,6 +865,7 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-timeframe' && activeTab) {
     const newTf = el.getAttribute('data-tf') || 'M15';
     activeTab.timeframe = newTf;
+    activeTab.selectedRangePreset = null;
     activeTab.scrollOffset = 0;
     activeTab.drawings = state.drawingsByChartId[`${activeTab.symbolCode}_${newTf}`] || [];
     const cached = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
@@ -818,21 +878,47 @@ document.addEventListener('click', async (e) => {
     const rk = el.getAttribute('data-range') || 'All';
     activeTab.selectedRangePreset = rk;
     activeTab.scrollOffset = 0;
-    const mapCount = {
-      '1D': 24,
-      '5D': 48,
-      '1W': 64,
-      '1M': 90,
-      '3M': 120,
-      '6M': 140,
-      '9M': 152,
-      YTD: 160,
-      '1Y': 170,
-      '5Y': 180,
-      All: 180,
-    };
-    activeTab.visibleCount = Math.min((activeTab.candles || []).length || 48, mapCount[rk] || 60);
+
+    // TradingView-style automatic timeframe resolution for historical date range presets
+    let targetTf = activeTab.timeframe || 'D1';
+    if (activeTab.provider === 'eia_brent_spot') {
+      targetTf = rk === '5Y' || rk === 'All' ? 'W1' : 'D1';
+    } else if (rk === '1D') {
+      targetTf = 'M15';
+    } else if (rk === '5D' || rk === '1W') {
+      targetTf = 'H1';
+    } else if (rk === '1M') {
+      targetTf = 'H4';
+    } else if (rk === '3M' || rk === '6M' || rk === '9M' || rk === 'YTD' || rk === '1Y') {
+      targetTf = 'D1';
+    } else if (rk === '5Y' || rk === 'All') {
+      targetTf = 'W1';
+    }
+
+    const tfChanged = activeTab.timeframe !== targetTf;
+    activeTab.timeframe = targetTf;
+    activeTab.drawings = state.drawingsByChartId[`${activeTab.symbolCode}_${targetTf}`] || [];
+    const cached = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, targetTf);
+    if (cached.length > 0) {
+      activeTab.candles = cached;
+    }
+    activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
     renderApp();
+
+    if (tfChanged || !activeTab.candles || activeTab.candles.length < 30) {
+      await syncSymbolNow(activeTab.symbolCode, targetTf, () => {
+        const refreshed = getCachedOrAggregatedCandles(
+          activeTab.symbolCode,
+          activeTab.provider,
+          targetTf
+        );
+        if (refreshed.length > 0) {
+          activeTab.candles = refreshed;
+        }
+        activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
+        renderApp();
+      });
+    }
   } else if (action === 'set-chart-type' && activeTab) {
     activeTab.chartType = el.getAttribute('data-type') || 'candles';
     renderApp();
@@ -866,7 +952,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'fit-content' && activeTab) {
     activeTab.scrollOffset = 0;
-    activeTab.visibleCount = Math.min(140, Math.max(24, (activeTab.candles || []).length));
+    activeTab.visibleCount = Math.min(300, Math.max(24, (activeTab.candles || []).length));
     activeTab.priceScaleFactor = 1.0;
     renderApp();
   } else if (action === 'reset-view' && activeTab) {
@@ -889,7 +975,7 @@ document.addEventListener('click', async (e) => {
     activeTab.visibleCount = Math.max(15, (activeTab.visibleCount || 48) - 8);
     renderApp();
   } else if (action === 'zoom-out' && activeTab) {
-    activeTab.visibleCount = Math.min(180, (activeTab.visibleCount || 48) + 8);
+    activeTab.visibleCount = Math.min(600, (activeTab.visibleCount || 48) + 8);
     renderApp();
   } else if (action === 'clear-drawings' && activeTab) {
     activeTab.drawings = [];

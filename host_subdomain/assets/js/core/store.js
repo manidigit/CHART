@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.7';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.7';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.8';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.8';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';

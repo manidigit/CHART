@@ -1,4 +1,4 @@
-import { state } from '../core/store.js?v=1.28.7';
+import { state } from '../core/store.js?v=1.28.8';
 
 export function renderRightIconRail(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';

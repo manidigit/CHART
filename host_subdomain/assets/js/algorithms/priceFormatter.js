@@ -7,8 +7,6 @@ export const PriceFormatter = {
   formatAxisRoundPrice(val, decimals = 2, niceStep = 1) {
     if (val === null || val === undefined || isNaN(Number(val))) return '—';
     const num = Number(val);
-    // If niceStep is an integer (e.g. 1, 2, 5, 10, 25) and value is effectively an integer,
-    // still respect standard decimal precision up to decimals, but avoid ugly trailing noise.
     if (niceStep >= 1 && Math.abs(num - Math.round(num)) < 1e-6) {
       return num.toFixed(Math.min(decimals, 2));
     }
@@ -25,7 +23,7 @@ export const PriceFormatter = {
   computeNicePriceTicks(minP, maxP, targetTickCount = 6) {
     const low = Number(minP);
     const high = Number(maxP);
-    if (! isFinite(low) || !isFinite(high) || high <= low) {
+    if (!isFinite(low) || !isFinite(high) || high <= low) {
       return { ticks: [low || 0], step: 1 };
     }
     const rawRange = high - low;
@@ -44,7 +42,6 @@ export const PriceFormatter = {
     const niceStep = niceFraction * magPow;
     const firstTick = Math.ceil(low / niceStep) * niceStep;
     const ticks = [];
-    // Guard against floating point drift
     for (let t = firstTick, guard = 0; t <= high + niceStep * 0.001 && guard < 30; t += niceStep, guard++) {
       const cleanVal = Number(t.toPrecision(12));
       if (cleanVal >= low - niceStep * 0.02 && cleanVal <= high + niceStep * 0.02) {
@@ -52,6 +49,152 @@ export const PriceFormatter = {
       }
     }
     return { ticks, step: niceStep };
+  },
+
+  /**
+   * TradingView-Grade Smart Calendar-Aligned X-Axis Tick Generator.
+   * Inspects both the active timeframe AND the actual visible calendar span (days/months/years)
+   * to snap grid lines and labels onto true Year, Month, Day, or Round-Hour boundaries.
+   */
+  computeSmartTimeAxisTicks(visible = [], chartW = 800, timeframe = 'M15') {
+    if (!Array.isArray(visible) || visible.length === 0) return [];
+    const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const pad = (n) => String(n).padStart(2, '0');
+    const tf = String(timeframe || 'M15').toUpperCase();
+
+    const getMs = (c) =>
+      Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0));
+
+    const firstMs = getMs(visible[0]);
+    const lastMs = getMs(visible[visible.length - 1]);
+    const stepMs = this.stepMilliseconds(tf);
+    const spanMs = Math.max(stepMs * visible.length, lastMs - firstMs);
+    const spanDays = spanMs / 86400000;
+
+    const candidates = [];
+
+    for (let i = 0; i < visible.length; i++) {
+      const ms = getMs(visible[i]);
+      if (!ms) continue;
+      const d = new Date(ms);
+      const yr = d.getUTCFullYear();
+      const mo = d.getUTCMonth();
+      const day = d.getUTCDate();
+      const hr = d.getUTCHours();
+      const mn = d.getUTCMinutes();
+
+      const prevMs = i > 0 ? getMs(visible[i - 1]) : null;
+      const prevD = prevMs ? new Date(prevMs) : null;
+
+      const isNewYear = !prevD || prevD.getUTCFullYear() !== yr;
+      const isNewMonth = !prevD || isNewYear || prevD.getUTCMonth() !== mo;
+      const isNewDay = !prevD || isNewMonth || prevD.getUTCDate() !== day;
+
+      // 1. Multi-Year Span (> 420 days, e.g., 5Y / All)
+      if (spanDays > 420) {
+        if (isNewYear && i > 0) {
+          candidates.push({ index: i, text: String(yr), isMajor: true, priority: 4 });
+        } else if (isNewMonth && (mo === 3 || mo === 6 || mo === 9)) {
+          candidates.push({ index: i, text: months[mo], isMajor: false, priority: 2 });
+        }
+        continue;
+      }
+
+      // 2. Multi-Month to 1.2-Year Span (55..420 days, e.g., 3M, 6M, 9M, YTD, 1Y)
+      if (spanDays > 55 || tf === 'W1') {
+        if (isNewYear && i > 0) {
+          candidates.push({ index: i, text: String(yr), isMajor: true, priority: 4 });
+        } else if (isNewMonth && (i > 0 || day <= 5)) {
+          candidates.push({ index: i, text: months[mo], isMajor: true, priority: 3 });
+        } else if (
+          spanDays <= 140 &&
+          isNewDay &&
+          day >= 14 &&
+          day <= 17 &&
+          (!prevD || prevD.getUTCDate() < 14)
+        ) {
+          // Clean mid-month day number (like TradingView: "Jul", "15", "Aug", "15")
+          candidates.push({ index: i, text: String(day), isMajor: false, priority: 1 });
+        }
+        continue;
+      }
+
+      // 3. 2-Week to 2-Month Span (12..55 days, e.g., 1M on H4 or D1)
+      if (spanDays > 12 || tf === 'D1') {
+        if (isNewYear && i > 0) {
+          candidates.push({ index: i, text: String(yr), isMajor: true, priority: 4 });
+        } else if (isNewMonth && day <= 4) {
+          candidates.push({ index: i, text: months[mo], isMajor: true, priority: 3 });
+        } else if (isNewDay && (d.getUTCDay() === 1 || day % 5 === 1)) {
+          candidates.push({ index: i, text: `${day} ${months[mo]}`, isMajor: false, priority: 2 });
+        }
+        continue;
+      }
+
+      // 4. Multi-Day / 1-Week Span (2.2..12 days, e.g., 5D / 1W on H1 or H4)
+      if (spanDays > 2.2 || tf === 'H4') {
+        if (isNewDay) {
+          candidates.push({
+            index: i,
+            text: `${day} ${months[mo]}`,
+            isMajor: true,
+            priority: 3,
+          });
+        } else if (hr === 12 && mn === 0 && spanDays <= 6) {
+          candidates.push({ index: i, text: '12:00', isMajor: false, priority: 1 });
+        }
+        continue;
+      }
+
+      // 5. Intraday Span (<= 2.2 days, e.g., 1D on M15 or H1)
+      if (isNewDay) {
+        candidates.push({
+          index: i,
+          text: hr === 0 && mn === 0 ? `${day} ${months[mo]}` : `${day} ${months[mo]} ${pad(hr)}:${pad(mn)}`,
+          isMajor: true,
+          priority: 4,
+        });
+      } else if (mn === 0 && (hr % 3 === 0 || (spanDays <= 1 && hr % 2 === 0))) {
+        candidates.push({
+          index: i,
+          text: `${pad(hr)}:00`,
+          isMajor: false,
+          priority: hr % 6 === 0 ? 2 : 1,
+        });
+      }
+    }
+
+    // Fallback if very few candles are visible and no boundary was crossed
+    if (candidates.length < 3) {
+      const targetCount = Math.max(3, Math.min(7, Math.floor(chartW / 120)));
+      const step = Math.max(1, Math.floor(visible.length / targetCount));
+      for (let i = 0; i < visible.length; i += step) {
+        const ms = getMs(visible[i]);
+        const d = new Date(ms);
+        const label =
+          tf === 'D1' || tf === 'W1' || spanDays > 12
+            ? `${d.getUTCDate()} ${months[d.getUTCMonth()]}`
+            : `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+        candidates.push({ index: i, text: label, isMajor: i === 0, priority: 1 });
+      }
+    }
+
+    // Filter candidates so labels never collide horizontally, prioritizing higher-priority boundaries (Year/Month > Day > Hour)
+    const slotW = chartW / Math.max(1, visible.length);
+    const minPxGap = 86;
+    const sortedByPriority = [...candidates].sort((a, b) => b.priority - a.priority || a.index - b.index);
+    const accepted = [];
+
+    for (const cand of sortedByPriority) {
+      const x = (cand.index + 0.5) * slotW;
+      if (x < 24 || x > chartW - 24) continue;
+      const collides = accepted.some((acc) => Math.abs((acc.index - cand.index) * slotW) < minPxGap);
+      if (!collides) {
+        accepted.push(cand);
+      }
+    }
+
+    return accepted.sort((a, b) => a.index - b.index);
   },
 
   formatSignedDiff(open, close, decimals = 2) {
@@ -104,10 +247,6 @@ export const PriceFormatter = {
     return 900000;
   },
 
-  /**
-   * TradingView-style Adaptive X-Axis Time Formatter.
-   * Adapts format to timeframe (M15, H1, H4, D1, W1) and highlights day/month transitions.
-   */
   formatAdaptiveAxisTick(epochMs, prevTickEpochMs = null, timeframe = 'M15') {
     if (!epochMs) return { text: '', isMajor: false };
     const d = new Date(Number(epochMs));
@@ -136,7 +275,7 @@ export const PriceFormatter = {
       if (isNewMonth && day <= 7) {
         return { text: monthName, isMajor: true };
       }
-      return { text: `${day} ${monthName}`, isMajor: isNewMonth };
+      return { text: `${day} ${monthName}`, isMajor: false };
     }
 
     if (tf === 'H4') {
@@ -146,7 +285,6 @@ export const PriceFormatter = {
       return { text: `${hh}:${mm}`, isMajor: false };
     }
 
-    // Intraday M15 & H1: show Day + Month on day boundary, and HH:mm within the same day
     if (isNewDay) {
       if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) {
         return { text: `${day} ${monthName}`, isMajor: true };
