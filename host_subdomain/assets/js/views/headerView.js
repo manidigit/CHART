@@ -1,5 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
-import { state } from '../core/store.js?v=1.28.9';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.29.0';
+import { state } from '../core/store.js?v=1.29.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.29.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -47,6 +48,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
 
   const isFa = i18n.getCurrentLanguage() === 'fa';
   const indicatorsLabel = isFa ? 'اندیکاتورها' : 'Indicators';
+  const activeCode = sym ? sym.symbolCode : 'SPOTBRENT';
 
   return `
     <header class="tv-topbar" dir="ltr">
@@ -55,10 +57,10 @@ export function renderTopHeaderBar(activeTab, i18n) {
           <div class="tv-logo">CI</div>
         </div>
 
-        <!-- Active Symbol Title Badge (Non-duplicate: focuses Watchlist search when clicked) -->
+        <!-- Active Symbol Title Badge with Asset Icon (Non-duplicate: focuses Watchlist search when clicked) -->
         <button class="tv-symbol-btn ltr-num" data-action="focus-watchlist-search" title="${isFa ? 'جستجو و انتخاب نماد در واچ‌لیست' : 'Search & switch symbol in Watchlist'}">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <span>${sym ? sym.symbolCode : 'SPOTBRENT'}</span>
+          ${renderSymbolBadge(activeCode, 20)}
+          <span>${activeCode}</span>
         </button>
 
         <div class="tv-divider"></div>

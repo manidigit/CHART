@@ -25,6 +25,8 @@ data class ChartTabState(
     val showVolume: Boolean = true,
     val volumePaneRatio: Float = 0.22f,
     val showSma20: Boolean = false,
+    val showEma50: Boolean = false,
+    val showBollinger: Boolean = false,
     val activeDrawingTool: DrawingTool = DrawingTool.CURSOR,
     val activeDrawingColorHex: String = "FF2962FF",
     val activeDrawingWidthDp: Float = 2.2f,
@@ -40,15 +42,16 @@ data class ChartTabState(
 
     val allowedTimeframes: List<String>
         get() = if (provider == ProviderId.EIA_BRENT_SPOT) {
-            listOf("D1")
+            listOf("D1", "W1")
         } else {
             AppConfig.SUPPORTED_TIMEFRAMES
         }
 
     fun computeDateRangePresets(): List<DateRangePresetOption> {
+        val allPresetIds = listOf("1D", "5D", "1W", "1M", "3M", "6M", "9M", "YTD", "1Y", "5Y", "All")
         val total = candles.size
         if (total == 0) {
-            return listOf("1D", "5D", "1M", "3M", "YTD", "1Y", "5Y", "All").map {
+            return allPresetIds.map {
                 DateRangePresetOption(it, it, false, AppConfig.MIN_VISIBLE_CANDLES)
             }
         }
@@ -59,16 +62,19 @@ data class ChartTabState(
         val lastYear = Instant.ofEpochMilli(lastTs).atZone(ZoneOffset.UTC).year
         val ytdStartMs = Instant.parse("${lastYear}-01-01T00:00:00Z").toEpochMilli()
 
-        data class Spec(val id: String, val durationMs: Long, val minSpanMs: Long)
+        data class Spec(val id: String, val durationMs: Long, val defaultBars: Int)
         val specs = listOf(
-            Spec("1D", 1L * dayMs, 0L),
-            Spec("5D", 5L * dayMs, 1L * dayMs),
-            Spec("1M", 30L * dayMs, 5L * dayMs),
-            Spec("3M", 90L * dayMs, 25L * dayMs),
-            Spec("YTD", max(dayMs, lastTs - ytdStartMs), 14L * dayMs),
-            Spec("1Y", 365L * dayMs, 90L * dayMs),
-            Spec("5Y", 1825L * dayMs, 365L * dayMs),
-            Spec("All", max(dayMs, spanMs), 0L)
+            Spec("1D", 1L * dayMs, 96),
+            Spec("5D", 5L * dayMs, 120),
+            Spec("1W", 7L * dayMs, 168),
+            Spec("1M", 30L * dayMs, 180),
+            Spec("3M", 90L * dayMs, 90),
+            Spec("6M", 180L * dayMs, 180),
+            Spec("9M", 270L * dayMs, 270),
+            Spec("YTD", max(dayMs, lastTs - ytdStartMs), 180),
+            Spec("1Y", 365L * dayMs, 260),
+            Spec("5Y", 1825L * dayMs, 260),
+            Spec("All", max(dayMs, spanMs), total)
         )
 
         return specs.map { spec ->
@@ -82,12 +88,15 @@ data class ChartTabState(
             } else {
                 val cutoff = lastTs - spec.durationMs
                 val matching = candles.count { it.openTimeUtcMillis >= cutoff }
-                val enabled = spanMs >= spec.minSpanMs && matching >= 2
-                val target = min(total, max(AppConfig.MIN_VISIBLE_CANDLES, matching))
+                val target = if (matching >= 2) {
+                    min(total, max(AppConfig.MIN_VISIBLE_CANDLES, matching))
+                } else {
+                    min(total, max(AppConfig.MIN_VISIBLE_CANDLES, spec.defaultBars))
+                }
                 DateRangePresetOption(
                     id = spec.id,
                     label = spec.id,
-                    enabled = enabled,
+                    enabled = total >= 2,
                     targetBars = target
                 )
             }

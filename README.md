@@ -18,7 +18,7 @@ Detailed engineering and operational material: docs/PROJECT_GUIDE.md
   <a href="https://chart.manico.es"><img src="https://img.shields.io/badge/Web-chart.manico.es-172b3a?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web application"></a>
   <a href="https://github.com/manidigit/CHART/actions/workflows/build-apk.yml"><img src="https://img.shields.io/badge/Android-APK%20workflow-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK workflow"></a>
   <a href="https://github.com/manidigit/CHART"><img src="https://img.shields.io/badge/Platform-Web%20%7C%20Android-4C6FFF?style=for-the-badge" alt="Web and Android"></a>
-  <a href="https://github.com/manidigit/CHART/blob/main/docs/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.28.9-8B6CEF?style=for-the-badge" alt="Master Spec version 1.28.9"></a>
+  <a href="https://github.com/manidigit/CHART/blob/main/docs/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.29.0-8B6CEF?style=for-the-badge" alt="Master Spec version 1.29.0"></a>
 </p>
 
 <p align="center">
@@ -44,11 +44,11 @@ The engineering direction prioritizes reliable market-series identity, consisten
 
 ### Current foundation — Phase 1
 
-- **Web + Android (TradingView Pro Standard UI/UX):** responsive web desktop terminal and native Android Jetpack Compose application engineered to the TradingView dark palette (`#131722`) and compact ergonomics.
+- **100% Web + Android Cross-Platform Parity (TradingView Pro Standard `v1.29.0`):** responsive web desktop terminal and native Android Jetpack Compose application engineered to the identical TradingView dark palette (`#131722`), visual asset emblems (`XAUUSD` gold bars, `SPOTBRENT` oil droplet, `XAGUSD` silver bars, `EURUSD` FX), and compact ergonomics.
 - **Holistic 4-Section Architecture:** coordinated navigation across **Watchlist**, **Chart**, **Prediction** (standalone forecast & scenario workspace), and **Settings** unified in the Right Dock Rail on Desktop Web and the 4-Tab Bar on Android.
-- **Smart Multi-Pane Chart Workspace:** top bar with symbol selector, candle timeframes (`15m`, `1h`, `4h`, `1D`, `1W`), chart style, and unified **Indicators (`اندیکاتورها`)** modal (`SMA 20`, `EMA 50`, `Bollinger Bands`, `Volume`), Heckbert nice-number Y-axis price scaling, span-aware UTC X-axis time formatting, and bottom historical date range bar (`1D`, `5D`, `1W`, `1M`, `3M`, `6M`, `9M`, `YTD`, `1Y`, `5Y`, `All`) with automatic resolution switching.
+- **Smart Multi-Pane Chart Workspace:** top bar with symbol selector + asset icon, candle timeframes (`15m`, `1h`, `4h`, `1D`, `1W`), chart style, and unified **Indicators (`اندیکاتورها`)** modal/sheet (`SMA 20`, `EMA 50`, `Bollinger Bands (20, 2)`, `Volume` with `16% / 22% / 30%` height), Heckbert nice-number Y-axis price scaling, span-aware UTC X-axis time formatting, and bottom historical date range bar (`1D`, `5D`, `1W`, `1M`, `3M`, `6M`, `9M`, `YTD`, `1Y`, `5Y`, `All`) with automatic resolution switching.
 - **Bilingual interface:** Persian (RTL) and English (LTR), with Persian as the initial language and strict `LTR` tabular numeric formatting (`JetBrains Mono`) for prices, timestamps, and OHLC axes.
-- **Watchlist & 5,000-Candle Capacity:** pre-configured Gold (`XAUUSD`) and Spot Brent (`SPOTBRENT`) instruments with custom circular vector asset icons, draggable split panes, up to **5,000 closed candles** per timeframe (`M15`, `H1`, `H4`, `D1`, `W1`), weekend synthetic flat-candle filtering, and exclusive per-symbol data-source assignment in **Settings**.
+- **Watchlist & 5,000-Candle Capacity:** pre-configured Gold (`XAUUSD`) and Spot Brent (`SPOTBRENT`) instruments with custom circular vector asset icons, search + category filter chips (`ALL | METALS | ENERGY | FX`), draggable split panes, up to **5,000 closed candles** per timeframe (`M15`, `H1`, `H4`, `D1`, `W1`), weekend synthetic flat-candle filtering, and 5-group **Settings** with live 3-candle color preview and algorithm parameter sliders.
 - **Unified personal access, session persistence & recovery:** cross-platform owner login synced across Web and Android (`auth.php`) with persistent `Remember Me` session storage, recovery email registration, and 2-step 6-digit email password reset.
 
 ### Planned capabilities

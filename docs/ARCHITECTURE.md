@@ -1,7 +1,7 @@
 # CHART — Architecture & System Design
 
 > **Document Status:** Official Architectural Specification  
-> **Target Version:** 1.28.9  
+> **Target Version:** 1.29.0  
 > **Master Reference:** [CHART_INTELLIGENCE_MASTER_SPEC.md](./CHART_INTELLIGENCE_MASTER_SPEC.md)
 
 ---

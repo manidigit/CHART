@@ -53,6 +53,7 @@ import androidx.compose.ui.unit.dp
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
+import es.manico.chartintelligence.ui.components.AssetSymbolBadge
 import es.manico.chartintelligence.ui.components.WatchlistRowCard
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
@@ -60,6 +61,7 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
@@ -78,8 +80,9 @@ import java.math.BigDecimal
  * Mandatory Watchlist Screen Structure:
  * [1] Safe Area / Status Bar Inset (handled by parent Scaffold)
  * [2] Compact Header (48.dp): Left = Watchlist Title, Right = '+' Button to add symbols to Watchlist
- * [3] Symbol List: Vertical-only LazyColumn with Pull-to-Refresh and Swipe-to-Remove
- * [4] Bottom Navigation Tabs (Watchlist active)
+ * [3] Search Bar + Category Filter Chips (All | Metals | Energy | FX)
+ * [4] Symbol List: Vertical-only LazyColumn with Pull-to-Refresh and Swipe-to-Remove
+ * [5] Bottom Navigation Tabs (Watchlist active)
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -101,16 +104,22 @@ fun WatchlistScreen(
     var showAddSymbolSheet by rememberSaveable { mutableStateOf(false) }
     var customCode by rememberSaveable { mutableStateOf("") }
     var customName by rememberSaveable { mutableStateOf("") }
+    var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedCategory by rememberSaveable { mutableStateOf("ALL") }
     var overviewSymbolCode by rememberSaveable { mutableStateOf<String?>(null) }
 
     val filteredWatchlist = watchlistSymbols.filter { sym ->
-        when (selectedCategory) {
-            "METALS" -> sym.symbolCode in listOf("XAUUSD", "XAGUSD")
-            "ENERGY" -> sym.symbolCode in listOf("SPOTBRENT", "BRENT_FUTURES")
-            "FX" -> sym.symbolCode in listOf("EURUSD")
+        val matchesCategory = when (selectedCategory) {
+            "METALS" -> sym.symbolCode in listOf("XAUUSD", "XAGUSD") || sym.symbolCode.contains("XAU") || sym.symbolCode.contains("XAG")
+            "ENERGY" -> sym.symbolCode in listOf("SPOTBRENT", "BRENT_FUTURES") || sym.symbolCode.contains("BRENT") || sym.symbolCode.contains("OIL")
+            "FX" -> sym.symbolCode in listOf("EURUSD") || sym.symbolCode.contains("EUR") || sym.symbolCode.contains("GBP")
             else -> true
         }
+        val q = searchQuery.trim().lowercase()
+        val matchesQuery = q.isEmpty() ||
+            sym.symbolCode.lowercase().contains(q) ||
+            (sym.customTitle?.lowercase()?.contains(q) == true)
+        matchesCategory && matchesQuery
     }
 
     Column(
@@ -155,6 +164,31 @@ fun WatchlistScreen(
                         )
                     }
                 }
+            }
+
+            // Watchlist Search Input Bar (100% Parity with Web Watchlist Search)
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+            ) {
+                OutlinedTextField(
+                    value = searchQuery,
+                    onValueChange = { searchQuery = it },
+                    placeholder = {
+                        Text(
+                            text = stringResource(R.string.watchlist_search_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    },
+                    singleLine = true,
+                    shape = RoundedCornerShape(8.dp),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("watchlist_search_input")
+                )
             }
 
             // Category Filter Chips Row (All | Metals | Energy | FX)
@@ -322,31 +356,40 @@ fun WatchlistScreen(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Column {
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            AssetSymbolBadge(
+                                symbolCode = overviewSymbol.symbolCode,
+                                sizeDp = 38.dp
+                            )
+                            Column {
+                                Row(
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    Text(
+                                        text = PriceFormatterAlgorithm.formatPrice(lastClose, overviewSymbol.decimals),
+                                        style = MaterialTheme.typography.headlineSmall,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = "$diffStr ($pctStr)",
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        color = accentColor
+                                    )
+                                }
                                 Text(
-                                    text = PriceFormatterAlgorithm.formatPrice(lastClose, overviewSymbol.decimals),
-                                    style = MaterialTheme.typography.headlineSmall,
+                                    text = "${overviewSymbol.symbolCode} • ${overviewSymbol.activeProvider.badgeLabel}",
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontFamily = JetBrainsMonoFontFamily,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "$diffStr ($pctStr)",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    color = accentColor
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            Text(
-                                text = "${overviewSymbol.symbolCode} • ${overviewSymbol.activeProvider.badgeLabel}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
                         }
 
                         Button(
@@ -479,38 +522,50 @@ fun WatchlistScreen(
                     fontWeight = FontWeight.Bold
                 )
 
-                // Existing catalog symbols toggle list
+                // Existing catalog symbols toggle list with AssetSymbolBadge icons
                 for (sym in allSymbols) {
                     val displayName = sym.customTitle
                         ?: sym.titleResId?.let { stringResource(it) }
                         ?: sym.symbolCode
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onToggleSymbolInWatchlist(sym.symbolCode, !sym.inWatchlist) }
-                            .padding(vertical = 4.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = sym.symbolCode,
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Text(
-                                text = displayName,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { onToggleSymbolInWatchlist(sym.symbolCode, !sym.inWatchlist) }
+                                .padding(vertical = 4.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                modifier = Modifier.weight(1f),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                AssetSymbolBadge(
+                                    symbolCode = sym.symbolCode,
+                                    sizeDp = 32.dp
+                                )
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "${sym.symbolCode} · ${sym.activeProvider.badgeLabel}",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Text(
+                                        text = displayName,
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                            Switch(
+                                checked = sym.inWatchlist,
+                                onCheckedChange = { enabled ->
+                                    onToggleSymbolInWatchlist(sym.symbolCode, enabled)
+                                }
                             )
                         }
-                        Switch(
-                            checked = sym.inWatchlist,
-                            onCheckedChange = { enabled ->
-                                onToggleSymbolInWatchlist(sym.symbolCode, enabled)
-                            }
-                        )
                     }
                     HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
                 }

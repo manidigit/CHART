@@ -1,5 +1,16 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
-import { state } from '../core/store.js?v=1.28.9';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.29.0';
+import { state } from '../core/store.js?v=1.29.0';
+
+export function getSymbolCategoryKey(symbolCode) {
+  const code = String(symbolCode || '').toUpperCase();
+  if (code === 'XAUUSD' || code === 'XAGUSD' || code.includes('XAU') || code.includes('XAG') || code.includes('GOLD')) {
+    return 'METALS';
+  }
+  if (code === 'SPOTBRENT' || code === 'BRENT_FUTURES' || code.includes('OIL') || code.includes('BRENT') || code.includes('WTI')) {
+    return 'ENERGY';
+  }
+  return 'FX';
+}
 
 export function getAssetBadge(symbolCode) {
   const code = String(symbolCode || '').toUpperCase();
@@ -56,6 +67,11 @@ export function getAssetBadge(symbolCode) {
     category: 'Financial Instrument',
     svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
   };
+}
+
+export function renderSymbolBadge(symbolCode, sizePx = 22) {
+  const badge = getAssetBadge(symbolCode);
+  return `<span class="tv-wl-icon-badge" style="width: ${sizePx}px; height: ${sizePx}px; min-width: ${sizePx}px; background: ${badge.bgGradient};" title="${badge.category}">${badge.svgIcon}</span>`;
 }
 
 export function computeDayStats(s, overrideCandles = null) {
@@ -115,14 +131,30 @@ export function computeDayStats(s, overrideCandles = null) {
 
 export function renderRightSplitPanel(activeTab, i18n) {
   const query = (state.watchlistSearchQuery || '').trim().toUpperCase();
+  const activeCat = state.watchlistCategory || 'ALL';
   const hideLogos = Boolean(state.chartPreferences.hideWatchlistLogos);
 
   const watchlist = state.symbols.filter((s) => {
     if (!s.inWatchlist) return false;
+    if (activeCat !== 'ALL' && getSymbolCategoryKey(s.symbolCode) !== activeCat) return false;
     if (!query) return true;
     const title = (s.customTitle || i18n.t('symbol_' + s.symbolCode) || '').toUpperCase();
     return s.symbolCode.toUpperCase().includes(query) || title.includes(query);
   });
+
+  const categories = [
+    { key: 'ALL', label: i18n.t('watchlist_cat_all') || 'All' },
+    { key: 'METALS', label: i18n.t('watchlist_cat_metals') || 'Metals' },
+    { key: 'ENERGY', label: i18n.t('watchlist_cat_energy') || 'Energy' },
+    { key: 'FX', label: i18n.t('watchlist_cat_fx') || 'Forex' },
+  ];
+
+  const catChipsHtml = categories
+    .map(
+      (cat) =>
+        `<button type="button" class="tv-wl-cat-chip ${activeCat === cat.key ? 'active' : ''}" data-action="set-wl-category" data-category="${cat.key}">${cat.label}</button>`
+    )
+    .join('');
 
   const rowsHtml = watchlist
     .map((s) => {
@@ -132,7 +164,6 @@ export function renderRightSplitPanel(activeTab, i18n) {
       const pct = d.prevClose > 0 ? PriceFormatter.formatSignedPct(d.prevClose, d.lastClose) : '+0.00%';
       const isBull = diff >= 0;
       const sign = isBull ? '+' : '';
-      const badge = getAssetBadge(s.symbolCode);
 
       return `
         <div class="tv-wl-row ${isSelected ? 'active' : ''}" data-action="open-chart" data-symbol="${s.symbolCode}" dir="ltr">
@@ -140,9 +171,7 @@ export function renderRightSplitPanel(activeTab, i18n) {
             ${
               hideLogos
                 ? `<span style="width: 7px; height: 7px; border-radius: 50%; background: ${d.isLive ? 'var(--bull)' : 'var(--text-muted)'}; flex-shrink: 0;"></span>`
-                : `<span class="tv-wl-icon-badge" style="background: ${badge.bgGradient};" title="${badge.category}">
-                     ${badge.svgIcon}
-                   </span>`
+                : renderSymbolBadge(s.symbolCode, 22)
             }
             <span class="tv-wl-ticker ltr-num">${s.symbolCode}</span>
           </div>
@@ -176,7 +205,6 @@ export function renderRightSplitPanel(activeTab, i18n) {
     const sign = isBull ? '+' : '';
     const badge = getAssetBadge(sym.symbolCode);
     const rawTitle = sym.customTitle || i18n.t('symbol_' + sym.symbolCode) || sym.symbolCode;
-    // Strip redundant "(SPOTBRENT)" from localized title so it adapts cleanly to narrow widths
     const cleanTitle = rawTitle.replace(/\s*\([A-Z0-9_]+\)\s*/g, '').trim() || rawTitle;
     const rangeSpan = Math.max(0.00001, d.dayHigh - d.dayLow);
     const posPct = Math.max(4, Math.min(96, Math.round(((d.lastClose - d.dayLow) / rangeSpan) * 100)));
@@ -185,9 +213,7 @@ export function renderRightSplitPanel(activeTab, i18n) {
       <div class="tv-symbol-details-pane" dir="ltr">
         <div class="tv-detail-header-row">
           <div class="tv-detail-title-group">
-            <span class="tv-wl-icon-badge" style="width: 24px; height: 24px; min-width: 24px; background: ${badge.bgGradient};">
-              ${badge.svgIcon}
-            </span>
+            ${renderSymbolBadge(sym.symbolCode, 24)}
             <strong class="tv-detail-sym-code ltr-num">${sym.symbolCode}</strong>
           </div>
           <span class="tv-detail-cat-pill ltr-num">${badge.category}</span>
@@ -237,6 +263,16 @@ export function renderRightSplitPanel(activeTab, i18n) {
             </div>
           </div>
         </div>
+
+        <button
+          type="button"
+          class="btn btn-sm"
+          style="width: 100%; justify-content: center; font-size: 11px; margin-top: 2px;"
+          data-action="open-symbol-overview"
+          data-symbol="${sym.symbolCode}"
+        >
+          <span>${i18n.t('symbol_overview_seasonals')} & ${i18n.t('symbol_overview_key_data')}</span>
+        </button>
       </div>
     `;
   }
@@ -275,6 +311,10 @@ export function renderRightSplitPanel(activeTab, i18n) {
             value="${state.watchlistSearchQuery || ''}"
             data-action="watchlist-search"
           />
+        </div>
+
+        <div class="tv-wl-cat-bar" dir="ltr">
+          ${catChipsHtml}
         </div>
 
         <div class="tv-wl-table-head" dir="ltr">

@@ -38,7 +38,8 @@ object UtcTimeAnchorAlgorithm {
             "M30" -> 30L * 60L * 1000L
             "H1" -> 60L * 60L * 1000L
             "H4" -> 4L * 60L * 60L * 1000L
-            "D1" -> 24L * 60L * 60L * 1000L
+            "D1", "1D", "D" -> 24L * 60L * 60L * 1000L
+            "W1", "1W", "W" -> 7L * 24L * 60L * 60L * 1000L
             else -> 15L * 60L * 1000L
         }
     }

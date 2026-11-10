@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.9';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.29.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.29.0';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -8,13 +8,15 @@ const STORAGE_KEY_DRAWINGS = 'ci_drawings_v2';
 const STORAGE_KEY_LAST_SYMBOL = 'ci_last_opened_symbol';
 const STORAGE_CANDLES_PREFIX = 'ci_candles_v4_';
 
-const DEFAULT_PREFS = {
+export const DEFAULT_PREFS = {
   bullColor: '#26A69A',
   bearColor: '#EF5350',
   trendColor: '#2962FF',
   hLineColor: '#F59E0B',
   vLineColor: '#A855F7',
   candleFetchLimit: 500,
+  zoomStepCandles: 8,
+  drawingHitTolerancePx: 28,
   hideWatchlistLogos: false,
   showSymbolScreen: true,
   chartVibrations: true,
@@ -23,6 +25,9 @@ const DEFAULT_PREFS = {
   hideTabBarInLandscape: true,
   pickerVibrates: true,
   showScrollMagnifier: true,
+  showCountdownToBarClose: true,
+  showPrevCloseLine: true,
+  showHighLowLabels: true,
 };
 
 const DEFAULT_SYMBOLS = [
@@ -226,6 +231,7 @@ export const state = {
   showLoginPassword: false,
 
   watchlistSearchQuery: '',
+  watchlistCategory: 'ALL',
   symbolOverviewCode: null,
   symbolOverviewRange: '5D',
   isAddSymbolModalOpen: false,
@@ -256,6 +262,22 @@ export function savePanelLayout() {
 
 export function savePreferences() {
   localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(state.chartPreferences));
+}
+
+export function resetColorsToDefault() {
+  state.chartPreferences.bullColor = DEFAULT_PREFS.bullColor;
+  state.chartPreferences.bearColor = DEFAULT_PREFS.bearColor;
+  state.chartPreferences.trendColor = DEFAULT_PREFS.trendColor;
+  state.chartPreferences.hLineColor = DEFAULT_PREFS.hLineColor;
+  state.chartPreferences.vLineColor = DEFAULT_PREFS.vLineColor;
+  savePreferences();
+}
+
+export function resetAlgoParamsToDefault() {
+  state.chartPreferences.candleFetchLimit = DEFAULT_PREFS.candleFetchLimit;
+  state.chartPreferences.zoomStepCandles = DEFAULT_PREFS.zoomStepCandles;
+  state.chartPreferences.drawingHitTolerancePx = DEFAULT_PREFS.drawingHitTolerancePx;
+  savePreferences();
 }
 
 export function saveSymbolsToStorage() {

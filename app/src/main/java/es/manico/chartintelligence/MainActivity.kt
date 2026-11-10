@@ -257,6 +257,8 @@ fun ChartIntelligenceApp(
                             onToggleVolume = mainViewModel::toggleVolumeOnActiveTab,
                             onCycleVolumeHeight = mainViewModel::cycleVolumePaneHeightOnActiveTab,
                             onToggleSma20 = mainViewModel::toggleSma20OnActiveTab,
+                            onToggleEma50 = mainViewModel::toggleEma50OnActiveTab,
+                            onToggleBollinger = mainViewModel::toggleBollingerOnActiveTab,
                             onZoom = mainViewModel::zoomActiveTab,
                             onPinchZoom = mainViewModel::pinchZoomActiveTab,
                             onFitContent = mainViewModel::fitContentOnActiveTab,

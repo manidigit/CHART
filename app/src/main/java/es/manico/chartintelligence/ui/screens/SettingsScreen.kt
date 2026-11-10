@@ -488,23 +488,33 @@ fun SettingsScreen(
                                     horizontalArrangement = Arrangement.SpaceBetween,
                                     verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        val displayTitle = symbol.titleResId?.let { stringResource(it) }
-                                            ?: symbol.customTitle
-                                            ?: symbol.symbolCode
-                                        Text(
-                                            text = displayTitle,
-                                            style = MaterialTheme.typography.bodyMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                    ) {
+                                        es.manico.chartintelligence.ui.components.AssetSymbolBadge(
+                                            symbolCode = symbol.symbolCode,
+                                            sizeDp = 34.dp
                                         )
-                                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            val displayTitle = symbol.titleResId?.let { stringResource(it) }
+                                                ?: symbol.customTitle
+                                                ?: symbol.symbolCode
                                             Text(
-                                                text = "${symbol.symbolCode} · ${symbol.activeProvider.badgeLabel}",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontFamily = JetBrainsMonoFontFamily,
-                                                color = MaterialTheme.colorScheme.primary
+                                                text = displayTitle,
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
+                                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                Text(
+                                                    text = "${symbol.symbolCode} · ${symbol.activeProvider.badgeLabel} · ${symbol.storedCandleCount} bars",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
                                         }
                                     }
 

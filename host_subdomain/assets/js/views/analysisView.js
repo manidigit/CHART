@@ -1,5 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
-import { state } from '../core/store.js?v=1.28.9';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.29.0';
+import { state } from '../core/store.js?v=1.29.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.29.0';
 
 export function computeTechnicalAnalytics(candles) {
   if (!candles || candles.length === 0) return null;
@@ -66,15 +67,18 @@ export function renderPredictionModal(activeTab, i18n) {
   if (state.activeModal !== 'prediction') return '';
 
   const watchlist = state.symbols.filter((s) => s.inWatchlist);
+  const activeCode = activeTab ? activeTab.symbolCode : watchlist[0]?.symbolCode || 'SPOTBRENT';
   const symbolOptions = watchlist
     .map(
       (s) =>
-        `<option value="${s.symbolCode}" ${activeTab && activeTab.symbolCode === s.symbolCode ? 'selected' : ''}>${s.symbolCode} — ${s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode}</option>`
+        `<option value="${s.symbolCode}" ${activeCode === s.symbolCode ? 'selected' : ''}>${s.symbolCode} — ${s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode}</option>`
     )
     .join('');
 
   const allowedTfs =
-    activeTab && activeTab.provider === 'eia_brent_spot' ? ['D1'] : ['M15', 'H1', 'H4', 'D1'];
+    activeTab && activeTab.provider === 'eia_brent_spot'
+      ? ['D1', 'W1']
+      : ['M15', 'H1', 'H4', 'D1', 'W1'];
   const tfChips = allowedTfs
     .map((tf) => {
       const isAct = activeTab && activeTab.timeframe === tf;
@@ -84,9 +88,12 @@ export function renderPredictionModal(activeTab, i18n) {
 
   const selectorBar = `
     <div class="row-between" style="margin-bottom: 14px; gap: 10px; flex-wrap: wrap;">
-      <select class="input-field ltr-num" style="width: auto; min-width: 220px; min-height: 34px; padding: 4px 10px; font-weight: 700;" data-action="select-prediction-symbol">
-        ${symbolOptions}
-      </select>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        ${renderSymbolBadge(activeCode, 28)}
+        <select class="input-field ltr-num" style="width: auto; min-width: 210px; min-height: 34px; padding: 4px 10px; font-weight: 700;" data-action="select-prediction-symbol">
+          ${symbolOptions}
+        </select>
+      </div>
       <div class="chip-group">
         ${tfChips}
       </div>

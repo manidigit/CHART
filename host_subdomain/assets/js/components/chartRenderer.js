@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.28.9';
-import { state } from '../core/store.js?v=1.28.9';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.29.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.29.0';
+import { state } from '../core/store.js?v=1.29.0';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;
@@ -221,7 +221,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
 
   // Dashed Previous Close Reference Line (TradingView Standard)
-  if (candles.length >= 2) {
+  if (prefs.showPrevCloseLine !== false && candles.length >= 2) {
     const prevClose = Number(candles[candles.length - 2].close);
     const prevY = priceToY(prevClose);
     if (prevY >= topPad && prevY <= topPad + chartH) {
@@ -317,7 +317,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
 
   // Visible High / Low Callout Labels on Highest & Lowest Visible Wicks
-  if (visible.length >= 4) {
+  if (prefs.showHighLowLabels !== false && visible.length >= 4) {
     ctx.save();
     ctx.font = '600 10px "JetBrains Mono", monospace';
     const hiX = idxToX(highCandleIdx);
@@ -481,7 +481,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.stroke();
     ctx.restore();
 
-    const countdownStr = computeCandleCountdownLabel(lastCandle.openTimeSec, tab.timeframe);
+    const countdownStr =
+      prefs.showCountdownToBarClose !== false
+        ? computeCandleCountdownLabel(lastCandle.openTimeSec, tab.timeframe)
+        : '';
     const pillH = countdownStr ? 30 : 20;
     const pillTop = Math.max(topPad, Math.min(topPad + chartH - pillH, lastY - 10));
 

@@ -48,8 +48,10 @@ import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.SymbolConfig
+import es.manico.chartintelligence.ui.components.AssetSymbolBadge
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
+import androidx.compose.foundation.layout.width
 import androidx.compose.material3.Button
 import java.math.BigDecimal
 import java.math.RoundingMode
@@ -131,16 +133,22 @@ fun PredictionScreen(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Symbol Selector Chip
-                            Box(
+                            // Symbol Selector Chip with Rich Asset Icon Badge
+                            Row(
                                 modifier = Modifier
                                     .clip(RoundedCornerShape(6.dp))
                                     .background(MaterialTheme.colorScheme.background)
                                     .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
                                     .clickable { showSymbolSheet = true }
                                     .padding(horizontal = 10.dp, vertical = 6.dp)
-                                    .testTag("prediction_symbol_selector")
+                                    .testTag("prediction_symbol_selector"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
+                                AssetSymbolBadge(
+                                    symbolCode = activeTab.symbolCode,
+                                    sizeDp = 18.dp
+                                )
                                 Text(
                                     text = "${activeTab.symbolCode} ▾",
                                     style = MaterialTheme.typography.labelLarge,
@@ -421,7 +429,7 @@ fun PredictionScreen(
         }
     }
 
-    // BottomSheet 1: Symbol Selector inside Prediction Screen
+    // BottomSheet 1: Symbol Selector inside Prediction Screen (with Rich Asset Icon Badges)
     if (showSymbolSheet && activeTab != null) {
         ModalBottomSheet(
             onDismissRequest = { showSymbolSheet = false },
@@ -460,6 +468,12 @@ fun PredictionScreen(
                                 onSelectSymbol(sym)
                             }
                         )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        AssetSymbolBadge(
+                            symbolCode = sym.symbolCode,
+                            sizeDp = 26.dp
+                        )
+                        Spacer(modifier = Modifier.width(10.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
                                 text = sym.symbolCode,

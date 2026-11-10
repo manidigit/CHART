@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.28.9';
+import { I18nManager } from './core/i18n.js?v=1.29.0';
 import {
   state,
   savePreferences,
@@ -7,7 +7,9 @@ import {
   saveLastOpenedSymbol,
   savePanelLayout,
   getCachedOrAggregatedCandles,
-} from './core/store.js?v=1.28.9';
+  resetColorsToDefault,
+  resetAlgoParamsToDefault,
+} from './core/store.js?v=1.29.0';
 import {
   syncServerAuthStatus,
   loginOrRegisterOwner,
@@ -18,20 +20,24 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.28.9';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.28.9';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.28.9';
-import { renderLoginScreen } from './views/loginView.js?v=1.28.9';
+} from './services/apiService.js?v=1.29.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.29.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.29.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.29.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.28.9';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.28.9';
-import { renderRightSplitPanel, renderSymbolOverviewModal } from './views/watchlistView.js?v=1.28.9';
-import { renderPredictionModal } from './views/analysisView.js?v=1.28.9';
-import { renderSettingsModal } from './views/settingsView.js?v=1.28.9';
-import { renderRightIconRail } from './views/navigationView.js?v=1.28.9';
+} from './views/headerView.js?v=1.29.0';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.29.0';
+import {
+  renderRightSplitPanel,
+  renderSymbolOverviewModal,
+  renderSymbolBadge,
+} from './views/watchlistView.js?v=1.29.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.29.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.29.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.29.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -72,6 +78,8 @@ function ensureInitialTabs() {
       showVolume: true,
       volumePaneRatio: 0.22,
       showSma20: false,
+      showEma50: false,
+      showBollinger: false,
       isLogScale: Boolean(state.chartPreferences.isLogScale),
       selectedRangePreset: null,
       visibleCount: 48,
@@ -125,6 +133,8 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       showVolume: true,
       volumePaneRatio: 0.22,
       showSma20: false,
+      showEma50: false,
+      showBollinger: false,
       isLogScale: Boolean(state.chartPreferences.isLogScale),
       selectedRangePreset: null,
       visibleCount: 48,
@@ -228,10 +238,6 @@ function renderOhlcvOverlay(activeTab) {
   const col = isBull ? 'var(--bull)' : 'var(--bear)';
   const diff = Number(c.close) - Number(c.open);
   const pct = Number(c.open) > 0 ? PriceFormatter.formatSignedPct(c.open, c.close) : '+0.00%';
-  const lastClose = Number(activeTab.candles[activeTab.candles.length - 1].close || c.close);
-  const spreadStep = Math.pow(10, -dec) * 2;
-  const sellPrice = PriceFormatter.formatPrice(lastClose - spreadStep, dec);
-  const buyPrice = PriceFormatter.formatPrice(lastClose + spreadStep, dec);
 
   const indPills = [];
   if (activeTab.showSma20) {
@@ -276,36 +282,79 @@ function renderOhlcvOverlay(activeTab) {
 
 function renderAddSymbolModal() {
   if (!state.isAddSymbolModalOpen) return '';
+  const catalogRows = state.symbols
+    .map((s) => {
+      const rawTitle = s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode;
+      const cleanTitle = rawTitle.replace(/\s*\([A-Z0-9_]+\)\s*/g, '').trim() || rawTitle;
+      return `
+        <div class="tv-settings-symbol-row" style="padding: 8px 10px; margin-bottom: 6px;">
+          <div class="tv-settings-symbol-left">
+            ${renderSymbolBadge(s.symbolCode, 28)}
+            <div>
+              <div style="font-size: 12.5px; font-weight: 700; color: var(--text-strong);">${s.symbolCode}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${cleanTitle}</div>
+            </div>
+          </div>
+          <label class="tv-toggle-label">
+            <input
+              type="checkbox"
+              class="tv-toggle-input"
+              data-action="toggle-watchlist"
+              data-symbol="${s.symbolCode}"
+              ${s.inWatchlist ? 'checked' : ''}
+            />
+            <span class="tv-toggle-slider"></span>
+          </label>
+        </div>
+      `;
+    })
+    .join('');
+
   return `
     <div class="modal-backdrop" data-action="close-add-symbol-modal">
-      <div class="modal-card" style="max-width: 420px;">
+      <div class="modal-card" style="max-width: 480px;">
         <div class="tv-modal-header">
-          <div class="tv-modal-title">${i18n.t('settings_add_custom_symbol')}</div>
-          <button class="btn btn-sm btn-icon" data-action="close-add-symbol-modal">✕</button>
+          <div class="tv-modal-title">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            <span>${i18n.t('settings_add_custom_symbol')}</span>
+          </div>
+          <button type="button" class="btn btn-sm btn-icon" data-action="close-add-symbol-modal">✕</button>
         </div>
         <div class="tv-modal-body">
-          <form id="add-symbol-form" style="display: flex; flex-direction: column; gap: 10px;">
-            <div>
-              <label class="tv-input-label">${i18n.t('settings_custom_symbol_code_hint')}</label>
-              <input class="input-field ltr-num" type="text" name="symbol_code" placeholder="e.g. BTCUSD, USOIL" required />
+          <div style="margin-bottom: 14px;">
+            <div style="font-size: 12px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px;">
+              ${i18n.t('settings_symbols_section')}
             </div>
-            <div>
-              <label class="tv-input-label">${i18n.t('settings_custom_symbol_title_hint')}</label>
-              <input class="input-field" type="text" name="symbol_title" placeholder="${i18n.t('settings_custom_symbol_title_hint')}" required />
+            ${catalogRows}
+          </div>
+
+          <div class="card-subtle">
+            <div style="font-size: 12px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px;">
+              + ${i18n.t('settings_add_custom_symbol')}
             </div>
-            <div>
-              <label class="tv-input-label">Data Provider</label>
-              <select class="input-field ltr-num" name="provider">
-                <option value="tvdatafeed">TradingView (tvdatafeed)</option>
-                <option value="twelve_data">Twelve Data</option>
-                <option value="dukascopy">Dukascopy</option>
-                <option value="yahoo_finance">Yahoo Finance</option>
-              </select>
-            </div>
-            <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 6px; min-height: 36px;">
-              ${i18n.t('settings_custom_symbol_save')}
-            </button>
-          </form>
+            <form id="add-symbol-form" style="display: flex; flex-direction: column; gap: 10px;">
+              <div>
+                <label class="tv-input-label">${i18n.t('settings_custom_symbol_code_hint')}</label>
+                <input class="input-field ltr-num" type="text" name="symbol_code" placeholder="e.g. BTCUSD, USOIL" required />
+              </div>
+              <div>
+                <label class="tv-input-label">${i18n.t('settings_custom_symbol_title_hint')}</label>
+                <input class="input-field" type="text" name="symbol_title" placeholder="${i18n.t('settings_custom_symbol_title_hint')}" required />
+              </div>
+              <div>
+                <label class="tv-input-label">${i18n.t('label_active_source')}</label>
+                <select class="input-field ltr-num" name="provider">
+                  <option value="tvdatafeed">TradingView (tvdatafeed)</option>
+                  <option value="twelve_data">Twelve Data</option>
+                  <option value="dukascopy">Dukascopy</option>
+                  <option value="yahoo_finance">Yahoo Finance</option>
+                </select>
+              </div>
+              <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 4px; min-height: 36px;">
+                ${i18n.t('settings_custom_symbol_save')}
+              </button>
+            </form>
+          </div>
         </div>
       </div>
     </div>
@@ -982,10 +1031,21 @@ document.addEventListener('click', async (e) => {
     activeTab.activeDrawingWidthPx = Number(el.getAttribute('data-width') || 2.0);
     renderApp();
   } else if (action === 'zoom-in' && activeTab) {
-    activeTab.visibleCount = Math.max(15, (activeTab.visibleCount || 48) - 8);
+    const step = Number(state.chartPreferences.zoomStepCandles || 8);
+    activeTab.visibleCount = Math.max(15, (activeTab.visibleCount || 48) - step);
     renderApp();
   } else if (action === 'zoom-out' && activeTab) {
-    activeTab.visibleCount = Math.min(600, (activeTab.visibleCount || 48) + 8);
+    const step = Number(state.chartPreferences.zoomStepCandles || 8);
+    activeTab.visibleCount = Math.min(600, (activeTab.visibleCount || 48) + step);
+    renderApp();
+  } else if (action === 'set-wl-category') {
+    state.watchlistCategory = el.getAttribute('data-category') || 'ALL';
+    renderApp();
+  } else if (action === 'reset-chart-colors') {
+    resetColorsToDefault();
+    renderApp();
+  } else if (action === 'reset-algo-params') {
+    resetAlgoParamsToDefault();
     renderApp();
   } else if (action === 'clear-drawings' && activeTab) {
     activeTab.drawings = [];
@@ -1050,6 +1110,18 @@ document.addEventListener('input', (e) => {
     savePreferences();
     const lbl = document.getElementById('fetch-limit-value-label');
     if (lbl) lbl.textContent = String(val);
+  } else if (action === 'set-zoom-step') {
+    const val = Math.max(2, Math.min(30, Number(el.value) || 8));
+    state.chartPreferences.zoomStepCandles = val;
+    savePreferences();
+    const lbl = document.getElementById('zoom-step-value-label');
+    if (lbl) lbl.textContent = String(val);
+  } else if (action === 'set-hit-tolerance') {
+    const val = Math.max(12, Math.min(60, Number(el.value) || 28));
+    state.chartPreferences.drawingHitTolerancePx = val;
+    savePreferences();
+    const lbl = document.getElementById('hit-tolerance-value-label');
+    if (lbl) lbl.textContent = `${val} px`;
   }
 });
 

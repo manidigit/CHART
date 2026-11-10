@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.29.0] - 2026-11-10
+
+### Added
+- **100% Web & Android Cross-Platform Feature & Visual Parity (`v1.29.0`):**
+  - **Custom Vector Asset Icon Badges Everywhere (`AssetSymbolBadge` on Android & `renderAssetIcon` on Web):**
+    - Replaced plain text circle badges (`Au`, `OIL`) across every screen on both platforms with custom gradient + vector emblems: **Gold Bullion Bars** (`XAUUSD`), **Crude Oil Droplet** (`SPOTBRENT`, `BRENT_FUTURES`), **Silver Bullion** (`XAGUSD`), and **Euro FX Emblem** (`EURUSD`).
+    - Rendered consistently in Watchlist rows, Watchlist Symbol Details / Overview sheet, `+` Add/Manage Symbols modal/sheet, Top Chart Header & Symbol Picker, Prediction Header & Symbol Picker, and Settings Data Sources & Symbol cards.
+  - **Unified 5-Section Settings Modal & TradingView Pill Switches on Web (`settingsView.js` & `theme.css`):**
+    - Restyled the Web Settings modal with structured horizontal pill tabs (`.tv-modal-tab`), card rows (`.tv-settings-symbol-row`), and animated TradingView toggle switches (`.tv-toggle-switch`).
+    - Added full parity with Android Settings: all **5 customizable chart colors** (`bullColor`, `bearColor`, `trendColor`, `hLineColor`, `vLineColor`) + Reset Colors button + **Live 3-Candle & Drawing Lines SVG Preview**, all **3 algorithm parameter sliders** (`candleFetchLimit` 100..5000, `zoomStepCandles` 5..50, `drawingHitTolerancePx` 10..48px) + Reset Params button, and all **11 TradingView behavior & overlay switches**.
+  - **Android Timeframes (`15m..1W`), 11 Historical Date Ranges (`1D..All`), Smart X-Axis & Nice Round Y-Axis (`PriceFormatterAlgorithm.kt`, `CandlestickCanvas.kt`, `MainViewModel.kt`, `ChartTabState.kt`):**
+    - Added Weekly (`W1` / `1W`) timeframe aggregation and top-bar selection to Android (`AppConfig.SUPPORTED_TIMEFRAMES`, `UtcTimeAnchorAlgorithm.kt`, `TimeframeAggregatorAlgorithm.kt`).
+    - Upgraded Android bottom Date Range bar to all 11 presets (`1D`, `5D`, `1W`, `1M`, `3M`, `6M`, `9M`, `YTD`, `1Y`, `5Y`, `All`) with automatic TradingView candle resolution switching (`1D->M15`, `5D/1W->H1`, `1M->H4`, `3M..1Y->D1`, `5Y/All->W1`).
+    - Ported `computeNicePriceTicks` (institutional round Y-axis steps `1, 2, 2.5, 5 × 10^n`) and `computeSmartTimeAxisTicks` (span-aware UTC Year/Month/Day/Hour X-axis labels with collision prevention) to Android `CandlestickCanvas.kt`, and suppressed intraday countdown on `D1`/`W1`.
+  - **Unified 4 Technical Indicators Across Web & Android (`SMA 20`, `EMA 50`, `Bollinger Bands (20, 2)`, `Volume` with `16% / 22% / 30%` height):**
+    - Added `EMA 50` (`#00BCD4`) and `Bollinger Bands (20, 2)` (`#AB47BC` upper/lower bands + translucent fill) to Android `PriceFormatterAlgorithm.kt`, `CandlestickCanvas.kt`, `ChartViewScreen.kt`, and `MainViewModel.kt`, matching Web `chartRenderer.js`.
+  - **Watchlist Search Input + Category Filter Chips (`ALL | METALS | ENERGY | FX`) Across Both Platforms:**
+    - Added live Watchlist search input (`watchlist_search_input`) alongside category filter chips (`ALL`, `METALS`, `ENERGY`, `FX`) and `+` Symbol Manager on both Web (`watchlistView.js`) and Android (`WatchlistScreen.kt`).
+
+---
+
 ## [1.28.9] - 2026-11-10
 
 ### Added

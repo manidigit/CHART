@@ -733,11 +733,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun zoomActiveTab(zoomIn: Boolean) {
         val activeId = _uiState.value.activeTab?.tabId ?: return
+        val step = _uiState.value.chartPreferences.zoomStepCandles.coerceIn(2, 32)
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
                     if (tab.tabId == activeId) {
-                        val delta = if (zoomIn) -8 else 8
+                        val delta = if (zoomIn) -step else step
                         val maxCap = max(AppConfig.MIN_VISIBLE_CANDLES, tab.candles.size.coerceAtMost(AppConfig.MAX_VISIBLE_CANDLES))
                         val nextCount = (tab.visibleCandleCount + delta).coerceIn(
                             AppConfig.MIN_VISIBLE_CANDLES,
@@ -966,6 +967,78 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectDateRangeForActiveTab(rangeId: String) {
         val active = _uiState.value.activeTab ?: return
+        val upperRange = rangeId.uppercase()
+        val desiredTf = when (upperRange) {
+            "1D" -> "M15"
+            "5D", "1W" -> "H1"
+            "1M" -> "H4"
+            "3M", "6M", "9M", "YTD", "1Y" -> "D1"
+            "5Y", "ALL" -> "W1"
+            else -> active.timeframe
+        }
+        val resolvedTf = if (desiredTf in active.allowedTimeframes) desiredTf else active.allowedTimeframes.lastOrNull() ?: active.timeframe
+        val autoLogForAll = upperRange == "ALL" && _uiState.value.chartPreferences.logarithmicScaleDefault
+
+        if (resolvedTf != active.timeframe) {
+            val immediateCandles = repository.getCachedOrAggregatedCandles(
+                symbolCode = active.symbolCode,
+                provider = active.provider,
+                timeframe = resolvedTf
+            )
+            val tempTab = active.copy(timeframe = resolvedTf, candles = immediateCandles)
+            val preset = tempTab.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) }
+            val targetBars = preset?.targetBars ?: AppConfig.DEFAULT_VISIBLE_CANDLES
+
+            _uiState.update { state ->
+                state.copy(
+                    symbols = state.symbols.map { s ->
+                        if (s.symbolCode == active.symbolCode) s.copy(timeframe = resolvedTf) else s
+                    },
+                    openTabs = state.openTabs.map { tab ->
+                        if (tab.tabId == active.tabId) {
+                            tab.copy(
+                                timeframe = resolvedTf,
+                                candles = immediateCandles,
+                                activeDateRange = preset?.id ?: rangeId,
+                                visibleCandleCount = targetBars,
+                                scrollOffsetFromRight = 0,
+                                isAutoScaleY = true,
+                                isLogScale = if (autoLogForAll) true else tab.isLogScale,
+                                yPriceScaleFactor = 1.0f
+                            )
+                        } else {
+                            tab
+                        }
+                    }
+                )
+            }
+            repository.saveSymbolCatalog(_uiState.value.symbols)
+            val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode } ?: return
+            viewModelScope.launch {
+                val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(targetSymbol, resolvedTf)
+                _uiState.update { state ->
+                    state.copy(
+                        symbols = state.symbols.map {
+                            if (it.symbolCode == syncedSymbol.symbolCode) syncedSymbol else it
+                        },
+                        openTabs = state.openTabs.map { tab ->
+                            if (tab.tabId == active.tabId && tab.timeframe == resolvedTf) {
+                                val updated = applyUpdatedCandlesPreservingViewport(tab, mergedCandles, resolvedTf)
+                                val refreshedPreset = updated.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) }
+                                updated.copy(
+                                    activeDateRange = refreshedPreset?.id ?: rangeId,
+                                    visibleCandleCount = refreshedPreset?.targetBars ?: updated.visibleCandleCount
+                                )
+                            } else {
+                                tab
+                            }
+                        }
+                    )
+                }
+            }
+            return
+        }
+
         val preset = active.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) } ?: return
         if (!preset.enabled) return
         _uiState.update { state ->
@@ -977,6 +1050,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             visibleCandleCount = preset.targetBars,
                             scrollOffsetFromRight = 0,
                             isAutoScaleY = true,
+                            isLogScale = if (autoLogForAll) true else tab.isLogScale,
                             yPriceScaleFactor = 1.0f
                         )
                     } else {
@@ -1027,6 +1101,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             state.copy(
                 openTabs = state.openTabs.map { tab ->
                     if (tab.tabId == activeId) tab.copy(showSma20 = !tab.showSma20) else tab
+                }
+            )
+        }
+    }
+
+    fun toggleEma50OnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showEma50 = !tab.showEma50) else tab
+                }
+            )
+        }
+    }
+
+    fun toggleBollingerOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showBollinger = !tab.showBollinger) else tab
                 }
             )
         }

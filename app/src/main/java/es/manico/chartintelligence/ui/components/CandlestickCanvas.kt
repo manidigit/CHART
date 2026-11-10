@@ -143,14 +143,33 @@ fun CandlestickCanvas(
         UtcTimeAnchorAlgorithm.timeframeStepMillis(tab.timeframe)
     }
 
-    // Compute full-series SMA 20 and slice to visible window
-    val fullSma20 = remember(candles, tab.showSma20) {
-        if (!tab.showSma20 || candles.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeSmaValues(candles.map { it.close.toDouble() }, 20)
+    // Compute full-series SMA 20, EMA 50, and Bollinger Bands (20, 2) and slice to visible window
+    val fullCloses = remember(candles) { candles.map { it.close.toDouble() } }
+    val fullSma20 = remember(fullCloses, tab.showSma20) {
+        if (!tab.showSma20 || fullCloses.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeSmaValues(fullCloses, 20)
     }
     val visibleSma20 = remember(fullSma20, startIndex, endIndexExclusive) {
         if (fullSma20.isEmpty()) emptyList()
         else fullSma20.subList(startIndex, endIndexExclusive.coerceAtMost(fullSma20.size))
+    }
+
+    val fullEma50 = remember(fullCloses, tab.showEma50) {
+        if (!tab.showEma50 || fullCloses.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeEmaValues(fullCloses, 50)
+    }
+    val visibleEma50 = remember(fullEma50, startIndex, endIndexExclusive) {
+        if (fullEma50.isEmpty()) emptyList()
+        else fullEma50.subList(startIndex, endIndexExclusive.coerceAtMost(fullEma50.size))
+    }
+
+    val fullBollinger = remember(fullCloses, tab.showBollinger) {
+        if (!tab.showBollinger || fullCloses.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeBollingerBands(fullCloses, 20, 2.0)
+    }
+    val visibleBollinger = remember(fullBollinger, startIndex, endIndexExclusive) {
+        if (fullBollinger.isEmpty()) emptyList()
+        else fullBollinger.subList(startIndex, endIndexExclusive.coerceAtMost(fullBollinger.size))
     }
 
     val inspectedCandle = remember(tab.selectedCandleIndex, visibleSlice) {
@@ -166,6 +185,20 @@ fun CandlestickCanvas(
         else {
             val idx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
             fullSma20.getOrNull(idx)
+        }
+    }
+    val inspectedEma50 = remember(tab.selectedCandleIndex, fullEma50, startIndex, endIndexExclusive) {
+        if (fullEma50.isEmpty()) null
+        else {
+            val idx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
+            fullEma50.getOrNull(idx)
+        }
+    }
+    val inspectedBollinger = remember(tab.selectedCandleIndex, fullBollinger, startIndex, endIndexExclusive) {
+        if (fullBollinger.isEmpty()) null
+        else {
+            val idx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
+            fullBollinger.getOrNull(idx)
         }
     }
 
@@ -187,6 +220,13 @@ fun CandlestickCanvas(
     val safeLogMin = ln(max(paddedMin, 1e-6))
     val safeLogMax = ln(max(paddedMax, 1e-5))
     val safeLogSpan = (safeLogMax - safeLogMin).coerceAtLeast(1e-6)
+
+    val nicePriceTicks = remember(paddedMin, paddedMax) {
+        PriceFormatterAlgorithm.computeNicePriceTicks(paddedMin, paddedMax, 5).sortedDescending()
+    }
+    val smartTimeTicks = remember(visibleTimestamps, tab.timeframe) {
+        PriceFormatterAlgorithm.computeSmartTimeAxisTicks(visibleTimestamps, tab.timeframe, 4)
+    }
 
     fun mapPriceToNormRatio(price: Double): Float {
         return if (useLogScale && paddedMin > 0.0) {
@@ -409,9 +449,13 @@ fun CandlestickCanvas(
                     val currentPriceDashEffect = PathEffect.dashPathEffect(floatArrayOf(6f, 4f), 0f)
                     val selectedDashEffect = PathEffect.dashPathEffect(floatArrayOf(10f, 5f), 0f)
 
-                    // 1. Horizontal price grid lines in Main Price Pane (5 levels, subtle TradingView #2A2E39)
-                    for (g in 0..4) {
-                        val y = pricePaneH * (g / 4f)
+                    fun priceToY(p: Double): Float {
+                        return (mapPriceToNormRatio(p) * pricePaneH).coerceIn(0f, pricePaneH)
+                    }
+
+                    // 1. Horizontal price grid lines in Main Price Pane aligned with nice round price ticks
+                    for (tickPrice in nicePriceTicks) {
+                        val y = priceToY(tickPrice)
                         drawLine(
                             color = financialPalette.chartGrid,
                             start = Offset(0f, y),
@@ -420,11 +464,10 @@ fun CandlestickCanvas(
                         )
                     }
 
-                    // 2. Vertical time grid lines across both panes
-                    val maxTicks = max(2, min(5, (canvasW / 180f).toInt()))
-                    for (tIdx in 0 until maxTicks) {
-                        val ratio = if (maxTicks == 1) 0.5f else tIdx.toFloat() / (maxTicks - 1).toFloat()
-                        val x = canvasW * ratio
+                    // 2. Vertical time grid lines across both panes aligned with smart time ticks
+                    val slotW = canvasW / visibleSlice.size.toFloat()
+                    for (tick in smartTimeTicks) {
+                        val x = (tick.index + 0.5f) * slotW
                         drawLine(
                             color = financialPalette.chartGrid,
                             start = Offset(x, 0f),
@@ -447,12 +490,7 @@ fun CandlestickCanvas(
                         strokeWidth = 1.2f
                     )
 
-                    val slotW = canvasW / visibleSlice.size.toFloat()
                     val bodyW = (slotW * 0.68f).coerceIn(2.5f, 18f)
-
-                    fun priceToY(p: Double): Float {
-                        return (mapPriceToNormRatio(p) * pricePaneH).coerceIn(0f, pricePaneH)
-                    }
 
                     fun timeToX(timeMs: Long): Float {
                         return DrawingGeometryAlgorithm.timeUtcToCanvasX(
@@ -465,6 +503,55 @@ fun CandlestickCanvas(
 
                     // 4. Main Price Pane Rendering (Clipped strictly to Main Price Pane)
                     clipRect(left = 0f, top = 0f, right = canvasW, bottom = pricePaneH) {
+                        // 4a. Optional Bollinger Bands (20, 2) Shaded Channel + Upper/Lower/Basis Lines
+                        if (tab.showBollinger && visibleBollinger.isNotEmpty()) {
+                            val upperPath = Path()
+                            val lowerPath = Path()
+                            val fillPath = Path()
+                            val validIndices = ArrayList<Int>()
+                            visibleBollinger.forEachIndexed { idx, bb ->
+                                if (bb != null) {
+                                    val x = (idx + 0.5f) * slotW
+                                    val uY = priceToY(bb.upper)
+                                    val lY = priceToY(bb.lower)
+                                    if (validIndices.isEmpty()) {
+                                        upperPath.moveTo(x, uY)
+                                        lowerPath.moveTo(x, lY)
+                                        fillPath.moveTo(x, uY)
+                                    } else {
+                                        upperPath.lineTo(x, uY)
+                                        lowerPath.lineTo(x, lY)
+                                        fillPath.lineTo(x, uY)
+                                    }
+                                    validIndices.add(idx)
+                                }
+                            }
+                            if (validIndices.size >= 2) {
+                                for (k in validIndices.indices.reversed()) {
+                                    val idx = validIndices[k]
+                                    val bb = visibleBollinger[idx] ?: continue
+                                    val x = (idx + 0.5f) * slotW
+                                    fillPath.lineTo(x, priceToY(bb.lower))
+                                }
+                                fillPath.close()
+                                val bbColor = Color(0xFFA855F7)
+                                drawPath(
+                                    path = fillPath,
+                                    color = bbColor.copy(alpha = 0.09f)
+                                )
+                                drawPath(
+                                    path = upperPath,
+                                    color = bbColor.copy(alpha = 0.80f),
+                                    style = Stroke(width = 1.5f)
+                                )
+                                drawPath(
+                                    path = lowerPath,
+                                    color = bbColor.copy(alpha = 0.80f),
+                                    style = Stroke(width = 1.5f)
+                                )
+                            }
+                        }
+
                         if (tab.chartType == ChartType.CANDLESTICK) {
                             visibleSlice.forEachIndexed { idx, candle ->
                                 val centerX = (idx + 0.5f) * slotW
@@ -529,7 +616,7 @@ fun CandlestickCanvas(
                             )
                         }
 
-                        // 5. Optional SMA 20 Overlay Line
+                        // 5a. Optional SMA 20 Overlay Line (#F59E0B)
                         if (tab.showSma20 && visibleSma20.isNotEmpty()) {
                             val smaPath = Path()
                             var started = false
@@ -549,6 +636,31 @@ fun CandlestickCanvas(
                                 drawPath(
                                     path = smaPath,
                                     color = Color(0xFFF59E0B),
+                                    style = Stroke(width = 2.0f)
+                                )
+                            }
+                        }
+
+                        // 5b. Optional EMA 50 Overlay Line (#06B6D4)
+                        if (tab.showEma50 && visibleEma50.isNotEmpty()) {
+                            val emaPath = Path()
+                            var started = false
+                            visibleEma50.forEachIndexed { idx, emaVal ->
+                                if (emaVal != null) {
+                                    val x = (idx + 0.5f) * slotW
+                                    val y = priceToY(emaVal)
+                                    if (!started) {
+                                        emaPath.moveTo(x, y)
+                                        started = true
+                                    } else {
+                                        emaPath.lineTo(x, y)
+                                    }
+                                }
+                            }
+                            if (started) {
+                                drawPath(
+                                    path = emaPath,
+                                    color = Color(0xFF06B6D4),
                                     style = Stroke(width = 2.0f)
                                 )
                             }
@@ -729,7 +841,7 @@ fun CandlestickCanvas(
                     }
                 }
 
-                // Floating 1-Line Translucent OHLCV + SMA20 Legend inside dedicated top lane (Top-Left, never overlapping Y-Axis)
+                // Floating 1-Line Translucent OHLCV + SMA20 / EMA50 / BB20 Legend inside dedicated top lane
                 if (inspectedCandle != null) {
                     val changePct = PriceFormatterAlgorithm.formatSignedPercentChange(
                         open = inspectedCandle.open,
@@ -799,6 +911,26 @@ fun CandlestickCanvas(
                                 color = Color(0xFFF59E0B)
                             )
                         }
+                        if (tab.showEma50 && inspectedEma50 != null) {
+                            Text(
+                                text = "EMA50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma50), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF06B6D4)
+                            )
+                        }
+                        if (tab.showBollinger && inspectedBollinger != null) {
+                            Text(
+                                text = "BB ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.lower), tab.decimals)}–${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.upper), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFA855F7)
+                            )
+                        }
                     }
                 }
 
@@ -842,19 +974,18 @@ fun CandlestickCanvas(
                         .padding(top = plotTopPadDp, bottom = plotBottomPadDp, end = 4.dp)
                         .testTag("chart_y_axis_scale_strip")
                 ) {
-                    // Price Pane Y-Axis Labels
-                    Column(
+                    // Price Pane Y-Axis Labels positioned at exact Heckbert nice round price ticks
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(pricePaneHeightDp),
-                        verticalArrangement = Arrangement.SpaceBetween,
-                        horizontalAlignment = Alignment.End
+                            .height(pricePaneHeightDp)
                     ) {
-                        for (g in 0..4) {
-                            val levelPrice = mapNormRatioToPrice(g / 4.0)
+                        for (tickPrice in nicePriceTicks) {
+                            val ratio = mapPriceToNormRatio(tickPrice)
+                            val yOffsetDp = (pricePaneHeightDp * ratio - 7.dp).coerceIn(0.dp, (pricePaneHeightDp - 14.dp).coerceAtLeast(0.dp))
                             Text(
                                 text = PriceFormatterAlgorithm.formatPrice(
-                                    BigDecimal.valueOf(levelPrice),
+                                    BigDecimal.valueOf(tickPrice),
                                     tab.decimals
                                 ),
                                 style = MaterialTheme.typography.labelSmall,
@@ -864,7 +995,10 @@ fun CandlestickCanvas(
                                     MaterialTheme.colorScheme.onSurfaceVariant
                                 } else {
                                     MaterialTheme.colorScheme.primary
-                                }
+                                },
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .offset(y = yOffsetDp)
                             )
                         }
                     }
@@ -896,13 +1030,14 @@ fun CandlestickCanvas(
                         }
                     }
 
-                    // Current Price Pill Badge + Live UTC Countdown on Right Y-Axis
+                    // Current Price Pill Badge + Live UTC Countdown on Right Y-Axis (Intraday timeframes only)
                     val latestCandle = candles.lastOrNull()
                     if (latestCandle != null) {
                         val curPriceDouble = latestCandle.close.toDouble()
                         val curRatio = mapPriceToNormRatio(curPriceDouble)
                         val curOffsetPx = with(density) { (pricePaneHeightDp * curRatio - 9.dp).roundToPx() }
                         val curBg = if (latestCandle.isBullish) bullColor else bearColor
+                        val isIntradayTf = tab.timeframe.uppercase() !in listOf("D1", "W1")
                         val remSec = max(0L, ((stepMillis - (nowEpochMillis % stepMillis)) % stepMillis) / 1000L)
                         val countdownText = remember(remSec, stepMillis) {
                             val hrs = remSec / 3600L
@@ -929,7 +1064,7 @@ fun CandlestickCanvas(
                                 fontWeight = FontWeight.Bold,
                                 color = Color.White
                             )
-                            if (preferences.showCountdownToBarClose) {
+                            if (preferences.showCountdownToBarClose && isIntradayTf) {
                                 Text(
                                     text = countdownText,
                                     style = MaterialTheme.typography.labelSmall,
@@ -1089,10 +1224,7 @@ fun CandlestickCanvas(
                     }
                 }
 
-                // Bottom X-Axis UTC Time Labels + Crosshair Time Callout Pill
-                val firstCandle = visibleSlice.first()
-                val midCandle = visibleSlice[visibleSlice.size / 2]
-                val lastCandle = visibleSlice.last()
+                // Bottom X-Axis Smart Span-Aware UTC Time Labels + Crosshair Time Callout Pill
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -1104,29 +1236,20 @@ fun CandlestickCanvas(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = PriceFormatterAlgorithm.formatAxisTimestamp(firstCandle.openTimeUtcMillis, tab.timeframe),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                        if (visibleSlice.size >= 4) {
+                        for (tick in smartTimeTicks) {
                             Text(
-                                text = PriceFormatterAlgorithm.formatAxisTimestamp(midCandle.openTimeUtcMillis, tab.timeframe),
+                                text = tick.label,
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                fontWeight = if (tick.isMajor) FontWeight.Bold else FontWeight.Normal,
+                                color = if (tick.isMajor) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
+                                }
                             )
                         }
-                        Text(
-                            text = PriceFormatterAlgorithm.formatAxisTimestamp(lastCandle.openTimeUtcMillis, tab.timeframe),
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
 
                     val selIdx = tab.selectedCandleIndex

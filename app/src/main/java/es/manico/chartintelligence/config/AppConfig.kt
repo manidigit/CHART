@@ -26,7 +26,7 @@ object AppConfig {
     const val DEFAULT_LANGUAGE_CODE: String = "fa"
     const val DEFAULT_DARK_THEME: Boolean = true
     const val DEFAULT_TIMEFRAME: String = "M15"
-    val SUPPORTED_TIMEFRAMES: List<String> = listOf("M15", "H1", "H4", "D1")
+    val SUPPORTED_TIMEFRAMES: List<String> = listOf("M15", "H1", "H4", "D1", "W1")
 
     const val DEFAULT_CANDLE_FETCH_LIMIT: Int = 500
     const val MIN_VISIBLE_CANDLES: Int = 12

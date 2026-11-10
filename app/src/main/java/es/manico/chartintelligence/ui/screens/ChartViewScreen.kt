@@ -74,9 +74,9 @@ import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.ChartType
 import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.data.model.SymbolConfig
+import es.manico.chartintelligence.ui.components.AssetSymbolBadge
 import es.manico.chartintelligence.ui.components.CandlestickCanvas
 import es.manico.chartintelligence.ui.components.DrawingToolbar
-import es.manico.chartintelligence.ui.components.resolveAssetBadge
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 import java.math.BigDecimal
@@ -94,17 +94,17 @@ private enum class ChartControlSheet {
  * Mandatory Chart Screen Structure (Top to Bottom, Zero Outer Scroll):
  * [1] Safe Area / Status Bar Inset (via parent Scaffold)
  * [2] Compact Header (48.dp):
- *     - Left: Small Asset Badge + Symbol Name + Live Price + Signed Change & %
+ *     - Left: Rich Asset Icon Badge + Symbol Name + Live Price + Signed Change & %
  *     - Right: Non-clickable Data Source Label (e.g. Twelve Data / TradingView) + Market Status dot
  * [3] Main Chart Canvas (Modifier.weight(1f) — >= 85% usable viewport height):
- *     - Candles + Active Indicators (SMA 20) + Volume Sub-pane + Dotted Crosshair (#758696)
+ *     - Candles + Active Indicators (SMA 20, EMA 50, Bollinger Bands 20,2) + Volume Sub-pane + Dotted Crosshair (#758696)
  *     - Floating Top-Left OHLC + Indicator Legend
  *     - Right Price Axis & Bottom UTC Time Axis
  * [4] Bottom Chart Control Bar (46.dp, directly above App Navigation Bar, Left to Right):
  *     1. Current Symbol (e.g. XAUUSD) -> Opens Watchlist symbol switcher sheet
- *     2. Current Timeframe (e.g. 15m) -> Opens Timeframe picker sheet (1m, 5m, 15m, 30m, 1H, 4H, 1D, 1W)
+ *     2. Current Timeframe (e.g. 15m) -> Opens Timeframe picker sheet (15m, 1H, 4H, 1D, 1W)
  *     3. Drawing Tool Button (Pencil Icon) -> Opens Drawing BottomSheet
- *     4. Indicator Button (fx Icon) -> Opens Indicators BottomSheet (SMA 20, Volume)
+ *     4. Indicator Button (fx Icon) -> Opens Indicators BottomSheet (SMA 20, EMA 50, Bollinger Bands, Volume)
  *     5. More Button (Three Dots) -> Opens Chart Style (Candles/Line), Historical Date Range, Scale & Sync
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -125,6 +125,8 @@ fun ChartViewScreen(
     onToggleVolume: () -> Unit = {},
     onCycleVolumeHeight: () -> Unit = {},
     onToggleSma20: () -> Unit = {},
+    onToggleEma50: () -> Unit = {},
+    onToggleBollinger: () -> Unit = {},
     onZoom: (Boolean) -> Unit,
     onPinchZoom: (Float) -> Unit,
     onPanCandles: (Int) -> Unit,
@@ -194,7 +196,6 @@ fun ChartViewScreen(
             val latestClose = latestCandle?.close
             val isUp = latestClose == null || latestClose >= refOpen
             val priceColor = if (isUp) preferences.bullCandleColor else preferences.bearCandleColor
-            val (badgeLabel, badgeTint) = resolveAssetBadge(activeTab.symbolCode)
             val dateRangePresets = remember(activeTab.candles, activeTab.timeframe) {
                 activeTab.computeDateRangePresets()
             }
@@ -224,7 +225,7 @@ fun ChartViewScreen(
                 }
             }
 
-            // [2] Compact Header (48.dp): Left = Icon + Symbol + Live Price + Change | Right = Read-Only Data Source Label
+            // [2] Compact Header (48.dp): Left = Rich Asset Icon Badge + Symbol + Live Price + Change | Right = Read-Only Data Source Label
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                 Row(
                     modifier = Modifier
@@ -235,28 +236,16 @@ fun ChartViewScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left: Small Asset Icon + Symbol Name + Live Price & Signed Change
+                    // Left: Rich Asset Icon Badge + Symbol Name + Live Price & Signed Change
                     Row(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(
-                            modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(badgeTint.copy(alpha = 0.16f))
-                                .border(1.dp, badgeTint.copy(alpha = 0.45f), CircleShape),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = badgeLabel,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = badgeTint
-                            )
-                        }
+                        AssetSymbolBadge(
+                            symbolCode = activeTab.symbolCode,
+                            sizeDp = 28.dp
+                        )
 
                         Column(modifier = Modifier.weight(1f)) {
                             Row(
@@ -387,17 +376,22 @@ fun ChartViewScreen(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // 1. Current Symbol -> Opens Watchlist Symbol Switcher
-                    Box(
+                    Row(
                         modifier = Modifier
                             .height(34.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .background(MaterialTheme.colorScheme.background)
                             .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
                             .clickable { activeSheet = ChartControlSheet.SYMBOL_PICKER }
-                            .padding(horizontal = 12.dp)
+                            .padding(horizontal = 10.dp)
                             .testTag("chart_bottom_symbol_button"),
-                        contentAlignment = Alignment.Center
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        AssetSymbolBadge(
+                            symbolCode = activeTab.symbolCode,
+                            sizeDp = 18.dp
+                        )
                         Text(
                             text = "${activeTab.symbolCode} ▾",
                             style = MaterialTheme.typography.labelLarge,
@@ -455,19 +449,20 @@ fun ChartViewScreen(
                         )
                     }
 
-                    // 4. Indicator Button (fx) -> Opens Indicators BottomSheet
-                    val hasActiveIndicator = activeTab.showSma20 || activeTab.showVolume
+                    // 4. Indicator Button (fx) -> Opens Unified 4-Indicator BottomSheet
+                    val hasActiveIndicator = activeTab.showSma20 || activeTab.showEma50 || activeTab.showBollinger || activeTab.showVolume
+                    val hasOverlayIndicator = activeTab.showSma20 || activeTab.showEma50 || activeTab.showBollinger
                     Box(
                         modifier = Modifier
                             .size(36.dp)
                             .clip(RoundedCornerShape(6.dp))
                             .background(
-                                if (activeTab.showSma20) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                if (hasOverlayIndicator) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
                                 else MaterialTheme.colorScheme.background
                             )
                             .border(
                                 1.dp,
-                                if (activeTab.showSma20) MaterialTheme.colorScheme.primary else palette.cardBorder,
+                                if (hasOverlayIndicator) MaterialTheme.colorScheme.primary else palette.cardBorder,
                                 RoundedCornerShape(6.dp)
                             )
                             .clickable { activeSheet = ChartControlSheet.INDICATORS }
@@ -556,19 +551,28 @@ fun ChartViewScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween,
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            Column {
-                                                Text(
-                                                    text = sym.symbolCode,
-                                                    style = MaterialTheme.typography.titleSmall,
-                                                    fontFamily = JetBrainsMonoFontFamily,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                AssetSymbolBadge(
+                                                    symbolCode = sym.symbolCode,
+                                                    sizeDp = 30.dp
                                                 )
-                                                Text(
-                                                    text = displayName,
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                )
+                                                Column {
+                                                    Text(
+                                                        text = sym.symbolCode,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = if (isCurrent) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                    Text(
+                                                        text = displayName,
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
                                             }
                                             Text(
                                                 text = PriceFormatterAlgorithm.formatPrice(sym.lastClose, sym.decimals),
@@ -657,6 +661,7 @@ fun ChartViewScreen(
                                     style = MaterialTheme.typography.titleMedium,
                                     fontWeight = FontWeight.Bold
                                 )
+                                // 1. SMA 20
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
@@ -690,6 +695,75 @@ fun ChartViewScreen(
 
                                 HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
 
+                                // 2. EMA 50
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(onClick = onToggleEma50)
+                                        .padding(vertical = 4.dp)
+                                        .testTag("chart_ema50_toggle_button"),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.ShowChart,
+                                            contentDescription = "EMA 50",
+                                            tint = Color(0xFF06B6D4)
+                                        )
+                                        Text(
+                                            text = "EMA 50 (Exponential Moving Average)",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    Switch(
+                                        checked = activeTab.showEma50,
+                                        onCheckedChange = { onToggleEma50() }
+                                    )
+                                }
+
+                                HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
+
+                                // 3. Bollinger Bands (20, 2)
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable(onClick = onToggleBollinger)
+                                        .padding(vertical = 4.dp)
+                                        .testTag("chart_bollinger_toggle_button"),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Outlined.VerticalAlignCenter,
+                                            contentDescription = "Bollinger Bands",
+                                            tint = Color(0xFFA855F7)
+                                        )
+                                        Text(
+                                            text = "Bollinger Bands (20, 2)",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    }
+                                    Switch(
+                                        checked = activeTab.showBollinger,
+                                        onCheckedChange = { onToggleBollinger() }
+                                    )
+                                }
+
+                                HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
+
+                                // 4. Volume Histogram + Height Selector (16% / 22% / 30%)
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
