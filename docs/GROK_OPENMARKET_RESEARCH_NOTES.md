@@ -252,5 +252,91 @@ Additionally they have an internal assistant called **Kata** inside the script e
 - CME data has special licensing; agents and API cannot export it in their system.
 - Always prefer official docs over third-party reviews when implementing.
 
-**Last updated by Grok:** 2026-11-10  
+**Last updated by Grok & Gemini:** 2026-11-11  
 **For questions or deeper dive on any section, continue the conversation.**
+
+---
+
+## 6. Free & Freemium Market Data APIs Evaluation & Fallback Matrix
+
+**تاریخ ارزیابی:** 2026-11-11  
+**هدف:** ارزیابی و اولویت‌بندی منابع دیتای رایگان/فریمیوم جهت پشتیبانی از کندل‌های تاریخی `OHLC` (به‌ویژه تایم‌فریم‌های `M15`, `H1`, `H4`, `D1`) برای طلا (`XAUUSD`)، نفت برنت (`SPOTBRENT`)، WTI، کریپتو، شاخص‌ها و جفت‌ارزها.
+
+### ارزیابی منابع دیتای پایه (اولویت‌بندی رتبه‌بندی شده):
+
+1. **`biquote.io` (رتبه ۱ — پیاده‌سازی شده در v1.32.0):**
+   - **وضعیت در پروژه:** `METHOD_BIQUOTE_FEED` / `BiquoteAdapter` (منبع فعال رایگان برای طلا، کریپتو و فارکس در نسخه `1.32.0`).
+   - **مزایا:** کاملاً رایگان، بدون نیاز به API Key یا ثبت‌نام، نرخ درخواست بسیار بالا (~۱۵,۰۰۰ درخواست در دقیقه per IP)، پشتیبانی مستقیم از `XAUUSD`, `BTCUSD`, `ETHUSD`, `EURUSD` و `SPOTBRENT` در قالب دیتای MetaTrader CFD.
+   - **تایم‌فریم‌ها:** کندل‌های ۱ دقیقه‌ای تا ۱ روزه (شامل `15m`, `1h`, `4h`) تا ۱۰۰۰ کندل در هر درخواست + پشتیبانی از WebSocket/SignalR.
+
+2. **`Stooq` (رتبه ۲ — نامزد رزرو تاریخچه بلندمدت و بکاپ):**
+   - **وضعیت در پروژه:** نامزد دریافت تاریخچه روزانه عمیق و دانلود دسته‌ای فایل‌های CSV در فاز ۳.
+   - **مزایا:** رایگان (با کلید عمومی)، پوشش کامل فارکس، طلا (Gold)، نفت و کامودیتی‌ها، خروجی استاندارد CSV جهت ذخیره مستقیم در MariaDB.
+   - **محدودیت:** اینترادی محدود به ۹ ماه ساعتی و ۱ ماه ۵ دقیقه‌ای.
+
+3. **`Alpha Vantage` (رتبه ۳ — Fallback سبک بر پایه API Key):**
+   - **مزایا:** فریمیوم کلاسیک، ۲۵ درخواست رایگان در روز.
+   - **نقش در سیستم:** پشتیبانی لایه آخر برای استعلام نرخ‌های پایانی یا پشتیبانی رزرو سبک.
+
+4. **`Finnhub` (رتبه ۴ — داده زنده سهام آمریکا و فاندامنتال):**
+   - **مزایا:** ۶۰ فراخوانی در دقیقه رایگان.
+   - **نقش در سیستم:** مناسب برای Quoteهای زنده و اخبار سهام آمریکا (`NVDA`, `AAPL`, `TSLA`). کندل‌های تاریخی فارکس/کالاها در پلن رایگان قفل است.
+
+5. **سایر منابع بررسی شده (Polygon.io, FMP, EODHD, AlgoSpecial):**
+   - **`AlgoSpecial`:** ۶۰ درخواست/دقیقه و ۱۰۰۰/روز رایگان برای `XAUUSD` و FX.
+   - **`Polygon.io` / `FMP` / `EODHD`:** محدودیت ۵ درخواست/دقیقه، بیشتر متمرکز بر سهام دسکتاپ.
+
+---
+
+### جدول ماتریس اولویت‌بندی منابع داده بر اساس طبقه دارایی:
+
+| طبقه دارایی | منبع اول (`Primary`) | منبع دوم (`Secondary`) | منبع سوم (`Tertiary / Backup`) |
+|---|---|---|---|
+| **طلا (`XAUUSD`)** | Twelve Data (`twelve_data`) | biquote (`biquote`) | Dukascopy / Stooq / Yahoo Finance |
+| **نقره (`XAGUSD`)** | biquote (`biquote`) | Twelve Data (`twelve_data`) | Yahoo Finance / Dukascopy |
+| **نفت برنت (`SPOTBRENT`)** | TradingView (`tvdatafeed`) | Dukascopy (`dukascopy`) | biquote / EIA Spot / Yahoo Finance |
+| **نفت WTI (`USOIL`)** | TradingView (`tvdatafeed`) | Yahoo Finance (`yahoo_finance`) | biquote / Twelve Data |
+| **کریپتو (`BTCUSD`, `ETHUSD`)** | biquote (`biquote`) | Yahoo Finance (`yahoo_finance`) | Twelve Data |
+| **شاخص‌ها (`SPX500USD`, `NDQ`)** | Yahoo Finance (`yahoo_finance`) | TradingView (`tvdatafeed`) | Twelve Data |
+| **سهام آمریکا (`NVDA`..`SAN`)** | Yahoo Finance (`yahoo_finance`) | Twelve Data (`twelve_data`) | Finnhub / TradingView |
+
+---
+
+## 7. Open-Source AI/ML Models & SMC Research Benchmarks Evaluation
+
+**تاریخ ارزیابی:** 2026-11-11  
+**هدف:** ارزیابی ۵ روش جدید تحقیقاتی، مدل‌های پایه هوش مصنوعی و پرامپت‌های استراتژیک برای سیستم پیش‌بینی و تحلیل ساختار Chart Intelligence:
+
+### ارزیابی تفصیلی روش‌ها:
+
+1. **`Kronos` — مدل پایه باز پیش‌بینی کندل‌های K-Line (رتبه ۱ — بسیار بالا):**
+   - **مرجع:** مقاله AAAI 2026 (`@yxl44`).
+   - **نحوه کار:** اولین Foundation Model باز تخصصی سری زمانی OHLCV. پیش‌آموزش‌دیده روی بیش از ۱۲ میلیارد کندل از ۴۵ صرافی جهان با Tokenizer دو لایه (Coarse + Fine) در ۳ مدل Mini (4.1M)، Small (24.7M) و Base (102M).
+   - **نقش در سیستم:** کاندید اصلی **موتور پیش‌بینی فاز ۴ (`Prediction Engine v1`)** جهت فاین‌تیون متمرکز per `chart_id` و تولید پیش‌بینی‌های Immutable اتورگرسیو.
+
+2. **استراتژی `Fibonacci + FVG + BOS` (رتبه ۲ — بالا):**
+   - **مرجع:** پست و ویدیوی آموزشی `@IamMavion`.
+   - **نحوه کار:** ترکیبی قطعی از Break of Structure (BOS)، Fair Value Gap (FVG) و ترازهای فیبوناچی ($0.618, 0.786$) برای ورود و اکستنشن‌های ($1.272, 1.414, 1.618$) برای اهداف قیمتی.
+   - **نقش در سیستم:** لایه تحلیل خودکار ساختار در فاز ۲ و فاز ۴ (`TechnicalStructureAnalyzer`).
+
+3. **پرامپت‌های تحلیل تکنیکال و Backtest (رتبه ۳ — متوسط):**
+   - **مرجع:** `@Theolevi_XAi`.
+   - **نقش در سیستم:** الگوی طراحی منطق Backtest و ارزیابی استراتژی در فاز ۶.
+
+4. **سیستم ۶ بات تحقیقاتی Grok / پرامپت‌های فاندامنتال Gemini/ChatGPT (رتبه ۴ و ۵ — پایین در فاز جاری):**
+   - **مرجع:** `@JasonL_Capital`, `@IAGenMoney`, `@allen_lattimer`.
+   - **نقش در سیستم:** اختصاصی به تحلیل بنیادی، صورت‌های مالی و Sentiment سهام؛ رزرو شده برای فازهای آتی جهت افزوده شدن به عنوان لایه مکمل فاندامنتال.
+
+---
+
+### جدول اولویت‌بندی مدل‌ها و روش‌های تحقیقاتی:
+
+| رتبه | روش / مدل | میزان مفید بودن | نقش اجرایی در Chart Intelligence |
+|------|------|------------------|----------------------------------|
+| **۱** | **Kronos (AAAI 2026 Foundation Model)** | **بسیار بالا** | مدل اصلی پیش‌بینی اتورگرسیو کندل‌ها در فاز ۴ (`Prediction Engine`) |
+| **۲** | **Fibonacci + FVG + BOS (SMC)** | **بالا** | الگوریتم خودکار تحلیل ساختار نقدینگی و پرایس‌اکشن در فاز ۲ و ۴ |
+| **۳** | **پرامپت‌های تکنیکال و Backtest** | **متوسط** | الگوی مفهومی طراحی لایه بک‌تست و ارزیابی استراتژی در فاز ۶ |
+| **۴** | **سیستم ۶ بات تحقیقاتی Grok** | **پایین (در فاز جاری)** | رزرو فازهای آتی به عنوان لایه مکمل Fundamental / Sentiment |
+| **۵** | **پرامپت‌های بنیادی Gemini/ChatGPT** | **پایین (در فاز جاری)** | خارج از هسته چارت‌محور؛ رزرو لایه بنیادی |
+
+

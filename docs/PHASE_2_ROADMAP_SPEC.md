@@ -98,6 +98,11 @@
 - **شاخص دلار آمریکا (`DXY`):** بررسی همبستگی معکوس با طلا (`XAUUSD`)، نفت (`SPOTBRENT`) و یورو (`EURUSD`).
 - **بازده اوراق قرضه آمریکا (`US 10Y / 2Y Yields`):** سنجش خروج/ورود نقدینگی از دارایی‌های ریسکی.
 - **دارایی‌های موازی:** مقایسه رفتار هم‌زمان نفت برنت (`SPOTBRENT`) با WTI (`USOIL`) و شاخص‌های سهام انرژی (`XLE`).
+- **ماتریس اولویت‌بندی منابع دیتای تاریخی و زنده:** 
+  - **طلا (`XAUUSD`):** `twelve_data` (اصلی) → `biquote` (ثانویه رایگان) → `dukascopy` / `stooq` / `yahoo_finance` (بکاپ).
+  - **نقره (`XAGUSD`):** `biquote` (اصلی رایگان) → `twelve_data` → `yahoo_finance` / `dukascopy`.
+  - **نفت برنت (`SPOTBRENT`):** `tvdatafeed` (اصلی) → `dukascopy` → `biquote` / `eia_brent_spot` / `yahoo_finance`.
+  - **سهام آمریکا (`NVDA`..`SAN`):** `yahoo_finance` (اصلی) → `twelve_data` → `finnhub`.
 
 ---
 
