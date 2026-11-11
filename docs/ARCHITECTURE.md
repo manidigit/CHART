@@ -22,31 +22,47 @@ The software architecture is governed by six core principles:
 
 ## 1.1 Single Central Core Engine & Cross-Platform Parity Protocol (`P0-CORE-SYNC` — **CRITICAL TOP PRIORITY**)
 
-To eliminate fragmentation between Android and Web platforms, the project strictly enforces a **Single Central Core Architecture**:
+To eliminate fragmentation between Android and Web platforms, the project strictly enforces a **Single Central Core Architecture v1.30**:
 
 ```
-                              ┌────────────────────────────────────────────────────────┐
-                              │            SINGLE CENTRAL CORE ENGINE                  │
-                              │  • Unified Domain Models (OHLCV, Drawings, Tabs)       │
-                              │  • Shared Pure Algorithms (Fib, Magnet, Heckbert Y-Axis)│
-                              │  • MariaDB / PHP Workspace Sync Contract               │
-                              └───────────────────────────┬────────────────────────────┘
-                                                          │
-                                ┌─────────────────────────┴─────────────────────────┐
-                                ▼                                                   ▼
-                ┌───────────────────────────────┐                   ┌───────────────────────────────┐
-                │    Android Native Platform    │                   │      Web Terminal Platform    │
-                │  (Jetpack Compose Viewport)   │                   │   (Vanilla ES6 + Canvas UI)   │
-                │  • Consumes Central Core      │                   │  • Consumes Central Core      │
-                │  • 100% Feature & UI Parity   │                   │  • 100% Feature & UI Parity   │
-                └───────────────────────────────┘                   └───────────────────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────────────┐
+│                       CENTRAL CORE ENGINE (Server Authority + Shared Spec)              │
+│                                                                                         │
+│  ┌───────────────────────────────────────┐   ┌───────────────────────────────────────┐  │
+│  │ MariaDB Central Persistence           │   │ Canonical Core Contracts (v1.30)      │  │
+│  │ • market_candles (5,000 bars/tf)      │   │ • Unified Symbol & Provider Catalog   │  │
+│  │ • user_workspace (JSON State + UTC)   │   │ • Unified Drawing Schema (Fib/Pos/Line│  │
+│  │ • user_sessions & owner_account       │   │ • Unified ChartPreferences (19 keys)  │  │
+│  └──────────────────┬────────────────────┘   └───────────────────┬───────────────────┘  │
+│                     └─────────────────────┬──────────────────────┘                      │
+│                                           ▼                                             │
+│                     ┌──────────────────────────────────────────┐                        │
+│                     │ PHP REST Gateway (/api/v1/*)             │                        │
+│                     │ • workspace_sync.php (GET / POST + UTC)  │                        │
+│                     │ • candles_sync.php   (00:00 UTC Anchor)  │                        │
+│                     │ • auth.php & system/status.php           │                        │
+│                     └──────┬────────────────────────────┬──────┘                        │
+└────────────────────────────┼────────────────────────────┼───────────────────────────────┘
+                             │ Bi-Directional JSON Sync   │ Bi-Directional JSON Sync
+                             ▼                            ▼
+┌──────────────────────────────────────────┐ ┌────────────────────────────────────────────┐
+│ Web Terminal Client (Vanilla ES6)        │ │ Android Native Client (Kotlin / Compose)   │
+│                                          │ │                                            │
+│ • Central Store (Top-Level ES Module)    │ │ • MainViewModel + Coordinators             │
+│ • Normalizer: symbols, prefs, drawings,  │ │ • WorkspaceRepository (Cloud Pull & Push)  │
+│   open_tabs <-> LocalStorage + Server    │ │ • Canonical Drawing & Key Mapper           │
+│ • 5-Tab Settings Modal & Vector Icons    │ │ • 5-Tab Categorized SettingsScreen         │
+│ • Pure Algorithms (Heckbert, Fib, Magnet)│ │ • Pure Algorithms (Heckbert, Fib, Magnet)  │
+└──────────────────────────────────────────┘ └────────────────────────────────────────────┘
 ```
 
-### Core Synchronization Rules:
-1. **Single Data & Algorithm Authority:** All business logic (Fibonacci levels, Risk/Reward position math, Heckbert Y-axis ticks, magnet snapping, time anchors, and indicator formulas) originates from a single deterministic algorithm specification. Neither Android nor Web may implement divergent calculations.
-2. **Cross-Platform Layout & Feature Mirroring:** Any UX improvement, layout reorganization (such as the 5-category tabbed Settings redesign `P1-UPG-9`), new drawing tool, indicator, or configuration switch implemented on one platform MUST be mirrored on the other.
-3. **Unified Workspace State Schema:** User preferences, active chart tabs, drawings, and watchlist configurations are serialized to a standardized JSON schema backed by MariaDB (`user_workspace` table via `/api/v1/workspace_sync.php`) ensuring seamless cross-device synchronization.
-4. **Workspace Sync Module & Error Isolation (`P1-UPG-10`):** Synchronization state restoration between Web (`workspaceService.js`) and MariaDB (`workspace_sync.php`) must isolate ES Module imports strictly at top-level scope (`type="module"`), ensuring dynamic sync recovery or network reconnects never produce unhandled syntax errors or disrupt the core UI loop.
+### Core Synchronization & Canonical Contract Rules (`v1.30`):
+1. **Single Data & Algorithm Authority:** All business logic (Fibonacci retracement levels, Long/Short Risk-Reward position math, Heckbert Nice-Number Y-axis ticks, magnet OHLC snapping, `00:00:00 UTC` time anchors, and indicator formulas) originates from a single deterministic algorithm specification. Neither Android nor Web may implement divergent calculations.
+2. **Canonical Chart Drawing Key (`${symbolCode}_${timeframe}`):** Both Web and Android index chart drawings under the canonical key `${symbolCode}_${timeframe}` (e.g., `SPOTBRENT_M15`, `XAUUSD_M15`) while maintaining backward-compatible aliases for legacy `chartId` keys (`chart_spotbrent_main`, `chart_xauusd_main`) during cloud serialization and deserialization.
+3. **Canonical Drawing Object Schema:** Every drawing serialized in `workspace.drawings` uses unified keys (`id`, `type`, `colorHex`, `strokeWidthDp`, `price`, `timeUtcMillis`, `startTimeUtcMillis`, `startPrice`, `endTimeUtcMillis`, `endPrice`, `entryPrice`, `targetPrice`, `stopPrice`) with automatic normalization between `#RRGGBB` (Web) and `FFRRGGBB` (Android Compose).
+4. **Canonical Preferences & Symbol Catalog Sync:** All 19 `ChartPreferences` keys (colors, algorithm limits, and TradingView switches) and the complete `symbols` catalog (`symbolCode`, `inWatchlist`, `activeProvider`, `timeframe`, `decimals`, `customTitle`, `isCustom`) are synchronized bi-directionally.
+5. **Debounced Auto-Sync & Offline-First Startup (`P1-UPG-10`):** Both clients render immediately from local storage (`SharedPreferences` / `localStorage`), pull the latest workspace snapshot from `/api/v1/workspace_sync.php` on startup, and automatically push debounced (`800ms`) updates whenever drawings, symbols, or preferences change.
+6. **5-Category Tabbed Settings Parity (`P1-UPG-9`):** Both Web (`settingsView.js`) and Android (`SettingsScreen.kt`) organize settings into 5 identical segmented tabs: `حساب` (`account`), `ظاهر` (`appearance`), `نمادها` (`sources`), `پارامترها` (`scales`), and `سلامت` (`health`).
 
 ---
 

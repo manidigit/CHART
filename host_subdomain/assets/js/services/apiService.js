@@ -3,11 +3,17 @@ import {
   saveCandlesToCache,
   getCachedOrAggregatedCandles,
   saveSymbolsToStorage,
+  savePreferences,
+  saveOpenTabsToStorage,
   mergeCandlesIdempotent,
   normalizeCandle,
-} from '../core/store.js?v=1.28.9';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.28.9';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.28.9';
+  normalizeCanonicalChartKey,
+  normalizeDrawingObject,
+  normalizeHexForWeb,
+  normalizeHexForAndroid,
+} from '../core/store.js?v=1.30.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.30.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.30.0';
 
 export async function syncServerAuthStatus() {
   const token = localStorage.getItem('ci_session_token');
@@ -243,16 +249,38 @@ export async function uploadWorkspaceSync() {
   state.isWorkspaceSyncing = true;
   const token = localStorage.getItem('ci_session_token') || '';
   try {
+    const p = state.chartPreferences || {};
+    const unifiedPrefs = {
+      ...p,
+      bullCandleColorHex: normalizeHexForAndroid(p.bullColor, 'FF26A69A'),
+      bearCandleColorHex: normalizeHexForAndroid(p.bearColor, 'FFEF5350'),
+      trendLineColorHex: normalizeHexForAndroid(p.trendColor, 'FF2962FF'),
+      horizontalLineColorHex: normalizeHexForAndroid(p.hLineColor, 'FFF59E0B'),
+      verticalLineColorHex: normalizeHexForAndroid(p.vLineColor, 'FFA855F7'),
+      logarithmicScaleDefault: Boolean(p.isLogScale),
+      rememberLastChartOnDevice: Boolean(p.rememberLastChart),
+      pickerVibrations: Boolean(p.pickerVibrates),
+      showPickerScrollMagnifiers: Boolean(p.showScrollMagnifier),
+    };
+
+    const canonicalDrawings = {};
+    for (const [k, list] of Object.entries(state.drawingsByChartId || {})) {
+      if (Array.isArray(list)) {
+        const normKey = normalizeCanonicalChartKey(k);
+        canonicalDrawings[normKey] = list.map(normalizeDrawingObject).filter(Boolean);
+      }
+    }
+
     const workspace = {
-      drawings: state.drawingsByChartId || {},
-      preferences: state.chartPreferences || {},
+      drawings: canonicalDrawings,
+      preferences: unifiedPrefs,
       symbols: (state.symbols || []).map((s) => ({
         symbolCode: s.symbolCode,
         customTitle: s.customTitle || '',
         decimals: s.decimals,
-        inWatchlist: s.inWatchlist,
+        inWatchlist: Boolean(s.inWatchlist),
         activeProvider: s.activeProvider,
-        timeframe: s.timeframe,
+        timeframe: s.timeframe || 'M15',
         isCustom: Boolean(s.isCustom),
       })),
       open_tabs: (state.openTabs || []).map((t) => ({
@@ -262,10 +290,10 @@ export async function uploadWorkspaceSync() {
         chartType: t.chartType,
         visibleCount: t.visibleCount,
         scrollOffset: t.scrollOffset,
-        showSma20: t.showSma20,
-        showEma50: t.showEma50,
-        showBollinger: t.showBollinger,
-        showVolume: t.showVolume,
+        showSma20: Boolean(t.showSma20),
+        showEma50: Boolean(t.showEma50),
+        showBollinger: Boolean(t.showBollinger),
+        showVolume: t.showVolume !== false,
       })),
     };
     const res = await fetch('./api/v1/workspace_sync.php', {
@@ -300,14 +328,114 @@ export async function downloadWorkspaceSync() {
     const json = await res.json();
     if (json && json.ok && json.data && json.data.workspace) {
       const ws = json.data.workspace;
+
       if (ws.drawings && typeof ws.drawings === 'object') {
-        state.drawingsByChartId = { ...state.drawingsByChartId, ...ws.drawings };
+        const mergedDrawings = { ...state.drawingsByChartId };
+        for (const [k, list] of Object.entries(ws.drawings)) {
+          if (Array.isArray(list)) {
+            const normKey = normalizeCanonicalChartKey(k);
+            mergedDrawings[normKey] = list.map(normalizeDrawingObject).filter(Boolean);
+          }
+        }
+        state.drawingsByChartId = mergedDrawings;
         localStorage.setItem('ci_drawings_v2', JSON.stringify(state.drawingsByChartId));
       }
+
       if (ws.preferences && typeof ws.preferences === 'object') {
-        state.chartPreferences = { ...state.chartPreferences, ...ws.preferences };
-        localStorage.setItem('ci_chart_prefs_v4', JSON.stringify(state.chartPreferences));
+        const p = ws.preferences;
+        const mappedPrefs = { ...state.chartPreferences, ...p };
+        if (p.bullCandleColorHex && !p.bullColor) mappedPrefs.bullColor = normalizeHexForWeb(p.bullCandleColorHex, '#26A69A');
+        if (p.bearCandleColorHex && !p.bearColor) mappedPrefs.bearColor = normalizeHexForWeb(p.bearCandleColorHex, '#EF5350');
+        if (p.trendLineColorHex && !p.trendColor) mappedPrefs.trendColor = normalizeHexForWeb(p.trendLineColorHex, '#2962FF');
+        if (p.horizontalLineColorHex && !p.hLineColor) mappedPrefs.hLineColor = normalizeHexForWeb(p.horizontalLineColorHex, '#F59E0B');
+        if (p.verticalLineColorHex && !p.vLineColor) mappedPrefs.vLineColor = normalizeHexForWeb(p.verticalLineColorHex, '#A855F7');
+        if (p.logarithmicScaleDefault !== undefined && p.isLogScale === undefined) mappedPrefs.isLogScale = Boolean(p.logarithmicScaleDefault);
+        if (p.rememberLastChartOnDevice !== undefined && p.rememberLastChart === undefined) mappedPrefs.rememberLastChart = Boolean(p.rememberLastChartOnDevice);
+        if (p.pickerVibrations !== undefined && p.pickerVibrates === undefined) mappedPrefs.pickerVibrates = Boolean(p.pickerVibrations);
+        if (p.showPickerScrollMagnifiers !== undefined && p.showScrollMagnifier === undefined) mappedPrefs.showScrollMagnifier = Boolean(p.showPickerScrollMagnifiers);
+        state.chartPreferences = mappedPrefs;
+        savePreferences(true);
       }
+
+      if (Array.isArray(ws.symbols) && ws.symbols.length > 0) {
+        const byCode = new Map(state.symbols.map((s) => [s.symbolCode, s]));
+        for (const incoming of ws.symbols) {
+          if (!incoming || !incoming.symbolCode) continue;
+          const code = String(incoming.symbolCode).toUpperCase();
+          const existing = byCode.get(code);
+          if (existing) {
+            existing.inWatchlist = incoming.inWatchlist !== undefined ? Boolean(incoming.inWatchlist) : existing.inWatchlist;
+            existing.activeProvider = incoming.activeProvider || existing.activeProvider;
+            existing.timeframe = incoming.timeframe || existing.timeframe;
+            if (incoming.customTitle) existing.customTitle = incoming.customTitle;
+          } else {
+            byCode.set(code, {
+              symbolCode: code,
+              customTitle: incoming.customTitle || code,
+              decimals: Number(incoming.decimals || 2),
+              inWatchlist: Boolean(incoming.inWatchlist),
+              activeProvider: incoming.activeProvider || 'tvdatafeed',
+              allowedProviders: ['tvdatafeed', 'twelve_data', 'dukascopy', 'yahoo_finance'],
+              timeframe: incoming.timeframe || 'M15',
+              lastClose: 0,
+              lastCandleUtc: '',
+              candles: [],
+              isSyncing: false,
+              syncError: false,
+              isCustom: true,
+            });
+          }
+        }
+        state.symbols = Array.from(byCode.values());
+        saveSymbolsToStorage(true);
+      }
+
+      if (Array.isArray(ws.open_tabs) && ws.open_tabs.length > 0 && (!state.openTabs || state.openTabs.length === 0)) {
+        state.openTabs = ws.open_tabs.map((t, idx) => {
+          const code = String(t.symbolCode || 'SPOTBRENT').toUpperCase();
+          const tf = String(t.timeframe || 'M15').toUpperCase();
+          const sym = state.symbols.find((s) => s.symbolCode === code);
+          return {
+            tabId: t.tabId || `tab_${code}_${tf}_${idx}`,
+            symbolCode: code,
+            provider: t.provider || (sym ? sym.activeProvider : 'tvdatafeed'),
+            timeframe: tf,
+            decimals: sym ? sym.decimals : 2,
+            candles: [],
+            chartType: t.chartType || 'candles',
+            showVolume: t.showVolume !== false,
+            volumePaneRatio: 0.22,
+            showSma20: Boolean(t.showSma20),
+            showEma50: Boolean(t.showEma50),
+            showBollinger: Boolean(t.showBollinger),
+            isLogScale: Boolean(state.chartPreferences.isLogScale),
+            selectedRangePreset: null,
+            visibleCount: Number(t.visibleCount || 48),
+            scrollOffset: Number(t.scrollOffset || 0),
+            priceScaleFactor: 1.0,
+            verticalPriceOffset: 0.0,
+            hoverIndex: null,
+            hoverY: null,
+            activeTool: 'cursor',
+            activeDrawingColorHex: '#2962FF',
+            activeDrawingWidthPx: 2.0,
+            selectedDrawingId: null,
+            pendingTrendStart: null,
+            drawings: state.drawingsByChartId[`${code}_${tf}`] || [],
+          };
+        });
+        saveOpenTabsToStorage(true);
+      }
+
+      if (state.openTabs && state.openTabs.length > 0) {
+        state.openTabs.forEach((tab) => {
+          const key = `${tab.symbolCode}_${tab.timeframe || 'M15'}`;
+          if (state.drawingsByChartId[key]) {
+            tab.drawings = state.drawingsByChartId[key];
+          }
+        });
+      }
+
       state.lastWorkspaceSyncedAt = json.data.updated_at_utc || new Date().toISOString();
       return true;
     }

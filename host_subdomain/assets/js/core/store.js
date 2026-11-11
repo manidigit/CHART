@@ -196,13 +196,119 @@ function loadSymbols() {
   }
 }
 
+const LEGACY_CHART_ID_MAP = {
+  chart_xauusd_main: 'XAUUSD_M15',
+  chart_spotbrent_main: 'SPOTBRENT_M15',
+  chart_brent_futures: 'BRENT_FUTURES_M15',
+  chart_xagusd_spot: 'XAGUSD_M15',
+  chart_eurusd_spot: 'EURUSD_M15',
+};
+
+export function normalizeCanonicalChartKey(rawKey) {
+  if (!rawKey) return 'SPOTBRENT_M15';
+  const str = String(rawKey).trim();
+  if (LEGACY_CHART_ID_MAP[str]) return LEGACY_CHART_ID_MAP[str];
+  if (str.startsWith('chart_custom_')) {
+    const code = str.replace('chart_custom_', '').toUpperCase();
+    return `${code}_M15`;
+  }
+  return str;
+}
+
+export function normalizeHexForWeb(rawHex, fallback = '#2962FF') {
+  if (!rawHex || typeof rawHex !== 'string') return fallback;
+  const clean = rawHex.trim().replace(/^#/, '');
+  if (clean.length === 8) return '#' + clean.slice(2).toUpperCase();
+  if (clean.length === 6) return '#' + clean.toUpperCase();
+  return fallback;
+}
+
+export function normalizeHexForAndroid(rawHex, fallback = 'FF2962FF') {
+  if (!rawHex || typeof rawHex !== 'string') return fallback;
+  const clean = rawHex.trim().replace(/^#/, '').toUpperCase();
+  if (clean.length === 6) return 'FF' + clean;
+  if (clean.length === 8) return clean;
+  return fallback;
+}
+
+export function normalizeDrawingObject(d) {
+  if (!d || typeof d !== 'object') return null;
+  const rawType = String(d.type || 'horizontal_line');
+  const type =
+    rawType === 'hline'
+      ? 'horizontal_line'
+      : rawType === 'vline'
+        ? 'vertical_line'
+        : rawType === 'trend'
+          ? 'trend_line'
+          : rawType === 'fib'
+            ? 'fib_retracement'
+            : rawType;
+  const colorHex = normalizeHexForWeb(d.colorHex || d.color, '#2962FF');
+  const strokeW = Number(d.strokeWidthDp || d.strokeWidth || d.lineWidthPx || d.strokeWidthPx || 2);
+  const base = {
+    id: String(d.id || `${type}_${Date.now()}`),
+    type,
+    color: colorHex,
+    colorHex,
+    strokeWidth: strokeW,
+    strokeWidthDp: strokeW,
+    lineWidthPx: strokeW,
+    label: d.label || '',
+  };
+  if (type === 'horizontal_line') {
+    const p = Number(d.price !== undefined ? d.price : d.price1 || 0);
+    return { ...base, price: p, price1: p };
+  }
+  if (type === 'vertical_line') {
+    const t = Number(d.timeUtcMillis || (d.time1EpochSec ? d.time1EpochSec * 1000 : 0));
+    return { ...base, timeUtcMillis: t };
+  }
+  if (type === 'trend_line' || type === 'fib_retracement') {
+    const t1 = Number(d.startTimeUtcMillis || d.t1 || (d.time1EpochSec ? d.time1EpochSec * 1000 : 0));
+    const t2 = Number(d.endTimeUtcMillis || d.t2 || (d.time2EpochSec ? d.time2EpochSec * 1000 : 0));
+    const p1 = Number(d.startPrice !== undefined ? d.startPrice : d.p1 !== undefined ? d.p1 : d.price1 || 0);
+    const p2 = Number(d.endPrice !== undefined ? d.endPrice : d.p2 !== undefined ? d.p2 : d.price2 || 0);
+    return {
+      ...base,
+      startTimeUtcMillis: t1,
+      endTimeUtcMillis: t2,
+      startPrice: p1,
+      endPrice: p2,
+    };
+  }
+  if (type === 'long_position' || type === 'short_position') {
+    return {
+      ...base,
+      startTimeUtcMillis: Number(d.startTimeUtcMillis || 0),
+      endTimeUtcMillis: Number(d.endTimeUtcMillis || 0),
+      entryPrice: Number(d.entryPrice || 0),
+      targetPrice: Number(d.targetPrice || 0),
+      stopPrice: Number(d.stopPrice || 0),
+    };
+  }
+  return base;
+}
+
 function loadDrawingsByKey() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_DRAWINGS);
-    return raw ? JSON.parse(raw) : {};
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const result = {};
+    for (const [k, list] of Object.entries(parsed)) {
+      if (Array.isArray(list)) {
+        const normKey = normalizeCanonicalChartKey(k);
+        result[normKey] = list.map(normalizeDrawingObject).filter(Boolean);
+      }
+    }
+    return result;
   } catch {
     return {};
   }
+}
+
 function loadOpenTabsFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_OPEN_TABS);
@@ -267,13 +373,36 @@ export const state = {
   ),
 };
 
+let autoSyncCallback = null;
+let autoSyncTimerId = null;
+
+export function registerAutoSyncCallback(cb) {
+  autoSyncCallback = cb;
+}
+
+export function scheduleDebouncedCloudSync() {
+  if (typeof autoSyncCallback !== 'function') return;
+  if (autoSyncTimerId) clearTimeout(autoSyncTimerId);
+  autoSyncTimerId = setTimeout(() => {
+    autoSyncTimerId = null;
+    autoSyncCallback();
+  }, 800);
+}
+
+export function saveLastOpenedSymbol(symbolCode) {
+  if (!symbolCode) return;
+  state.lastOpenedSymbolCode = String(symbolCode).trim().toUpperCase();
+  localStorage.setItem(STORAGE_KEY_LAST_SYMBOL, state.lastOpenedSymbolCode);
+}
+
 export function savePanelLayout() {
   localStorage.setItem('ci_right_panel_w', String(Math.round(state.rightPanelWidth || 310)));
   localStorage.setItem('ci_wl_top_ratio', String(Number(state.watchlistTopRatio || 0.52).toFixed(3)));
 }
 
-export function savePreferences() {
+export function savePreferences(skipCloudSync = false) {
   localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(state.chartPreferences));
+  if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
 export function resetColorsToDefault() {
@@ -292,7 +421,7 @@ export function resetAlgoParamsToDefault() {
   savePreferences();
 }
 
-export function saveSymbolsToStorage() {
+export function saveSymbolsToStorage(skipCloudSync = false) {
   const clean = state.symbols.map((s) => ({
     symbolCode: s.symbolCode,
     customTitle: s.customTitle || '',
@@ -305,18 +434,21 @@ export function saveSymbolsToStorage() {
     isCustom: Boolean(s.isCustom),
   }));
   localStorage.setItem(STORAGE_KEY_SYMBOLS, JSON.stringify(clean));
+  if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
 export const saveSymbols = saveSymbolsToStorage;
 
-export function saveDrawings(chartKey, drawingsList) {
-  if (chartKey && Array.isArray(drawingsList)) {
-    state.drawingsByChartId[chartKey] = drawingsList;
+export function saveDrawings(chartKey, drawingsList, skipCloudSync = false) {
+  const normKey = normalizeCanonicalChartKey(chartKey);
+  if (normKey && Array.isArray(drawingsList)) {
+    state.drawingsByChartId[normKey] = drawingsList.map(normalizeDrawingObject).filter(Boolean);
   }
   localStorage.setItem(STORAGE_KEY_DRAWINGS, JSON.stringify(state.drawingsByChartId));
+  if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
-export function saveOpenTabsToStorage() {
+export function saveOpenTabsToStorage(skipCloudSync = false) {
   const clean = state.openTabs.map((t) => ({
     tabId: t.tabId,
     symbolCode: t.symbolCode,
@@ -334,6 +466,7 @@ export function saveOpenTabsToStorage() {
     showVolume: t.showVolume !== false,
   }));
   localStorage.setItem(STORAGE_KEY_OPEN_TABS, JSON.stringify(clean));
+  if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
 export const saveOpenTabs = saveOpenTabsToStorage;

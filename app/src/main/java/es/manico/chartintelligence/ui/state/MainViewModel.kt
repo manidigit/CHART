@@ -94,6 +94,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     )
     val uiState: StateFlow<Phase1UiState> = _uiState.asStateFlow()
 
+    private var autoSyncJob: kotlinx.coroutines.Job? = null
+
     init {
         viewModelScope.launch {
             val serverStatus = repository.syncOwnerStatusFromServer()
@@ -108,6 +110,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val status = repository.fetchSystemStatus()
             _uiState.update { it.copy(systemStatus = status) }
+            pullAndApplyCloudWorkspaceOnStartup()
         }
 
         // Proactively fetch real market data for watchlist symbols that have an empty cache
@@ -411,6 +414,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun toggleSymbolInWatchlist(symbolCode: String, enabled: Boolean) {
         val updated = symbolCoordinator.toggleWatchlist(_uiState.value.symbols, symbolCode, enabled)
         _uiState.update { it.copy(symbols = updated) }
+        scheduleDebouncedCloudSync()
         if (enabled) {
             val target = updated.firstOrNull { it.symbolCode == symbolCode }
             if (target != null && target.storedCandleCount == 0) {
@@ -463,6 +467,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 activeTabId = nextActiveTabId
             )
         }
+        scheduleDebouncedCloudSync()
         syncSingleSymbolUpToNow(symbolCode)
     }
 
@@ -921,6 +926,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        scheduleDebouncedCloudSync()
     }
 
     fun selectDrawingOnActiveTab(drawingId: String?) {
@@ -944,6 +950,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        scheduleDebouncedCloudSync()
     }
 
     fun deleteSelectedDrawingOnActiveTab() {
@@ -956,6 +963,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        scheduleDebouncedCloudSync()
     }
 
     fun clearAllDrawingsOnActiveTab() {
@@ -968,6 +976,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        scheduleDebouncedCloudSync()
     }
 
     fun selectDateRangeForActiveTab(rangeId: String) {
@@ -1279,57 +1288,104 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 statusBannerResId = R.string.prediction_levels_projected
             )
         }
+        scheduleDebouncedCloudSync()
     }
 
     fun updateTradingViewPreference(transform: (ChartPreferences) -> ChartPreferences) {
         val next = preferenceCoordinator.updateTradingViewPreference(_uiState.value.chartPreferences, transform)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
     }
 
     fun updateBullCandleColor(colorHex: String) {
         val next = preferenceCoordinator.updateBullCandleColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
     }
 
     fun updateBearCandleColor(colorHex: String) {
         val next = preferenceCoordinator.updateBearCandleColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
     }
 
     fun updateTrendLineColor(colorHex: String) {
         val next = preferenceCoordinator.updateTrendLineColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
     }
 
     fun updateHorizontalLineColor(colorHex: String) {
         val next = preferenceCoordinator.updateHorizontalLineColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
     }
 
     fun updateVerticalLineColor(colorHex: String) {
         val next = preferenceCoordinator.updateVerticalLineColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
     }
 
     fun updateAlgorithmParams(fetchLimit: Int, zoomStep: Int, touchTolerance: Float) {
         val next = preferenceCoordinator.updateAlgorithmParams(_uiState.value.chartPreferences, fetchLimit, zoomStep, touchTolerance)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
     }
 
     fun resetChartColorsToDefault() {
         val next = preferenceCoordinator.resetChartColorsToDefault(_uiState.value.chartPreferences)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
     }
 
     fun resetAlgorithmParamsToDefault() {
         val next = preferenceCoordinator.resetAlgorithmParamsToDefault(_uiState.value.chartPreferences)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
     }
 
     fun refreshSystemStatus() {
         viewModelScope.launch {
             val status = repository.fetchSystemStatus()
             _uiState.update { it.copy(systemStatus = status) }
+        }
+    }
+
+    private fun scheduleDebouncedCloudSync() {
+        autoSyncJob?.cancel()
+        autoSyncJob = viewModelScope.launch {
+            kotlinx.coroutines.delay(800L)
+            val symbols = _uiState.value.symbols
+            val prefs = _uiState.value.chartPreferences
+            val chartIds = symbols.map { it.chartId }
+            val drawings = repository.getAllCachedDrawings(chartIds)
+            val success = repository.syncWorkspaceToCloud(symbols, prefs, drawings)
+            if (success) {
+                val nowTimeStr = java.time.LocalTime.now().toString().take(5)
+                _uiState.update { it.copy(lastWorkspaceSyncedAt = nowTimeStr) }
+            }
+        }
+    }
+
+    private suspend fun pullAndApplyCloudWorkspaceOnStartup() {
+        val ws = repository.fetchCloudWorkspace() ?: return
+        val applied = repository.applyCloudWorkspaceToLocal(ws)
+        if (applied) {
+            val refreshedSymbols = repository.loadSymbolCatalog()
+            val refreshedPrefs = repository.loadChartPreferences()
+            val nowTimeStr = java.time.LocalTime.now().toString().take(5)
+            _uiState.update { state ->
+                val updatedTabs = state.openTabs.map { tab ->
+                    tab.copy(drawings = repository.loadDrawingsForChart(tab.chartId))
+                }
+                state.copy(
+                    symbols = refreshedSymbols,
+                    chartPreferences = refreshedPrefs,
+                    openTabs = updatedTabs,
+                    lastWorkspaceSyncedAt = nowTimeStr
+                )
+            }
         }
     }
 
@@ -1342,6 +1398,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val chartIds = symbols.map { it.chartId }
             val drawings = repository.getAllCachedDrawings(chartIds)
             val success = repository.syncWorkspaceToCloud(symbols, prefs, drawings)
+            if (!success) {
+                pullAndApplyCloudWorkspaceOnStartup()
+            }
             val nowTimeStr = java.time.LocalTime.now().toString().take(5)
             _uiState.update {
                 it.copy(

@@ -1,6 +1,6 @@
 {
-  "summary":  "Architectural and UX plan for unifying menus in the right dock rail, fixing bottom bar viewport clipping, adding resizable split panes, introducing a dedicated Indicators modal in the top bar, removing duplicate top symbol tabs, and implementing TradingView-grade Nice-Number Y-axis and adaptive timeframe X-axis formatting.",
-  "updatedAt":  "2026-11-10T11:50:39.038812402Z",
+  "summary":  "طرح جامع مهندسی هسته مرکزی واحد (P0-CORE-SYNC)، یکسان‌سازی ۱۰۰٪ قراردادهای همگام‌سازی دوشاخه وب و اندروید، رفع باگ سنتاکس بارگذاری ماژول وب (P1-UPG-10) و دسته‌بندی ۵ تب تنظیمات اندروید (P1-UPG-9)",
+  "updatedAt":  "2026-11-11T08:48:15.122708843Z",
   "requestFeedback":  true,
   "userFacing":  true
 }

@@ -180,8 +180,13 @@
     <string name="settings_group_appearance">۲. ظاهر و زبان</string>
     <string name="settings_group_sources">۳. منبع داده و نمادها</string>
     <string name="settings_group_params">۴. پارامترهای تحلیل و سوئیچ‌های TradingView</string>
-    <string name="settings_group_about">۵. درباره و پشتیبانی</string>
-    <string name="settings_about_version">نسخه ۱.۲۹.۰ · استاندارد حرفه‌ای TradingView</string>
+    <string name="settings_group_about">۵. سلامت سرور و درباره</string>
+    <string name="settings_about_version">نسخه ۱.۳۰.۰ · هسته مرکزی یکپارچه وب و اندروید</string>
+    <string name="settings_tab_account">حساب</string>
+    <string name="settings_tab_appearance">ظاهر</string>
+    <string name="settings_tab_sources">نمادها</string>
+    <string name="settings_tab_params">پارامترها</string>
+    <string name="settings_tab_health">سلامت</string>
     <string name="tv_hide_logos">مخفی کردن لوگوی نمادها (Hide logos)</string>
     <string name="tv_show_symbol_screen">نمایش صفحه بررسی نماد (Show symbol screen)</string>
     <string name="tv_chart_vibrations">لرزش لمسی روی چارت (Chart vibrations)</string>

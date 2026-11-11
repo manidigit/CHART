@@ -465,7 +465,7 @@ timeScale: {
 
 | اولویت | کد بسته | عنوان ارتقا | بخش هدف | پلتفرم | وضعیت |
 | :---: | :---: | :--- | :---: | :---: | :---: |
-| **P0 (TOP)** | `P0-CORE-SYNC` | **قانون الزام‌آور هسته مرکزی واحد و همگام‌سازی کامل وب ↔ اندروید (Single Central Core Engine Authority & 100% Cross-Platform Parity)** | `System Architecture` | Core Architecture | **الزام اولویت اول (TOP PRIORITY)** |
+| **P0 (TOP)** | `P0-CORE-SYNC` | **قانون الزام‌آور هسته مرکزی واحد و همگام‌سازی کامل وب ↔ اندروید (Single Central Core Engine Authority & 100% Cross-Platform Parity)** | `System Architecture` | Core Architecture | **انجام شد (COMPLETED)** |
 | **۰** | `P1-UPG-WEB` | **بازطراحی کامل ظاهر وب، رفع باگ تراز اعداد Canvas در RTL، فونت و Cache-Busting کروم، حذف ایموجی‌ها با آیکون SVG و حذف هدر تکراری واچ‌لیست** | `Web Terminal` | Web (Chrome & Firefox) | **انجام شد (COMPLETED)** |
 | **۱** | `P1-UPG-1` | **کراس‌هیر پیوسته با نگه‌داشتن انگشت (`Long-Press & Drag`) + ویبره لمسی قابل تنظیم (`Chart vibrations` / `Picker vibrates`)** | `Chart` & `Settings` | Android & Web | **انجام شد (COMPLETED)** |
 | **۲** | `P1-UPG-2` | **مقیاس لگاریتمی (`Logarithmic scale`) + خط‌چین `Previous close` + تایمر کندل + برچسب سقف/کف دید (`High/Low`) + دکمه شناور `»` برگشت به کندل آخر** | `Chart` | Android & Web | **انجام شد (COMPLETED)** |
@@ -475,8 +475,8 @@ timeScale: {
 | **۶** | `P1-UPG-6` | **مستندسازی و تدوین کارت‌های تحلیل فاندامنتال، تکمیلی، فصلی و گیج‌های آمپری تکنیکال (Seasonals, Key Data Points, Technicals Gauge, Income Statement, Dividends, Analyst Rating)** | `Watchlist / Overview` | Android & Web | **مستندسازی شد (DOCUMENTED)** |
 | **۷** | `P1-UPG-7` | **افزودن ژست‌های Swipe-to-Delete و Pull-to-Refresh در واچ‌لیست + ممیزی 48dp Touch Targets و حمایت از reduce-motion** | `Watchlist` & `UX` | Android & Web | **مستندسازی شد (DOCUMENTED)** |
 | **۸** | `P1-UPG-8` | **تدوین چک‌لیست ۱۰ امتیازی گیت تأیید عملی فاز ۱ (Phase 1 Acceptance Gate & Sign-off Protocol)** | `System & Gate` | Android & Web | **مستندسازی شد (DOCUMENTED)** |
-| **۹** | `P1-UPG-9` | **بازطراحی و مرتب‌سازی شلختگی صفحه تنظیمات اندروید با نوار تب‌های ۵ گانه دسته‌بندی‌شده (Segmented Category Tabs: حساب، ظاهر، نمادها، پارامترها، سلامت)** | `Settings` | Android (**HIGH PRIORITY**) | **مستندسازی شد (DOCUMENTED)** |
-| **۱۰** | `P1-UPG-10` | **اصلاح خطای همگام‌سازی و بارگذاری ES Module در وب (`SyntaxError: export declarations may only appear at top level`) + لایه ایزوله بازیابی sync** | `Web & Sync` | Web (**HIGH PRIORITY**) | **مستندسازی شد (DOCUMENTED)** |
+| **۹** | `P1-UPG-9` | **بازطراحی و مرتب‌سازی شلختگی صفحه تنظیمات اندروید با نوار تب‌های ۵ گانه دسته‌بندی‌شده (Segmented Category Tabs: حساب، ظاهر، نمادها، پارامترها، سلامت)** | `Settings` | Android & Web | **انجام شد (COMPLETED)** |
+| **۱۰** | `P1-UPG-10` | **اصلاح خطای همگام‌سازی و بارگذاری ES Module در وب (`SyntaxError: export declarations may only appear at top level`) + همگام‌سازی خودکار دوطرفه (`Bi-Directional Auto-Sync`)** | `Web & Sync` | Android & Web | **انجام شد (COMPLETED)** |
 
 
 

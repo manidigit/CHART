@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -125,13 +126,22 @@ fun SettingsScreen(
     var showAddSymbolDialog by rememberSaveable { mutableStateOf(false) }
     var showColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var providerModalSymbolCode by rememberSaveable { mutableStateOf<String?>(null) }
+    var activeSettingsTab by rememberSaveable { mutableStateOf("sources") }
+
+    val settingsTabs = listOf(
+        "account" to R.string.settings_tab_account,
+        "appearance" to R.string.settings_tab_appearance,
+        "sources" to R.string.settings_tab_sources,
+        "params" to R.string.settings_tab_params,
+        "health" to R.string.settings_tab_health
+    )
 
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        // [2] Compact 48.dp Header (TradingView Standard: Title only, zero extra buttons)
+        // [2] Compact 48.dp Header + 42.dp 5-Category Segmented Tab Bar (P1-UPG-9 Parity with Web)
         Surface(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 0.dp,
@@ -153,10 +163,50 @@ fun SettingsScreen(
                     )
                 }
                 HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .horizontalScroll(rememberScrollState())
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                        .testTag("settings_category_tabs_bar"),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    for ((tabKey, labelRes) in settingsTabs) {
+                        val isSelected = activeSettingsTab == tabKey
+                        Surface(
+                            shape = RoundedCornerShape(8.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background,
+                            border = BorderStroke(
+                                1.dp,
+                                if (isSelected) MaterialTheme.colorScheme.primary else financialPalette.cardBorder
+                            ),
+                            modifier = Modifier
+                                .heightIn(min = 34.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { activeSettingsTab = tabKey }
+                                .testTag("settings_tab_$tabKey")
+                        ) {
+                            Box(
+                                contentAlignment = Alignment.Center,
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(labelRes),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                    color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+                HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
             }
         }
 
-        // [3] Vertical Scroll Content — 5 Mandatory Groups in Fixed Order
+        // [3] Vertical Scroll Content — Categorized by Active Tab (5 Synchronized Categories)
         Column(
             modifier = Modifier
                 .weight(1f)
@@ -183,6 +233,7 @@ fun SettingsScreen(
                 // =========================================================================
                 // GROUP 1: 1. User Account (حساب کاربری)
                 // =========================================================================
+                if (activeSettingsTab == "account") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -303,10 +354,12 @@ fun SettingsScreen(
                         }
                     }
                 }
+                }
 
                 // =========================================================================
                 // GROUP 2: 2. Appearance & Language (ظاهر و زبان)
                 // =========================================================================
+                if (activeSettingsTab == "appearance") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -417,11 +470,13 @@ fun SettingsScreen(
                         }
                     }
                 }
+                }
 
                 // =========================================================================
                 // GROUP 3: 3. Data Sources & Symbols (منبع داده و نمادها)
                 // Exclusive place to configure per-symbol data source via clean BottomSheet
                 // =========================================================================
+                if (activeSettingsTab == "sources") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -465,157 +520,6 @@ fun SettingsScreen(
                                     text = stringResource(R.string.settings_action_add_symbol),
                                     style = MaterialTheme.typography.labelSmall
                                 )
-                            }
-                        }
-
-                        // Live Host MariaDB & Server Health Diagnostic Card (100% Parity with Web)
-                        Card(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .testTag("settings_server_health_card"),
-                            shape = RoundedCornerShape(8.dp),
-                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                            border = BorderStroke(1.dp, financialPalette.cardBorder)
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        val isDbOnline = systemStatus?.dbConnected == true
-                                        Box(
-                                            modifier = Modifier
-                                                .size(8.dp)
-                                                .clip(CircleShape)
-                                                .background(if (isDbOnline) financialPalette.bullCandle else financialPalette.warning)
-                                        )
-                                        Text(
-                                            text = stringResource(R.string.server_status_title),
-                                            style = MaterialTheme.typography.labelMedium,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Surface(
-                                            shape = RoundedCornerShape(4.dp),
-                                            color = MaterialTheme.colorScheme.surface,
-                                            border = BorderStroke(1.dp, financialPalette.cardBorder)
-                                        ) {
-                                            Text(
-                                                text = systemStatus?.dbVersion ?: "MariaDB",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontFamily = JetBrainsMonoFontFamily,
-                                                modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                    }
-
-                                    OutlinedButton(
-                                        onClick = onSyncCloudWorkspace,
-                                        enabled = !isWorkspaceSyncing,
-                                        shape = RoundedCornerShape(6.dp),
-                                        border = BorderStroke(1.dp, financialPalette.cardBorder),
-                                        contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                        modifier = Modifier
-                                            .height(32.dp)
-                                            .testTag("sync_cloud_workspace_button")
-                                    ) {
-                                        Text(
-                                            text = if (isWorkspaceSyncing) "☁️ " + stringResource(R.string.server_status_syncing) else "☁️ " + stringResource(R.string.server_status_btn_sync),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    // Box 1: Total Candles
-                                    Surface(
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = MaterialTheme.colorScheme.surface,
-                                        border = BorderStroke(1.dp, financialPalette.cardBorder)
-                                    ) {
-                                        Column(modifier = Modifier.padding(8.dp)) {
-                                            Text(
-                                                text = stringResource(R.string.server_status_db_candles),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            val candleStr = systemStatus?.totalCandles?.let { if (it > 0) it.toString() else "5,000+" } ?: "5,000+"
-                                            Text(
-                                                text = candleStr,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                fontFamily = JetBrainsMonoFontFamily,
-                                                color = financialPalette.bullCandle
-                                            )
-                                        }
-                                    }
-
-                                    // Box 2: Server UTC
-                                    Surface(
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = MaterialTheme.colorScheme.surface,
-                                        border = BorderStroke(1.dp, financialPalette.cardBorder)
-                                    ) {
-                                        Column(modifier = Modifier.padding(8.dp)) {
-                                            Text(
-                                                text = stringResource(R.string.server_status_server_utc),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            val utcStr = systemStatus?.serverTimeUtc?.takeIf { it.isNotBlank() }?.let {
-                                                if (it.length >= 19) it.substring(11, 19) + " UTC" else it
-                                            } ?: "UTC Connected"
-                                            Text(
-                                                text = utcStr,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontFamily = JetBrainsMonoFontFamily,
-                                                color = MaterialTheme.colorScheme.onSurface
-                                            )
-                                        }
-                                    }
-
-                                    // Box 3: Cloud Sync Status
-                                    Surface(
-                                        modifier = Modifier.weight(1f),
-                                        shape = RoundedCornerShape(6.dp),
-                                        color = MaterialTheme.colorScheme.surface,
-                                        border = BorderStroke(1.dp, financialPalette.cardBorder)
-                                    ) {
-                                        Column(modifier = Modifier.padding(8.dp)) {
-                                            Text(
-                                                text = stringResource(R.string.server_status_cloud_sync),
-                                                style = MaterialTheme.typography.labelSmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            val syncStr = lastWorkspaceSyncedAt ?: stringResource(R.string.server_status_local_synced)
-                                            Text(
-                                                text = syncStr,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontWeight = FontWeight.SemiBold,
-                                                fontFamily = JetBrainsMonoFontFamily,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                        }
-                                    }
-                                }
                             }
                         }
 
@@ -728,10 +632,12 @@ fun SettingsScreen(
                         }
                     }
                 }
+                }
 
                 // =========================================================================
                 // GROUP 4: 4. Analysis Parameters (پارامترهای تحلیل)
                 // =========================================================================
+                if (activeSettingsTab == "params") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -988,10 +894,159 @@ fun SettingsScreen(
                         )
                     }
                 }
+                }
 
                 // =========================================================================
-                // GROUP 5: 5. About & Support (درباره و پشتیبانی)
+                // GROUP 5: 5. Server Health & About (سلامت سرور و درباره)
                 // =========================================================================
+                if (activeSettingsTab == "health") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_server_health_card"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val isDbOnline = systemStatus?.dbConnected == true
+                                Box(
+                                    modifier = Modifier
+                                        .size(8.dp)
+                                        .clip(CircleShape)
+                                        .background(if (isDbOnline) financialPalette.bullCandle else financialPalette.warning)
+                                )
+                                Text(
+                                    text = stringResource(R.string.server_status_title),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Surface(
+                                    shape = RoundedCornerShape(4.dp),
+                                    color = MaterialTheme.colorScheme.background,
+                                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                                ) {
+                                    Text(
+                                        text = systemStatus?.dbVersion ?: "MariaDB",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+
+                            OutlinedButton(
+                                onClick = onSyncCloudWorkspace,
+                                enabled = !isWorkspaceSyncing,
+                                shape = RoundedCornerShape(6.dp),
+                                border = BorderStroke(1.dp, financialPalette.cardBorder),
+                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                modifier = Modifier
+                                    .height(32.dp)
+                                    .testTag("sync_cloud_workspace_button")
+                            ) {
+                                Text(
+                                    text = if (isWorkspaceSyncing) "☁️ " + stringResource(R.string.server_status_syncing) else "☁️ " + stringResource(R.string.server_status_btn_sync),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.primary
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.background,
+                                border = BorderStroke(1.dp, financialPalette.cardBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text(
+                                        text = stringResource(R.string.server_status_db_candles),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    val candleStr = systemStatus?.totalCandles?.let { if (it > 0) it.toString() else "5,000+" } ?: "5,000+"
+                                    Text(
+                                        text = candleStr,
+                                        style = MaterialTheme.typography.bodyMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = financialPalette.bullCandle
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.background,
+                                border = BorderStroke(1.dp, financialPalette.cardBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text(
+                                        text = stringResource(R.string.server_status_server_utc),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    val utcStr = systemStatus?.serverTimeUtc?.takeIf { it.isNotBlank() }?.let {
+                                        if (it.length >= 19) it.substring(11, 19) + " UTC" else it
+                                    } ?: "UTC Connected"
+                                    Text(
+                                        text = utcStr,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                }
+                            }
+
+                            Surface(
+                                modifier = Modifier.weight(1f),
+                                shape = RoundedCornerShape(6.dp),
+                                color = MaterialTheme.colorScheme.background,
+                                border = BorderStroke(1.dp, financialPalette.cardBorder)
+                            ) {
+                                Column(modifier = Modifier.padding(8.dp)) {
+                                    Text(
+                                        text = stringResource(R.string.server_status_cloud_sync),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                    val syncStr = lastWorkspaceSyncedAt ?: stringResource(R.string.server_status_local_synced)
+                                    Text(
+                                        text = syncStr,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1035,6 +1090,7 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
+                }
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))

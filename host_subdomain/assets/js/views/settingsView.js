@@ -20,6 +20,7 @@ export function renderLanguageThemeBar(i18n) {
 export function renderSettingsModal(i18n) {
   if (state.activeModal !== 'settings') return '';
   const p = state.chartPreferences;
+  const isFa = i18n.getCurrentLanguage() === 'fa';
   const tab = state.settingsTab || 'sources';
 
   const symbolsList = state.symbols
@@ -131,48 +132,47 @@ export function renderSettingsModal(i18n) {
     },
   ];
 
-  let bodyHtml = '';
-  if (tab === 'sources') {
-    const sys = state.systemStatus;
-    const isDbOnline = Boolean(sys && sys.database && sys.database.connected);
-    const dbVer = sys && sys.database ? (sys.database.version || 'MariaDB 10.6.28') : 'MariaDB (Host cPanel)';
-    const totalCandles = sys ? Number(sys.total_candles || 0).toLocaleString() : '5,000+';
-    const serverUtc = sys ? (sys.server_time_utc || 'UTC Connected') : (new Date().toISOString().slice(11, 19) + ' UTC');
-    const wsSynced = state.lastWorkspaceSyncedAt
-      ? new Date(state.lastWorkspaceSyncedAt).toLocaleTimeString()
-      : (isFa ? 'همگام‌سازی محلی' : 'Local Synced');
+  const sys = state.systemStatus;
+  const isDbOnline = Boolean(sys && sys.database && sys.database.connected);
+  const dbVer = sys && sys.database ? (sys.database.version || 'MariaDB 10.6.28') : 'MariaDB (Host cPanel)';
+  const totalCandles = sys ? Number(sys.total_candles || 0).toLocaleString() : '5,000+';
+  const serverUtc = sys ? (sys.server_time_utc || 'UTC Connected') : (new Date().toISOString().slice(11, 19) + ' UTC');
+  const wsSynced = state.lastWorkspaceSyncedAt
+    ? new Date(state.lastWorkspaceSyncedAt).toLocaleTimeString()
+    : (isFa ? 'همگام‌سازی محلی' : 'Local Synced');
 
-    const serverDiagCard = `
-      <div class="card-subtle" style="margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); padding: 12px 14px; border-radius: 8px;">
-        <div class="row-between" style="margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-          <div style="display: flex; align-items: center; gap: 8px;">
-            <span style="width: 8px; height: 8px; border-radius: 50%; background: ${isDbOnline ? 'var(--bull)' : 'var(--gold)'}; display: inline-block;"></span>
-            <span style="font-size: 12.5px; font-weight: 700; color: var(--text-strong);">${isFa ? 'وضعیت زنده دیتابیس MariaDB و سرور هاست' : 'Host MariaDB & Server Health'}</span>
-            <span class="ltr-num" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--card-bg); border: 1px solid var(--border); color: var(--text-muted);">${dbVer}</span>
-          </div>
-          <button type="button" class="btn btn-sm" data-action="sync-cloud-workspace" title="${isFa ? 'همگام‌سازی ابری خطوط، واچ‌لیست و تنظیمات' : 'Sync workspace to cloud'}">
-            ☁️ ${state.isWorkspaceSyncing ? (isFa ? 'در حال همگام‌سازی...' : 'Syncing...') : (isFa ? 'همگام‌سازی ابری فضای کاری' : 'Sync Workspace Cloud')}
-          </button>
+  const serverDiagCard = `
+    <div class="card-subtle" style="margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); padding: 12px 14px; border-radius: 8px;">
+      <div class="row-between" style="margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <span style="width: 8px; height: 8px; border-radius: 50%; background: ${isDbOnline ? 'var(--bull)' : 'var(--gold)'}; display: inline-block;"></span>
+          <span style="font-size: 12.5px; font-weight: 700; color: var(--text-strong);">${isFa ? 'وضعیت زنده دیتابیس MariaDB و سرور هاست' : 'Host MariaDB & Server Health'}</span>
+          <span class="ltr-num" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--card-bg); border: 1px solid var(--border); color: var(--text-muted);">${dbVer}</span>
         </div>
-        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 11px;">
-          <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
-            <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'کل کندل‌های دیتابیس' : 'DB Candles'}</div>
-            <div class="ltr-num" style="font-weight: 700; color: var(--bull); font-size: 13px;">${totalCandles}</div>
-          </div>
-          <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
-            <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'ساعت سرور UTC' : 'Server UTC'}</div>
-            <div class="ltr-num" style="font-weight: 600; color: var(--text);">${serverUtc}</div>
-          </div>
-          <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
-            <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'وضعیت همگام‌سازی ابری' : 'Cloud Sync Status'}</div>
-            <div class="ltr-num" style="font-weight: 600; color: var(--primary);">${wsSynced}</div>
-          </div>
+        <button type="button" class="btn btn-sm" data-action="sync-cloud-workspace" title="${isFa ? 'همگام‌سازی ابری خطوط، واچ‌لیست و تنظیمات' : 'Sync workspace to cloud'}">
+          ☁️ ${state.isWorkspaceSyncing ? (isFa ? 'در حال همگام‌سازی...' : 'Syncing...') : (isFa ? 'همگام‌سازی ابری فضای کاری' : 'Sync Workspace Cloud')}
+        </button>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 11px;">
+        <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
+          <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'کل کندل‌های دیتابیس' : 'DB Candles'}</div>
+          <div class="ltr-num" style="font-weight: 700; color: var(--bull); font-size: 13px;">${totalCandles}</div>
+        </div>
+        <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
+          <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'ساعت سرور UTC' : 'Server UTC'}</div>
+          <div class="ltr-num" style="font-weight: 600; color: var(--text);">${serverUtc}</div>
+        </div>
+        <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
+          <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'وضعیت همگام‌سازی ابری' : 'Cloud Sync Status'}</div>
+          <div class="ltr-num" style="font-weight: 600; color: var(--primary);">${wsSynced}</div>
         </div>
       </div>
-    `;
+    </div>
+  `;
 
+  let bodyHtml = '';
+  if (tab === 'sources') {
     bodyHtml = `
-      ${serverDiagCard}
       <div class="row-between" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
         <div>
           <h4 style="margin: 0; font-size: 14px; color: var(--text-strong);">${i18n.t('settings_group_sources')}</h4>
@@ -337,7 +337,7 @@ export function renderSettingsModal(i18n) {
           .join('')}
       </div>
     `;
-  } else {
+  } else if (tab === 'account') {
     bodyHtml = `
       <div class="card-subtle" style="margin-bottom: 12px;">
         <div class="row-between" style="margin-bottom: 12px;">
@@ -370,7 +370,10 @@ export function renderSettingsModal(i18n) {
           </div>
         </form>
       </div>
-
+    `;
+  } else {
+    bodyHtml = `
+      ${serverDiagCard}
       <div class="card-subtle">
         <h5 style="margin: 0 0 6px 0; color: var(--text-strong);">${i18n.t('settings_group_about')}</h5>
         <div class="ltr-num" style="font-size: 12px; color: var(--primary); font-weight: 600;">
@@ -395,17 +398,20 @@ export function renderSettingsModal(i18n) {
         </div>
 
         <div class="tv-modal-tabs">
-          <button type="button" class="tv-modal-tab ${tab === 'sources' ? 'active' : ''}" data-action="set-settings-tab" data-tab="sources">
-            ${i18n.t('settings_group_sources')}
+          <button type="button" class="tv-modal-tab ${tab === 'account' ? 'active' : ''}" data-action="set-settings-tab" data-tab="account">
+            ${i18n.t('settings_group_account')}
           </button>
           <button type="button" class="tv-modal-tab ${tab === 'appearance' ? 'active' : ''}" data-action="set-settings-tab" data-tab="appearance">
             ${i18n.t('settings_group_appearance')}
           </button>
+          <button type="button" class="tv-modal-tab ${tab === 'sources' ? 'active' : ''}" data-action="set-settings-tab" data-tab="sources">
+            ${i18n.t('settings_group_sources')}
+          </button>
           <button type="button" class="tv-modal-tab ${tab === 'scales' ? 'active' : ''}" data-action="set-settings-tab" data-tab="scales">
             ${i18n.t('settings_group_params')}
           </button>
-          <button type="button" class="tv-modal-tab ${tab === 'account' ? 'active' : ''}" data-action="set-settings-tab" data-tab="account">
-            ${i18n.t('settings_group_account')}
+          <button type="button" class="tv-modal-tab ${tab === 'health' ? 'active' : ''}" data-action="set-settings-tab" data-tab="health">
+            ${i18n.t('settings_group_about')}
           </button>
         </div>
 

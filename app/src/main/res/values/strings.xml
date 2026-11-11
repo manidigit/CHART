@@ -180,8 +180,13 @@
     <string name="settings_group_appearance">2. Appearance &amp; Language</string>
     <string name="settings_group_sources">3. Data Sources &amp; Symbols</string>
     <string name="settings_group_params">4. Analysis &amp; TradingView Switches</string>
-    <string name="settings_group_about">5. About &amp; Support</string>
-    <string name="settings_about_version">CHART Intelligence v1.29.0 · TradingView Standard</string>
+    <string name="settings_group_about">5. Server Health &amp; About</string>
+    <string name="settings_about_version">CHART Intelligence v1.30.0 · Unified Central Core</string>
+    <string name="settings_tab_account">Account</string>
+    <string name="settings_tab_appearance">Appearance</string>
+    <string name="settings_tab_sources">Symbols</string>
+    <string name="settings_tab_params">Options</string>
+    <string name="settings_tab_health">Health</string>
     <string name="tv_hide_logos">Hide logos</string>
     <string name="tv_show_symbol_screen">Show symbol screen</string>
     <string name="tv_chart_vibrations">Chart vibrations</string>

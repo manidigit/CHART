@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.29.0';
+import { I18nManager } from './core/i18n.js?v=1.30.0';
 import {
   state,
   savePreferences,
@@ -10,7 +10,8 @@ import {
   getCachedOrAggregatedCandles,
   resetColorsToDefault,
   resetAlgoParamsToDefault,
-} from './core/store.js?v=1.29.0';
+  registerAutoSyncCallback,
+} from './core/store.js?v=1.30.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -24,28 +25,34 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.29.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.29.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.29.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.29.0';
+} from './services/apiService.js?v=1.30.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.30.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.30.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.30.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.29.0';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.29.0';
+} from './views/headerView.js?v=1.30.0';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.30.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.29.0';
-import { renderPredictionModal } from './views/analysisView.js?v=1.29.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.29.0';
-import { renderRightIconRail } from './views/navigationView.js?v=1.29.0';
+} from './views/watchlistView.js?v=1.30.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.30.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.30.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.30.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
 let canvasResizeObserver = null;
+
+registerAutoSyncCallback(() => {
+  if (state.isAuthenticated) {
+    uploadWorkspaceSync().catch(() => {});
+  }
+});
 
 function applyTheme() {
   const mode = state.isDarkTheme ? 'dark' : 'light';
@@ -67,9 +74,10 @@ function ensureInitialTabs() {
       const sym = state.symbols.find((s) => s.symbolCode === tab.symbolCode);
       const prov = tab.provider || (sym ? sym.activeProvider : 'tvdatafeed');
       const tf = tab.timeframe || 'M15';
+      tab.chartId = `${tab.symbolCode}_${tf}`;
       const cached = getCachedOrAggregatedCandles(tab.symbolCode, prov, tf);
       tab.candles = cached.length > 0 ? cached : (sym && sym.candles) || [];
-      tab.drawings = state.drawingsByChartId[`${tab.symbolCode}_${tf}`] || tab.drawings || [];
+      tab.drawings = state.drawingsByChartId[tab.chartId] || tab.drawings || [];
     });
     if (!state.activeTabId || !state.openTabs.some((t) => t.tabId === state.activeTabId)) {
       const preferred = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
@@ -87,6 +95,7 @@ function ensureInitialTabs() {
     const cached = getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, tf);
     state.openTabs.push({
       tabId,
+      chartId: drawKey,
       symbolCode: sym.symbolCode,
       provider: sym.activeProvider,
       timeframe: tf,
@@ -119,7 +128,7 @@ function ensureInitialTabs() {
     const preferred = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
     state.activeTabId = preferred ? preferred.tabId : state.openTabs[0].tabId;
   }
-  saveOpenTabs();
+  saveOpenTabs(true);
 }
 
 function openOrFocusSymbolTab(symbolCode, requestedTf) {
@@ -134,16 +143,19 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       : requestedTf || (existing ? existing.timeframe : (sym.timeframe || 'M15'));
 
   const cached = getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
+  const drawKey = `${symbolCode}_${tf}`;
   if (existing) {
     existing.timeframe = tf;
+    existing.chartId = drawKey;
     existing.provider = sym.activeProvider;
     existing.candles = cached.length > 0 ? cached : sym.candles || [];
-    existing.drawings = state.drawingsByChartId[`${symbolCode}_${tf}`] || existing.drawings || [];
+    existing.drawings = state.drawingsByChartId[drawKey] || existing.drawings || [];
     state.activeTabId = existing.tabId;
   } else {
     const tabId = `tab_${symbolCode}_${Date.now()}`;
     const newTab = {
       tabId,
+      chartId: drawKey,
       symbolCode: sym.symbolCode,
       provider: sym.activeProvider,
       timeframe: tf,
@@ -168,7 +180,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       activeDrawingWidthPx: 2.0,
       selectedDrawingId: null,
       pendingTrendStart: null,
-      drawings: state.drawingsByChartId[`${symbolCode}_${tf}`] || [],
+      drawings: state.drawingsByChartId[drawKey] || [],
     };
     state.openTabs.push(newTab);
     state.activeTabId = tabId;
@@ -954,9 +966,11 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-timeframe' && activeTab) {
     const newTf = el.getAttribute('data-tf') || 'M15';
     activeTab.timeframe = newTf;
+    activeTab.chartId = `${activeTab.symbolCode}_${newTf}`;
     activeTab.selectedRangePreset = null;
     activeTab.scrollOffset = 0;
-    activeTab.drawings = state.drawingsByChartId[`${activeTab.symbolCode}_${newTf}`] || [];
+    activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
+    saveOpenTabsToStorage();
     const cached = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
     if (cached.length > 0) {
       activeTab.candles = cached;
@@ -986,7 +1000,9 @@ document.addEventListener('click', async (e) => {
 
     const tfChanged = activeTab.timeframe !== targetTf;
     activeTab.timeframe = targetTf;
-    activeTab.drawings = state.drawingsByChartId[`${activeTab.symbolCode}_${targetTf}`] || [];
+    activeTab.chartId = `${activeTab.symbolCode}_${targetTf}`;
+    activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
+    saveOpenTabsToStorage();
     const cached = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, targetTf);
     if (cached.length > 0) {
       activeTab.candles = cached;

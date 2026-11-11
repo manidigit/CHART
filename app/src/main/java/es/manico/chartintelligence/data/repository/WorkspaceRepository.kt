@@ -689,104 +689,116 @@ class WorkspaceRepository(context: Context) {
         updatedSymbol to merged
     }
 
-    fun loadDrawingsForChart(chartId: String): List<ChartDrawing> {
-        val inMem = drawingsMemoryStore[chartId]
-        if (inMem != null) return inMem
-        val raw = prefs.getString("${AppConfig.KEY_DRAWINGS_CACHE_PREFIX}$chartId", null)
-            ?: return emptyList()
-        val parsed = runCatching {
-            val arr = JSONArray(raw)
-            val list = ArrayList<ChartDrawing>(arr.length())
-            for (i in 0 until arr.length()) {
-                val obj = arr.getJSONObject(i)
-                val id = obj.optString("id")
-                val colorHex = obj.optString("colorHex", "").takeIf { it.isNotBlank() }
-                val strokeWidthDp = obj.optDouble("strokeWidthDp", 2.2).toFloat().coerceIn(1.0f, 6.0f)
-                when (obj.optString("type")) {
-                    "horizontal_line" -> {
-                        list.add(
-                            ChartDrawing.HorizontalLine(
-                                id = id,
-                                price = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("price", "0"))),
-                                colorHex = colorHex,
-                                strokeWidthDp = strokeWidthDp
-                            )
-                        )
-                    }
-                    "vertical_line" -> {
-                        list.add(
-                            ChartDrawing.VerticalLine(
-                                id = id,
-                                timeUtcMillis = obj.optLong("timeUtcMillis", 0L),
-                                colorHex = colorHex,
-                                strokeWidthDp = strokeWidthDp
-                            )
-                        )
-                    }
-                    "trend_line" -> {
-                        list.add(
-                            ChartDrawing.TrendLine(
-                                id = id,
-                                startTimeUtcMillis = obj.optLong("startTimeUtcMillis", 0L),
-                                startPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("startPrice", "0"))),
-                                endTimeUtcMillis = obj.optLong("endTimeUtcMillis", 0L),
-                                endPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("endPrice", "0"))),
-                                colorHex = colorHex,
-                                strokeWidthDp = strokeWidthDp
-                            )
-                        )
-                    }
-                    "fib_retracement" -> {
-                        list.add(
-                            ChartDrawing.FibRetracement(
-                                id = id,
-                                startTimeUtcMillis = obj.optLong("startTimeUtcMillis", 0L),
-                                startPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("startPrice", "0"))),
-                                endTimeUtcMillis = obj.optLong("endTimeUtcMillis", 0L),
-                                endPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("endPrice", "0"))),
-                                colorHex = colorHex,
-                                strokeWidthDp = strokeWidthDp
-                            )
-                        )
-                    }
-                    "long_position" -> {
-                        list.add(
-                            ChartDrawing.LongPosition(
-                                id = id,
-                                startTimeUtcMillis = obj.optLong("startTimeUtcMillis", 0L),
-                                endTimeUtcMillis = obj.optLong("endTimeUtcMillis", 0L),
-                                entryPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("entryPrice", "0"))),
-                                targetPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("targetPrice", "0"))),
-                                stopPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("stopPrice", "0"))),
-                                colorHex = colorHex,
-                                strokeWidthDp = strokeWidthDp
-                            )
-                        )
-                    }
-                    "short_position" -> {
-                        list.add(
-                            ChartDrawing.ShortPosition(
-                                id = id,
-                                startTimeUtcMillis = obj.optLong("startTimeUtcMillis", 0L),
-                                endTimeUtcMillis = obj.optLong("endTimeUtcMillis", 0L),
-                                entryPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("entryPrice", "0"))),
-                                targetPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("targetPrice", "0"))),
-                                stopPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("stopPrice", "0"))),
-                                colorHex = colorHex,
-                                strokeWidthDp = strokeWidthDp
-                            )
-                        )
-                    }
-                }
-            }
-            list
-        }.getOrDefault(emptyList())
-        drawingsMemoryStore[chartId] = parsed
-        return parsed
+    private fun normalizeAndroidHex(raw: String?, fallback: String): String {
+        val cleaned = raw.orEmpty().trim().removePrefix("#").uppercase()
+        return when {
+            cleaned.length == 6 && cleaned.all { it.isDigit() || it in 'A'..'F' } -> "FF$cleaned"
+            cleaned.length == 8 && cleaned.all { it.isDigit() || it in 'A'..'F' } -> cleaned
+            else -> fallback
+        }
     }
 
-    fun saveDrawingsForChart(chartId: String, drawings: List<ChartDrawing>) {
-        drawingsMemoryStore[chartId] = drawings
+    private fun parseDrawingsArray(arr: JSONArray): List<ChartDrawing> {
+        val list = ArrayList<ChartDrawing>(arr.length())
+        for (i in 0 until arr.length()) {
+            val obj = arr.optJSONObject(i) ?: continue
+            val id = obj.optString("id").ifBlank { "d_${System.currentTimeMillis()}_$i" }
+            val rawColor = obj.optString("colorHex", obj.optString("color", ""))
+            val colorHex = rawColor.takeIf { it.isNotBlank() }?.let { normalizeAndroidHex(it, "FF2962FF") }
+            val strokeWidthDp = obj.optDouble(
+                "strokeWidthDp",
+                obj.optDouble("width", 2.2)
+            ).toFloat().coerceIn(1.0f, 6.0f)
+
+            when (obj.optString("type").lowercase()) {
+                "horizontal_line", "hline" -> {
+                    list.add(
+                        ChartDrawing.HorizontalLine(
+                            id = id,
+                            price = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("price", "0"))),
+                            colorHex = colorHex,
+                            strokeWidthDp = strokeWidthDp
+                        )
+                    )
+                }
+                "vertical_line", "vline" -> {
+                    list.add(
+                        ChartDrawing.VerticalLine(
+                            id = id,
+                            timeUtcMillis = obj.optLong("timeUtcMillis", obj.optLong("time", 0L)),
+                            colorHex = colorHex,
+                            strokeWidthDp = strokeWidthDp
+                        )
+                    )
+                }
+                "trend_line", "trend" -> {
+                    list.add(
+                        ChartDrawing.TrendLine(
+                            id = id,
+                            startTimeUtcMillis = obj.optLong("startTimeUtcMillis", obj.optLong("t1", 0L)),
+                            startPrice = CandleValidatorAlgorithm.normalizeDecimal(
+                                BigDecimal(obj.optString("startPrice", obj.optString("p1", "0")))
+                            ),
+                            endTimeUtcMillis = obj.optLong("endTimeUtcMillis", obj.optLong("t2", 0L)),
+                            endPrice = CandleValidatorAlgorithm.normalizeDecimal(
+                                BigDecimal(obj.optString("endPrice", obj.optString("p2", "0")))
+                            ),
+                            colorHex = colorHex,
+                            strokeWidthDp = strokeWidthDp
+                        )
+                    )
+                }
+                "fib_retracement", "fib" -> {
+                    list.add(
+                        ChartDrawing.FibRetracement(
+                            id = id,
+                            startTimeUtcMillis = obj.optLong("startTimeUtcMillis", obj.optLong("t1", 0L)),
+                            startPrice = CandleValidatorAlgorithm.normalizeDecimal(
+                                BigDecimal(obj.optString("startPrice", obj.optString("p1", "0")))
+                            ),
+                            endTimeUtcMillis = obj.optLong("endTimeUtcMillis", obj.optLong("t2", 0L)),
+                            endPrice = CandleValidatorAlgorithm.normalizeDecimal(
+                                BigDecimal(obj.optString("endPrice", obj.optString("p2", "0")))
+                            ),
+                            colorHex = colorHex,
+                            strokeWidthDp = strokeWidthDp
+                        )
+                    )
+                }
+                "long_position", "long_pos" -> {
+                    list.add(
+                        ChartDrawing.LongPosition(
+                            id = id,
+                            startTimeUtcMillis = obj.optLong("startTimeUtcMillis", obj.optLong("t1", 0L)),
+                            endTimeUtcMillis = obj.optLong("endTimeUtcMillis", obj.optLong("t2", 0L)),
+                            entryPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("entryPrice", "0"))),
+                            targetPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("targetPrice", "0"))),
+                            stopPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("stopPrice", "0"))),
+                            colorHex = colorHex,
+                            strokeWidthDp = strokeWidthDp
+                        )
+                    )
+                }
+                "short_position", "short_pos" -> {
+                    list.add(
+                        ChartDrawing.ShortPosition(
+                            id = id,
+                            startTimeUtcMillis = obj.optLong("startTimeUtcMillis", obj.optLong("t1", 0L)),
+                            endTimeUtcMillis = obj.optLong("endTimeUtcMillis", obj.optLong("t2", 0L)),
+                            entryPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("entryPrice", "0"))),
+                            targetPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("targetPrice", "0"))),
+                            stopPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("stopPrice", "0"))),
+                            colorHex = colorHex,
+                            strokeWidthDp = strokeWidthDp
+                        )
+                    )
+                }
+            }
+        }
+        return list
+    }
+
+    private fun serializeDrawingsArray(drawings: List<ChartDrawing>): JSONArray {
         val arr = JSONArray()
         for (d in drawings) {
             val obj = JSONObject()
@@ -837,6 +849,24 @@ class WorkspaceRepository(context: Context) {
             }
             arr.put(obj)
         }
+        return arr
+    }
+
+    fun loadDrawingsForChart(chartId: String): List<ChartDrawing> {
+        val inMem = drawingsMemoryStore[chartId]
+        if (inMem != null) return inMem
+        val raw = prefs.getString("${AppConfig.KEY_DRAWINGS_CACHE_PREFIX}$chartId", null)
+            ?: return emptyList()
+        val parsed = runCatching {
+            parseDrawingsArray(JSONArray(raw))
+        }.getOrDefault(emptyList())
+        drawingsMemoryStore[chartId] = parsed
+        return parsed
+    }
+
+    fun saveDrawingsForChart(chartId: String, drawings: List<ChartDrawing>) {
+        drawingsMemoryStore[chartId] = drawings
+        val arr = serializeDrawingsArray(drawings)
         prefs.edit().putString("${AppConfig.KEY_DRAWINGS_CACHE_PREFIX}$chartId", arr.toString()).apply()
     }
 
@@ -993,7 +1023,7 @@ class WorkspaceRepository(context: Context) {
                             val dbVer = dbObj?.optString("version", "MariaDB") ?: "MariaDB"
                             SystemStatusDto(
                                 isHealthy = data.optString("status") == "healthy",
-                                version = data.optString("version", "1.29.0"),
+                                version = data.optString("version", "1.30.0"),
                                 serverTimeUtc = data.optString("server_time_utc", ""),
                                 dbConnected = isDbConn,
                                 dbVersion = dbVer,
@@ -1008,7 +1038,7 @@ class WorkspaceRepository(context: Context) {
         }
         SystemStatusDto(
             isHealthy = true,
-            version = "1.29.0",
+            version = "1.30.0",
             serverTimeUtc = "Local Cached",
             dbConnected = false,
             dbVersion = "MariaDB (Local)",
@@ -1024,52 +1054,16 @@ class WorkspaceRepository(context: Context) {
     ): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             val drawingsObj = JSONObject()
+            val symbolByChartId = symbols.associateBy { it.chartId }
             for ((chartId, dList) in drawingsMap) {
-                val arr = JSONArray()
-                for (d in dList) {
-                    val dObj = JSONObject().put("id", d.id).put("strokeWidthDp", d.strokeWidthDp.toDouble())
-                    if (!d.colorHex.isNullOrBlank()) dObj.put("colorHex", d.colorHex)
-                    when (d) {
-                        is ChartDrawing.HorizontalLine -> {
-                            dObj.put("type", "horizontal_line").put("price", d.price.toPlainString())
-                        }
-                        is ChartDrawing.VerticalLine -> {
-                            dObj.put("type", "vertical_line").put("timeUtcMillis", d.timeUtcMillis)
-                        }
-                        is ChartDrawing.TrendLine -> {
-                            dObj.put("type", "trend_line")
-                                .put("startTimeUtcMillis", d.startTimeUtcMillis)
-                                .put("startPrice", d.startPrice.toPlainString())
-                                .put("endTimeUtcMillis", d.endTimeUtcMillis)
-                                .put("endPrice", d.endPrice.toPlainString())
-                        }
-                        is ChartDrawing.FibRetracement -> {
-                            dObj.put("type", "fib_retracement")
-                                .put("startTimeUtcMillis", d.startTimeUtcMillis)
-                                .put("startPrice", d.startPrice.toPlainString())
-                                .put("endTimeUtcMillis", d.endTimeUtcMillis)
-                                .put("endPrice", d.endPrice.toPlainString())
-                        }
-                        is ChartDrawing.LongPosition -> {
-                            dObj.put("type", "long_position")
-                                .put("startTimeUtcMillis", d.startTimeUtcMillis)
-                                .put("endTimeUtcMillis", d.endTimeUtcMillis)
-                                .put("entryPrice", d.entryPrice.toPlainString())
-                                .put("targetPrice", d.targetPrice.toPlainString())
-                                .put("stopPrice", d.stopPrice.toPlainString())
-                        }
-                        is ChartDrawing.ShortPosition -> {
-                            dObj.put("type", "short_position")
-                                .put("startTimeUtcMillis", d.startTimeUtcMillis)
-                                .put("endTimeUtcMillis", d.endTimeUtcMillis)
-                                .put("entryPrice", d.entryPrice.toPlainString())
-                                .put("targetPrice", d.targetPrice.toPlainString())
-                                .put("stopPrice", d.stopPrice.toPlainString())
-                        }
-                    }
-                    arr.put(dObj)
-                }
+                val arr = serializeDrawingsArray(dList)
                 drawingsObj.put(chartId, arr)
+                // Also write under canonical ${symbolCode}_${timeframe} and ${symbolCode}_M15 keys for Web parity
+                val sym = symbolByChartId[chartId]
+                if (sym != null) {
+                    drawingsObj.put("${sym.symbolCode}_${sym.timeframe.uppercase()}", arr)
+                    drawingsObj.put("${sym.symbolCode}_M15", arr)
+                }
             }
 
             val symbolsArr = JSONArray()
@@ -1092,6 +1086,7 @@ class WorkspaceRepository(context: Context) {
                 .put("verticalLineColorHex", preferences.verticalLineColorHex)
                 .put("chartGridColorHex", preferences.chartGridColorHex)
                 .put("candleFetchLimit", preferences.candleFetchLimit)
+                .put("zoomStepCandles", preferences.zoomStepCandles)
                 .put("drawingHitTolerancePx", preferences.drawingHitTolerancePx.toDouble())
                 .put("hideWatchlistLogos", preferences.hideWatchlistLogos)
                 .put("showSymbolScreen", preferences.showSymbolScreen)
@@ -1105,10 +1100,14 @@ class WorkspaceRepository(context: Context) {
                 .put("showPrevCloseLine", preferences.showPrevCloseLine)
                 .put("showHighLowLabels", preferences.showHighLowLabels)
 
+            val openTabsObj = JSONObject()
+                .put("lastOpenedSymbolCode", loadLastOpenedSymbolCode() ?: "SPOTBRENT")
+
             val workspaceData = JSONObject()
                 .put("drawings", drawingsObj)
                 .put("symbols", symbolsArr)
                 .put("preferences", prefsObj)
+                .put("open_tabs", openTabsObj)
 
             val payload = JSONObject().put("workspace", workspaceData)
             val req = Request.Builder()
@@ -1141,4 +1140,115 @@ class WorkspaceRepository(context: Context) {
             }
         }.getOrNull()
     }
+
+    /**
+     * Applies a downloaded Central Core workspace JSON payload (from Web or Android)
+     * to local storage so both platforms stay 100% synchronized.
+     */
+    fun applyCloudWorkspaceToLocal(workspaceObj: JSONObject): Boolean {
+        return runCatching {
+            var changed = false
+
+            // 1. Preferences
+            val prefsJson = workspaceObj.optJSONObject("preferences")
+            if (prefsJson != null) {
+                val cur = loadChartPreferences()
+                val updatedPrefs = cur.copy(
+                    bullCandleColorHex = normalizeAndroidHex(
+                        prefsJson.optString("bullCandleColorHex", prefsJson.optString("bullColor", "")),
+                        cur.bullCandleColorHex
+                    ),
+                    bearCandleColorHex = normalizeAndroidHex(
+                        prefsJson.optString("bearCandleColorHex", prefsJson.optString("bearColor", "")),
+                        cur.bearCandleColorHex
+                    ),
+                    trendLineColorHex = normalizeAndroidHex(
+                        prefsJson.optString("trendLineColorHex", prefsJson.optString("trendColor", "")),
+                        cur.trendLineColorHex
+                    ),
+                    horizontalLineColorHex = normalizeAndroidHex(
+                        prefsJson.optString("horizontalLineColorHex", prefsJson.optString("hLineColor", "")),
+                        cur.horizontalLineColorHex
+                    ),
+                    verticalLineColorHex = normalizeAndroidHex(
+                        prefsJson.optString("verticalLineColorHex", prefsJson.optString("vLineColor", "")),
+                        cur.verticalLineColorHex
+                    ),
+                    candleFetchLimit = prefsJson.optInt("candleFetchLimit", cur.candleFetchLimit).coerceIn(40, 5000),
+                    zoomStepCandles = prefsJson.optInt("zoomStepCandles", cur.zoomStepCandles).coerceIn(2, 30),
+                    drawingHitTolerancePx = prefsJson.optDouble("drawingHitTolerancePx", cur.drawingHitTolerancePx.toDouble()).toFloat().coerceIn(12f, 60f),
+                    hideWatchlistLogos = prefsJson.optBoolean("hideWatchlistLogos", cur.hideWatchlistLogos),
+                    showSymbolScreen = prefsJson.optBoolean("showSymbolScreen", cur.showSymbolScreen),
+                    chartVibrations = prefsJson.optBoolean("chartVibrations", cur.chartVibrations),
+                    logarithmicScaleDefault = prefsJson.optBoolean(
+                        "logarithmicScaleDefault",
+                        prefsJson.optBoolean("isLogScale", cur.logarithmicScaleDefault)
+                    ),
+                    rememberLastChartOnDevice = prefsJson.optBoolean(
+                        "rememberLastChartOnDevice",
+                        prefsJson.optBoolean("rememberLastChart", cur.rememberLastChartOnDevice)
+                    ),
+                    hideTabBarInLandscape = prefsJson.optBoolean("hideTabBarInLandscape", cur.hideTabBarInLandscape),
+                    pickerVibrations = prefsJson.optBoolean(
+                        "pickerVibrations",
+                        prefsJson.optBoolean("pickerVibrates", cur.pickerVibrations)
+                    ),
+                    showPickerScrollMagnifiers = prefsJson.optBoolean(
+                        "showPickerScrollMagnifiers",
+                        prefsJson.optBoolean("showScrollMagnifier", cur.showPickerScrollMagnifiers)
+                    ),
+                    showCountdownToBarClose = prefsJson.optBoolean("showCountdownToBarClose", cur.showCountdownToBarClose),
+                    showPrevCloseLine = prefsJson.optBoolean("showPrevCloseLine", cur.showPrevCloseLine),
+                    showHighLowLabels = prefsJson.optBoolean("showHighLowLabels", cur.showHighLowLabels)
+                )
+                saveChartPreferences(updatedPrefs)
+                changed = true
+            }
+
+            // 2. Symbols Catalog
+            val symbolsArr = workspaceObj.optJSONArray("symbols")
+            if (symbolsArr != null && symbolsArr.length() > 0) {
+                prefs.edit().putString(AppConfig.KEY_SYMBOLS_CONFIG_JSON, symbolsArr.toString()).apply()
+                changed = true
+            }
+
+            // 3. Drawings (maps both canonical SYMBOL_TF keys and Android chartId keys)
+            val drawingsObj = workspaceObj.optJSONObject("drawings")
+            if (drawingsObj != null) {
+                val catalog = loadSymbolCatalog()
+                val chartIdBySymbol = catalog.associate { it.symbolCode.uppercase() to it.chartId }
+                val keys = drawingsObj.keys()
+                while (keys.hasNext()) {
+                    val rawKey = keys.next()
+                    val arr = drawingsObj.optJSONArray(rawKey) ?: continue
+                    val parsedDrawings = parseDrawingsArray(arr)
+                    if (parsedDrawings.isEmpty()) continue
+
+                    val targetChartId = when {
+                        rawKey.startsWith("chart_") -> rawKey
+                        rawKey.contains("_") -> {
+                            val symPrefix = rawKey.substringBeforeLast("_").uppercase()
+                            chartIdBySymbol[symPrefix] ?: "chart_${symPrefix.lowercase()}_custom"
+                        }
+                        else -> chartIdBySymbol[rawKey.uppercase()] ?: rawKey
+                    }
+                    saveDrawingsForChart(targetChartId, parsedDrawings)
+                    changed = true
+                }
+            }
+
+            // 4. Open Tabs / Last Opened Symbol
+            val openTabsObj = workspaceObj.optJSONObject("open_tabs")
+            if (openTabsObj != null) {
+                val lastSym = openTabsObj.optString("lastOpenedSymbolCode", "").trim().uppercase()
+                if (lastSym.isNotEmpty()) {
+                    saveLastOpenedSymbolCode(lastSym)
+                    changed = true
+                }
+            }
+
+            changed
+        }.getOrDefault(false)
+    }
 }
+
