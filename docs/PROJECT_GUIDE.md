@@ -81,12 +81,17 @@
 - **هماهنگ‌کننده‌ها و ریپازیتوری‌های اندروید:** `ChartDrawingCoordinator`, `SymbolCatalogCoordinator`, `ChartPreferenceCoordinator`, `MainViewModel`, `WorkspaceRepository`
 - **اجزای UI اندروید:** `MultiTabHeader`, `ChartTopBar`, `DrawingToolsRail`, `CandlestickCanvas`, `TabItemCard`, `ThemeSelector`, `TimeframeSelector`
 - **ماژول‌های وب (`host_subdomain/assets/js/`):**
-  - `core/store.js` (مدیریت وضعیت مرکزی و کش)
-  - `services/apiService.js` (کلاینت REST API شامل احراز هویت و بازیابی رمز)
+  - `core/store.js` (مدیریت وضعیت مرکزی، کاتالوگ متدها و کش)
+  - `services/apiService.js` (کلاینت REST API شامل کندل‌ها، احراز هویت، بازیابی رمز و همگام‌سازی فضای کاری)
   - `controllers/chartInteractionController.js` (رویدادهای لمسی و ماوس بوم)
   - `views/` (`headerView.js`, `toolRailView.js`, `watchlistView.js`, `analysisView.js`, `settingsView.js`, `loginView.js`, `navigationView.js`)
   - `components/chartRenderer.js` (موتور رندر کندلی)
-- **Providerها:** `TvDatafeedAdapter` (`PEPPERSTONE:SPOTBRENT` تا ۵۰۰۰ کندل), `TwelveDataAdapter`, `DukascopyAdapter`, `EiaBenchmarkAdapter`, `YahooFinanceAdapter`
+- **سرویس‌های بک‌اند سرور (`host_subdomain/api/v1/`):**
+  - `candles_sync.php` (ذخیره افزایشی کندل‌ها بر پایه DB-First Delta Sync)
+  - `workspace_sync.php` (همگام‌سازی دوطرفه تب‌ها، رسم‌ها و تنظیمات)
+  - `providers_catalog.php` (ماتریس ذخیره‌سازی و کاتالوگ منابع)
+  - `auth.php` (ثبت و نشست مالک)
+- **Providerها:** `TvDatafeedAdapter` (`PEPPERSTONE:SPOTBRENT` تا ۵۰۰۰ کندل), `BiquoteAdapter` (فید سریع چنددارایی), `TwelveDataAdapter`, `DukascopyAdapter`, `EiaBenchmarkAdapter`, `YahooFinanceAdapter`, `ProviderCatalog` (کاتالوگ مرکزی ۶ منبع و ۲۲ نماد)
 - **الگوریتم‌ها:** `UtcTimeAnchorAlgorithm`, `CandleValidatorAlgorithm`, `TimeframeAggregatorAlgorithm`, `DrawingGeometryAlgorithm`, `PriceFormatterAlgorithm`, `PasswordHashAlgorithm` (و در فاز ۲: `SmaCalculator`, `EmaCalculator`, `BollingerBandsCalculator`, `RsiCalculator`, `MacdCalculator`, `AtrCalculator`, `GapDetector`)
 
 ساختار واقعی فایل‌ها را با درخت مخزن و Master Spec تطبیق دهید؛ این فهرست جایگزین بررسی کد جاری نیست.
@@ -114,27 +119,28 @@
 
 منابع داده مختلف لزوماً یک سری قیمت یکسان تولید نمی‌کنند. Spot، CFD و Futures باید با هویت مستقل ذخیره و نمایش داده شوند؛ صرف شباهت نام دارایی، مجوز ادغام قیمت‌ها نیست.
 
-### طلا
+### زنجیره اولویت پیشنهادی منابع داده برای چارت (بر اساس طبقه دارایی در ۲۲ نماد)
 
-| نوع سری | Provider / نماد | نقش ثبت‌شده |
-|---|---|---|
-| XAU/USD Spot | Twelve Data: `XAU/USD` | منبع اولویت‌دار ثبت‌شده |
-| XAU/USD | Dukascopy: `xauusd` | منبع جایگزین |
+**۱. کالاها و فلزات (اولویت اصلی پروژه):**
+- **`XAUUSD` (طلا):** ۱. Twelve Data (پیش‌فرض) → ۲. biquote → ۳. Dukascopy → ۴. Yahoo Finance → ۵. tvdatafeed
+- **`XAGUSD` (نقره):** ۱. biquote (پیش‌فرض) → ۲. Twelve Data → ۳. Yahoo Finance → ۴. Dukascopy → ۵. tvdatafeed
+- **`SPOTBRENT` (نفت برنت اسپات):** ۱. TradingView (`tvdatafeed` پیش‌فرض) → ۲. Dukascopy → ۳. biquote → ۴. Yahoo Finance → ۵. Twelve Data → ۶. EIA FOB
+- **`USOIL` (نفت WTI):** ۱. TradingView (`tvdatafeed` پیش‌فرض) → ۲. Yahoo Finance → ۳. biquote → ۴. Twelve Data
 
-### نفت برنت
+**۲. فارکس:**
+- **`EURUSD`:** ۱. TradingView (`tvdatafeed` پیش‌فرض) → ۲. Twelve Data → ۳. biquote → ۴. Dukascopy → ۵. Yahoo Finance
 
-| نوع سری | Provider / نماد | نقش ثبت‌شده |
-|---|---|---|
-| Spot Brent CFD (TradingView) | `tvdatafeed`: `PEPPERSTONE:SPOTBRENT` | **منبع پیش‌فرض `SPOTBRENT`** (تا ۵۰۰۰ کندل در `M15`, `H1`, `H4`, `D1` منطبق با قیمت TradingView و Revolut) |
-| Brent Oil CFD | Dukascopy: `brentcmdusd` | منبع جایگزین درون‌روزی |
-| Brent در Twelve Data | `XBR/USD` | گزینه Provider؛ محدودیت پلن باید مدیریت شود |
-| Brent Futures | Yahoo Finance: `BZ=F` | سری آتی با هویت مستقل |
-| Europe Brent Spot Price FOB | EIA: `RBRTEd` | مرجع تاریخی روزانه |
+**۳. کریپتو:**
+- **`BTCUSD` و `ETHUSD`:** ۱. biquote (رایگان، بدون کلید و سریع — پیش‌فرض) → ۲. Yahoo Finance → ۳. Twelve Data → ۴. tvdatafeed
 
-- فایل تاریخی EIA: [RBRTEd.xls](https://www.eia.gov/dnav/pet/hist_xls/RBRTEd.xls)
-- مسیر پشتیبان تاریخی ثبت‌شده: DataHub با فایل `brent-daily.csv`.
+**۴. شاخص‌ها:**
+- **`SPX500USD` و `NDQ`:** ۱. Yahoo Finance (پیش‌فرض) → ۲. TradingView (`tvdatafeed`) → ۳. Twelve Data
 
-**قانون داده:** Price Basis، نوع ابزار و هویت Provider باید حفظ شود. داده‌های Spot، CFD و Futures را بدون قاعده تبدیل و اعتبارسنجی صریح با هم ادغام نکنید. محدودیت دسترسی یا پلن Provider باید به‌صورت خطای قابل تشخیص مانند `PLAN_RESTRICTED` گزارش شود، نه اینکه به‌عنوان داده معتبر تلقی شود.
+**۵. سهام آمریکایی (`NVDA` تا `SAN`):**
+- **اولویت اصلی:** Yahoo Finance (رایگان، پایدار و پوشش کامل)
+- **جایگزین‌ها:** Twelve Data → TradingView (`tvdatafeed`)
+
+**قانون داده:** Price Basis، نوع ابزار و هویت Provider باید حفظ شود. داده‌های Spot، CFD و Futures را بدون قاعده تبدیل و اعتبارسنجی صریح با هم ادغام نکنید. هر روش در MariaDB با کلید مستقل `UNIQUE(chart_id, provider_id, timeframe, open_time_utc)` ثبت می‌شود تا هیچ داده‌ای بازنویسی نشود.
 
 ---
 

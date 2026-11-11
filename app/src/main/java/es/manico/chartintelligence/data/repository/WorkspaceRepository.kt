@@ -10,6 +10,7 @@ import es.manico.chartintelligence.config.AppConfig
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartDrawing
 import es.manico.chartintelligence.data.model.ChartPreferences
+import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.i18n.AppLanguage
@@ -1332,10 +1333,71 @@ class WorkspaceRepository(context: Context) {
         )
     }
 
+    fun loadSavedOpenTabs(): List<ChartTabState> {
+        val raw = prefs.getString(AppConfig.KEY_OPEN_TABS_JSON, null) ?: return emptyList()
+        return runCatching {
+            val arr = JSONArray(raw)
+            val catalog = loadSymbolCatalog().associateBy { it.symbolCode.uppercase() }
+            val list = ArrayList<ChartTabState>(arr.length())
+            for (i in 0 until arr.length()) {
+                val obj = arr.optJSONObject(i) ?: continue
+                val symCode = obj.optString("symbolCode", "").trim().uppercase()
+                if (symCode.isEmpty()) continue
+                val def = catalog[symCode]
+                val provId = ProviderId.fromId(obj.optString("provider", def?.activeProvider?.id ?: "tvdatafeed"))
+                val tf = obj.optString("timeframe", def?.timeframe ?: "M15").uppercase()
+                val chartId = def?.chartId ?: "chart_${symCode.lowercase()}_custom"
+                val tabId = obj.optString("tabId", "tab_${symCode}_${tf}_$i")
+                list.add(
+                    ChartTabState(
+                        tabId = tabId,
+                        chartId = chartId,
+                        symbolCode = symCode,
+                        decimals = obj.optInt("decimals", def?.decimals ?: 2),
+                        provider = provId,
+                        timeframe = tf,
+                        visibleCandleCount = obj.optInt("visibleCount", AppConfig.DEFAULT_VISIBLE_CANDLES).coerceIn(AppConfig.MIN_VISIBLE_CANDLES, AppConfig.MAX_VISIBLE_CANDLES),
+                        scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
+                        showVolume = obj.optBoolean("showVolume", true),
+                        showSma20 = obj.optBoolean("showSma20", false),
+                        showEma50 = obj.optBoolean("showEma50", false),
+                        showBollinger = obj.optBoolean("showBollinger", false),
+                        isLogScale = obj.optBoolean("isLogScale", false),
+                        drawings = loadDrawingsForChart(chartId)
+                    )
+                )
+            }
+            list
+        }.getOrDefault(emptyList())
+    }
+
+    fun saveOpenTabsToPrefs(tabs: List<ChartTabState>) {
+        val arr = JSONArray()
+        for (t in tabs) {
+            val obj = JSONObject()
+                .put("tabId", t.tabId)
+                .put("symbolCode", t.symbolCode)
+                .put("provider", t.provider.id)
+                .put("timeframe", t.timeframe)
+                .put("decimals", t.decimals)
+                .put("chartType", t.chartType.name.lowercase())
+                .put("visibleCount", t.visibleCandleCount)
+                .put("scrollOffset", t.scrollOffsetFromRight)
+                .put("showVolume", t.showVolume)
+                .put("showSma20", t.showSma20)
+                .put("showEma50", t.showEma50)
+                .put("showBollinger", t.showBollinger)
+                .put("isLogScale", t.isLogScale)
+            arr.put(obj)
+        }
+        prefs.edit().putString(AppConfig.KEY_OPEN_TABS_JSON, arr.toString()).apply()
+    }
+
     suspend fun syncWorkspaceToCloud(
         symbols: List<SymbolConfig>,
         preferences: ChartPreferences,
-        drawingsMap: Map<String, List<ChartDrawing>>
+        drawingsMap: Map<String, List<ChartDrawing>>,
+        openTabs: List<ChartTabState> = emptyList()
     ): Boolean = withContext(Dispatchers.IO) {
         runCatching {
             val drawingsObj = JSONObject()
@@ -1385,8 +1447,32 @@ class WorkspaceRepository(context: Context) {
                 .put("showPrevCloseLine", preferences.showPrevCloseLine)
                 .put("showHighLowLabels", preferences.showHighLowLabels)
 
+            val tabsArr = JSONArray()
+            for (t in openTabs) {
+                val tObj = JSONObject()
+                    .put("tabId", t.tabId)
+                    .put("symbolCode", t.symbolCode)
+                    .put("provider", t.provider.id)
+                    .put("timeframe", t.timeframe)
+                    .put("decimals", t.decimals)
+                    .put("chartType", t.chartType.name.lowercase())
+                    .put("visibleCount", t.visibleCandleCount)
+                    .put("scrollOffset", t.scrollOffsetFromRight)
+                    .put("showVolume", t.showVolume)
+                    .put("showSma20", t.showSma20)
+                    .put("showEma50", t.showEma50)
+                    .put("showBollinger", t.showBollinger)
+                    .put("isLogScale", t.isLogScale)
+                tabsArr.put(tObj)
+            }
+
             val openTabsObj = JSONObject()
                 .put("lastOpenedSymbolCode", loadLastOpenedSymbolCode() ?: "SPOTBRENT")
+                .put("tabs", tabsArr)
+
+            if (openTabs.isNotEmpty()) {
+                saveOpenTabsToPrefs(openTabs)
+            }
 
             val workspaceData = JSONObject()
                 .put("drawings", drawingsObj)
@@ -1524,10 +1610,47 @@ class WorkspaceRepository(context: Context) {
 
             // 4. Open Tabs / Last Opened Symbol
             val openTabsObj = workspaceObj.optJSONObject("open_tabs")
+            val openTabsArr = workspaceObj.optJSONArray("open_tabs") ?: openTabsObj?.optJSONArray("tabs")
             if (openTabsObj != null) {
                 val lastSym = openTabsObj.optString("lastOpenedSymbolCode", "").trim().uppercase()
                 if (lastSym.isNotEmpty()) {
                     saveLastOpenedSymbolCode(lastSym)
+                    changed = true
+                }
+            }
+            if (openTabsArr != null && openTabsArr.length() > 0) {
+                val catalog = loadSymbolCatalog().associateBy { it.symbolCode.uppercase() }
+                val parsedTabs = ArrayList<ChartTabState>(openTabsArr.length())
+                for (i in 0 until openTabsArr.length()) {
+                    val obj = openTabsArr.optJSONObject(i) ?: continue
+                    val symCode = obj.optString("symbolCode", "").trim().uppercase()
+                    if (symCode.isEmpty()) continue
+                    val def = catalog[symCode]
+                    val provId = ProviderId.fromId(obj.optString("provider", def?.activeProvider?.id ?: "tvdatafeed"))
+                    val tf = obj.optString("timeframe", def?.timeframe ?: "M15").uppercase()
+                    val chartId = def?.chartId ?: "chart_${symCode.lowercase()}_custom"
+                    val tabId = obj.optString("tabId", "tab_${symCode}_${tf}_$i")
+                    parsedTabs.add(
+                        ChartTabState(
+                            tabId = tabId,
+                            chartId = chartId,
+                            symbolCode = symCode,
+                            decimals = obj.optInt("decimals", def?.decimals ?: 2),
+                            provider = provId,
+                            timeframe = tf,
+                            visibleCandleCount = obj.optInt("visibleCount", AppConfig.DEFAULT_VISIBLE_CANDLES).coerceIn(AppConfig.MIN_VISIBLE_CANDLES, AppConfig.MAX_VISIBLE_CANDLES),
+                            scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
+                            showVolume = obj.optBoolean("showVolume", true),
+                            showSma20 = obj.optBoolean("showSma20", false),
+                            showEma50 = obj.optBoolean("showEma50", false),
+                            showBollinger = obj.optBoolean("showBollinger", false),
+                            isLogScale = obj.optBoolean("isLogScale", false),
+                            drawings = loadDrawingsForChart(chartId)
+                        )
+                    )
+                }
+                if (parsedTabs.isNotEmpty()) {
+                    saveOpenTabsToPrefs(parsedTabs)
                     changed = true
                 }
             }

@@ -42,7 +42,7 @@ $forceBackfill = !empty($_GET['backfill']);
 $nowMs = (int) round(microtime(true) * 1000);
 
 $pdo = Database::getPdo();
-$chartId = 'chart_' . strtolower($symbol) . '_main';
+$chartId = \ChartIntelligence\Providers\ProviderCatalog::resolveChartId($symbol);
 
 // 1. Purge any previously persisted synthetic weekend micro-spread rows from MariaDB for intraday timeframes
 if ($pdo !== null && $timeframe !== 'D1' && $timeframe !== 'W1') {

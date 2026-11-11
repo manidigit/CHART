@@ -89,7 +89,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             savedPassword = repository.getSavedPassword(),
             rememberCredentials = repository.loadRememberCredentials(),
             symbols = symbolCoordinator.loadInitialCatalog(),
-            chartPreferences = preferenceCoordinator.loadInitialPreferences()
+            chartPreferences = preferenceCoordinator.loadInitialPreferences(),
+            openTabs = repository.loadSavedOpenTabs()
         )
     )
     val uiState: StateFlow<Phase1UiState> = _uiState.asStateFlow()
@@ -1358,9 +1359,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             kotlinx.coroutines.delay(800L)
             val symbols = _uiState.value.symbols
             val prefs = _uiState.value.chartPreferences
+            val tabs = _uiState.value.openTabs
             val chartIds = symbols.map { it.chartId }
             val drawings = repository.getAllCachedDrawings(chartIds)
-            val success = repository.syncWorkspaceToCloud(symbols, prefs, drawings)
+            val success = repository.syncWorkspaceToCloud(symbols, prefs, drawings, tabs)
             if (success) {
                 val nowTimeStr = java.time.LocalTime.now().toString().take(5)
                 _uiState.update { it.copy(lastWorkspaceSyncedAt = nowTimeStr) }
@@ -1374,15 +1376,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         if (applied) {
             val refreshedSymbols = repository.loadSymbolCatalog()
             val refreshedPrefs = repository.loadChartPreferences()
+            val savedTabs = repository.loadSavedOpenTabs()
             val nowTimeStr = java.time.LocalTime.now().toString().take(5)
             _uiState.update { state ->
-                val updatedTabs = state.openTabs.map { tab ->
-                    tab.copy(drawings = repository.loadDrawingsForChart(tab.chartId))
+                val tabsToUse = if (state.openTabs.isNotEmpty()) {
+                    state.openTabs.map { tab ->
+                        tab.copy(drawings = repository.loadDrawingsForChart(tab.chartId))
+                    }
+                } else if (savedTabs.isNotEmpty()) {
+                    savedTabs
+                } else {
+                    emptyList()
+                }
+                val activeId = if (tabsToUse.any { it.tabId == state.activeTabId }) {
+                    state.activeTabId
+                } else {
+                    tabsToUse.firstOrNull()?.tabId
                 }
                 state.copy(
                     symbols = refreshedSymbols,
                     chartPreferences = refreshedPrefs,
-                    openTabs = updatedTabs,
+                    openTabs = tabsToUse,
+                    activeTabId = activeId,
                     lastWorkspaceSyncedAt = nowTimeStr
                 )
             }
@@ -1395,9 +1410,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(isWorkspaceSyncing = true) }
             val symbols = _uiState.value.symbols
             val prefs = _uiState.value.chartPreferences
+            val tabs = _uiState.value.openTabs
             val chartIds = symbols.map { it.chartId }
             val drawings = repository.getAllCachedDrawings(chartIds)
-            val success = repository.syncWorkspaceToCloud(symbols, prefs, drawings)
+            val success = repository.syncWorkspaceToCloud(symbols, prefs, drawings, tabs)
             if (!success) {
                 pullAndApplyCloudWorkspaceOnStartup()
             }

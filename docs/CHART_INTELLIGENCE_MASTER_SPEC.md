@@ -430,7 +430,7 @@ chart_id کلید مرجع داده‌های همان نمودار است. نا�
 │           └── AppLanguage.kt                         # مدیریت زبان دوزبانه fa/en
 │
 └── host_subdomain/                                    # وب‌اپلیکیشن ماژولار و PHP REST API برای chart.manico.es
-    ├── index.html                                     # پوسته HTML سبک وب‌اپلیکیشن
+    ├── index.html                                     # پوسته HTML سبک وب‌اپلیکیشن (Lightweight Charts + Native ES6)
     ├── i18n/
     │   ├── en.json                                    # دیکشنری کامل انگلیسی وب
     │   └── fa.json                                    # دیکشنری کامل فارسی وب
@@ -439,9 +439,9 @@ chart_id کلید مرجع داده‌های همان نمودار است. نا�
     │   │   └── theme.css                              # متغیرهای رنگی، چیدمان دسکتاپ و موبایل
     │   └── js/                                        # معماری تفکیک‌شده Native ES6 Modules
     │       ├── core/
-    │       │   └── store.js                           # استور واکنش‌گرای مرکزی، State و ذخیره‌سازی
+    │       │   └── store.js                           # استور واکنش‌گرای مرکزی، کاتالوگ متدها و ذخیره‌سازی ۲۲ نماد
     │       ├── services/
-    │       │   └── apiService.js                      # کلاینت ارتباط شبکه با API
+    │       │   └── apiService.js                      # کلاینت ارتباط شبکه با API (کندل‌ها، ثبت مالک و همگام‌سازی)
     │       ├── controllers/
     │       │   └── chartInteractionController.js      # کنترل رویدادهای ماوس، تاچ و درگ بوم
     │       ├── components/
@@ -449,19 +449,38 @@ chart_id کلید مرجع داده‌های همان نمودار است. نا�
     │       ├── views/                                 # کامپوننت‌های رندر نماها
     │       │   ├── headerView.js                      # هدر ترمینال دسکتاپ و اطلاعات نماد
     │       │   ├── toolRailView.js                    # نوار ابزار رسم عمودی سمت چپ
-    │       │   ├── watchlistView.js                   # کارت‌های واچ‌لیست
+    │       │   ├── watchlistView.js                   # کارت‌های واچ‌لیست ۲۲ نماد با برچسب منبع
     │       │   ├── analysisView.js                    # ماژول تحلیل تکنیکال (ATR 14، پیوت و دامنه)
-    │       │   ├── settingsView.js                    # تنظیمات ظاهر، رنگ‌ها و نماد سفارشی
+    │       │   ├── settingsView.js                    # تنظیمات ۵ گروهی (حساب، چارت، نوتیف، همگام‌سازی، تم)
     │       │   ├── loginView.js                       # فرم ورود و ثبت مالک
     │       │   └── navigationView.js                  # نوار ناوبری ۴ زبانه Material 3
     │       ├── algorithms/                            # ماژول‌های محاسباتی محض
     │       │   ├── drawingGeometry.js                 # هندسه رسم و تست برخورد
     │       │   ├── priceFormatter.js                  # قالب‌بندی ارقام مالی
-    │       │   └── timeframeAggregator.js             # تجمیع کندل‌های M15
+    │       │   └── timeframeAggregator.js             # تجمیع کندل‌های M15 به H1، H4، D1 و W1
     │       └── app.js                                 # نقطه ورود سبک برنامه و روتر
+    ├── migrations/
+    │   └── 001_phase1_init.sql                        # اسکیما و سیدهای غیرمخرب دیتابیس MariaDB (۶ منبع + ۲۲ نماد)
     └── api/v1/                                        # بک‌اند PHP روی هاست cPanel
+        ├── core/                                      # کلاس‌های پایه معماری سرور
+        │   ├── ApiEnvelope.php                        # پوشش استاندارد پاسخ‌های JSON
+        │   └── Database.php                           # اتصال PDO MariaDB و مایگریشن خودکار
+        ├── algorithms/                                # الگوریتم‌های سرور
+        │   ├── CandleValidator.php                    # اعتبارسنجی کندل و فیلتر تیک آخر هفته
+        │   ├── TimeframeAggregator.php                # تجمیع تایم‌فریم‌ها در سمت سرور
+        │   └── UtcTimeAnchor.php                      # تراز زمان به مرزهای کندل UTC
+        ├── providers/                                 # آداپتورهای مستقل ۶ روش دریافت داده
+        │   ├── ProviderCatalog.php                    # کاتالوگ مرکزی ۶ منبع، اولویت‌ها و حل شناسه نمودار
+        │   ├── TvDatafeedAdapter.php                  # آداپتور سوکت و آرشیو TradingView Wick
+        │   ├── BiquoteAdapter.php                     # آداپتور فید چنددارایی biquote
+        │   ├── TwelveDataAdapter.php                  # آداپتور رسمی Twelve Data REST
+        │   ├── DukascopyAdapter.php                   # آداپتور فید بین‌بانکی سوئیس Dukascopy
+        │   ├── YahooFinanceAdapter.php                # آداپتور چارت عمومی Yahoo Finance v8
+        │   └── EiaBenchmarkAdapter.php                # آداپتور بنچ‌مارک روزانه نفت برنت EIA
         ├── auth.php                                   # سرویس ثبت و احراز هویت مالک
-        └── candles_sync.php                           # سرویس همگام‌سازی کندل‌ها با دیتابیس MariaDB
+        ├── candles_sync.php                           # دریافت افزایشی و ذخیره بدون جایگزینی کندل‌ها
+        ├── providers_catalog.php                      # ماتریس وضعیت دیتابیس و کاتالوگ منابع
+        └── workspace_sync.php                         # همگام‌سازی دوطرفه فضای کاری (تب‌ها، رسم‌ها و تنظیمات)
 ```
 
 ------------------------------------------------------------------------
@@ -603,14 +622,17 @@ chart_id کلید مرجع داده‌های همان نمودار است. نا�
 
 ریسک/محدودیت: هزینه سرویس، انتقال داده، منطقه نگهداری، احراز هویت، Vendor Lock-in و سازگاری Extensionها باید ارزیابی شود. MotherDuck جایگزین خودکار MariaDB عملیاتی نیست و تا بررسی هزینه و امنیت انتخاب نمی‌شود.
 
-### F. GitHub Actions — ساخت Artifact و مسیر استقرار هدف (وضعیت واقعی پس از اتمام تست‌های زیرساخت 2026-11-06)
+### F. GitHub Actions — ساخت Artifact، استقرار خودکار و مایگریشن سرور (وضعیت فعلی در v1.32.0)
 
 منبع رسمی: https://docs.github.com/actions
 
 کاربرد قطعی در پروژه و وضعیت فعلی پوشه `.github/workflows/`:
-1. **تکمیل و حذف فایل‌های تست اولیه (`COMPLETED & CLEANED UP`):** فایل‌های تست موقت زیرساخت و داده (`host-probe.yml`, `twelve-data-poc.yml`, `dukascopy-poc.yml`) پس از اجرای موفق تست‌ها و تأیید سلامت هاست، دیتابیس و API، به دستور مالک پروژه از مخزن حذف شدند.
-2. **`.github/workflows/build-apk.yml`:** تنها Workflow موجود در مخزن است که با اجرای دستی (`workflow_dispatch`) اجرا می‌شود؛ APK را می‌سازد و فایل‌های `host_subdomain/` را به‌صورت Artifact بسته‌بندی می‌کند.
-3. **Deployment Workflow کنترل‌شده:** هدف معماری، استقرار کنترل‌شده وب/PHP از طریق cPanel UAPI همراه با مسیر Rollback است که هنگام شروع استقرار کدهای اصلی محصول اضافه خواهد شد.
+1. **تکمیل و پاک‌سازی فایل‌های تست اولیه (`COMPLETED & CLEANED UP`):** فایل‌های تست موقت زیرساخت و داده (`host-probe.yml`, `twelve-data-poc.yml`, `dukascopy-poc.yml`) پس از اجرای موفق تست‌ها و تأیید سلامت هاست، دیتابیس و API از مخزن حذف شدند.
+2. **`.github/workflows/build-apk.yml`:** گردش کار اصلی پروژه که با اجرای دستی (`workflow_dispatch`) یا رویدادهای تعریف‌شده:
+   - تست‌های کاتلین (`gradle :app:testDebugUnitTest`) و کامپایل بیلد اپلیکیشن اندروید را اجرا کرده و فایل `app-debug.apk` را تولید می‌کند.
+   - بسته کدهای وب و بک‌اند `host_subdomain/` را بسته‌بندی کرده و از طریق اسکریپت خوداستخراج‌گر `_deploy_phase1.php` و cPanel Fileman API مستقیماً روی سرور مستقر می‌سازد.
+   - هم‌زمان اسکریپت مایگریشن `migrations/001_phase1_init.sql` (شامل جداول و سیدهای ۶ منبع و ۲۲ نماد) و کش پایه ۵۰۰۰ کندل شدودار را به‌صورت غیرمخرب روی MariaDB اجرا می‌نماید.
+3. **Deployment Workflow کنترل‌شده:** انتشار با یک کلیک همراه با اجرای ایمن مایگریشن غیرمخرب و حفظ استقلال فایل‌های پیکربندی محلی سرور (`env.local.php`, `owner.local.json`, `sessions.local.json`).
 
 عدم استفاده به‌عنوان Runtime دائمی: اجرای دائمی Worker 24/7 یا جایگزینی دیتابیس عملیاتی نباید به GitHub Actions واگذار شود.
 
@@ -1755,6 +1777,18 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
 8. **`P1-UPG-8` (Phase 1 Acceptance Gate Checklist & Sign-off Protocol — انجام شد / COMPLETED):** تکمیل و پاس‌شدن هر ۱۰ بند چک‌لیست گیت پذیرش نهایی فاز ۱ شامل تست سلامت دیتابیس، همسانی ۱۰۰٪ وب/موبایل، تمام ۶ ابزار رسم و حالت آهنربا (`Magnet Mode`) و فیلتر تعطیلات `00:00 UTC`.
 9. **`P1-UPG-9` (Android Settings Categorized Tab Restructuring — HIGH PRIORITY — انجام شد / COMPLETED):** بازطراحی ساختار صفحه تنظیمات اندروید (`SettingsScreen.kt` و `ChartPreferences.kt`) و وب (`settingsView.js`) با نوار زبانه‌های ۵‌گانه افقی بالای صفحه (`همگام‌سازی | چارت | نوتیفیکیشن | تم | حساب` / `Sync | Chart | Notifications | Theme | Account`) جهت رفع شلختگی و اسکرول طولانی کارت‌ها و ایجاد همسانی ۱۰۰٪ بین وب و اندروید.
 10. **`P1-UPG-10` (Web Workspace Sync & Top-Level ES Module Export Error Resolution — HIGH PRIORITY — انجام شد / COMPLETED):** رفع ریشه‌ای خطای سنتاکس بارگذاری ماژول‌های جاوااسکریپت در وب (`SyntaxError: export declarations may only appear at top level of a module` در `store.js`)، یکسان‌سازی نسخه ماژول‌ها (`?v=1.30.0`) و پیاده‌سازی همگام‌سازی خودکار دوطرفه (`Bi-Directional Auto-Sync`) بین وب، اندروید و دیتابیس MariaDB.
+11. **`P1-UPG-11` (Canonical 6 Data Collection Methods & DB-First Incremental Delta Sync — انجام شد / COMPLETED — v1.32.0):**
+    - پیاده‌سازی و تفکیک کامل ۶ روش مستقل جمع‌آوری داده (`TradingView Wick tvdatafeed`, `biquote Multi-Asset`, `Twelve Data API`, `Dukascopy Swiss Bank`, `Yahoo Finance v8`, `U.S. EIA Brent Spot FOB`) در سمت سرور PHP و کلاینت‌های وب و اندروید.
+    - الگوریتم ذخیره‌سازی افزایشی (`DB-First Incremental Delta Sync`): خواندن تاریخچه از دیتابیس MariaDB و دریافت صرفاً کندل‌های جدید جاافتاده بر اساس `since_ms` بدون ارسال درخواست تکراری به API یا سوکت.
+    - تفکیک کامل هر روش با کلید مستقل `UNIQUE(chart_id, provider_id, timeframe, open_time_utc)` بدون بازنویسی یا جایگزینی پنهان داده‌ها.
+12. **`P1-UPG-12` (22-Symbol Watchlist & Asset-Class Priority Rules — انجام شد / COMPLETED — v1.32.0):**
+    - استقرار کاتالوگ استاندارد ۲۲ نماد واچ‌لیست (کالاها و فلزات، فارکس، کریپتو، شاخص‌ها و سهام معتبر آمریکایی) بر اساس زنجیره اولویت دقیق دارایی‌ها:
+      - کالاها و فلزات: `XAUUSD` (اولویت ۱: Twelve Data)، `XAGUSD` (اولویت ۱: biquote)، `SPOTBRENT` (اولویت ۱: tvdatafeed)، `USOIL` (اولویت ۱: tvdatafeed).
+      - کریپتو: `BTCUSD` و `ETHUSD` (اولویت ۱: biquote).
+      - شاخص‌ها: `SPX500USD` و `NDQ` (اولویت ۱: Yahoo Finance).
+      - سهام آمریکایی: `NVDA` تا `SAN` (اولویت ۱: Yahoo Finance).
+    - جریان دوحالته کاوشگر تنظیمات (`Dual-Mode Explorer`): انتخاب نماد با فیلتر بر اساس منبع داده (`By Source Method`) یا جستجوی مستقیم نماد (`By Symbol`).
+    - همگام‌سازی کامل آرایه تب‌های باز (`open_tabs`) و شناسه‌های یکنواخت `chart_id` بین وب و اندروید.
 
 ---
 

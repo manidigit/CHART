@@ -42,6 +42,21 @@ final class ProviderCatalog
         ];
     }
 
+    public static function resolveChartId(string $symbolCode): string
+    {
+        $clean = strtoupper(trim(preg_replace('/[^A-Za-z0-9_]/', '', $symbolCode)));
+        return match ($clean) {
+            'SPOTBRENT' => 'chart_spotbrent_main',
+            'XAUUSD' => 'chart_xauusd_main',
+            'BRENT_FUTURES' => 'chart_brent_futures',
+            'SPX500USD' => 'chart_spx500usd_index',
+            'NDQ' => 'chart_ndq_index',
+            'ETHUSD', 'BTCUSD', 'XAGUSD', 'EURUSD', 'USOIL', 'GBPUSD', 'USDJPY' => 'chart_' . strtolower($clean) . '_spot',
+            'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN' => 'chart_' . strtolower($clean) . '_stock',
+            default => 'chart_' . strtolower($clean) . '_custom',
+        };
+    }
+
     public static function getMethods(): array
     {
         $cfg = Database::getConfig();
@@ -311,7 +326,7 @@ final class ProviderCatalog
             $matrix = [];
             foreach ($rows as $r) {
                 $chartId = (string) ($r['chart_id'] ?? '');
-                $symbol = strtoupper((string) preg_replace('/^chart_|_main$|_custom$/i', '', $chartId));
+                $symbol = strtoupper((string) preg_replace('/^chart_|_main$|_custom$|_spot$|_index$|_stock$|_futures$/i', '', $chartId));
                 $prov = (string) ($r['provider_id'] ?? '');
                 $tf = (string) ($r['timeframe'] ?? '');
                 $matrix[] = [

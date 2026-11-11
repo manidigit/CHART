@@ -4,8 +4,8 @@
 
 | Version | Supported |
 |---|---|
-| `1.24.x` | :white_check_mark: Active |
-| `< 1.24` | :x: End of Life |
+| `1.32.x` | :white_check_mark: Active |
+| `< 1.32` | :x: End of Life |
 
 ---
 

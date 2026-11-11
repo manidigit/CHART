@@ -384,6 +384,69 @@ class Phase1AlgorithmsTest {
             "NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN"
         )))
     }
+
+    @Test
+    fun chartIdMapping_conformsToCanonicalNamingRules() {
+        val testSymbols = listOf(
+            "SPOTBRENT" to "chart_spotbrent_main",
+            "XAUUSD" to "chart_xauusd_main",
+            "ETHUSD" to "chart_ethusd_spot",
+            "BTCUSD" to "chart_btcusd_spot",
+            "XAGUSD" to "chart_xagusd_spot",
+            "SPX500USD" to "chart_spx500usd_index",
+            "NDQ" to "chart_ndq_index",
+            "EURUSD" to "chart_eurusd_spot",
+            "USOIL" to "chart_usoil_spot",
+            "NVDA" to "chart_nvda_stock",
+            "SAN" to "chart_san_stock"
+        )
+        for ((code, expectedId) in testSymbols) {
+            val resolvedId = when (code) {
+                "SPOTBRENT" -> "chart_spotbrent_main"
+                "XAUUSD" -> "chart_xauusd_main"
+                "BRENT_FUTURES" -> "chart_brent_futures"
+                "SPX500USD" -> "chart_spx500usd_index"
+                "NDQ" -> "chart_ndq_index"
+                "ETHUSD", "BTCUSD", "XAGUSD", "EURUSD", "USOIL" -> "chart_${code.lowercase()}_spot"
+                "NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN" -> "chart_${code.lowercase()}_stock"
+                else -> "chart_${code.lowercase()}_custom"
+            }
+            assertEquals(expectedId, resolvedId)
+        }
+    }
+
+    @Test
+    fun openTabs_serializationAndParsingContract() {
+        val tab = es.manico.chartintelligence.data.model.ChartTabState(
+            tabId = "tab_spotbrent_m15_0",
+            chartId = "chart_spotbrent_main",
+            symbolCode = "SPOTBRENT",
+            decimals = 3,
+            provider = es.manico.chartintelligence.data.model.ProviderId.TVDATAFEED,
+            timeframe = "M15",
+            visibleCandleCount = 64,
+            scrollOffsetFromRight = 5,
+            showVolume = true,
+            showSma20 = true,
+            showEma50 = false,
+            showBollinger = true,
+            isLogScale = false
+        )
+
+        assertEquals("tab_spotbrent_m15_0", tab.tabId)
+        assertEquals("SPOTBRENT", tab.symbolCode)
+        assertEquals("tvdatafeed", tab.provider.id)
+        assertEquals("M15", tab.timeframe)
+        assertEquals(3, tab.decimals)
+        assertEquals(64, tab.visibleCandleCount)
+        assertEquals(5, tab.scrollOffsetFromRight)
+        assertTrue(tab.showVolume)
+        assertTrue(tab.showSma20)
+        assertFalse(tab.showEma50)
+        assertTrue(tab.showBollinger)
+        assertFalse(tab.isLogScale)
+        assertEquals("chart_spotbrent_main", tab.chartId)
+    }
 }
 
 

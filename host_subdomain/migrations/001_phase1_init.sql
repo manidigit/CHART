@@ -113,3 +113,40 @@ CREATE TABLE IF NOT EXISTS user_workspace (
     INDEX idx_ws_user (username)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
 
+-- ============================================================================
+-- Initial Seeding (Idempotent INSERT IGNORE): 6 Data Providers & 22 Symbols
+-- ============================================================================
+
+INSERT IGNORE INTO data_providers (provider_id, display_name, supports_intraday, is_enabled) VALUES
+('tvdatafeed',    'TradingView Wick (tvdatafeed)', 1, 1),
+('biquote',       'biquote Multi-Asset Feed',       1, 1),
+('twelve_data',   'Twelve Data REST API',          1, 1),
+('dukascopy',     'Dukascopy Historical Feed',      1, 1),
+('yahoo_finance', 'Yahoo Finance Public Engine',    1, 1),
+('eia_brent_spot','EIA Official Benchmark (Daily)', 0, 1);
+
+INSERT IGNORE INTO chart_series (chart_id, symbol_code, display_name_en, display_name_fa, price_decimals, default_provider_id, default_timeframe) VALUES
+('chart_spotbrent_main',  'SPOTBRENT', 'Brent Crude (Spot)',               'نفت برنت اسپات',                  3, 'tvdatafeed',    'M15'),
+('chart_ethusd_spot',     'ETHUSD',    'Ethereum / U.S. Dollar',           'اتریوم / دلار آمریکا',            2, 'biquote',       'M15'),
+('chart_btcusd_spot',     'BTCUSD',    'Bitcoin / U.S. Dollar',            'بیت‌کوین / دلار آمریکا',          2, 'biquote',       'M15'),
+('chart_xagusd_spot',     'XAGUSD',    'Silver / U.S. Dollar',             'نقره جهانی / دلار آمریکا',        3, 'biquote',       'M15'),
+('chart_xauusd_main',     'XAUUSD',    'Gold Spot / U.S. Dollar',          'طلای جهانی اسپات / دلار',         2, 'twelve_data',   'M15'),
+('chart_spx500usd_index', 'SPX500USD', 'US SPX 500',                       'شاخص S&P 500 آمریکا',             2, 'yahoo_finance', 'M15'),
+('chart_ndq_index',       'NDQ',       'US 100 Index (Nasdaq 100)',        'شاخص نزدک ۱۰۰ آمریکا',            2, 'yahoo_finance', 'M15'),
+('chart_eurusd_spot',     'EURUSD',    'Euro / U.S. Dollar',               'یورو / دلار آمریکا',              4, 'tvdatafeed',    'M15'),
+('chart_usoil_spot',      'USOIL',     'CFDs on WTI Crude Oil',            'نفت خام سبک تگزاس (WTI)',         2, 'tvdatafeed',    'M15'),
+('chart_nvda_stock',      'NVDA',      'NVIDIA Corporation',               'سهام انویدیا (NVIDIA)',           2, 'yahoo_finance', 'M15'),
+('chart_amzn_stock',      'AMZN',      'Amazon.com, Inc.',                 'سهام آمازون (Amazon)',            2, 'yahoo_finance', 'M15'),
+('chart_tsla_stock',      'TSLA',      'Tesla, Inc.',                      'سهام تسلا (Tesla)',               2, 'yahoo_finance', 'M15'),
+('chart_aapl_stock',      'AAPL',      'Apple Inc.',                       'سهام اپل (Apple)',                2, 'yahoo_finance', 'M15'),
+('chart_googl_stock',     'GOOGL',     'Alphabet Inc (Google) Class A',    'سهام آلفابت / گوگل (Google)',     2, 'yahoo_finance', 'M15'),
+('chart_msft_stock',      'MSFT',      'Microsoft Corp.',                  'سهام مایکروسافت (Microsoft)',     2, 'yahoo_finance', 'M15'),
+('chart_meta_stock',      'META',      'Meta Platforms, Inc.',             'سهام متا / فیسبوک (Meta)',        2, 'yahoo_finance', 'M15'),
+('chart_nflx_stock',      'NFLX',      'Netflix, Inc.',                    'سهام نتفلیکس (Netflix)',          2, 'yahoo_finance', 'M15'),
+('chart_amd_stock',       'AMD',       'Advanced Micro Devices Inc',       'سهام ای‌ام‌دی (AMD)',             2, 'yahoo_finance', 'M15'),
+('chart_uber_stock',      'UBER',      'Uber Technologies, Inc.',          'سهام اوبر (Uber)',                2, 'yahoo_finance', 'M15'),
+('chart_nke_stock',       'NKE',       'Nike, Inc.',                       'سهام نایکی (Nike)',               2, 'yahoo_finance', 'M15'),
+('chart_ibm_stock',       'IBM',       'International Business Machines',  'سهام آی‌بی‌ام (IBM)',             2, 'yahoo_finance', 'M15'),
+('chart_san_stock',       'SAN',       'Banco Santander, S.A.',            'سهام بانک سانتاندر (Santander)',  2, 'yahoo_finance', 'M15');
+
+

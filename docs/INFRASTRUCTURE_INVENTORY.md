@@ -1,8 +1,8 @@
 # INFRASTRUCTURE INVENTORY
 
 **Project:** Chart Intelligence  
-**Document status:** Public-safe infrastructure inventory — partially verified  
-**Last updated:** 2026-11-08  
+**Document status:** Public-safe infrastructure inventory — verified  
+**Last updated:** 2026-11-11  
 **Source:** Hosting account's cPanel Server Information, Statistics, Processor Information and Service Status screens, supplied by the project owner.  
 **Purpose:** Provide a shared infrastructure reference for ChatGPT, other AI assistants and developers. This document records observed infrastructure facts, distinguishes them from assumptions, and lists items that still require verification.
 
@@ -19,7 +19,7 @@
 | Operating system | Linux | Kernel `6.8.0-142-generic`; architecture `x86_64` |
 | Database server | MariaDB `10.6.28` | Service reported up |
 | Target subdomain | `https://chart.manico.es` | Owner-approved subdomain for Web Frontend and PHP REST API |
-| Deployment mechanism | GitHub Actions (`build-apk.yml`) | Runs automatically on `push` to `main` and `workflow_dispatch`; builds deterministically signed APK (`CANONICAL_B64` Yadin keystore + monotonic `versionCode = 100 + GITHUB_RUN_NUMBER`) and deploys Web + MariaDB `tvdatafeed` candles to `chart.manico.es` |
+| Deployment mechanism | GitHub Actions (`build-apk.yml`) | Runs on `push` to `main` and `workflow_dispatch`; builds deterministically signed APK (`CANONICAL_B64` Yadin keystore + monotonic `versionCode = 100 + GITHUB_RUN_NUMBER`), deploys Web + MariaDB schema migrations (`001_phase1_init.sql` seeding 6 providers & 22 symbols) and `tvdatafeed` candles to `chart.manico.es` |
 | Shared IP address | Redacted / not published | Public repository does not need the account's shared IP address |
 | Sendmail path | `/usr/sbin/sendmail` | Reported path |
 | Perl path/version | `/usr/bin/perl`, `5.26.3` | Reported by cPanel |

@@ -177,6 +177,17 @@ jobs:
               $pdo = \\ChartIntelligence\\Core\\Database::getPdo();
               $seededCandles = 0;
               if ($pdo !== null) {{
+                  $migrationFile = __DIR__ . '/migrations/001_phase1_init.sql';
+                  if (is_file($migrationFile)) {{
+                      $migSql = (string) file_get_contents($migrationFile);
+                      // Split by semicolon statements and execute sequentially
+                      $queries = array_filter(array_map('trim', explode(';', $migSql)));
+                      foreach ($queries as $q) {{
+                          if ($q !== '' && !str_starts_with($q, '--')) {{
+                              try {{ $pdo->exec($q); }} catch (\\Throwable) {{}}
+                          }}
+                      }}
+                  }}
                   @$pdo->exec("DELETE FROM candles WHERE timeframe != 'D1' AND volume = 0 AND (high_price - low_price) < (open_price * 0.00018)");
                   $sql = "INSERT INTO candles
                       (chart_id, provider_id, timeframe, open_time_utc,
