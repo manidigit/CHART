@@ -704,21 +704,39 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
       }
     }
   } else if (normTf === 'D1' && (!current || current.length === 0)) {
-    const h1Key = `${symbolCode}_${provider}_H1`;
-    const h1 = state.candleCache[h1Key] || loadCandlesFromLocalStorage(h1Key, 'H1');
-    if (h1 && h1.length > 0) {
-      return TimeframeAggregator.aggregateCandles(h1, 'D1');
+    const h4Key = `${symbolCode}_${provider}_H4`;
+    const h4 = state.candleCache[h4Key] || loadCandlesFromLocalStorage(h4Key, 'H4');
+    if (h4 && h4.length > 0) {
+      current = TimeframeAggregator.aggregateCandles(h4, 'D1');
+      if (current.length > 0) state.candleCache[exactKey] = current;
+    } else {
+      const h1Key = `${symbolCode}_${provider}_H1`;
+      const h1 = state.candleCache[h1Key] || loadCandlesFromLocalStorage(h1Key, 'H1');
+      if (h1 && h1.length > 0) {
+        current = TimeframeAggregator.aggregateCandles(h1, 'D1');
+        if (current.length > 0) state.candleCache[exactKey] = current;
+      } else {
+        const m15Key = `${symbolCode}_${provider}_M15`;
+        const m15 = state.candleCache[m15Key] || loadCandlesFromLocalStorage(m15Key, 'M15');
+        if (m15 && m15.length > 0) {
+          current = TimeframeAggregator.aggregateCandles(m15, 'D1');
+          if (current.length > 0) state.candleCache[exactKey] = current;
+        }
+      }
     }
   } else if (normTf === 'W1' && (!current || current.length === 0)) {
     const d1Key = `${symbolCode}_${provider}_D1`;
     const d1 = state.candleCache[d1Key] || loadCandlesFromLocalStorage(d1Key, 'D1');
     if (d1 && d1.length > 0) {
-      return TimeframeAggregator.aggregateCandles(d1, 'W1');
-    }
-    const h4Key = `${symbolCode}_${provider}_H4`;
-    const h4 = state.candleCache[h4Key] || loadCandlesFromLocalStorage(h4Key, 'H4');
-    if (h4 && h4.length > 0) {
-      return TimeframeAggregator.aggregateCandles(h4, 'W1');
+      current = TimeframeAggregator.aggregateCandles(d1, 'W1');
+      if (current.length > 0) state.candleCache[exactKey] = current;
+    } else {
+      const h4Key = `${symbolCode}_${provider}_H4`;
+      const h4 = state.candleCache[h4Key] || loadCandlesFromLocalStorage(h4Key, 'H4');
+      if (h4 && h4.length > 0) {
+        current = TimeframeAggregator.aggregateCandles(h4, 'W1');
+        if (current.length > 0) state.candleCache[exactKey] = current;
+      }
     }
   }
 

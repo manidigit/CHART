@@ -575,12 +575,53 @@ class WorkspaceRepository(context: Context) {
                 }
             }
         } else if (normTf == "D1" && current.isNullOrEmpty()) {
-            val h1Key = "${symbolCode}_${provider.id}_H1"
-            val h1Candles = candleMemoryStore[h1Key] ?: loadCandlesFromPrefs(h1Key, "H1")
-            if (h1Candles.isNotEmpty()) {
-                val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h1Candles, "D1")
+            val h4Key = "${symbolCode}_${provider.id}_H4"
+            val h4Candles = candleMemoryStore[h4Key] ?: loadCandlesFromPrefs(h4Key, "H4")
+            if (h4Candles.isNotEmpty()) {
+                val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h4Candles, "D1")
                 if (aggregated.isNotEmpty()) {
-                    return aggregated
+                    current = aggregated
+                    candleMemoryStore[exactKey] = current
+                }
+            } else {
+                val h1Key = "${symbolCode}_${provider.id}_H1"
+                val h1Candles = candleMemoryStore[h1Key] ?: loadCandlesFromPrefs(h1Key, "H1")
+                if (h1Candles.isNotEmpty()) {
+                    val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h1Candles, "D1")
+                    if (aggregated.isNotEmpty()) {
+                        current = aggregated
+                        candleMemoryStore[exactKey] = current
+                    }
+                } else {
+                    val m15Key = "${symbolCode}_${provider.id}_M15"
+                    val m15Candles = candleMemoryStore[m15Key] ?: loadCandlesFromPrefs(m15Key, "M15")
+                    if (m15Candles.isNotEmpty()) {
+                        val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(m15Candles, "D1")
+                        if (aggregated.isNotEmpty()) {
+                            current = aggregated
+                            candleMemoryStore[exactKey] = current
+                        }
+                    }
+                }
+            }
+        } else if (normTf == "W1" && current.isNullOrEmpty()) {
+            val d1Key = "${symbolCode}_${provider.id}_D1"
+            val d1Candles = candleMemoryStore[d1Key] ?: loadCandlesFromPrefs(d1Key, "D1")
+            if (d1Candles.isNotEmpty()) {
+                val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(d1Candles, "W1")
+                if (aggregated.isNotEmpty()) {
+                    current = aggregated
+                    candleMemoryStore[exactKey] = current
+                }
+            } else {
+                val h4Key = "${symbolCode}_${provider.id}_H4"
+                val h4Candles = candleMemoryStore[h4Key] ?: loadCandlesFromPrefs(h4Key, "H4")
+                if (h4Candles.isNotEmpty()) {
+                    val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h4Candles, "W1")
+                    if (aggregated.isNotEmpty()) {
+                        current = aggregated
+                        candleMemoryStore[exactKey] = current
+                    }
                 }
             }
         }

@@ -439,15 +439,29 @@ export function renderApp() {
     ensureInitialTabs();
     const activeTab = getActiveTab();
     if (activeTab) {
-      const latestCached = getCachedOrAggregatedCandles(
+      activeTab.candles = getCachedOrAggregatedCandles(
         activeTab.symbolCode,
         activeTab.provider,
         activeTab.timeframe
       );
-      if (latestCached.length > 0) {
-        activeTab.candles = latestCached;
-      }
     }
+
+    const scrollPositions = {};
+    const scrollSelectors = [
+      '.tv-wl-list',
+      '.tv-symbol-details-pane',
+      '.tv-settings-body',
+      '.modal-body',
+      '.tv-symbol-overview-modal-body',
+      '#tv-watchlist-top-pane',
+      '.tv-symbols-table-container'
+    ];
+    scrollSelectors.forEach((sel) => {
+      const element = document.querySelector(sel);
+      if (element) {
+        scrollPositions[sel] = { top: element.scrollTop, left: element.scrollLeft };
+      }
+    });
 
     root.innerHTML = `
       <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
@@ -480,6 +494,15 @@ export function renderApp() {
     bindPanelResizers();
     bindCanvasEvents(activeTab);
     redrawActiveCanvas();
+
+    scrollSelectors.forEach((sel) => {
+      const element = document.querySelector(sel);
+      if (element && scrollPositions[sel]) {
+        element.scrollTop = scrollPositions[sel].top;
+        element.scrollLeft = scrollPositions[sel].left;
+      }
+    });
+
     window.__CI_APP_MOUNTED__ = true;
   } catch (err) {
     console.error('[Chart Intelligence] Render failed:', err);
@@ -1067,12 +1090,13 @@ document.addEventListener('click', async (e) => {
     activeTab.scrollOffset = 0;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
     saveOpenTabsToStorage();
-    const cached = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
-    if (cached.length > 0) {
-      activeTab.candles = cached;
-    }
+    activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
     renderApp();
-    await syncSymbolNow(activeTab.symbolCode, newTf, renderApp);
+    redrawActiveCanvas();
+    await syncSymbolNow(activeTab.symbolCode, newTf, () => {
+      renderApp();
+      redrawActiveCanvas();
+    });
   } else if (action === 'set-date-range' && activeTab) {
     const rk = el.getAttribute('data-range') || 'All';
     activeTab.selectedRangePreset = rk;
@@ -1099,25 +1123,21 @@ document.addEventListener('click', async (e) => {
     activeTab.chartId = `${activeTab.symbolCode}_${targetTf}`;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
     saveOpenTabsToStorage();
-    const cached = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, targetTf);
-    if (cached.length > 0) {
-      activeTab.candles = cached;
-    }
+    activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, targetTf);
     activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
     renderApp();
+    redrawActiveCanvas();
 
     if (tfChanged || !activeTab.candles || activeTab.candles.length < 30) {
       await syncSymbolNow(activeTab.symbolCode, targetTf, () => {
-        const refreshed = getCachedOrAggregatedCandles(
+        activeTab.candles = getCachedOrAggregatedCandles(
           activeTab.symbolCode,
           activeTab.provider,
           targetTf
         );
-        if (refreshed.length > 0) {
-          activeTab.candles = refreshed;
-        }
         activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
         renderApp();
+        redrawActiveCanvas();
       });
     }
   } else if (action === 'set-chart-type' && activeTab) {

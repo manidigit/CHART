@@ -17,9 +17,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Web:** Enabled complete drag-and-drop symbol reordering via HTML5 draggable rows with a dedicated grip handle (`⠿`), drag preview styling, and drop indicator lines (`.tv-wl-drag-over-top` / `.tv-wl-drag-over-bottom`). Also included 1-click Move Up (`▲`) and Move Down (`▼`) buttons on each row for precise mobile & mouse control. Symbol order persists to `localStorage` and syncs with server user preferences.
   - **Android:** Added `reorderSymbol(symbolCode, direction)` in `MainViewModel.kt` updating the catalog order, saving via `repository.saveSymbolCatalog`, and debouncing cloud sync. Wired Move Up (`▲`) and Move Down (`▼`) touch buttons on each `WatchlistRowCard.kt` in `WatchlistScreen.kt`.
 
-### Changed & Refined
-- **Removed Duplicate Refresh Button on Web:**
-  - Eliminated the redundant `sync-all` refresh icon from the watchlist pane header (`watchlistView.js`), leaving only one unambiguous, unified market refresh button in the top header bar (`sync-active-tab`), preventing user confusion.
+### Fixed & Resolved
+- **Instant Timeframe Switch Responsiveness (`M15`, `H1`, `H4`, `D1`, `W1`):**
+  - Resolved the issue where clicking timeframe buttons (`15m`, `1h`, etc.) would not immediately refresh the chart canvas until a subsequent button was clicked.
+  - Enhanced `getCachedOrAggregatedCandles` in Web (`store.js`) and Android (`WorkspaceRepository.kt`) to support fallback candle aggregation across all timeframes (`M15` → `H1` → `H4` → `D1` → `W1`), and removed restrictive array length checks in `app.js` so `activeTab.candles` is ALWAYS updated immediately upon timeframe selection and explicitly redraws the canvas.
+- **Scroll Position Preservation across State Updates (Web & Android):**
+  - Resolved the issue where clicking a symbol in the watchlist or toggling settings caused the list to jump/reset to the top.
+  - In Web `renderApp()`, captured and restored `scrollTop` and `scrollLeft` for `.tv-wl-list`, `.tv-symbol-details-pane`, `.tv-settings-body`, `.modal-body`, and `#tv-watchlist-top-pane`.
+  - In Android `WatchlistScreen.kt`, bound `rememberLazyListState()` to `LazyColumn` to retain scroll index across recompositions.
 
 ---
 
