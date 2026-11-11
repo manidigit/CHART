@@ -473,9 +473,14 @@ fun SettingsScreen(
                 }
 
                 // =========================================================================
-                // GROUP 4: Sync & Data Sources (همگام‌سازی و منابع داده)
+                // GROUP 4: Sync & Data Sources — Dual-Mode Source & Symbol Explorer (v1.31.0)
                 // =========================================================================
                 if (activeSettingsTab == "sync") {
+                var explorerMode by rememberSaveable { mutableStateOf("by_source") }
+                var selectedExplorerProvider by rememberSaveable { mutableStateOf(ProviderId.TVDATAFEED) }
+                var symbolSearchQuery by rememberSaveable { mutableStateOf("") }
+                val isFa = currentLanguage == AppLanguage.FA
+
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -495,12 +500,23 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.SpaceBetween,
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Text(
-                                text = stringResource(R.string.settings_group_sources),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                modifier = Modifier.weight(1f)
-                            )
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = stringResource(R.string.settings_group_sources),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = if (isFa) {
+                                        "معماری DB-First: تاریخچه کندل‌های بسته‌شده فقط یک‌بار ذخیره شده و در مراجعات بعدی فقط کندل‌های جدید (Delta Sync) دریافت می‌شوند."
+                                    } else {
+                                        "DB-First Architecture: Historical closed candles are persisted once; subsequent syncs fetch only missing delta bars."
+                                    },
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
                             Button(
                                 onClick = { showAddSymbolDialog = true },
                                 shape = RoundedCornerShape(8.dp),
@@ -522,13 +538,240 @@ fun SettingsScreen(
                             }
                         }
 
+                        // Dual-Mode Switcher: (1) By Source Method -> Symbols | (2) By Symbol -> Sources
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .background(MaterialTheme.colorScheme.background)
+                                .border(1.dp, financialPalette.cardBorder, RoundedCornerShape(8.dp))
+                                .padding(4.dp)
+                                .testTag("settings_source_explorer_mode_bar"),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            val modes = listOf(
+                                "by_source" to (if (isFa) "۱. انتخاب بر اساس منبع (روش ← نمادها)" else "1. By Data Source (Method → Symbols)"),
+                                "by_symbol" to (if (isFa) "۲. انتخاب بر اساس نماد (نماد ← منابع)" else "2. By Symbol (Symbol → Sources)")
+                            )
+                            for ((modeKey, modeTitle) in modes) {
+                                val isModeSelected = explorerMode == modeKey
+                                Surface(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .clip(RoundedCornerShape(6.dp))
+                                        .clickable { explorerMode = modeKey }
+                                        .testTag("explorer_mode_$modeKey"),
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = if (isModeSelected) MaterialTheme.colorScheme.primary else Color.Transparent
+                                ) {
+                                    Box(
+                                        contentAlignment = Alignment.Center,
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 7.dp)
+                                    ) {
+                                        Text(
+                                            text = modeTitle,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isModeSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        if (explorerMode == "by_source") {
+                            val methodCatalog = ProviderId.providerMethodCatalog
+                            val activeMethodSpec = methodCatalog.firstOrNull { it.providerId == selectedExplorerProvider }
+                                ?: methodCatalog.first()
+
+                            // Provider Method Selector Chips
+                            FlowRow(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                for (spec in methodCatalog) {
+                                    val isProvSelected = spec.providerId == selectedExplorerProvider
+                                    FilterChip(
+                                        selected = isProvSelected,
+                                        onClick = { selectedExplorerProvider = spec.providerId },
+                                        label = {
+                                            Text(
+                                                text = "${spec.providerId.badgeLabel} (${spec.supportedSymbols.size})",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                fontWeight = if (isProvSelected) FontWeight.Bold else FontWeight.Medium
+                                            )
+                                        },
+                                        modifier = Modifier.testTag("select_explorer_provider_${spec.providerId.id}")
+                                    )
+                                }
+                            }
+
+                            // Method Formula & Isolated Storage Key Card
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("active_method_formula_card"),
+                                shape = RoundedCornerShape(8.dp),
+                                color = MaterialTheme.colorScheme.background,
+                                border = BorderStroke(1.dp, financialPalette.cardBorder)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = if (isFa) activeMethodSpec.nameFa else activeMethodSpec.nameEn,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = activeMethodSpec.methodCode,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Text(
+                                        text = (if (isFa) "فرمول و الگوریتم جمع‌آوری: " else "Collection Formula: ") +
+                                            (if (isFa) activeMethodSpec.formulaFa else activeMethodSpec.formulaEn),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurface
+                                    )
+                                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                        Text(
+                                            text = "${activeMethodSpec.persistenceRule} · TF: ${activeMethodSpec.supportedTimeframes.joinToString(", ")}",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = financialPalette.bullCandle
+                                        )
+                                    }
+                                }
+                            }
+
+                            // Supported Symbols inside the selected Data Collection Method
+                            for (srcSym in activeMethodSpec.supportedSymbols) {
+                                val existingSym = symbols.firstOrNull { it.symbolCode == srcSym.symbolCode }
+                                val isActiveWithThisSource = existingSym != null &&
+                                    existingSym.inWatchlist &&
+                                    existingSym.activeProvider == activeMethodSpec.providerId
+
+                                Card(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("source_symbol_row_${activeMethodSpec.providerId.id}_${srcSym.symbolCode.lowercase()}"),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                                    border = BorderStroke(
+                                        1.dp,
+                                        if (isActiveWithThisSource) financialPalette.bullCandle else financialPalette.cardBorder
+                                    )
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 10.dp, vertical = 8.dp),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            es.manico.chartintelligence.ui.components.AssetSymbolBadge(
+                                                symbolCode = srcSym.symbolCode,
+                                                sizeDp = 30.dp
+                                            )
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                Text(
+                                                    text = if (isFa) srcSym.labelFa else srcSym.labelEn,
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface
+                                                )
+                                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                    val barsInfo = if (existingSym != null && existingSym.activeProvider == activeMethodSpec.providerId) {
+                                                        " · ${existingSym.storedCandleCount} bars (${existingSym.lastSyncMode})"
+                                                    } else ""
+                                                    Text(
+                                                        text = "${srcSym.symbolCode} · Ticker: ${srcSym.providerTicker}$barsInfo",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Button(
+                                            onClick = {
+                                                onSelectProviderForSymbol(srcSym.symbolCode, activeMethodSpec.providerId)
+                                                if (existingSym == null || !existingSym.inWatchlist) {
+                                                    onToggleSymbolInWatchlist(srcSym.symbolCode, true)
+                                                }
+                                            },
+                                            shape = RoundedCornerShape(6.dp),
+                                            contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                                            modifier = Modifier
+                                                .height(32.dp)
+                                                .testTag("activate_source_symbol_${activeMethodSpec.providerId.id}_${srcSym.symbolCode.lowercase()}")
+                                        ) {
+                                            Text(
+                                                text = if (isActiveWithThisSource) {
+                                                    if (isFa) "✓ فعال در واچ‌لیست" else "✓ Active"
+                                                } else {
+                                                    if (isFa) "افزودن با این منبع" else "Use Source"
+                                                },
+                                                style = MaterialTheme.typography.labelSmall
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+                        } else {
+                            OutlinedTextField(
+                                value = symbolSearchQuery,
+                                onValueChange = { symbolSearchQuery = it },
+                                label = {
+                                    Text(
+                                        if (isFa) "جستجوی نماد (مثلاً SPOTBRENT، XAUUSD، BTCUSD)…"
+                                        else "Search symbol (e.g. SPOTBRENT, XAUUSD, BTCUSD)…"
+                                    )
+                                },
+                                singleLine = true,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("symbol_explorer_search_input")
+                            )
+                        }
+
                         Text(
                             text = stringResource(R.string.settings_symbols_hint),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        for (symbol in symbols) {
+                        val filteredSymbols = if (explorerMode == "by_symbol" && symbolSearchQuery.isNotBlank()) {
+                            val q = symbolSearchQuery.trim().uppercase()
+                            symbols.filter {
+                                it.symbolCode.uppercase().contains(q) ||
+                                    (it.customTitle?.uppercase()?.contains(q) == true)
+                            }
+                        } else {
+                            symbols
+                        }
+
+                        for (symbol in filteredSymbols) {
                             Card(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -539,89 +782,117 @@ fun SettingsScreen(
                                 ),
                                 border = BorderStroke(1.dp, financialPalette.cardBorder)
                             ) {
-                                Row(
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
                                     Row(
-                                        modifier = Modifier.weight(1f),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        es.manico.chartintelligence.ui.components.AssetSymbolBadge(
-                                            symbolCode = symbol.symbolCode,
-                                            sizeDp = 34.dp
-                                        )
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            val displayTitle = symbol.titleResId?.let { stringResource(it) }
-                                                ?: symbol.customTitle
-                                                ?: symbol.symbolCode
-                                            Text(
-                                                text = displayTitle,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurface
+                                        Row(
+                                            modifier = Modifier.weight(1f),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                        ) {
+                                            es.manico.chartintelligence.ui.components.AssetSymbolBadge(
+                                                symbolCode = symbol.symbolCode,
+                                                sizeDp = 34.dp
                                             )
-                                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                            Column(modifier = Modifier.weight(1f)) {
+                                                val displayTitle = symbol.titleResId?.let { stringResource(it) }
+                                                    ?: symbol.customTitle
+                                                    ?: symbol.symbolCode
                                                 Text(
-                                                    text = "${symbol.symbolCode} · ${symbol.activeProvider.badgeLabel} · ${symbol.storedCandleCount} bars",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontFamily = JetBrainsMonoFontFamily,
-                                                    color = MaterialTheme.colorScheme.primary
+                                                    text = displayTitle,
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurface
                                                 )
+                                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                    Text(
+                                                        text = "${symbol.symbolCode} · ${symbol.activeProvider.badgeLabel} · ${symbol.storedCandleCount} bars · ${symbol.lastSyncMode}",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        color = MaterialTheme.colorScheme.primary
+                                                    )
+                                                }
+                                            }
+                                        }
+
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = { providerModalSymbolCode = symbol.symbolCode },
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(1.dp, financialPalette.cardBorder),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier
+                                                    .height(32.dp)
+                                                    .testTag("change_provider_${symbol.symbolCode.lowercase()}")
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Tune,
+                                                    contentDescription = stringResource(R.string.settings_change_provider),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = symbol.activeProvider.badgeLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily
+                                                )
+                                            }
+
+                                            Switch(
+                                                checked = symbol.inWatchlist,
+                                                onCheckedChange = { checked ->
+                                                    onToggleSymbolInWatchlist(symbol.symbolCode, checked)
+                                                },
+                                                modifier = Modifier.testTag("toggle_watchlist_${symbol.symbolCode.lowercase()}")
+                                            )
+
+                                            if (symbol.isCustom) {
+                                                IconButton(
+                                                    onClick = { onDeleteSymbol(symbol.symbolCode) },
+                                                    modifier = Modifier
+                                                        .size(32.dp)
+                                                        .testTag("delete_symbol_${symbol.symbolCode.lowercase()}")
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.Delete,
+                                                        contentDescription = stringResource(R.string.action_delete_symbol),
+                                                        tint = MaterialTheme.colorScheme.error,
+                                                        modifier = Modifier.size(18.dp)
+                                                    )
+                                                }
                                             }
                                         }
                                     }
 
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        OutlinedButton(
-                                            onClick = { providerModalSymbolCode = symbol.symbolCode },
-                                            shape = RoundedCornerShape(6.dp),
-                                            border = BorderStroke(1.dp, financialPalette.cardBorder),
-                                            contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                            modifier = Modifier
-                                                .height(32.dp)
-                                                .testTag("change_provider_${symbol.symbolCode.lowercase()}")
+                                    // In by_symbol mode, also show direct provider selector chips for all compatible methods
+                                    if (explorerMode == "by_symbol") {
+                                        FlowRow(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.Tune,
-                                                contentDescription = stringResource(R.string.settings_change_provider),
-                                                modifier = Modifier.size(14.dp)
-                                            )
-                                            Spacer(modifier = Modifier.width(4.dp))
-                                            Text(
-                                                text = symbol.activeProvider.badgeLabel,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontFamily = JetBrainsMonoFontFamily
-                                            )
-                                        }
-
-                                        Switch(
-                                            checked = symbol.inWatchlist,
-                                            onCheckedChange = { checked ->
-                                                onToggleSymbolInWatchlist(symbol.symbolCode, checked)
-                                            },
-                                            modifier = Modifier.testTag("toggle_watchlist_${symbol.symbolCode.lowercase()}")
-                                        )
-
-                                        if (symbol.isCustom) {
-                                            IconButton(
-                                                onClick = { onDeleteSymbol(symbol.symbolCode) },
-                                                modifier = Modifier
-                                                    .size(32.dp)
-                                                    .testTag("delete_symbol_${symbol.symbolCode.lowercase()}")
-                                            ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Delete,
-                                                    contentDescription = stringResource(R.string.action_delete_symbol),
-                                                    tint = MaterialTheme.colorScheme.error,
-                                                    modifier = Modifier.size(18.dp)
+                                            for (prov in symbol.allowedProviders) {
+                                                val isActive = symbol.activeProvider == prov
+                                                FilterChip(
+                                                    selected = isActive,
+                                                    onClick = { onSelectProviderForSymbol(symbol.symbolCode, prov) },
+                                                    label = {
+                                                        Text(
+                                                            text = prov.badgeLabel,
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontFamily = JetBrainsMonoFontFamily
+                                                        )
+                                                    }
                                                 )
                                             }
                                         }

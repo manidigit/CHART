@@ -31,6 +31,111 @@ export const DEFAULT_PREFS = {
   showHighLowLabels: true,
 };
 
+export const PROVIDER_METHODS_CATALOG = [
+  {
+    providerId: 'tvdatafeed',
+    badgeLabel: 'TradingView Wick',
+    titleFa: 'الگوریتم استخراج کندل و شدو از TradingView (tvdatafeed)',
+    titleEn: 'TradingView Wick & WebSocket Engine (tvdatafeed)',
+    methodType: 'WSS_STREAM_AND_SEED',
+    requiresApiKey: false,
+    formulaFa: 'آرشیو پایه ۵۰۰۰ کندل در دیتابیس مرکزی + دریافت افزایشی کندل‌های جدید از سوکت زنده wss://data.tradingview.com با تراز دقیق UTC 00:00 و حفظ کامل شدوها (Wicks).',
+    formulaEn: '5,000-bar base archive in MariaDB + incremental delta sync via wss://data.tradingview.com WebSocket with exact 00:00 UTC alignment and full wick preservation.',
+    supportedTimeframes: ['M15', 'H1', 'H4', 'D1', 'W1'],
+    storageKeyRule: 'UNIQUE(chart_id, "tvdatafeed", timeframe, open_time_utc)',
+    symbols: [
+      { symbolCode: 'SPOTBRENT', providerTicker: 'PEPPERSTONE:SPOTBRENT', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude Oil Spot', category: 'ENERGY', decimals: 3 },
+      { symbolCode: 'XAUUSD', providerTicker: 'OANDA:XAUUSD', titleFa: 'طلای جهانی اسپات', titleEn: 'Gold Spot / USD', category: 'METALS', decimals: 2 },
+      { symbolCode: 'BRENT_FUTURES', providerTicker: 'NYMEX:BZ1!', titleFa: 'قرارداد آتی نفت برنت', titleEn: 'Brent Crude Futures', category: 'ENERGY', decimals: 2 },
+      { symbolCode: 'XAGUSD', providerTicker: 'OANDA:XAGUSD', titleFa: 'نقره جهانی اسپات', titleEn: 'Silver Spot / USD', category: 'METALS', decimals: 3 },
+      { symbolCode: 'EURUSD', providerTicker: 'OANDA:EURUSD', titleFa: 'یورو به دلار آمریکا', titleEn: 'Euro / US Dollar', category: 'FX', decimals: 4 },
+      { symbolCode: 'GBPUSD', providerTicker: 'OANDA:GBPUSD', titleFa: 'پوند بریتانیا به دلار', titleEn: 'British Pound / USD', category: 'FX', decimals: 4 },
+      { symbolCode: 'USDJPY', providerTicker: 'OANDA:USDJPY', titleFa: 'دلار آمریکا به ین ژاپن', titleEn: 'US Dollar / Japanese Yen', category: 'FX', decimals: 3 },
+      { symbolCode: 'BTCUSD', providerTicker: 'BITSTAMP:BTCUSD', titleFa: 'بیت‌کوین به دلار آمریکا', titleEn: 'Bitcoin / US Dollar', category: 'CRYPTO', decimals: 2 },
+    ],
+  },
+  {
+    providerId: 'twelve_data',
+    badgeLabel: 'Twelve Data API',
+    titleFa: 'وب‌سرویس رسمی Twelve Data REST API',
+    titleEn: 'Twelve Data REST Time-Series API',
+    methodType: 'REST_API_KEY',
+    requiresApiKey: true,
+    formulaFa: 'فراخوانی اندپوینت api.twelvedata.com/time_series با کلید اختصاصی و دریافت صرفاً کندل‌های جدید جاافتاده (outputsize = deltaBars) پس از ذخیره تاریخچه اولیه در دیتابیس.',
+    formulaEn: 'Queries api.twelvedata.com/time_series with API key using incremental outputsize = deltaBars after initial history is stored in MariaDB.',
+    supportedTimeframes: ['M15', 'H1', 'H4', 'D1', 'W1'],
+    storageKeyRule: 'UNIQUE(chart_id, "twelve_data", timeframe, open_time_utc)',
+    symbols: [
+      { symbolCode: 'XAUUSD', providerTicker: 'XAU/USD', titleFa: 'طلای جهانی اسپات', titleEn: 'Gold Spot / USD', category: 'METALS', decimals: 2 },
+      { symbolCode: 'SPOTBRENT', providerTicker: 'XBR/USD', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude Oil Spot', category: 'ENERGY', decimals: 3 },
+      { symbolCode: 'XAGUSD', providerTicker: 'XAG/USD', titleFa: 'نقره جهانی اسپات', titleEn: 'Silver Spot / USD', category: 'METALS', decimals: 3 },
+      { symbolCode: 'EURUSD', providerTicker: 'EUR/USD', titleFa: 'یورو به دلار آمریکا', titleEn: 'Euro / US Dollar', category: 'FX', decimals: 4 },
+      { symbolCode: 'GBPUSD', providerTicker: 'GBP/USD', titleFa: 'پوند بریتانیا به دلار', titleEn: 'British Pound / USD', category: 'FX', decimals: 4 },
+      { symbolCode: 'USDJPY', providerTicker: 'USD/JPY', titleFa: 'دلار آمریکا به ین ژاپن', titleEn: 'US Dollar / Japanese Yen', category: 'FX', decimals: 3 },
+      { symbolCode: 'BTCUSD', providerTicker: 'BTC/USD', titleFa: 'بیت‌کوین به دلار آمریکا', titleEn: 'Bitcoin / US Dollar', category: 'CRYPTO', decimals: 2 },
+    ],
+  },
+  {
+    providerId: 'dukascopy',
+    badgeLabel: 'Dukascopy Swiss',
+    titleFa: 'فید بین‌بانکی دوکاسکپی سوئیس (Dukascopy Bank)',
+    titleEn: 'Dukascopy Swiss Bank Historical Feed',
+    methodType: 'SWISS_BANK_FEED',
+    requiresApiKey: false,
+    formulaFa: 'استخراج کندل‌های استاندارد بین‌بانکی با حذف کامل کندل‌های مصنوعی تعطیلات آخر هفته (volume = 0) و ذخیره‌سازی ماندگار در جدول candles.',
+    formulaEn: 'Interbank historical OHLC feed with strict weekend synthetic tick filtering and permanent MariaDB persistence.',
+    supportedTimeframes: ['M15', 'H1', 'H4', 'D1', 'W1'],
+    storageKeyRule: 'UNIQUE(chart_id, "dukascopy", timeframe, open_time_utc)',
+    symbols: [
+      { symbolCode: 'XAUUSD', providerTicker: 'XAU/USD', titleFa: 'طلای جهانی اسپات', titleEn: 'Gold Spot / USD', category: 'METALS', decimals: 2 },
+      { symbolCode: 'SPOTBRENT', providerTicker: 'BRENT.CMD/USD', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude Oil Spot', category: 'ENERGY', decimals: 3 },
+      { symbolCode: 'BRENT_FUTURES', providerTicker: 'BRENT.CMD/USD', titleFa: 'قرارداد آتی نفت برنت', titleEn: 'Brent Crude Futures', category: 'ENERGY', decimals: 2 },
+      { symbolCode: 'XAGUSD', providerTicker: 'XAG/USD', titleFa: 'نقره جهانی اسپات', titleEn: 'Silver Spot / USD', category: 'METALS', decimals: 3 },
+      { symbolCode: 'EURUSD', providerTicker: 'EUR/USD', titleFa: 'یورو به دلار آمریکا', titleEn: 'Euro / US Dollar', category: 'FX', decimals: 4 },
+      { symbolCode: 'GBPUSD', providerTicker: 'GBP/USD', titleFa: 'پوند بریتانیا به دلار', titleEn: 'British Pound / USD', category: 'FX', decimals: 4 },
+      { symbolCode: 'USDJPY', providerTicker: 'USD/JPY', titleFa: 'دلار آمریکا به ین ژاپن', titleEn: 'US Dollar / Japanese Yen', category: 'FX', decimals: 3 },
+    ],
+  },
+  {
+    providerId: 'yahoo_finance',
+    badgeLabel: 'Yahoo Finance v8',
+    titleFa: 'موتور عمومی یاهو فایننس (Yahoo Finance Chart v8)',
+    titleEn: 'Yahoo Finance v8 Chart Engine',
+    methodType: 'PUBLIC_REST_V8',
+    requiresApiKey: false,
+    formulaFa: 'دریافت کندل از query1.finance.yahoo.com/v8/finance/chart با انتخاب هوشمند بازه کوتاه (1d/5d) در حالت Delta Sync جهت جلوگیری از دریافت مجدد تاریخچه قبلی.',
+    formulaEn: 'Fetches from query1.finance.yahoo.com/v8/finance/chart using short 1d/5d windows during Delta Sync to avoid re-downloading cached history.',
+    supportedTimeframes: ['M15', 'H1', 'H4', 'D1', 'W1'],
+    storageKeyRule: 'UNIQUE(chart_id, "yahoo_finance", timeframe, open_time_utc)',
+    symbols: [
+      { symbolCode: 'SPOTBRENT', providerTicker: 'BZ=F', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude Oil Spot', category: 'ENERGY', decimals: 3 },
+      { symbolCode: 'BRENT_FUTURES', providerTicker: 'BZ=F', titleFa: 'قرارداد آتی نفت برنت', titleEn: 'Brent Crude Futures', category: 'ENERGY', decimals: 2 },
+      { symbolCode: 'XAUUSD', providerTicker: 'GC=F', titleFa: 'طلای جهانی اسپات', titleEn: 'Gold Spot / USD', category: 'METALS', decimals: 2 },
+      { symbolCode: 'XAGUSD', providerTicker: 'SI=F', titleFa: 'نقره جهانی اسپات', titleEn: 'Silver Spot / USD', category: 'METALS', decimals: 3 },
+      { symbolCode: 'EURUSD', providerTicker: 'EURUSD=X', titleFa: 'یورو به دلار آمریکا', titleEn: 'Euro / US Dollar', category: 'FX', decimals: 4 },
+      { symbolCode: 'GBPUSD', providerTicker: 'GBPUSD=X', titleFa: 'پوند بریتانیا به دلار', titleEn: 'British Pound / USD', category: 'FX', decimals: 4 },
+      { symbolCode: 'USDJPY', providerTicker: 'JPY=X', titleFa: 'دلار آمریکا به ین ژاپن', titleEn: 'US Dollar / Japanese Yen', category: 'FX', decimals: 3 },
+      { symbolCode: 'BTCUSD', providerTicker: 'BTC-USD', titleFa: 'بیت‌کوین به دلار آمریکا', titleEn: 'Bitcoin / US Dollar', category: 'CRYPTO', decimals: 2 },
+    ],
+  },
+  {
+    providerId: 'eia_brent_spot',
+    badgeLabel: 'EIA FOB D1',
+    titleFa: 'مرجع رسمی روزانه نفت برنت اداره اطلاعات انرژی آمریکا (EIA FOB)',
+    titleEn: 'U.S. EIA Official Daily Brent Spot FOB Benchmark',
+    methodType: 'OFFICIAL_BENCHMARK_CSV',
+    requiresApiKey: false,
+    formulaFa: 'سری زمانی رسمی روزانه (D1) قیمت نقدی نفت برنت دریای شمال (Europe Brent Spot Price FOB)؛ ذخیره دائمی کندل‌های روزهای گذشته و دریافت فقط روزهای جدید.',
+    formulaEn: 'Official daily (D1) Europe Brent Spot Price FOB benchmark; permanently caches past daily bars and appends only newly published sessions.',
+    supportedTimeframes: ['D1'],
+    storageKeyRule: 'UNIQUE(chart_id, "eia_brent_spot", "D1", open_time_utc)',
+    symbols: [
+      { symbolCode: 'SPOTBRENT', providerTicker: 'EIA:RBRTE', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude Oil Spot', category: 'ENERGY', decimals: 3 },
+      { symbolCode: 'BRENT_FUTURES', providerTicker: 'EIA:RBRTE', titleFa: 'قرارداد آتی نفت برنت', titleEn: 'Brent Crude Futures', category: 'ENERGY', decimals: 2 },
+    ],
+  },
+];
+
 const DEFAULT_SYMBOLS = [
   {
     symbolCode: 'XAUUSD',
@@ -41,6 +146,8 @@ const DEFAULT_SYMBOLS = [
     timeframe: 'M15',
     lastClose: 0,
     lastCandleUtc: '',
+    lastSyncMode: 'DB_CACHE_HIT',
+    fetchedNewBars: 0,
     candles: [],
     isSyncing: false,
     syncError: false,
@@ -54,6 +161,8 @@ const DEFAULT_SYMBOLS = [
     timeframe: 'M15',
     lastClose: 0,
     lastCandleUtc: '',
+    lastSyncMode: 'DB_CACHE_HIT',
+    fetchedNewBars: 0,
     candles: [],
     isSyncing: false,
     syncError: false,
@@ -67,6 +176,8 @@ const DEFAULT_SYMBOLS = [
     timeframe: 'M15',
     lastClose: 0,
     lastCandleUtc: '',
+    lastSyncMode: 'DB_CACHE_HIT',
+    fetchedNewBars: 0,
     candles: [],
     isSyncing: false,
     syncError: false,
@@ -76,10 +187,12 @@ const DEFAULT_SYMBOLS = [
     decimals: 3,
     inWatchlist: false,
     activeProvider: 'twelve_data',
-    allowedProviders: ['twelve_data', 'dukascopy', 'yahoo_finance'],
+    allowedProviders: ['twelve_data', 'tvdatafeed', 'dukascopy', 'yahoo_finance'],
     timeframe: 'M15',
     lastClose: 0,
     lastCandleUtc: '',
+    lastSyncMode: 'DB_CACHE_HIT',
+    fetchedNewBars: 0,
     candles: [],
     isSyncing: false,
     syncError: false,
@@ -89,10 +202,57 @@ const DEFAULT_SYMBOLS = [
     decimals: 4,
     inWatchlist: false,
     activeProvider: 'twelve_data',
-    allowedProviders: ['twelve_data', 'dukascopy', 'yahoo_finance'],
+    allowedProviders: ['twelve_data', 'tvdatafeed', 'dukascopy', 'yahoo_finance'],
     timeframe: 'M15',
     lastClose: 0,
     lastCandleUtc: '',
+    lastSyncMode: 'DB_CACHE_HIT',
+    fetchedNewBars: 0,
+    candles: [],
+    isSyncing: false,
+    syncError: false,
+  },
+  {
+    symbolCode: 'GBPUSD',
+    decimals: 4,
+    inWatchlist: false,
+    activeProvider: 'tvdatafeed',
+    allowedProviders: ['tvdatafeed', 'twelve_data', 'dukascopy', 'yahoo_finance'],
+    timeframe: 'M15',
+    lastClose: 0,
+    lastCandleUtc: '',
+    lastSyncMode: 'DB_CACHE_HIT',
+    fetchedNewBars: 0,
+    candles: [],
+    isSyncing: false,
+    syncError: false,
+  },
+  {
+    symbolCode: 'USDJPY',
+    decimals: 3,
+    inWatchlist: false,
+    activeProvider: 'tvdatafeed',
+    allowedProviders: ['tvdatafeed', 'twelve_data', 'dukascopy', 'yahoo_finance'],
+    timeframe: 'M15',
+    lastClose: 0,
+    lastCandleUtc: '',
+    lastSyncMode: 'DB_CACHE_HIT',
+    fetchedNewBars: 0,
+    candles: [],
+    isSyncing: false,
+    syncError: false,
+  },
+  {
+    symbolCode: 'BTCUSD',
+    decimals: 2,
+    inWatchlist: false,
+    activeProvider: 'tvdatafeed',
+    allowedProviders: ['tvdatafeed', 'twelve_data', 'yahoo_finance'],
+    timeframe: 'M15',
+    lastClose: 0,
+    lastCandleUtc: '',
+    lastSyncMode: 'DB_CACHE_HIT',
+    fetchedNewBars: 0,
     candles: [],
     isSyncing: false,
     syncError: false,
@@ -177,20 +337,28 @@ function loadSymbols() {
     if (!Array.isArray(parsed) || parsed.length === 0) {
       return DEFAULT_SYMBOLS.map((s) => ({ ...s }));
     }
-    return parsed.map((item) => {
+    const byCode = new Map();
+    for (const def of DEFAULT_SYMBOLS) {
+      byCode.set(def.symbolCode, { ...def });
+    }
+    for (const item of parsed) {
+      if (!item || !item.symbolCode) continue;
       const def = DEFAULT_SYMBOLS.find((d) => d.symbolCode === item.symbolCode);
       const allowed = def
         ? def.allowedProviders
         : ['tvdatafeed', 'dukascopy', 'twelve_data', 'yahoo_finance'];
-      return {
+      byCode.set(item.symbolCode, {
         ...(def || {}),
         ...item,
         allowedProviders: allowed,
         candles: Array.isArray(item.candles) ? item.candles : [],
+        lastSyncMode: item.lastSyncMode || 'DB_CACHE_HIT',
+        fetchedNewBars: Number(item.fetchedNewBars || 0),
         isSyncing: false,
         syncError: false,
-      };
-    });
+      });
+    }
+    return Array.from(byCode.values());
   } catch {
     return DEFAULT_SYMBOLS.map((s) => ({ ...s }));
   }
@@ -362,6 +530,11 @@ export const state = {
   systemStatus: null,
   isWorkspaceSyncing: false,
   lastWorkspaceSyncedAt: null,
+
+  sourceExplorerMode: 'by_source',
+  selectedExplorerProvider: 'tvdatafeed',
+  symbolExplorerSearchQuery: '',
+  providerCatalogStats: [],
 
   rightPanelWidth: Math.max(
     185,

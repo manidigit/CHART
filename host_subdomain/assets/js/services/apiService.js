@@ -601,26 +601,46 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
   });
 }
 
-async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, forceRefresh = true) {
+async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, forceBackfill = false) {
   const normTf = provider === 'eia_brent_spot' ? 'D1' : String(timeframe || 'M15').toUpperCase();
   const safeLimit = Math.max(40, Math.min(5000, Number(limit) || 500));
   const nowMs = Date.now();
-  const refreshParam = forceRefresh ? '&refresh=1' : '';
+  const cacheKey = `${symbolCode}_${provider}_${normTf}`;
+  const existingCached = state.candleCache[cacheKey] || getCachedOrAggregatedCandles(symbolCode, provider, normTf);
+  const lastLocalOpenMs =
+    existingCached && existingCached.length >= 20
+      ? Number(existingCached[existingCached.length - 1].open_time_utc_ms || 0)
+      : 0;
+
+  const sinceParam = !forceBackfill && lastLocalOpenMs > 0 ? `&since_ms=${lastLocalOpenMs}` : '';
+  const backfillParam = forceBackfill ? '&backfill=1' : '';
   const url = `./api/v1/candles_sync.php?symbol=${encodeURIComponent(
     symbolCode
   )}&provider=${encodeURIComponent(provider)}&timeframe=${encodeURIComponent(
     normTf
-  )}&limit=${safeLimit}${refreshParam}&_t=${nowMs}`;
+  )}&limit=${safeLimit}${sinceParam}${backfillParam}&_t=${nowMs}`;
 
-  let candles = [];
+  let candles = existingCached ? [...existingCached] : [];
+  let syncMeta = {
+    sync_mode: lastLocalOpenMs > 0 ? 'DB_CACHE_HIT' : 'INITIAL_BACKFILL',
+    fetched_new_bars: 0,
+    stored_total_bars: candles.length,
+    provider_status: 'READY',
+  };
+
   try {
     const res = await fetch(url, { cache: 'no-store' });
     const json = await res.json();
-    if (json && json.ok && json.data && Array.isArray(json.data.candles)) {
-      candles = mergeCandlesIdempotent([], json.data.candles, normTf, nowMs);
+    if (json && json.ok && json.data) {
+      if (json.data.sync_meta) {
+        syncMeta = { ...syncMeta, ...json.data.sync_meta };
+      }
+      if (Array.isArray(json.data.candles) && json.data.candles.length > 0) {
+        candles = mergeCandlesIdempotent(candles, json.data.candles, normTf, nowMs);
+      }
     }
   } catch {
-    candles = [];
+    // Keep existingCached on network error
   }
 
   if (candles.length === 0 && provider === 'tvdatafeed') {
@@ -641,16 +661,20 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
   const lastStoredOpenMs = candles.length > 0 ? Number(candles[candles.length - 1].open_time_utc_ms) : 0;
   const expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMs);
 
+  // Only connect to TradingView WebSocket if tvdatafeed is still behind expectedLastClosedOpenMs
   if (provider === 'tvdatafeed' && (candles.length === 0 || lastStoredOpenMs < expectedLastClosedOpenMs)) {
     const stepMs = PriceFormatter.stepMilliseconds(normTf);
     const gapBars =
       lastStoredOpenMs > 0
-        ? Math.min(1500, Math.max(120, Math.ceil((nowMs - lastStoredOpenMs) / stepMs) + 32))
+        ? Math.min(1500, Math.max(20, Math.ceil((nowMs - lastStoredOpenMs) / stepMs) + 12))
         : Math.min(1500, safeLimit);
 
     const liveWsBars = await fetchDirectFromTradingViewBrowserWs(symbolCode, normTf, gapBars, nowMs);
-    if (liveWsBars.length > 0) {
-      candles = mergeCandlesIdempotent(candles, liveWsBars, normTf, nowMs);
+    const newerWsBars = liveWsBars.filter((b) => Number(b.open_time_utc_ms || 0) > lastStoredOpenMs);
+    if (newerWsBars.length > 0) {
+      candles = mergeCandlesIdempotent(candles, newerWsBars, normTf, nowMs);
+      syncMeta.sync_mode = lastStoredOpenMs > 0 ? 'DELTA_SYNC' : 'INITIAL_BACKFILL';
+      syncMeta.fetched_new_bars = Number(syncMeta.fetched_new_bars || 0) + newerWsBars.length;
     }
     if (normTf === 'H4') {
       const liveH1Bars = await fetchDirectFromTradingViewBrowserWs(
@@ -666,10 +690,12 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
     }
   }
 
-  return candles.slice(-safeLimit);
+  const finalCandles = candles.slice(-safeLimit);
+  syncMeta.stored_total_bars = Math.max(Number(syncMeta.stored_total_bars || 0), finalCandles.length);
+  return { candles: finalCandles, syncMeta };
 }
 
-export async function syncSymbolNow(symbolCode, requestedTf, renderCallback) {
+export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, forceBackfill = false) {
   const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
   if (!sym) return;
 
@@ -691,13 +717,15 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback) {
   try {
     const results = await Promise.all(
       timeframesToSync.map(async (tf) => {
-        const incoming = await fetchFromBackend(symbolCode, sym.activeProvider, tf, fetchLimit, true);
-        return [tf, incoming];
+        const res = await fetchFromBackend(symbolCode, sym.activeProvider, tf, fetchLimit, forceBackfill);
+        return [tf, res.candles, res.syncMeta];
       })
     );
 
     const syncedByTf = {};
-    for (const [tf, incoming] of results) {
+    let activeMeta = null;
+    for (const [tf, incoming, meta] of results) {
+      if (tf === effectiveTf) activeMeta = meta;
       const cacheKey = `${symbolCode}_${sym.activeProvider}_${tf}`;
       const existing = state.candleCache[cacheKey] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
       const merged =
@@ -733,6 +761,10 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback) {
 
     sym.timeframe = effectiveTf;
     sym.candles = activeCandles;
+    if (activeMeta) {
+      sym.lastSyncMode = activeMeta.sync_mode || 'DB_CACHE_HIT';
+      sym.fetchedNewBars = Number(activeMeta.fetched_new_bars || 0);
+    }
     const latestQuoteBar =
       effectiveTf === 'D1' && m15Bars.length > 0
         ? m15Bars[m15Bars.length - 1]
@@ -775,6 +807,6 @@ export async function syncAllWatchlistSymbols(renderCallback) {
       (t) => t.tabId === state.activeTabId && t.symbolCode === sym.symbolCode
     );
     const tf = activeTab ? activeTab.timeframe : sym.timeframe || 'M15';
-    await syncSymbolNow(sym.symbolCode, tf, renderCallback);
+    await syncSymbolNow(sym.symbolCode, tf, renderCallback, false);
   }
 }

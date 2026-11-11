@@ -8,11 +8,15 @@ data class ProviderSyncResult(
     val symbolCode: String,
     val timeframe: String,
     val candles: List<CandleBar>,
-    val syncedAtUtcIso: String
+    val syncedAtUtcIso: String,
+    val syncMode: String = "DB_CACHE_HIT",
+    val fetchedNewBars: Int = 0
 )
 
 /**
  * Unified contract implemented by every independent data provider adapter in `providers/`.
+ * Supports DB-First Incremental Historical Sync via [sinceOpenTimeMs]:
+ * when [sinceOpenTimeMs] > 0, the server and provider fetch ONLY newly closed bars after [sinceOpenTimeMs].
  */
 interface CandleProviderAdapter {
     val providerId: ProviderId
@@ -20,6 +24,7 @@ interface CandleProviderAdapter {
     suspend fun fetchClosedCandlesUpToNow(
         symbolCode: String,
         timeframe: String,
-        limit: Int
+        limit: Int,
+        sinceOpenTimeMs: Long = 0L
     ): ProviderSyncResult
 }

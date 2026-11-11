@@ -21,6 +21,8 @@ data class SymbolConfig(
     val prevClose: BigDecimal? = null,
     val lastCandleUtc: String? = null,
     val storedCandleCount: Int = 0,
+    val lastSyncMode: String = "DB_CACHE_HIT",
+    val fetchedNewBars: Int = 0,
     val isSyncing: Boolean = false,
     val syncErrorText: String? = null
 ) {

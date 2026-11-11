@@ -95,6 +95,9 @@
     <string name="symbol_brent_futures_name">آتی نفت برنت (Brent Futures BZ=F)</string>
     <string name="symbol_xagusd_name">نقره جهانی اسپات (XAG/USD)</string>
     <string name="symbol_eurusd_name">یورو به دلار آمریکا (EUR/USD)</string>
+    <string name="symbol_gbpusd_name">پوند بریتانیا به دلار آمریکا (GBP/USD)</string>
+    <string name="symbol_usdjpy_name">دلار آمریکا به ین ژاپن (USD/JPY)</string>
+    <string name="symbol_btcusd_name">بیت‌کوین به دلار آمریکا (BTC/USD)</string>
     <string name="provider_twelve_data">Twelve Data API (اولویت M15)</string>
     <string name="provider_tvdatafeed">TradingView (PEPPERSTONE:SPOTBRENT)</string>
     <string name="provider_dukascopy">Dukascopy (رایگان و مستقیم M15)</string>
@@ -181,7 +184,7 @@
     <string name="settings_group_sources">۳. منبع داده و نمادها</string>
     <string name="settings_group_params">۴. پارامترهای تحلیل و سوئیچ‌های TradingView</string>
     <string name="settings_group_about">۵. سلامت سرور و درباره</string>
-    <string name="settings_about_version">نسخه ۱.۳۰.۰ · هسته مرکزی یکپارچه وب و اندروید</string>
+    <string name="settings_about_version">نسخه ۱.۳۱.۰ · هسته مرکزی DB-First و تفکیک مستقل منابع داده</string>
     <string name="settings_tab_account">حساب</string>
     <string name="settings_tab_appearance">ظاهر</string>
     <string name="settings_tab_sources">نمادها</string>

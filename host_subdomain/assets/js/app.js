@@ -1240,6 +1240,45 @@ document.addEventListener('click', async (e) => {
     state.symbols = state.symbols.filter((s) => s.symbolCode !== code);
     saveSymbolsToStorage();
     renderApp();
+  } else if (action === 'set-explorer-mode') {
+    state.sourceExplorerMode = el.getAttribute('data-mode') || 'by_source';
+    renderApp();
+  } else if (action === 'select-explorer-provider') {
+    state.selectedExplorerProvider = el.getAttribute('data-provider') || 'tvdatafeed';
+    renderApp();
+  } else if (action === 'activate-source-symbol') {
+    const code = (el.getAttribute('data-symbol') || '').trim().toUpperCase();
+    const prov = el.getAttribute('data-provider') || 'tvdatafeed';
+    if (!code) return;
+    let sym = state.symbols.find((s) => s.symbolCode === code);
+    if (!sym) {
+      sym = {
+        chartId: `chart_${code.toLowerCase()}_main`,
+        symbolCode: code,
+        decimals: code === 'EURUSD' || code === 'GBPUSD' ? 4 : code === 'SPOTBRENT' || code === 'XAGUSD' ? 3 : 2,
+        inWatchlist: true,
+        activeProvider: prov,
+        allowedProviders: ['tvdatafeed', 'twelve_data', 'dukascopy', 'yahoo_finance'],
+        timeframe: prov === 'eia_brent_spot' ? 'D1' : 'M15',
+        storedCandleCount: 0,
+        lastSyncMode: 'DB_CACHE_HIT',
+        fetchedNewBars: 0,
+      };
+      state.symbols.push(sym);
+    } else {
+      sym.activeProvider = prov;
+      sym.inWatchlist = true;
+      if (prov === 'eia_brent_spot') sym.timeframe = 'D1';
+    }
+    saveSymbolsToStorage();
+    renderApp();
+    await syncSymbolNow(code, sym.timeframe || 'M15', renderApp, false);
+  } else if (action === 'delta-sync-symbol') {
+    const code = (el.getAttribute('data-symbol') || '').trim().toUpperCase();
+    const sym = state.symbols.find((s) => s.symbolCode === code);
+    if (sym) {
+      await syncSymbolNow(code, sym.timeframe || 'M15', renderApp, false);
+    }
   }
 });
 
@@ -1248,6 +1287,9 @@ document.addEventListener('input', (e) => {
   const action = el.getAttribute('data-action');
   if (action === 'watchlist-search') {
     state.watchlistSearchQuery = el.value;
+    renderApp();
+  } else if (action === 'search-explorer-symbol') {
+    state.symbolExplorerSearchQuery = el.value;
     renderApp();
   } else if (action === 'set-fetch-limit') {
     const val = Math.max(40, Math.min(5000, Number(el.value) || 500));

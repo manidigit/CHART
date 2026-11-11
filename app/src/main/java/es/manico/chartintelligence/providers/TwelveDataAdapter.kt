@@ -34,39 +34,32 @@ class TwelveDataAdapter(
     override val providerId: ProviderId = ProviderId.TWELVE_DATA
 
     private val twelveDateTimeFormat = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-    private val yahooFallback = YahooFinanceAdapter(httpClient)
 
     override suspend fun fetchClosedCandlesUpToNow(
         symbolCode: String,
         timeframe: String,
-        limit: Int
+        limit: Int,
+        sinceOpenTimeMs: Long
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
+        var syncMode = if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL"
+        var fetchedNewBars = 0
+
         val primaryCandles = runCatching {
-            val raw = fetchFromBackendOrTwelveData(symbolCode, timeframe, limit, nowMillis)
+            val (raw, metaMode, metaFetched) = fetchFromBackendOrTwelveData(symbolCode, timeframe, limit, sinceOpenTimeMs, nowMillis)
+            syncMode = metaMode
+            fetchedNewBars = metaFetched
             CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(raw, symbolCode, timeframe)
         }.getOrNull().orEmpty()
-
-        val realCandles = if (primaryCandles.size >= 5) {
-            primaryCandles
-        } else {
-            val fallbackRaw = runCatching {
-                yahooFallback.fetchYahooChartCandles(symbolCode, timeframe, limit, nowMillis)
-            }.getOrNull().orEmpty()
-            val cleanedFallback = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
-                fallbackRaw,
-                symbolCode,
-                timeframe
-            )
-            if (cleanedFallback.isNotEmpty()) cleanedFallback else primaryCandles
-        }
 
         ProviderSyncResult(
             providerId = providerId,
             symbolCode = symbolCode,
             timeframe = timeframe,
-            candles = realCandles,
-            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis)
+            candles = primaryCandles,
+            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
+            syncMode = syncMode,
+            fetchedNewBars = fetchedNewBars
         )
     }
 
@@ -74,13 +67,17 @@ class TwelveDataAdapter(
         symbolCode: String,
         timeframe: String,
         limit: Int,
+        sinceOpenTimeMs: Long,
         nowMillis: Long
-    ): List<CandleBar> {
+    ): Triple<List<CandleBar>, String, Int> {
         val apiSymbol = when (symbolCode.uppercase()) {
             "XAUUSD" -> "XAU/USD"
             "SPOTBRENT", "BRENT_FUTURES" -> "XBR/USD"
             "XAGUSD" -> "XAG/USD"
             "EURUSD" -> "EUR/USD"
+            "GBPUSD" -> "GBP/USD"
+            "USDJPY" -> "USD/JPY"
+            "BTCUSD" -> "BTC/USD"
             else -> symbolCode
         }
         val interval = when (timeframe.uppercase()) {
@@ -92,31 +89,47 @@ class TwelveDataAdapter(
             else -> "15min"
         }
 
-        val proxyUrl = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=twelve_data&timeframe=$timeframe&limit=$limit"
+        val sinceParam = if (sinceOpenTimeMs > 0L) "&since_ms=$sinceOpenTimeMs" else ""
+        val proxyUrl = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=twelve_data&timeframe=$timeframe&limit=$limit&refresh=1$sinceParam"
         val proxyRequest = Request.Builder().url(proxyUrl).get().build()
         runCatching {
             httpClient.newCall(proxyRequest).execute().use { response ->
                 if (response.isSuccessful) {
                     val body = response.body?.string().orEmpty()
+                    val root = runCatching { JSONObject(body) }.getOrNull()
+                    val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
+                    val mode = meta?.optString("mode", if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL") ?: "DB_CACHE_HIT"
+                    val fetched = meta?.optInt("fetched_new_bars", 0) ?: 0
                     val parsed = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
                         parseProxyCandles(body, timeframe, nowMillis),
                         symbolCode,
                         timeframe
                     )
-                    if (parsed.size >= 5) return parsed
+                    if (parsed.isNotEmpty() || sinceOpenTimeMs > 0L) {
+                        return Triple(parsed, mode, fetched)
+                    }
                 }
             }
         }
 
         val apiKey = BuildConfig.TWELVE_DATA_API_KEY
-        if (apiKey.isBlank()) return emptyList()
+        if (apiKey.isBlank()) return Triple(emptyList(), "DB_CACHE_HIT", 0)
 
-        val directUrl = "https://api.twelvedata.com/time_series?symbol=$apiSymbol&interval=$interval&outputsize=$limit&timezone=UTC&apikey=$apiKey"
+        val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(timeframe)
+        val effectiveLimit = if (sinceOpenTimeMs > 0L) {
+            val missingSteps = ((nowMillis - sinceOpenTimeMs) / stepMs).toInt()
+            if (missingSteps <= 1) return Triple(emptyList(), "DB_CACHE_HIT", 0)
+            (missingSteps + 8).coerceIn(10, limit.coerceAtMost(5000))
+        } else {
+            limit.coerceIn(30, 5000)
+        }
+
+        val directUrl = "https://api.twelvedata.com/time_series?symbol=$apiSymbol&interval=$interval&outputsize=$effectiveLimit&timezone=UTC&apikey=$apiKey"
         val directRequest = Request.Builder().url(directUrl).get().build()
         httpClient.newCall(directRequest).execute().use { response ->
-            if (!response.isSuccessful) return emptyList()
+            if (!response.isSuccessful) return Triple(emptyList(), "DB_CACHE_HIT", 0)
             val root = JSONObject(response.body?.string().orEmpty())
-            val values = root.optJSONArray("values") ?: return emptyList()
+            val values = root.optJSONArray("values") ?: return Triple(emptyList(), "DB_CACHE_HIT", 0)
             val result = ArrayList<CandleBar>()
             for (i in 0 until values.length()) {
                 val item = values.getJSONObject(i)
@@ -128,6 +141,7 @@ class TwelveDataAdapter(
                         .toInstant(ZoneOffset.UTC)
                         .toEpochMilli()
                 }
+                if (sinceOpenTimeMs > 0L && epochMillis < sinceOpenTimeMs) continue
                 if (!UtcTimeAnchorAlgorithm.isCandleClosed(epochMillis, timeframe, nowMillis)) continue
                 CandleValidatorAlgorithm.sanitizeAndValidate(
                     rawOpenTimeMillis = epochMillis,
@@ -139,11 +153,12 @@ class TwelveDataAdapter(
                     volume = BigDecimal(item.optString("volume", "0"))
                 )?.let { result.add(it) }
             }
-            return CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
+            val cleaned = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
                 result.sortedBy { it.openTimeUtcMillis },
                 symbolCode,
                 timeframe
             )
+            return Triple(cleaned, if (sinceOpenTimeMs > 0L) "DELTA_SYNC" else "INITIAL_BACKFILL", cleaned.size)
         }
     }
 

@@ -6,10 +6,19 @@ namespace ChartIntelligence\Providers;
 use ChartIntelligence\Algorithms\CandleValidator;
 use ChartIntelligence\Algorithms\UtcTimeAnchor;
 
+/**
+ * Isolated Provider Adapter for U.S. EIA Official Daily Brent Spot FOB Benchmark (`eia_brent_spot`).
+ *
+ * When `$sinceOpenMs > 0` (`DELTA_SYNC`), returns only newly closed daily sessions after `$sinceOpenMs`.
+ */
 final class EiaBenchmarkAdapter
 {
-    public static function fetchClosedCandles(string $symbol, int $limit, int $nowMs): array
-    {
+    public static function fetchClosedCandles(
+        string $symbol,
+        int $limit,
+        int $nowMs,
+        int $sinceOpenMs = 0
+    ): array {
         $url = 'https://datahub.io/core/oil-prices/r/brent-daily.csv';
         $ctx = stream_context_create(['http' => ['timeout' => 7]]);
         $raw = @file_get_contents($url, false, $ctx);
@@ -29,18 +38,21 @@ final class EiaBenchmarkAdapter
                 continue;
             }
             $openMs = $ts * 1000;
+            $close = (float) $parts[1];
+            $open = $prevClose ?? $close;
+            $prevClose = $close;
+            if ($sinceOpenMs > 0 && $openMs <= $sinceOpenMs) {
+                continue;
+            }
             if (!UtcTimeAnchor::isCandleClosed($openMs, 'D1', $nowMs)) {
                 continue;
             }
-            $close = (float) $parts[1];
-            $open = $prevClose ?? $close;
             $high = max($open, $close) + 0.35;
             $low = min($open, $close) - 0.35;
             $c = CandleValidator::sanitizeCandle($openMs, 'D1', $open, $high, $low, $close, 1000.0);
             if ($c !== null) {
                 $candles[$c['open_time_utc_ms']] = $c;
             }
-            $prevClose = $close;
         }
         ksort($candles);
         return array_values($candles);

@@ -49,41 +49,61 @@ class TvDatafeedAdapter(
     override suspend fun fetchClosedCandlesUpToNow(
         symbolCode: String,
         timeframe: String,
-        limit: Int
+        limit: Int,
+        sinceOpenTimeMs: Long
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
         val normTf = timeframe.uppercase()
         val safeLimit = limit.coerceIn(40, 5000)
         val cleanSymbol = symbolCode.trim().uppercase()
 
-        // 1. Fetch persisted historical series from backend with refresh=1 & cache-buster
+        // 1. Fetch persisted historical / delta series from DB-First backend engine
+        var syncMode = if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL"
+        var fetchedNewBars = 0
         val backendCandles = runCatching {
-            val url = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$cleanSymbol&provider=tvdatafeed&timeframe=$normTf&limit=$safeLimit&refresh=1&_t=$nowMillis"
+            val sinceParam = if (sinceOpenTimeMs > 0L) "&since_ms=$sinceOpenTimeMs" else ""
+            val url = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$cleanSymbol&provider=tvdatafeed&timeframe=$normTf&limit=$safeLimit&refresh=1$sinceParam&_t=$nowMillis"
             val request = Request.Builder().url(url).get().build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) emptyList()
-                else parseBackendResponse(response.body?.string().orEmpty(), cleanSymbol, normTf, nowMillis)
+                else {
+                    val bodyStr = response.body?.string().orEmpty()
+                    val root = runCatching { JSONObject(bodyStr) }.getOrNull()
+                    val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
+                    if (meta != null) {
+                        syncMode = meta.optString("mode", syncMode)
+                        fetchedNewBars = meta.optInt("fetched_new_bars", 0)
+                    }
+                    parseBackendResponse(bodyStr, cleanSymbol, normTf, nowMillis)
+                }
             }
         }.getOrNull().orEmpty()
 
-        val lastStoredOpenMs = backendCandles.lastOrNull()?.openTimeUtcMillis ?: 0L
+        val lastStoredOpenMs = maxOf(
+            sinceOpenTimeMs,
+            backendCandles.lastOrNull()?.openTimeUtcMillis ?: 0L
+        )
         val expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMillis)
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(normTf)
 
-        // 2. If backend candles are empty or older than the latest closed UTC bucket, fetch directly from TradingView WebSocket
+        // 2. If backend candles are behind the latest closed UTC bucket, fetch ONLY the missing delta bars from TradingView WebSocket
         var mergedCandles = backendCandles
-        if (mergedCandles.isEmpty() || lastStoredOpenMs < expectedLastClosedOpenMs) {
+        if ((mergedCandles.isEmpty() && sinceOpenTimeMs == 0L) || lastStoredOpenMs < expectedLastClosedOpenMs) {
             val gapBars = if (lastStoredOpenMs > 0L) {
-                (((nowMillis - lastStoredOpenMs) / stepMs).toInt() + 36).coerceIn(120, 1500)
+                (((nowMillis - lastStoredOpenMs) / stepMs).toInt() + 16).coerceIn(24, 1500)
             } else {
                 safeLimit.coerceIn(200, 1500)
             }
 
             val directTvCandles = runCatching {
                 fetchDirectFromTradingViewWs(cleanSymbol, normTf, gapBars, nowMillis)
-            }.getOrNull().orEmpty()
+            }.getOrNull().orEmpty().filter { sinceOpenTimeMs <= 0L || it.openTimeUtcMillis >= sinceOpenTimeMs }
 
             if (directTvCandles.isNotEmpty()) {
+                if (lastStoredOpenMs > 0L) {
+                    syncMode = "DELTA_SYNC"
+                    fetchedNewBars = maxOf(fetchedNewBars, directTvCandles.count { it.openTimeUtcMillis > lastStoredOpenMs })
+                }
                 mergedCandles = CandleValidatorAlgorithm.mergeIdempotent(
                     existing = mergedCandles,
                     incoming = directTvCandles,
@@ -95,10 +115,11 @@ class TvDatafeedAdapter(
             // For H4, also aggregate closed H1 bars from TradingView so 00:00/04:00/08:00/12:00/16:00/20:00 UTC buckets are exact
             if (normTf == "H4") {
                 val directH1 = runCatching {
-                    fetchDirectFromTradingViewWs(cleanSymbol, "H1", (gapBars * 4).coerceIn(160, 1500), nowMillis)
+                    fetchDirectFromTradingViewWs(cleanSymbol, "H1", (gapBars * 4).coerceIn(64, 1500), nowMillis)
                 }.getOrNull().orEmpty()
                 if (directH1.isNotEmpty()) {
                     val aggregatedH4 = TimeframeAggregatorAlgorithm.aggregateCandles(directH1, "H4", nowMillis)
+                        .filter { sinceOpenTimeMs <= 0L || it.openTimeUtcMillis >= sinceOpenTimeMs }
                     if (aggregatedH4.isNotEmpty()) {
                         mergedCandles = CandleValidatorAlgorithm.mergeIdempotent(
                             existing = mergedCandles,
@@ -107,24 +128,6 @@ class TvDatafeedAdapter(
                             nowUtcMillis = nowMillis
                         )
                     }
-                }
-            }
-
-            // Fallback: if TradingView WebSocket was unreachable and we still have a gap after lastStoredOpenMs,
-            // gap-fill newer closed bars via YahooFinanceAdapter
-            val updatedLastMs = mergedCandles.lastOrNull()?.openTimeUtcMillis ?: 0L
-            if (updatedLastMs < expectedLastClosedOpenMs) {
-                val yahooFallback = runCatching {
-                    YahooFinanceAdapter(httpClient).fetchClosedCandlesUpToNow(cleanSymbol, normTf, 300).candles
-                }.getOrNull().orEmpty().filter { it.openTimeUtcMillis > updatedLastMs }
-
-                if (yahooFallback.isNotEmpty()) {
-                    mergedCandles = CandleValidatorAlgorithm.mergeIdempotent(
-                        existing = mergedCandles,
-                        incoming = yahooFallback,
-                        timeframe = normTf,
-                        nowUtcMillis = nowMillis
-                    )
                 }
             }
         }
@@ -140,7 +143,9 @@ class TvDatafeedAdapter(
             symbolCode = cleanSymbol,
             timeframe = normTf,
             candles = finalCandles,
-            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis)
+            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
+            syncMode = syncMode,
+            fetchedNewBars = fetchedNewBars
         )
     }
 
@@ -213,6 +218,9 @@ class TvDatafeedAdapter(
             "XAUUSD" -> "OANDA" to "XAUUSD"
             "XAGUSD" -> "OANDA" to "XAGUSD"
             "EURUSD" -> "OANDA" to "EURUSD"
+            "GBPUSD" -> "OANDA" to "GBPUSD"
+            "USDJPY" -> "OANDA" to "USDJPY"
+            "BTCUSD" -> "COINBASE" to "BTCUSD"
             else -> "PEPPERSTONE" to symbolCode
         }
 

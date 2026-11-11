@@ -26,37 +26,44 @@ class DukascopyAdapter(
 ) : CandleProviderAdapter {
 
     override val providerId: ProviderId = ProviderId.DUKASCOPY
-    private val yahooFallback = YahooFinanceAdapter(httpClient)
 
     override suspend fun fetchClosedCandlesUpToNow(
         symbolCode: String,
         timeframe: String,
-        limit: Int
+        limit: Int,
+        sinceOpenTimeMs: Long
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
+        var syncMode = if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL"
+        var fetchedNewBars = 0
+
         val proxyCandles = runCatching {
-            val url = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=dukascopy&timeframe=$timeframe&limit=$limit"
+            val sinceParam = if (sinceOpenTimeMs > 0L) "&since_ms=$sinceOpenTimeMs" else ""
+            val url = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=dukascopy&timeframe=$timeframe&limit=$limit&refresh=1$sinceParam"
             val request = Request.Builder().url(url).get().build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) emptyList()
-                else parseBackendResponse(response.body?.string().orEmpty(), timeframe, nowMillis)
+                else {
+                    val bodyStr = response.body?.string().orEmpty()
+                    val root = runCatching { JSONObject(bodyStr) }.getOrNull()
+                    val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
+                    if (meta != null) {
+                        syncMode = meta.optString("mode", syncMode)
+                        fetchedNewBars = meta.optInt("fetched_new_bars", 0)
+                    }
+                    parseBackendResponse(bodyStr, timeframe, nowMillis)
+                }
             }
         }.getOrNull().orEmpty()
-
-        val realCandles = if (proxyCandles.isNotEmpty()) {
-            proxyCandles
-        } else {
-            runCatching {
-                yahooFallback.fetchYahooChartCandles(symbolCode, timeframe, limit, nowMillis)
-            }.getOrNull().orEmpty()
-        }
 
         ProviderSyncResult(
             providerId = providerId,
             symbolCode = symbolCode,
             timeframe = timeframe,
-            candles = realCandles,
-            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis)
+            candles = proxyCandles,
+            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
+            syncMode = syncMode,
+            fetchedNewBars = fetchedNewBars
         )
     }
 

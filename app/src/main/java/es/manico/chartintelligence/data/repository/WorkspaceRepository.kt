@@ -40,7 +40,7 @@ data class ServerOwnerStatus(
 
 data class SystemStatusDto(
     val isHealthy: Boolean = false,
-    val version: String = "1.29.0",
+    val version: String = "1.31.0",
     val serverTimeUtc: String = "",
     val dbConnected: Boolean = false,
     val dbVersion: String = "MariaDB",
@@ -602,22 +602,35 @@ class WorkspaceRepository(context: Context) {
         }
 
         val syncJobs = timeframesToSync.associateWith { tf ->
+            val tfKey = "${symbol.symbolCode}_${symbol.activeProvider.id}_${tf}"
+            val existingTf = candleMemoryStore[tfKey] ?: loadCandlesFromPrefs(tfKey, tf)
+            val sinceOpenTimeMs = if (existingTf.size >= 15) {
+                existingTf.lastOrNull()?.openTimeUtcMillis ?: 0L
+            } else {
+                0L
+            }
             async(Dispatchers.IO) {
                 runCatching {
-                    adapter.fetchClosedCandlesUpToNow(
+                    val res = adapter.fetchClosedCandlesUpToNow(
                         symbolCode = symbol.symbolCode,
                         timeframe = tf,
-                        limit = configuredFetchLimit
-                    ).candles
-                }.getOrDefault(emptyList())
+                        limit = configuredFetchLimit,
+                        sinceOpenTimeMs = sinceOpenTimeMs
+                    )
+                    Triple(existingTf, res.candles, res.syncMode to res.fetchedNewBars)
+                }.getOrDefault(Triple(existingTf, emptyList(), "DB_CACHE_HIT" to 0))
             }
         }
 
         val syncedByTf = HashMap<String, List<CandleBar>>()
+        var effectiveSyncMode = "DB_CACHE_HIT"
+        var effectiveFetchedNew = 0
         for ((tf, job) in syncJobs) {
-            val incoming = job.await()
-            val tfKey = "${symbol.symbolCode}_${symbol.activeProvider.id}_${tf}"
-            val existingTf = candleMemoryStore[tfKey] ?: loadCandlesFromPrefs(tfKey, tf)
+            val (existingTf, incoming, metaPair) = job.await()
+            if (tf == effectiveTimeframe) {
+                effectiveSyncMode = metaPair.first
+                effectiveFetchedNew = metaPair.second
+            }
             val combined = if (incoming.isNotEmpty()) {
                 CandleValidatorAlgorithm.mergeIdempotent(
                     existing = existingTf,
@@ -683,6 +696,8 @@ class WorkspaceRepository(context: Context) {
             prevClose = prev,
             lastCandleUtc = merged.lastOrNull()?.openTimeUtcIso ?: latestForQuote?.openTimeUtcIso,
             storedCandleCount = merged.size,
+            lastSyncMode = effectiveSyncMode,
+            fetchedNewBars = effectiveFetchedNew,
             isSyncing = false,
             syncErrorText = if (merged.isEmpty()) "ERR_NO_REAL_DATA" else null
         )
@@ -972,6 +987,7 @@ class WorkspaceRepository(context: Context) {
                 activeProvider = ProviderId.TWELVE_DATA,
                 allowedProviders = listOf(
                     ProviderId.TWELVE_DATA,
+                    ProviderId.TVDATAFEED,
                     ProviderId.DUKASCOPY,
                     ProviderId.YAHOO_FINANCE
                 ),
@@ -986,7 +1002,52 @@ class WorkspaceRepository(context: Context) {
                 activeProvider = ProviderId.TWELVE_DATA,
                 allowedProviders = listOf(
                     ProviderId.TWELVE_DATA,
+                    ProviderId.TVDATAFEED,
                     ProviderId.DUKASCOPY,
+                    ProviderId.YAHOO_FINANCE
+                ),
+                timeframe = "M15"
+            ),
+            SymbolConfig(
+                chartId = "chart_gbpusd_spot",
+                symbolCode = "GBPUSD",
+                titleResId = R.string.symbol_gbpusd_name,
+                decimals = 4,
+                inWatchlist = false,
+                activeProvider = ProviderId.TVDATAFEED,
+                allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
+                    ProviderId.TWELVE_DATA,
+                    ProviderId.DUKASCOPY,
+                    ProviderId.YAHOO_FINANCE
+                ),
+                timeframe = "M15"
+            ),
+            SymbolConfig(
+                chartId = "chart_usdjpy_spot",
+                symbolCode = "USDJPY",
+                titleResId = R.string.symbol_usdjpy_name,
+                decimals = 2,
+                inWatchlist = false,
+                activeProvider = ProviderId.TVDATAFEED,
+                allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
+                    ProviderId.TWELVE_DATA,
+                    ProviderId.DUKASCOPY,
+                    ProviderId.YAHOO_FINANCE
+                ),
+                timeframe = "M15"
+            ),
+            SymbolConfig(
+                chartId = "chart_btcusd_spot",
+                symbolCode = "BTCUSD",
+                titleResId = R.string.symbol_btcusd_name,
+                decimals = 2,
+                inWatchlist = false,
+                activeProvider = ProviderId.TVDATAFEED,
+                allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
+                    ProviderId.TWELVE_DATA,
                     ProviderId.YAHOO_FINANCE
                 ),
                 timeframe = "M15"

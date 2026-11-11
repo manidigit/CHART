@@ -4,51 +4,83 @@ declare(strict_types=1);
 namespace ChartIntelligence\Providers;
 
 use ChartIntelligence\Algorithms\CandleValidator;
+use ChartIntelligence\Algorithms\TimeframeAggregator;
 use ChartIntelligence\Algorithms\UtcTimeAnchor;
 use ChartIntelligence\Core\Database;
 
+/**
+ * Isolated Provider Adapter for Twelve Data REST Time-Series API (`twelve_data`).
+ *
+ * Strict Provider Isolation (v1.31.0):
+ * - Never substitutes candles from another provider (`tvdatafeed` / `yahoo_finance`)
+ *   when `TWELVE_DATA_API_KEY` is missing or rate-limited.
+ * - Supports incremental `DELTA_SYNC` (`$sinceOpenMs > 0`), requesting only the missing
+ *   delta bars (`outputsize = deltaBars`) instead of re-downloading 5,000 historical bars.
+ */
 final class TwelveDataAdapter
 {
-    public static function fetchClosedCandles(string $symbol, string $timeframe, int $limit, int $nowMs): array
+    public static function hasConfiguredApiKey(): bool
     {
+        $cfg = Database::getConfig();
+        return trim((string) ($cfg['TWELVE_DATA_API_KEY'] ?? '')) !== '';
+    }
+
+    public static function fetchClosedCandles(
+        string $symbol,
+        string $timeframe,
+        int $limit,
+        int $nowMs,
+        int $sinceOpenMs = 0
+    ): array {
         $cfg = Database::getConfig();
         $apiKey = trim((string) ($cfg['TWELVE_DATA_API_KEY'] ?? ''));
         if ($apiKey === '') {
-            return self::fetchFallbackRealCandles($symbol, $timeframe, $limit, $nowMs);
+            // Strict isolation: return empty array so candles_sync.php serves only pure twelve_data archive from MariaDB
+            return [];
         }
 
+        $normTf = strtoupper($timeframe);
         $apiSymbol = match (strtoupper($symbol)) {
             'XAUUSD' => 'XAU/USD',
             'SPOTBRENT', 'BRENT_FUTURES' => 'XBR/USD',
             'XAGUSD' => 'XAG/USD',
             'EURUSD' => 'EUR/USD',
+            'GBPUSD' => 'GBP/USD',
+            'USDJPY' => 'USD/JPY',
+            'BTCUSD' => 'BTC/USD',
             default => $symbol,
         };
-        $interval = match (strtoupper($timeframe)) {
+        $interval = match ($normTf) {
             'M15' => '15min',
             'M30' => '30min',
             'H1' => '1h',
             'H4' => '4h',
             'D1' => '1day',
+            'W1' => '1week',
             default => '15min',
         };
+
+        $stepMs = UtcTimeAnchor::stepMilliseconds($normTf);
+        $outputSize = $sinceOpenMs > 0
+            ? max(8, min(500, (int) ceil(max(0, $nowMs - $sinceOpenMs) / max(1, $stepMs)) + 6))
+            : max(12, min(5000, $limit));
 
         $url = sprintf(
             'https://api.twelvedata.com/time_series?symbol=%s&interval=%s&outputsize=%d&timezone=UTC&apikey=%s',
             urlencode($apiSymbol),
             urlencode($interval),
-            $limit,
+            $outputSize,
             urlencode($apiKey)
         );
 
         $ctx = stream_context_create(['http' => ['timeout' => 8]]);
         $raw = @file_get_contents($url, false, $ctx);
         if ($raw === false) {
-            return self::fetchFallbackRealCandles($symbol, $timeframe, $limit, $nowMs);
+            return [];
         }
         $json = json_decode($raw, true);
         if (!is_array($json) || empty($json['values']) || !is_array($json['values'])) {
-            return self::fetchFallbackRealCandles($symbol, $timeframe, $limit, $nowMs);
+            return [];
         }
 
         $candles = [];
@@ -58,12 +90,15 @@ final class TwelveDataAdapter
                 continue;
             }
             $openMs = $ts * 1000;
-            if (!UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
+            if ($sinceOpenMs > 0 && $openMs <= $sinceOpenMs) {
+                continue;
+            }
+            if (!UtcTimeAnchor::isCandleClosed($openMs, $normTf, $nowMs)) {
                 continue;
             }
             $c = CandleValidator::sanitizeCandle(
                 $openMs,
-                $timeframe,
+                $normTf,
                 $row['open'] ?? 0,
                 $row['high'] ?? 0,
                 $row['low'] ?? 0,
@@ -75,25 +110,10 @@ final class TwelveDataAdapter
             }
         }
         ksort($candles);
-        $filtered = CandleValidator::filterSyntheticWeekendAndCombCandles(
+        return CandleValidator::filterSyntheticWeekendAndCombCandles(
             array_values($candles),
             $symbol,
-            $timeframe
+            $normTf
         );
-        if (count($filtered) >= 5) {
-            return $filtered;
-        }
-        return self::fetchFallbackRealCandles($symbol, $timeframe, $limit, $nowMs);
-    }
-
-    private static function fetchFallbackRealCandles(string $symbol, string $timeframe, int $limit, int $nowMs): array
-    {
-        $tvCandles = TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
-        $tvFiltered = CandleValidator::filterSyntheticWeekendAndCombCandles($tvCandles, $symbol, $timeframe);
-        if (count($tvFiltered) >= 5) {
-            return $tvFiltered;
-        }
-        $yahooCandles = YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs);
-        return CandleValidator::filterSyntheticWeekendAndCombCandles($yahooCandles, $symbol, $timeframe);
     }
 }

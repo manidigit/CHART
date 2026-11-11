@@ -1,4 +1,4 @@
-import { state } from '../core/store.js?v=1.30.0';
+import { state, PROVIDER_METHODS_CATALOG, getCachedOrAggregatedCandles } from '../core/store.js?v=1.30.0';
 import { getAssetBadge, renderSymbolBadge } from './watchlistView.js?v=1.30.0';
 
 export function renderLanguageThemeBar(i18n) {
@@ -31,11 +31,134 @@ export function renderSettingsModal(i18n) {
           ? 'chart'
           : rawTab;
 
-  const symbolsList = state.symbols
+  const explorerMode = state.sourceExplorerMode || 'by_source';
+  const activeMethodId = state.selectedExplorerProvider || 'tvdatafeed';
+  const activeMethod =
+    PROVIDER_METHODS_CATALOG.find((m) => m.providerId === activeMethodId) || PROVIDER_METHODS_CATALOG[0];
+  const searchQuery = String(state.symbolExplorerSearchQuery || '').trim().toUpperCase();
+
+  // Mode 1: Filter by Collection Method (Source -> Symbols)
+  const methodChipsHtml = PROVIDER_METHODS_CATALOG.map((m) => {
+    const isSel = m.providerId === activeMethod.providerId;
+    return `
+      <button
+        type="button"
+        class="chip ${isSel ? 'active' : ''}"
+        data-action="select-explorer-provider"
+        data-provider="${m.providerId}"
+        style="font-size: 11.5px; padding: 5px 11px;"
+      >
+        <span class="ltr-num" style="font-weight: 700;">${m.badgeLabel}</span>
+        <span style="opacity: 0.75; margin-inline-start: 4px;">(${m.symbols.length})</span>
+      </button>
+    `;
+  }).join('');
+
+  const methodSpecCardHtml = `
+    <div class="card-subtle" style="margin-bottom: 12px; background: var(--bg); border: 1px solid var(--border); padding: 12px 14px; border-radius: 8px;">
+      <div class="row-between" style="gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+          <strong style="font-size: 13px; color: var(--text-strong);">${isFa ? activeMethod.titleFa : activeMethod.titleEn}</strong>
+          <span class="ltr-num" style="font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: var(--primary-soft); color: var(--primary);">${activeMethod.providerId}</span>
+          <span class="ltr-num" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--card-bg); border: 1px solid var(--border); color: var(--bull);">${activeMethod.methodType}</span>
+        </div>
+        <div class="ltr-num" style="font-size: 10.5px; color: var(--text-muted);">
+          TF: <strong>${activeMethod.supportedTimeframes.join(' · ')}</strong>
+        </div>
+      </div>
+      <div style="font-size: 11.5px; color: var(--text); line-height: 1.55; margin-bottom: 6px;">
+        ${isFa ? activeMethod.formulaFa : activeMethod.formulaEn}
+      </div>
+      <div class="ltr-num" style="font-size: 10px; color: var(--text-muted);">
+        DB Isolation Key: <code>${activeMethod.storageKeyRule}</code> · Policy: <strong>DB-First + Delta Fetch Only</strong>
+      </div>
+    </div>
+  `;
+
+  const sourceSymbolsRowsHtml = activeMethod.symbols
+    .map((item) => {
+      const existingSym = state.symbols.find((s) => s.symbolCode === item.symbolCode);
+      const tf = activeMethod.providerId === 'eia_brent_spot' ? 'D1' : (existingSym ? existingSym.timeframe : 'M15');
+      const cachedBars = getCachedOrAggregatedCandles(item.symbolCode, activeMethod.providerId, tf);
+      const barCount =
+        existingSym && existingSym.activeProvider === activeMethod.providerId && existingSym.candles?.length
+          ? existingSym.candles.length
+          : cachedBars.length;
+      const isInWatchlistWithThisSource =
+        Boolean(existingSym && existingSym.inWatchlist && existingSym.activeProvider === activeMethod.providerId);
+      const isInWatchlistOtherSource =
+        Boolean(existingSym && existingSym.inWatchlist && existingSym.activeProvider !== activeMethod.providerId);
+
+      return `
+        <div class="tv-settings-symbol-row">
+          <div class="tv-settings-symbol-left">
+            ${renderSymbolBadge(item.symbolCode, 34)}
+            <div style="min-width: 0;">
+              <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
+                <strong style="font-size: 13px; color: var(--text-strong);">${isFa ? item.titleFa : item.titleEn}</strong>
+                <span class="ltr-num" style="font-size: 10.5px; font-weight: 700; color: var(--primary); padding: 1px 6px; border-radius: 4px; background: var(--primary-soft);">${item.symbolCode}</span>
+                <span class="ltr-num" style="font-size: 10.5px; color: var(--bull); padding: 1px 6px; border-radius: 4px; background: var(--card-bg); border: 1px solid var(--border);">${item.providerTicker}</span>
+              </div>
+              <div class="ltr-num" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                ${barCount > 0 ? `${barCount} stored in DB/Cache` : (isFa ? 'آماده دریافت اولیه در دیتابیس' : 'Ready for initial DB seed')}
+                ${existingSym && existingSym.lastSyncMode ? ` · <span style="color: var(--primary);">${existingSym.lastSyncMode}</span>` : ''}
+              </div>
+            </div>
+          </div>
+
+          <div class="tv-settings-symbol-actions">
+            ${
+              isInWatchlistWithThisSource
+                ? `
+                  <span style="font-size: 11px; font-weight: 700; color: var(--bull); padding: 3px 8px; border-radius: 5px; background: rgba(8,153,129,0.14);">
+                    ✓ ${isFa ? 'فعال با همین منبع' : 'Active on this source'}
+                  </span>
+                  <button
+                    type="button"
+                    class="btn btn-sm"
+                    data-action="delta-sync-symbol"
+                    data-symbol="${item.symbolCode}"
+                    title="${isFa ? 'دریافت فقط کندل‌های جدید جاافتاده (Delta)' : 'Fetch only missing new candles (Delta)'}"
+                  >
+                    ↻ ${isFa ? 'آپدیت کندل‌های جدید' : 'Delta Sync'}
+                  </button>
+                `
+                : `
+                  <button
+                    type="button"
+                    class="btn btn-sm btn-primary"
+                    data-action="activate-source-symbol"
+                    data-provider="${activeMethod.providerId}"
+                    data-symbol="${item.symbolCode}"
+                  >
+                    ${
+                      isInWatchlistOtherSource
+                        ? (isFa ? `تغییر منبع به ${activeMethod.badgeLabel}` : `Switch to ${activeMethod.badgeLabel}`)
+                        : (isFa ? '+ افزودن به واچ‌لیست با این منبع' : '+ Add with this source')
+                    }
+                  </button>
+                `
+            }
+          </div>
+        </div>
+      `;
+    })
+    .join('');
+
+  // Mode 2: Search / Select by Symbol (Symbol -> Supported Sources)
+  const filteredSymbols = state.symbols.filter((s) => {
+    if (!searchQuery) return true;
+    const rawTitle = (s.customTitle || i18n.t('symbol_' + s.symbolCode) || '').toUpperCase();
+    return s.symbolCode.toUpperCase().includes(searchQuery) || rawTitle.includes(searchQuery);
+  });
+
+  const symbolsList = filteredSymbols
     .map((s) => {
       const badge = getAssetBadge(s.symbolCode);
       const rawTitle = s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode;
       const cleanTitle = rawTitle.replace(/\s*\([A-Z0-9_]+\)\s*/g, '').trim() || rawTitle;
+      const syncModeLabel = s.lastSyncMode || 'DB_CACHE_HIT';
+      const deltaCount = Number(s.fetchedNewBars || 0);
       return `
         <div class="tv-settings-symbol-row">
           <div class="tv-settings-symbol-left">
@@ -45,9 +168,10 @@ export function renderSettingsModal(i18n) {
                 <strong style="font-size: 13px; color: var(--text-strong);">${cleanTitle}</strong>
                 <span class="ltr-num" style="font-size: 10.5px; font-weight: 700; color: var(--primary); padding: 1px 6px; border-radius: 4px; background: var(--primary-soft);">${s.symbolCode}</span>
                 <span class="ltr-num" style="font-size: 10px; color: var(--text-muted);">${badge.category}</span>
+                <span class="ltr-num" style="font-size: 9.5px; padding: 1px 5px; border-radius: 4px; background: var(--card-bg); border: 1px solid var(--border); color: var(--bull);">${syncModeLabel}${deltaCount > 0 ? ` (+${deltaCount})` : ''}</span>
               </div>
               <div class="ltr-num" style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                ${(s.candles || []).length} bars · ${s.lastCandleUtc || '—'}
+                ${(s.candles || []).length} bars in DB · ${s.lastCandleUtc || '—'}
               </div>
             </div>
           </div>
@@ -69,6 +193,16 @@ export function renderSettingsModal(i18n) {
                 )
                 .join('')}
             </select>
+
+            <button
+              type="button"
+              class="btn btn-sm"
+              data-action="delta-sync-symbol"
+              data-symbol="${s.symbolCode}"
+              title="${isFa ? 'دریافت فقط کندل‌های جدید جاافتاده (Delta)' : 'Fetch only missing new candles (Delta)'}"
+            >
+              ↻
+            </button>
 
             <label class="tv-toggle-label" title="${i18n.t('nav_watchlist')}">
               <input
@@ -155,19 +289,23 @@ export function renderSettingsModal(i18n) {
   const serverDiagCard = `
     <div class="card-subtle" style="margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); padding: 12px 14px; border-radius: 8px;">
       <div class="row-between" style="margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
-        <div style="display: flex; align-items: center; gap: 8px;">
+        <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
           <span style="width: 8px; height: 8px; border-radius: 50%; background: ${isDbOnline ? 'var(--bull)' : 'var(--gold)'}; display: inline-block;"></span>
-          <span style="font-size: 12.5px; font-weight: 700; color: var(--text-strong);">${isFa ? 'وضعیت زنده دیتابیس MariaDB و سرور هاست' : 'Host MariaDB & Server Health'}</span>
+          <span style="font-size: 12.5px; font-weight: 700; color: var(--text-strong);">${isFa ? 'موتور مرکزی MariaDB و ذخیره‌سازی افزایشی تاریخچه (DB-First Delta Sync)' : 'MariaDB Central Core & DB-First Delta Sync'}</span>
           <span class="ltr-num" style="font-size: 10px; padding: 2px 6px; border-radius: 4px; background: var(--card-bg); border: 1px solid var(--border); color: var(--text-muted);">${dbVer}</span>
         </div>
         <button type="button" class="btn btn-sm" data-action="sync-cloud-workspace" title="${isFa ? 'همگام‌سازی ابری خطوط، واچ‌لیست و تنظیمات' : 'Sync workspace to cloud'}">
-          ☁️ ${state.isWorkspaceSyncing ? (isFa ? 'در حال همگام‌سازی...' : 'Syncing...') : (isFa ? 'همگام‌سازی ابری فضای کاری' : 'Sync Workspace Cloud')}
+          ${state.isWorkspaceSyncing ? (isFa ? 'در حال همگام‌سازی...' : 'Syncing...') : (isFa ? 'همگام‌سازی ابری فضای کاری' : 'Sync Workspace Cloud')}
         </button>
       </div>
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; font-size: 11px;">
         <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
-          <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'کل کندل‌های دیتابیس' : 'DB Candles'}</div>
+          <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'کل کندل‌های آرشیو دیتابیس' : 'Archived DB Candles'}</div>
           <div class="ltr-num" style="font-weight: 700; color: var(--bull); font-size: 13px;">${totalCandles}</div>
+        </div>
+        <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
+          <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'سیاست دریافت تاریخچه' : 'History Fetch Policy'}</div>
+          <div class="ltr-num" style="font-weight: 700; color: var(--primary); font-size: 11.5px;">${isFa ? 'فقط کندل‌های جدید (Delta)' : 'Delta Only (No Re-fetch)'}</div>
         </div>
         <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border);">
           <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'ساعت سرور UTC' : 'Server UTC'}</div>
@@ -185,16 +323,62 @@ export function renderSettingsModal(i18n) {
   if (tab === 'sync') {
     bodyHtml = `
       ${serverDiagCard}
-      <div class="row-between" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
+      <div class="row-between" style="margin-bottom: 10px; gap: 10px; flex-wrap: wrap;">
         <div>
           <h4 style="margin: 0; font-size: 14px; color: var(--text-strong);">${i18n.t('settings_group_sources')}</h4>
-          <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">${i18n.t('settings_sources_subtitle')}</div>
+          <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px;">
+            ${isFa ? 'انتخاب منبع جمع‌آوری داده (الگوریتم/API مستقل) یا جستجو بر اساس نماد؛ داده‌های تاریخی در دیتابیس ذخیره شده و مجدداً واکشی نمی‌شوند.' : 'Choose by Data Collection Method or search by Symbol; historical bars are stored permanently in MariaDB and never re-fetched.'}
+          </div>
         </div>
-        <button type="button" class="btn btn-sm btn-primary" data-action="open-add-symbol-modal">
-          + ${i18n.t('settings_add_custom_symbol')}
-        </button>
+        <div class="chip-group">
+          <button
+            type="button"
+            class="chip ${explorerMode === 'by_source' ? 'active' : ''}"
+            data-action="set-explorer-mode"
+            data-mode="by_source"
+          >
+            ${isFa ? '۱. انتخاب بر اساس منبع داده (روش ← نمادها)' : '1. By Source Method (Source -> Symbols)'}
+          </button>
+          <button
+            type="button"
+            class="chip ${explorerMode === 'by_symbol' ? 'active' : ''}"
+            data-action="set-explorer-mode"
+            data-mode="by_symbol"
+          >
+            ${isFa ? '۲. انتخاب بر اساس نماد (نماد ← منابع)' : '2. By Symbol (Symbol -> Sources)'}
+          </button>
+        </div>
       </div>
-      ${symbolsList}
+
+      ${
+        explorerMode === 'by_source'
+          ? `
+            <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
+              ${methodChipsHtml}
+            </div>
+            ${methodSpecCardHtml}
+            <div style="font-size: 12px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px;">
+              ${isFa ? `نمادهای قابل دریافت از منبع ${activeMethod.badgeLabel}:` : `Symbols available in ${activeMethod.badgeLabel}:`}
+            </div>
+            ${sourceSymbolsRowsHtml}
+          `
+          : `
+            <div class="row-between" style="margin-bottom: 10px; gap: 8px; flex-wrap: wrap;">
+              <input
+                type="text"
+                class="input-field"
+                style="flex: 1; min-width: 200px; height: 34px; font-size: 12px;"
+                placeholder="${isFa ? 'جستجوی کد یا نام نماد (مثلاً SPOTBRENT، XAUUSD، BTCUSD)...' : 'Search symbol code or name (e.g. SPOTBRENT, XAUUSD)...'}"
+                value="${state.symbolExplorerSearchQuery || ''}"
+                data-action="search-explorer-symbol"
+              />
+              <button type="button" class="btn btn-sm btn-primary" data-action="open-add-symbol-modal">
+                + ${i18n.t('settings_add_custom_symbol')}
+              </button>
+            </div>
+            ${symbolsList}
+          `
+      }
     `;
   } else if (tab === 'theme') {
     bodyHtml = `

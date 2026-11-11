@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.31.0] - 2026-11-11
+
+### Added
+- **DB-First Incremental Historical Candle Persistence Engine (`candles_sync.php` & Adapters):**
+  - Refactored the central server candle pipeline so MariaDB `candles` is queried **first** (`stored_count`, `min_open_time_utc`, `max_open_time_utc`).
+  - Implemented 3-state incremental sync machine:
+    1. `DB_CACHE_HIT`: Returns stored historical candles directly from MariaDB with **0 external API/socket calls** when `max_open_time_utc >= expected_last_closed_open_ms`.
+    2. `DELTA_SYNC`: Computes the exact missing candle count (`missingBars`) since `max_open_time_utc` and fetches **only newly closed candles** from the selected provider adapter, appending them idempotently to MariaDB.
+    3. `INITIAL_BACKFILL`: Fetches full initial history (up to 5,000 bars) only when the database has no stored history for `(chart_id, provider_id, timeframe)` or when `backfill=1` is explicitly requested.
+  - Added `sync_meta` envelope (`sync_mode`, `stored_total_bars`, `fetched_new_bars`, `min_open_time_utc_ms`, `max_open_time_utc_ms`, `provider_status`) to `candles_sync.php` responses.
+- **Isolated Provider Methods Catalog & Registry (`/api/v1/providers/ProviderCatalog.php` & `/api/v1/providers_catalog.php`):**
+  - Created a centralized, structured catalog of all 5 independent collection methods (`tvdatafeed` TradingView Wick & WebSocket Engine, `twelve_data` Twelve Data REST Time-Series API, `dukascopy` Dukascopy Swiss Bank Feed, `yahoo_finance` Yahoo Finance v8 Chart Engine, and `eia_brent_spot` U.S. EIA Official Daily FOB Benchmark) with their algorithm formulas, exchange/ticker mappings, supported timeframes, and live MariaDB candle counts.
+  - Enforced strict provider isolation (`UNIQUE(chart_id, provider_id, timeframe, open_time_utc)`) and removed silent cross-provider fallback from `TwelveDataAdapter`, `TvDatafeedAdapter`, and `DukascopyAdapter` across Server and Android so one provider's dataset never contaminates another's.
+- **Dual-Mode Data Source & Symbol Watchlist Explorer in Settings (Web & Android):**
+  - Upgraded the **همگام‌سازی (`sync`)** tab in Web (`settingsView.js` + `app.js`) and Android (`SettingsScreen.kt` + `ProviderCatalog.kt`) to support both workflows simultaneously:
+    - **By Source Method (`انتخاب بر اساس منبع داده`):** Select a collection method (`TradingView Wick`, `Twelve Data API`, `Dukascopy`, `Yahoo Finance`, `EIA Spot`) to inspect its algorithm specification and add/activate any of its supported symbols in the Watchlist.
+    - **By Symbol (`انتخاب و جستجو بر اساس نماد`):** Search or pick a symbol to see all compatible collection methods, compare stored candle counts, and switch its active provider.
+
+---
+
 ## [1.30.0] - 2026-11-10
 
 ### Added

@@ -117,8 +117,8 @@ if ($totalCandles === 0) {
 
 ApiEnvelope::sendSuccess([
     'status' => 'healthy',
-    'version' => '1.29.0',
-    'phase' => 'Phase 1 - TradingView Pro Standard',
+    'version' => '1.31.0',
+    'phase' => 'Phase 1 - DB-First Central Core & Isolated Source Catalog',
     'server_time_utc' => $nowUtc,
     'server_time_ms' => $nowMs,
     'database' => [

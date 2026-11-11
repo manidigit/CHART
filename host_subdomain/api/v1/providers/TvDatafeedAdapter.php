@@ -27,7 +27,8 @@ final class TvDatafeedAdapter
         string $timeframe,
         int $limit,
         int $nowMs,
-        bool $tryLiveCli = true
+        bool $tryLiveCli = true,
+        int $sinceOpenMs = 0
     ): array {
         $cleanSymbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $symbol));
         $normTf = strtoupper($timeframe);
@@ -36,8 +37,9 @@ final class TvDatafeedAdapter
         }
 
         $exchange = match ($cleanSymbol) {
-            'XAUUSD', 'XAGUSD', 'EURUSD' => 'OANDA',
+            'XAUUSD', 'XAGUSD', 'EURUSD', 'GBPUSD', 'USDJPY' => 'OANDA',
             'BRENT_FUTURES' => 'NYMEX',
+            'BTCUSD' => 'BITSTAMP',
             default => 'PEPPERSTONE',
         };
         $tvSymbol = $cleanSymbol === 'BRENT_FUTURES' ? 'BZ1!' : $cleanSymbol;
@@ -46,25 +48,38 @@ final class TvDatafeedAdapter
         $dataDir = $baseDir . '/data/tvdatafeed';
         $scriptPath = $baseDir . '/scripts/sync_tvdatafeed.py';
 
-        // 1. Load full existing historical series (up to 5,000 bars)
-        $existing = self::readFromNormalizedJson($dataDir, $cleanSymbol, $normTf, 5000, $nowMs);
-        if (empty($existing)) {
-            $existing = self::readFromCsvFile($dataDir, $cleanSymbol, $normTf, 5000, $nowMs);
+        // 1. If $sinceOpenMs > 0 (MariaDB already holds historical candles), we only need incremental delta bars
+        $existing = [];
+        if ($sinceOpenMs <= 0) {
+            $existing = self::readFromNormalizedJson($dataDir, $cleanSymbol, $normTf, 5000, $nowMs);
+            if (empty($existing)) {
+                $existing = self::readFromCsvFile($dataDir, $cleanSymbol, $normTf, 5000, $nowMs);
+            }
+        } else {
+            // Check if local normalized JSON has any bars newer than $sinceOpenMs
+            $jsonTail = self::readFromNormalizedJson($dataDir, $cleanSymbol, $normTf, 300, $nowMs);
+            foreach ($jsonTail as $bar) {
+                if ((int) ($bar['open_time_utc_ms'] ?? 0) > $sinceOpenMs) {
+                    $existing[] = $bar;
+                }
+            }
         }
 
         $stepMs = UtcTimeAnchor::stepMilliseconds($normTf);
-        $lastStoredOpenMs = !empty($existing)
-            ? (int) $existing[count($existing) - 1]['open_time_utc_ms']
-            : 0;
+        $lastStoredOpenMs = $sinceOpenMs > 0
+            ? $sinceOpenMs
+            : (!empty($existing) ? (int) $existing[count($existing) - 1]['open_time_utc_ms'] : 0);
 
         $expectedLastClosedOpenMs = self::computeExpectedLastClosedOpenMs($normTf, $nowMs);
         $needsIncrementalSync = $lastStoredOpenMs < $expectedLastClosedOpenMs;
 
-        if ($needsIncrementalSync || $tryLiveCli) {
+        if ($needsIncrementalSync || ($sinceOpenMs <= 0 && empty($existing) && $tryLiveCli)) {
             $gapBars = $lastStoredOpenMs > 0
-                ? (int) ceil(max(0, $nowMs - $lastStoredOpenMs) / max(1, $stepMs)) + 32
+                ? (int) ceil(max(0, $nowMs - $lastStoredOpenMs) / max(1, $stepMs)) + 16
                 : $limit;
-            $barsToFetch = max(120, min(1500, $gapBars));
+            $barsToFetch = $lastStoredOpenMs > 0
+                ? max(16, min(1500, $gapBars))
+                : max(120, min(1500, $gapBars));
 
             // Primary: Pure PHP TradingView WebSocket Client (works on shared hosts without exec)
             $liveCandles = self::fetchLiveFromTradingViewWs($tvSymbol, $exchange, $normTf, $barsToFetch, $nowMs);
@@ -85,7 +100,7 @@ final class TvDatafeedAdapter
                     escapeshellarg($scriptPath),
                     escapeshellarg($cleanSymbol),
                     escapeshellarg($exchange),
-                    max(300, min(5000, $limit)),
+                    $barsToFetch,
                     escapeshellarg($dataDir)
                 );
                 @exec($cmd);
@@ -95,25 +110,16 @@ final class TvDatafeedAdapter
                 }
             }
 
-            // Quaternary: Yahoo Finance incremental gap-fill for candles newer than $lastStoredOpenMs
-            if (empty($liveCandles) && $needsIncrementalSync) {
-                $yahooBars = YahooFinanceAdapter::fetchClosedCandles($cleanSymbol, $normTf, 300, $nowMs);
-                if (!empty($yahooBars)) {
-                    $newerOnly = array_values(array_filter(
-                        $yahooBars,
-                        static fn(array $b): bool => (int) ($b['open_time_utc_ms'] ?? 0) > $lastStoredOpenMs
-                    ));
-                    $liveCandles = $newerOnly;
-                }
-            }
-
+            // Strict Provider Isolation: Never substitute Yahoo Finance bars into tvdatafeed series.
             if (!empty($liveCandles)) {
                 $existing = self::mergeCandlesByOpenMs($existing, $liveCandles, $normTf, $nowMs);
-                self::persistNormalizedJson($dataDir, $cleanSymbol, $exchange, $normTf, $existing, $nowMs);
+                if ($sinceOpenMs <= 0) {
+                    self::persistNormalizedJson($dataDir, $cleanSymbol, $exchange, $normTf, $existing, $nowMs);
+                }
             }
         }
 
-        // If higher timeframe (H1/H4) is requested and M15 has newer closed bars, merge aggregated M15
+        // If higher timeframe (H1/H4) is requested and M15 has newer closed bars, merge aggregated M15 from tvdatafeed
         if (in_array($normTf, ['H1', 'H4'], true)) {
             $m15 = self::readFromNormalizedJson($dataDir, $cleanSymbol, 'M15', 1500, $nowMs);
             if (!empty($m15)) {
@@ -127,6 +133,12 @@ final class TvDatafeedAdapter
 
         if (!empty($existing)) {
             $filtered = CandleValidator::filterSyntheticWeekendAndCombCandles($existing, $cleanSymbol, $normTf);
+            if ($sinceOpenMs > 0) {
+                $filtered = array_values(array_filter(
+                    $filtered,
+                    static fn(array $b): bool => (int) ($b['open_time_utc_ms'] ?? 0) > $sinceOpenMs
+                ));
+            }
             return array_slice($filtered, -$limit);
         }
 

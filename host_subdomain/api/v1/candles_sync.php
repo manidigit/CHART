@@ -11,8 +11,10 @@ require_once __DIR__ . '/providers/TwelveDataAdapter.php';
 require_once __DIR__ . '/providers/DukascopyAdapter.php';
 require_once __DIR__ . '/providers/EiaBenchmarkAdapter.php';
 require_once __DIR__ . '/providers/TvDatafeedAdapter.php';
+require_once __DIR__ . '/providers/ProviderCatalog.php';
 
 use ChartIntelligence\Algorithms\CandleValidator;
+use ChartIntelligence\Algorithms\UtcTimeAnchor;
 use ChartIntelligence\Core\ApiEnvelope;
 use ChartIntelligence\Core\Database;
 use ChartIntelligence\Providers\DukascopyAdapter;
@@ -21,8 +23,8 @@ use ChartIntelligence\Providers\TvDatafeedAdapter;
 use ChartIntelligence\Providers\TwelveDataAdapter;
 use ChartIntelligence\Providers\YahooFinanceAdapter;
 
-$symbol = preg_replace('/[^A-Za-z0-9_]/', '', $_GET['symbol'] ?? 'XAUUSD');
-$provider = preg_replace('/[^a-z0-9_]/', '', $_GET['provider'] ?? 'twelve_data');
+$symbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $_GET['symbol'] ?? 'XAUUSD'));
+$provider = strtolower(preg_replace('/[^a-z0-9_]/', '', $_GET['provider'] ?? 'twelve_data'));
 $timeframe = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['timeframe'] ?? 'M15'));
 if (!in_array($timeframe, ['M15', 'H1', 'H4', 'D1', 'W1'], true)) {
     $timeframe = 'M15';
@@ -30,25 +32,30 @@ if (!in_array($timeframe, ['M15', 'H1', 'H4', 'D1', 'W1'], true)) {
 if ($provider === 'eia_brent_spot') {
     $timeframe = 'D1';
 }
+
 // Support up to 5,000 candles per request
 $limit = max(12, min(5000, (int) ($_GET['limit'] ?? 500)));
+$clientSinceMs = max(0, (int) ($_GET['since_ms'] ?? 0));
+$forceBackfill = !empty($_GET['backfill']);
 $nowMs = (int) round(microtime(true) * 1000);
 
 $pdo = Database::getPdo();
 $chartId = 'chart_' . strtolower($symbol) . '_main';
 
-// Purge any previously persisted synthetic weekend micro-spread rows from MariaDB for intraday timeframes
-if ($pdo !== null && $timeframe !== 'D1') {
+// 1. Purge any previously persisted synthetic weekend micro-spread rows from MariaDB for intraday timeframes
+if ($pdo !== null && $timeframe !== 'D1' && $timeframe !== 'W1') {
     try {
         $purgeStmt = $pdo->prepare(
             "DELETE FROM candles
              WHERE chart_id = :chart_id
+               AND provider_id = :provider_id
                AND timeframe = :tf
                AND volume = 0
                AND (high_price - low_price) < (open_price * 0.00018)"
         );
         $purgeStmt->execute([
             ':chart_id' => $chartId,
+            ':provider_id' => $provider,
             ':tf' => $timeframe,
         ]);
     } catch (Throwable) {
@@ -56,19 +63,91 @@ if ($pdo !== null && $timeframe !== 'D1') {
     }
 }
 
-$candles = match ($provider) {
-    'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, !empty($_GET['refresh'])),
-    'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs),
-    'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs),
-    'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $limit, $nowMs),
-    'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs),
-    default => [],
-};
+// 2. DB-FIRST LOOKUP: Inspect existing historical closed candles in MariaDB for (chart_id, provider_id, timeframe)
+$storedCount = 0;
+$minOpenMs = 0;
+$maxOpenMs = 0;
 
-$candles = CandleValidator::filterSyntheticWeekendAndCombCandles($candles, $symbol, $timeframe);
+if ($pdo !== null) {
+    try {
+        $metaStmt = $pdo->prepare(
+            "SELECT COUNT(*) AS cnt,
+                    COALESCE(MIN(open_time_utc), 0) AS min_open_ms,
+                    COALESCE(MAX(open_time_utc), 0) AS max_open_ms
+             FROM candles
+             WHERE chart_id = :chart_id
+               AND provider_id = :provider_id
+               AND timeframe = :tf
+               AND is_closed = 1"
+        );
+        $metaStmt->execute([
+            ':chart_id' => $chartId,
+            ':provider_id' => $provider,
+            ':tf' => $timeframe,
+        ]);
+        $metaRow = $metaStmt->fetch(PDO::FETCH_ASSOC);
+        if (is_array($metaRow)) {
+            $storedCount = (int) ($metaRow['cnt'] ?? 0);
+            $minOpenMs = (int) ($metaRow['min_open_ms'] ?? 0);
+            $maxOpenMs = (int) ($metaRow['max_open_ms'] ?? 0);
+        }
+    } catch (Throwable) {
+        // Non-fatal
+    }
+}
 
-// Persist real candles to MariaDB in a fast batch transaction, then query up to $limit (up to 5,000) candles from MariaDB
-if ($pdo !== null && !empty($candles)) {
+$expectedLastClosedOpenMs = TvDatafeedAdapter::computeExpectedLastClosedOpenMs($timeframe, $nowMs);
+$stepMs = UtcTimeAnchor::stepMilliseconds($timeframe);
+
+// 3. 3-STATE INCREMENTAL DECISION ENGINE (DB_CACHE_HIT | DELTA_SYNC | INITIAL_BACKFILL)
+$syncMode = 'INITIAL_BACKFILL';
+$incomingDeltaCandles = [];
+$fetchedNewBars = 0;
+
+if ($pdo !== null && $storedCount >= 5 && !$forceBackfill && $maxOpenMs >= $expectedLastClosedOpenMs) {
+    // [STATE 1: DB_CACHE_HIT] Historical candles up to the latest closed UTC bucket are already stored in MariaDB.
+    // ZERO external API / WebSocket calls are made!
+    $syncMode = 'DB_CACHE_HIT';
+} elseif ($pdo !== null && $storedCount > 0 && !$forceBackfill && $maxOpenMs < $expectedLastClosedOpenMs) {
+    // [STATE 2: DELTA_SYNC] Historical candles exist in MariaDB up to $maxOpenMs.
+    // Fetch ONLY the missing newly closed candles since $maxOpenMs!
+    $syncMode = 'DELTA_SYNC';
+    $missingBars = (int) ceil(max(0, $expectedLastClosedOpenMs - $maxOpenMs) / max(1, $stepMs)) + 6;
+    $deltaFetchLimit = max(12, min($limit, $missingBars));
+
+    $rawDelta = match ($provider) {
+        'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, true, $maxOpenMs),
+        'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
+        'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
+        'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $deltaFetchLimit, $nowMs, $maxOpenMs),
+        'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
+        default => [],
+    };
+
+    $validatedDelta = CandleValidator::filterSyntheticWeekendAndCombCandles($rawDelta, $symbol, $timeframe);
+    foreach ($validatedDelta as $bar) {
+        if ((int) ($bar['open_time_utc_ms'] ?? 0) > $maxOpenMs) {
+            $incomingDeltaCandles[] = $bar;
+        }
+    }
+    $fetchedNewBars = count($incomingDeltaCandles);
+} else {
+    // [STATE 3: INITIAL_BACKFILL] First time for this (symbol, provider, timeframe) or explicit backfill=1 requested.
+    $syncMode = 'INITIAL_BACKFILL';
+    $rawInitial = match ($provider) {
+        'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, true, 0),
+        'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
+        'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
+        'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $limit, $nowMs, 0),
+        'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
+        default => [],
+    };
+    $incomingDeltaCandles = CandleValidator::filterSyntheticWeekendAndCombCandles($rawInitial, $symbol, $timeframe);
+    $fetchedNewBars = count($incomingDeltaCandles);
+}
+
+// 4. Persist any newly fetched closed candles to MariaDB under isolated key (chart_id, provider_id, timeframe, open_time_utc)
+if ($pdo !== null && !empty($incomingDeltaCandles)) {
     try {
         $pdo->beginTransaction();
         $stmt = $pdo->prepare(
@@ -84,7 +163,7 @@ if ($pdo !== null && !empty($candles)) {
                 volume = VALUES(volume),
                 fetched_at_utc = CURRENT_TIMESTAMP"
         );
-        foreach ($candles as $bar) {
+        foreach ($incomingDeltaCandles as $bar) {
             $stmt->execute([
                 ':chart_id' => $chartId,
                 ':provider_id' => $provider,
@@ -105,59 +184,96 @@ if ($pdo !== null && !empty($candles)) {
     }
 }
 
-// Always read and merge the canonical series from MariaDB if available (up to $limit = 5,000 candles)
+// 5. Read the canonical isolated series from MariaDB (or fallback to $incomingDeltaCandles if DB is offline)
+$candles = $incomingDeltaCandles;
 if ($pdo !== null) {
-    $q = $pdo->prepare(
-        "SELECT open_time_utc, open_price, high_price, low_price, close_price, volume
-         FROM candles
-         WHERE chart_id = :chart_id AND provider_id = :provider_id AND timeframe = :tf AND is_closed = 1
-         ORDER BY open_time_utc DESC
-         LIMIT :lim"
-    );
-    $q->bindValue(':chart_id', $chartId);
-    $q->bindValue(':provider_id', $provider);
-    $q->bindValue(':tf', $timeframe);
-    $q->bindValue(':lim', $limit, PDO::PARAM_INT);
-    $q->execute();
-    $rows = array_reverse($q->fetchAll(PDO::FETCH_ASSOC));
-    if (!empty($rows)) {
-        $mergedMap = [];
-        foreach ($rows as $r) {
-            $openMs = (int) $r['open_time_utc'];
-            if (!\ChartIntelligence\Algorithms\UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
-                continue;
-            }
-            if ($timeframe === 'D1') {
-                $dow = (int) gmdate('w', (int) floor($openMs / 1000));
-                if ($dow === 0 || $dow === 6) {
+    try {
+        if ($clientSinceMs > 0) {
+            $q = $pdo->prepare(
+                "SELECT open_time_utc, open_price, high_price, low_price, close_price, volume
+                 FROM candles
+                 WHERE chart_id = :chart_id
+                   AND provider_id = :provider_id
+                   AND timeframe = :tf
+                   AND is_closed = 1
+                   AND open_time_utc > :since_ms
+                 ORDER BY open_time_utc ASC
+                 LIMIT :lim"
+            );
+            $q->bindValue(':chart_id', $chartId);
+            $q->bindValue(':provider_id', $provider);
+            $q->bindValue(':tf', $timeframe);
+            $q->bindValue(':since_ms', $clientSinceMs, PDO::PARAM_INT);
+            $q->bindValue(':lim', $limit, PDO::PARAM_INT);
+            $q->execute();
+            $rows = $q->fetchAll(PDO::FETCH_ASSOC);
+        } else {
+            $q = $pdo->prepare(
+                "SELECT open_time_utc, open_price, high_price, low_price, close_price, volume
+                 FROM candles
+                 WHERE chart_id = :chart_id
+                   AND provider_id = :provider_id
+                   AND timeframe = :tf
+                   AND is_closed = 1
+                 ORDER BY open_time_utc DESC
+                 LIMIT :lim"
+            );
+            $q->bindValue(':chart_id', $chartId);
+            $q->bindValue(':provider_id', $provider);
+            $q->bindValue(':tf', $timeframe);
+            $q->bindValue(':lim', $limit, PDO::PARAM_INT);
+            $q->execute();
+            $rows = array_reverse($q->fetchAll(PDO::FETCH_ASSOC));
+        }
+
+        if (!empty($rows)) {
+            $mergedMap = [];
+            foreach ($rows as $r) {
+                $openMs = (int) $r['open_time_utc'];
+                if (!UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
                     continue;
                 }
+                if ($timeframe === 'D1') {
+                    $dow = (int) gmdate('w', (int) floor($openMs / 1000));
+                    if ($dow === 0 || $dow === 6) {
+                        continue;
+                    }
+                }
+                $c = CandleValidator::sanitizeCandle(
+                    $openMs,
+                    $timeframe,
+                    $r['open_price'],
+                    $r['high_price'],
+                    $r['low_price'],
+                    $r['close_price'],
+                    $r['volume']
+                );
+                if ($c !== null) {
+                    $mergedMap[$c['open_time_utc_ms']] = $c;
+                }
             }
-            $c = CandleValidator::sanitizeCandle(
-                $openMs,
-                $timeframe,
-                $r['open_price'],
-                $r['high_price'],
-                $r['low_price'],
-                $r['close_price'],
-                $r['volume']
-            );
-            if ($c !== null) {
-                $mergedMap[$c['open_time_utc_ms']] = $c;
+            ksort($mergedMap);
+            $dbCandles = CandleValidator::filterSyntheticWeekendAndCombCandles(array_values($mergedMap), $symbol, $timeframe);
+            if (!empty($dbCandles)) {
+                $candles = array_slice($dbCandles, -$limit);
             }
         }
-        foreach ($candles as $c) {
-            $openMs = (int) ($c['open_time_utc_ms'] ?? 0);
-            if ($openMs > 0 && \ChartIntelligence\Algorithms\UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
-                $mergedMap[$openMs] = $c;
-            }
-        }
-        ksort($mergedMap);
-        $dbCandles = CandleValidator::filterSyntheticWeekendAndCombCandles(array_values($mergedMap), $symbol, $timeframe);
-        if (count($dbCandles) >= 5) {
-            $candles = array_slice($dbCandles, -$limit);
-        }
+    } catch (Throwable) {
+        // Fallback to $incomingDeltaCandles
     }
+}
+
+$totalStoredAfter = max($storedCount, count($candles));
+if (!empty($candles)) {
+    $minOpenMs = (int) ($candles[0]['open_time_utc_ms'] ?? $minOpenMs);
+    $maxOpenMs = (int) ($candles[count($candles) - 1]['open_time_utc_ms'] ?? $maxOpenMs);
+}
+
+$providerStatus = 'READY';
+if ($provider === 'twelve_data' && !TwelveDataAdapter::hasConfiguredApiKey()) {
+    $providerStatus = $totalStoredAfter > 0 ? 'DB_ARCHIVE_ONLY' : 'API_KEY_REQUIRED';
+} elseif (empty($candles) && $totalStoredAfter === 0) {
+    $providerStatus = 'NO_DATA';
 }
 
 ApiEnvelope::sendSuccess([
@@ -165,5 +281,14 @@ ApiEnvelope::sendSuccess([
     'provider' => $provider,
     'timeframe' => $timeframe,
     'count' => count($candles),
+    'sync_meta' => [
+        'sync_mode' => $syncMode,
+        'stored_total_bars' => $totalStoredAfter,
+        'fetched_new_bars' => $fetchedNewBars,
+        'min_open_time_utc_ms' => $minOpenMs,
+        'max_open_time_utc_ms' => $maxOpenMs,
+        'expected_last_closed_open_ms' => $expectedLastClosedOpenMs,
+        'provider_status' => $providerStatus,
+    ],
     'candles' => $candles,
 ]);

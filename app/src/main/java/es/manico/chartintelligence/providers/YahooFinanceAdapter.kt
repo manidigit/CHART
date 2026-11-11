@@ -30,11 +30,12 @@ class YahooFinanceAdapter(
     override suspend fun fetchClosedCandlesUpToNow(
         symbolCode: String,
         timeframe: String,
-        limit: Int
+        limit: Int,
+        sinceOpenTimeMs: Long
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
         val candles = runCatching {
-            fetchYahooChartCandles(symbolCode, timeframe, limit, nowMillis)
+            fetchYahooChartCandles(symbolCode, timeframe, limit, nowMillis, sinceOpenTimeMs)
         }.getOrNull().orEmpty()
 
         ProviderSyncResult(
@@ -42,7 +43,9 @@ class YahooFinanceAdapter(
             symbolCode = symbolCode,
             timeframe = timeframe,
             candles = candles,
-            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis)
+            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
+            syncMode = if (sinceOpenTimeMs > 0L) "DELTA_SYNC" else "INITIAL_BACKFILL",
+            fetchedNewBars = candles.size
         )
     }
 
@@ -50,13 +53,17 @@ class YahooFinanceAdapter(
         symbolCode: String,
         timeframe: String,
         limit: Int,
-        nowMillis: Long = System.currentTimeMillis()
+        nowMillis: Long = System.currentTimeMillis(),
+        sinceOpenTimeMs: Long = 0L
     ): List<CandleBar> {
         val ticker = when (symbolCode.uppercase()) {
             "SPOTBRENT", "BRENT_FUTURES" -> "BZ=F"
             "XAUUSD" -> "GC=F"
             "XAGUSD" -> "SI=F"
             "EURUSD" -> "EURUSD=X"
+            "GBPUSD" -> "GBPUSD=X"
+            "USDJPY" -> "JPY=X"
+            "BTCUSD" -> "BTC-USD"
             else -> symbolCode
         }
         val normalizedTf = timeframe.uppercase()
@@ -67,7 +74,13 @@ class YahooFinanceAdapter(
             else -> Triple("15m", "5d", "M15")
         }
 
-        val url = "https://query1.finance.yahoo.com/v8/finance/chart/$ticker?interval=$interval&range=$range"
+        val url = if (sinceOpenTimeMs > 0L) {
+            val period1 = ((sinceOpenTimeMs / 1000L) - 14400L).coerceAtLeast(0L)
+            val period2 = (nowMillis / 1000L) + 60L
+            "https://query1.finance.yahoo.com/v8/finance/chart/$ticker?interval=$interval&period1=$period1&period2=$period2"
+        } else {
+            "https://query1.finance.yahoo.com/v8/finance/chart/$ticker?interval=$interval&range=$range"
+        }
         val request = Request.Builder()
             .url(url)
             .header("User-Agent", "Mozilla/5.0 (Android; ChartIntelligence/1.23)")

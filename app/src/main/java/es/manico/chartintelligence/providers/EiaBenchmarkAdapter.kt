@@ -30,12 +30,13 @@ class EiaBenchmarkAdapter(
     override suspend fun fetchClosedCandlesUpToNow(
         symbolCode: String,
         timeframe: String,
-        limit: Int
+        limit: Int,
+        sinceOpenTimeMs: Long
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
         val effectiveTimeframe = "D1"
         val candles = runCatching {
-            fetchDataHubBrentDailyCsv(limit, nowMillis)
+            fetchDataHubBrentDailyCsv(limit, nowMillis, sinceOpenTimeMs)
         }.getOrNull().orEmpty()
 
         ProviderSyncResult(
@@ -43,11 +44,13 @@ class EiaBenchmarkAdapter(
             symbolCode = symbolCode,
             timeframe = effectiveTimeframe,
             candles = candles,
-            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis)
+            syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
+            syncMode = if (sinceOpenTimeMs > 0L) "DELTA_SYNC" else "INITIAL_BACKFILL",
+            fetchedNewBars = candles.size
         )
     }
 
-    private fun fetchDataHubBrentDailyCsv(limit: Int, nowMillis: Long): List<CandleBar> {
+    private fun fetchDataHubBrentDailyCsv(limit: Int, nowMillis: Long, sinceOpenTimeMs: Long = 0L): List<CandleBar> {
         val csvUrl = "https://datahub.io/core/oil-prices/r/brent-daily.csv"
         val request = Request.Builder().url(csvUrl).get().build()
         httpClient.newCall(request).execute().use { response ->
@@ -65,6 +68,10 @@ class EiaBenchmarkAdapter(
                 }.getOrNull() ?: continue
                 val spotPrice = parts[1].trim().toBigDecimalOrNull() ?: continue
                 if (!UtcTimeAnchorAlgorithm.isCandleClosed(dateMillis, "D1", nowMillis)) continue
+                if (sinceOpenTimeMs > 0L && dateMillis < sinceOpenTimeMs) {
+                    prevClose = spotPrice
+                    continue
+                }
                 val open = prevClose ?: spotPrice
                 val high = maxOf(open, spotPrice).add(BigDecimal("0.35"))
                 val low = minOf(open, spotPrice).subtract(BigDecimal("0.35"))

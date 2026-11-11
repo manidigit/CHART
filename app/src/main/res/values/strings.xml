@@ -95,6 +95,9 @@
     <string name="symbol_brent_futures_name">Brent Crude Futures (BZ=F)</string>
     <string name="symbol_xagusd_name">Silver Spot (XAG/USD)</string>
     <string name="symbol_eurusd_name">Euro / US Dollar (EUR/USD)</string>
+    <string name="symbol_gbpusd_name">British Pound / US Dollar (GBP/USD)</string>
+    <string name="symbol_usdjpy_name">US Dollar / Japanese Yen (USD/JPY)</string>
+    <string name="symbol_btcusd_name">Bitcoin / US Dollar (BTC/USD)</string>
     <string name="provider_twelve_data">Twelve Data API (M15 Priority)</string>
     <string name="provider_tvdatafeed">TradingView (PEPPERSTONE:SPOTBRENT)</string>
     <string name="provider_dukascopy">Dukascopy Bank Feed (Free M15)</string>
@@ -181,7 +184,7 @@
     <string name="settings_group_sources">3. Data Sources &amp; Symbols</string>
     <string name="settings_group_params">4. Analysis &amp; TradingView Switches</string>
     <string name="settings_group_about">5. Server Health &amp; About</string>
-    <string name="settings_about_version">CHART Intelligence v1.30.0 · Unified Central Core</string>
+    <string name="settings_about_version">CHART Intelligence v1.31.0 · DB-First Central Core</string>
     <string name="settings_tab_account">Account</string>
     <string name="settings_tab_appearance">Appearance</string>
     <string name="settings_tab_sources">Symbols</string>
