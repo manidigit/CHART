@@ -11,12 +11,14 @@ require_once __DIR__ . '/providers/TwelveDataAdapter.php';
 require_once __DIR__ . '/providers/DukascopyAdapter.php';
 require_once __DIR__ . '/providers/EiaBenchmarkAdapter.php';
 require_once __DIR__ . '/providers/TvDatafeedAdapter.php';
+require_once __DIR__ . '/providers/BiquoteAdapter.php';
 require_once __DIR__ . '/providers/ProviderCatalog.php';
 
 use ChartIntelligence\Algorithms\CandleValidator;
 use ChartIntelligence\Algorithms\UtcTimeAnchor;
 use ChartIntelligence\Core\ApiEnvelope;
 use ChartIntelligence\Core\Database;
+use ChartIntelligence\Providers\BiquoteAdapter;
 use ChartIntelligence\Providers\DukascopyAdapter;
 use ChartIntelligence\Providers\EiaBenchmarkAdapter;
 use ChartIntelligence\Providers\TvDatafeedAdapter;
@@ -117,6 +119,7 @@ if ($pdo !== null && $storedCount >= 5 && !$forceBackfill && $maxOpenMs >= $expe
 
     $rawDelta = match ($provider) {
         'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, true, $maxOpenMs),
+        'biquote' => BiquoteAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
         'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
         'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
         'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $deltaFetchLimit, $nowMs, $maxOpenMs),
@@ -136,6 +139,7 @@ if ($pdo !== null && $storedCount >= 5 && !$forceBackfill && $maxOpenMs >= $expe
     $syncMode = 'INITIAL_BACKFILL';
     $rawInitial = match ($provider) {
         'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, true, 0),
+        'biquote' => BiquoteAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
         'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
         'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
         'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $limit, $nowMs, 0),

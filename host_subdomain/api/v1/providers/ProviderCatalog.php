@@ -8,20 +8,63 @@ use PDO;
 use Throwable;
 
 /**
- * Centralized Catalog of Independent Data Collection Methods (Algorithms & APIs)
- * and their supported market symbols.
- *
- * Enforces strict separation of collection methods (`tvdatafeed`, `twelve_data`,
- * `dukascopy`, `yahoo_finance`, `eia_brent_spot`) and provides metadata for both
- * "Filter by Source -> Symbols" and "Search by Symbol -> Supported Sources" flows
- * across Web and Android Settings.
+ * Centralized Catalog of 6 Independent Data Collection Methods (`tvdatafeed`, `biquote`,
+ * `twelve_data`, `dukascopy`, `yahoo_finance`, `eia_brent_spot`) and the 22 Canonical
+ * Watchlist Symbols with their Asset-Class Priority Rules.
  */
 final class ProviderCatalog
 {
+    public static function getCanonicalWatchlistDefinitions(): array
+    {
+        return [
+            ['rank' => 1,  'symbol_code' => 'SPOTBRENT', 'title_en' => 'Brent Crude (Spot)',               'title_fa' => 'نفت برنت اسپات',                  'category' => 'ENERGY',  'decimals' => 3, 'default_provider' => 'tvdatafeed',    'priority_chain' => ['tvdatafeed', 'dukascopy', 'biquote', 'yahoo_finance', 'twelve_data', 'eia_brent_spot']],
+            ['rank' => 2,  'symbol_code' => 'ETHUSD',    'title_en' => 'Ethereum / U.S. Dollar',           'title_fa' => 'اتریوم / دلار آمریکا',            'category' => 'CRYPTO',  'decimals' => 2, 'default_provider' => 'biquote',       'priority_chain' => ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 3,  'symbol_code' => 'BTCUSD',    'title_en' => 'Bitcoin / U.S. Dollar',            'title_fa' => 'بیت‌کوین / دلار آمریکا',          'category' => 'CRYPTO',  'decimals' => 2, 'default_provider' => 'biquote',       'priority_chain' => ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 4,  'symbol_code' => 'XAGUSD',    'title_en' => 'Silver / U.S. Dollar',             'title_fa' => 'نقره جهانی / دلار آمریکا',        'category' => 'METALS',  'decimals' => 3, 'default_provider' => 'biquote',       'priority_chain' => ['biquote', 'twelve_data', 'yahoo_finance', 'dukascopy', 'tvdatafeed']],
+            ['rank' => 5,  'symbol_code' => 'XAUUSD',    'title_en' => 'Gold Spot / U.S. Dollar',          'title_fa' => 'طلای جهانی اسپات / دلار',         'category' => 'METALS',  'decimals' => 2, 'default_provider' => 'twelve_data',   'priority_chain' => ['twelve_data', 'biquote', 'dukascopy', 'yahoo_finance', 'tvdatafeed']],
+            ['rank' => 6,  'symbol_code' => 'SPX500USD', 'title_en' => 'US SPX 500',                       'title_fa' => 'شاخص S&P 500 آمریکا',             'category' => 'INDICES', 'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'tvdatafeed', 'twelve_data']],
+            ['rank' => 7,  'symbol_code' => 'NDQ',       'title_en' => 'US 100 Index (Nasdaq 100)',        'title_fa' => 'شاخص نزدک ۱۰۰ آمریکا',            'category' => 'INDICES', 'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'tvdatafeed', 'twelve_data']],
+            ['rank' => 8,  'symbol_code' => 'EURUSD',    'title_en' => 'Euro / U.S. Dollar',               'title_fa' => 'یورو / دلار آمریکا',              'category' => 'FX',      'decimals' => 4, 'default_provider' => 'tvdatafeed',    'priority_chain' => ['tvdatafeed', 'twelve_data', 'biquote', 'dukascopy', 'yahoo_finance']],
+            ['rank' => 9,  'symbol_code' => 'USOIL',     'title_en' => 'CFDs on WTI Crude Oil',            'title_fa' => 'نفت خام سبک تگزاس (WTI)',         'category' => 'ENERGY',  'decimals' => 2, 'default_provider' => 'tvdatafeed',    'priority_chain' => ['tvdatafeed', 'yahoo_finance', 'biquote', 'twelve_data']],
+            ['rank' => 10, 'symbol_code' => 'NVDA',      'title_en' => 'NVIDIA Corporation',               'title_fa' => 'سهام انویدیا (NVIDIA)',           'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 11, 'symbol_code' => 'AMZN',      'title_en' => 'Amazon.com, Inc.',                 'title_fa' => 'سهام آمازون (Amazon)',            'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 12, 'symbol_code' => 'TSLA',      'title_en' => 'Tesla, Inc.',                      'title_fa' => 'سهام تسلا (Tesla)',               'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 13, 'symbol_code' => 'AAPL',      'title_en' => 'Apple Inc.',                       'title_fa' => 'سهام اپل (Apple)',                'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 14, 'symbol_code' => 'GOOGL',     'title_en' => 'Alphabet Inc (Google) Class A',    'title_fa' => 'سهام آلفابت / گوگل (Google)',     'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 15, 'symbol_code' => 'MSFT',      'title_en' => 'Microsoft Corp.',                  'title_fa' => 'سهام مایکروسافت (Microsoft)',     'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 16, 'symbol_code' => 'META',      'title_en' => 'Meta Platforms, Inc.',             'title_fa' => 'سهام متا / فیسبوک (Meta)',        'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 17, 'symbol_code' => 'NFLX',      'title_en' => 'Netflix, Inc.',                    'title_fa' => 'سهام نتفلیکس (Netflix)',          'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 18, 'symbol_code' => 'AMD',       'title_en' => 'Advanced Micro Devices Inc',       'title_fa' => 'سهام ای‌ام‌دی (AMD)',             'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 19, 'symbol_code' => 'UBER',      'title_en' => 'Uber Technologies, Inc.',          'title_fa' => 'سهام اوبر (Uber)',                'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 20, 'symbol_code' => 'NKE',       'title_en' => 'Nike, Inc.',                       'title_fa' => 'سهام نایکی (Nike)',               'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 21, 'symbol_code' => 'IBM',       'title_en' => 'International Business Machines',  'title_fa' => 'سهام آی‌بی‌ام (IBM)',             'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 22, 'symbol_code' => 'SAN',       'title_en' => 'Banco Santander, S.A.',            'title_fa' => 'سهام بانک سانتاندر (Santander)',  'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+        ];
+    }
+
     public static function getMethods(): array
     {
         $cfg = Database::getConfig();
         $hasTwelveKey = trim((string) ($cfg['TWELVE_DATA_API_KEY'] ?? '')) !== '';
+        $defs = self::getCanonicalWatchlistDefinitions();
+
+        $buildSymbolList = static function (array $tickerMap) use ($defs): array {
+            $list = [];
+            foreach ($defs as $d) {
+                $code = $d['symbol_code'];
+                if (isset($tickerMap[$code])) {
+                    $list[] = [
+                        'symbol_code' => $code,
+                        'provider_ticker' => $tickerMap[$code],
+                        'title_fa' => $d['title_fa'],
+                        'title_en' => $d['title_en'],
+                        'category' => $d['category'],
+                        'decimals' => $d['decimals'],
+                    ];
+                }
+            }
+            return $list;
+        };
 
         return [
             [
@@ -36,17 +79,54 @@ final class ProviderCatalog
                 'formula_fa' => 'آرشیو پایه ۵۰۰۰ کندل در دیتابیس مرکزی + دریافت افزایشی کندل‌های جدید از سوکت زنده wss://data.tradingview.com با تراز دقیق UTC 00:00 و حفظ کامل شدوها (Wicks).',
                 'formula_en' => '5,000-bar base archive in MariaDB + incremental delta sync via wss://data.tradingview.com WebSocket with exact 00:00 UTC alignment and full wick preservation.',
                 'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
-                'storage_key_ rule' => 'UNIQUE(chart_id, "tvdatafeed", timeframe, open_time_utc)',
-                'symbols' => [
-                    ['symbol_code' => 'SPOTBRENT', 'provider_ticker' => 'PEPPERSTONE:SPOTBRENT', 'title_fa' => 'نفت برنت اسپات', 'title_en' => 'Brent Crude Oil Spot', 'category' => 'ENERGY', 'decimals' => 3],
-                    ['symbol_code' => 'XAUUSD', 'provider_ticker' => 'OANDA:XAUUSD', 'title_fa' => 'طلای جهانی اسپات', 'title_en' => 'Gold Spot / USD', 'category' => 'METALS', 'decimals' => 2],
-                    ['symbol_code' => 'BRENT_FUTURES', 'provider_ticker' => 'NYMEX:BZ1!', 'title_fa' => 'قرارداد آتی نفت برنت', 'title_en' => 'Brent Crude Futures', 'category' => 'ENERGY', 'decimals' => 2],
-                    ['symbol_code' => 'XAGUSD', 'provider_ticker' => 'OANDA:XAGUSD', 'title_fa' => 'نقره جهانی اسپات', 'title_en' => 'Silver Spot / USD', 'category' => 'METALS', 'decimals' => 3],
-                    ['symbol_code' => 'EURUSD', 'provider_ticker' => 'OANDA:EURUSD', 'title_fa' => 'یورو به دلار آمریکا', 'title_en' => 'Euro / US Dollar', 'category' => 'FX', 'decimals' => 4],
-                    ['symbol_code' => 'GBPUSD', 'provider_ticker' => 'OANDA:GBPUSD', 'title_fa' => 'پوند بریتانیا به دلار', 'title_en' => 'British Pound / USD', 'category' => 'FX', 'decimals' => 4],
-                    ['symbol_code' => 'USDJPY', 'provider_ticker' => 'OANDA:USDJPY', 'title_fa' => 'دلار آمریکا به ین ژاپن', 'title_en' => 'US Dollar / Japanese Yen', 'category' => 'FX', 'decimals' => 3],
-                    ['symbol_code' => 'BTCUSD', 'provider_ticker' => 'BITSTAMP:BTCUSD', 'title_fa' => 'بیت‌کوین به دلار آمریکا', 'title_en' => 'Bitcoin / US Dollar', 'category' => 'CRYPTO', 'decimals' => 2],
-                ],
+                'storage_key_rule' => 'UNIQUE(chart_id, "tvdatafeed", timeframe, open_time_utc)',
+                'symbols' => $buildSymbolList([
+                    'SPOTBRENT' => 'PEPPERSTONE:SPOTBRENT',
+                    'ETHUSD' => 'BITSTAMP:ETHUSD',
+                    'BTCUSD' => 'BITSTAMP:BTCUSD',
+                    'XAGUSD' => 'OANDA:XAGUSD',
+                    'XAUUSD' => 'OANDA:XAUUSD',
+                    'SPX500USD' => 'OANDA:SPX500USD',
+                    'NDQ' => 'NASDAQ:NDX',
+                    'EURUSD' => 'OANDA:EURUSD',
+                    'USOIL' => 'TVC:USOIL',
+                    'NVDA' => 'NASDAQ:NVDA',
+                    'AMZN' => 'NASDAQ:AMZN',
+                    'TSLA' => 'NASDAQ:TSLA',
+                    'AAPL' => 'NASDAQ:AAPL',
+                    'GOOGL' => 'NASDAQ:GOOGL',
+                    'MSFT' => 'NASDAQ:MSFT',
+                    'META' => 'NASDAQ:META',
+                    'NFLX' => 'NASDAQ:NFLX',
+                    'AMD' => 'NASDAQ:AMD',
+                    'UBER' => 'NYSE:UBER',
+                    'NKE' => 'NYSE:NKE',
+                    'IBM' => 'NYSE:IBM',
+                    'SAN' => 'NYSE:SAN',
+                ]),
+            ],
+            [
+                'provider_id' => 'biquote',
+                'badge_label' => 'biquote Feed',
+                'title_fa' => 'فید چنددارایی سریع و رایگان biquote (کریپتو، فلزات، انرژی و فارکس)',
+                'title_en' => 'biquote Multi-Asset Feed (Crypto, Metals, Energy & FX)',
+                'method_type' => 'MULTI_ASSET_PUBLIC_FEED',
+                'requires_api_key' => false,
+                'is_configured' => true,
+                'status_code' => 'READY',
+                'formula_fa' => 'اولویت اول برای بیت‌کوین، اتریوم و نقره؛ دریافت سریع کندل‌های بسته‌شده UTC بدون نیاز به کلید API پولی و ذخیره افزایشی فقط کندل‌های جدید در MariaDB.',
+                'formula_en' => 'Primary free feed for BTCUSD, ETHUSD, and XAGUSD; fetches closed UTC candles without paid API keys and appends only incremental delta bars to MariaDB.',
+                'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
+                'storage_key_rule' => 'UNIQUE(chart_id, "biquote", timeframe, open_time_utc)',
+                'symbols' => $buildSymbolList([
+                    'SPOTBRENT' => 'BIQUOTE:UKOIL',
+                    'ETHUSD' => 'BIQUOTE:ETHUSD',
+                    'BTCUSD' => 'BIQUOTE:BTCUSD',
+                    'XAGUSD' => 'BIQUOTE:XAGUSD',
+                    'XAUUSD' => 'BIQUOTE:XAUUSD',
+                    'EURUSD' => 'BIQUOTE:EURUSD',
+                    'USOIL' => 'BIQUOTE:USOIL',
+                ]),
             ],
             [
                 'provider_id' => 'twelve_data',
@@ -57,19 +137,34 @@ final class ProviderCatalog
                 'requires_api_key' => true,
                 'is_configured' => $hasTwelveKey,
                 'status_code' => $hasTwelveKey ? 'READY' : 'API_KEY_OPTIONAL_ARCHIVE',
-                'formula_fa' => 'فراخوانی اندپوینت api.twelvedata.com/time_series با کلید اختصاصی و دریافت صرفاً کندل‌های جدید جاافتاده (outputsize = deltaBars) پس از ذخیره تاریخچه اولیه در دیتابیس.',
-                'formula_en' => 'Queries api.twelvedata.com/time_series with API key using incremental outputsize = deltaBars after initial history is stored in MariaDB.',
+                'formula_fa' => 'اولویت اول برای طلای جهانی (XAUUSD)؛ فراخوانی اندپوینت api.twelvedata.com/time_series با کلید اختصاصی و دریافت صرفاً کندل‌های جدید جاافتاده (outputsize = deltaBars).',
+                'formula_en' => 'Primary feed for XAUUSD; queries api.twelvedata.com/time_series with API key using incremental outputsize = deltaBars after initial history is stored in MariaDB.',
                 'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
                 'storage_key_rule' => 'UNIQUE(chart_id, "twelve_data", timeframe, open_time_utc)',
-                'symbols' => [
-                    ['symbol_code' => 'XAUUSD', 'provider_ticker' => 'XAU/USD', 'title_fa' => 'طلای جهانی اسپات', 'title_en' => 'Gold Spot / USD', 'category' => 'METALS', 'decimals' => 2],
-                    ['symbol_code' => 'SPOTBRENT', 'provider_ticker' => 'XBR/USD', 'title_fa' => 'نفت برنت اسپات', 'title_en' => 'Brent Crude Oil Spot', 'category' => 'ENERGY', 'decimals' => 3],
-                    ['symbol_code' => 'XAGUSD', 'provider_ticker' => 'XAG/USD', 'title_fa' => 'نقره جهانی اسپات', 'title_en' => 'Silver Spot / USD', 'category' => 'METALS', 'decimals' => 3],
-                    ['symbol_code' => 'EURUSD', 'provider_ticker' => 'EUR/USD', 'title_fa' => 'یورو به دلار آمریکا', 'title_en' => 'Euro / US Dollar', 'category' => 'FX', 'decimals' => 4],
-                    ['symbol_code' => 'GBPUSD', 'provider_ticker' => 'GBP/USD', 'title_fa' => 'پوند بریتانیا به دلار', 'title_en' => 'British Pound / USD', 'category' => 'FX', 'decimals' => 4],
-                    ['symbol_code' => 'USDJPY', 'provider_ticker' => 'USD/JPY', 'title_fa' => 'دلار آمریکا به ین ژاپن', 'title_en' => 'US Dollar / Japanese Yen', 'category' => 'FX', 'decimals' => 3],
-                    ['symbol_code' => 'BTCUSD', 'provider_ticker' => 'BTC/USD', 'title_fa' => 'بیت‌کوین به دلار آمریکا', 'title_en' => 'Bitcoin / US Dollar', 'category' => 'CRYPTO', 'decimals' => 2],
-                ],
+                'symbols' => $buildSymbolList([
+                    'SPOTBRENT' => 'XBR/USD',
+                    'ETHUSD' => 'ETH/USD',
+                    'BTCUSD' => 'BTC/USD',
+                    'XAGUSD' => 'XAG/USD',
+                    'XAUUSD' => 'XAU/USD',
+                    'SPX500USD' => 'SPX',
+                    'NDQ' => 'NDX',
+                    'EURUSD' => 'EUR/USD',
+                    'USOIL' => 'WTI/USD',
+                    'NVDA' => 'NVDA',
+                    'AMZN' => 'AMZN',
+                    'TSLA' => 'TSLA',
+                    'AAPL' => 'AAPL',
+                    'GOOGL' => 'GOOGL',
+                    'MSFT' => 'MSFT',
+                    'META' => 'META',
+                    'NFLX' => 'NFLX',
+                    'AMD' => 'AMD',
+                    'UBER' => 'UBER',
+                    'NKE' => 'NKE',
+                    'IBM' => 'IBM',
+                    'SAN' => 'SAN',
+                ]),
             ],
             [
                 'provider_id' => 'dukascopy',
@@ -80,43 +175,54 @@ final class ProviderCatalog
                 'requires_api_key' => false,
                 'is_configured' => true,
                 'status_code' => 'READY',
-                'formula_fa' => 'استخراج کندل‌های استاندارد بین‌بانکی با حذف کامل کندل‌های مصنوعی تعطیلات آخر هفته (volume = 0) و ذخیره‌سازی ماندگار در جدول candles.',
+                'formula_fa' => 'استخراج کندل‌های استاندارد بین‌بانکی سوئیس با حذف کامل کندل‌های مصنوعی تعطیلات آخر هفته (volume = 0) و ذخیره‌سازی ماندگار در جدول candles.',
                 'formula_en' => 'Interbank historical OHLC feed with strict weekend synthetic tick filtering and permanent MariaDB persistence.',
                 'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
                 'storage_key_rule' => 'UNIQUE(chart_id, "dukascopy", timeframe, open_time_utc)',
-                'symbols' => [
-                    ['symbol_code' => 'XAUUSD', 'provider_ticker' => 'XAU/USD', 'title_fa' => 'طلای جهانی اسپات', 'title_en' => 'Gold Spot / USD', 'category' => 'METALS', 'decimals' => 2],
-                    ['symbol_code' => 'SPOTBRENT', 'provider_ticker' => 'BRENT.CMD/USD', 'title_fa' => 'نفت برنت اسپات', 'title_en' => 'Brent Crude Oil Spot', 'category' => 'ENERGY', 'decimals' => 3],
-                    ['symbol_code' => 'BRENT_FUTURES', 'provider_ticker' => 'BRENT.CMD/USD', 'title_fa' => 'قرارداد آتی نفت برنت', 'title_en' => 'Brent Crude Futures', 'category' => 'ENERGY', 'decimals' => 2],
-                    ['symbol_code' => 'XAGUSD', 'provider_ticker' => 'XAG/USD', 'title_fa' => 'نقره جهانی اسپات', 'title_en' => 'Silver Spot / USD', 'category' => 'METALS', 'decimals' => 3],
-                    ['symbol_code' => 'EURUSD', 'provider_ticker' => 'EUR/USD', 'title_fa' => 'یورو به دلار آمریکا', 'title_en' => 'Euro / US Dollar', 'category' => 'FX', 'decimals' => 4],
-                    ['symbol_code' => 'GBPUSD', 'provider_ticker' => 'GBP/USD', 'title_fa' => 'پوند بریتانیا به دلار', 'title_en' => 'British Pound / USD', 'category' => 'FX', 'decimals' => 4],
-                    ['symbol_code' => 'USDJPY', 'provider_ticker' => 'USD/JPY', 'title_fa' => 'دلار آمریکا به ین ژاپن', 'title_en' => 'US Dollar / Japanese Yen', 'category' => 'FX', 'decimals' => 3],
-                ],
+                'symbols' => $buildSymbolList([
+                    'SPOTBRENT' => 'BRENT.CMD/USD',
+                    'XAGUSD' => 'XAG/USD',
+                    'XAUUSD' => 'XAU/USD',
+                    'EURUSD' => 'EUR/USD',
+                ]),
             ],
             [
                 'provider_id' => 'yahoo_finance',
                 'badge_label' => 'Yahoo Finance v8',
-                'title_fa' => 'موتور عمومی یاهو فایننس (Yahoo Finance Chart v8)',
-                'title_en' => 'Yahoo Finance v8 Chart Engine',
+                'title_fa' => 'موتور عمومی یاهو فایننس (Yahoo Finance Chart v8 — اولویت اول سهام و شاخص‌ها)',
+                'title_en' => 'Yahoo Finance v8 Chart Engine (Primary for US Equities & Indices)',
                 'method_type' => 'PUBLIC_REST_V8',
                 'requires_api_key' => false,
                 'is_configured' => true,
                 'status_code' => 'READY',
-                'formula_fa' => 'دریافت کندل از query1.finance.yahoo.com/v8/finance/chart با انتخاب هوشمند بازه کوتاه (1d/5d) در حالت Delta Sync جهت جلوگیری از دریافت مجدد تاریخچه قبلی.',
-                'formula_en' => 'Fetches from query1.finance.yahoo.com/v8/finance/chart using short 1d/5d windows during Delta Sync to avoid re-downloading cached history.',
+                'formula_fa' => 'اولویت اول برای سهام آمریکا (NVDA تا SAN) و شاخص‌ها (SPX500USD، NDQ)؛ دریافت کندل از query1.finance.yahoo.com/v8/finance/chart با بازه کوتاه در حالت Delta Sync.',
+                'formula_en' => 'Primary free engine for US Equities (NVDA..SAN) and Indices (SPX500USD, NDQ); fetches from query1.finance.yahoo.com/v8/finance/chart with short delta windows.',
                 'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
                 'storage_key_rule' => 'UNIQUE(chart_id, "yahoo_finance", timeframe, open_time_utc)',
-                'symbols' => [
-                    ['symbol_code' => 'SPOTBRENT', 'provider_ticker' => 'BZ=F', 'title_fa' => 'نفت برنت اسپات', 'title_en' => 'Brent Crude Oil Spot', 'category' => 'ENERGY', 'decimals' => 3],
-                    ['symbol_code' => 'BRENT_FUTURES', 'provider_ticker' => 'BZ=F', 'title_fa' => 'قرارداد آتی نفت برنت', 'title_en' => 'Brent Crude Futures', 'category' => 'ENERGY', 'decimals' => 2],
-                    ['symbol_code' => 'XAUUSD', 'provider_ticker' => 'GC=F', 'title_fa' => 'طلای جهانی اسپات', 'title_en' => 'Gold Spot / USD', 'category' => 'METALS', 'decimals' => 2],
-                    ['symbol_code' => 'XAGUSD', 'provider_ticker' => 'SI=F', 'title_fa' => 'نقره جهانی اسپات', 'title_en' => 'Silver Spot / USD', 'category' => 'METALS', 'decimals' => 3],
-                    ['symbol_code' => 'EURUSD', 'provider_ticker' => 'EURUSD=X', 'title_fa' => 'یورو به دلار آمریکا', 'title_en' => 'Euro / US Dollar', 'category' => 'FX', 'decimals' => 4],
-                    ['symbol_code' => 'GBPUSD', 'provider_ticker' => 'GBPUSD=X', 'title_fa' => 'پوند بریتانیا به دلار', 'title_en' => 'British Pound / USD', 'category' => 'FX', 'decimals' => 4],
-                    ['symbol_code' => 'USDJPY', 'provider_ticker' => 'JPY=X', 'title_fa' => 'دلار آمریکا به ین ژاپن', 'title_en' => 'US Dollar / Japanese Yen', 'category' => 'FX', 'decimals' => 3],
-                    ['symbol_code' => 'BTCUSD', 'provider_ticker' => 'BTC-USD', 'title_fa' => 'بیت‌کوین به دلار آمریکا', 'title_en' => 'Bitcoin / US Dollar', 'category' => 'CRYPTO', 'decimals' => 2],
-                ],
+                'symbols' => $buildSymbolList([
+                    'SPOTBRENT' => 'BZ=F',
+                    'ETHUSD' => 'ETH-USD',
+                    'BTCUSD' => 'BTC-USD',
+                    'XAGUSD' => 'SI=F',
+                    'XAUUSD' => 'GC=F',
+                    'SPX500USD' => '^GSPC',
+                    'NDQ' => '^NDX',
+                    'EURUSD' => 'EURUSD=X',
+                    'USOIL' => 'CL=F',
+                    'NVDA' => 'NVDA',
+                    'AMZN' => 'AMZN',
+                    'TSLA' => 'TSLA',
+                    'AAPL' => 'AAPL',
+                    'GOOGL' => 'GOOGL',
+                    'MSFT' => 'MSFT',
+                    'META' => 'META',
+                    'NFLX' => 'NFLX',
+                    'AMD' => 'AMD',
+                    'UBER' => 'UBER',
+                    'NKE' => 'NKE',
+                    'IBM' => 'IBM',
+                    'SAN' => 'SAN',
+                ]),
             ],
             [
                 'provider_id' => 'eia_brent_spot',
@@ -131,42 +237,59 @@ final class ProviderCatalog
                 'formula_en' => 'Official daily (D1) Europe Brent Spot Price FOB benchmark; permanently caches past daily bars and appends only newly published sessions.',
                 'supported_timeframes' => ['D1'],
                 'storage_key_rule' => 'UNIQUE(chart_id, "eia_brent_spot", "D1", open_time_utc)',
-                'symbols' => [
-                    ['symbol_code' => 'SPOTBRENT', 'provider_ticker' => 'EIA:RBRTE', 'title_fa' => 'نفت برنت اسپات', 'title_en' => 'Brent Crude Oil Spot', 'category' => 'ENERGY', 'decimals' => 3],
-                    ['symbol_code' => 'BRENT_FUTURES', 'provider_ticker' => 'EIA:RBRTE', 'title_fa' => 'قرارداد آتی نفت برنت', 'title_en' => 'Brent Crude Futures', 'category' => 'ENERGY', 'decimals' => 2],
-                ],
+                'symbols' => $buildSymbolList([
+                    'SPOTBRENT' => 'EIA:RBRTE',
+                ]),
             ],
         ];
     }
 
     public static function getSymbolsDirectory(): array
     {
+        $defs = self::getCanonicalWatchlistDefinitions();
         $methods = self::getMethods();
-        $map = [];
-        foreach ($methods as $method) {
-            $provId = $method['provider_id'];
-            foreach ($method['symbols'] as $sym) {
-                $code = $sym['symbol_code'];
-                if (!isset($map[$code])) {
-                    $map[$code] = [
-                        'symbol_code' => $code,
-                        'title_fa' => $sym['title_fa'],
-                        'title_en' => $sym['title_en'],
-                        'category' => $sym['category'],
-                        'decimals' => $sym['decimals'],
-                        'default_provider' => $code === 'SPOTBRENT' ? 'tvdatafeed' : ($code === 'XAUUSD' ? 'twelve_data' : $provId),
-                        'providers' => [],
-                    ];
+        $methodById = [];
+        foreach ($methods as $m) {
+            $methodById[$m['provider_id']] = $m;
+        }
+
+        $directory = [];
+        foreach ($defs as $d) {
+            $code = $d['symbol_code'];
+            $providersList = [];
+            foreach ($d['priority_chain'] as $idx => $provId) {
+                if (!isset($methodById[$provId])) {
+                    continue;
                 }
-                $map[$code]['providers'][] = [
+                $m = $methodById[$provId];
+                $ticker = $code;
+                foreach ($m['symbols'] as $symItem) {
+                    if ($symItem['symbol_code'] === $code) {
+                        $ticker = $symItem['provider_ticker'];
+                        break;
+                    }
+                }
+                $providersList[] = [
+                    'priority_rank' => $idx + 1,
                     'provider_id' => $provId,
-                    'badge_label' => $method['badge_label'],
-                    'provider_ticker' => $sym['provider_ticker'],
-                    'supported_timeframes' => $method['supported_timeframes'],
+                    'badge_label' => $m['badge_label'],
+                    'provider_ticker' => $ticker,
+                    'supported_timeframes' => $m['supported_timeframes'],
                 ];
             }
+            $directory[] = [
+                'rank' => $d['rank'],
+                'symbol_code' => $code,
+                'title_fa' => $d['title_fa'],
+                'title_en' => $d['title_en'],
+                'category' => $d['category'],
+                'decimals' => $d['decimals'],
+                'default_provider' => $d['default_provider'],
+                'priority_chain' => $d['priority_chain'],
+                'providers' => $providersList,
+            ];
         }
-        return array_values($map);
+        return $directory;
     }
 
     public static function getDatabaseStorageMatrix(?PDO $pdo): array

@@ -43,12 +43,16 @@ final class TwelveDataAdapter
         $apiSymbol = match (strtoupper($symbol)) {
             'XAUUSD' => 'XAU/USD',
             'SPOTBRENT', 'BRENT_FUTURES' => 'XBR/USD',
+            'USOIL' => 'WTI/USD',
             'XAGUSD' => 'XAG/USD',
             'EURUSD' => 'EUR/USD',
             'GBPUSD' => 'GBP/USD',
             'USDJPY' => 'USD/JPY',
             'BTCUSD' => 'BTC/USD',
-            default => $symbol,
+            'ETHUSD' => 'ETH/USD',
+            'SPX500USD' => 'SPX',
+            'NDQ' => 'NDX',
+            default => strtoupper($symbol),
         };
         $interval = match ($normTf) {
             'M15' => '15min',

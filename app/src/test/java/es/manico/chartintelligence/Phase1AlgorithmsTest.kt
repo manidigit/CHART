@@ -363,6 +363,28 @@ class Phase1AlgorithmsTest {
         assertEquals(10.0, shortPos.targetPercent.toDouble(), 0.001)
         assertEquals(5.0, shortPos.stopPercent.toDouble(), 0.001)
     }
+
+    @Test
+    fun providerMethodCatalog_includesBiquoteAnd22WatchlistSymbols() {
+        val biquote = es.manico.chartintelligence.data.model.ProviderId.fromId("biquote")
+        assertEquals(es.manico.chartintelligence.data.model.ProviderId.BIQUOTE, biquote)
+        assertEquals("biquote", biquote.badgeLabel)
+
+        val catalog = es.manico.chartintelligence.data.model.ProviderId.providerMethodCatalog
+        assertEquals(6, catalog.size)
+
+        val biquoteSpec = catalog.first { it.providerId == biquote }
+        val biquoteCodes = biquoteSpec.supportedSymbols.map { it.symbolCode }
+        assertTrue(biquoteCodes.containsAll(listOf("SPOTBRENT", "ETHUSD", "BTCUSD", "XAGUSD", "XAUUSD", "EURUSD", "USOIL")))
+
+        val yahooSpec = catalog.first { it.providerId == es.manico.chartintelligence.data.model.ProviderId.YAHOO_FINANCE }
+        val yahooCodes = yahooSpec.supportedSymbols.map { it.symbolCode }
+        assertTrue(yahooCodes.containsAll(listOf(
+            "SPOTBRENT", "ETHUSD", "BTCUSD", "XAGUSD", "XAUUSD", "SPX500USD", "NDQ", "EURUSD", "USOIL",
+            "NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN"
+        )))
+    }
 }
+
 
 

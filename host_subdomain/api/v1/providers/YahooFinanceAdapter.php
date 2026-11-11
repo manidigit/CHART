@@ -25,13 +25,17 @@ final class YahooFinanceAdapter
     ): array {
         $ticker = match (strtoupper($symbol)) {
             'SPOTBRENT', 'BRENT_FUTURES' => 'BZ=F',
+            'USOIL' => 'CL=F',
             'XAUUSD' => 'GC=F',
             'XAGUSD' => 'SI=F',
             'EURUSD' => 'EURUSD=X',
             'GBPUSD' => 'GBPUSD=X',
             'USDJPY' => 'JPY=X',
             'BTCUSD' => 'BTC-USD',
-            default => $symbol,
+            'ETHUSD' => 'ETH-USD',
+            'SPX500USD' => '^GSPC',
+            'NDQ' => '^NDX',
+            default => strtoupper($symbol),
         };
         $normTf = strtoupper($timeframe);
         $isDelta = $sinceOpenMs > 0 && ($nowMs - $sinceOpenMs) < (5 * 86400000);

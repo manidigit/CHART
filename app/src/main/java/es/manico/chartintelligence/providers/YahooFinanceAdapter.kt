@@ -58,13 +58,17 @@ class YahooFinanceAdapter(
     ): List<CandleBar> {
         val ticker = when (symbolCode.uppercase()) {
             "SPOTBRENT", "BRENT_FUTURES" -> "BZ=F"
+            "USOIL" -> "CL=F"
             "XAUUSD" -> "GC=F"
             "XAGUSD" -> "SI=F"
             "EURUSD" -> "EURUSD=X"
             "GBPUSD" -> "GBPUSD=X"
             "USDJPY" -> "JPY=X"
             "BTCUSD" -> "BTC-USD"
-            else -> symbolCode
+            "ETHUSD" -> "ETH-USD"
+            "SPX500USD" -> "^GSPC"
+            "NDQ" -> "^NDX"
+            else -> symbolCode.uppercase()
         }
         val normalizedTf = timeframe.uppercase()
         val (interval, range, sourceTf) = when (normalizedTf) {

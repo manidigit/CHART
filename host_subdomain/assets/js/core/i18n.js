@@ -56,7 +56,7 @@ export class I18nManager {
     try {
       const fetchWithTimeout = (url) =>
         Promise.race([
-          fetch(url + '?v=1.31.0').then((r) => (r.ok ? r.json() : {})),
+          fetch(url + '?v=1.32.0').then((r) => (r.ok ? r.json() : {})),
           new Promise((resolve) => setTimeout(() => resolve({}), 3000)),
         ]);
       const [faRes, enRes] = await Promise.all([

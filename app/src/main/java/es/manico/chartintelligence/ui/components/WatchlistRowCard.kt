@@ -216,7 +216,13 @@ fun AssetSymbolBadge(
         isOil -> listOf(Color(0xFF38BDF8), Color(0xFF0284C7), Color(0xFF1E3A8A))
         isSilver -> listOf(Color(0xFFF1F5F9), Color(0xFF94A3B8), Color(0xFF475569))
         isEuro -> listOf(Color(0xFF60A5FA), Color(0xFF2563EB), Color(0xFF1D4ED8))
-        else -> listOf(Color(0xFF818CF8), Color(0xFF4F46E5), Color(0xFF312E81))
+        upper == "BTCUSD" -> listOf(Color(0xFFFBBF24), Color(0xFFF7931A), Color(0xFFB45309))
+        upper == "ETHUSD" -> listOf(Color(0xFF818CF8), Color(0xFF627EEA), Color(0xFF3730A3))
+        upper in listOf("SPX500USD", "NDQ") -> listOf(Color(0xFFF87171), Color(0xFFDC2626), Color(0xFF991B1B))
+        upper in listOf("NVDA", "AMD") -> listOf(Color(0xFF4ADE80), Color(0xFF16A34A), Color(0xFF14532D))
+        upper in listOf("TSLA", "NFLX") -> listOf(Color(0xFFF87171), Color(0xFFE11D48), Color(0xFF881337))
+        upper in listOf("AMZN", "NKE") -> listOf(Color(0xFFFBBF24), Color(0xFFD97706), Color(0xFF78350F))
+        else -> listOf(Color(0xFF60A5FA), Color(0xFF2563EB), Color(0xFF1E3A8A))
     }
 
     val borderTint = when {
@@ -224,6 +230,8 @@ fun AssetSymbolBadge(
         isOil -> Color(0xFF38BDF8).copy(alpha = 0.65f)
         isSilver -> Color(0xFFCBD5E1).copy(alpha = 0.65f)
         isEuro -> Color(0xFF60A5FA).copy(alpha = 0.65f)
+        upper == "BTCUSD" -> Color(0xFFF7931A).copy(alpha = 0.65f)
+        upper == "ETHUSD" -> Color(0xFF627EEA).copy(alpha = 0.65f)
         else -> Color(0xFF818CF8).copy(alpha = 0.55f)
     }
 
@@ -343,8 +351,15 @@ fun AssetSymbolBadge(
                 }
             }
         } else {
+            val badgeText = when (upper) {
+                "BTCUSD" -> "₿"
+                "ETHUSD" -> "Ξ"
+                "SPX500USD" -> "500"
+                "NDQ" -> "100"
+                else -> upper.take(4)
+            }
             Text(
-                text = upper.take(3),
+                text = badgeText,
                 style = MaterialTheme.typography.labelSmall,
                 fontFamily = JetBrainsMonoFontFamily,
                 fontWeight = FontWeight.Bold,
@@ -357,9 +372,13 @@ fun AssetSymbolBadge(
 fun resolveAssetBadge(symbolCode: String): Pair<String, Color> {
     return when (symbolCode.uppercase()) {
         "XAUUSD" -> "Au" to Color(0xFFF59E0B)
-        "SPOTBRENT", "BRENT_FUTURES" -> "OIL" to Color(0xFF2962FF)
+        "SPOTBRENT", "BRENT_FUTURES", "USOIL" -> "OIL" to Color(0xFF2962FF)
         "XAGUSD" -> "Ag" to Color(0xFF94A3B8)
-        "EURUSD" -> "FX" to Color(0xFF26A69A)
-        else -> symbolCode.take(3).uppercase() to Color(0xFF2962FF)
+        "EURUSD", "GBPUSD", "USDJPY" -> "FX" to Color(0xFF26A69A)
+        "BTCUSD" -> "BTC" to Color(0xFFF7931A)
+        "ETHUSD" -> "ETH" to Color(0xFF627EEA)
+        "SPX500USD" -> "500" to Color(0xFFEF4444)
+        "NDQ" -> "100" to Color(0xFF0EA5E9)
+        else -> symbolCode.take(4).uppercase() to Color(0xFF2962FF)
     }
 }

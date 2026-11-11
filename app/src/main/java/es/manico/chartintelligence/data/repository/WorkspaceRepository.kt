@@ -13,6 +13,7 @@ import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.i18n.AppLanguage
+import es.manico.chartintelligence.providers.BiquoteAdapter
 import es.manico.chartintelligence.providers.CandleProviderAdapter
 import es.manico.chartintelligence.providers.DukascopyAdapter
 import es.manico.chartintelligence.providers.EiaBenchmarkAdapter
@@ -40,7 +41,7 @@ data class ServerOwnerStatus(
 
 data class SystemStatusDto(
     val isHealthy: Boolean = false,
-    val version: String = "1.31.0",
+    val version: String = "1.32.0",
     val serverTimeUtc: String = "",
     val dbConnected: Boolean = false,
     val dbVersion: String = "MariaDB",
@@ -71,6 +72,7 @@ class WorkspaceRepository(context: Context) {
     private val adapters: Map<ProviderId, CandleProviderAdapter> = mapOf(
         ProviderId.TWELVE_DATA to TwelveDataAdapter(),
         ProviderId.TVDATAFEED to TvDatafeedAdapter(httpClient),
+        ProviderId.BIQUOTE to BiquoteAdapter(httpClient),
         ProviderId.DUKASCOPY to DukascopyAdapter(httpClient),
         ProviderId.EIA_BRENT_SPOT to EiaBenchmarkAdapter(),
         ProviderId.YAHOO_FINANCE to YahooFinanceAdapter(httpClient)
@@ -462,17 +464,26 @@ class WorkspaceRepository(context: Context) {
                                 inWatchlist = inWatchlist,
                                 activeProvider = provider,
                                 allowedProviders = listOf(
-                                    ProviderId.TVDATAFEED,
-                                    ProviderId.DUKASCOPY,
+                                    ProviderId.YAHOO_FINANCE,
                                     ProviderId.TWELVE_DATA,
-                                    ProviderId.YAHOO_FINANCE
+                                    ProviderId.TVDATAFEED,
+                                    ProviderId.BIQUOTE,
+                                    ProviderId.DUKASCOPY
                                 ),
                                 timeframe = if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
                             )
                         )
                     }
                 }
-                if (!migratedSpotBrentTv) {
+                val existingCodes = list.map { it.symbolCode }.toSet()
+                var addedMissingDefaults = false
+                for (defSym in defaults) {
+                    if (defSym.symbolCode !in existingCodes) {
+                        list.add(defSym)
+                        addedMissingDefaults = true
+                    }
+                }
+                if (!migratedSpotBrentTv || addedMissingDefaults) {
                     prefs.edit().putBoolean(AppConfig.KEY_SPOTBRENT_TV_MIGRATED, true).apply()
                     saveSymbolCatalog(list)
                 }
@@ -931,22 +942,13 @@ class WorkspaceRepository(context: Context) {
     }
 
     private fun defaultSymbolCatalog(): List<SymbolConfig> {
+        val stockProviders = listOf(
+            ProviderId.YAHOO_FINANCE,
+            ProviderId.TWELVE_DATA,
+            ProviderId.TVDATAFEED
+        )
         return listOf(
-            SymbolConfig(
-                chartId = "chart_xauusd_main",
-                symbolCode = "XAUUSD",
-                titleResId = R.string.symbol_xauusd_name,
-                decimals = 2,
-                inWatchlist = true,
-                activeProvider = ProviderId.TWELVE_DATA,
-                allowedProviders = listOf(
-                    ProviderId.TWELVE_DATA,
-                    ProviderId.TVDATAFEED,
-                    ProviderId.DUKASCOPY,
-                    ProviderId.YAHOO_FINANCE
-                ),
-                timeframe = "M15"
-            ),
+            // 1. SPOTBRENT (Energy): TradingView -> Dukascopy -> biquote -> Yahoo -> TwelveData -> EIA
             SymbolConfig(
                 chartId = "chart_spotbrent_main",
                 symbolCode = "SPOTBRENT",
@@ -957,12 +959,278 @@ class WorkspaceRepository(context: Context) {
                 allowedProviders = listOf(
                     ProviderId.TVDATAFEED,
                     ProviderId.DUKASCOPY,
+                    ProviderId.BIQUOTE,
+                    ProviderId.YAHOO_FINANCE,
                     ProviderId.TWELVE_DATA,
-                    ProviderId.EIA_BRENT_SPOT,
+                    ProviderId.EIA_BRENT_SPOT
+                ),
+                timeframe = "M15"
+            ),
+            // 2. ETHUSD (Crypto): biquote -> Yahoo -> TwelveData -> TradingView
+            SymbolConfig(
+                chartId = "chart_ethusd_spot",
+                symbolCode = "ETHUSD",
+                titleResId = R.string.symbol_ethusd_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.BIQUOTE,
+                allowedProviders = listOf(
+                    ProviderId.BIQUOTE,
+                    ProviderId.YAHOO_FINANCE,
+                    ProviderId.TWELVE_DATA,
+                    ProviderId.TVDATAFEED
+                ),
+                timeframe = "M15"
+            ),
+            // 3. BTCUSD (Crypto): biquote -> Yahoo -> TwelveData -> TradingView
+            SymbolConfig(
+                chartId = "chart_btcusd_spot",
+                symbolCode = "BTCUSD",
+                titleResId = R.string.symbol_btcusd_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.BIQUOTE,
+                allowedProviders = listOf(
+                    ProviderId.BIQUOTE,
+                    ProviderId.YAHOO_FINANCE,
+                    ProviderId.TWELVE_DATA,
+                    ProviderId.TVDATAFEED
+                ),
+                timeframe = "M15"
+            ),
+            // 4. XAGUSD (Metals): biquote -> TwelveData -> Yahoo -> Dukascopy -> TradingView
+            SymbolConfig(
+                chartId = "chart_xagusd_spot",
+                symbolCode = "XAGUSD",
+                titleResId = R.string.symbol_xagusd_name,
+                decimals = 3,
+                inWatchlist = true,
+                activeProvider = ProviderId.BIQUOTE,
+                allowedProviders = listOf(
+                    ProviderId.BIQUOTE,
+                    ProviderId.TWELVE_DATA,
+                    ProviderId.YAHOO_FINANCE,
+                    ProviderId.DUKASCOPY,
+                    ProviderId.TVDATAFEED
+                ),
+                timeframe = "M15"
+            ),
+            // 5. XAUUSD (Metals): TwelveData -> biquote -> Dukascopy -> Yahoo -> TradingView
+            SymbolConfig(
+                chartId = "chart_xauusd_main",
+                symbolCode = "XAUUSD",
+                titleResId = R.string.symbol_xauusd_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.TWELVE_DATA,
+                allowedProviders = listOf(
+                    ProviderId.TWELVE_DATA,
+                    ProviderId.BIQUOTE,
+                    ProviderId.DUKASCOPY,
+                    ProviderId.YAHOO_FINANCE,
+                    ProviderId.TVDATAFEED
+                ),
+                timeframe = "M15"
+            ),
+            // 6. SPX500USD (Indices): Yahoo -> TradingView -> TwelveData
+            SymbolConfig(
+                chartId = "chart_spx500usd_index",
+                symbolCode = "SPX500USD",
+                titleResId = R.string.symbol_spx500usd_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 7. NDQ (Indices): Yahoo -> TradingView -> TwelveData
+            SymbolConfig(
+                chartId = "chart_ndq_index",
+                symbolCode = "NDQ",
+                titleResId = R.string.symbol_ndq_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 8. EURUSD (FX): TradingView -> TwelveData -> biquote -> Dukascopy -> Yahoo
+            SymbolConfig(
+                chartId = "chart_eurusd_spot",
+                symbolCode = "EURUSD",
+                titleResId = R.string.symbol_eurusd_name,
+                decimals = 4,
+                inWatchlist = true,
+                activeProvider = ProviderId.TVDATAFEED,
+                allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
+                    ProviderId.TWELVE_DATA,
+                    ProviderId.BIQUOTE,
+                    ProviderId.DUKASCOPY,
                     ProviderId.YAHOO_FINANCE
                 ),
                 timeframe = "M15"
             ),
+            // 9. USOIL (Energy): TradingView -> Yahoo -> biquote -> TwelveData
+            SymbolConfig(
+                chartId = "chart_usoil_spot",
+                symbolCode = "USOIL",
+                titleResId = R.string.symbol_usoil_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.TVDATAFEED,
+                allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
+                    ProviderId.YAHOO_FINANCE,
+                    ProviderId.BIQUOTE,
+                    ProviderId.TWELVE_DATA
+                ),
+                timeframe = "M15"
+            ),
+            // 10. NVDA (US Equities): Yahoo -> TwelveData -> TradingView
+            SymbolConfig(
+                chartId = "chart_nvda_stock",
+                symbolCode = "NVDA",
+                titleResId = R.string.symbol_nvda_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 11. AMZN
+            SymbolConfig(
+                chartId = "chart_amzn_stock",
+                symbolCode = "AMZN",
+                titleResId = R.string.symbol_amzn_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 12. TSLA
+            SymbolConfig(
+                chartId = "chart_tsla_stock",
+                symbolCode = "TSLA",
+                titleResId = R.string.symbol_tsla_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 13. AAPL
+            SymbolConfig(
+                chartId = "chart_aapl_stock",
+                symbolCode = "AAPL",
+                titleResId = R.string.symbol_aapl_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 14. GOOGL
+            SymbolConfig(
+                chartId = "chart_googl_stock",
+                symbolCode = "GOOGL",
+                titleResId = R.string.symbol_googl_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 15. MSFT
+            SymbolConfig(
+                chartId = "chart_msft_stock",
+                symbolCode = "MSFT",
+                titleResId = R.string.symbol_msft_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 16. META
+            SymbolConfig(
+                chartId = "chart_meta_stock",
+                symbolCode = "META",
+                titleResId = R.string.symbol_meta_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 17. NFLX
+            SymbolConfig(
+                chartId = "chart_nflx_stock",
+                symbolCode = "NFLX",
+                titleResId = R.string.symbol_nflx_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 18. AMD
+            SymbolConfig(
+                chartId = "chart_amd_stock",
+                symbolCode = "AMD",
+                titleResId = R.string.symbol_amd_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 19. UBER
+            SymbolConfig(
+                chartId = "chart_uber_stock",
+                symbolCode = "UBER",
+                titleResId = R.string.symbol_uber_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 20. NKE
+            SymbolConfig(
+                chartId = "chart_nke_stock",
+                symbolCode = "NKE",
+                titleResId = R.string.symbol_nke_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 21. IBM
+            SymbolConfig(
+                chartId = "chart_ibm_stock",
+                symbolCode = "IBM",
+                titleResId = R.string.symbol_ibm_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // 22. SAN
+            SymbolConfig(
+                chartId = "chart_san_stock",
+                symbolCode = "SAN",
+                titleResId = R.string.symbol_san_name,
+                decimals = 2,
+                inWatchlist = true,
+                activeProvider = ProviderId.YAHOO_FINANCE,
+                allowedProviders = stockProviders,
+                timeframe = "M15"
+            ),
+            // Secondary catalog symbols (inWatchlist = false)
             SymbolConfig(
                 chartId = "chart_brent_futures",
                 symbolCode = "BRENT_FUTURES",
@@ -975,36 +1243,6 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.TVDATAFEED,
                     ProviderId.DUKASCOPY,
                     ProviderId.EIA_BRENT_SPOT
-                ),
-                timeframe = "M15"
-            ),
-            SymbolConfig(
-                chartId = "chart_xagusd_spot",
-                symbolCode = "XAGUSD",
-                titleResId = R.string.symbol_xagusd_name,
-                decimals = 3,
-                inWatchlist = false,
-                activeProvider = ProviderId.TWELVE_DATA,
-                allowedProviders = listOf(
-                    ProviderId.TWELVE_DATA,
-                    ProviderId.TVDATAFEED,
-                    ProviderId.DUKASCOPY,
-                    ProviderId.YAHOO_FINANCE
-                ),
-                timeframe = "M15"
-            ),
-            SymbolConfig(
-                chartId = "chart_eurusd_spot",
-                symbolCode = "EURUSD",
-                titleResId = R.string.symbol_eurusd_name,
-                decimals = 4,
-                inWatchlist = false,
-                activeProvider = ProviderId.TWELVE_DATA,
-                allowedProviders = listOf(
-                    ProviderId.TWELVE_DATA,
-                    ProviderId.TVDATAFEED,
-                    ProviderId.DUKASCOPY,
-                    ProviderId.YAHOO_FINANCE
                 ),
                 timeframe = "M15"
             ),
@@ -1034,20 +1272,6 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.TVDATAFEED,
                     ProviderId.TWELVE_DATA,
                     ProviderId.DUKASCOPY,
-                    ProviderId.YAHOO_FINANCE
-                ),
-                timeframe = "M15"
-            ),
-            SymbolConfig(
-                chartId = "chart_btcusd_spot",
-                symbolCode = "BTCUSD",
-                titleResId = R.string.symbol_btcusd_name,
-                decimals = 2,
-                inWatchlist = false,
-                activeProvider = ProviderId.TVDATAFEED,
-                allowedProviders = listOf(
-                    ProviderId.TVDATAFEED,
-                    ProviderId.TWELVE_DATA,
                     ProviderId.YAHOO_FINANCE
                 ),
                 timeframe = "M15"
@@ -1084,7 +1308,7 @@ class WorkspaceRepository(context: Context) {
                             val dbVer = dbObj?.optString("version", "MariaDB") ?: "MariaDB"
                             SystemStatusDto(
                                 isHealthy = data.optString("status") == "healthy",
-                                version = data.optString("version", "1.30.0"),
+                                version = data.optString("version", "1.32.0"),
                                 serverTimeUtc = data.optString("server_time_utc", ""),
                                 dbConnected = isDbConn,
                                 dbVersion = dbVer,
@@ -1099,7 +1323,7 @@ class WorkspaceRepository(context: Context) {
         }
         SystemStatusDto(
             isHealthy = true,
-            version = "1.30.0",
+            version = "1.32.0",
             serverTimeUtc = "Local Cached",
             dbConnected = false,
             dbVersion = "MariaDB (Local)",

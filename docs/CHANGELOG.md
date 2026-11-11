@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.32.0] - 2026-11-11
+
+### Added
+- **Canonical 22-Symbol Watchlist Catalog (`SPOTBRENT` to `SAN`) Across Server, Web, and Android:**
+  - Expanded the pre-populated Watchlist and symbol catalog to all 22 canonical instruments in exact order:
+    1. `SPOTBRENT` (Brent Crude Spot), 2. `ETHUSD` (Ethereum), 3. `BTCUSD` (Bitcoin), 4. `XAGUSD` (Silver), 5. `XAUUSD` (Gold Spot), 6. `SPX500USD` (US SPX 500), 7. `NDQ` (US 100 Nasdaq Index), 8. `EURUSD` (Euro / US Dollar), 9. `USOIL` (WTI Crude Oil CFD), 10. `NVDA` (NVIDIA), 11. `AMZN` (Amazon), 12. `TSLA` (Tesla), 13. `AAPL` (Apple), 14. `GOOGL` (Alphabet Class A), 15. `MSFT` (Microsoft), 16. `META` (Meta Platforms), 17. `NFLX` (Netflix), 18. `AMD` (Advanced Micro Devices), 19. `UBER` (Uber Technologies), 20. `NKE` (Nike), 21. `IBM` (IBM), 22. `SAN` (Banco Santander).
+- **`biquote` Multi-Asset Data Provider (`METHOD_BIQUOTE_FEED` / `BiquoteAdapter`):**
+  - Added `biquote` as the 6th independent data collection method in `ProviderCatalog.php`, `BiquoteAdapter.php`, `candles_sync.php`, Web `store.js`, and Android `ProviderId.kt` / `BiquoteAdapter.kt`, supporting incremental `DELTA_SYNC` (`since_ms`) for `BTCUSD`, `ETHUSD`, `XAGUSD`, `XAUUSD`, `SPOTBRENT`, `USOIL`, and `EURUSD`.
+- **Asset-Class Data Source Priority Chains:**
+  - Configured default active providers and ordered fallback/selection chains per asset class:
+    - **Commodities & Metals:** `XAUUSD` (`twelve_data` → `biquote` → `dukascopy` → `yahoo_finance` → `tvdatafeed`), `XAGUSD` (`biquote` → `twelve_data` → `yahoo_finance` → `dukascopy` → `tvdatafeed`), `SPOTBRENT` (`tvdatafeed` → `dukascopy` → `biquote` → `yahoo_finance` → `twelve_data` → `eia_brent_spot`), `USOIL` (`tvdatafeed` → `yahoo_finance` → `biquote` → `twelve_data`).
+    - **Forex:** `EURUSD` (`tvdatafeed` → `twelve_data` → `biquote` → `dukascopy` → `yahoo_finance`).
+    - **Crypto:** `BTCUSD` & `ETHUSD` (`biquote` → `yahoo_finance` → `twelve_data` → `tvdatafeed`).
+    - **Indices:** `SPX500USD` & `NDQ` (`yahoo_finance` → `tvdatafeed` → `twelve_data`).
+    - **US & Global Equities (`NVDA`..`SAN`):** `yahoo_finance` (primary) → `twelve_data` → `tvdatafeed`.
+- **Expanded Watchlist Asset-Class Filter Chips & Custom Vector Badges (Web & Android):**
+  - Added `CRYPTO`, `INDICES`, and `STOCKS` category filter chips alongside `ALL`, `METALS`, `ENERGY`, and `FX` in both `watchlistView.js` and `WatchlistScreen.kt`, plus custom circular asset badges in `WatchlistRowCard.kt` and `watchlistView.js`.
+
+---
+
 ## [1.31.0] - 2026-11-11
 
 ### Added

@@ -127,10 +127,14 @@ fun WatchlistScreen(
     var financialPeriodMode by rememberSaveable { mutableStateOf("ANNUAL") }
 
     val filteredWatchlist = watchlistSymbols.filter { sym ->
+        val code = sym.symbolCode.uppercase()
         val matchesCategory = when (selectedCategory) {
-            "METALS" -> sym.symbolCode in listOf("XAUUSD", "XAGUSD") || sym.symbolCode.contains("XAU") || sym.symbolCode.contains("XAG")
-            "ENERGY" -> sym.symbolCode in listOf("SPOTBRENT", "BRENT_FUTURES") || sym.symbolCode.contains("BRENT") || sym.symbolCode.contains("OIL")
-            "FX" -> sym.symbolCode in listOf("EURUSD") || sym.symbolCode.contains("EUR") || sym.symbolCode.contains("GBP")
+            "METALS" -> code in listOf("XAUUSD", "XAGUSD") || code.contains("XAU") || code.contains("XAG")
+            "ENERGY" -> code in listOf("SPOTBRENT", "BRENT_FUTURES", "USOIL") || code.contains("BRENT") || code.contains("OIL") || code.contains("WTI")
+            "CRYPTO" -> code in listOf("BTCUSD", "ETHUSD") || code.contains("BTC") || code.contains("ETH")
+            "INDICES" -> code in listOf("SPX500USD", "NDQ") || code.contains("SPX") || code.contains("NDQ") || code.contains("NAS")
+            "STOCKS" -> code in listOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN")
+            "FX" -> code in listOf("EURUSD", "GBPUSD", "USDJPY") || code.contains("EUR") || code.contains("GBP") || code.contains("JPY")
             else -> true
         }
         val q = searchQuery.trim().lowercase()
@@ -223,6 +227,9 @@ fun WatchlistScreen(
                     "ALL" to stringResource(R.string.watchlist_filter_all),
                     "METALS" to stringResource(R.string.watchlist_filter_metals),
                     "ENERGY" to stringResource(R.string.watchlist_filter_energy),
+                    "CRYPTO" to stringResource(R.string.watchlist_filter_crypto),
+                    "INDICES" to stringResource(R.string.watchlist_filter_indices),
+                    "STOCKS" to stringResource(R.string.watchlist_filter_stocks),
                     "FX" to stringResource(R.string.watchlist_filter_fx)
                 )
                 for ((catId, catLabel) in categories) {

@@ -37,12 +37,19 @@ final class TvDatafeedAdapter
         }
 
         $exchange = match ($cleanSymbol) {
-            'XAUUSD', 'XAGUSD', 'EURUSD', 'GBPUSD', 'USDJPY' => 'OANDA',
+            'XAUUSD', 'XAGUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'SPX500USD' => 'OANDA',
             'BRENT_FUTURES' => 'NYMEX',
-            'BTCUSD' => 'BITSTAMP',
+            'USOIL' => 'TVC',
+            'BTCUSD', 'ETHUSD' => 'BITSTAMP',
+            'NDQ', 'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD' => 'NASDAQ',
+            'UBER', 'NKE', 'IBM', 'SAN' => 'NYSE',
             default => 'PEPPERSTONE',
         };
-        $tvSymbol = $cleanSymbol === 'BRENT_FUTURES' ? 'BZ1!' : $cleanSymbol;
+        $tvSymbol = match ($cleanSymbol) {
+            'BRENT_FUTURES' => 'BZ1!',
+            'NDQ' => 'NDX',
+            default => $cleanSymbol,
+        };
 
         $baseDir = dirname(__DIR__, 3);
         $dataDir = $baseDir . '/data/tvdatafeed';

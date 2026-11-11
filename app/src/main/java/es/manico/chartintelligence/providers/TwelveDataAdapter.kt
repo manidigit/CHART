@@ -73,12 +73,16 @@ class TwelveDataAdapter(
         val apiSymbol = when (symbolCode.uppercase()) {
             "XAUUSD" -> "XAU/USD"
             "SPOTBRENT", "BRENT_FUTURES" -> "XBR/USD"
+            "USOIL" -> "WTI/USD"
             "XAGUSD" -> "XAG/USD"
             "EURUSD" -> "EUR/USD"
             "GBPUSD" -> "GBP/USD"
             "USDJPY" -> "USD/JPY"
             "BTCUSD" -> "BTC/USD"
-            else -> symbolCode
+            "ETHUSD" -> "ETH/USD"
+            "SPX500USD" -> "SPX"
+            "NDQ" -> "NDX"
+            else -> symbolCode.uppercase()
         }
         val interval = when (timeframe.uppercase()) {
             "M15" -> "15min"

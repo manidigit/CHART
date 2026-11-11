@@ -1,13 +1,26 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.30.0';
 import { state } from '../core/store.js?v=1.30.0';
 
+const STOCK_SYMBOLS = new Set([
+  'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
+]);
+
 export function getSymbolCategoryKey(symbolCode) {
   const code = String(symbolCode || '').toUpperCase();
   if (code === 'XAUUSD' || code === 'XAGUSD' || code.includes('XAU') || code.includes('XAG') || code.includes('GOLD')) {
     return 'METALS';
   }
-  if (code === 'SPOTBRENT' || code === 'BRENT_FUTURES' || code.includes('OIL') || code.includes('BRENT') || code.includes('WTI')) {
+  if (code === 'SPOTBRENT' || code === 'USOIL' || code === 'BRENT_FUTURES' || code.includes('OIL') || code.includes('BRENT') || code.includes('WTI')) {
     return 'ENERGY';
+  }
+  if (code === 'BTCUSD' || code === 'ETHUSD' || code.includes('BTC') || code.includes('ETH')) {
+    return 'CRYPTO';
+  }
+  if (code === 'SPX500USD' || code === 'NDQ' || code.includes('SPX') || code.includes('NDX') || code.includes('NAS')) {
+    return 'INDICES';
+  }
+  if (STOCK_SYMBOLS.has(code)) {
+    return 'STOCKS';
   }
   return 'FX';
 }
@@ -19,21 +32,21 @@ export function getAssetBadge(symbolCode) {
       label: 'Au',
       color: '#F59E0B',
       bgGradient: 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)',
-      providerTag: 'FX_IDC / TWELVE_DATA',
+      providerTag: 'TWELVE_DATA · biquote',
       category: 'Spot Gold · Commodity',
       svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 14 18 14 21 20 3 20 6 14" fill="rgba(255,255,255,0.28)"/><polygon points="8 7 16 7 18 12 6 12 8 7" fill="rgba(255,255,255,0.28)"/><path d="M12 2v2"/></svg>`,
     };
   }
-  if (code === 'SPOTBRENT' || code === 'BRENT_FUTURES' || code.includes('OIL') || code.includes('BRENT')) {
-    const isFutures = code === 'BRENT_FUTURES';
+  if (code === 'SPOTBRENT' || code === 'USOIL' || code === 'BRENT_FUTURES' || code.includes('OIL') || code.includes('BRENT')) {
+    const isWti = code === 'USOIL';
     return {
-      label: isFutures ? 'BZ' : 'OIL',
-      color: isFutures ? '#06B6D4' : '#2962FF',
-      bgGradient: isFutures
-        ? 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)'
+      label: isWti ? 'WTI' : 'OIL',
+      color: isWti ? '#0EA5E9' : '#2962FF',
+      bgGradient: isWti
+        ? 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)'
         : 'linear-gradient(135deg, #2962FF 0%, #1D4ED8 100%)',
-      providerTag: isFutures ? 'NYMEX' : 'PEPPERSTONE',
-      category: isFutures ? 'Futures · Brent Crude' : 'CFD Crude Oil · Commodity',
+      providerTag: isWti ? 'TVC · Yahoo' : 'PEPPERSTONE · tvdatafeed',
+      category: isWti ? 'WTI Crude Oil · Energy' : 'Brent Crude Spot · Energy',
       svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.26)" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5" stroke-width="1.8"/></svg>`,
     };
   }
@@ -42,9 +55,35 @@ export function getAssetBadge(symbolCode) {
       label: 'Ag',
       color: '#94A3B8',
       bgGradient: 'linear-gradient(135deg, #94A3B8 0%, #475569 100%)',
-      providerTag: 'OANDA',
+      providerTag: 'biquote · TWELVE_DATA',
       category: 'Spot Silver · Commodity',
       svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.25)" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 15 19 15 22 20 2 20 5 15"/><polygon points="8 8 16 8 18 13 6 13 8 8"/></svg>`,
+    };
+  }
+  if (code === 'BTCUSD' || code === 'ETHUSD') {
+    const isEth = code === 'ETHUSD';
+    return {
+      label: isEth ? 'ETH' : 'BTC',
+      color: isEth ? '#6366F1' : '#F7931A',
+      bgGradient: isEth
+        ? 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)'
+        : 'linear-gradient(135deg, #F7931A 0%, #C2410C 100%)',
+      providerTag: 'biquote · Yahoo Finance',
+      category: isEth ? 'Ethereum · Crypto' : 'Bitcoin · Crypto',
+      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 8h4a2 2 0 0 1 0 4h-4h4.5a2 2 0 0 1 0 4h-4.5"/><line x1="11" y1="6" x2="11" y2="18"/></svg>`,
+    };
+  }
+  if (code === 'SPX500USD' || code === 'NDQ') {
+    const isNasdaq = code === 'NDQ';
+    return {
+      label: isNasdaq ? '100' : '500',
+      color: isNasdaq ? '#06B6D4' : '#EF4444',
+      bgGradient: isNasdaq
+        ? 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)'
+        : 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)',
+      providerTag: 'Yahoo Finance · TV',
+      category: isNasdaq ? 'Nasdaq 100 · US Index' : 'S&P 500 · US Index',
+      svgIcon: '',
     };
   }
   if (code === 'EURUSD') {
@@ -52,9 +91,35 @@ export function getAssetBadge(symbolCode) {
       label: 'FX',
       color: '#26A69A',
       bgGradient: 'linear-gradient(135deg, #26A69A 0%, #0F766E 100%)',
-      providerTag: 'FOREX',
+      providerTag: 'TradingView · Twelve Data',
       category: 'Forex · Major Currency',
       svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 3.5 0 1 0 0 6"/><line x1="8" y1="11" x2="13" y2="11"/><line x1="8" y1="13" x2="13" y2="13"/></svg>`,
+    };
+  }
+  if (STOCK_SYMBOLS.has(code)) {
+    const stockThemes = {
+      NVDA: ['#22C55E', 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', 'NV'],
+      AMZN: ['#F59E0B', 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)', 'AZ'],
+      TSLA: ['#EF4444', 'linear-gradient(135deg, #EF4444 0%, #991B1B 100%)', 'TS'],
+      AAPL: ['#64748B', 'linear-gradient(135deg, #64748B 0%, #334155 100%)', 'AP'],
+      GOOGL: ['#3B82F6', 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', 'GO'],
+      MSFT: ['#0EA5E9', 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)', 'MS'],
+      META: ['#2563EB', 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)', 'MT'],
+      NFLX: ['#DC2626', 'linear-gradient(135deg, #DC2626 0%, #7F1D1D 100%)', 'NF'],
+      AMD: ['#10B981', 'linear-gradient(135deg, #10B981 0%, #047857 100%)', 'AM'],
+      UBER: ['#475569', 'linear-gradient(135deg, #475569 0%, #1E293B 100%)', 'UB'],
+      NKE: ['#F97316', 'linear-gradient(135deg, #F97316 0%, #C2410C 100%)', 'NK'],
+      IBM: ['#3B82F6', 'linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%)', 'IB'],
+      SAN: ['#EC1C24', 'linear-gradient(135deg, #EC1C24 0%, #991B1B 100%)', 'SA'],
+    };
+    const [color, bgGradient, label] = stockThemes[code] || ['#2962FF', 'linear-gradient(135deg, #2962FF 0%, #1E40AF 100%)', code.slice(0, 2)];
+    return {
+      label,
+      color,
+      bgGradient,
+      providerTag: 'Yahoo Finance · NASDAQ/NYSE',
+      category: 'Equity · Global Stock',
+      svgIcon: '',
     };
   }
   return {
@@ -221,6 +286,9 @@ export function renderRightSplitPanel(activeTab, i18n) {
     { key: 'ALL', label: i18n.t('watchlist_cat_all') || 'All' },
     { key: 'METALS', label: i18n.t('watchlist_cat_metals') || 'Metals' },
     { key: 'ENERGY', label: i18n.t('watchlist_cat_energy') || 'Energy' },
+    { key: 'CRYPTO', label: i18n.t('watchlist_cat_crypto') || 'Crypto' },
+    { key: 'INDICES', label: i18n.t('watchlist_cat_indices') || 'Indices' },
+    { key: 'STOCKS', label: i18n.t('watchlist_cat_stocks') || 'Stocks' },
     { key: 'FX', label: i18n.t('watchlist_cat_fx') || 'Forex' },
   ];
 

@@ -212,16 +212,33 @@ class TvDatafeedAdapter(
             "W1", "1W" -> "1W"
             else -> "15"
         }
-        val (exchange, tvTicker) = when (symbolCode) {
+        val (exchange, tvTicker) = when (symbolCode.uppercase()) {
             "SPOTBRENT" -> "PEPPERSTONE" to "SPOTBRENT"
             "BRENT_FUTURES" -> "NYMEX" to "BZ1!"
+            "USOIL" -> "TVC" to "USOIL"
             "XAUUSD" -> "OANDA" to "XAUUSD"
             "XAGUSD" -> "OANDA" to "XAGUSD"
             "EURUSD" -> "OANDA" to "EURUSD"
             "GBPUSD" -> "OANDA" to "GBPUSD"
             "USDJPY" -> "OANDA" to "USDJPY"
             "BTCUSD" -> "COINBASE" to "BTCUSD"
-            else -> "PEPPERSTONE" to symbolCode
+            "ETHUSD" -> "COINBASE" to "ETHUSD"
+            "SPX500USD" -> "OANDA" to "SPX500USD"
+            "NDQ" -> "NASDAQ" to "NDX"
+            "NVDA" -> "NASDAQ" to "NVDA"
+            "AMZN" -> "NASDAQ" to "AMZN"
+            "TSLA" -> "NASDAQ" to "TSLA"
+            "AAPL" -> "NASDAQ" to "AAPL"
+            "GOOGL" -> "NASDAQ" to "GOOGL"
+            "MSFT" -> "NASDAQ" to "MSFT"
+            "META" -> "NASDAQ" to "META"
+            "NFLX" -> "NASDAQ" to "NFLX"
+            "AMD" -> "NASDAQ" to "AMD"
+            "UBER" -> "NYSE" to "UBER"
+            "NKE" -> "NYSE" to "NKE"
+            "IBM" -> "NYSE" to "IBM"
+            "SAN" -> "NYSE" to "SAN"
+            else -> "PEPPERSTONE" to symbolCode.uppercase()
         }
 
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(normTf)

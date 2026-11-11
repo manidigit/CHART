@@ -9,10 +9,10 @@
 تو طراح UI/UX ارشد پلتفرم‌های مالی هستی. هر تغییری در رابط کاربری وب (`host_subdomain`) یا اندروید (`app`) باید دقیقاً استاندارد **TradingView** را دنبال کند. کد جنریک، دکمه‌های درشت، فاصله‌های زیاد و ظاهر «AI-slop» ممنوع است.
 
 ### ۱.۱. مرجع قطعی (Source of Truth)
-- `docs/CHART_INTELLIGENCE_MASTER_SPEC.md` (`v1.31.0`)
-- `docs/architecture.md` (معماری هسته مرکزی واحد، ذخیره‌سازی افزایشی تاریخچه `DB-First Delta Sync` و کاتالوگ مستقل منابع داده `v1.31.0`)
-- `docs/UI_UX_MOBILE_REDESIGN_SPEC.md` (`v1.31.0`)
-- `docs/DESIGN_WORKSPACE_SPEC.md` (`v1.31.0`)
+- `docs/CHART_INTELLIGENCE_MASTER_SPEC.md` (`v1.32.0`)
+- `docs/architecture.md` (معماری هسته مرکزی واحد، ذخیره‌سازی افزایشی تاریخچه `DB-First Delta Sync`، کاتالوگ ۶ منبع داده و ۲۲ نماد واچ‌لیست `v1.32.0`)
+- `docs/UI_UX_MOBILE_REDESIGN_SPEC.md` (`v1.32.0`)
+- `docs/DESIGN_WORKSPACE_SPEC.md` (`v1.32.0`)
 - پالت رنگ رسمی TradingView (Dark):
   - Canvas Background: `#131722`
   - Panel Background: `#1E222D`
