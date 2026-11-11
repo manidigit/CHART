@@ -126,14 +126,14 @@ fun SettingsScreen(
     var showAddSymbolDialog by rememberSaveable { mutableStateOf(false) }
     var showColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var providerModalSymbolCode by rememberSaveable { mutableStateOf<String?>(null) }
-    var activeSettingsTab by rememberSaveable { mutableStateOf("sources") }
+    var activeSettingsTab by rememberSaveable { mutableStateOf("sync") }
 
     val settingsTabs = listOf(
-        "account" to R.string.settings_tab_account,
-        "appearance" to R.string.settings_tab_appearance,
-        "sources" to R.string.settings_tab_sources,
-        "params" to R.string.settings_tab_params,
-        "health" to R.string.settings_tab_health
+        "sync" to R.string.settings_cat_sync,
+        "chart" to R.string.settings_cat_chart,
+        "notifications" to R.string.settings_cat_notifications,
+        "theme" to R.string.settings_cat_theme,
+        "account" to R.string.settings_cat_account
     )
 
     Column(
@@ -357,9 +357,9 @@ fun SettingsScreen(
                 }
 
                 // =========================================================================
-                // GROUP 2: 2. Appearance & Language (ظاهر و زبان)
+                // GROUP 5: Theme & Appearance (تم و ظاهر)
                 // =========================================================================
-                if (activeSettingsTab == "appearance") {
+                if (activeSettingsTab == "theme") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -473,10 +473,9 @@ fun SettingsScreen(
                 }
 
                 // =========================================================================
-                // GROUP 3: 3. Data Sources & Symbols (منبع داده و نمادها)
-                // Exclusive place to configure per-symbol data source via clean BottomSheet
+                // GROUP 4: Sync & Data Sources (همگام‌سازی و منابع داده)
                 // =========================================================================
-                if (activeSettingsTab == "sources") {
+                if (activeSettingsTab == "sync") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -635,9 +634,9 @@ fun SettingsScreen(
                 }
 
                 // =========================================================================
-                // GROUP 4: 4. Analysis Parameters (پارامترهای تحلیل)
+                // GROUP 2: Chart Scales & Algorithm Parameters (چارت و مقیاس‌ها)
                 // =========================================================================
-                if (activeSettingsTab == "params") {
+                if (activeSettingsTab == "chart") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -796,35 +795,6 @@ fun SettingsScreen(
 
                         HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
 
-                        // TradingView Watchlist & Symbol Screen Toggles (Screenshot 1)
-                        Text(
-                            text = stringResource(R.string.settings_tv_watchlist_section),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
-                        TradingViewSwitchRow(
-                            title = stringResource(R.string.settings_tv_hide_logos),
-                            subtitle = null,
-                            checked = chartPreferences.hideWatchlistLogos,
-                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(hideWatchlistLogos = v) } },
-                            testTag = "switch_tv_hide_logos"
-                        )
-                        TradingViewSwitchRow(
-                            title = stringResource(R.string.settings_tv_show_symbol_screen),
-                            subtitle = null,
-                            checked = chartPreferences.showSymbolScreen,
-                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showSymbolScreen = v) } },
-                            testTag = "switch_tv_show_symbol_screen"
-                        )
-                        TradingViewSwitchRow(
-                            title = stringResource(R.string.settings_tv_chart_vibrations),
-                            subtitle = stringResource(R.string.settings_tv_chart_vibrations_sub),
-                            checked = chartPreferences.chartVibrations,
-                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(chartVibrations = v) } },
-                            testTag = "switch_tv_chart_vibrations"
-                        )
                         TradingViewSwitchRow(
                             title = stringResource(R.string.settings_tv_log_scale),
                             subtitle = stringResource(R.string.settings_tv_log_scale_sub),
@@ -832,17 +802,6 @@ fun SettingsScreen(
                             onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(logarithmicScaleDefault = v) } },
                             testTag = "switch_tv_log_scale"
                         )
-
-                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
-
-                        // TradingView Chart & Picker Behavior Toggles (Screenshot 2)
-                        Text(
-                            text = stringResource(R.string.settings_tv_chart_section),
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-
                         TradingViewSwitchRow(
                             title = stringResource(R.string.settings_tv_remember_last_chart),
                             subtitle = stringResource(R.string.settings_tv_remember_last_chart_sub),
@@ -856,20 +815,6 @@ fun SettingsScreen(
                             checked = chartPreferences.hideTabBarInLandscape,
                             onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(hideTabBarInLandscape = v) } },
                             testTag = "switch_tv_hide_tab_bar"
-                        )
-                        TradingViewSwitchRow(
-                            title = stringResource(R.string.settings_tv_picker_vibrates),
-                            subtitle = null,
-                            checked = chartPreferences.pickerVibrations,
-                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(pickerVibrations = v) } },
-                            testTag = "switch_tv_picker_vibrates"
-                        )
-                        TradingViewSwitchRow(
-                            title = stringResource(R.string.settings_tv_picker_magnifiers),
-                            subtitle = null,
-                            checked = chartPreferences.showPickerScrollMagnifiers,
-                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showPickerScrollMagnifiers = v) } },
-                            testTag = "switch_tv_picker_magnifiers"
                         )
                         TradingViewSwitchRow(
                             title = stringResource(R.string.settings_tv_countdown_bar_close),
@@ -897,9 +842,90 @@ fun SettingsScreen(
                 }
 
                 // =========================================================================
-                // GROUP 5: 5. Server Health & About (سلامت سرور و درباره)
+                // GROUP 3: Notifications, Haptic Feedback & Watchlist Display (نوتیفیکیشن و بازخورد)
                 // =========================================================================
-                if (activeSettingsTab == "health") {
+                if (activeSettingsTab == "notifications") {
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_group_notifications"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = stringResource(R.string.settings_section_notifications_title),
+                            style = MaterialTheme.typography.titleSmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = stringResource(R.string.settings_section_notifications_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+
+                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_chart_vibrations),
+                            subtitle = stringResource(R.string.settings_tv_chart_vibrations_sub),
+                            checked = chartPreferences.chartVibrations,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(chartVibrations = v) } },
+                            testTag = "switch_tv_chart_vibrations"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_picker_vibrates),
+                            subtitle = null,
+                            checked = chartPreferences.pickerVibrations,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(pickerVibrations = v) } },
+                            testTag = "switch_tv_picker_vibrates"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_picker_magnifiers),
+                            subtitle = null,
+                            checked = chartPreferences.showPickerScrollMagnifiers,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showPickerScrollMagnifiers = v) } },
+                            testTag = "switch_tv_picker_magnifiers"
+                        )
+
+                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+
+                        Text(
+                            text = stringResource(R.string.settings_tv_watchlist_section),
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_show_symbol_screen),
+                            subtitle = null,
+                            checked = chartPreferences.showSymbolScreen,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showSymbolScreen = v) } },
+                            testTag = "switch_tv_show_symbol_screen"
+                        )
+                        TradingViewSwitchRow(
+                            title = stringResource(R.string.settings_tv_hide_logos),
+                            subtitle = null,
+                            checked = chartPreferences.hideWatchlistLogos,
+                            onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(hideWatchlistLogos = v) } },
+                            testTag = "switch_tv_hide_logos"
+                        )
+                    }
+                }
+                }
+
+                // =========================================================================
+                // Server Health & Cloud Workspace Status (under Sync tab) + About (under Theme/Sync)
+                // =========================================================================
+                if (activeSettingsTab == "sync" || activeSettingsTab == "theme") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()

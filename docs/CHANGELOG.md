@@ -23,6 +23,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - When active, taps and cursor placements snap with zero jitter to the closest candle Open, High, Low, or Close (OHLC) level on the nearest candle bar.
   - Added haptic pulse on Android when magnet snaps to a wick or candle body.
   - Added dedicated 🧲 button in Android floating toolbar & bottom sheet (`DrawingToolbar.kt`) and Web left rail (`toolRailView.js`).
+- **Central Core Engine & Bi-Directional Auto-Sync (`P0-CORE-SYNC`, `P1-UPG-10`, `docs/architecture.md`):**
+  - Unified Web (`store.js` + `apiService.js`) and Android (`WorkspaceRepository.kt` + `MainViewModel.kt`) under a single server-authoritative JSON Workspace Contract (`workspace_sync.php`) with 800ms debounced bi-directional auto-sync, canonical drawing keys (`${symbolCode}_${timeframe}`), and 6-char hex color normalization.
+  - Authored comprehensive Sync Protocols specification in `docs/architecture.md` (and `docs/ARCHITECTURE.md`) detailing the canonical JSON schemas for `open_tabs`, `drawings`, `symbols`, and `preferences`.
+  - Resolved `SyntaxError: export declarations may only appear at top level of a module` in `host_subdomain/assets/js/core/store.js`, exported `computeChartGeometry` in `chartRenderer.js`, and unified all ES6 module import URLs across `host_subdomain/assets/js/` to `?v=1.30.0` so `window.__CI_APP_MOUNTED__` activates reliably with a single reactive `state` singleton.
+- **Categorized 5-Group Settings Architecture (`P1-UPG-9` — Sync, Chart, Notifications, Theme, Account):**
+  - Structured `ChartPreferences.kt` (`SettingsCategoryGroup`, `ChartSettingsGroup`, `NotificationSettingsGroup`, `ThemeSettingsGroup`), `strings.xml` / `values-fa/strings.xml`, Android `SettingsScreen.kt`, and Web `settingsView.js` into 5 distinct groups: **همگام‌سازی (`sync`)**, **چارت (`chart`)**, **نوتیفیکیشن (`notifications`)**, **تم (`theme`)**, and **حساب (`account`)**.
+- **Full Symbol Overview Analytical Suite (`P1-UPG-6`) & Watchlist Ergonomics (`P1-UPG-7` & `P1-UPG-8`):**
+  - Implemented all 10 analytical cards and 4 sub-tabs (`Overview | News | Minds | Ideas`) in the Symbol Overview sheet/modal across Android (`WatchlistScreen.kt`) and Web (`watchlistView.js`), including `Flash News` banner, `Key data points` with visual `Day's range` bar, `Seasonals`, `Technicals Speedometer Gauge`, `Analyst Rating & 1Y Target Gauge` with `See forecast >` action, `Income Statement` (`Annual/Quarterly`), `Dividends & Yield`, and copyable `FIGI`/`ISIN` identifiers.
+  - Enforced strict 48dp touch targets, `prefers-reduced-motion: reduce` support, and Watchlist quick refresh/remove actions across Web and Android.
 - **Algorithm Unit Tests (`Phase1AlgorithmsTest.kt`):**
   - Added comprehensive test cases for `drawingGeometry_magnetSnap_snapsToNearestOhlc` and `chartDrawing_fibRetracementAndPositions_computeExactFormulas` (12/12 passing).
 

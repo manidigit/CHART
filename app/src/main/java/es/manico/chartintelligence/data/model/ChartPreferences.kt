@@ -6,11 +6,58 @@ import es.manico.chartintelligence.ui.theme.BullishEmerald
 import es.manico.chartintelligence.ui.theme.ChartGridDark
 
 /**
- * Dynamic user preferences for chart visual theme colors and algorithm parameters.
- * Eliminates hardcoded magic numbers and color hex values across UI and calculations.
+ * Canonical 5-category grouping for Settings across Android and Web:
+ * 1. ACCOUNT (حساب)
+ * 2. CHART (چارت)
+ * 3. NOTIFICATIONS (نوتیفیکیشن و بازخورد لمسی)
+ * 4. SYNC (همگام‌سازی و منابع داده)
+ * 5. THEME (تم و ظاهر)
+ */
+enum class SettingsCategoryGroup(val key: String) {
+    SYNC("sync"),
+    CHART("chart"),
+    NOTIFICATIONS("notifications"),
+    THEME("theme"),
+    ACCOUNT("account")
+}
+
+data class ChartSettingsGroup(
+    val candleFetchLimit: Int,
+    val minVisibleCandles: Int,
+    val maxVisibleCandles: Int,
+    val zoomStepCandles: Int,
+    val drawingHitTolerancePx: Float,
+    val logarithmicScaleDefault: Boolean,
+    val rememberLastChartOnDevice: Boolean,
+    val hideTabBarInLandscape: Boolean,
+    val showCountdownToBarClose: Boolean,
+    val showPrevCloseLine: Boolean,
+    val showHighLowLabels: Boolean
+)
+
+data class NotificationSettingsGroup(
+    val chartVibrations: Boolean,
+    val pickerVibrations: Boolean,
+    val showPickerScrollMagnifiers: Boolean,
+    val showSymbolScreen: Boolean,
+    val hideWatchlistLogos: Boolean
+)
+
+data class ThemeSettingsGroup(
+    val bullCandleColorHex: String,
+    val bearCandleColorHex: String,
+    val trendLineColorHex: String,
+    val horizontalLineColorHex: String,
+    val verticalLineColorHex: String,
+    val chartGridColorHex: String
+)
+
+/**
+ * Dynamic user preferences for chart visual theme colors, algorithm parameters,
+ * and categorized TradingView switches synced with the Central Core Engine.
  */
 data class ChartPreferences(
-    // Visual Theme Colors (Stored as 32-bit ARGB hex strings e.g. "FF26A69A")
+    // Group 5 (THEME): Visual Theme Colors (Stored as 32-bit ARGB hex strings e.g. "FF26A69A")
     val bullCandleColorHex: String = "FF26A69A", // TradingView Bullish Teal (#26A69A)
     val bearCandleColorHex: String = "FFEF5350", // TradingView Bearish Red (#EF5350)
     val trendLineColorHex: String = "FF2962FF",  // TradingView Accent Blue (#2962FF)
@@ -18,14 +65,14 @@ data class ChartPreferences(
     val verticalLineColorHex: String = "FFF59E0B",   // Amber V-Line
     val chartGridColorHex: String = "FF2A2E39",     // TradingView Grid Dark (#2A2E39)
 
-    // Algorithm & Calculation Parameters
+    // Group 2 (CHART): Algorithm & Scale Calculation Parameters
     val candleFetchLimit: Int = 500,
     val minVisibleCandles: Int = 12,
     val maxVisibleCandles: Int = 5000,
     val zoomStepCandles: Int = 8,
     val drawingHitTolerancePx: Float = 28f,
 
-    // TradingView Pro Watchlist & Chart Toggles (P1-UPG-1..5)
+    // Group 3 (NOTIFICATIONS & HAPTICS) + Group 2 (CHART) Toggles
     val hideWatchlistLogos: Boolean = false,
     val showSymbolScreen: Boolean = true,
     val chartVibrations: Boolean = true,
@@ -38,6 +85,40 @@ data class ChartPreferences(
     val showPrevCloseLine: Boolean = true,
     val showHighLowLabels: Boolean = true
 ) {
+    val chartGroup: ChartSettingsGroup
+        get() = ChartSettingsGroup(
+            candleFetchLimit = candleFetchLimit,
+            minVisibleCandles = minVisibleCandles,
+            maxVisibleCandles = maxVisibleCandles,
+            zoomStepCandles = zoomStepCandles,
+            drawingHitTolerancePx = drawingHitTolerancePx,
+            logarithmicScaleDefault = logarithmicScaleDefault,
+            rememberLastChartOnDevice = rememberLastChartOnDevice,
+            hideTabBarInLandscape = hideTabBarInLandscape,
+            showCountdownToBarClose = showCountdownToBarClose,
+            showPrevCloseLine = showPrevCloseLine,
+            showHighLowLabels = showHighLowLabels
+        )
+
+    val notificationGroup: NotificationSettingsGroup
+        get() = NotificationSettingsGroup(
+            chartVibrations = chartVibrations,
+            pickerVibrations = pickerVibrations,
+            showPickerScrollMagnifiers = showPickerScrollMagnifiers,
+            showSymbolScreen = showSymbolScreen,
+            hideWatchlistLogos = hideWatchlistLogos
+        )
+
+    val themeGroup: ThemeSettingsGroup
+        get() = ThemeSettingsGroup(
+            bullCandleColorHex = bullCandleColorHex,
+            bearCandleColorHex = bearCandleColorHex,
+            trendLineColorHex = trendLineColorHex,
+            horizontalLineColorHex = horizontalLineColorHex,
+            verticalLineColorHex = verticalLineColorHex,
+            chartGridColorHex = chartGridColorHex
+        )
+
     fun parseColor(hex: String, fallback: Color): Color {
         return runCatching {
             Color(hex.toLong(16))

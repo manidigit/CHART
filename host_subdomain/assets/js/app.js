@@ -27,6 +27,7 @@ import {
   syncAllWatchlistSymbols,
 } from './services/apiService.js?v=1.30.0';
 import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.30.0';
+import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.30.0';
 import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.30.0';
 import { renderLoginScreen } from './views/loginView.js?v=1.30.0';
 import {
@@ -604,61 +605,120 @@ function bindCanvasEvents(activeTab) {
       return;
     }
 
-    if (activeTab.activeTool && activeTab.activeTool !== 'cursor') {
+    const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
+    if (tool && tool !== 'cursor') {
       const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
       const candle = meta.visible[idx];
-      const price = meta.yToPrice(y);
       if (!candle) return;
+      const rawPrice = meta.yToPrice(y);
+      const price = activeTab.isMagnetMode
+        ? DrawingGeometry.snapToCandleOhlc(candle.open, candle.high, candle.low, candle.close, rawPrice)
+        : rawPrice;
       const openSec = Number(
         candle.openTimeSec || Math.floor(Number(candle.open_time_utc_ms || 0) / 1000)
       );
+      const openMs = openSec * 1000;
+      const drawKey = `${activeTab.symbolCode}_${activeTab.timeframe}`;
 
-      if (activeTab.activeTool === 'hline') {
+      if (tool === 'hline' || tool === 'horizontal_line') {
         activeTab.drawings.push({
           id: 'd_' + Date.now(),
-          type: 'hline',
+          type: 'horizontal_line',
+          price: price,
           price1: price,
           colorHex: activeTab.activeDrawingColorHex,
+          strokeWidthPx: activeTab.activeDrawingWidthPx,
           lineWidthPx: activeTab.activeDrawingWidthPx,
         });
         activeTab.activeTool = 'cursor';
-        saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+        activeTab.activeDrawingTool = 'cursor';
+        saveDrawings(drawKey, activeTab.drawings);
         renderApp();
         return;
       }
-      if (activeTab.activeTool === 'vline') {
+      if (tool === 'vline' || tool === 'vertical_line') {
         activeTab.drawings.push({
           id: 'd_' + Date.now(),
-          type: 'vline',
+          type: 'vertical_line',
+          timeUtcMillis: openMs,
           time1EpochSec: openSec,
           colorHex: activeTab.activeDrawingColorHex,
+          strokeWidthPx: activeTab.activeDrawingWidthPx,
           lineWidthPx: activeTab.activeDrawingWidthPx,
         });
         activeTab.activeTool = 'cursor';
-        saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+        activeTab.activeDrawingTool = 'cursor';
+        saveDrawings(drawKey, activeTab.drawings);
         renderApp();
         return;
       }
-      if (activeTab.activeTool === 'trend') {
+      if (tool === 'trend' || tool === 'trend_line' || tool === 'fib' || tool === 'fib_retracement') {
+        const canonicalType = tool === 'fib' || tool === 'fib_retracement' ? 'fib_retracement' : 'trend_line';
         if (!activeTab.pendingTrendStart) {
-          activeTab.pendingTrendStart = { time1EpochSec: openSec, price1: price };
+          activeTab.pendingTrendStart = { timeUtcMillis: openMs, time1EpochSec: openSec, price1: price };
         } else {
           activeTab.drawings.push({
             id: 'd_' + Date.now(),
-            type: 'trend',
+            type: canonicalType,
+            startTimeUtcMillis: activeTab.pendingTrendStart.timeUtcMillis,
+            endTimeUtcMillis: openMs,
+            startPrice: activeTab.pendingTrendStart.price1,
+            endPrice: price,
             time1EpochSec: activeTab.pendingTrendStart.time1EpochSec,
             price1: activeTab.pendingTrendStart.price1,
             time2EpochSec: openSec,
             price2: price,
             colorHex: activeTab.activeDrawingColorHex,
+            strokeWidthPx: activeTab.activeDrawingWidthPx,
             lineWidthPx: activeTab.activeDrawingWidthPx,
           });
           activeTab.pendingTrendStart = null;
           activeTab.activeTool = 'cursor';
-          saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+          activeTab.activeDrawingTool = 'cursor';
+          saveDrawings(drawKey, activeTab.drawings);
           renderApp();
         }
         return;
+      }
+      if (tool === 'long_position' || tool === 'short_position') {
+        const stepMs = PriceFormatter.stepMilliseconds(activeTab.timeframe);
+        const endMs = openMs + stepMs * 8;
+        const span = Math.max((meta.maxP - meta.minP) * 0.14, price * 0.004);
+        const isLong = tool === 'long_position';
+        const targetPrice = isLong ? price + span * 1.8 : Math.max(0.0001, price - span * 1.8);
+        const stopPrice = isLong ? Math.max(0.0001, price - span * 0.9) : price + span * 0.9;
+        activeTab.drawings.push({
+          id: 'd_' + Date.now(),
+          type: tool,
+          startTimeUtcMillis: openMs,
+          endTimeUtcMillis: endMs,
+          entryPrice: price,
+          targetPrice,
+          stopPrice,
+          colorHex: isLong ? '#26A69A' : '#EF5350',
+          strokeWidthPx: activeTab.activeDrawingWidthPx,
+          lineWidthPx: activeTab.activeDrawingWidthPx,
+        });
+        activeTab.activeTool = 'cursor';
+        activeTab.activeDrawingTool = 'cursor';
+        saveDrawings(drawKey, activeTab.drawings);
+        renderApp();
+        return;
+      }
+    } else if (canvas._chartLayout && Array.isArray(activeTab.drawings) && activeTab.drawings.length > 0) {
+      const tol = Number(state.chartPreferences.drawingHitTolerancePx || 24);
+      const hit = DrawingGeometry.hitTestDrawing(
+        activeTab.drawings,
+        x,
+        y,
+        canvas._chartLayout.timeToX,
+        canvas._chartLayout.priceToY,
+        tol
+      );
+      const nextSelId = hit ? hit.id : null;
+      if (activeTab.selectedDrawingId !== nextSelId) {
+        activeTab.selectedDrawingId = nextSelId;
+        renderApp();
       }
     }
 
@@ -958,6 +1018,32 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-overview-range') {
     state.symbolOverviewRange = el.getAttribute('data-range') || '5D';
     renderApp();
+  } else if (action === 'set-overview-subtab') {
+    state.symbolOverviewSubTab = el.getAttribute('data-subtab') || 'OVERVIEW';
+    renderApp();
+  } else if (action === 'set-overview-fin-mode') {
+    state.symbolOverviewFinMode = el.getAttribute('data-mode') || 'ANNUAL';
+    renderApp();
+  } else if (action === 'open-prediction-from-overview') {
+    const symCode = el.getAttribute('data-symbol');
+    state.symbolOverviewCode = null;
+    if (symCode) openOrFocusSymbolTab(symCode);
+    state.activeModal = 'prediction';
+    renderApp();
+  } else if (action === 'copy-identifier') {
+    const textToCopy = el.getAttribute('data-copy') || '';
+    if (textToCopy && navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(textToCopy).catch(() => {});
+    }
+  } else if (action === 'remove-from-watchlist') {
+    e.stopPropagation();
+    const symCode = el.getAttribute('data-symbol');
+    const sym = state.symbols.find((s) => s.symbolCode === symCode);
+    if (sym) {
+      sym.inWatchlist = false;
+      saveSymbolsToStorage();
+      renderApp();
+    }
   } else if (action === 'open-chart') {
     const code = el.getAttribute('data-symbol');
     state.symbolOverviewCode = null;

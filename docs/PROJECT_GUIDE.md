@@ -2,8 +2,8 @@
 
 > راهنمای مکمل برای معرفی جزئیات اجرایی، استانداردهای توسعه و وضعیت پروژه. مرجع تصمیمات معماری و محصول همچنان [سند اصلی](CHART_INTELLIGENCE_MASTER_SPEC.md) است.
 
-**آخرین بازبینی:** 2026-11-10  
-**نسخه سند مرجع اصلی هنگام بازبینی:** 1.29.0  
+**آخرین بازبینی:** 2026-11-11  
+**نسخه سند مرجع اصلی هنگام بازبینی:** 1.30.0  
 **وب‌اپلیکیشن:** https://chart.manico.es
 
 ---
@@ -13,10 +13,11 @@
 پیش از هر تغییر در معماری، کدنویسی یا تنظیمات، اسناد زیر باید بررسی شوند:
 
 1. [CHART INTELLIGENCE MASTER SPEC](CHART_INTELLIGENCE_MASTER_SPEC.md) — مرجع اصلی محصول، معماری داده، استانداردهای مهندسی، ساختار فایل‌ها، الگوریتم‌ها، فرمول‌ها، فازبندی و قرارداد خروجی پیش‌بینی.
-2. [UI UX MOBILE REDESIGN SPEC](UI_UX_MOBILE_REDESIGN_SPEC.md) — سند الزامات و نقشه راه بازطراحی حرفه‌ای تجربه کاربری موبایل بر اساس استاندارد TradingView (پیش‌نیاز اجباری پیش از آغاز فاز ۲).
-3. [DESIGN WORKSPACE SPEC](DESIGN_WORKSPACE_SPEC.md) — مشخصات اجرایی و طرح ساختاری میزکار نمودار، معماری تعاملی، رفتار نوارها و پنل‌ها در دسکتاپ و موبایل.
-4. [INFRASTRUCTURE INVENTORY](INFRASTRUCTURE_INVENTORY.md) — وضعیت هاست cPanel، ساب‌دامین، MariaDB، محدودیت‌ها و شواهد راستی‌آزمایی زیرساخت.
-5. [TRADING STRATEGY SPEC](TRADING_STRATEGY_SPEC.md) — مشخصات ماژول مستقل شبیه‌سازی استراتژی معاملاتی، مربوط به فاز ۶.
+2. [CENTRAL CORE & SYNC PROTOCOLS ARCHITECTURE](architecture.md) — سند جامع معماری هسته مرکزی واحد و پروتکل‌های همگام‌سازی دوطرفه (`open_tabs`, `drawings`, `symbols`, `preferences`) بین وب و اندروید.
+3. [UI UX MOBILE REDESIGN SPEC](UI_UX_MOBILE_REDESIGN_SPEC.md) — سند الزامات و نقشه راه بازطراحی حرفه‌ای تجربه کاربری موبایل بر اساس استاندارد TradingView (تکمیل‌شده در نسخه `1.30.0`).
+4. [DESIGN WORKSPACE SPEC](DESIGN_WORKSPACE_SPEC.md) — مشخصات اجرایی و طرح ساختاری میزکار نمودار، معماری تعاملی، رفتار نوارها و پنل‌ها در دسکتاپ و موبایل.
+5. [INFRASTRUCTURE INVENTORY](INFRASTRUCTURE_INVENTORY.md) — وضعیت هاست cPanel، ساب‌دامین، MariaDB، محدودیت‌ها و شواهد راستی‌آزمایی زیرساخت.
+6. [TRADING STRATEGY SPEC](TRADING_STRATEGY_SPEC.md) — مشخصات ماژول مستقل شبیه‌سازی استراتژی معاملاتی، مربوط به فاز ۶.
 
 ### قاعده نگهداری اسناد
 

@@ -238,7 +238,8 @@ fun ChartIntelligenceApp(
                             onOpenSymbolInChartTab = mainViewModel::openSymbolInChartTab,
                             onToggleSymbolInWatchlist = mainViewModel::toggleSymbolInWatchlist,
                             onAddCustomSymbol = mainViewModel::addCustomSymbol,
-                            onNavigateToSettings = { mainViewModel.navigateTo(WorkspaceScreen.SETTINGS) }
+                            onNavigateToSettings = { mainViewModel.navigateTo(WorkspaceScreen.SETTINGS) },
+                            onNavigateToPrediction = { mainViewModel.navigateTo(WorkspaceScreen.PREDICTION) }
                         )
 
                         WorkspaceScreen.CHART_VIEW -> ChartViewScreen(

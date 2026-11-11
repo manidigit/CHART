@@ -1,5 +1,5 @@
-import { state } from '../core/store.js?v=1.29.0';
-import { getAssetBadge, renderSymbolBadge } from './watchlistView.js?v=1.29.0';
+import { state } from '../core/store.js?v=1.30.0';
+import { getAssetBadge, renderSymbolBadge } from './watchlistView.js?v=1.30.0';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -10,8 +10,8 @@ export function renderLanguageThemeBar(i18n) {
         <button type="button" class="chip ${!isFa ? 'active' : ''}" data-action="set-lang" data-lang="en">English</button>
       </div>
       <div class="chip-group">
-        <button type="button" class="chip ${state.isDarkTheme ? 'active' : ''}" data-action="set-theme" data-theme="dark">🌙 ${i18n.t('settings_theme_dark')}</button>
-        <button type="button" class="chip ${!state.isDarkTheme ? 'active' : ''}" data-action="set-theme" data-theme="light">☀️ ${i18n.t('settings_theme_light')}</button>
+        <button type="button" class="chip ${state.isDarkTheme ? 'active' : ''}" data-action="set-theme" data-theme="dark">${i18n.t('settings_theme_dark')}</button>
+        <button type="button" class="chip ${!state.isDarkTheme ? 'active' : ''}" data-action="set-theme" data-theme="light">${i18n.t('settings_theme_light')}</button>
       </div>
     </div>
   `;
@@ -21,7 +21,15 @@ export function renderSettingsModal(i18n) {
   if (state.activeModal !== 'settings') return '';
   const p = state.chartPreferences;
   const isFa = i18n.getCurrentLanguage() === 'fa';
-  const tab = state.settingsTab || 'sources';
+  const rawTab = state.settingsTab || 'sync';
+  const tab =
+    rawTab === 'sources' || rawTab === 'health'
+      ? 'sync'
+      : rawTab === 'appearance'
+        ? 'theme'
+        : rawTab === 'scales' || rawTab === 'params'
+          ? 'chart'
+          : rawTab;
 
   const symbolsList = state.symbols
     .map((s) => {
@@ -85,18 +93,21 @@ export function renderSettingsModal(i18n) {
     })
     .join('');
 
-  const tvSwitches = [
-    { key: 'hideWatchlistLogos', label: i18n.t('tv_hide_logos') },
-    { key: 'showSymbolScreen', label: i18n.t('tv_show_symbol_screen') },
-    { key: 'chartVibrations', label: i18n.t('tv_chart_vibrations') },
+  const chartSwitches = [
     { key: 'isLogScale', label: i18n.t('tv_log_scale') },
     { key: 'rememberLastChart', label: i18n.t('tv_remember_last_chart') },
     { key: 'hideTabBarInLandscape', label: i18n.t('tv_hide_tab_bar_landscape') },
-    { key: 'pickerVibrates', label: i18n.t('tv_picker_vibrates') },
-    { key: 'showScrollMagnifier', label: i18n.t('tv_show_scroll_magnifier') },
     { key: 'showCountdownToBarClose', label: i18n.t('tv_show_countdown') },
     { key: 'showPrevCloseLine', label: i18n.t('tv_show_prev_close_line') },
     { key: 'showHighLowLabels', label: i18n.t('tv_show_high_low_labels') },
+  ];
+
+  const notificationSwitches = [
+    { key: 'chartVibrations', label: i18n.t('tv_chart_vibrations') },
+    { key: 'pickerVibrates', label: i18n.t('tv_picker_vibrates') },
+    { key: 'showScrollMagnifier', label: i18n.t('tv_show_scroll_magnifier') },
+    { key: 'showSymbolScreen', label: i18n.t('tv_show_symbol_screen') },
+    { key: 'hideWatchlistLogos', label: i18n.t('tv_hide_logos') },
   ];
 
   const colorRows = [
@@ -171,8 +182,9 @@ export function renderSettingsModal(i18n) {
   `;
 
   let bodyHtml = '';
-  if (tab === 'sources') {
+  if (tab === 'sync') {
     bodyHtml = `
+      ${serverDiagCard}
       <div class="row-between" style="margin-bottom: 12px; gap: 10px; flex-wrap: wrap;">
         <div>
           <h4 style="margin: 0; font-size: 14px; color: var(--text-strong);">${i18n.t('settings_group_sources')}</h4>
@@ -184,14 +196,14 @@ export function renderSettingsModal(i18n) {
       </div>
       ${symbolsList}
     `;
-  } else if (tab === 'appearance') {
+  } else if (tab === 'theme') {
     bodyHtml = `
       <div class="card-subtle" style="margin-bottom: 12px;">
         <h5 style="margin: 0 0 10px 0; color: var(--text-strong);">${i18n.t('settings_group_appearance')}</h5>
         ${renderLanguageThemeBar(i18n)}
       </div>
 
-      <div class="card-subtle">
+      <div class="card-subtle" style="margin-bottom: 12px;">
         <div class="row-between" style="margin-bottom: 12px;">
           <h5 style="margin: 0; color: var(--text-strong);">${i18n.t('settings_group_colors')}</h5>
           <button type="button" class="btn btn-sm" data-action="reset-chart-colors">
@@ -223,27 +235,31 @@ export function renderSettingsModal(i18n) {
           <div style="background: #131722; border: 1px solid #2A2E39; border-radius: 8px; padding: 12px 18px; min-width: 145px; text-align: center;">
             <div class="ltr-num" style="font-size: 10px; color: #787B86; margin-bottom: 6px; font-weight: 700;">LIVE PREVIEW</div>
             <svg width="110" height="84" viewBox="0 0 110 84" style="display: block; margin: 0 auto;">
-              <!-- Vertical Reference Line -->
               <line x1="82" y1="4" x2="82" y2="80" stroke="${p.vLineColor || '#A855F7'}" stroke-width="1.2" stroke-dasharray="3 3"/>
-              <!-- Horizontal Support/Resistance Line -->
               <line x1="6" y1="44" x2="104" y2="44" stroke="${p.hLineColor || '#F59E0B'}" stroke-width="1.3" stroke-dasharray="4 2"/>
-              <!-- Trendline -->
               <line x1="12" y1="68" x2="96" y2="18" stroke="${p.trendColor || '#2962FF'}" stroke-width="2"/>
-              <!-- Candle 1 (Bull) -->
               <line x1="22" y1="18" x2="22" y2="66" stroke="${p.bullColor}" stroke-width="1.6"/>
               <rect x="16" y="28" width="12" height="26" fill="${p.bullColor}" rx="1.5"/>
-              <!-- Candle 2 (Bear) -->
               <line x1="54" y1="14" x2="54" y2="62" stroke="${p.bearColor}" stroke-width="1.6"/>
               <rect x="48" y="22" width="12" height="28" fill="${p.bearColor}" rx="1.5"/>
-              <!-- Candle 3 (Bull) -->
               <line x1="82" y1="10" x2="82" y2="56" stroke="${p.bullColor}" stroke-width="1.6"/>
               <rect x="76" y="16" width="12" height="28" fill="${p.bullColor}" rx="1.5"/>
             </svg>
           </div>
         </div>
       </div>
+
+      <div class="card-subtle">
+        <h5 style="margin: 0 0 6px 0; color: var(--text-strong);">${i18n.t('settings_group_about')}</h5>
+        <div class="ltr-num" style="font-size: 12px; color: var(--primary); font-weight: 600;">
+          ${i18n.t('settings_about_version')}
+        </div>
+        <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
+          ${i18n.t('settings_about_desc')}
+        </div>
+      </div>
     `;
-  } else if (tab === 'scales') {
+  } else if (tab === 'chart') {
     bodyHtml = `
       <div class="card-subtle" style="margin-bottom: 12px;">
         <div class="row-between" style="margin-bottom: 10px;">
@@ -253,7 +269,6 @@ export function renderSettingsModal(i18n) {
           </button>
         </div>
 
-        <!-- 1. Candle Fetch Limit -->
         <div style="margin-bottom: 14px;">
           <div class="row-between" style="font-size: 12px; margin-bottom: 4px;">
             <span>${i18n.t('settings_param_fetch_limit')}</span>
@@ -273,7 +288,6 @@ export function renderSettingsModal(i18n) {
           </div>
         </div>
 
-        <!-- 2. Zoom Step Candles -->
         <div style="margin-bottom: 14px;">
           <div class="row-between" style="font-size: 12px; margin-bottom: 4px;">
             <span>${i18n.t('settings_param_zoom_step')}</span>
@@ -293,7 +307,6 @@ export function renderSettingsModal(i18n) {
           </div>
         </div>
 
-        <!-- 3. Drawing Hit Tolerance (px) -->
         <div>
           <div class="row-between" style="font-size: 12px; margin-bottom: 4px;">
             <span>${i18n.t('settings_param_hit_tolerance')}</span>
@@ -316,7 +329,7 @@ export function renderSettingsModal(i18n) {
 
       <div class="card-subtle">
         <h5 style="margin: 0 0 8px 0; color: var(--text-strong);">${i18n.t('settings_tv_preferences_title')}</h5>
-        ${tvSwitches
+        ${chartSwitches
           .map(
             (sw) => `
           <div class="tv-switch-row">
@@ -337,7 +350,33 @@ export function renderSettingsModal(i18n) {
           .join('')}
       </div>
     `;
-  } else if (tab === 'account') {
+  } else if (tab === 'notifications') {
+    bodyHtml = `
+      <div class="card-subtle">
+        <h5 style="margin: 0 0 4px 0; color: var(--text-strong);">${i18n.t('settings_section_notifications_title')}</h5>
+        <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 10px;">${i18n.t('settings_section_notifications_hint')}</div>
+        ${notificationSwitches
+          .map(
+            (sw) => `
+          <div class="tv-switch-row">
+            <span class="tv-switch-title">${sw.label}</span>
+            <label class="tv-toggle-label">
+              <input
+                type="checkbox"
+                class="tv-toggle-input"
+                data-action="toggle-tv-pref"
+                data-pref-key="${sw.key}"
+                ${p[sw.key] ? 'checked' : ''}
+              />
+              <span class="tv-toggle-slider"></span>
+            </label>
+          </div>
+        `
+          )
+          .join('')}
+      </div>
+    `;
+  } else {
     bodyHtml = `
       <div class="card-subtle" style="margin-bottom: 12px;">
         <div class="row-between" style="margin-bottom: 12px;">
@@ -371,19 +410,6 @@ export function renderSettingsModal(i18n) {
         </form>
       </div>
     `;
-  } else {
-    bodyHtml = `
-      ${serverDiagCard}
-      <div class="card-subtle">
-        <h5 style="margin: 0 0 6px 0; color: var(--text-strong);">${i18n.t('settings_group_about')}</h5>
-        <div class="ltr-num" style="font-size: 12px; color: var(--primary); font-weight: 600;">
-          ${i18n.t('settings_about_version')}
-        </div>
-        <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
-          ${i18n.t('settings_about_desc')}
-        </div>
-      </div>
-    `;
   }
 
   return `
@@ -391,27 +417,27 @@ export function renderSettingsModal(i18n) {
       <div class="modal-card">
         <div class="tv-modal-header">
           <div class="tv-modal-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             <span>${i18n.t('nav_settings')}</span>
           </div>
           <button type="button" class="btn btn-sm btn-icon" data-action="close-modal">✕</button>
         </div>
 
         <div class="tv-modal-tabs">
+          <button type="button" class="tv-modal-tab ${tab === 'sync' ? 'active' : ''}" data-action="set-settings-tab" data-tab="sync">
+            ${i18n.t('settings_cat_sync')}
+          </button>
+          <button type="button" class="tv-modal-tab ${tab === 'chart' ? 'active' : ''}" data-action="set-settings-tab" data-tab="chart">
+            ${i18n.t('settings_cat_chart')}
+          </button>
+          <button type="button" class="tv-modal-tab ${tab === 'notifications' ? 'active' : ''}" data-action="set-settings-tab" data-tab="notifications">
+            ${i18n.t('settings_cat_notifications')}
+          </button>
+          <button type="button" class="tv-modal-tab ${tab === 'theme' ? 'active' : ''}" data-action="set-settings-tab" data-tab="theme">
+            ${i18n.t('settings_cat_theme')}
+          </button>
           <button type="button" class="tv-modal-tab ${tab === 'account' ? 'active' : ''}" data-action="set-settings-tab" data-tab="account">
-            ${i18n.t('settings_group_account')}
-          </button>
-          <button type="button" class="tv-modal-tab ${tab === 'appearance' ? 'active' : ''}" data-action="set-settings-tab" data-tab="appearance">
-            ${i18n.t('settings_group_appearance')}
-          </button>
-          <button type="button" class="tv-modal-tab ${tab === 'sources' ? 'active' : ''}" data-action="set-settings-tab" data-tab="sources">
-            ${i18n.t('settings_group_sources')}
-          </button>
-          <button type="button" class="tv-modal-tab ${tab === 'scales' ? 'active' : ''}" data-action="set-settings-tab" data-tab="scales">
-            ${i18n.t('settings_group_params')}
-          </button>
-          <button type="button" class="tv-modal-tab ${tab === 'health' ? 'active' : ''}" data-action="set-settings-tab" data-tab="health">
-            ${i18n.t('settings_group_about')}
+            ${i18n.t('settings_cat_account')}
           </button>
         </div>
 

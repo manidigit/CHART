@@ -175,14 +175,15 @@ All project documentation is consolidated within the `docs/` folder:
 
 | Document | Purpose |
 |---|---|
-| [Master Specification](docs/CHART_INTELLIGENCE_MASTER_SPEC.md) | Product requirements, architecture, algorithms and authoritative project decisions |
-| [UI/UX Mobile Redesign Specification](docs/UI_UX_MOBILE_REDESIGN_SPEC.md) | TradingView mobile standard audit, requirements and priority matrix |
+| [Master Specification](docs/CHART_INTELLIGENCE_MASTER_SPEC.md) | Product requirements, architecture, algorithms and authoritative project decisions (`v1.30.0`) |
+| [Central Core & Sync Protocols](docs/architecture.md) | Unified Central Core Engine and bi-directional Sync Protocols (`open_tabs`, `drawings`, `symbols`, `preferences`) between Web and Android (`v1.30.0`) |
+| [UI/UX Mobile Redesign Specification](docs/UI_UX_MOBILE_REDESIGN_SPEC.md) | TradingView mobile standard audit, 10-card Symbol Overview and 5-group Settings categorization (`v1.30.0`) |
 | [Design Workspace Specification](docs/DESIGN_WORKSPACE_SPEC.md) | Chart workspace structural layout, component responsibilities, layer hierarchy and redesign roadmap |
 | [System Architecture](docs/ARCHITECTURE.md) | High-level system design, module responsibilities, layer diagrams and extension guides |
 | [Project & Development Guide](docs/PROJECT_GUIDE.md) | Engineering standards, secure configuration, roadmap details, provider matrix and workflow notes |
 | [Infrastructure Inventory](docs/INFRASTRUCTURE_INVENTORY.md) | Hosting environment, infrastructure evidence, limits and deployment records |
 | [AI & Developer Instructions](docs/AGENTS.md) | Operational rules, core invariants, zero-hardcoding rules and verification requirements |
-| [Changelog](docs/CHANGELOG.md) | Structured release notes and feature history across versions |
+| [Changelog](docs/CHANGELOG.md) | Structured release notes and feature history across versions (`v1.30.0`) |
 | [Trading Strategy Specification](docs/TRADING_STRATEGY_SPEC.md) | Independent strategy-simulation module specification |
 | [Contributing Guide](docs/CONTRIBUTING.md) | Contribution standards, local environment setup, code style and PR checklist |
 | [Security Policy](docs/SECURITY.md) | Security vulnerability disclosure, zero-secrets policy and credential management |

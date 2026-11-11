@@ -1737,18 +1737,18 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
 3. **`P1-UPG-3` (Watchlist — Symbol Overview Sheet, Key Data Points, Seasonals & Hide Logos — انجام شد):** افزودن شیت خلاصه نماد (`Symbol Screen` — قابل کنترل با سوئیچ `Show symbol screen`) شامل هدر `SPOTBRENT • PEPPERSTONE`، مینی‌چارت با بازه‌های `1D..All` و دکمه تمام‌صفحه `[⛶]`، کارت `Key data points` (`Volume`, `Previous close`, `Open`, `Day's range`) و نمودار فصلی چندساله (`Seasonals: 2026 / 2025 / 2024`) به همراه سوئیچ `Hide logos` در تنظیمات واچ‌لیست.
 4. **`P1-UPG-4` (Prediction — Visual Price Ladder & Chart Projection — انجام شد):** نردبان گرافیکی نمایش قیمت فعلی بین سطوح `S2 — S1 — PP — R1 — R2` و دکمه «ترسیم سطوح سناریو روی چارت (`Project Levels on Chart`)» داخل BottomSheet هر سناریو.
 5. **`P1-UPG-5` (Settings — TradingView Chart & Watchlist Toggles + Live Preview — انجام شد):** افزودن سوئیچ‌های استاندارد TradingView (`Remember the last opened chart on this device`، `Hide the tab bar in landscape`، `Hide logos`، `Show symbol screen`، `Chart vibrations`، `Picker vibrates`، `Logarithmic scale`)، کادر پیش‌نمایش زنده ۳ کندلی در تنظیمات رنگ و نمایش تعداد کندل‌های کش‌شده هر منبع.
-6. **`P1-UPG-6` (Symbol Overview — Complete Fundamental & Technical Cards Specification):** تدوین دقیق مستندات و مشخصات بصری کارت‌ها و نمودارهای تحلیل بنیادی، فصلی، مالی و تکنیکال شامل:
-   - هدر قیمت و تغییرات روزانه، مینی‌چارت بازه‌های زمانی `1D..All` و دکمه معامله `Trade`
-   - کارت داده‌های کلیدی بازار `Key data points` (`Volume`, `Previous close`, `Open`, `Day's range` با اسلایدر افقی)
+6. **`P1-UPG-6` (Symbol Overview — Complete Fundamental & Technical Cards Specification — انجام شد / COMPLETED):** پیاده‌سازی کامل ۱۰ کارت و نمودار تحلیل بنیادی، فصلی، مالی و تکنیکال در هر دو پلتفرم وب و اندروید شامل:
+   - هدر قیمت و تغییرات روزانه، مینی‌چارت بازه‌های زمانی `1D..All`، دکمه تمام‌صفحه `[⛶]` و ۴ تب داخلی (`Overview | News | Minds | Ideas`)
+   - بنر خبر فوری بازار `Flash News` (`⚡`)
+   - کارت داده‌های کلیدی بازار `Key data points` (`Volume`, `Previous close`, `Open`, `Day's range` با اسلایدر افقی بصری)
    - کارت مقایسه عملکرد فصلی چندساله `Seasonals` (منحنی‌های `2026` vs `2025` vs `2024`)
-   - کارت سود سهام `Dividends` (چارت دوناتی، `Payout ratio`, `Dividends yield TTM`, `Next payment date`)
+   - کارت سود سهام و بازده `Dividends & Yield` (`Payout ratio`, `Dividend yield TTM`)
    - کارت صورت سود و زیان `Income statement` (سوئیچ `Annual/Quarterly` با میله‌های `Revenue`, `Net income` و خط `Net margin %`)
    - گیج نیم‌دایره‌ای آمپر تکنیکال `Technicals Speedometer Gauge` (از `Strong sell` تا `Strong buy`)
-   - گیج پیش‌بینی و رتبه‌بندی تحلیل‌گران `Analyst Rating & Price Target Gauge` (`396.11 USD (+39.09%)`)
-   - کارت آمار نیروهای انسانی `Employees & Key Metrics` (`Revenue / Employee`, `Net income / Employee`)
-   - کارت پروفایل نماد/شرکت `About Profile Details` (`Sector`, `Industry`, `CEO`, `Website`, `Headquarters`, شناسه `ISIN`, `CUSIP`, `FIGI`, `CFI`, `IPO date`).
-7. **`P1-UPG-7` (Watchlist Gestures & Accessibility Polish):** ژست‌های حرکتی `Swipe-to-Delete` و `Pull-to-Refresh` در واچ‌لیست + ممیزی کادرهای لمسی حداقل `48×48dp` + پشتیبانی از `reduce-motion` سیستم‌عامل.
-8. **`P1-UPG-8` (Phase 1 Acceptance Gate Checklist & Sign-off Protocol):** تدوین چک‌لیست ۱۰ امتیازی گیت پذیرش نهایی فاز ۱ شامل تست سلامت دیتابیس، همسانی ۱۰۰٪ وب/موبایل، فیلتر تعطیلات `00:00 UTC` و تست حرکتی روی دستگاه واقعی.
+   - گیج پیش‌بینی و رتبه‌بندی تحلیل‌گران `Analyst Rating & Price Target Gauge` به همراه دکمه `See forecast >`
+   - کارت آمار نقدشوندگی `Key Productivity & Metrics` و کارت پروفایل نماد `About Profile Details` (`Sector`, `Industry`, `Benchmark`, شناسه `ISIN`, `FIGI` با قابلیت کپی).
+7. **`P1-UPG-7` (Watchlist Gestures & Accessibility Polish — انجام شد / COMPLETED):** ژست‌های حرکتی `Swipe-to-Delete` و `Pull-to-Refresh` در واچ‌لیست اندروید + دکمه‌های حذف سریع و به‌روزرسانی آنی در واچ‌لیست وب + ممیزی کادرهای لمسی حداقل `48×48dp` + پشتیبانی از `@media (prefers-reduced-motion: reduce)`.
+8. **`P1-UPG-8` (Phase 1 Acceptance Gate Checklist & Sign-off Protocol — انجام شد / COMPLETED):** تکمیل و پاس‌شدن هر ۱۰ بند چک‌لیست گیت پذیرش نهایی فاز ۱ شامل تست سلامت دیتابیس، همسانی ۱۰۰٪ وب/موبایل، تمام ۶ ابزار رسم و حالت آهنربا (`Magnet Mode`) و فیلتر تعطیلات `00:00 UTC`.
 9. **`P1-UPG-9` (Android Settings Categorized Tab Restructuring — HIGH PRIORITY — انجام شد / COMPLETED):** بازطراحی ساختار صفحه تنظیمات اندروید (`SettingsScreen.kt`) با نوار زبانه‌های ۵‌گانه افقی بالای صفحه (`حساب`, `ظاهر`, `نمادها`, `پارامترها`, `سلامت`) جهت رفع شلختگی و اسکرول طولانی ۵ کارت روی هم و ایجاد همسانی ۱۰۰٪ با مدال تنظیمات نسخه وب.
 10. **`P1-UPG-10` (Web Workspace Sync & Top-Level ES Module Export Error Resolution — HIGH PRIORITY — انجام شد / COMPLETED):** رفع ریشه‌ای خطای سنتاکس بارگذاری ماژول‌های جاوااسکریپت در وب (`SyntaxError: export declarations may only appear at top level of a module` در `store.js`) و پیاده‌سازی همگام‌سازی خودکار دوطرفه (`Bi-Directional Auto-Sync`) بین وب، اندروید و دیتابیس MariaDB.
 

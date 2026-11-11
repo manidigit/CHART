@@ -1,7 +1,7 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.29.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.29.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.30.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.30.0';
 import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.30.0';
-import { state } from '../core/store.js?v=1.29.0';
+import { state } from '../core/store.js?v=1.30.0';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;
@@ -821,4 +821,15 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     timeToX,
     xToTime,
   };
+}
+
+export function computeChartGeometry(canvas, tab) {
+  if (canvas && canvas._chartLayout) {
+    return canvas._chartLayout;
+  }
+  if (!canvas || !tab || !Array.isArray(tab.candles) || tab.candles.length === 0) {
+    return null;
+  }
+  renderCandlestickCanvas(canvas, tab, null);
+  return canvas._chartLayout || null;
 }

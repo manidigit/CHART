@@ -1,195 +1,222 @@
-# CHART — Architecture & System Design
+# معماری هسته مرکزی و قراردادهای همگام‌سازی (Central Core & Sync Protocols)
 
-> **Document Status:** Official Architectural Specification  
-> **Target Version:** 1.29.0  
-> **Master Reference:** [CHART_INTELLIGENCE_MASTER_SPEC.md](./CHART_INTELLIGENCE_MASTER_SPEC.md)
-
----
-
-## 1. Architectural Philosophy
-
-CHART is engineered as a modular, extensible, multi-horizon financial charting and analytics platform for both **Android Native (Kotlin/Compose)** and **Responsive Web (ES6+ / PHP / MariaDB)**.
-
-The software architecture is governed by six core principles:
-1. **Single Central Core Engine Authority (TOP PRIORITY):** The entire application ecosystem is governed by a single unified central core domain (data models, calculation algorithms, drawing tools, indicator contracts, and server state). Both Android and Web platforms consume, reflect, and synchronize strictly from this central core with 100% feature and visual parity.
-2. **Separation of Concerns:** Strict isolation between presentation (UI), coordination/state, business domain algorithms, and data persistence.
-3. **Modularity & High Cohesion:** Each algorithmic calculation, provider adapter, and UI component lives in its own dedicated, focused file.
-4. **Loose Coupling:** Components interact via typed models, unambiguous interfaces, and contract definitions, never through direct internal state mutation.
-5. **Zero Hardcoding:** Colors, algorithm parameters (zoom step, history limits, touch tolerance), and symbol definitions are decoupled into configuration defaults and runtime user customization.
-6. **Simplicity over Overengineering:** No unnecessary bundlers or complex microservices. Web uses native ES modules; Android uses standard Jetpack Compose MVVM.
+> **نسخه سند:** `1.30.0` · **وضعیت:** `DECIDED & IMPLEMENTED` · **تاریخ آخرین بازبینی:** `2026-11-11`  
+> این سند، مرجع فنی هسته مرکزی واحد (**Unified Central Core Engine**) و قراردادهای رسمی همگام‌سازی (**Sync Protocols**) بین نسخه **اندروید (Kotlin / Jetpack Compose)**، نسخه **وب (`chart.manico.es`)** و **دیتابیس مرکزی MariaDB** است.
 
 ---
 
-## 1.1 Single Central Core Engine & Cross-Platform Parity Protocol (`P0-CORE-SYNC` — **CRITICAL TOP PRIORITY**)
+## ۱. نمای کلی معماری سه لایه و هسته مرکزی واحد (Central Core Engine)
 
-To eliminate fragmentation between Android and Web platforms, the project strictly enforces a **Single Central Core Architecture v1.30**:
-
-```
-┌─────────────────────────────────────────────────────────────────────────────────────────┐
-│                       CENTRAL CORE ENGINE (Server Authority + Shared Spec)              │
-│                                                                                         │
-│  ┌───────────────────────────────────────┐   ┌───────────────────────────────────────┐  │
-│  │ MariaDB Central Persistence           │   │ Canonical Core Contracts (v1.30)      │  │
-│  │ • market_candles (5,000 bars/tf)      │   │ • Unified Symbol & Provider Catalog   │  │
-│  │ • user_workspace (JSON State + UTC)   │   │ • Unified Drawing Schema (Fib/Pos/Line│  │
-│  │ • user_sessions & owner_account       │   │ • Unified ChartPreferences (19 keys)  │  │
-│  └──────────────────┬────────────────────┘   └───────────────────┬───────────────────┘  │
-│                     └─────────────────────┬──────────────────────┘                      │
-│                                           ▼                                             │
-│                     ┌──────────────────────────────────────────┐                        │
-│                     │ PHP REST Gateway (/api/v1/*)             │                        │
-│                     │ • workspace_sync.php (GET / POST + UTC)  │                        │
-│                     │ • candles_sync.php   (00:00 UTC Anchor)  │                        │
-│                     │ • auth.php & system/status.php           │                        │
-│                     └──────┬────────────────────────────┬──────┘                        │
-└────────────────────────────┼────────────────────────────┼───────────────────────────────┘
-                             │ Bi-Directional JSON Sync   │ Bi-Directional JSON Sync
-                             ▼                            ▼
-┌──────────────────────────────────────────┐ ┌────────────────────────────────────────────┐
-│ Web Terminal Client (Vanilla ES6)        │ │ Android Native Client (Kotlin / Compose)   │
-│                                          │ │                                            │
-│ • Central Store (Top-Level ES Module)    │ │ • MainViewModel + Coordinators             │
-│ • Normalizer: symbols, prefs, drawings,  │ │ • WorkspaceRepository (Cloud Pull & Push)  │
-│   open_tabs <-> LocalStorage + Server    │ │ • Canonical Drawing & Key Mapper           │
-│ • 5-Tab Settings Modal & Vector Icons    │ │ • 5-Tab Categorized SettingsScreen         │
-│ • Pure Algorithms (Heckbert, Fib, Magnet)│ │ • Pure Algorithms (Heckbert, Fib, Magnet)  │
-└──────────────────────────────────────────┘ └────────────────────────────────────────────┘
-```
-
-### Core Synchronization & Canonical Contract Rules (`v1.30`):
-1. **Single Data & Algorithm Authority:** All business logic (Fibonacci retracement levels, Long/Short Risk-Reward position math, Heckbert Nice-Number Y-axis ticks, magnet OHLC snapping, `00:00:00 UTC` time anchors, and indicator formulas) originates from a single deterministic algorithm specification. Neither Android nor Web may implement divergent calculations.
-2. **Canonical Chart Drawing Key (`${symbolCode}_${timeframe}`):** Both Web and Android index chart drawings under the canonical key `${symbolCode}_${timeframe}` (e.g., `SPOTBRENT_M15`, `XAUUSD_M15`) while maintaining backward-compatible aliases for legacy `chartId` keys (`chart_spotbrent_main`, `chart_xauusd_main`) during cloud serialization and deserialization.
-3. **Canonical Drawing Object Schema:** Every drawing serialized in `workspace.drawings` uses unified keys (`id`, `type`, `colorHex`, `strokeWidthDp`, `price`, `timeUtcMillis`, `startTimeUtcMillis`, `startPrice`, `endTimeUtcMillis`, `endPrice`, `entryPrice`, `targetPrice`, `stopPrice`) with automatic normalization between `#RRGGBB` (Web) and `FFRRGGBB` (Android Compose).
-4. **Canonical Preferences & Symbol Catalog Sync:** All 19 `ChartPreferences` keys (colors, algorithm limits, and TradingView switches) and the complete `symbols` catalog (`symbolCode`, `inWatchlist`, `activeProvider`, `timeframe`, `decimals`, `customTitle`, `isCustom`) are synchronized bi-directionally.
-5. **Debounced Auto-Sync & Offline-First Startup (`P1-UPG-10`):** Both clients render immediately from local storage (`SharedPreferences` / `localStorage`), pull the latest workspace snapshot from `/api/v1/workspace_sync.php` on startup, and automatically push debounced (`800ms`) updates whenever drawings, symbols, or preferences change.
-6. **5-Category Tabbed Settings Parity (`P1-UPG-9`):** Both Web (`settingsView.js`) and Android (`SettingsScreen.kt`) organize settings into 5 identical segmented tabs: `حساب` (`account`), `ظاهر` (`appearance`), `نمادها` (`sources`), `پارامترها` (`scales`), and `سلامت` (`health`).
-
----
-
-## 2. Layered Architecture Diagram
+پلتفرم **CHART (Chart Intelligence)** بر پایه معماری **Server-Authoritative Central Core + Offline-First Local Cache** طراحی شده است تا وضعیت محیط کاری کاربر در هر دو کلاینت وب و اندروید به‌طور کامل یکسان باشد:
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        Presentation Layer (UI)                         │
-│  • 4-Section TradingView Pro Architecture (Watchlist, Chart, Pred, Set)│
-│  • Desktop Split-Pane Resizers, Unified Indicators Modal & Vector Icons│
-│  • Android: Jetpack Compose full-viewport canvas & modal BottomSheets  │
-│  • Web: Desktop terminal layout & mobile touch-locked workspace        │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │ Events & Actions
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                       State & Coordination Layer                       │
-│  • Android: MainViewModel + Focused State Coordinators                 │
-│  • Web: Reactive Store (AppState) + Event Controllers                  │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │ Pure Data Calls
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                       Domain & Algorithms Layer                        │
-│  Deterministic, pure business calculations (No UI / No DB dependencies)│
-│  • TimeframeAggregator: Exact OHLCV aggregation (M15 ➔ H1/H4/D1/W1)    │
-│  • DrawingGeometry: Market-coordinate anchoring, color/width & hit test│
-│  • TechnicalAnalytics: SMA(20), EMA(50), BB(20,2), ATR(14), Pivots     │
-│  • PriceFormatter: Heckbert nice Y-ticks & smart span-aware X-axis     │
-│  • CandleValidator: Strict timestamp alignment & weekend comb filter   │
-└───────────────────────────────────┬────────────────────────────────────┘
-                                    │ Data Queries & Sync
-                                    ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                        Data & Persistence Layer                        │
-│  • Provider Adapters: TvDatafeed, Twelve Data, Dukascopy, Yahoo, EIA   │
-│  • Identity & Recovery: Unified PHP `auth.php` + Owner Credentials     │
-│  • Local Storage: SharedPreferences (Android) / LocalStorage (Web)    │
-│  • Remote Backend: PHP REST API (`/api/v1/`) + MariaDB Database       │
-└────────────────────────────────────────────────────────────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│                         لایه کلاینت‌ها (Presentation & Interactive UI)                 │
+│                                                                                       │
+│   ┌─────────────────────────────────────┐     ┌───────────────────────────────────┐   │
+│   │  اپلیکیشن اندروید (Kotlin/Compose)  │     │  اپلیکیشن وب (ES6 Modules / SPA)  │   │
+│   │  - MainViewModel + 3 Coordinators   │     │  - store.js (Central Reactive)    │   │
+│   │  - CandlestickCanvas (Canvas 2D)    │     │  - chartRenderer.js (Canvas 2D)   │   │
+│   │  - SharedPreferences Offline Cache  │     │  - localStorage Offline Cache     │   │
+│   └──────────────────┬──────────────────┘     └─────────────────┬─────────────────┘   │
+└──────────────────────┼──────────────────────────────────────────┼─────────────────────┘
+                       │  REST JSON API (`https://chart.manico.es/api/v1/`)
+                       │  + Debounced Bi-Directional Workspace Sync (800ms)
+                       ▼                                          ▼
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│                    لایه سرور و هسته مرکزی (`host_subdomain/api/v1/`)                   │
+│                                                                                       │
+│  • `auth.php`           — احراز هویت مالک، توکن نشست، بازیابی رمز ۶ رقمی ایمیلی       │
+│  • `workspace_sync.php` — قرارداد واحد همگام‌سازی دوطرفه (تب‌ها، خطوط، واچ‌لیست، تم)  │
+│  • `candles.php`        — دریافت، نرمال‌سازی UTC 00:00 و ذخیره کندل‌های بسته‌شده       │
+│  • `system_status.php`  — پایش سلامت سرور، نسخه MariaDB، شمارش کندل‌ها و زمان UTC     │
+└──────────────────────────────────────────┬────────────────────────────────────────────┘
+                                           │ PDO Prepared Statements (`DECIMAL(18,8)`)
+                                           ▼
+┌───────────────────────────────────────────────────────────────────────────────────────┐
+│                         دیتابیس مرکزی MariaDB (`manicoes_chart`)                       │
+│                                                                                       │
+│  • `user_workspace` — تک‌ردیف مرجع (`id = 1`) حاوی JSON کامل محیط کاری (`LONGTEXT`)   │
+│  • `market_candles` — آرشیو کندل‌های بسته‌شده با کلید یکتا `(symbol, tf, open_time)`   │
+│  • `user_sessions`  — نشست‌های معتبر وب و اندروید + هش Argon2id/Bcrypt حساب مالک      │
+└───────────────────────────────────────────────────────────────────────────────────────┘
 ```
 
 ---
 
-## 3. Directory Structure & Responsibilities
+## ۲. ساختار دیتابیس مرکزی برای همگام‌سازی (`user_workspace`)
 
-### 3.1 Android Codebase (`app/src/main/java/es/manico/chartintelligence/`)
-```
-├── algorithms/                 # Pure mathematical & financial algorithms
-│   ├── CandleValidatorAlgorithm.kt
-│   ├── DrawingGeometryAlgorithm.kt
-│   ├── PasswordHashAlgorithm.kt
-│   ├── PriceFormatterAlgorithm.kt
-│   ├── TimeframeAggregatorAlgorithm.kt
-│   └── UtcTimeAnchorAlgorithm.kt
-├── config/                     # Central application configuration & keys
-│   └── AppConfig.kt
-├── data/
-│   ├── model/                  # Data classes (CandleBar, SymbolConfig, ChartPreferences)
-│   └── repository/             # WorkspaceRepository (Local + Server sync)
-├── providers/                  # External data provider adapters
-│   ├── CandleProviderAdapter.kt
-│   ├── DukascopyAdapter.kt
-│   ├── EiaBenchmarkAdapter.kt
-│   ├── TvDatafeedAdapter.kt
-│   ├── TwelveDataAdapter.kt
-│   └── YahooFinanceAdapter.kt
-└── ui/
-    ├── components/             # Reusable composables (CandlestickCanvas, ThemeSelector)
-    ├── screens/                # Top-level screen views (Watchlist, ChartView, Prediction, Settings, Login)
-    ├── state/                  # MainViewModel and Reactive UI State
-    │   └── coordinators/       # Focused UI mutation coordinators
-    │       ├── ChartDrawingCoordinator.kt
-    │       ├── ChartPreferenceCoordinator.kt
-    │       └── SymbolCatalogCoordinator.kt
-    └── theme/                  # Material 3 tokens, financial palette, typography
+در دیتابیس MariaDB هاست، جدول `user_workspace` به‌عنوان **تک‌منبع حقیقت (Single Source of Truth)** وضعیت محیط کاری کاربر عمل می‌کند:
+
+```sql
+CREATE TABLE IF NOT EXISTS user_workspace (
+    id INT PRIMARY KEY DEFAULT 1,
+    workspace_json LONGTEXT NOT NULL,
+    updated_at_utc VARCHAR(32) NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 ```
 
-### 3.2 Web Codebase (`host_subdomain/`)
-```
-├── api/v1/                     # PHP REST API backend
-│   ├── algorithms/             # Shared server-side candle aggregation & validation
-│   ├── core/                   # MariaDB connection & JSON response helpers
-│   ├── providers/              # Server-side provider adapters (TvDatafeed, TwelveData, Dukascopy, EIA, Yahoo)
-│   ├── auth.php                # Unified owner registration, login, Google sync & email password recovery
-│   └── candles_sync.php        # Synchronizes up to 5,000 closed candles per timeframe to MariaDB
-├── scripts/                    # Python & PHP CLI data extraction workers
-│   ├── sync_tvdatafeed.py      # Extracts up to 5,000 PEPPERSTONE:SPOTBRENT candles (15m, 1h, 4h, 1d) via tvdatafeed
-│   └── cron_sync_tvdatafeed.php# Cron helper that runs sync_tvdatafeed.py and batch-upserts into MariaDB
-├── assets/
-│   ├── css/
-│   │   └── theme.css           # Design tokens, desktop layout, and mobile touch styles
-│   └── js/
-│       ├── algorithms/         # Pure ES6 calculation modules (Drawing, Timeframe, Price)
-│       ├── components/         # Canvas rendering engine (chartRenderer.js)
-│       ├── controllers/        # Chart interaction & touch/pinch controllers
-│       ├── core/               # Reactive store and i18n manager
-│       ├── services/           # HTTP API client services
-│       ├── views/              # View components (Header, ToolRail, Watchlist, Settings, Analysis)
-│       └── app.js              # Application entry point and event delegation
-├── i18n/                       # Translation dictionaries (fa.json, en.json)
-└── index.html                  # Lightweight HTML shell
+- **اندپوینت همگام‌سازی:** `/api/v1/workspace_sync.php`
+  - **`GET /api/v1/workspace_sync.php`**: آخرین `workspace_json` ذخیره‌شده در ردیف `id = 1` را به همراه `updated_at_utc` و زمان سرور برمی‌گرداند.
+  - **`POST /api/v1/workspace_sync.php`**: ساختار کامل فضای کاری (`symbols`, `preferences`, `drawings`, `open_tabs`, `last_opened_symbol`, `is_dark_theme`, `language`) را با دستور اتمیک `INSERT INTO user_workspace ... ON DUPLICATE KEY UPDATE` ذخیره می‌کند.
+
+---
+
+## ۳. قرارداد جامع JSON همگام‌سازی (Canonical Workspace Sync Schema)
+
+بدنه JSON تبادل‌شده بین `workspace_sync.php`، کلاینت وب (`store.js` / `app.js`) و کلاینت اندروید (`WorkspaceSyncService.kt` / `WorkspaceRepository.kt`) دارای ساختار استاندارد زیر است:
+
+```json
+{
+  "version": "1.30.0",
+  "updated_at": 1762850000000,
+  "is_dark_theme": true,
+  "language": "fa",
+  "last_opened_symbol": "XAUUSD",
+  "open_tabs": [
+    {
+      "symbol_code": "XAUUSD",
+      "timeframe": "M15",
+      "chart_type": "CANDLES",
+      "date_range": "1M",
+      "is_log_scale": false,
+      "is_auto_scale": true,
+      "show_volume": true,
+      "show_sma20": true,
+      "show_ema50": false,
+      "show_bollinger": false,
+      "show_rsi14": false,
+      "is_magnet_enabled": false,
+      "is_active": true
+    }
+  ],
+  "symbols": [
+    {
+      "symbolCode": "XAUUSD",
+      "activeProvider": "twelve_data",
+      "inWatchlist": true,
+      "selectedTimeframe": "M15",
+      "decimals": 2,
+      "isCustom": false,
+      "customTitle": null
+    }
+  ],
+  "drawings": {
+    "XAUUSD_M15": [
+      {
+        "id": "hl_1762849000",
+        "type": "HLINE",
+        "tool": "hline",
+        "price": 4121.88,
+        "p1Price": 4121.88,
+        "colorHex": "FFF59E0B",
+        "color": "#F59E0B",
+        "strokeWidth": 1.8
+      }
+    ]
+  },
+  "preferences": {
+    "bullColor": "#26A69A",
+    "bearColor": "#EF5350",
+    "trendColor": "#2962FF",
+    "hLineColor": "#38BDF8",
+    "vLineColor": "#F59E0B",
+    "candleFetchLimit": 500,
+    "zoomStepCandles": 8,
+    "drawingHitTolerancePx": 28,
+    "hideWatchlistLogos": false,
+    "showSymbolScreen": true,
+    "chartVibrations": true,
+    "isLogScale": false,
+    "rememberLastChart": true,
+    "hideTabBarInLandscape": true,
+    "pickerVibrates": true,
+    "showScrollMagnifier": true,
+    "showCountdownToBarClose": true,
+    "showPrevCloseLine": true,
+    "showHighLowLabels": true
+  }
+}
 ```
 
 ---
 
-## 4. Extension Guides (How-To)
+## ۴. پروتکل‌های تفصیلی همگام‌سازی به تفکیک دامنه (Domain Sync Protocols)
 
-### 4.1 How to Add a New Algorithm
-1. Create a dedicated module in `algorithms/` (e.g., `RsiAlgorithm.kt` in Android and `rsiAlgorithm.js` in Web).
-2. The algorithm function must be **pure**: taking input series (candles, prices) and returning calculated numeric values.
-3. It must not reference UI frameworks (`Compose`, `DOM`, `Canvas`) or database APIs.
-4. Add corresponding unit tests in `Phase1AlgorithmsTest.kt` (Android) and `tests/` (Web).
+### ۴.۱. پروتکل همگام‌سازی وضعیت تب‌های باز (`open_tabs` & `last_opened_symbol`)
 
-### 4.2 How to Add a New Data Provider
-1. Define the provider ID in `ProviderId` enum (`ProviderId.kt` / `providers.js`).
-2. Implement the provider adapter implementing the standard fetch contract (`CandleProviderAdapter`).
-3. Handle rate limits and error mapping cleanly without throwing unhandled exceptions.
-4. Add the provider to the allowed providers list in `SymbolConfig`.
+| ویژگی | نسخه اندروید (`ChartTabState.kt`) | نسخه وب (`store.js` -> `state.openTabs`) | کلید JSON در هسته مرکزی |
+|---|---|---|---|
+| کد نماد | `symbolCode: String` | `symbolCode: String` | `symbol_code` (و پشتیبانی از `symbolCode`) |
+| تایم‌فریم تب | `timeframe: Timeframe` (`M15`, `H1`, `H4`, `D1`, `W1`) | `timeframe: String` | `timeframe` |
+| نوع نمودار | `chartType: ChartDisplayType` (`CANDLES`, `LINE`) | `chartType: String` (`candles`, `line`) | `chart_type` |
+| بازه تاریخی | `selectedDateRange: String` (`1D`..`All`) | `selectedDateRange: String` | `date_range` |
+| مقیاس لگاریتمی | `isLogScale: Boolean` | `isLogScale: Boolean` | `is_log_scale` |
+| مقیاس خودکار | `isAutoScale: Boolean` | `isAutoScale: Boolean` | `is_auto_scale` |
+| نمایش پنل حجم | `showVolumePane: Boolean` | `showVolume: Boolean` | `show_volume` |
+| اندیکاتورها | `showSma20`, `showEma50`, `showBollinger`, `showRsi14` | `showSma20`, `showEma50`, `showBollinger`, `showRsi14` | `show_sma20`, `show_ema50`, `show_bollinger`, `show_rsi14` |
+| حالت آهنربا | `isMagnetEnabled: Boolean` | `isMagnetMode: Boolean` | `is_magnet_enabled` |
+| تب فعال فعلی | `activeTabSymbolCode: String?` | `activeTabId: String` | `is_active: true` + `last_opened_symbol` |
 
-### 4.3 How to Add a New Market Symbol
-- Users can define custom symbols dynamically in the **Settings** screen at runtime.
-- For bundled symbols, declare the entry in `AppConfig` and register localized display titles in `strings.xml` and `fa.json`/`en.json`.
+**قواعد اجرایی تب‌ها:**
+1. هر تغییر در تب‌های باز (باز کردن تب جدید، بستن تب، تغییر تایم‌فریم، تغییر نوع نمودار شمعی/خطی، روشن/خاموش کردن اندیکاتورها یا تغییر مقیاس `Log/Auto`) بلافاصله در کش محلی ذخیره شده و پس از `800ms` Debounce به `workspace_sync.php` ارسال می‌شود.
+2. هنگام ورود یا بازخوانی از سرور، اگر `rememberLastChart` فعال باشد، تب منطبق با `last_opened_symbol` (یا تب دارای `is_active == true`) به‌عنوان تب فعال انتخاب می‌شود.
 
 ---
 
-## 5. Security & Sensitive Credentials
-- **No secrets in code:** API keys, database credentials, and tokens must never be committed to Git.
-- Android retrieves secrets via `BuildConfig` (injected at build time via Secrets environment variables).
-- Web backend stores credentials in environment variables or protected configuration outside the web document root.
+### ۴.۲. پروتکل همگام‌سازی ابزارهای ترسیم (`drawings`)
+
+1. **فرمت کلید استاندارد (`Canonical Key`):**
+   - تمامی خطوط ترسیمی با کلید ترکیبی `${symbolCode}_${timeframe}` (مانند `"XAUUSD_M15"` یا `"SPOTBRENT_H1"`) در دیکشنری `drawings` ذخیره می‌شوند.
+   - برای سازگاری کامل عقب‌رو (Backward Compatibility)، در صورتی که کلید قدیمی بدون پسوند تایم‌فریم (مانند `"XAUUSD"`) در دیتابیس وجود داشته باشد، هر دو کلاینت به‌طور خودکار آن را به تایم‌فریم فعال نگاشت می‌کنند.
+2. **انواع ۶گانه ابزارهای ترسیم مشترک وب و اندروید:**
+   - `HLINE` (`hline`): خط افقی قیمت (`price` / `p1Price`).
+   - `VLINE` (`vline`): خط عمودی زمان (`timeEpochSec` / `p1TimeMs` / `candleIndex`).
+   - `TREND` (`trend`): خط روند دو نقطه‌ای (`startCandleIndex`/`startPrice` و `endCandleIndex`/`endPrice` به همراه زمان UTC).
+   - `FIB` (`fib`): اصلاح فیبوناچی ۶ سطحی استاندارد (`0%`, `23.6%`, `38.2%`, `50%`, `61.8%`, `100%`) بین دو لنگر قیمتی.
+   - `LONG_POS` (`long_pos`): ابزار نسبت ریسک به ریوارد خرید (`entryPrice`, `targetPrice`, `stopPrice`).
+   - `SHORT_POS` (`short_pos`): ابزار نسبت ریسک به ریوارد فروش (`entryPrice`, `targetPrice`, `stopPrice`).
+3. **نرمال‌سازی رنگ خطوط:**
+   - اندروید رنگ‌ها را با فرمت ۸ کاراکتری ARGB (`"FF2962FF"`) و وب با فرمت ۶ کاراکتری CSS Hex (`"#2962FF"`) رندر می‌کند.
+   - در هنگام سریال‌سازی به هسته مرکزی، هر دو فیلد `colorHex` (`"FFRRGGBB"`) و `color` (`"#RRGGBB"`) در شیء JSON قرار می‌گیرند تا هر دو کلاینت بدون خطای پارس، رنگ دقیق خط را نمایش دهند.
+
+---
+
+### ۴.۳. پروتکل همگام‌سازی واچ‌لیست و کاتالوگ نمادها (`symbols`)
+
+هر آیتم در آرایه `symbols` وضعیت کامل نماد را در واچ‌لیست و منبع داده آن مشخص می‌کند:
+- `symbolCode`: کد استاندارد نماد با حروف بزرگ انگلیسی (مانند `XAUUSD`, `SPOTBRENT`, `BRENT_FUTURES`, `XAGUSD`, `EURUSD` یا نمادهای سفارشی کاربر).
+- `activeProvider`: شناسه منبع داده فعال نماد (`tvdatafeed`, `twelve_data`, `dukascopy`, `yahoo_finance`, `eia`).
+- `inWatchlist`: وضعیت نمایش نماد در صفحه واچ‌لیست (`true` / `false`).
+- `selectedTimeframe`: آخرین تایم‌فریم انتخاب‌شده برای نماد (`M15`, `H1`, `H4`, `D1`).
+- `decimals`: تعداد اعشار مجاز قیمت (`0` تا `6`).
+- `isCustom` و `customTitle`: مشخصات نمادهای سفارشی اضافه‌شده توسط کاربر در بخش تنظیمات.
+
+---
+
+### ۴.۴. پروتکل همگام‌سازی تنظیمات ۵گانه (`preferences`)
+
+تنظیمات محیط کاری در اندروید (`ChartPreferences.kt` و `strings.xml`) و وب (`store.js` و `settingsView.js`) به **۵ گروه مجزا** دسته‌بندی شده‌اند و تمام ۱۹ کلید آن‌ها به‌طور دوطرفه همگام‌سازی می‌شوند:
+
+| شماره گروه | کلید تب (`tabKey`) | عنوان فارسی | عنوان انگلیسی | کلیدهای همگام‌سازی‌شده در هسته مرکزی |
+|---:|---|---|---|---|
+| **۱** | `sync` | **همگام‌سازی** | **Sync** | وضعیت زنده دیتابیس MariaDB، دکمه همگام‌سازی ابری، کاتالوگ نمادها (`symbols`) و انتخاب Provider هر نماد |
+| **۲** | `chart` | **چارت** | **Chart** | `candleFetchLimit` (تا ۵۰۰۰)، `zoomStepCandles`، `drawingHitTolerancePx`، `isLogScale`، `rememberLastChart`، `hideTabBarInLandscape`، `showCountdownToBarClose`، `showPrevCloseLine`، `showHighLowLabels` |
+| **۳** | `notifications` | **نوتیفیکیشن** | **Notifications** | `chartVibrations`، `pickerVibrates`، `showScrollMagnifier`، `showSymbolScreen`، `hideWatchlistLogos` |
+| **۴** | `theme` | **تم** | **Theme** | `is_dark_theme`، `language` (`fa`/`en`)، `bullColor`، `bearColor`، `trendColor`، `hLineColor`، `vLineColor` + پیش‌نمایش زنده کندل‌ها |
+| **۵** | `account` | **حساب** | **Account** | نام کاربری مالک، ایمیل بازیابی (`recovery_email`)، تغییر رمز عبور و خروج از نشست |
+
+---
+
+## ۵. چرخه حیات همگام‌سازی، مدیریت خطا و حل تعارض (Sync Lifecycle & Conflict Resolution)
+
+1. **بارگذاری اولیه (`Initial Pull on Boot / Login`):**
+   - هر دو کلاینت ابتدا بلافاصله وضعیت ذخیره‌شده در کش محلی (`SharedPreferences` در اندروید / `localStorage` در وب) را بارگذاری می‌کنند تا رابط کاربری بدون هیچ تأخیری آماده کار شود (**Zero-Wait Boot**).
+   - سپس به‌صورت غیرمسدودکننده (`Async`) درخواست `GET /api/v1/workspace_sync.php` ارسال می‌شود و وضعیت سرور با وضعیت محلی ادغام می‌گردد.
+2. **ارسال خودکار با Debounce (`Auto-Push`):**
+   - هرگونه تغییر در تب‌ها، خطوط ترسیمی، واچ‌لیست یا تنظیمات، یک تایمر Debounce به مدت `800ms` در کلاینت فعال می‌کند.
+   - پس از پایان `800ms`، کل وضعیت محیط کاری در قالب یک درخواست `POST /api/v1/workspace_sync.php` به دیتابیس مرکزی ارسال می‌شود.
+3. **تاب‌آوری آفلاین (`Offline Fallback`):**
+   - در صورت قطع اینترنت، تمام تغییرات در کش محلی دستگاه حفظ می‌شوند و در اولین ارتباط مجدد یا زدن دکمه «همگام‌سازی ابری فضای کاری» در تب `همگام‌سازی` تنظیمات، به سرور منتقل می‌گردند.
+4. **ایمنی بارگذاری ماژول‌های وب (`ES6 Module Singleton Integrity`):**
+   - در نسخه وب (`host_subdomain/assets/js/`)، تمامی ماژول‌های ES6 با یک رشته نسخه واحد (`?v=1.30.0`) بارگذاری می‌شوند تا در مرورگر تنها یک نمونه Singleton از `store.js` ساخته شود و متغیر سراسری `window.__CI_APP_MOUNTED__ = true` بلافاصله پس از رندر اولیه فعال گردد.
