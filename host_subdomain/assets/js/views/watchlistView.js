@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.30.0';
-import { state } from '../core/store.js?v=1.30.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.35.0';
+import { state } from '../core/store.js?v=1.35.0';
 
 const STOCK_SYMBOLS = new Set([
   'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',

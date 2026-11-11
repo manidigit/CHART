@@ -13,8 +13,8 @@ import {
   normalizeHexForAndroid,
   resolvePriceBasis,
 } from '../core/store.js?v=1.35.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.30.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.30.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.35.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.35.0';
 
 export async function syncServerAuthStatus() {
   const token = localStorage.getItem('ci_session_token');

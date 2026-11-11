@@ -1,7 +1,7 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.30.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.30.0';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.30.0';
-import { state } from '../core/store.js?v=1.30.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.35.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.35.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.35.0';
+import { state } from '../core/store.js?v=1.35.0';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;
