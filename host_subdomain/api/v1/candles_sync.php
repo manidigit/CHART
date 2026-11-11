@@ -12,6 +12,7 @@ require_once __DIR__ . '/providers/DukascopyAdapter.php';
 require_once __DIR__ . '/providers/EiaBenchmarkAdapter.php';
 require_once __DIR__ . '/providers/TvDatafeedAdapter.php';
 require_once __DIR__ . '/providers/BiquoteAdapter.php';
+require_once __DIR__ . '/providers/StooqAdapter.php';
 require_once __DIR__ . '/providers/ProviderCatalog.php';
 
 use ChartIntelligence\Algorithms\CandleValidator;
@@ -21,6 +22,7 @@ use ChartIntelligence\Core\Database;
 use ChartIntelligence\Providers\BiquoteAdapter;
 use ChartIntelligence\Providers\DukascopyAdapter;
 use ChartIntelligence\Providers\EiaBenchmarkAdapter;
+use ChartIntelligence\Providers\StooqAdapter;
 use ChartIntelligence\Providers\TvDatafeedAdapter;
 use ChartIntelligence\Providers\TwelveDataAdapter;
 use ChartIntelligence\Providers\YahooFinanceAdapter;
@@ -28,10 +30,13 @@ use ChartIntelligence\Providers\YahooFinanceAdapter;
 $symbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $_GET['symbol'] ?? 'XAUUSD'));
 $provider = strtolower(preg_replace('/[^a-z0-9_]/', '', $_GET['provider'] ?? 'twelve_data'));
 $timeframe = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['timeframe'] ?? 'M15'));
+$userApiKey = trim((string) ($_GET['api_key'] ?? $_SERVER['HTTP_X_PROVIDER_API_KEY'] ?? ''));
 if (!in_array($timeframe, ['M15', 'H1', 'H4', 'D1', 'W1'], true)) {
     $timeframe = 'M15';
 }
 if ($provider === 'eia_brent_spot') {
+    $timeframe = 'D1';
+} elseif ($provider === 'stooq' && !in_array($timeframe, ['D1', 'W1'], true)) {
     $timeframe = 'D1';
 }
 
@@ -43,6 +48,7 @@ $nowMs = (int) round(microtime(true) * 1000);
 
 $pdo = Database::getPdo();
 $chartId = \ChartIntelligence\Providers\ProviderCatalog::resolveChartId($symbol);
+$priceBasis = \ChartIntelligence\Providers\ProviderCatalog::resolvePriceBasis($symbol, $provider);
 
 // 1. Purge any previously persisted synthetic weekend micro-spread rows from MariaDB for intraday timeframes
 if ($pdo !== null && $timeframe !== 'D1' && $timeframe !== 'W1') {
@@ -120,8 +126,9 @@ if ($pdo !== null && $storedCount >= 5 && !$forceBackfill && $maxOpenMs >= $expe
     $rawDelta = match ($provider) {
         'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, true, $maxOpenMs),
         'biquote' => BiquoteAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
-        'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
+        'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs, $userApiKey),
         'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
+        'stooq' => StooqAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs, $userApiKey),
         'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $deltaFetchLimit, $nowMs, $maxOpenMs),
         'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
         default => [],
@@ -140,8 +147,9 @@ if ($pdo !== null && $storedCount >= 5 && !$forceBackfill && $maxOpenMs >= $expe
     $rawInitial = match ($provider) {
         'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, true, 0),
         'biquote' => BiquoteAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
-        'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
+        'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0, $userApiKey),
         'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
+        'stooq' => StooqAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0, $userApiKey),
         'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $limit, $nowMs, 0),
         'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
         default => [],
@@ -274,7 +282,7 @@ if (!empty($candles)) {
 }
 
 $providerStatus = 'READY';
-if ($provider === 'twelve_data' && !TwelveDataAdapter::hasConfiguredApiKey()) {
+if ($provider === 'twelve_data' && !TwelveDataAdapter::hasConfiguredApiKey($userApiKey)) {
     $providerStatus = $totalStoredAfter > 0 ? 'DB_ARCHIVE_ONLY' : 'API_KEY_REQUIRED';
 } elseif (empty($candles) && $totalStoredAfter === 0) {
     $providerStatus = 'NO_DATA';
@@ -293,6 +301,7 @@ ApiEnvelope::sendSuccess([
         'max_open_time_utc_ms' => $maxOpenMs,
         'expected_last_closed_open_ms' => $expectedLastClosedOpenMs,
         'provider_status' => $providerStatus,
+        'price_basis' => $priceBasis,
     ],
     'candles' => $candles,
 ]);

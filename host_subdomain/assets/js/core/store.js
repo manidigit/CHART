@@ -348,13 +348,15 @@ function loadSymbols() {
       const def = DEFAULT_SYMBOLS.find((d) => d.symbolCode === item.symbolCode);
       const allowed = def
         ? def.allowedProviders
-        : ['tvdatafeed', 'dukascopy', 'twelve_data', 'yahoo_finance'];
+        : ['tvdatafeed', 'dukascopy', 'twelve_data', 'yahoo_finance', 'stooq'];
+      const activeProv = item.activeProvider || (def ? def.activeProvider : 'tvdatafeed');
       byCode.set(item.symbolCode, {
         ...(def || {}),
         ...item,
         allowedProviders: allowed,
         candles: Array.isArray(item.candles) ? item.candles : [],
         lastSyncMode: item.lastSyncMode || 'DB_CACHE_HIT',
+        priceBasis: item.priceBasis || resolvePriceBasis(item.symbolCode, activeProv),
         fetchedNewBars: Number(item.fetchedNewBars || 0),
         isSyncing: false,
         syncError: false,
@@ -672,7 +674,8 @@ export function saveCandlesToCache(key, candles, maxLimit = 5000) {
 }
 
 export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
-  const normTf = provider === 'eia_brent_spot' ? 'D1' : String(timeframe || 'M15').toUpperCase();
+  const rawTf = String(timeframe || 'M15').toUpperCase();
+  const normTf = provider === 'eia_brent_spot' ? 'D1' : provider === 'stooq' && rawTf !== 'W1' ? 'D1' : rawTf;
   const exactKey = `${symbolCode}_${provider}_${normTf}`;
   let current = state.candleCache[exactKey];
   if (!current || current.length === 0) {

@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.30.0';
+import { I18nManager } from './core/i18n.js?v=1.35.0';
 import {
   state,
   savePreferences,
@@ -6,12 +6,13 @@ import {
   saveDrawings,
   saveLastOpenedSymbol,
   saveOpenTabs,
+  saveOpenTabsToStorage,
   savePanelLayout,
   getCachedOrAggregatedCandles,
   resetColorsToDefault,
   resetAlgoParamsToDefault,
   registerAutoSyncCallback,
-} from './core/store.js?v=1.30.0';
+} from './core/store.js?v=1.35.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -25,25 +26,25 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.30.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.30.0';
-import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.30.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.30.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.30.0';
+} from './services/apiService.js?v=1.35.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.35.0';
+import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.35.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.35.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.35.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.30.0';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.30.0';
+} from './views/headerView.js?v=1.35.0';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.35.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.30.0';
-import { renderPredictionModal } from './views/analysisView.js?v=1.30.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.30.0';
-import { renderRightIconRail } from './views/navigationView.js?v=1.30.0';
+} from './views/watchlistView.js?v=1.35.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.35.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.35.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.35.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -74,7 +75,13 @@ function ensureInitialTabs() {
     state.openTabs.forEach((tab) => {
       const sym = state.symbols.find((s) => s.symbolCode === tab.symbolCode);
       const prov = tab.provider || (sym ? sym.activeProvider : 'tvdatafeed');
-      const tf = tab.timeframe || 'M15';
+      const tf =
+        prov === 'eia_brent_spot'
+          ? 'D1'
+          : prov === 'stooq' && tab.timeframe !== 'W1'
+            ? 'D1'
+            : tab.timeframe || 'M15';
+      tab.timeframe = tf;
       tab.chartId = `${tab.symbolCode}_${tf}`;
       const cached = getCachedOrAggregatedCandles(tab.symbolCode, prov, tf);
       tab.candles = cached.length > 0 ? cached : (sym && sym.candles) || [];
@@ -90,7 +97,10 @@ function ensureInitialTabs() {
   const listToOpen = watchlist.length > 0 ? watchlist.slice(0, 2) : state.symbols.slice(0, 2);
 
   listToOpen.forEach((sym) => {
-    const tf = sym.activeProvider === 'eia_brent_spot' ? 'D1' : sym.timeframe || 'M15';
+    const tf =
+      sym.activeProvider === 'eia_brent_spot' || sym.activeProvider === 'stooq'
+        ? 'D1'
+        : sym.timeframe || 'M15';
     const tabId = `tab_${sym.symbolCode}_${tf}`;
     const drawKey = `${sym.symbolCode}_${tf}`;
     const cached = getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, tf);
@@ -138,10 +148,13 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
   saveLastOpenedSymbol(symbolCode);
 
   let existing = state.openTabs.find((t) => t.symbolCode === symbolCode);
+  const rawTf = requestedTf || (existing ? existing.timeframe : sym.timeframe || 'M15');
   const tf =
     sym.activeProvider === 'eia_brent_spot'
       ? 'D1'
-      : requestedTf || (existing ? existing.timeframe : (sym.timeframe || 'M15'));
+      : sym.activeProvider === 'stooq' && rawTf !== 'W1'
+        ? 'D1'
+        : rawTf;
 
   const cached = getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
   const drawKey = `${symbolCode}_${tf}`;
@@ -379,9 +392,11 @@ function renderAddSymbolModal() {
                 <label class="tv-input-label">${i18n.t('label_active_source')}</label>
                 <select class="input-field ltr-num" name="provider">
                   <option value="tvdatafeed">TradingView (tvdatafeed)</option>
+                  <option value="biquote">biquote Feed</option>
                   <option value="twelve_data">Twelve Data</option>
                   <option value="dukascopy">Dukascopy</option>
                   <option value="yahoo_finance">Yahoo Finance</option>
+                  <option value="stooq">Stooq EOD</option>
                 </select>
               </div>
               <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 4px; min-height: 36px;">
@@ -912,6 +927,25 @@ function bindSettingsForms() {
     });
   }
 
+  const byokForm = document.getElementById('settings-byok-form');
+  if (byokForm) {
+    byokForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const tdEl = document.getElementById('byok-twelve-data');
+      const stqEl = document.getElementById('byok-stooq');
+      const avEl = document.getElementById('byok-alphavantage');
+      const fhEl = document.getElementById('byok-finnhub');
+      state.chartPreferences.twelveDataApiKey = tdEl ? String(tdEl.value || '').trim() : '';
+      state.chartPreferences.stooqApiKey = stqEl ? String(stqEl.value || '').trim() : '';
+      state.chartPreferences.alphaVantageApiKey = avEl ? String(avEl.value || '').trim() : '';
+      state.chartPreferences.finnhubApiKey = fhEl ? String(fhEl.value || '').trim() : '';
+      savePreferences();
+      state.statusBannerKey = 'settings_byok_saved';
+      showFloatingToast(i18n.t('settings_byok_saved'));
+      renderApp();
+    });
+  }
+
   const addSymForm = document.getElementById('add-symbol-form');
   if (addSymForm) {
     addSymForm.addEventListener('submit', async (e) => {
@@ -923,14 +957,15 @@ function bindSettingsForms() {
       const title = String(fd.get('symbol_title') || '').trim();
       const provider = String(fd.get('provider') || 'tvdatafeed');
       if (code && !state.symbols.some((s) => s.symbolCode === code)) {
+        const initTf = provider === 'stooq' ? 'D1' : 'M15';
         state.symbols.push({
           symbolCode: code,
           customTitle: title || code,
           decimals: 2,
           inWatchlist: true,
           activeProvider: provider,
-          allowedProviders: ['tvdatafeed', 'twelve_data', 'dukascopy', 'yahoo_finance'],
-          timeframe: 'M15',
+          allowedProviders: ['tvdatafeed', 'biquote', 'twelve_data', 'dukascopy', 'yahoo_finance', 'stooq'],
+          timeframe: initTf,
           lastClose: 0,
           lastCandleUtc: '',
           candles: [],
@@ -938,7 +973,7 @@ function bindSettingsForms() {
         });
         saveSymbolsToStorage();
         state.isAddSymbolModalOpen = false;
-        await syncSymbolNow(code, 'M15', renderApp);
+        await syncSymbolNow(code, initTf, renderApp);
       }
       renderApp();
     });
@@ -1014,9 +1049,23 @@ document.addEventListener('click', async (e) => {
     state.statusBannerKey = ok ? 'status_workspace_synced' : '';
     renderApp();
   } else if (action === 'select-tab') {
-    state.activeTabId = el.getAttribute('data-tab-id');
+    const nextTabId = el.getAttribute('data-tab-id');
+    state.activeTabId = nextTabId;
+    const selTab = state.openTabs.find((t) => t.tabId === nextTabId);
+    if (selTab) {
+      saveLastOpenedSymbol(selTab.symbolCode);
+      selTab.candles = getCachedOrAggregatedCandles(
+        selTab.symbolCode,
+        selTab.provider,
+        selTab.timeframe
+      );
+      if (!selTab.candles || selTab.candles.length === 0) {
+        syncSymbolNow(selTab.symbolCode, selTab.timeframe, renderApp);
+      }
+    }
     saveOpenTabs();
     renderApp();
+    redrawActiveCanvas();
   } else if (action === 'close-tab') {
     e.stopPropagation();
     const id = el.getAttribute('data-tab-id');

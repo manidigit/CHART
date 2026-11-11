@@ -1,5 +1,5 @@
-import { state, PROVIDER_METHODS_CATALOG, getCachedOrAggregatedCandles } from '../core/store.js?v=1.30.0';
-import { getAssetBadge, renderSymbolBadge } from './watchlistView.js?v=1.30.0';
+import { state, PROVIDER_METHODS_CATALOG, getCachedOrAggregatedCandles } from '../core/store.js?v=1.35.0';
+import { getAssetBadge, renderSymbolBadge } from './watchlistView.js?v=1.35.0';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -319,10 +319,43 @@ export function renderSettingsModal(i18n) {
     </div>
   `;
 
+  const byokCard = `
+    <div class="card-subtle" style="margin-bottom: 14px; background: var(--bg); border: 1px solid var(--border); padding: 12px 14px; border-radius: 8px;">
+      <div style="display: flex; align-items: center; justify-content: space-between; gap: 8px; flex-wrap: wrap; margin-bottom: 6px;">
+        <div>
+          <div style="font-size: 12.5px; font-weight: 700; color: var(--text-strong);">🔑 ${i18n.t('settings_byok_title')}</div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">${i18n.t('settings_byok_subtitle')}</div>
+        </div>
+      </div>
+      <form id="settings-byok-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px; margin-top: 8px;">
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Twelve Data API Key (XAUUSD / Global)</label>
+          <input id="byok-twelve-data" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="e.g. 9f8a7b6c5d4e..." value="${p.twelveDataApiKey || ''}" autocomplete="off" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Stooq API Key (Optional EOD D1/W1)</label>
+          <input id="byok-stooq" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Stooq Key..." value="${p.stooqApiKey || ''}" autocomplete="off" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Alpha Vantage API Key (Phase 2 / Backup)</label>
+          <input id="byok-alphavantage" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Alpha Vantage Key..." value="${p.alphaVantageApiKey || ''}" autocomplete="off" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Finnhub API Key (Phase 2 / Backup)</label>
+          <input id="byok-finnhub" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Finnhub Key..." value="${p.finnhubApiKey || ''}" autocomplete="off" />
+        </div>
+        <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 2px;">
+          <button type="submit" class="btn btn-sm btn-primary">${i18n.t('settings_byok_save')}</button>
+        </div>
+      </form>
+    </div>
+  `;
+
   let bodyHtml = '';
   if (tab === 'sync') {
     bodyHtml = `
       ${serverDiagCard}
+      ${byokCard}
       <div class="row-between" style="margin-bottom: 10px; gap: 10px; flex-wrap: wrap;">
         <div>
           <h4 style="margin: 0; font-size: 14px; color: var(--text-strong);">${i18n.t('settings_group_sources')}</h4>

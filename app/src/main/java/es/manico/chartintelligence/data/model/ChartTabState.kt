@@ -42,7 +42,7 @@ data class ChartTabState(
         get() = "$symbolCode · ${provider.badgeLabel}"
 
     val allowedTimeframes: List<String>
-        get() = if (provider == ProviderId.EIA_BRENT_SPOT) {
+        get() = if (provider == ProviderId.EIA_BRENT_SPOT || provider == ProviderId.STOOQ) {
             listOf("D1", "W1")
         } else {
             AppConfig.SUPPORTED_TIMEFRAMES

@@ -325,7 +325,7 @@ fun ChartViewScreen(
                             )
                         }
 
-                        // Right: Read-only Data Source Badge (Non-clickable display only)
+                        // Right: Read-only Data Source & Price Basis Badge (Grok Metadata Integration)
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -342,8 +342,9 @@ fun ChartViewScreen(
                                     .clip(CircleShape)
                                     .background(statusDotColor)
                             )
+                            val priceBasis = activeTab.provider.resolvePriceBasis(activeTab.symbolCode)
                             Text(
-                                text = activeTab.provider.badgeLabel,
+                                text = "${activeTab.provider.badgeLabel} • $priceBasis",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.SemiBold,
@@ -355,6 +356,22 @@ fun ChartViewScreen(
             }
 
             HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
+
+            // Multi-Tab Chart Strip (Package 1: 1-click tab switching between open charts)
+            if (openTabs.isNotEmpty()) {
+                es.manico.chartintelligence.ui.components.ChartTabBar(
+                    tabs = openTabs,
+                    activeTabId = activeTab.tabId,
+                    onSelectTab = onSelectTab,
+                    onCloseTab = onCloseTab,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(MaterialTheme.colorScheme.surface)
+                        .padding(horizontal = 8.dp, vertical = 2.dp)
+                        .testTag("chart_tabs_strip")
+                )
+                HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
+            }
 
             // [3] Main Full-Viewport Chart Canvas (>= 85% usable height)
             Box(

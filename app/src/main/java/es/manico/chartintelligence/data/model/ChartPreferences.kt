@@ -83,7 +83,13 @@ data class ChartPreferences(
     val showPickerScrollMagnifiers: Boolean = true,
     val showCountdownToBarClose: Boolean = true,
     val showPrevCloseLine: Boolean = true,
-    val showHighLowLabels: Boolean = true
+    val showHighLowLabels: Boolean = true,
+
+    // Group 4 (SYNC & BYOK): Personal API Keys (Bring Your Own Key)
+    val twelveDataApiKey: String = "",
+    val stooqApiKey: String = "",
+    val alphaVantageApiKey: String = "",
+    val finnhubApiKey: String = ""
 ) {
     val chartGroup: ChartSettingsGroup
         get() = ChartSettingsGroup(

@@ -207,7 +207,7 @@
     <string name="settings_group_sources">۳. منبع داده و نمادها</string>
     <string name="settings_group_params">۴. پارامترهای تحلیل و سوئیچ‌های TradingView</string>
     <string name="settings_group_about">۵. سلامت سرور و درباره</string>
-    <string name="settings_about_version">نسخه ۱.۳۲.۰ · کاتالوگ ۲۲ نماد، ۶ منبع داده و هسته مرکزی DB-First</string>
+    <string name="settings_about_version">نسخه ۱.۳۵.۰ · کاتالوگ ۲۲ نماد، ۷ منبع داده، نوار چند-تب و BYOK</string>
     <string name="settings_tab_account">حساب</string>
     <string name="settings_tab_appearance">ظاهر</string>
     <string name="settings_tab_sources">نمادها</string>
@@ -325,4 +325,9 @@
     <string name="settings_section_notifications_hint">مدیریت بازخورد لرزشی چارت، هشدارهای انتخاب‌گر و نحوه نمایش نمادها در واچ‌لیست.</string>
     <string name="settings_section_sync_title">همگام‌سازی ابری، سرور و منابع داده نمادها</string>
     <string name="settings_section_theme_title">تم، زبان و رنگ‌بندی بصری چارت</string>
+    <string name="provider_stooq">Stooq EOD (آرشیو تاریخی چنددهه‌ای D1/W1)</string>
+    <string name="settings_byok_title">مدیریت کلیدهای شخصی منابع داده (BYOK)</string>
+    <string name="settings_byok_subtitle">در صورت تمایل، کلیدهای API شخصی خود را برای افزایش سقف درخواست‌ها ثبت کنید (همگام با وب و اندروید).</string>
+    <string name="settings_byok_save">ذخیره و همگام‌سازی کلیدهای API</string>
+    <string name="settings_byok_saved">کلیدهای شخصی API با موفقیت ذخیره و همگام‌سازی شدند.</string>
 </resources>

@@ -371,7 +371,15 @@ class Phase1AlgorithmsTest {
         assertEquals("biquote", biquote.badgeLabel)
 
         val catalog = es.manico.chartintelligence.data.model.ProviderId.providerMethodCatalog
-        assertEquals(6, catalog.size)
+        assertEquals(7, catalog.size)
+
+        val stooq = es.manico.chartintelligence.data.model.ProviderId.fromId("stooq")
+        assertEquals(es.manico.chartintelligence.data.model.ProviderId.STOOQ, stooq)
+        assertEquals("Stooq EOD", stooq.badgeLabel)
+        assertEquals("EOD Historical", stooq.resolvePriceBasis("SPOTBRENT"))
+
+        val stooqSpec = catalog.first { it.providerId == stooq }
+        assertEquals(22, stooqSpec.supportedSymbols.size)
 
         val biquoteSpec = catalog.first { it.providerId == biquote }
         val biquoteCodes = biquoteSpec.supportedSymbols.map { it.symbolCode }

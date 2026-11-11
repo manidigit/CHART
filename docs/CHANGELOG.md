@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.35.0] - 2026-11-11
+
+### Added
+- **Multi-Tab Chart Strip (`Multi-Tab Chart Bar`) (Web & Android):**
+  - **Web (`headerView.js`, `theme.css`):** Replaced the single symbol button with a horizontal multi-tab strip (`.tv-open-tabs-strip`). Displays all open tabs with asset icons, symbol tickers, timeframes, active indicators, and individual close (`✕`) buttons. Includes a quick new tab (`+`) button opening the watchlist symbol picker.
+  - **Android (`ChartViewScreen.kt`, `ChartTabBar.kt`):** Embedded `ChartTabBar` directly below the top compact 48.dp header bar, allowing 1-click tab switching across open charts with close buttons and smooth horizontal scrolling.
+- **Grok's `Stooq` Free Historical EOD Data Provider (`stooq`) (Backend, Web & Android):**
+  - **Backend (`StooqAdapter.php`, `ProviderCatalog.php`, `candles_sync.php`):** Implemented `StooqAdapter` resolving ticker symbols across Commodities (`cb.f`, `cl.f`), Metals (`xauusd`, `xagusd`), Currencies (`eurusd`, `gbpusd`, `usdjpy`), Crypto (`btcusd`, `ethusd`), Indices (`^spx`, `^ndq`), and US Equities (`nvda.us`, etc.). Parses multi-year Daily (`D1`) and Weekly (`W1`) closed candles with UTC midnight timestamping and filters out unclosed today bars.
+  - **Web (`store.js`, `apiService.js`):** Integrated `stooq` into `PROVIDER_METHODS_CATALOG` and default symbol `allowedProviders`.
+  - **Android (`StooqAdapter.kt`, `ProviderId.kt`, `WorkspaceRepository.kt`):** Implemented `StooqAdapter` satisfying `CandleProviderAdapter.fetchClosedCandlesUpToNow`, added `ProviderId.STOOQ` to method catalog and symbol allowed providers, and wired fallback resolution.
+- **Personal API Keys Management (BYOK - Bring Your Own Key) (Backend, Web & Android):**
+  - Added personal API key configuration for Twelve Data, Stooq, Alpha Vantage, and Finnhub in the `sync` settings tab (`settingsView.js` and `SettingsScreen.kt`). Keys persist locally and sync across devices via `workspace_sync.php`.
+- **Transparent Price Basis & Sync Mode Metadata Badge (Web & Android):**
+  - Displays explicit price basis (`Official FOB Spot`, `Interbank Spot`, `CFD / MT5 Feed`, `EOD Historical`, `Official Exchange`, `Spot REST`, `Futures Ref`) and sync mode (`DB_CACHE_HIT`, `DELTA_SYNC`, `INITIAL_BACKFILL`) metadata badges on the chart header status bar.
+
+---
+
 ## [1.34.0] - 2026-11-11
 
 ### Added

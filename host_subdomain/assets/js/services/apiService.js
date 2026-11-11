@@ -602,7 +602,13 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
 }
 
 async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, forceBackfill = false) {
-  const normTf = provider === 'eia_brent_spot' ? 'D1' : String(timeframe || 'M15').toUpperCase();
+  const rawTf = String(timeframe || 'M15').toUpperCase();
+  const normTf =
+    provider === 'eia_brent_spot'
+      ? 'D1'
+      : provider === 'stooq' && rawTf !== 'W1'
+        ? 'D1'
+        : rawTf;
   const safeLimit = Math.max(40, Math.min(5000, Number(limit) || 500));
   const nowMs = Date.now();
   const cacheKey = `${symbolCode}_${provider}_${normTf}`;
@@ -612,13 +618,21 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
       ? Number(existingCached[existingCached.length - 1].open_time_utc_ms || 0)
       : 0;
 
+  const prefs = state.chartPreferences || {};
+  let userApiKey = '';
+  if (provider === 'twelve_data' && prefs.twelveDataApiKey) {
+    userApiKey = String(prefs.twelveDataApiKey).trim();
+  } else if (provider === 'stooq' && prefs.stooqApiKey) {
+    userApiKey = String(prefs.stooqApiKey).trim();
+  }
+  const apiKeyParam = userApiKey ? `&api_key=${encodeURIComponent(userApiKey)}` : '';
   const sinceParam = !forceBackfill && lastLocalOpenMs > 0 ? `&since_ms=${lastLocalOpenMs}` : '';
   const backfillParam = forceBackfill ? '&backfill=1' : '';
   const url = `./api/v1/candles_sync.php?symbol=${encodeURIComponent(
     symbolCode
   )}&provider=${encodeURIComponent(provider)}&timeframe=${encodeURIComponent(
     normTf
-  )}&limit=${safeLimit}${sinceParam}${backfillParam}&_t=${nowMs}`;
+  )}&limit=${safeLimit}${sinceParam}${backfillParam}${apiKeyParam}&_t=${nowMs}`;
 
   let candles = existingCached ? [...existingCached] : [];
   let syncMeta = {
@@ -626,6 +640,7 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
     fetched_new_bars: 0,
     stored_total_bars: candles.length,
     provider_status: 'READY',
+    price_basis: resolvePriceBasis(symbolCode, provider),
   };
 
   try {
@@ -703,16 +718,21 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
   sym.syncError = false;
   if (typeof renderCallback === 'function') renderCallback();
 
+  const rawRequestedTf = String(requestedTf || sym.timeframe || 'M15').toUpperCase();
   const effectiveTf =
     sym.activeProvider === 'eia_brent_spot'
       ? 'D1'
-      : String(requestedTf || sym.timeframe || 'M15').toUpperCase();
+      : sym.activeProvider === 'stooq' && rawRequestedTf !== 'W1'
+        ? 'D1'
+        : rawRequestedTf;
   const fetchLimit = Math.max(40, Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 500));
 
   const timeframesToSync =
     sym.activeProvider === 'eia_brent_spot'
       ? ['D1']
-      : Array.from(new Set(['M15', 'H1', 'H4', effectiveTf]));
+      : sym.activeProvider === 'stooq'
+        ? Array.from(new Set(['D1', effectiveTf]))
+        : Array.from(new Set(['M15', 'H1', 'H4', effectiveTf]));
 
   try {
     const results = await Promise.all(
@@ -761,6 +781,8 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
 
     sym.timeframe = effectiveTf;
     sym.candles = activeCandles;
+    sym.priceBasis =
+      (activeMeta && activeMeta.price_basis) || resolvePriceBasis(symbolCode, sym.activeProvider);
     if (activeMeta) {
       sym.lastSyncMode = activeMeta.sync_mode || 'DB_CACHE_HIT';
       sym.fetchedNewBars = Number(activeMeta.fetched_new_bars || 0);
@@ -783,7 +805,12 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
 
     for (const tab of state.openTabs) {
       if (tab.symbolCode === symbolCode) {
-        const tabTf = sym.activeProvider === 'eia_brent_spot' ? 'D1' : tab.timeframe;
+        const tabTf =
+          sym.activeProvider === 'eia_brent_spot'
+            ? 'D1'
+            : sym.activeProvider === 'stooq' && tab.timeframe !== 'W1'
+              ? 'D1'
+              : tab.timeframe;
         tab.provider = sym.activeProvider;
         tab.timeframe = tabTf;
         tab.candles =

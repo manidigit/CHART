@@ -18,6 +18,7 @@ import es.manico.chartintelligence.providers.BiquoteAdapter
 import es.manico.chartintelligence.providers.CandleProviderAdapter
 import es.manico.chartintelligence.providers.DukascopyAdapter
 import es.manico.chartintelligence.providers.EiaBenchmarkAdapter
+import es.manico.chartintelligence.providers.StooqAdapter
 import es.manico.chartintelligence.providers.TvDatafeedAdapter
 import es.manico.chartintelligence.providers.TwelveDataAdapter
 import es.manico.chartintelligence.providers.YahooFinanceAdapter
@@ -42,7 +43,7 @@ data class ServerOwnerStatus(
 
 data class SystemStatusDto(
     val isHealthy: Boolean = false,
-    val version: String = "1.32.0",
+    val version: String = "1.35.0",
     val serverTimeUtc: String = "",
     val dbConnected: Boolean = false,
     val dbVersion: String = "MariaDB",
@@ -71,12 +72,13 @@ class WorkspaceRepository(context: Context) {
     private val jsonMediaType = "application/json; charset=utf-8".toMediaType()
 
     private val adapters: Map<ProviderId, CandleProviderAdapter> = mapOf(
-        ProviderId.TWELVE_DATA to TwelveDataAdapter(),
+        ProviderId.TWELVE_DATA to TwelveDataAdapter(httpClient) { loadChartPreferences().twelveDataApiKey },
         ProviderId.TVDATAFEED to TvDatafeedAdapter(httpClient),
         ProviderId.BIQUOTE to BiquoteAdapter(httpClient),
         ProviderId.DUKASCOPY to DukascopyAdapter(httpClient),
         ProviderId.EIA_BRENT_SPOT to EiaBenchmarkAdapter(),
-        ProviderId.YAHOO_FINANCE to YahooFinanceAdapter(httpClient)
+        ProviderId.YAHOO_FINANCE to YahooFinanceAdapter(httpClient),
+        ProviderId.STOOQ to StooqAdapter(httpClient) { loadChartPreferences().stooqApiKey }
     )
 
     private val candleMemoryStore = HashMap<String, List<CandleBar>>()
@@ -381,7 +383,11 @@ class WorkspaceRepository(context: Context) {
                 showPickerScrollMagnifiers = obj.optBoolean("showPickerScrollMagnifiers", true),
                 showCountdownToBarClose = obj.optBoolean("showCountdownToBarClose", true),
                 showPrevCloseLine = obj.optBoolean("showPrevCloseLine", true),
-                showHighLowLabels = obj.optBoolean("showHighLowLabels", true)
+                showHighLowLabels = obj.optBoolean("showHighLowLabels", true),
+                twelveDataApiKey = obj.optString("twelveDataApiKey", ""),
+                stooqApiKey = obj.optString("stooqApiKey", ""),
+                alphaVantageApiKey = obj.optString("alphaVantageApiKey", ""),
+                finnhubApiKey = obj.optString("finnhubApiKey", "")
             )
         }.getOrDefault(ChartPreferences())
     }
@@ -410,6 +416,10 @@ class WorkspaceRepository(context: Context) {
         obj.put("showCountdownToBarClose", prefsObj.showCountdownToBarClose)
         obj.put("showPrevCloseLine", prefsObj.showPrevCloseLine)
         obj.put("showHighLowLabels", prefsObj.showHighLowLabels)
+        obj.put("twelveDataApiKey", prefsObj.twelveDataApiKey)
+        obj.put("stooqApiKey", prefsObj.stooqApiKey)
+        obj.put("alphaVantageApiKey", prefsObj.alphaVantageApiKey)
+        obj.put("finnhubApiKey", prefsObj.finnhubApiKey)
         prefs.edit().putString(AppConfig.KEY_CHART_PREFERENCES_JSON, obj.toString()).apply()
     }
 
@@ -444,7 +454,9 @@ class WorkspaceRepository(context: Context) {
                         } else {
                             base.activeProvider
                         }
-                        val validTf = if (validProvider == ProviderId.EIA_BRENT_SPOT) "D1" else if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
+                        val validTf = if (validProvider == ProviderId.EIA_BRENT_SPOT) "D1" else if (validProvider == ProviderId.STOOQ) {
+                            if (tf == "W1") "W1" else "D1"
+                        } else if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
                         list.add(
                             base.copy(
                                 inWatchlist = inWatchlist,
@@ -469,7 +481,8 @@ class WorkspaceRepository(context: Context) {
                                     ProviderId.TWELVE_DATA,
                                     ProviderId.TVDATAFEED,
                                     ProviderId.BIQUOTE,
-                                    ProviderId.DUKASCOPY
+                                    ProviderId.DUKASCOPY,
+                                    ProviderId.STOOQ
                                 ),
                                 timeframe = if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
                             )
@@ -533,7 +546,11 @@ class WorkspaceRepository(context: Context) {
         provider: ProviderId,
         timeframe: String
     ): List<CandleBar> {
-        val normTf = if (provider == ProviderId.EIA_BRENT_SPOT) "D1" else timeframe.uppercase()
+        val normTf = when (provider) {
+            ProviderId.EIA_BRENT_SPOT -> "D1"
+            ProviderId.STOOQ -> if (timeframe.uppercase() == "W1") "W1" else "D1"
+            else -> timeframe.uppercase()
+        }
         val exactKey = "${symbolCode}_${provider.id}_${normTf}"
         var current = candleMemoryStore[exactKey]
         if (current.isNullOrEmpty()) {
@@ -634,19 +651,19 @@ class WorkspaceRepository(context: Context) {
         requestedTimeframe: String = symbol.timeframe
     ): Pair<SymbolConfig, List<CandleBar>> = coroutineScope {
         val adapter = adapters[symbol.activeProvider] ?: DukascopyAdapter(httpClient)
-        val effectiveTimeframe = if (symbol.activeProvider == ProviderId.EIA_BRENT_SPOT) {
-            "D1"
-        } else {
-            requestedTimeframe.uppercase()
+        val effectiveTimeframe = when (symbol.activeProvider) {
+            ProviderId.EIA_BRENT_SPOT -> "D1"
+            ProviderId.STOOQ -> if (requestedTimeframe.uppercase() == "W1") "W1" else "D1"
+            else -> requestedTimeframe.uppercase()
         }
         val configuredFetchLimit = loadChartPreferences().candleFetchLimit.coerceIn(40, 5000)
 
         // When syncing an intraday-capable provider, always sync M15, H1, and H4 (plus D1 if requested)
         // from the last stored candle up to now so all three intraday timeframes are up-to-date.
-        val timeframesToSync = if (symbol.activeProvider == ProviderId.EIA_BRENT_SPOT) {
-            listOf("D1")
-        } else {
-            buildSet {
+        val timeframesToSync = when (symbol.activeProvider) {
+            ProviderId.EIA_BRENT_SPOT -> listOf("D1")
+            ProviderId.STOOQ -> listOf("D1", effectiveTimeframe).distinct()
+            else -> buildSet {
                 add("M15")
                 add("H1")
                 add("H4")
@@ -987,10 +1004,11 @@ class WorkspaceRepository(context: Context) {
         val stockProviders = listOf(
             ProviderId.YAHOO_FINANCE,
             ProviderId.TWELVE_DATA,
-            ProviderId.TVDATAFEED
+            ProviderId.TVDATAFEED,
+            ProviderId.STOOQ
         )
         return listOf(
-            // 1. SPOTBRENT (Energy): TradingView -> Dukascopy -> biquote -> Yahoo -> TwelveData -> EIA
+            // 1. SPOTBRENT (Energy): TradingView -> Dukascopy -> biquote -> Yahoo -> TwelveData -> Stooq -> EIA
             SymbolConfig(
                 chartId = "chart_spotbrent_main",
                 symbolCode = "SPOTBRENT",
@@ -1004,11 +1022,12 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.BIQUOTE,
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.TWELVE_DATA,
+                    ProviderId.STOOQ,
                     ProviderId.EIA_BRENT_SPOT
                 ),
                 timeframe = "M15"
             ),
-            // 2. ETHUSD (Crypto): biquote -> Yahoo -> TwelveData -> TradingView
+            // 2. ETHUSD (Crypto): biquote -> Yahoo -> TwelveData -> TradingView -> Stooq
             SymbolConfig(
                 chartId = "chart_ethusd_spot",
                 symbolCode = "ETHUSD",
@@ -1020,11 +1039,12 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.BIQUOTE,
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.TWELVE_DATA,
-                    ProviderId.TVDATAFEED
+                    ProviderId.TVDATAFEED,
+                    ProviderId.STOOQ
                 ),
                 timeframe = "M15"
             ),
-            // 3. BTCUSD (Crypto): biquote -> Yahoo -> TwelveData -> TradingView
+            // 3. BTCUSD (Crypto): biquote -> Yahoo -> TwelveData -> TradingView -> Stooq
             SymbolConfig(
                 chartId = "chart_btcusd_spot",
                 symbolCode = "BTCUSD",
@@ -1036,11 +1056,12 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.BIQUOTE,
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.TWELVE_DATA,
-                    ProviderId.TVDATAFEED
+                    ProviderId.TVDATAFEED,
+                    ProviderId.STOOQ
                 ),
                 timeframe = "M15"
             ),
-            // 4. XAGUSD (Metals): biquote -> TwelveData -> Yahoo -> Dukascopy -> TradingView
+            // 4. XAGUSD (Metals): biquote -> TwelveData -> Yahoo -> Dukascopy -> TradingView -> Stooq
             SymbolConfig(
                 chartId = "chart_xagusd_spot",
                 symbolCode = "XAGUSD",
@@ -1053,11 +1074,12 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.TWELVE_DATA,
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.DUKASCOPY,
-                    ProviderId.TVDATAFEED
+                    ProviderId.TVDATAFEED,
+                    ProviderId.STOOQ
                 ),
                 timeframe = "M15"
             ),
-            // 5. XAUUSD (Metals): TwelveData -> biquote -> Dukascopy -> Yahoo -> TradingView
+            // 5. XAUUSD (Metals): TwelveData -> biquote -> Dukascopy -> Yahoo -> TradingView -> Stooq
             SymbolConfig(
                 chartId = "chart_xauusd_main",
                 symbolCode = "XAUUSD",
@@ -1070,11 +1092,12 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.BIQUOTE,
                     ProviderId.DUKASCOPY,
                     ProviderId.YAHOO_FINANCE,
-                    ProviderId.TVDATAFEED
+                    ProviderId.TVDATAFEED,
+                    ProviderId.STOOQ
                 ),
                 timeframe = "M15"
             ),
-            // 6. SPX500USD (Indices): Yahoo -> TradingView -> TwelveData
+            // 6. SPX500USD (Indices): Yahoo -> TradingView -> TwelveData -> Stooq
             SymbolConfig(
                 chartId = "chart_spx500usd_index",
                 symbolCode = "SPX500USD",
@@ -1085,7 +1108,7 @@ class WorkspaceRepository(context: Context) {
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
-            // 7. NDQ (Indices): Yahoo -> TradingView -> TwelveData
+            // 7. NDQ (Indices): Yahoo -> TradingView -> TwelveData -> Stooq
             SymbolConfig(
                 chartId = "chart_ndq_index",
                 symbolCode = "NDQ",
@@ -1096,7 +1119,7 @@ class WorkspaceRepository(context: Context) {
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
-            // 8. EURUSD (FX): TradingView -> TwelveData -> biquote -> Dukascopy -> Yahoo
+            // 8. EURUSD (FX): TradingView -> TwelveData -> biquote -> Dukascopy -> Yahoo -> Stooq
             SymbolConfig(
                 chartId = "chart_eurusd_spot",
                 symbolCode = "EURUSD",
@@ -1109,11 +1132,12 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.TWELVE_DATA,
                     ProviderId.BIQUOTE,
                     ProviderId.DUKASCOPY,
-                    ProviderId.YAHOO_FINANCE
+                    ProviderId.YAHOO_FINANCE,
+                    ProviderId.STOOQ
                 ),
                 timeframe = "M15"
             ),
-            // 9. USOIL (Energy): TradingView -> Yahoo -> biquote -> TwelveData
+            // 9. USOIL (Energy): TradingView -> Yahoo -> biquote -> TwelveData -> Stooq
             SymbolConfig(
                 chartId = "chart_usoil_spot",
                 symbolCode = "USOIL",
@@ -1125,7 +1149,8 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.TVDATAFEED,
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.BIQUOTE,
-                    ProviderId.TWELVE_DATA
+                    ProviderId.TWELVE_DATA,
+                    ProviderId.STOOQ
                 ),
                 timeframe = "M15"
             ),
@@ -1487,6 +1512,10 @@ class WorkspaceRepository(context: Context) {
                 .put("showCountdownToBarClose", preferences.showCountdownToBarClose)
                 .put("showPrevCloseLine", preferences.showPrevCloseLine)
                 .put("showHighLowLabels", preferences.showHighLowLabels)
+                .put("twelveDataApiKey", preferences.twelveDataApiKey)
+                .put("stooqApiKey", preferences.stooqApiKey)
+                .put("alphaVantageApiKey", preferences.alphaVantageApiKey)
+                .put("finnhubApiKey", preferences.finnhubApiKey)
 
             val tabsArr = JSONArray()
             for (t in openTabs) {
@@ -1611,7 +1640,11 @@ class WorkspaceRepository(context: Context) {
                     ),
                     showCountdownToBarClose = prefsJson.optBoolean("showCountdownToBarClose", cur.showCountdownToBarClose),
                     showPrevCloseLine = prefsJson.optBoolean("showPrevCloseLine", cur.showPrevCloseLine),
-                    showHighLowLabels = prefsJson.optBoolean("showHighLowLabels", cur.showHighLowLabels)
+                    showHighLowLabels = prefsJson.optBoolean("showHighLowLabels", cur.showHighLowLabels),
+                    twelveDataApiKey = prefsJson.optString("twelveDataApiKey", cur.twelveDataApiKey),
+                    stooqApiKey = prefsJson.optString("stooqApiKey", cur.stooqApiKey),
+                    alphaVantageApiKey = prefsJson.optString("alphaVantageApiKey", cur.alphaVantageApiKey),
+                    finnhubApiKey = prefsJson.optString("finnhubApiKey", cur.finnhubApiKey)
                 )
                 saveChartPreferences(updatedPrefs)
                 changed = true

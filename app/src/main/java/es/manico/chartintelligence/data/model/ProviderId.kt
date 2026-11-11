@@ -44,7 +44,29 @@ enum class ProviderId(
         badgeLabel = "Yahoo Finance",
         titleResId = R.string.provider_yahoo,
         defaultTimeframe = "M15"
+    ),
+    STOOQ(
+        id = "stooq",
+        badgeLabel = "Stooq EOD",
+        titleResId = R.string.provider_stooq,
+        defaultTimeframe = "D1"
     );
+
+    fun resolvePriceBasis(symbolCode: String): String {
+        val sym = symbolCode.trim().uppercase()
+        return when (this) {
+            EIA_BRENT_SPOT -> "Official FOB Spot"
+            DUKASCOPY -> "Interbank Spot"
+            BIQUOTE -> "CFD / MT5 Feed"
+            STOOQ -> "EOD Historical"
+            else -> when {
+                sym in setOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN") -> "Official Exchange"
+                sym in setOf("BTCUSD", "ETHUSD") -> "Spot REST"
+                sym in setOf("SPOTBRENT", "USOIL") -> if (this == YAHOO_FINANCE) "Futures Ref" else "CFD Feed"
+                else -> "Spot Feed"
+            }
+        }
+    }
 
     companion object {
         fun fromId(id: String?): ProviderId {
@@ -192,6 +214,41 @@ enum class ProviderId(
                     ProviderSourceSymbolSpec("NKE", "NKE", "سهام نایکی (Nike)", "Nike, Inc."),
                     ProviderSourceSymbolSpec("IBM", "IBM", "سهام آی‌بی‌ام (IBM)", "International Business Machines"),
                     ProviderSourceSymbolSpec("SAN", "SAN", "سهام بانک سانتاندر (Santander)", "Banco Santander, S.A.")
+                )
+            ),
+            ProviderMethodSpec(
+                providerId = STOOQ,
+                methodCode = "METHOD_STOOQ_EOD_CSV",
+                nameFa = "Stooq Multi-Decade Historical Feed (D1/W1)",
+                nameEn = "Stooq Multi-Decade Historical Feed (D1/W1)",
+                formulaFa = "آرشیو تاریخی چنددهه‌ای روزانه و هفتگی (D1/W1) از stooq.com/q/d/l برای فلزات، انرژی، شاخص‌ها، فارکس و سهام آمریکا با پشتیبانی از کلید شخصی اختیاری (BYOK)",
+                formulaEn = "Multi-decade daily/weekly historical OHLCV feed from stooq.com/q/d/l for metals, energy, indices, FX, and US equities with optional BYOK key support",
+                endpointProtocol = "HTTPS CSV Feed (stooq.com/q/d/l) + Central Core Sync",
+                persistenceRule = "UNIQUE(chart_id, 'stooq', timeframe, open_time_utc) — بدون جایگزینی پنهان (Strict Isolation)",
+                supportedTimeframes = listOf("D1", "W1"),
+                supportedSymbols = listOf(
+                    ProviderSourceSymbolSpec("SPOTBRENT", "CB.F", "نفت برنت تاریخی (CB.F)", "Brent Crude Historical (CB.F)"),
+                    ProviderSourceSymbolSpec("ETHUSD", "ETHUSD", "اتریوم / دلار (ETHUSD)", "Ethereum / USD (ETHUSD)"),
+                    ProviderSourceSymbolSpec("BTCUSD", "BTCUSD", "بیت‌کوین / دلار (BTCUSD)", "Bitcoin / USD (BTCUSD)"),
+                    ProviderSourceSymbolSpec("XAGUSD", "XAGUSD", "نقره جهانی (XAGUSD)", "Silver / USD (XAGUSD)"),
+                    ProviderSourceSymbolSpec("XAUUSD", "XAUUSD", "طلای جهانی (XAUUSD)", "Gold Spot / USD (XAUUSD)"),
+                    ProviderSourceSymbolSpec("SPX500USD", "^SPX", "شاخص S&P 500 (^SPX)", "US SPX 500 (^SPX)"),
+                    ProviderSourceSymbolSpec("NDQ", "^NDX", "شاخص نزدک ۱۰۰ (^NDX)", "US 100 Index (^NDX)"),
+                    ProviderSourceSymbolSpec("EURUSD", "EURUSD", "یورو / دلار (EURUSD)", "Euro / USD (EURUSD)"),
+                    ProviderSourceSymbolSpec("USOIL", "CL.F", "نفت خام سبک تگزاس (CL.F)", "WTI Crude Oil (CL.F)"),
+                    ProviderSourceSymbolSpec("NVDA", "NVDA.US", "سهام انویدیا (NVDA.US)", "NVIDIA Corporation"),
+                    ProviderSourceSymbolSpec("AMZN", "AMZN.US", "سهام آمازون (AMZN.US)", "Amazon.com, Inc."),
+                    ProviderSourceSymbolSpec("TSLA", "TSLA.US", "سهام تسلا (TSLA.US)", "Tesla, Inc."),
+                    ProviderSourceSymbolSpec("AAPL", "AAPL.US", "سهام اپل (AAPL.US)", "Apple Inc."),
+                    ProviderSourceSymbolSpec("GOOGL", "GOOGL.US", "سهام آلفابت / گوگل (GOOGL.US)", "Alphabet Inc Class A"),
+                    ProviderSourceSymbolSpec("MSFT", "MSFT.US", "سهام مایکروسافت (MSFT.US)", "Microsoft Corp."),
+                    ProviderSourceSymbolSpec("META", "META.US", "سهام متا / فیسبوک (META.US)", "Meta Platforms, Inc."),
+                    ProviderSourceSymbolSpec("NFLX", "NFLX.US", "سهام نتفلیکس (NFLX.US)", "Netflix, Inc."),
+                    ProviderSourceSymbolSpec("AMD", "AMD.US", "سهام ای‌ام‌دی (AMD.US)", "Advanced Micro Devices Inc"),
+                    ProviderSourceSymbolSpec("UBER", "UBER.US", "سهام اوبر (UBER.US)", "Uber Technologies, Inc."),
+                    ProviderSourceSymbolSpec("NKE", "NKE.US", "سهام نایکی (NKE.US)", "Nike, Inc."),
+                    ProviderSourceSymbolSpec("IBM", "IBM.US", "سهام آی‌بی‌ام (IBM.US)", "International Business Machines"),
+                    ProviderSourceSymbolSpec("SAN", "SAN.US", "سهام بانک سانتاندر (SAN.US)", "Banco Santander, S.A.")
                 )
             ),
             ProviderMethodSpec(

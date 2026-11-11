@@ -32,7 +32,11 @@ class SymbolCatalogCoordinator(private val repository: WorkspaceRepository) {
         provider: ProviderId
     ): Pair<List<SymbolConfig>, String> {
         val target = currentSymbols.firstOrNull { it.symbolCode == symbolCode }
-        val targetTf = if (provider == ProviderId.EIA_BRENT_SPOT) "D1" else target?.timeframe ?: "M15"
+        val targetTf = when (provider) {
+            ProviderId.EIA_BRENT_SPOT -> "D1"
+            ProviderId.STOOQ -> if (target?.timeframe == "W1") "W1" else "D1"
+            else -> target?.timeframe ?: "M15"
+        }
         val updated = currentSymbols.map { s ->
             if (s.symbolCode == symbolCode) {
                 s.copy(activeProvider = provider, timeframe = targetTf)
@@ -66,10 +70,12 @@ class SymbolCatalogCoordinator(private val repository: WorkspaceRepository) {
             allowedProviders = listOf(
                 ProviderId.TVDATAFEED,
                 ProviderId.DUKASCOPY,
+                ProviderId.BIQUOTE,
                 ProviderId.TWELVE_DATA,
-                ProviderId.YAHOO_FINANCE
+                ProviderId.YAHOO_FINANCE,
+                ProviderId.STOOQ
             ),
-            timeframe = "M15"
+            timeframe = if (provider in listOf(ProviderId.EIA_BRENT_SPOT, ProviderId.STOOQ)) "D1" else "M15"
         )
         val updated = currentSymbols + newSymbol
         repository.saveSymbolCatalog(updated)

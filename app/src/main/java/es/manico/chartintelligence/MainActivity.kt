@@ -320,6 +320,7 @@ fun ChartIntelligenceApp(
                             onUpdateAlgoParams = mainViewModel::updateAlgorithmParams,
                             onResetAlgoParams = mainViewModel::resetAlgorithmParamsToDefault,
                             onUpdateTradingViewPreference = mainViewModel::updateTradingViewPreference,
+                            onSaveApiKeys = mainViewModel::updatePersonalApiKeys,
                             onAddCustomSymbol = mainViewModel::addCustomSymbol,
                             onDeleteSymbol = mainViewModel::deleteSymbol
                         )

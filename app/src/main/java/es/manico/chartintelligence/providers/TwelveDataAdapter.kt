@@ -28,7 +28,8 @@ class TwelveDataAdapter(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(10, TimeUnit.SECONDS)
         .readTimeout(10, TimeUnit.SECONDS)
-        .build()
+        .build(),
+    private val customApiKeyProvider: () -> String = { "" }
 ) : CandleProviderAdapter {
 
     override val providerId: ProviderId = ProviderId.TWELVE_DATA
@@ -93,8 +94,10 @@ class TwelveDataAdapter(
             else -> "15min"
         }
 
+        val userKey = customApiKeyProvider().trim()
+        val keyParam = if (userKey.isNotEmpty()) "&api_key=${java.net.URLEncoder.encode(userKey, "UTF-8")}" else ""
         val sinceParam = if (sinceOpenTimeMs > 0L) "&since_ms=$sinceOpenTimeMs" else ""
-        val proxyUrl = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=twelve_data&timeframe=$timeframe&limit=$limit&refresh=1$sinceParam"
+        val proxyUrl = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=twelve_data&timeframe=$timeframe&limit=$limit&refresh=1$sinceParam$keyParam"
         val proxyRequest = Request.Builder().url(proxyUrl).get().build()
         runCatching {
             httpClient.newCall(proxyRequest).execute().use { response ->
@@ -116,7 +119,7 @@ class TwelveDataAdapter(
             }
         }
 
-        val apiKey = BuildConfig.TWELVE_DATA_API_KEY
+        val apiKey = userKey.ifBlank { BuildConfig.TWELVE_DATA_API_KEY }
         if (apiKey.isBlank()) return Triple(emptyList(), "DB_CACHE_HIT", 0)
 
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(timeframe)

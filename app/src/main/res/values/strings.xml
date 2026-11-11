@@ -207,7 +207,7 @@
     <string name="settings_group_sources">3. Data Sources &amp; Symbols</string>
     <string name="settings_group_params">4. Analysis &amp; TradingView Switches</string>
     <string name="settings_group_about">5. Server Health &amp; About</string>
-    <string name="settings_about_version">CHART Intelligence v1.32.0 · 22-Symbol Catalog &amp; 6 Providers</string>
+    <string name="settings_about_version">CHART Intelligence v1.35.0 · 22-Symbol Catalog, 7 Providers, Multi-Tab Bar &amp; BYOK</string>
     <string name="settings_tab_account">Account</string>
     <string name="settings_tab_appearance">Appearance</string>
     <string name="settings_tab_sources">Symbols</string>
@@ -325,4 +325,9 @@
     <string name="settings_section_notifications_hint">Configure tactile chart feedback, picker vibrations, and watchlist symbol display alerts.</string>
     <string name="settings_section_sync_title">Cloud Workspace Sync &amp; Data Sources</string>
     <string name="settings_section_theme_title">Theme, Language &amp; Candle Colors</string>
+    <string name="provider_stooq">Stooq EOD (Multi-Decade Historical D1/W1)</string>
+    <string name="settings_byok_title">Personal Data Provider API Keys (BYOK)</string>
+    <string name="settings_byok_subtitle">Optionally configure your personal API keys to raise rate limits; synced across Web and Android.</string>
+    <string name="settings_byok_save">Save &amp; Sync API Keys</string>
+    <string name="settings_byok_saved">Personal API keys saved and synced successfully.</string>
 </resources>

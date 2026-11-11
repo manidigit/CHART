@@ -126,6 +126,7 @@
   "provider_dukascopy": "Dukascopy Swiss Bank (فید بین‌بانکی سوئیس)",
   "provider_eia_brent_spot": "EIA Europe Brent Spot FOB (مرجع رسمی D1)",
   "provider_yahoo_finance": "Yahoo Finance v8 (اولویت اول سهام آمریکا و شاخص‌ها)",
+  "provider_stooq": "Stooq EOD (آرشیو تاریخی چنددهه‌ای D1/W1)",
   "settings_algo_params_section": "پارامترهای فنی و ظرفیت تاریخچه",
   "settings_param_fetch_limit": "حداکثر کندل‌های دریافتی و ذخیره‌شده (تا ۵۰۰۰ کندل)",
   "nav_analysis": "پیش‌بینی",
@@ -134,9 +135,9 @@
   "settings_group_sources": "منبع داده و نمادها",
   "settings_group_params": "مقیاس و آپشن‌های چارت",
   "settings_group_about": "درباره و سلامت سرور",
-  "settings_about_version": "CHART Intelligence · نسخه ۱.۳۲.۰ (کاتالوگ ۲۲ نماد، ۶ منبع داده و هسته DB-First)",
+  "settings_about_version": "CHART Intelligence · نسخه ۱.۳۵.۰ (کاتالوگ ۲۲ نماد، ۷ منبع داده، نوار چند-تب و BYOK)",
   "settings_about_desc": "همگام‌سازی خودکار دوطرفه کندل‌ها، خطوط ترسیم، تب‌ها و تنظیمات بین وب و اندروید از طریق هسته مرکزی سرور.",
-  "settings_sources_subtitle": "تعیین منبع دریافت داده (TradingView، biquote، Twelve Data، Dukascopy، Yahoo، EIA) و حضور در واچ‌لیست.",
+  "settings_sources_subtitle": "تعیین منبع دریافت داده (TradingView، biquote، Twelve Data، Dukascopy، Yahoo، Stooq، EIA) و حضور در واچ‌لیست.",
   "settings_group_colors": "رنگ‌بندی کندل‌ها و خطوط ترسیم",
   "settings_color_bull": "رنگ کندل صعودی (Bullish Candle)",
   "settings_color_bear": "رنگ کندل نزولی (Bearish Candle)",
@@ -266,5 +267,9 @@
   "settings_cat_sync": "همگام‌سازی",
   "settings_cat_theme": "تم",
   "settings_section_notifications_title": "نوتیفیکیشن، بازخورد لمسی و رفتار واچ‌لیست",
-  "settings_section_notifications_hint": "مدیریت بازخورد لرزشی چارت، هشدارهای انتخاب‌گر و نحوه نمایش نمادها در واچ‌لیست."
+  "settings_section_notifications_hint": "مدیریت بازخورد لرزشی چارت، هشدارهای انتخاب‌گر و نحوه نمایش نمادها در واچ‌لیست.",
+  "settings_byok_title": "مدیریت کلیدهای شخصی منابع داده (BYOK — Bring Your Own Key)",
+  "settings_byok_subtitle": "در صورت تمایل، کلیدهای API رایگان یا شخصی خود را برای افزایش سقف درخواست‌ها ثبت کنید؛ این کلیدها بین وب و اندروید همگام‌سازی می‌شوند.",
+  "settings_byok_save": "ذخیره و همگام‌سازی کلیدهای API",
+  "settings_byok_saved": "کلیدهای شخصی API با موفقیت ذخیره و همگام‌سازی شدند."
 }

@@ -114,6 +114,7 @@ fun SettingsScreen(
     onUpdateAlgoParams: (Int, Int, Float) -> Unit,
     onResetAlgoParams: () -> Unit,
     onUpdateTradingViewPreference: ((ChartPreferences) -> ChartPreferences) -> Unit = {},
+    onSaveApiKeys: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onAddCustomSymbol: (String, String, Int, ProviderId) -> Unit,
     onDeleteSymbol: (String) -> Unit,
     modifier: Modifier = Modifier
@@ -127,6 +128,11 @@ fun SettingsScreen(
     var showColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var providerModalSymbolCode by rememberSaveable { mutableStateOf<String?>(null) }
     var activeSettingsTab by rememberSaveable { mutableStateOf("sync") }
+
+    var twelveDataKeyInput by rememberSaveable(chartPreferences.twelveDataApiKey) { mutableStateOf(chartPreferences.twelveDataApiKey) }
+    var stooqKeyInput by rememberSaveable(chartPreferences.stooqApiKey) { mutableStateOf(chartPreferences.stooqApiKey) }
+    var alphaVantageKeyInput by rememberSaveable(chartPreferences.alphaVantageApiKey) { mutableStateOf(chartPreferences.alphaVantageApiKey) }
+    var finnhubKeyInput by rememberSaveable(chartPreferences.finnhubApiKey) { mutableStateOf(chartPreferences.finnhubApiKey) }
 
     val settingsTabs = listOf(
         "sync" to R.string.settings_cat_sync,

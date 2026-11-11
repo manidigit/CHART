@@ -15,7 +15,7 @@ $symbols = ProviderCatalog::getSymbolsDirectory();
 $storageMatrix = ProviderCatalog::getDatabaseStorageMatrix($pdo);
 
 ApiEnvelope::sendSuccess([
-    'version' => '1.31.0',
+    'version' => '1.35.0',
     'sync_policy' => 'DB_FIRST_DELTA_SYNC',
     'provider_isolation' => 'STRICT_KEY_SEPARATION_NO_SILENT_FALLBACK',
     'methods' => $methods,

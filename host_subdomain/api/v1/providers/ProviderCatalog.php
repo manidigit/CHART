@@ -17,29 +17,54 @@ final class ProviderCatalog
     public static function getCanonicalWatchlistDefinitions(): array
     {
         return [
-            ['rank' => 1,  'symbol_code' => 'SPOTBRENT', 'title_en' => 'Brent Crude (Spot)',               'title_fa' => 'نفت برنت اسپات',                  'category' => 'ENERGY',  'decimals' => 3, 'default_provider' => 'tvdatafeed',    'priority_chain' => ['tvdatafeed', 'dukascopy', 'biquote', 'yahoo_finance', 'twelve_data', 'eia_brent_spot']],
-            ['rank' => 2,  'symbol_code' => 'ETHUSD',    'title_en' => 'Ethereum / U.S. Dollar',           'title_fa' => 'اتریوم / دلار آمریکا',            'category' => 'CRYPTO',  'decimals' => 2, 'default_provider' => 'biquote',       'priority_chain' => ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 3,  'symbol_code' => 'BTCUSD',    'title_en' => 'Bitcoin / U.S. Dollar',            'title_fa' => 'بیت‌کوین / دلار آمریکا',          'category' => 'CRYPTO',  'decimals' => 2, 'default_provider' => 'biquote',       'priority_chain' => ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 4,  'symbol_code' => 'XAGUSD',    'title_en' => 'Silver / U.S. Dollar',             'title_fa' => 'نقره جهانی / دلار آمریکا',        'category' => 'METALS',  'decimals' => 3, 'default_provider' => 'biquote',       'priority_chain' => ['biquote', 'twelve_data', 'yahoo_finance', 'dukascopy', 'tvdatafeed']],
-            ['rank' => 5,  'symbol_code' => 'XAUUSD',    'title_en' => 'Gold Spot / U.S. Dollar',          'title_fa' => 'طلای جهانی اسپات / دلار',         'category' => 'METALS',  'decimals' => 2, 'default_provider' => 'twelve_data',   'priority_chain' => ['twelve_data', 'biquote', 'dukascopy', 'yahoo_finance', 'tvdatafeed']],
-            ['rank' => 6,  'symbol_code' => 'SPX500USD', 'title_en' => 'US SPX 500',                       'title_fa' => 'شاخص S&P 500 آمریکا',             'category' => 'INDICES', 'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'tvdatafeed', 'twelve_data']],
-            ['rank' => 7,  'symbol_code' => 'NDQ',       'title_en' => 'US 100 Index (Nasdaq 100)',        'title_fa' => 'شاخص نزدک ۱۰۰ آمریکا',            'category' => 'INDICES', 'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'tvdatafeed', 'twelve_data']],
-            ['rank' => 8,  'symbol_code' => 'EURUSD',    'title_en' => 'Euro / U.S. Dollar',               'title_fa' => 'یورو / دلار آمریکا',              'category' => 'FX',      'decimals' => 4, 'default_provider' => 'tvdatafeed',    'priority_chain' => ['tvdatafeed', 'twelve_data', 'biquote', 'dukascopy', 'yahoo_finance']],
-            ['rank' => 9,  'symbol_code' => 'USOIL',     'title_en' => 'CFDs on WTI Crude Oil',            'title_fa' => 'نفت خام سبک تگزاس (WTI)',         'category' => 'ENERGY',  'decimals' => 2, 'default_provider' => 'tvdatafeed',    'priority_chain' => ['tvdatafeed', 'yahoo_finance', 'biquote', 'twelve_data']],
-            ['rank' => 10, 'symbol_code' => 'NVDA',      'title_en' => 'NVIDIA Corporation',               'title_fa' => 'سهام انویدیا (NVIDIA)',           'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 11, 'symbol_code' => 'AMZN',      'title_en' => 'Amazon.com, Inc.',                 'title_fa' => 'سهام آمازون (Amazon)',            'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 12, 'symbol_code' => 'TSLA',      'title_en' => 'Tesla, Inc.',                      'title_fa' => 'سهام تسلا (Tesla)',               'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 13, 'symbol_code' => 'AAPL',      'title_en' => 'Apple Inc.',                       'title_fa' => 'سهام اپل (Apple)',                'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 14, 'symbol_code' => 'GOOGL',     'title_en' => 'Alphabet Inc (Google) Class A',    'title_fa' => 'سهام آلفابت / گوگل (Google)',     'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 15, 'symbol_code' => 'MSFT',      'title_en' => 'Microsoft Corp.',                  'title_fa' => 'سهام مایکروسافت (Microsoft)',     'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 16, 'symbol_code' => 'META',      'title_en' => 'Meta Platforms, Inc.',             'title_fa' => 'سهام متا / فیسبوک (Meta)',        'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 17, 'symbol_code' => 'NFLX',      'title_en' => 'Netflix, Inc.',                    'title_fa' => 'سهام نتفلیکس (Netflix)',          'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 18, 'symbol_code' => 'AMD',       'title_en' => 'Advanced Micro Devices Inc',       'title_fa' => 'سهام ای‌ام‌دی (AMD)',             'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 19, 'symbol_code' => 'UBER',      'title_en' => 'Uber Technologies, Inc.',          'title_fa' => 'سهام اوبر (Uber)',                'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 20, 'symbol_code' => 'NKE',       'title_en' => 'Nike, Inc.',                       'title_fa' => 'سهام نایکی (Nike)',               'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 21, 'symbol_code' => 'IBM',       'title_en' => 'International Business Machines',  'title_fa' => 'سهام آی‌بی‌ام (IBM)',             'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
-            ['rank' => 22, 'symbol_code' => 'SAN',       'title_en' => 'Banco Santander, S.A.',            'title_fa' => 'سهام بانک سانتاندر (Santander)',  'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed']],
+            ['rank' => 1,  'symbol_code' => 'SPOTBRENT', 'title_en' => 'Brent Crude (Spot)',               'title_fa' => 'نفت برنت اسپات',                  'category' => 'ENERGY',  'decimals' => 3, 'default_provider' => 'tvdatafeed',    'priority_chain' => ['tvdatafeed', 'dukascopy', 'biquote', 'yahoo_finance', 'twelve_data', 'stooq', 'eia_brent_spot']],
+            ['rank' => 2,  'symbol_code' => 'ETHUSD',    'title_en' => 'Ethereum / U.S. Dollar',           'title_fa' => 'اتریوم / دلار آمریکا',            'category' => 'CRYPTO',  'decimals' => 2, 'default_provider' => 'biquote',       'priority_chain' => ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 3,  'symbol_code' => 'BTCUSD',    'title_en' => 'Bitcoin / U.S. Dollar',            'title_fa' => 'بیت‌کوین / دلار آمریکا',          'category' => 'CRYPTO',  'decimals' => 2, 'default_provider' => 'biquote',       'priority_chain' => ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 4,  'symbol_code' => 'XAGUSD',    'title_en' => 'Silver / U.S. Dollar',             'title_fa' => 'نقره جهانی / دلار آمریکا',        'category' => 'METALS',  'decimals' => 3, 'default_provider' => 'biquote',       'priority_chain' => ['biquote', 'twelve_data', 'yahoo_finance', 'dukascopy', 'tvdatafeed', 'stooq']],
+            ['rank' => 5,  'symbol_code' => 'XAUUSD',    'title_en' => 'Gold Spot / U.S. Dollar',          'title_fa' => 'طلای جهانی اسپات / دلار',         'category' => 'METALS',  'decimals' => 2, 'default_provider' => 'twelve_data',   'priority_chain' => ['twelve_data', 'biquote', 'dukascopy', 'yahoo_finance', 'tvdatafeed', 'stooq']],
+            ['rank' => 6,  'symbol_code' => 'SPX500USD', 'title_en' => 'US SPX 500',                       'title_fa' => 'شاخص S&P 500 آمریکا',             'category' => 'INDICES', 'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'tvdatafeed', 'twelve_data', 'stooq']],
+            ['rank' => 7,  'symbol_code' => 'NDQ',       'title_en' => 'US 100 Index (Nasdaq 100)',        'title_fa' => 'شاخص نزدک ۱۰۰ آمریکا',            'category' => 'INDICES', 'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'tvdatafeed', 'twelve_data', 'stooq']],
+            ['rank' => 8,  'symbol_code' => 'EURUSD',    'title_en' => 'Euro / U.S. Dollar',               'title_fa' => 'یورو / دلار آمریکا',              'category' => 'FX',      'decimals' => 4, 'default_provider' => 'tvdatafeed',    'priority_chain' => ['tvdatafeed', 'twelve_data', 'biquote', 'dukascopy', 'yahoo_finance', 'stooq']],
+            ['rank' => 9,  'symbol_code' => 'USOIL',     'title_en' => 'CFDs on WTI Crude Oil',            'title_fa' => 'نفت خام سبک تگزاس (WTI)',         'category' => 'ENERGY',  'decimals' => 2, 'default_provider' => 'tvdatafeed',    'priority_chain' => ['tvdatafeed', 'yahoo_finance', 'biquote', 'twelve_data', 'stooq']],
+            ['rank' => 10, 'symbol_code' => 'NVDA',      'title_en' => 'NVIDIA Corporation',               'title_fa' => 'سهام انویدیا (NVIDIA)',           'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 11, 'symbol_code' => 'AMZN',      'title_en' => 'Amazon.com, Inc.',                 'title_fa' => 'سهام آمازون (Amazon)',            'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 12, 'symbol_code' => 'TSLA',      'title_en' => 'Tesla, Inc.',                      'title_fa' => 'سهام تسلا (Tesla)',               'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 13, 'symbol_code' => 'AAPL',      'title_en' => 'Apple Inc.',                       'title_fa' => 'سهام اپل (Apple)',                'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 14, 'symbol_code' => 'GOOGL',     'title_en' => 'Alphabet Inc (Google) Class A',    'title_fa' => 'سهام آلفابت / گوگل (Google)',     'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 15, 'symbol_code' => 'MSFT',      'title_en' => 'Microsoft Corp.',                  'title_fa' => 'سهام مایکروسافت (Microsoft)',     'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 16, 'symbol_code' => 'META',      'title_en' => 'Meta Platforms, Inc.',             'title_fa' => 'سهام متا / فیسبوک (Meta)',        'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 17, 'symbol_code' => 'NFLX',      'title_en' => 'Netflix, Inc.',                    'title_fa' => 'سهام نتفلیکس (Netflix)',          'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 18, 'symbol_code' => 'AMD',       'title_en' => 'Advanced Micro Devices Inc',       'title_fa' => 'سهام ای‌ام‌دی (AMD)',             'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 19, 'symbol_code' => 'UBER',      'title_en' => 'Uber Technologies, Inc.',          'title_fa' => 'سهام اوبر (Uber)',                'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 20, 'symbol_code' => 'NKE',       'title_en' => 'Nike, Inc.',                       'title_fa' => 'سهام نایکی (Nike)',               'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 21, 'symbol_code' => 'IBM',       'title_en' => 'International Business Machines',  'title_fa' => 'سهام آی‌بی‌ام (IBM)',             'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
+            ['rank' => 22, 'symbol_code' => 'SAN',       'title_en' => 'Banco Santander, S.A.',            'title_fa' => 'سهام بانک سانتاندر (Santander)',  'category' => 'STOCKS',  'decimals' => 2, 'default_provider' => 'yahoo_finance', 'priority_chain' => ['yahoo_finance', 'twelve_data', 'tvdatafeed', 'stooq']],
         ];
+    }
+
+    public static function resolvePriceBasis(string $symbolCode, string $providerId): string
+    {
+        $sym = strtoupper(trim($symbolCode));
+        $prov = strtolower(trim($providerId));
+        return match ($prov) {
+            'eia_brent_spot' => 'Official FOB Spot',
+            'dukascopy' => 'Interbank Spot',
+            'biquote' => 'CFD / MT5 Feed',
+            'stooq' => 'EOD Historical',
+            'twelve_data' => in_array($sym, ['NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN'], true)
+                ? 'Official Exchange'
+                : 'Spot REST',
+            'yahoo_finance' => match ($sym) {
+                'SPOTBRENT', 'USOIL', 'XAUUSD', 'XAGUSD', 'BRENT_FUTURES' => 'Futures Ref',
+                'BTCUSD', 'ETHUSD', 'EURUSD', 'GBPUSD', 'USDJPY' => 'Spot FX/Crypto',
+                default => 'Official Exchange',
+            },
+            default => match ($sym) {
+                'SPOTBRENT', 'USOIL', 'SPX500USD' => 'CFD Feed',
+                'XAUUSD', 'XAGUSD', 'EURUSD', 'BTCUSD', 'ETHUSD', 'GBPUSD', 'USDJPY' => 'Spot Feed',
+                default => 'Official Exchange',
+            },
+        };
     }
 
     public static function resolveChartId(string $symbolCode): string
@@ -237,6 +262,44 @@ final class ProviderCatalog
                     'NKE' => 'NKE',
                     'IBM' => 'IBM',
                     'SAN' => 'SAN',
+                ]),
+            ],
+            [
+                'provider_id' => 'stooq',
+                'badge_label' => 'Stooq Free EOD',
+                'title_fa' => 'آرشیو رایگان تاریخچه روزانه Stooq (طلا، نقره، انرژی، فارکس و سهام)',
+                'title_en' => 'Stooq Free EOD Historical Feed (Gold, Metals, Energy, FX & US Stocks)',
+                'method_type' => 'PUBLIC_CSV_HISTORICAL',
+                'requires_api_key' => false,
+                'is_configured' => true,
+                'status_code' => 'READY',
+                'formula_fa' => 'پیشنهاد دوم Grok برای تاریخچه رایگان کندل‌های روزانه و هفتگی (D1/W1) از stooq.com با پشتیبانی از کلید اختیاری BYOK و ذخیره افزایشی در MariaDB.',
+                'formula_en' => 'Grok #2 recommended free historical daily/weekly (D1/W1) OHLCV feed from stooq.com with optional BYOK API key and MariaDB delta persistence.',
+                'supported_timeframes' => ['D1', 'W1'],
+                'storage_key_rule' => 'UNIQUE(chart_id, "stooq", timeframe, open_time_utc)',
+                'symbols' => $buildSymbolList([
+                    'SPOTBRENT' => 'CB.F',
+                    'ETHUSD' => 'ETHUSD',
+                    'BTCUSD' => 'BTCUSD',
+                    'XAGUSD' => 'XAGUSD',
+                    'XAUUSD' => 'XAUUSD',
+                    'SPX500USD' => '^SPX',
+                    'NDQ' => '^NDX',
+                    'EURUSD' => 'EURUSD',
+                    'USOIL' => 'CL.F',
+                    'NVDA' => 'NVDA.US',
+                    'AMZN' => 'AMZN.US',
+                    'TSLA' => 'TSLA.US',
+                    'AAPL' => 'AAPL.US',
+                    'GOOGL' => 'GOOGL.US',
+                    'MSFT' => 'MSFT.US',
+                    'META' => 'META.US',
+                    'NFLX' => 'NFLX.US',
+                    'AMD' => 'AMD.US',
+                    'UBER' => 'UBER.US',
+                    'NKE' => 'NKE.US',
+                    'IBM' => 'IBM.US',
+                    'SAN' => 'SAN.US',
                 ]),
             ],
             [

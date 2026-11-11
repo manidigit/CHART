@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.30.0';
-import { state } from '../core/store.js?v=1.30.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.30.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.35.0';
+import { state, resolvePriceBasis } from '../core/store.js?v=1.35.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.35.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -8,7 +8,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
     : state.symbols[0];
 
   const allowedTfs =
-    activeTab && activeTab.provider === 'eia_brent_spot'
+    activeTab && (activeTab.provider === 'eia_brent_spot' || activeTab.provider === 'stooq')
       ? ['D1', 'W1']
       : ['M15', 'H1', 'H4', 'D1', 'W1'];
 
@@ -49,6 +49,53 @@ export function renderTopHeaderBar(activeTab, i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
   const indicatorsLabel = isFa ? 'اندیکاتورها' : 'Indicators';
   const activeCode = sym ? sym.symbolCode : 'SPOTBRENT';
+  const openTabsList =
+    Array.isArray(state.openTabs) && state.openTabs.length > 0
+      ? state.openTabs
+      : [
+          activeTab || {
+            tabId: `tab_${activeCode}_M15`,
+            symbolCode: activeCode,
+            timeframe: 'M15',
+            provider: sym ? sym.activeProvider : 'tvdatafeed',
+          },
+        ];
+
+  const openTabsHtml = openTabsList
+    .map((t) => {
+      const isSelected = activeTab ? t.tabId === activeTab.tabId : t.tabId === state.activeTabId;
+      const tfLabel = PriceFormatter.displayTimeframeLabel(t.timeframe || 'M15');
+      const canClose = openTabsList.length > 1;
+      return `
+        <div
+          class="tv-open-tab-chip ltr-num ${isSelected ? 'active' : ''}"
+          data-action="select-tab"
+          data-tab-id="${t.tabId}"
+          title="${t.symbolCode} · ${tfLabel} (${t.provider || 'tvdatafeed'})"
+        >
+          ${renderSymbolBadge(t.symbolCode, 17)}
+          <span class="tv-open-tab-sym">${t.symbolCode}</span>
+          <span class="tv-open-tab-tf">${tfLabel}</span>
+          ${
+            canClose
+              ? `<button type="button" class="tv-open-tab-close" data-action="close-tab" data-tab-id="${t.tabId}" title="${i18n.t('chart_close_tab')}">✕</button>`
+              : ''
+          }
+        </div>
+      `;
+    })
+    .join('');
+
+  const priceBasis =
+    (sym && sym.priceBasis) ||
+    resolvePriceBasis(activeCode, sym ? sym.activeProvider : 'tvdatafeed');
+  const rawSyncMode = (sym && sym.lastSyncMode) || 'DB_CACHE_HIT';
+  const syncModeBadge =
+    rawSyncMode === 'DELTA_SYNC'
+      ? 'DELTA'
+      : rawSyncMode === 'INITIAL_BACKFILL'
+        ? 'SEED'
+        : 'CACHE';
 
   return `
     <header class="tv-topbar" dir="ltr">
@@ -57,11 +104,16 @@ export function renderTopHeaderBar(activeTab, i18n) {
           <div class="tv-logo">CI</div>
         </div>
 
-        <!-- Active Symbol Title Badge with Asset Icon (Non-duplicate: focuses Watchlist search when clicked) -->
-        <button class="tv-symbol-btn ltr-num" data-action="focus-watchlist-search" title="${isFa ? 'جستجو و انتخاب نماد در واچ‌لیست' : 'Search & switch symbol in Watchlist'}">
-          ${renderSymbolBadge(activeCode, 20)}
-          <span>${activeCode}</span>
-        </button>
+        <!-- Multi-Tab Chart Bar (1-click switching between open chart tabs + Add/Search button) -->
+        <div class="tv-open-tabs-strip" role="tablist" aria-label="Open Chart Tabs">
+          ${openTabsHtml}
+          <button
+            type="button"
+            class="tv-tab-add-btn"
+            data-action="focus-watchlist-search"
+            title="${isFa ? 'جستجو و باز کردن نماد جدید در تب موازی' : 'Search & open symbol in parallel tab'}"
+          >+</button>
+        </div>
 
         <div class="tv-divider"></div>
 
@@ -104,9 +156,14 @@ export function renderTopHeaderBar(activeTab, i18n) {
       <div class="tv-topbar-right">
         ${
           sym
-            ? `<div class="ltr-num" style="display: inline-flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); font-size: 11px;">
+            ? `<div class="ltr-num" title="Provider: ${sym.activeProvider} | Price Basis: ${priceBasis} | Sync: ${rawSyncMode}" style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); font-size: 10.5px;">
                  <span style="width: 7px; height: 7px; border-radius: 50%; background: ${statusDotColor}; display: inline-block;"></span>
-                 <span style="color: var(--text-muted); font-weight: 600;">${sym.activeProvider}</span>
+                 <span style="color: var(--text-strong); font-weight: 700;">${sym.activeProvider}</span>
+                 <span style="color: var(--text-muted);">·</span>
+                 <span style="color: var(--primary); font-weight: 600;">${priceBasis}</span>
+                 <span style="color: var(--text-muted);">·</span>
+                 <span style="color: var(--text-muted); font-weight: 600;">${syncModeBadge}</span>
+                 <span style="color: var(--text-muted);">·</span>
                  <span style="color: ${statusDotColor}; font-weight: 600;">${statusText}</span>
                </div>`
             : ''

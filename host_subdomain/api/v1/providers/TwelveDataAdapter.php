@@ -19,8 +19,11 @@ use ChartIntelligence\Core\Database;
  */
 final class TwelveDataAdapter
 {
-    public static function hasConfiguredApiKey(): bool
+    public static function hasConfiguredApiKey(string $customApiKey = ''): bool
     {
+        if (trim($customApiKey) !== '') {
+            return true;
+        }
         $cfg = Database::getConfig();
         return trim((string) ($cfg['TWELVE_DATA_API_KEY'] ?? '')) !== '';
     }
@@ -30,10 +33,11 @@ final class TwelveDataAdapter
         string $timeframe,
         int $limit,
         int $nowMs,
-        int $sinceOpenMs = 0
+        int $sinceOpenMs = 0,
+        string $customApiKey = ''
     ): array {
         $cfg = Database::getConfig();
-        $apiKey = trim((string) ($cfg['TWELVE_DATA_API_KEY'] ?? ''));
+        $apiKey = trim($customApiKey !== '' ? $customApiKey : (string) ($cfg['TWELVE_DATA_API_KEY'] ?? ''));
         if ($apiKey === '') {
             // Strict isolation: return empty array so candles_sync.php serves only pure twelve_data archive from MariaDB
             return [];

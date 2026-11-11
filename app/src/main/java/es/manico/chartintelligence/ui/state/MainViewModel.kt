@@ -1306,6 +1306,28 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleDebouncedCloudSync()
     }
 
+    fun updatePersonalApiKeys(
+        twelveDataKey: String,
+        stooqKey: String,
+        alphaVantageKey: String,
+        finnhubKey: String
+    ) {
+        val next = _uiState.value.chartPreferences.copy(
+            twelveDataApiKey = twelveDataKey.trim(),
+            stooqApiKey = stooqKey.trim(),
+            alphaVantageApiKey = alphaVantageKey.trim(),
+            finnhubApiKey = finnhubKey.trim()
+        )
+        repository.saveChartPreferences(next)
+        _uiState.update {
+            it.copy(
+                chartPreferences = next,
+                statusBannerResId = R.string.settings_byok_saved
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
     fun updateTradingViewPreference(transform: (ChartPreferences) -> ChartPreferences) {
         val next = preferenceCoordinator.updateTradingViewPreference(_uiState.value.chartPreferences, transform)
         _uiState.update { it.copy(chartPreferences = next) }

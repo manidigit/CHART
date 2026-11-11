@@ -126,6 +126,7 @@
   "provider_dukascopy": "Dukascopy Swiss Bank Feed",
   "provider_eia_brent_spot": "EIA Europe Brent Spot FOB (Official D1)",
   "provider_yahoo_finance": "Yahoo Finance v8 (Primary for US Stocks & Indices)",
+  "provider_stooq": "Stooq EOD (Multi-Decade Historical D1/W1)",
   "settings_algo_params_section": "Technical & History Capacity Parameters",
   "settings_param_fetch_limit": "Max History Fetch Limit (Up to 5,000 Candles)",
   "nav_analysis": "Prediction",
@@ -134,9 +135,9 @@
   "settings_group_sources": "Data Sources & Symbols",
   "settings_group_params": "Scales & Chart Options",
   "settings_group_about": "Server Health & About",
-  "settings_about_version": "CHART Intelligence · v1.32.0 (22-Symbol Catalog, 6 Providers & DB-First Engine)",
+  "settings_about_version": "CHART Intelligence · v1.35.0 (22-Symbol Catalog, 7 Providers, Multi-Tab Bar & BYOK)",
   "settings_about_desc": "Real-time bi-directional Central Core synchronization of candles, drawings, tabs, and preferences across Web & Android.",
-  "settings_sources_subtitle": "Select active data provider (TradingView, biquote, Twelve Data, Dukascopy, Yahoo, EIA) and watchlist visibility.",
+  "settings_sources_subtitle": "Select active data provider (TradingView, biquote, Twelve Data, Dukascopy, Yahoo, Stooq, EIA) and watchlist visibility.",
   "settings_group_colors": "Candlestick & Drawing Line Colors",
   "settings_color_bull": "Bullish Candle Color",
   "settings_color_bear": "Bearish Candle Color",
@@ -266,5 +267,9 @@
   "settings_cat_sync": "Sync",
   "settings_cat_theme": "Theme",
   "settings_section_notifications_title": "Notifications, Haptics & Watchlist Behavior",
-  "settings_section_notifications_hint": "Configure tactile chart feedback, picker vibrations, and watchlist symbol display alerts."
+  "settings_section_notifications_hint": "Configure tactile chart feedback, picker vibrations, and watchlist symbol display alerts.",
+  "settings_byok_title": "Personal Data Provider API Keys (BYOK — Bring Your Own Key)",
+  "settings_byok_subtitle": "Optionally configure your personal API keys to raise rate limits; keys are synced across Web and Android.",
+  "settings_byok_save": "Save & Sync API Keys",
+  "settings_byok_saved": "Personal API keys saved and synced successfully."
 }
