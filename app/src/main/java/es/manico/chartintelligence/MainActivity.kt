@@ -237,6 +237,7 @@ fun ChartIntelligenceApp(
                             onSyncAllNow = mainViewModel::syncAllWatchlistUpToNow,
                             onOpenSymbolInChartTab = mainViewModel::openSymbolInChartTab,
                             onToggleSymbolInWatchlist = mainViewModel::toggleSymbolInWatchlist,
+                            onReorderSymbol = mainViewModel::reorderSymbol,
                             onAddCustomSymbol = mainViewModel::addCustomSymbol,
                             onNavigateToSettings = { mainViewModel.navigateTo(WorkspaceScreen.SETTINGS) },
                             onNavigateToPrediction = { mainViewModel.navigateTo(WorkspaceScreen.PREDICTION) }

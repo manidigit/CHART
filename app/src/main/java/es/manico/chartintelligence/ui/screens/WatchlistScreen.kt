@@ -109,6 +109,7 @@ fun WatchlistScreen(
     onSyncAllNow: () -> Unit,
     onOpenSymbolInChartTab: (SymbolConfig) -> Unit,
     onToggleSymbolInWatchlist: (String, Boolean) -> Unit = { _, _ -> },
+    onReorderSymbol: (String, Int) -> Unit = { _, _ -> },
     onAddCustomSymbol: (String, String, Int, ProviderId) -> Unit = { _, _, _, _ -> },
     onNavigateToSettings: () -> Unit = {},
     onNavigateToPrediction: () -> Unit = {},
@@ -343,7 +344,9 @@ fun WatchlistScreen(
                                             overviewSubTab = "OVERVIEW"
                                         }
                                     } else null,
-                                    onOpenChartClick = { onOpenSymbolInChartTab(symbol) }
+                                    onOpenChartClick = { onOpenSymbolInChartTab(symbol) },
+                                    onMoveUpClick = { onReorderSymbol(symbol.symbolCode, -1) },
+                                    onMoveDownClick = { onReorderSymbol(symbol.symbolCode, 1) }
                                 )
                             }
                         }

@@ -7,6 +7,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.34.0] - 2026-11-11
+
+### Added
+- **TradingView-Style Chart Snapshot & Clipboard Copy (Web & Android):**
+  - **Web:** Added a dedicated Camera icon button (`action_take_snapshot`) to the top header bar. Clicking it captures the live chart canvas (`#main-chart-canvas`), stamps a subtle branded watermark (`CHART INTELLIGENCE • SYMBOL • TF • UTC`), and directly copies high-resolution PNG image bytes to the system clipboard via `navigator.clipboard.write([new ClipboardItem(...)])`. Falls back gracefully to direct PNG image file download and displays a sleek floating toast notification (`snapshot_copied_success`).
+  - **Android:** Added a Camera Snapshot action button (`Icons.Outlined.PhotoCamera`) in the top compact chart header bar (`ChartViewScreen.kt`), copying symbol, timeframe, price, and timestamp details to the clipboard and showing an instant confirmation toast.
+- **Full Watchlist Symbol Reordering (Web & Android):**
+  - **Web:** Enabled complete drag-and-drop symbol reordering via HTML5 draggable rows with a dedicated grip handle (`⠿`), drag preview styling, and drop indicator lines (`.tv-wl-drag-over-top` / `.tv-wl-drag-over-bottom`). Also included 1-click Move Up (`▲`) and Move Down (`▼`) buttons on each row for precise mobile & mouse control. Symbol order persists to `localStorage` and syncs with server user preferences.
+  - **Android:** Added `reorderSymbol(symbolCode, direction)` in `MainViewModel.kt` updating the catalog order, saving via `repository.saveSymbolCatalog`, and debouncing cloud sync. Wired Move Up (`▲`) and Move Down (`▼`) touch buttons on each `WatchlistRowCard.kt` in `WatchlistScreen.kt`.
+
+### Changed & Refined
+- **Removed Duplicate Refresh Button on Web:**
+  - Eliminated the redundant `sync-all` refresh icon from the watchlist pane header (`watchlistView.js`), leaving only one unambiguous, unified market refresh button in the top header bar (`sync-active-tab`), preventing user confusion.
+
+---
+
+## [1.33.0] - 2026-11-11
+
+### Changed & Refined
+- **Complete Vector Iconography for all 22 Instruments (Web & Android):**
+  - Added brand-accurate vector iconography, gradients, and border tints for all US & global equities (`NVDA`, `AMZN`, `TSLA`, `AAPL`, `GOOGL`, `MSFT`, `META`, `NFLX`, `AMD`, `UBER`, `NKE`, `IBM`, `SAN`), Cryptos (`BTCUSD`, `ETHUSD`), and Indices (`SPX500USD`, `NDQ`) in Web `watchlistView.js` (`getAssetBadge`) and Android `WatchlistRowCard.kt` (`AssetSymbolBadge`). Every symbol in the watchlist now has a distinct, beautiful vector badge mark.
+- **Elimination of Redundant Buttons in Right Details Panel:**
+  - Removed the oversized duplicate button (`symbol_overview_seasonals & symbol_overview_key_data`) from below the symbol stats card in Web `watchlistView.js`. All stats (Volume, Prev Close, Open, Range Spread, Day High/Low) fit cleanly and harmoniously without redundant action buttons.
+- **Left Tool Rail Color & Stroke Width Popups (Web & Android):**
+  - Replaced the cluttered consecutive list of 6 color dots and 4 width buttons (`1px`..`4px`) with single compact trigger buttons opening clean popups:
+    - **Web:** Interactive Color preview circle and Stroke Width button in `toolRailView.js` trigger floating `.rail-flyout-menu` popups with outside-click dismissal.
+    - **Android:** Compact `COLOR` and stroke width trigger chips in `DrawingToolbar.kt` open Material 3 `DropdownMenu` popups with stroke previews.
+
+---
+
 ## [1.32.0] - 2026-11-11
 
 ### Added

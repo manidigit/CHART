@@ -26,6 +26,8 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.VerticalAlignCenter
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -34,6 +36,10 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -497,60 +503,151 @@ fun DrawingToolbar(
                     }
                     }
 
-                    // Color & Stroke Width Row
+                    // Compact Color & Stroke Width Trigger Row (Popup flyouts)
+                    var showColorMenu by remember { mutableStateOf(false) }
+                    var showWidthMenu by remember { mutableStateOf(false) }
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            .padding(top = 4.dp),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        for ((hex, swatchColor) in DRAWING_COLOR_SWATCHES) {
-                            val isColorSelected = activeDrawingColorHex.equals(hex, ignoreCase = true)
-                            Box(
+                        // Color Selector Trigger Button
+                        Box {
+                            val curSwatch = DRAWING_COLOR_SWATCHES.find { it.first.equals(activeDrawingColorHex, ignoreCase = true) }?.second ?: Color(0xFF2962FF)
+                            Row(
                                 modifier = Modifier
-                                    .size(28.dp)
-                                    .clip(CircleShape)
-                                    .background(swatchColor)
-                                    .border(
-                                        width = if (isColorSelected) 2.dp else 1.dp,
-                                        color = if (isColorSelected) Color.White else palette.cardBorder,
-                                        shape = CircleShape
-                                    )
-                                    .clickable { onSelectColorHex(hex) }
-                                    .testTag("draw_color_${hex.lowercase()}_button")
-                            )
-                        }
-
-                        Spacer(modifier = Modifier.width(8.dp))
-
-                        for ((widthDp, label) in DRAWING_WIDTH_OPTIONS) {
-                            val isWidthSelected = abs(activeDrawingWidthDp - widthDp) < 0.35f
-                            Box(
-                                modifier = Modifier
-                                    .height(28.dp)
-                                    .clip(RoundedCornerShape(4.dp))
-                                    .background(
-                                        if (isWidthSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-                                        else MaterialTheme.colorScheme.surfaceVariant
-                                    )
-                                    .border(
-                                        width = 1.dp,
-                                        color = if (isWidthSelected) MaterialTheme.colorScheme.primary else palette.cardBorder,
-                                        shape = RoundedCornerShape(4.dp)
-                                    )
-                                    .clickable { onSelectWidthDp(widthDp) }
-                                    .padding(horizontal = 8.dp)
-                                    .testTag("draw_width_${label}_button"),
-                                contentAlignment = Alignment.Center
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                    .clickable { showColorMenu = true }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .testTag("draw_color_picker_trigger"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(18.dp)
+                                        .clip(CircleShape)
+                                        .background(curSwatch)
+                                        .border(1.5.dp, Color.White.copy(alpha = 0.9f), CircleShape)
+                                )
                                 Text(
-                                    text = label,
+                                    text = "COLOR",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = JetBrainsMonoFontFamily,
-                                    fontWeight = if (isWidthSelected) FontWeight.Bold else FontWeight.Medium,
-                                    color = if (isWidthSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
                                 )
+                            }
+
+                            DropdownMenu(
+                                expanded = showColorMenu,
+                                onDismissRequest = { showColorMenu = false }
+                            ) {
+                                Row(
+                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    for ((hex, swatchColor) in DRAWING_COLOR_SWATCHES) {
+                                        val isColorSelected = activeDrawingColorHex.equals(hex, ignoreCase = true)
+                                        Box(
+                                            modifier = Modifier
+                                                .size(28.dp)
+                                                .clip(CircleShape)
+                                                .background(swatchColor)
+                                                .border(
+                                                    width = if (isColorSelected) 2.5.dp else 1.dp,
+                                                    color = if (isColorSelected) Color.White else palette.cardBorder,
+                                                    shape = CircleShape
+                                                )
+                                                .clickable {
+                                                    onSelectColorHex(hex)
+                                                    showColorMenu = false
+                                                }
+                                                .testTag("draw_color_${hex.lowercase()}_button")
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        // Stroke Width Selector Trigger Button
+                        Box {
+                            val curLabel = DRAWING_WIDTH_OPTIONS.find { abs(it.first - activeDrawingWidthDp) < 0.35f }?.second ?: "${activeDrawingWidthDp.toInt()}px"
+                            val onSurfaceColor = MaterialTheme.colorScheme.onSurface
+                            val primaryColor = MaterialTheme.colorScheme.primary
+
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant)
+                                    .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                    .clickable { showWidthMenu = true }
+                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .testTag("draw_width_picker_trigger"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                androidx.compose.foundation.Canvas(modifier = Modifier.size(width = 24.dp, height = 10.dp)) {
+                                    drawLine(
+                                        color = onSurfaceColor,
+                                        start = Offset(0f, size.height / 2),
+                                        end = Offset(size.width, size.height / 2),
+                                        strokeWidth = activeDrawingWidthDp * 1.5f,
+                                        cap = StrokeCap.Round
+                                    )
+                                }
+                                Text(
+                                    text = curLabel,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+
+                            DropdownMenu(
+                                expanded = showWidthMenu,
+                                onDismissRequest = { showWidthMenu = false }
+                            ) {
+                                for ((widthDp, label) in DRAWING_WIDTH_OPTIONS) {
+                                    val isWidthSelected = abs(activeDrawingWidthDp - widthDp) < 0.35f
+                                    val strokeColor = if (isWidthSelected) primaryColor else Color.Gray
+                                    val textColor = if (isWidthSelected) primaryColor else onSurfaceColor
+                                    DropdownMenuItem(
+                                        text = {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(12.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                androidx.compose.foundation.Canvas(modifier = Modifier.size(width = 32.dp, height = 12.dp)) {
+                                                    drawLine(
+                                                        color = strokeColor,
+                                                        start = Offset(0f, size.height / 2),
+                                                        end = Offset(size.width, size.height / 2),
+                                                        strokeWidth = widthDp * 1.5f,
+                                                        cap = StrokeCap.Round
+                                                    )
+                                                }
+                                                Text(
+                                                    text = label,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    fontWeight = if (isWidthSelected) FontWeight.Bold else FontWeight.Normal,
+                                                    color = textColor
+                                                )
+                                            }
+                                        },
+                                        onClick = {
+                                            onSelectWidthDp(widthDp)
+                                            showWidthMenu = false
+                                        },
+                                        modifier = Modifier.testTag("draw_width_${label}_button")
+                                    )
+                                }
                             }
                         }
                     }

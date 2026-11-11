@@ -1,4 +1,4 @@
-export function renderLeftToolRail(activeTab, i18n) {
+export function renderLeftToolRail(activeTab, i18n, activeRailPopup = null) {
   if (!activeTab) return '';
   const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
   const curColor = activeTab.activeDrawingColorHex || activeTab.activeDrawingColor || '#2962FF';
@@ -38,36 +38,92 @@ export function renderLeftToolRail(activeTab, i18n) {
 
       <div style="width: 24px; height: 1px; background: var(--border); margin: 4px 0;"></div>
 
-      <div style="display: flex; flex-direction: column; gap: 4px; align-items: center;" title="${i18n.t('draw_color_label')}">
-        ${colors
-          .map(
-            (c) => `
-          <div
-            class="color-dot ${curColor.toUpperCase() === c.toUpperCase() ? 'active' : ''}"
-            style="width: 14px; height: 14px; background: ${c};"
-            data-action="set-draw-color"
-            data-color="${c}"
-          ></div>
+      <!-- Color Picker Trigger + Flyout -->
+      <div class="tool-rail-picker-wrap">
+        <button
+          type="button"
+          class="btn btn-icon ${activeRailPopup === 'color' ? 'active' : ''}"
+          data-action="toggle-rail-popup"
+          data-popup="color"
+          title="${i18n.t('draw_color_label')}"
+          style="position: relative;"
+        >
+          <span
+            style="width: 16px; height: 16px; border-radius: 50%; background: ${curColor}; box-shadow: 0 0 0 1.5px var(--border); display: inline-block;"
+          ></span>
+        </button>
+
+        ${
+          activeRailPopup === 'color'
+            ? `
+          <div class="rail-flyout-menu rail-color-flyout" dir="ltr">
+            <div class="rail-flyout-title">${i18n.t('draw_color_label')}</div>
+            <div class="rail-color-grid">
+              ${colors
+                .map(
+                  (c) => `
+                <button
+                  type="button"
+                  class="rail-color-btn ${curColor.toUpperCase() === c.toUpperCase() ? 'selected' : ''}"
+                  style="background: ${c};"
+                  data-action="set-draw-color"
+                  data-color="${c}"
+                  title="${c}"
+                ></button>
+              `
+                )
+                .join('')}
+            </div>
+          </div>
         `
-          )
-          .join('')}
+            : ''
+        }
       </div>
 
-      <div style="width: 24px; height: 1px; background: var(--border); margin: 4px 0;"></div>
+      <!-- Stroke Width Trigger + Flyout -->
+      <div class="tool-rail-picker-wrap">
+        <button
+          type="button"
+          class="btn btn-icon ltr-num ${activeRailPopup === 'width' ? 'active' : ''}"
+          data-action="toggle-rail-popup"
+          data-popup="width"
+          title="${i18n.t('draw_width_label')}"
+          style="display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 2px;"
+        >
+          <svg width="18" height="6" viewBox="0 0 24 6" fill="none">
+            <line x1="2" y1="3" x2="22" y2="3" stroke="currentColor" stroke-width="${Math.max(1.8, curWidth * 1.4)}" stroke-linecap="round"/>
+          </svg>
+          <span style="font-size: 8.5px; font-weight: 700; line-height: 1;">${curWidth}px</span>
+        </button>
 
-      <div style="display: flex; flex-direction: column; gap: 3px; align-items: center;" title="${i18n.t('draw_width_label')}">
-        ${widths
-          .map(
-            (w) => `
-          <button
-            class="btn btn-icon ltr-num ${curWidth === w ? 'active' : ''}"
-            style="width: 28px; height: 22px; min-height: 22px; font-size: 10px;"
-            data-action="set-draw-width"
-            data-width="${w}"
-          >${w}px</button>
+        ${
+          activeRailPopup === 'width'
+            ? `
+          <div class="rail-flyout-menu rail-width-flyout" dir="ltr">
+            <div class="rail-flyout-title">${i18n.t('draw_width_label')}</div>
+            <div class="rail-width-list">
+              ${widths
+                .map(
+                  (w) => `
+                <button
+                  type="button"
+                  class="rail-width-btn ltr-num ${curWidth === w ? 'selected' : ''}"
+                  data-action="set-draw-width"
+                  data-width="${w}"
+                >
+                  <svg width="28" height="8" viewBox="0 0 32 8" fill="none">
+                    <line x1="2" y1="4" x2="30" y2="4" stroke="currentColor" stroke-width="${Math.max(1.5, w * 1.5)}" stroke-linecap="round"/>
+                  </svg>
+                  <span>${w}px</span>
+                </button>
+              `
+                )
+                .join('')}
+            </div>
+          </div>
         `
-          )
-          .join('')}
+            : ''
+        }
       </div>
 
       <div style="width: 24px; height: 1px; background: var(--border); margin: 4px 0;"></div>

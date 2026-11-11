@@ -454,7 +454,7 @@ export function renderApp() {
         ${renderTopHeaderBar(activeTab, i18n)}
 
         <div class="tv-main-area">
-          ${renderLeftToolRail(activeTab, i18n)}
+          ${renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
 
           <main class="chart-workspace">
             <div class="chart-canvas-box">
@@ -924,11 +924,21 @@ function bindSettingsForms() {
 
 document.addEventListener('click', async (e) => {
   const el = e.target.closest('[data-action]');
-  if (!el) return;
+  if (!el) {
+    if (state.activeRailPopup && !e.target.closest('.rail-flyout-menu') && !e.target.closest('.tool-rail-picker-wrap')) {
+      state.activeRailPopup = null;
+      renderApp();
+    }
+    return;
+  }
   const action = el.getAttribute('data-action');
   const activeTab = getActiveTab();
 
-  if (action === 'set-lang') {
+  if (action === 'toggle-rail-popup') {
+    const popupType = el.getAttribute('data-popup');
+    state.activeRailPopup = state.activeRailPopup === popupType ? null : popupType;
+    renderApp();
+  } else if (action === 'set-lang') {
     i18n.setLanguage(el.getAttribute('data-lang'));
     renderApp();
   } else if (action === 'toggle-lang-quick') {
@@ -1171,9 +1181,11 @@ document.addEventListener('click', async (e) => {
     }
   } else if (action === 'set-draw-color' && activeTab) {
     activeTab.activeDrawingColorHex = el.getAttribute('data-color') || '#2962FF';
+    state.activeRailPopup = null;
     renderApp();
   } else if (action === 'set-draw-width' && activeTab) {
     activeTab.activeDrawingWidthPx = Number(el.getAttribute('data-width') || 2.0);
+    state.activeRailPopup = null;
     renderApp();
   } else if (action === 'zoom-in' && activeTab) {
     const step = Number(state.chartPreferences.zoomStepCandles || 8);
@@ -1216,6 +1228,13 @@ document.addEventListener('click', async (e) => {
     saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
     state.activeModal = null;
     renderApp();
+  } else if (action === 'take-chart-snapshot') {
+    await handleChartSnapshot();
+  } else if (action === 'move-watchlist-symbol') {
+    e.stopPropagation();
+    const symCode = el.getAttribute('data-symbol');
+    const dir = el.getAttribute('data-direction');
+    moveSymbolOrder(symCode, dir);
   } else if (action === 'sync-active-tab' && activeTab) {
     await syncSymbolNow(activeTab.symbolCode, activeTab.timeframe, renderApp);
   } else if (action === 'sync-all') {
@@ -1353,6 +1372,173 @@ document.addEventListener('change', async (e) => {
     openOrFocusSymbolTab(el.value);
     renderApp();
   }
+});
+
+function showFloatingToast(message, durationMs = 3000) {
+  let toast = document.getElementById('ci-floating-toast');
+  if (!toast) {
+    toast = document.createElement('div');
+    toast.id = 'ci-floating-toast';
+    toast.className = 'ci-floating-toast';
+    document.body.appendChild(toast);
+  }
+  toast.textContent = message;
+  toast.classList.add('visible');
+  clearTimeout(toast._timeout);
+  toast._timeout = setTimeout(() => {
+    toast.classList.remove('visible');
+  }, durationMs);
+}
+
+async function handleChartSnapshot() {
+  const activeTab = getActiveTab();
+  const canvas = document.getElementById('main-chart-canvas');
+  if (!canvas) {
+    showFloatingToast('Canvas unavailable');
+    return;
+  }
+
+  try {
+    const dpr = window.devicePixelRatio || 1;
+    const snapCanvas = document.createElement('canvas');
+    snapCanvas.width = canvas.width;
+    snapCanvas.height = canvas.height;
+    const ctx = snapCanvas.getContext('2d');
+
+    // Fill background
+    ctx.fillStyle = state.isDarkTheme ? '#131722' : '#FFFFFF';
+    ctx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
+
+    // Draw main chart canvas
+    ctx.drawImage(canvas, 0, 0);
+
+    // Draw brand watermark
+    ctx.save();
+    ctx.font = `bold ${Math.round(14 * dpr)}px sans-serif`;
+    ctx.fillStyle = '#2962FF';
+    ctx.fillText('CHART INTELLIGENCE', 16 * dpr, 28 * dpr);
+
+    if (activeTab) {
+      ctx.font = `${Math.round(11 * dpr)}px monospace`;
+      ctx.fillStyle = state.isDarkTheme ? '#D1D4DC' : '#333333';
+      const lastCandle = (activeTab.candles || []).slice(-1)[0];
+      const priceStr = lastCandle ? ` • ${lastCandle.close}` : '';
+      const text = `${activeTab.symbolCode} • ${activeTab.timeframe || 'M15'}${priceStr} • ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`;
+      ctx.fillText(text, 16 * dpr, 46 * dpr);
+    }
+    ctx.restore();
+
+    let copiedToClipboard = false;
+    if (navigator.clipboard && window.ClipboardItem) {
+      try {
+        const blob = await new Promise((res) => snapCanvas.toBlob(res, 'image/png'));
+        if (blob) {
+          await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
+          copiedToClipboard = true;
+          showFloatingToast(i18n.t('snapshot_copied_success'));
+        }
+      } catch (clipErr) {
+        console.warn('[Snapshot] Clipboard image failed, will trigger file download:', clipErr);
+      }
+    }
+
+    if (!copiedToClipboard) {
+      const dataUrl = snapCanvas.toDataURL('image/png');
+      const a = document.createElement('a');
+      a.href = dataUrl;
+      a.download = `chart_${activeTab ? activeTab.symbolCode : 'snapshot'}_${activeTab ? activeTab.timeframe : 'm15'}.png`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      showFloatingToast(i18n.t('snapshot_downloaded_success'));
+    }
+  } catch (err) {
+    console.error('[Snapshot] Error taking chart snapshot:', err);
+    showFloatingToast('Snapshot failed');
+  }
+}
+
+function moveSymbolOrder(symbolCode, direction) {
+  const list = state.symbols;
+  const idx = list.findIndex((s) => s.symbolCode === symbolCode);
+  if (idx < 0) return;
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (targetIdx < 0 || targetIdx >= list.length) return;
+
+  const item = list.splice(idx, 1)[0];
+  list.splice(targetIdx, 0, item);
+  saveSymbolsToStorage();
+  if (state.isAuthenticated) {
+    uploadWorkspaceSync().catch(() => {});
+  }
+  renderApp();
+}
+
+function reorderSymbolsDragDrop(draggedCode, targetCode) {
+  if (!draggedCode || !targetCode || draggedCode === targetCode) return;
+  const list = state.symbols;
+  const fromIdx = list.findIndex((s) => s.symbolCode === draggedCode);
+  const toIdx = list.findIndex((s) => s.symbolCode === targetCode);
+  if (fromIdx < 0 || toIdx < 0) return;
+
+  const item = list.splice(fromIdx, 1)[0];
+  list.splice(toIdx, 0, item);
+  saveSymbolsToStorage();
+  if (state.isAuthenticated) {
+    uploadWorkspaceSync().catch(() => {});
+  }
+  renderApp();
+}
+
+let currentDraggedSymbol = null;
+
+document.addEventListener('dragstart', (e) => {
+  const row = e.target.closest('.tv-wl-row');
+  if (row) {
+    currentDraggedSymbol = row.getAttribute('data-symbol');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', currentDraggedSymbol);
+    row.classList.add('tv-wl-dragging');
+  }
+});
+
+document.addEventListener('dragover', (e) => {
+  const row = e.target.closest('.tv-wl-row');
+  if (row && currentDraggedSymbol) {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    const rect = row.getBoundingClientRect();
+    const isBottom = e.clientY > rect.top + rect.height / 2;
+    row.classList.toggle('tv-wl-drag-over-bottom', isBottom);
+    row.classList.toggle('tv-wl-drag-over-top', !isBottom);
+  }
+});
+
+document.addEventListener('dragleave', (e) => {
+  const row = e.target.closest('.tv-wl-row');
+  if (row) {
+    row.classList.remove('tv-wl-drag-over-top', 'tv-wl-drag-over-bottom');
+  }
+});
+
+document.addEventListener('drop', (e) => {
+  const row = e.target.closest('.tv-wl-row');
+  if (row && currentDraggedSymbol) {
+    e.preventDefault();
+    const targetSymbol = row.getAttribute('data-symbol');
+    row.classList.remove('tv-wl-drag-over-top', 'tv-wl-drag-over-bottom');
+    if (targetSymbol && targetSymbol !== currentDraggedSymbol) {
+      reorderSymbolsDragDrop(currentDraggedSymbol, targetSymbol);
+    }
+  }
+  currentDraggedSymbol = null;
+});
+
+document.addEventListener('dragend', () => {
+  document.querySelectorAll('.tv-wl-row').forEach((r) => {
+    r.classList.remove('tv-wl-dragging', 'tv-wl-drag-over-top', 'tv-wl-drag-over-bottom');
+  });
+  currentDraggedSymbol = null;
 });
 
 window.addEventListener('resize', () => {

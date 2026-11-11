@@ -424,6 +424,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun reorderSymbol(symbolCode: String, direction: Int) {
+        val currentList = _uiState.value.symbols.toMutableList()
+        val currentIndex = currentList.indexOfFirst { it.symbolCode == symbolCode }
+        if (currentIndex < 0) return
+        val targetIndex = if (direction < 0) currentIndex - 1 else currentIndex + 1
+        if (targetIndex in currentList.indices) {
+            val item = currentList.removeAt(currentIndex)
+            currentList.add(targetIndex, item)
+            _uiState.update { it.copy(symbols = currentList) }
+            repository.saveSymbolCatalog(currentList)
+            scheduleDebouncedCloudSync()
+        }
+    }
+
     fun selectProviderForSymbol(symbolCode: String, provider: ProviderId) {
         val (updated, targetTf) = symbolCoordinator.selectProviderForSymbol(_uiState.value.symbols, symbolCode, provider)
         val candles = repository.getCachedOrAggregatedCandles(symbolCode, provider, targetTf)

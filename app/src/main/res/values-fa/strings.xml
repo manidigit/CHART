@@ -24,6 +24,11 @@
     <string name="watchlist_search_hint">جستجوی نماد (مثلاً XAUUSD یا SPOTBRENT)…</string>
     <string name="action_sync_all">به‌روزرسانی همه تا این لحظه</string>
     <string name="action_sync_now">به‌روزرسانی تا این لحظه</string>
+    <string name="action_take_snapshot">عکس‌برداری و کپی چارت (Snapshot)</string>
+    <string name="action_copy_chart_image">کپی تصویر چارت در کلیپ‌بورد</string>
+    <string name="snapshot_copied_success">تصویر چارت با موفقیت در کلیپ‌بورد کپی شد.</string>
+    <string name="watchlist_move_up">انتقال سهم به بالا</string>
+    <string name="watchlist_move_down">انتقال سهم به پایین</string>
     <string name="action_syncing">در حال دریافت…</string>
     <string name="action_open_chart_view">باز کردن چارت کامل</string>
     <string name="action_open_in_tab">باز کردن در تب</string>

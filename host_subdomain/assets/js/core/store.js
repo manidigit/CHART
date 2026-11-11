@@ -519,6 +519,7 @@ export const state = {
   symbolOverviewCode: null,
   symbolOverviewRange: '5D',
   isAddSymbolModalOpen: false,
+  activeRailPopup: null,
 
   chartPreferences: loadPreferences(),
   symbols: loadSymbols(),

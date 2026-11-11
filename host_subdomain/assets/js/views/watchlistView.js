@@ -98,28 +98,33 @@ export function getAssetBadge(symbolCode) {
   }
   if (STOCK_SYMBOLS.has(code)) {
     const stockThemes = {
-      NVDA: ['#22C55E', 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', 'NV'],
-      AMZN: ['#F59E0B', 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)', 'AZ'],
-      TSLA: ['#EF4444', 'linear-gradient(135deg, #EF4444 0%, #991B1B 100%)', 'TS'],
-      AAPL: ['#64748B', 'linear-gradient(135deg, #64748B 0%, #334155 100%)', 'AP'],
-      GOOGL: ['#3B82F6', 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', 'GO'],
-      MSFT: ['#0EA5E9', 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)', 'MS'],
-      META: ['#2563EB', 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)', 'MT'],
-      NFLX: ['#DC2626', 'linear-gradient(135deg, #DC2626 0%, #7F1D1D 100%)', 'NF'],
-      AMD: ['#10B981', 'linear-gradient(135deg, #10B981 0%, #047857 100%)', 'AM'],
-      UBER: ['#475569', 'linear-gradient(135deg, #475569 0%, #1E293B 100%)', 'UB'],
-      NKE: ['#F97316', 'linear-gradient(135deg, #F97316 0%, #C2410C 100%)', 'NK'],
-      IBM: ['#3B82F6', 'linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%)', 'IB'],
-      SAN: ['#EC1C24', 'linear-gradient(135deg, #EC1C24 0%, #991B1B 100%)', 'SA'],
+      NVDA: ['#22C55E', 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', 'NV', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 16c4-6 12-6 16 0"/><circle cx="12" cy="12" r="3" fill="#FFFFFF"/></svg>`],
+      AMZN: ['#F59E0B', 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)', 'AZ', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M5 16c4 3 10 3 14 0"/><path d="M16 13l3 3-3 3"/></svg>`],
+      TSLA: ['#EF4444', 'linear-gradient(135deg, #EF4444 0%, #991B1B 100%)', 'TS', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M12 4v16M6 6c3-2 9-2 12 0"/></svg>`],
+      AAPL: ['#64748B', 'linear-gradient(135deg, #64748B 0%, #334155 100%)', 'AP', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1"><path d="M12 20.94c1.88 0 3.05-.91 4.29-.91 1.23 0 2.22.91 4.1.91 2.53 0 4.61-2.13 4.61-4.75 0-2.48-1.57-4.16-3.8-4.24-1.6-.06-3.1 1.04-3.88 1.04-.79 0-2.02-.99-3.32-.99-2.2 0-4.32 1.63-4.32 4.47 0 2.97 1.94 6.47 4.32 6.47z"/><path d="M15.5 5.5c.83-1 1.3-2.3 1.15-3.5-1.2.06-2.6.8-3.4 1.8-.73.85-1.3 2.1-1.15 3.3 1.3 0 2.6-.7 3.4-1.6z"/></svg>`],
+      GOOGL: ['#3B82F6', 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', 'GO', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 12h5a5 5 0 0 1-5 5c-3 0-5-2-5-5s2-5 5-5c2 0 3.5.8 4.3 1.7"/></svg>`],
+      MSFT: ['#0EA5E9', 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)', 'MS', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" fill="rgba(255,255,255,0.4)"/><rect x="13" y="4" width="7" height="7" fill="rgba(255,255,255,0.4)"/><rect x="4" y="13" width="7" height="7" fill="rgba(255,255,255,0.4)"/><rect x="13" y="13" width="7" height="7" fill="rgba(255,255,255,0.4)"/></svg>`],
+      META: ['#2563EB', 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)', 'MT', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M6 16c-2 0-3-2-3-4s1-4 3-4c3 0 4 5 6 5s3-5 6-5c2 0 3 2 3 4s-1 4-3 4c-3 0-4-5-6-5s-3 5-6 5z"/></svg>`],
+      NFLX: ['#DC2626', 'linear-gradient(135deg, #DC2626 0%, #7F1D1D 100%)', 'NF', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><path d="M5 4v16M19 4v16M5 4l14 16"/></svg>`],
+      AMD: ['#10B981', 'linear-gradient(135deg, #10B981 0%, #047857 100%)', 'AM', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 4 20 12 12 20 4 12"/></svg>`],
+      UBER: ['#475569', 'linear-gradient(135deg, #475569 0%, #1E293B 100%)', 'UB', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="#FFFFFF"/></svg>`],
+      NKE: ['#F97316', 'linear-gradient(135deg, #F97316 0%, #C2410C 100%)', 'NK', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 14c4 3 12 3 16-8-4 4-10 6-16 8z"/></svg>`],
+      IBM: ['#3B82F6', 'linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%)', 'IB', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="16" x2="20" y2="16"/></svg>`],
+      SAN: ['#EC1C24', 'linear-gradient(135deg, #EC1C24 0%, #991B1B 100%)', 'SA', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><polygon points="12 7 16 16 8 16" fill="#FFFFFF"/></svg>`],
     };
-    const [color, bgGradient, label] = stockThemes[code] || ['#2962FF', 'linear-gradient(135deg, #2962FF 0%, #1E40AF 100%)', code.slice(0, 2)];
+    const [color, bgGradient, label, svg] = stockThemes[code] || [
+      '#2962FF',
+      'linear-gradient(135deg, #2962FF 0%, #1E40AF 100%)',
+      code.slice(0, 2),
+      `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M8 12h8"/></svg>`,
+    ];
     return {
       label,
       color,
       bgGradient,
       providerTag: 'Yahoo Finance · NASDAQ/NYSE',
       category: 'Equity · Global Stock',
-      svgIcon: '',
+      svgIcon: svg,
     };
   }
   return {
@@ -300,7 +305,7 @@ export function renderRightSplitPanel(activeTab, i18n) {
     .join('');
 
   const rowsHtml = watchlist
-    .map((s) => {
+    .map((s, idx) => {
       const isSelected = activeTab && activeTab.symbolCode === s.symbolCode;
       const d = computeDayStats(s, isSelected ? activeTab.candles : null);
       const diff = d.lastClose - d.prevClose;
@@ -309,8 +314,26 @@ export function renderRightSplitPanel(activeTab, i18n) {
       const sign = isBull ? '+' : '';
 
       return `
-        <div class="tv-wl-row ${isSelected ? 'active' : ''}" data-action="open-chart" data-symbol="${s.symbolCode}" dir="ltr">
+        <div
+          class="tv-wl-row ${isSelected ? 'active' : ''}"
+          draggable="true"
+          data-symbol="${s.symbolCode}"
+          data-index="${idx}"
+          data-action="open-chart"
+          dir="ltr"
+        >
           <div class="tv-wl-sym-cell">
+            <span
+              class="tv-wl-drag-handle"
+              title="${i18n.t('watchlist_reorder_hint') || 'Drag to reorder / جابجایی سهم'}"
+              data-action="drag-handle"
+            >
+              <svg width="7" height="12" viewBox="0 0 8 14" fill="currentColor">
+                <circle cx="2" cy="2.5" r="1.3"/><circle cx="6" cy="2.5" r="1.3"/>
+                <circle cx="2" cy="7" r="1.3"/><circle cx="6" cy="7" r="1.3"/>
+                <circle cx="2" cy="11.5" r="1.3"/><circle cx="6" cy="11.5" r="1.3"/>
+              </svg>
+            </span>
             ${
               hideLogos
                 ? `<span style="width: 7px; height: 7px; border-radius: 50%; background: ${d.isLive ? 'var(--bull)' : 'var(--text-muted)'}; flex-shrink: 0;"></span>`
@@ -324,16 +347,33 @@ export function renderRightSplitPanel(activeTab, i18n) {
           <div class="tv-wl-num tv-wl-col-chg ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'};">
             ${sign}${PriceFormatter.formatPrice(diff, s.decimals)}
           </div>
-          <div class="tv-wl-num ltr-num" style="display: flex; align-items: center; justify-content: flex-end; gap: 4px; color: ${isBull ? 'var(--bull)' : 'var(--bear)'}; font-weight: 600;">
+          <div class="tv-wl-num ltr-num" style="display: flex; align-items: center; justify-content: flex-end; gap: 2px; color: ${isBull ? 'var(--bull)' : 'var(--bear)'}; font-weight: 600;">
             <span>${pct}</span>
-            <button
-              type="button"
-              class="tv-wl-remove-btn"
-              data-action="remove-from-watchlist"
-              data-symbol="${s.symbolCode}"
-              title="Remove from Watchlist"
-              style="background: transparent; border: none; color: var(--text-muted); cursor: pointer; padding: 0 2px; font-size: 11px; line-height: 1; opacity: 0.65;"
-            >×</button>
+            <div class="tv-wl-row-actions" style="display: inline-flex; align-items: center; gap: 1px; margin-left: 2px;">
+              <button
+                type="button"
+                class="tv-wl-move-btn"
+                data-action="move-watchlist-symbol"
+                data-direction="up"
+                data-symbol="${s.symbolCode}"
+                title="${i18n.t('watchlist_move_up')}"
+              >▲</button>
+              <button
+                type="button"
+                class="tv-wl-move-btn"
+                data-action="move-watchlist-symbol"
+                data-direction="down"
+                data-symbol="${s.symbolCode}"
+                title="${i18n.t('watchlist_move_down')}"
+              >▼</button>
+              <button
+                type="button"
+                class="tv-wl-remove-btn"
+                data-action="remove-from-watchlist"
+                data-symbol="${s.symbolCode}"
+                title="Remove from Watchlist"
+              >×</button>
+            </div>
           </div>
         </div>
       `;
@@ -414,16 +454,6 @@ export function renderRightSplitPanel(activeTab, i18n) {
             </div>
           </div>
         </div>
-
-        <button
-          type="button"
-          class="btn btn-sm"
-          style="width: 100%; justify-content: center; font-size: 11px; margin-top: 2px;"
-          data-action="open-symbol-overview"
-          data-symbol="${sym.symbolCode}"
-        >
-          <span>${i18n.t('symbol_overview_seasonals')} & ${i18n.t('symbol_overview_key_data')}</span>
-        </button>
       </div>
     `;
   }
@@ -446,9 +476,6 @@ export function renderRightSplitPanel(activeTab, i18n) {
         <div class="tv-pane-header">
           <span>${i18n.t('nav_watchlist')}</span>
           <div style="display: flex; align-items: center; gap: 4px;">
-            <button class="tv-tool-btn" data-action="sync-all" title="${i18n.t('action_sync_all_now')}">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-            </button>
             <button class="tv-tool-btn" data-action="open-add-symbol-modal" title="${i18n.t('settings_add_custom_symbol')}">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
             </button>

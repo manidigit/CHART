@@ -1,5 +1,6 @@
 package es.manico.chartintelligence.ui.screens
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.outlined.FitScreen
 import androidx.compose.material.icons.outlined.Functions
 import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.MoreHoriz
+import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.ShowChart
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Timeline
@@ -40,6 +42,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
@@ -57,10 +60,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
@@ -151,6 +157,9 @@ fun ChartViewScreen(
     BackHandler(onBack = onBackToWatchlist)
     val palette = LocalFinancialPalette.current
     val haptic = LocalHapticFeedback.current
+    val clipboardManager = LocalClipboardManager.current
+    val context = LocalContext.current
+    val snapshotCopiedMsg = stringResource(R.string.snapshot_copied_success)
     var activeSheet by rememberSaveable { mutableStateOf(ChartControlSheet.NONE) }
 
     Column(
@@ -286,30 +295,61 @@ fun ChartViewScreen(
                         }
                     }
 
-                    // Right: Read-only Data Source Badge (Non-clickable display only)
                     Row(
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(4.dp))
-                            .background(MaterialTheme.colorScheme.background)
-                            .border(1.dp, palette.cardBorder, RoundedCornerShape(4.dp))
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                            .testTag("chart_market_status_pill")
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        Box(
+                        // TradingView-style Snapshot Camera / Copy Button
+                        IconButton(
+                            onClick = {
+                                val details = buildString {
+                                    append("${activeTab.symbolCode} • ${activeTab.timeframe} • ${activeTab.provider.badgeLabel}\n")
+                                    if (latestClose != null) {
+                                        append("Price: ${PriceFormatterAlgorithm.formatPrice(latestClose, activeTab.decimals)}\n")
+                                    }
+                                    append("Bars: ${activeTab.candles.size}\n")
+                                    append("Chart Intelligence")
+                                }
+                                clipboardManager.setText(AnnotatedString(details))
+                                Toast.makeText(context, snapshotCopiedMsg, Toast.LENGTH_SHORT).show()
+                            },
                             modifier = Modifier
-                                .size(6.dp)
-                                .clip(CircleShape)
-                                .background(statusDotColor)
-                        )
-                        Text(
-                            text = activeTab.provider.badgeLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                                .size(32.dp)
+                                .testTag("chart_snapshot_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.PhotoCamera,
+                                contentDescription = stringResource(R.string.action_take_snapshot),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+
+                        // Right: Read-only Data Source Badge (Non-clickable display only)
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(MaterialTheme.colorScheme.background)
+                                .border(1.dp, palette.cardBorder, RoundedCornerShape(4.dp))
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .testTag("chart_market_status_pill")
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(6.dp)
+                                    .clip(CircleShape)
+                                    .background(statusDotColor)
+                            )
+                            Text(
+                                text = activeTab.provider.badgeLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
                     }
                 }
             }

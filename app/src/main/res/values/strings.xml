@@ -24,6 +24,11 @@
     <string name="watchlist_search_hint">Filter symbols (e.g. XAUUSD, SPOTBRENT)…</string>
     <string name="action_sync_all">Sync All Up to Now</string>
     <string name="action_sync_now">Sync Up to Now</string>
+    <string name="action_take_snapshot">Take a snapshot (Copy chart image)</string>
+    <string name="action_copy_chart_image">Copy chart image</string>
+    <string name="snapshot_copied_success">Chart snapshot copied to clipboard</string>
+    <string name="watchlist_move_up">Move up</string>
+    <string name="watchlist_move_down">Move down</string>
     <string name="action_syncing">Syncing…</string>
     <string name="action_open_chart_view">Open Full Chart</string>
     <string name="action_open_in_tab">Open in Tab</string>
