@@ -3,9 +3,9 @@
 ## سند مرجع اصلی پروژه و مشخصات محصول
 
 **شناسه سند:** `CHART_INTELLIGENCE_MASTER_SPEC`\
-**نسخه:** `1.29.1`\
-**تاریخ آخرین بازبینی:** 2026-11-10\
-**وضعیت:** سند مرجع جاری پروژه — فاز ۱ با تحقق ۱۰۰٪ مشخصات و همسانی کامل وب و اندروید (`v1.29.1`): پایش زنده سلامت سرور و دیتابیس MariaDB (`system/status.php` و کارت وضعیت در تنظیمات)، همگام‌سازی ابری فضای کاری (`workspace_sync.php` بر پایه جدول `user_workspace` دیتابیس)، تایم‌فریم هفتگی (`W1`) در اسکریپت پایتون و پایپ‌لاین سدینگ گیت‌هاب اکشنز، ذخیره‌سازی ماندگار چندتبی چارت‌ها (`ci_open_tabs_v2`)، معماری ۴ صفحه‌ای TradingView Pro (`Watchlist | Chart | Prediction | Settings`)، آیکون‌های برداری اختصاصی نمادها (`XAUUSD`, `SPOTBRENT`, `XAGUSD`, `EURUSD`)، ۴ اندیکاتور یکپارچه و احراز هویت پایدار (`Remember Me`)\
+**نسخه:** `1.30.0`\
+**تاریخ آخرین بازبینی:** 2026-11-11\
+**وضعیت:** سند مرجع جاری پروژه — فاز ۱ با تحقق ۱۰۰٪ مشخصات و همسانی کامل وب و اندروید (`v1.30.0`): هسته مرکزی واحد و پروتکل‌های همگام‌سازی دوطرفه (`docs/architecture.md` و `workspace_sync.php`)، دسته‌بندی ۵گانه تنظیمات (`همگام‌سازی | چارت | نوتیفیکیشن | تم | حساب`)، شیت ۱۰کارتی تحلیل نماد (`Symbol Overview`)، ۶ ابزار ترسیم به همراه فیبوناچی، پوزیشن خرید/فروش و حالت آهنربا (`🧲 Magnet`)، تایم‌فریم هفتگی (`W1`) و ذخیره‌سازی ماندگار چندتبی چارت‌ها (`ci_open_tabs_v2`)\
 **زبان سند:** فارسی؛ نام فنی اجزا و شناسه‌ها به انگلیسی
 
 ------------------------------------------------------------------------
@@ -1749,8 +1749,8 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
    - کارت آمار نقدشوندگی `Key Productivity & Metrics` و کارت پروفایل نماد `About Profile Details` (`Sector`, `Industry`, `Benchmark`, شناسه `ISIN`, `FIGI` با قابلیت کپی).
 7. **`P1-UPG-7` (Watchlist Gestures & Accessibility Polish — انجام شد / COMPLETED):** ژست‌های حرکتی `Swipe-to-Delete` و `Pull-to-Refresh` در واچ‌لیست اندروید + دکمه‌های حذف سریع و به‌روزرسانی آنی در واچ‌لیست وب + ممیزی کادرهای لمسی حداقل `48×48dp` + پشتیبانی از `@media (prefers-reduced-motion: reduce)`.
 8. **`P1-UPG-8` (Phase 1 Acceptance Gate Checklist & Sign-off Protocol — انجام شد / COMPLETED):** تکمیل و پاس‌شدن هر ۱۰ بند چک‌لیست گیت پذیرش نهایی فاز ۱ شامل تست سلامت دیتابیس، همسانی ۱۰۰٪ وب/موبایل، تمام ۶ ابزار رسم و حالت آهنربا (`Magnet Mode`) و فیلتر تعطیلات `00:00 UTC`.
-9. **`P1-UPG-9` (Android Settings Categorized Tab Restructuring — HIGH PRIORITY — انجام شد / COMPLETED):** بازطراحی ساختار صفحه تنظیمات اندروید (`SettingsScreen.kt`) با نوار زبانه‌های ۵‌گانه افقی بالای صفحه (`حساب`, `ظاهر`, `نمادها`, `پارامترها`, `سلامت`) جهت رفع شلختگی و اسکرول طولانی ۵ کارت روی هم و ایجاد همسانی ۱۰۰٪ با مدال تنظیمات نسخه وب.
-10. **`P1-UPG-10` (Web Workspace Sync & Top-Level ES Module Export Error Resolution — HIGH PRIORITY — انجام شد / COMPLETED):** رفع ریشه‌ای خطای سنتاکس بارگذاری ماژول‌های جاوااسکریپت در وب (`SyntaxError: export declarations may only appear at top level of a module` در `store.js`) و پیاده‌سازی همگام‌سازی خودکار دوطرفه (`Bi-Directional Auto-Sync`) بین وب، اندروید و دیتابیس MariaDB.
+9. **`P1-UPG-9` (Android Settings Categorized Tab Restructuring — HIGH PRIORITY — انجام شد / COMPLETED):** بازطراحی ساختار صفحه تنظیمات اندروید (`SettingsScreen.kt` و `ChartPreferences.kt`) و وب (`settingsView.js`) با نوار زبانه‌های ۵‌گانه افقی بالای صفحه (`همگام‌سازی | چارت | نوتیفیکیشن | تم | حساب` / `Sync | Chart | Notifications | Theme | Account`) جهت رفع شلختگی و اسکرول طولانی کارت‌ها و ایجاد همسانی ۱۰۰٪ بین وب و اندروید.
+10. **`P1-UPG-10` (Web Workspace Sync & Top-Level ES Module Export Error Resolution — HIGH PRIORITY — انجام شد / COMPLETED):** رفع ریشه‌ای خطای سنتاکس بارگذاری ماژول‌های جاوااسکریپت در وب (`SyntaxError: export declarations may only appear at top level of a module` در `store.js`)، یکسان‌سازی نسخه ماژول‌ها (`?v=1.30.0`) و پیاده‌سازی همگام‌سازی خودکار دوطرفه (`Bi-Directional Auto-Sync`) بین وب، اندروید و دیتابیس MariaDB.
 
 ---
 
