@@ -321,6 +321,28 @@ export function mergeCandlesIdempotent(existing = [], incoming = [], timeframe =
   return Array.from(map.values()).sort((a, b) => a.open_time_utc_ms - b.open_time_utc_ms);
 }
 
+export function resolvePriceBasis(symbolCode = '', providerId = '') {
+  const prov = String(providerId || '').toLowerCase();
+  if (prov === 'eia_brent_spot') return 'Official FOB Spot';
+  if (prov === 'dukascopy') return 'Interbank Spot';
+  if (prov === 'biquote') return 'CFD / MT5 Feed';
+  if (prov === 'stooq') return 'EOD Historical';
+  if (prov === 'yahoo_finance') {
+    const sym = String(symbolCode || '').toUpperCase();
+    if (['NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN', 'SPX500USD', 'NDQ'].includes(sym)) {
+      return 'Official Exchange';
+    }
+    return 'Spot REST';
+  }
+  if (prov === 'twelve_data') return 'Spot REST';
+  if (prov === 'tvdatafeed') {
+    const sym = String(symbolCode || '').toUpperCase();
+    if (sym === 'SPOTBRENT' || sym === 'BRENT_FUTURES') return 'Futures Ref';
+    return 'CFD Feed';
+  }
+  return 'Spot Feed';
+}
+
 function loadPreferences() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PREFS);
