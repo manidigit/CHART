@@ -1793,15 +1793,16 @@ Freqtrade یک ربات معامله‌گر رمزارز با قابلیت Backt
 ---
 
 
-## فاز ۲: نقشه راه تفصیلی فاز ۲ — ارکان تحلیل جامع، ابزارهای هندسی-ساختاری و ۶ گروه اندیکاتور پایه (`DECIDED`)
+## فاز ۲: نقشه راه تفصیلی فاز ۲ — ارکان تحلیل جامع، ابزارهای هندسی-ساختاری، ۶ گروه اندیکاتور پایه و شیت تحلیل بنیادی جامع (`DECIDED`)
 
-مطابق سند مرجع مصوب `docs/PHASE_2_ROADMAP_SPEC.md` (نسخه `2.0.0`)، فاز ۲ پروژه شامل ۶ رکن کلیدی تحلیل جامع، ۱۲ ابزار هندسی/ترسیمی تریدینگ‌ویو و ۶ گروه اندیکاتور پایه است:
+مطابق سند مرجع مصوب `docs/PHASE_2_ROADMAP_SPEC.md` (نسخه `2.0.0`)، فاز ۲ پروژه شامل ۷ رکن کلیدی تحلیل جامع، ۱۲ ابزار هندسی/ترسیمی تریدینگ‌ویو، ۶ گروه اندیکاتور پایه و شیت تحلیل بنیادی و مالی جامع است:
 
 1. **ارکان کلیدی تحلیل جامع و استاندارد (`Comprehensive Analysis Pillars`):**
    - **پرایس‌اکشن خالص و نقدینگی:** ردیابی استخرهای نقدینگی (`Liquidity Pools` / `Equal Highs & Lows` / `Sweeps`)، گپ‌های ارزش منصفانه (`FVG / Imbalance`) و مومنتوم کندلی.
    - **تحلیل چندتایم‌فریمه (`Top-Down Multi-Timeframe`):** چارچوب کلان (`Daily/4H HTF Bias`)، ساختار میانی (`1H BOS / CHoCH`) و تایم‌فریم ورود (`15m/5m Execution Trigger`).
-   - **فاکتور زمان و سشن‌های معاملاتی (`Market Sessions & Killzones`):** محدوده آسیا (`Asian Range`)، نوسانات اولیه لندن (`Judas Swing`)، نیویورک و تلاقی پرحجم همپوشانی سشن‌ها (`London/NY Overlap`).
+   - **فاکتور زمان و سشن‌های معاملاتی (`Market Sessions & Killzones`):** محدوده آسیا (`Asian Range`)، نوسانات اولیه لندن (`Judas Swing`)، نیویورک و تلاقی پرحجم همپوشانی سشن‌های پرحجم (`London/NY Overlap`).
    - **تقویم اقتصادی و اخبار کلان (`Macro & Fundamental Context`):** اخبار high-impact (`CPI`, `FOMC`, `NFP`, `PMI`)، گزارش‌های هفتگی `EIA`/`API` نفت و نشست‌های `OPEC+` و ریسک‌های ژئوپلیتیک.
+   - **شیت تحلیل بنیادی جامع، صورت‌های مالی، گیج‌های هوشمند، داغ‌ترین‌های بازار و اخبار لایو (مطابق بخش ۱.۶ سند `PHASE_2_ROADMAP_SPEC.md`):** پیاده‌سازی کارت سود و بازده سهام (`Dividends & Yield Breakdown`)، دشبورد صورت سود و زیان (`Income Statement`)، نمودار فصلی چندساله (`Seasonals`), آمپر تکنیکال (`Technicals Speedometer Gauge`), گیج تارگت قیمت و پیش‌بینی تحلیل‌گران (`Analyst Rating & Price Target`), آمار بهره‌وری کارمندان (`Employee Productivity`), مشخصات شرکتی و شناسه بین‌المللی (`About Profile Details & Identifiers`), دشبورد داغ‌ترین‌های بازار Google Finance (`Top Gainers / Losers / Most Active & Regional Indexes`), تقویم سوددهی و غافلگیری‌های درآمدی (`Earnings Calendar & EPS Surprises`), جریان اطلاعیه‌های رسمی SEC EDGAR (`10-K / 10-Q / 8-K Filings`), پل ارتباطی گوگل شیتس (`=GOOGLEFINANCE()` Formula Bridge & CSV Export)، فیدهای خبری مجاز RSS/API (شامل Yahoo Finance, EIA Energy, Fed, SEC) به همراه نوار جستجوی زنده هوشمند AI ("چرا نماد امروز حرکت کرد؟")، کاروسل نمادهای مرتبط (`Peer Comparison`) و ۴ تب نماد (`Overview`, `Analysis`, `Earnings`, `Financials`).
    - **تحلیل بین‌بازاری و همبستگی‌ها (`Intermarket Analysis`):** شاخص دلار (`DXY`)، بازده اوراق قرضه ۱۰ساله (`US 10Y Yields`) و مقایسه دارایی‌های موازی (`SPOTBRENT` vs `USOIL`).
    - **مدیریت ریسک و تعریف سناریو (`Risk Modeling`):** تعیین سطح نقض فرضیه (`Invalidation Level`) و الزام حداقل نسبت ریسک به ریوارد $R:R \ge 1:2$.
 

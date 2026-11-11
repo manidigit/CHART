@@ -106,7 +106,104 @@
 
 ---
 
-## ۱.۶ مدیریت ریسک و تعریف سناریو (Risk Modeling & Scenario Rules)
+## ۱.۶ شیت تحلیل بنیادی جامع، صورت‌های مالی، گیج‌های هوشمند تحلیل‌گران و اخبار لایو (TradingView & Google Finance Parity)
+
+در فاز ۲، شیت جزئیات نماد و مرور بازار (`Symbol Overview & Financial Analytics Sheet`) در وب و اندروید به امکانات کامل استخراج‌شده از TradingView و Google Finance مجهز می‌گردد:
+
+```
++-----------------------------------------------------------------------------------+
+|             SYMBOL FINANCIAL ANALYTICS & FUNDAMENTALS DASHBOARD                   |
++------------------------------------+----------------------------------------------+
+| 1. Dividends & Payout Breakdown    | Doughnut Chart, Yield %, Ex-Date, Amount     |
+| 2. Income Statement Dashboard      | Annual / Quarterly (Revenue, Net Income, %)  |
+| 3. Seasonals Multi-Year Overlay    | Monthly Line Chart Comparison (2024..2026)   |
+| 4. Technicals Speedometer Gauge    | Strong Sell -> Strong Buy Needle Gauge       |
+| 5. Analyst Rating & Target Forecast| Analyst Consensus Dial & 1Y Target Forecast  |
+| 6. Productivity & Operational Stats| Employees, Revenue/Employee, Net Income/Emp  |
+| 7. Corporate Profile & Identifiers | ISIN, CUSIP, FIGI, CFI, IPO Date, Executive |
+| 8. Smart Conversational AI Query   | Natural Language "Why is TSLA moving today?" |
+| 9. Peer Comparison Carousel        | Related Stocks, Live Sparklines & % Change   |
+| 10. Aggregated Live News Feed      | Real-time News Stream with Sources & Timestamps|
++------------------------------------+----------------------------------------------+
+```
+
+### ۱. تفکیک سود مجمع و تقسیم سود (Dividends & Earnings Payout Breakdown)
+- **نمودار دوناتی/حلقه‌ای (Ring Chart):** نمایش درصد تقسیم سود بین سهامداران (`Payout ratio TTM`) در برابر سود انباشته شرکت (`Earnings retained`).
+- **شاخص‌های کلیدی:**
+  - بازده سود مجمع (`Dividends yield TTM` بر حسب درصد).
+  - مبلغ نقدی هر سهم (`Dividend amount` بر حسب دلار/ارز پایه).
+  - تاریخ پرداخت بعدی (`Next payment date`) و تاریخ تعلق سود (`Next ex-dividend date`).
+
+### ۲. صورت سود و زیان (Income Statement Dashboard - Annual & Quarterly)
+- **سوییچ گزارش‌گیری:** قابلیت انتخاب بین گزارش‌های سالانه (`Annual`) و سه ماهه (`Quarterly`).
+- **نمودار ترکیبی میله‌ای-خطی:**
+  - **میله‌های آبی:** درآمد کل (`Revenue`).
+  - **میله‌های فیروزه‌ای:** سود خالص (`Net Income`).
+  - **خط نارنجی:** حاشیه سود خالص به درصد (`Net Margin %`).
+
+### ۳. نمودار مقایسه‌ای فصلی چندساله (Seasonals Multi-Year Performance Overlay)
+- **نمودار خطی همپوشانی:** مقایسه عملکرد و بازدهی دارایی ماه به ماه (ژانویه، آوریل، ژوئیه، اکتبر) در طول چند سال متوالی (مانند ۲۰۲۴، ۲۰۲۵ و ۲۰۲۶) برای ردیابی الگوهای چرخه‌ای و فصلی قیمت.
+
+### ۴. گیج عقربه‌ای تحلیل تکنیکال (Technicals Speedometer Gauge)
+- **درجه‌بندی نیم‌دایره‌ای (Semi-circle Dial):** نمایش اجماع اندیکاتورهای تکنیکال با عقربه پویا در ۵ زون:
+  - `Strong Sell` (فروش قوی)، `Sell` (فروش)، `Neutral` (بی‌طرف)، `Buy` (خرید) و `Strong Buy` (خرید قوی).
+
+### ۵. گیج ارزیابی تحلیل‌گران و پیش‌بینی قیمتی ۱ ساله (Analyst Rating & Price Target)
+- **درجه‌بندی تحلیل‌گران وال‌استریت:** نمایش توزیع نظر تحلیل‌گران ارشد بازار.
+- **پیش‌بینی هدف قیمتی ۱ ساله (1-Year Price Target Consensus):** میانگین قیمت هدف پیش‌بینی‌شده برای ۱ سال آینده با محاسبه درصد رشد/افت پیش‌بینی‌شده (مثلاً `$396.11 (+39.09%)`).
+
+### ۶. شاخص‌های بهره‌وری و کارایی کارکنان (Productivity & Employee Metrics)
+- **ارزیابی سرمایه انسانی:**
+  - تعداد کل کارکنان سالانه (`Employees FY`).
+  - درآمد به ازای هر کارمند (`Revenue / Employee 1Y`).
+  - سود خالص به ازای هر کارمند (`Net Income / Employee 1Y`).
+
+### ۷. شناسه‌های بین‌المللی و اطلاعات شرکتی (Corporate Profile & Identifiers)
+- **پروفایل شرکت:** بخش صنعتی (`Sector`)، صنعت (`Industry`)، مدیرعامل (`CEO`)، وب‌سایت رسمی، دفتر مرکزی و سال تأسیس.
+- **شناسه‌های یکتای مالی (Global Identifiers):**
+  - کد `ISIN` (با دکمه کپی ۱-کلیکی)، کد `CUSIP`، کد `FIGI`، کد `CFI` و تاریخ عرضه اولیه (`IPO Date`).
+  - خلاصه متنی معرفی شرکت و پروژه‌ها.
+
+### ۸. کادر هوشمند پرس‌وجوی علت نوسان با AI ("Why is asset moving today?")
+- **کادر جستجوی مکالمه‌ای:** امکان پرسش طبیعی از AI (مثلاً "چرا تسلا امروز ۳.۶۷٪ رشد کرد؟") و دریافت خلاصه دلایل فاندامنتال، اخبار جدید و کاتالیزورهای بازار.
+
+### ۹. کاروسل مقایسه همتایان و سهام هم‌گروه (Related Stocks & Peer Carousel)
+- **اسکرول افقی کارت‌های هم‌گروه:** کارت‌های کوچک شامل مینی‌چارت خطی (Sparkline)، قیمت زنده و درصد تغییرات برای رقبای صنعت (مانند NVDA, AAPL, PLTR, AMZN).
+
+### ۱۰. فید اخبار لایو بازار با زمان‌بندی (Aggregated Real-time News Feed)
+- **جریان لحظه‌ای اخبار:** جمع‌آوری اخبار از منابع معتبر (Benzinga, StreetInsider, Investing.com, TradingKey, Reuters, Bloomberg).
+- **اطلاعات هر خبر:** لوگو و نام منبع، زمان نسبی انتشار (مثلاً "11 minutes ago")، تیتر خبر، خلاصه کوتاه و دکمه `Show more`.
+
+### ۱۱. ساختار تب‌بندی ۴گانه اطلاعات نماد (Categorized Analytics Tabs)
+- **`Overview` (نگاه کلی):** قیمت، آمار روزانه، اخبار و خلاصه شرکتی.
+- **`Analysis` (تحلیل):** گیج‌های تکنیکال، گیج تحلیل‌گران وال‌استریت و تارگت‌های ۱ ساله.
+- **`Earnings` (درآمد و سود):** سود مجمع، نسبت Payout، تاریخ پرداخت سود و گزارش درآمد سه ماهه.
+- **`Financials` (صورت‌های مالی):** صورت سود و زیان، ترازنامه و جریان وجوه نقد سالانه/سه ماهه.
+
+### ۱۲. بخش داغ‌ترین‌های بازار و محرک‌های اصلی (Google Finance Market Trends & Top Movers)
+- **داغ‌ترین‌های روز:**
+  - **بزرگ‌ترین صعودی‌ها (`Top Gainers`):** لیست بیشترین درصد رشد قیمت در جلسه معاملاتی جاری.
+  - **بزرگ‌ترین نزولی‌ها (`Top Losers`):** لیست بیشترین درصد افت قیمت در جلسه معاملاتی جاری.
+  - **پرمعامله‌ترین‌ها (`Most Active`):** بیشترین حجم معاملات نسبت به میانگین حجم ۲۰ روزه.
+- **نمای کلی شاخص‌های منطقه‌ای جهان (`Global Regional Index Snapshots`):** طبقه‌بندی شاخص‌های کلیدی آمریکا، اروپا، آسیا، بازار رمزارز و کامودیتی‌ها به همراه تغییرات درصد زنده.
+
+### ۱۳. تقویم سوددهی و غافلگیری‌های درآمدی (Earnings Calendar & EPS/Revenue Surprises)
+- **تقویم سه‌زمانه گزارش‌های مالی:** دسته‌بندی گزارش‌های درآمدی شرکت‌ها در ۳ افق **دیروز (`Yesterday`)**، **امروز (`Today`)** و **فردا (`Tomorrow`)**.
+- **جدول غافلگیری درآمدی (`Surprise Index`):** مقایسه سود به ازای هر سهم اعلام‌شده (`Actual EPS`) با تخمین تحلیل‌گران (`Estimated EPS`) و محاسبه درصد غافلگیری مثبت یا منفی.
+
+### ۱۴. جریان اطلاعیه‌ها و گزارش‌های رسمی شرکت‌ها از SEC EDGAR (Official Filings Stream)
+- **پوشش قانونی گزارش‌های رسمی:** اتصال به فید RSS و API عمومی و کاملاً رایگان کمیسیون بورس و اوراق بهادار آمریکا (`SEC EDGAR` - بدون محدودیت مجوز) جهت نمایش گزارش‌های سالانه (`10-K`)، سه ماهه (`10-Q`) و تغییرات مهم (`8-K`) برای سهام آمریکایی.
+
+### ۱۵. پل ارتباطی گوگل شیتس و سازنده فرمول `=GOOGLEFINANCE()` (Google Sheets Bridge & Formula Export)
+- **تولید خودکار کد فرمول:** قابلیت کپی مستقیم کدهای فرمول رسمی گوگل شیتس مانند `=GOOGLEFINANCE("NASDAQ:GOOGL", "price")` یا `=GOOGLEFINANCE("CURRENCY:XAUUSD", "price")` جهت انتقال داده‌های واچ‌لیست به اکسل/گوگل شیتس شخصی کاربر.
+- **خروجی‌گیری CSV و JSON استاندارد:** دانلود تاریخچه کندل‌ها و مشخصات نمادها.
+
+### ۱۶. سیستم فیدهای خبری مجاز و RSSهای عمومی مالی (Permitted Public News & RSS Streams)
+- **تجمیع اخبار مجاز و رایگان:** دریافت اخبار از منابع قانونی با API یا RSS عمومی شامل Yahoo Finance RSS/API، گزارش‌های انرژی EIA RSS، اخبار بانک مرکزی آمریکا (Fed RSS)، Finnhub Free News Endpoint و Alpha Vantage Free News.
+
+---
+
+## ۱.۷ مدیریت ریسک و تعریف سناریو (Risk Modeling & Scenario Rules)
 
 1. **تعیین سطح نقض فرضیه (Invalidation Level / Stop Loss):**
    - هیچ سناریوی تحلیلی یا پیش‌بینی بدون تعیین دقیق سطح Invalidation صادر نمی‌شود.
