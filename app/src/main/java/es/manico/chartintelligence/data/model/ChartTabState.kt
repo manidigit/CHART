@@ -48,7 +48,8 @@ data class ChartTabState(
     val selectedDrawingId: String? = null,
     val pendingTrendPoint: TrendAnchorPoint? = null,
     val isLoading: Boolean = false,
-    val hasError: Boolean = false
+    val hasError: Boolean = false,
+    val providerStatus: String = "READY"
 ) {
     val tabTitle: String
         get() = "$symbolCode · ${provider.badgeLabel}"

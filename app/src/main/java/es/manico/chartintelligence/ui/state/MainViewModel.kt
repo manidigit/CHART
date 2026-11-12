@@ -18,6 +18,9 @@ import es.manico.chartintelligence.i18n.AppLanguage
 import es.manico.chartintelligence.ui.state.coordinators.ChartDrawingCoordinator
 import es.manico.chartintelligence.ui.state.coordinators.ChartPreferenceCoordinator
 import es.manico.chartintelligence.ui.state.coordinators.SymbolCatalogCoordinator
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -47,7 +50,6 @@ data class Phase1UiState(
     val isAuthenticated: Boolean = false,
     val ownerUsername: String = "",
     val ownerEmail: String = "",
-    val savedPassword: String = "",
     val rememberCredentials: Boolean = true,
     val authMode: AuthScreenMode = AuthScreenMode.LOGIN,
     @param:StringRes val authErrorResId: Int? = null,
@@ -86,7 +88,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isAuthenticated = repository.isSessionAuthenticated(),
             ownerUsername = repository.getOwnerUsername(),
             ownerEmail = repository.getOwnerEmail(),
-            savedPassword = repository.getSavedPassword(),
             rememberCredentials = repository.loadRememberCredentials(),
             symbols = symbolCoordinator.loadInitialCatalog(),
             chartPreferences = preferenceCoordinator.loadInitialPreferences(),
@@ -109,9 +110,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     )
                 }
             }
+            if (_uiState.value.isAuthenticated && repository.getSessionToken().isNotBlank()) {
+                val valid = repository.validateSessionWithServer()
+                if (valid == false) {
+                    _uiState.update {
+                        it.copy(
+                            isAuthenticated = false,
+                            authMode = AuthScreenMode.LOGIN
+                        )
+                    }
+                }
+            }
             val status = repository.fetchSystemStatus()
             _uiState.update { it.copy(systemStatus = status) }
-            pullAndApplyCloudWorkspaceOnStartup()
+            if (_uiState.value.isAuthenticated) {
+                pullAndApplyCloudWorkspaceOnStartup()
+            }
         }
 
         // Proactively fetch real market data for watchlist symbols that have an empty cache
@@ -134,10 +148,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setRememberCredentials(remember: Boolean) {
         repository.saveRememberCredentials(remember)
         _uiState.update {
-            it.copy(
-                rememberCredentials = remember,
-                savedPassword = if (remember) it.savedPassword else ""
-            )
+            it.copy(rememberCredentials = remember)
         }
     }
 
@@ -214,7 +225,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(authErrorResId = R.string.error_invalid_email) }
             return
         }
-        if (password.length < 4) {
+        if (password.length < 8) {
             _uiState.update { it.copy(authErrorResId = R.string.error_password_short) }
             return
         }
@@ -231,7 +242,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 isAuthenticated = true,
                 ownerUsername = cleanUser,
                 ownerEmail = cleanEmail,
-                savedPassword = if (shouldRemember) password else "",
                 authMode = AuthScreenMode.LOGIN,
                 authErrorResId = null,
                 authInfoResId = null,
@@ -240,6 +250,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         viewModelScope.launch {
             repository.registerOwnerOnServer(cleanUser, cleanEmail, password)
+            pullAndApplyCloudWorkspaceOnStartup()
         }
     }
 
@@ -250,20 +261,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         val shouldRemember = _uiState.value.rememberCredentials
-        if (repository.verifyOwnerCredentials(cleanUser, password)) {
-            repository.saveOwnerPasswordIfRemembered(password, shouldRemember)
-            _uiState.update {
-                it.copy(
-                    isAuthenticated = true,
-                    savedPassword = if (shouldRemember) password else "",
-                    authMode = AuthScreenMode.LOGIN,
-                    authErrorResId = null,
-                    authInfoResId = null,
-                    currentScreen = WorkspaceScreen.WATCHLIST
-                )
-            }
-            return
-        }
         viewModelScope.launch {
             val verifiedOnServer = repository.verifyOwnerCredentialsWithServer(cleanUser, password)
             if (!verifiedOnServer) {
@@ -277,13 +274,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isAuthenticated = true,
                     ownerUsername = repository.getOwnerUsername().ifBlank { cleanUser },
                     ownerEmail = repository.getOwnerEmail(),
-                    savedPassword = if (shouldRemember) password else "",
                     authMode = AuthScreenMode.LOGIN,
                     authErrorResId = null,
                     authInfoResId = null,
                     currentScreen = WorkspaceScreen.WATCHLIST
                 )
             }
+            pullAndApplyCloudWorkspaceOnStartup()
         }
     }
 
@@ -332,7 +329,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             _uiState.update { it.copy(authErrorResId = R.string.error_empty_credentials) }
             return
         }
-        if (newPassword.length < 4) {
+        if (newPassword.length < 8) {
             _uiState.update { it.copy(authErrorResId = R.string.error_password_short) }
             return
         }
@@ -350,7 +347,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 _uiState.update {
                     it.copy(
                         ownerEmail = cleanEmail,
-                        savedPassword = if (shouldRemember) newPassword else "",
                         authMode = AuthScreenMode.LOGIN,
                         authErrorResId = null,
                         authInfoResId = R.string.status_password_reset_success
@@ -387,6 +383,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun signOut() {
         repository.setSessionAuthenticated(false)
+        viewModelScope.launch {
+            repository.logoutOwnerOnServer()
+        }
         _uiState.update {
             it.copy(
                 isAuthenticated = false,
@@ -401,7 +400,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun changePassword(newPassword: String) {
-        if (newPassword.length < 4) {
+        if (newPassword.length < 8) {
             _uiState.update { it.copy(statusBannerResId = R.string.error_password_short) }
             return
         }
@@ -470,7 +469,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         scrollOffsetFromRight = 0,
                         selectedCandleIndex = null,
                         isLoading = candles.isEmpty(),
-                        hasError = false
+                        hasError = false,
+                        providerStatus = if (provider == ProviderId.TWELVE_DATA &&
+                            state.chartPreferences.twelveDataApiKey.isBlank() &&
+                            candles.isEmpty()
+                        ) {
+                            "API_KEY_REQUIRED"
+                        } else {
+                            "READY"
+                        }
                     )
                 } else {
                     tab
@@ -493,7 +500,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private fun applyUpdatedCandlesPreservingViewport(
         tab: ChartTabState,
         newCandles: List<CandleBar>,
-        newTimeframe: String = tab.timeframe
+        newTimeframe: String = tab.timeframe,
+        providerStatus: String = tab.providerStatus
     ): ChartTabState {
         val nextOffset = if (tab.timeframe == newTimeframe && tab.scrollOffsetFromRight > 0 && tab.candles.isNotEmpty()) {
             val addedRightCount = (newCandles.size - tab.candles.size).coerceAtLeast(0)
@@ -507,7 +515,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             candles = newCandles,
             scrollOffsetFromRight = nextOffset,
             isLoading = false,
-            hasError = newCandles.isEmpty()
+            hasError = newCandles.isEmpty(),
+            providerStatus = if (newCandles.isNotEmpty()) "READY" else providerStatus
         )
     }
 
@@ -540,7 +549,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val newTabs = state.openTabs.map { tab ->
                     if (tab.symbolCode == syncedSymbol.symbolCode && tab.provider == syncedSymbol.activeProvider) {
-                        applyUpdatedCandlesPreservingViewport(tab, mergedCandles, syncedSymbol.timeframe)
+                        applyUpdatedCandlesPreservingViewport(
+                            tab = tab,
+                            newCandles = mergedCandles,
+                            newTimeframe = syncedSymbol.timeframe,
+                            providerStatus = syncedSymbol.providerStatus
+                        )
                     } else {
                         tab
                     }
@@ -569,17 +583,29 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val updatedMap = HashMap<String, SymbolConfig>()
             val candlesBySymbolProvider = HashMap<String, List<CandleBar>>()
-            for (symbol in watchlist) {
-                val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(symbol, symbol.timeframe)
-                updatedMap[symbol.symbolCode] = syncedSymbol
-                candlesBySymbolProvider["${syncedSymbol.symbolCode}_${syncedSymbol.activeProvider.id}"] = mergedCandles
+            for (batch in watchlist.chunked(4)) {
+                val batchResults = coroutineScope {
+                    batch.map { symbol ->
+                        async { repository.syncSymbolUpToNow(symbol, symbol.timeframe) }
+                    }.awaitAll()
+                }
+                for ((syncedSymbol, mergedCandles) in batchResults) {
+                    updatedMap[syncedSymbol.symbolCode] = syncedSymbol
+                    candlesBySymbolProvider["${syncedSymbol.symbolCode}_${syncedSymbol.activeProvider.id}"] = mergedCandles
+                }
             }
             _uiState.update { state ->
                 val newSymbols = state.symbols.map { updatedMap[it.symbolCode] ?: it }
                 val newTabs = state.openTabs.map { tab ->
+                    val syncedSym = updatedMap[tab.symbolCode]
                     val refreshed = candlesBySymbolProvider["${tab.symbolCode}_${tab.provider.id}"]
-                    if (refreshed != null && tab.timeframe == (updatedMap[tab.symbolCode]?.timeframe ?: tab.timeframe)) {
-                        applyUpdatedCandlesPreservingViewport(tab, refreshed)
+                    if (refreshed != null && tab.timeframe == (syncedSym?.timeframe ?: tab.timeframe)) {
+                        applyUpdatedCandlesPreservingViewport(
+                            tab = tab,
+                            newCandles = refreshed,
+                            newTimeframe = tab.timeframe,
+                            providerStatus = syncedSym?.providerStatus ?: tab.providerStatus
+                        )
                     } else {
                         tab
                     }
@@ -695,7 +721,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 activeDrawingColorHex = curActive?.activeDrawingColorHex ?: curPrefs.defaultDrawingColorHex,
                 activeDrawingWidthDp = curActive?.activeDrawingWidthDp ?: curPrefs.defaultDrawingWidthDp,
                 drawings = savedDrawings,
-                isLoading = cachedCandles.isEmpty()
+                isLoading = cachedCandles.isEmpty(),
+                providerStatus = symbol.providerStatus
             )
             _uiState.update { state ->
                 val nextStack = if (state.currentScreen != targetScreen) {
@@ -804,7 +831,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     },
                     openTabs = state.openTabs.map { tab ->
                         if (tab.tabId == active.tabId && tab.timeframe == normalizedTf) {
-                            val updated = applyUpdatedCandlesPreservingViewport(tab, mergedCandles, normalizedTf)
+                            val updated = applyUpdatedCandlesPreservingViewport(
+                                tab = tab,
+                                newCandles = mergedCandles,
+                                newTimeframe = normalizedTf,
+                                providerStatus = syncedSymbol.providerStatus
+                            )
                             val clampedVis = if (mergedCandles.isNotEmpty()) {
                                 updated.visibleCandleCount.coerceIn(
                                     AppConfig.MIN_VISIBLE_CANDLES,
@@ -853,7 +885,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     },
                     openTabs = state.openTabs.map { t ->
                         if (t.tabId == tab.tabId && t.timeframe == tab.timeframe) {
-                            applyUpdatedCandlesPreservingViewport(t, mergedCandles, tab.timeframe)
+                            applyUpdatedCandlesPreservingViewport(
+                                tab = t,
+                                newCandles = mergedCandles,
+                                newTimeframe = tab.timeframe,
+                                providerStatus = syncedSymbol.providerStatus
+                            )
                         } else {
                             t
                         }

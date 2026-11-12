@@ -16,7 +16,7 @@
     <string name="action_sign_in">ورود به برنامه</string>
     <string name="action_sign_out">خروج از حساب</string>
     <string name="error_empty_credentials">لطفاً نام کاربری و رمز عبور را وارد کنید.</string>
-    <string name="error_password_short">رمز عبور باید حداقل ۴ کاراکتر باشد.</string>
+    <string name="error_password_short">رمز عبور باید حداقل ۸ کاراکتر باشد.</string>
     <string name="error_password_mismatch">رمز عبور و تکرار آن یکسان نیستند.</string>
     <string name="error_invalid_credentials">نام کاربری یا رمز عبور نادرست است.</string>
     <string name="watchlist_title">واچ‌لیست نمادهای انتخابی</string>
@@ -78,6 +78,7 @@
     <string name="chart_state_loading">در حال دریافت کندل‌های واقعی بازار…</string>
     <string name="chart_state_empty">هنوز داده بازار بارگذاری نشده است. برای دریافت داده واقعی روی به‌روزرسانی بزنید.</string>
     <string name="chart_state_error">خطا در ارتباط با منبع داده بازار. اتصال اینترنت را بررسی و مجدداً تلاش کنید.</string>
+    <string name="chart_state_api_key_required">این منبع داده نیازمند ثبت کلید API شخصی در بخش تنظیمات ← همگام‌سازی ← BYOK است.</string>
     <string name="chart_action_retry">تلاش مجدد</string>
     <string name="settings_title">تنظیمات معرفی نمادها، منابع و ظاهر</string>
     <string name="settings_appearance_section">زبان و ظاهر برنامه</string>
@@ -207,7 +208,7 @@
     <string name="settings_group_sources">۳. منبع داده و نمادها</string>
     <string name="settings_group_params">۴. پارامترهای تحلیل و سوئیچ‌های TradingView</string>
     <string name="settings_group_about">۵. سلامت سرور و درباره</string>
-    <string name="settings_about_version">نسخه ۱.۳۵.۰ · کاتالوگ ۲۲ نماد، ۷ منبع داده، نوار چند-تب و BYOK</string>
+    <string name="settings_about_version">نسخه ۱.۳۸.۰ · کاتالوگ ۲۲ نماد، ۷ منبع داده، نوار چند-تب و BYOK</string>
     <string name="settings_tab_account">حساب</string>
     <string name="settings_tab_appearance">ظاهر</string>
     <string name="settings_tab_sources">نمادها</string>

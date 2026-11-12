@@ -44,7 +44,7 @@ data class ServerOwnerStatus(
 
 data class SystemStatusDto(
     val isHealthy: Boolean = false,
-    val version: String = "1.35.0",
+    val version: String = "1.38.0",
     val serverTimeUtc: String = "",
     val dbConnected: Boolean = false,
     val dbVersion: String = "MariaDB",
@@ -64,6 +64,13 @@ class WorkspaceRepository(context: Context) {
 
     private val prefs: SharedPreferences =
         context.applicationContext.getSharedPreferences(AppConfig.PREFS_FILE_NAME, Context.MODE_PRIVATE)
+
+    init {
+        // Security hygiene: scrub any legacy plaintext password saved by older builds.
+        if (prefs.contains(AppConfig.KEY_SAVED_PASSWORD)) {
+            prefs.edit().remove(AppConfig.KEY_SAVED_PASSWORD).apply()
+        }
+    }
 
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
         .connectTimeout(15, TimeUnit.SECONDS)
@@ -120,27 +127,45 @@ class WorkspaceRepository(context: Context) {
     }
 
     fun saveRememberCredentials(remember: Boolean) {
-        val editor = prefs.edit().putBoolean(AppConfig.KEY_REMEMBER_CREDENTIALS, remember)
+        val editor = prefs.edit()
+            .putBoolean(AppConfig.KEY_REMEMBER_CREDENTIALS, remember)
+            .remove(AppConfig.KEY_SAVED_PASSWORD)
         if (!remember) {
-            editor.remove(AppConfig.KEY_SAVED_PASSWORD)
             editor.putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, false)
+            editor.remove(AppConfig.KEY_SESSION_TOKEN)
         }
         editor.apply()
     }
 
     fun getSavedPassword(): String {
-        if (!loadRememberCredentials()) return ""
-        return prefs.getString(AppConfig.KEY_SAVED_PASSWORD, "") ?: ""
+        // Security: never store or expose plaintext passwords in SharedPreferences or UI state.
+        return ""
     }
 
     fun saveOwnerPasswordIfRemembered(password: String, remember: Boolean) {
-        val editor = prefs.edit().putBoolean(AppConfig.KEY_REMEMBER_CREDENTIALS, remember)
+        val editor = prefs.edit()
+            .putBoolean(AppConfig.KEY_REMEMBER_CREDENTIALS, remember)
+            .remove(AppConfig.KEY_SAVED_PASSWORD)
         if (remember) {
-            editor.putString(AppConfig.KEY_SAVED_PASSWORD, password)
             editor.putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, true)
         } else {
-            editor.remove(AppConfig.KEY_SAVED_PASSWORD)
             editor.putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, false)
+            editor.remove(AppConfig.KEY_SESSION_TOKEN)
+        }
+        editor.apply()
+    }
+
+    fun getSessionToken(): String {
+        return prefs.getString(AppConfig.KEY_SESSION_TOKEN, "")?.trim().orEmpty()
+    }
+
+    fun saveSessionToken(token: String?) {
+        val clean = token?.trim().orEmpty()
+        val editor = prefs.edit()
+        if (clean.isNotEmpty()) {
+            editor.putString(AppConfig.KEY_SESSION_TOKEN, clean)
+        } else {
+            editor.remove(AppConfig.KEY_SESSION_TOKEN)
         }
         editor.apply()
     }
@@ -152,7 +177,83 @@ class WorkspaceRepository(context: Context) {
     }
 
     fun setSessionAuthenticated(authenticated: Boolean) {
-        prefs.edit().putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, authenticated).apply()
+        val editor = prefs.edit().putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, authenticated)
+        if (!authenticated) {
+            editor.remove(AppConfig.KEY_SESSION_TOKEN)
+        }
+        editor.apply()
+    }
+
+    private fun Request.Builder.withOptionalBearerAuth(): Request.Builder {
+        val token = getSessionToken()
+        if (token.isNotEmpty()) {
+            addHeader("Authorization", "Bearer $token")
+        }
+        return this
+    }
+
+    private fun clearLocalSessionOnUnauthorized() {
+        prefs.edit()
+            .remove(AppConfig.KEY_SESSION_TOKEN)
+            .putBoolean(AppConfig.KEY_SESSION_AUTHENTICATED, false)
+            .apply()
+    }
+
+    /**
+     * Validates the stored session token against the server.
+     * Returns true if valid, false if explicitly rejected (401), or null on network/timeout failure
+     * so offline Remember-Me continues working cleanly.
+     */
+    suspend fun validateSessionWithServer(): Boolean? = withContext(Dispatchers.IO) {
+        val token = getSessionToken()
+        if (token.isBlank()) return@withContext null
+        runCatching {
+            val payload = JSONObject().put("session_token", token)
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}auth.php?action=validate_session")
+                .withOptionalBearerAuth()
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.code == 401) {
+                    clearLocalSessionOnUnauthorized()
+                    false
+                } else if (resp.isSuccessful) {
+                    val root = JSONObject(resp.body?.string().orEmpty())
+                    if (root.optBoolean("ok", false)) {
+                        val data = root.optJSONObject("data")
+                        val srvUser = data?.optString("owner_username", "").orEmpty().trim()
+                        val srvEmail = data?.optString("owner_email", "").orEmpty().trim()
+                        if (srvUser.isNotEmpty() || srvEmail.isNotEmpty()) {
+                            val editor = prefs.edit()
+                            if (srvUser.isNotEmpty()) editor.putString(AppConfig.KEY_OWNER_USERNAME, srvUser)
+                            if (srvEmail.isNotEmpty()) editor.putString(AppConfig.KEY_OWNER_EMAIL, srvEmail)
+                            editor.apply()
+                        }
+                        true
+                    } else {
+                        null
+                    }
+                } else {
+                    null
+                }
+            }
+        }.getOrNull()
+    }
+
+    suspend fun logoutOwnerOnServer() = withContext(Dispatchers.IO) {
+        val token = getSessionToken()
+        clearLocalSessionOnUnauthorized()
+        if (token.isBlank()) return@withContext
+        runCatching {
+            val payload = JSONObject().put("session_token", token)
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}auth.php?action=logout")
+                .addHeader("Authorization", "Bearer $token")
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(req).execute().close()
+        }
     }
 
     suspend fun syncOwnerStatusFromServer(): ServerOwnerStatus = withContext(Dispatchers.IO) {
@@ -214,7 +315,15 @@ class WorkspaceRepository(context: Context) {
                     .post(payload.toString().toRequestBody(jsonMediaType))
                     .build()
                 httpClient.newCall(req).execute().use { resp ->
-                    resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+                    if (!resp.isSuccessful) return@use false
+                    val root = JSONObject(resp.body?.string().orEmpty())
+                    if (root.optBoolean("ok", false)) {
+                        val token = root.optJSONObject("data")?.optString("session_token", "").orEmpty()
+                        if (token.isNotBlank()) saveSessionToken(token)
+                        true
+                    } else {
+                        false
+                    }
                 }
             }.getOrDefault(false)
         }
@@ -249,12 +358,14 @@ class WorkspaceRepository(context: Context) {
                             val data = root.optJSONObject("data")
                             val srvUser = data?.optString("owner_username", "").orEmpty().ifBlank { username.trim() }
                             val srvEmail = data?.optString("owner_email", "").orEmpty()
+                            val token = data?.optString("session_token", "").orEmpty()
+                            if (token.isNotBlank()) saveSessionToken(token)
                             registerOwnerAccount(srvUser, password, srvEmail.ifEmpty { getOwnerEmail() })
                             true
                         } else {
                             false
                         }
-                    } else if (resp.code == 401) {
+                    } else if (resp.code == 401 || resp.code == 429) {
                         false
                     } else {
                         null
@@ -262,7 +373,7 @@ class WorkspaceRepository(context: Context) {
                 }
             }.getOrNull()
 
-            if (remoteVerified == true) return@withContext true
+            if (remoteVerified != null) return@withContext remoteVerified
             verifyOwnerCredentials(username, password)
         }
 
@@ -274,12 +385,19 @@ class WorkspaceRepository(context: Context) {
         val cleanEmail = email.trim().lowercase()
         updateOwnerEmailLocal(cleanEmail)
         runCatching {
+            val token = getSessionToken()
             val payload = JSONObject().put("email", cleanEmail)
+            if (token.isNotEmpty()) payload.put("session_token", token)
             val req = Request.Builder()
                 .url("${AppConfig.API_BASE_URL}auth.php?action=update_profile")
+                .withOptionalBearerAuth()
                 .post(payload.toString().toRequestBody(jsonMediaType))
                 .build()
             httpClient.newCall(req).execute().use { resp ->
+                if (resp.code == 401) {
+                    clearLocalSessionOnUnauthorized()
+                    return@use false
+                }
                 resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
             }
         }.getOrDefault(false)
@@ -297,13 +415,28 @@ class WorkspaceRepository(context: Context) {
     suspend fun updateOwnerPasswordOnServer(newPassword: String): Boolean = withContext(Dispatchers.IO) {
         updateOwnerPassword(newPassword)
         runCatching {
+            val token = getSessionToken()
             val payload = JSONObject().put("new_password", newPassword)
+            if (token.isNotEmpty()) payload.put("session_token", token)
             val req = Request.Builder()
                 .url("${AppConfig.API_BASE_URL}auth.php?action=change_password")
+                .withOptionalBearerAuth()
                 .post(payload.toString().toRequestBody(jsonMediaType))
                 .build()
             httpClient.newCall(req).execute().use { resp ->
-                resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+                if (resp.code == 401) {
+                    clearLocalSessionOnUnauthorized()
+                    return@use false
+                }
+                if (!resp.isSuccessful) return@use false
+                val root = JSONObject(resp.body?.string().orEmpty())
+                if (root.optBoolean("ok", false)) {
+                    val rotatedToken = root.optJSONObject("data")?.optString("session_token", "").orEmpty()
+                    if (rotatedToken.isNotBlank()) saveSessionToken(rotatedToken)
+                    true
+                } else {
+                    false
+                }
             }
         }.getOrDefault(false)
     }
@@ -336,7 +469,15 @@ class WorkspaceRepository(context: Context) {
                     .post(payload.toString().toRequestBody(jsonMediaType))
                     .build()
                 httpClient.newCall(req).execute().use { resp ->
-                    resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+                    if (!resp.isSuccessful) return@use false
+                    val root = JSONObject(resp.body?.string().orEmpty())
+                    if (root.optBoolean("ok", false)) {
+                        val token = root.optJSONObject("data")?.optString("session_token", "").orEmpty()
+                        if (token.isNotBlank()) saveSessionToken(token)
+                        true
+                    } else {
+                        false
+                    }
                 }
             }.getOrDefault(false)
 
@@ -753,6 +894,10 @@ class WorkspaceRepository(context: Context) {
             ?: emptyList()
 
         val merged = syncedByTf[effectiveTimeframe].orEmpty()
+        val missingTdKey = symbol.activeProvider == ProviderId.TWELVE_DATA &&
+            loadChartPreferences().twelveDataApiKey.isBlank() &&
+            merged.isEmpty()
+        val nextProviderStatus = if (missingTdKey) "API_KEY_REQUIRED" else "READY"
         // Use the most recent intraday M15/H1 bar for watchlist lastClose if effectiveTimeframe is D1 (still open today)
         val latestForQuote = if (effectiveTimeframe == "D1" && m15Bars.isNotEmpty()) {
             m15Bars.lastOrNull() ?: merged.lastOrNull()
@@ -769,7 +914,12 @@ class WorkspaceRepository(context: Context) {
             lastSyncMode = effectiveSyncMode,
             fetchedNewBars = effectiveFetchedNew,
             isSyncing = false,
-            syncErrorText = if (merged.isEmpty()) "ERR_NO_REAL_DATA" else null
+            syncErrorText = when {
+                missingTdKey -> "ERR_API_KEY_REQUIRED"
+                merged.isEmpty() -> "ERR_NO_REAL_DATA"
+                else -> null
+            },
+            providerStatus = nextProviderStatus
         )
         updatedSymbol to merged
     }
@@ -1375,7 +1525,7 @@ class WorkspaceRepository(context: Context) {
                             val dbVer = dbObj?.optString("version", "MariaDB") ?: "MariaDB"
                             SystemStatusDto(
                                 isHealthy = data.optString("status") == "healthy",
-                                version = data.optString("version", "1.32.0"),
+                                version = data.optString("version", "1.38.0"),
                                 serverTimeUtc = data.optString("server_time_utc", ""),
                                 dbConnected = isDbConn,
                                 dbVersion = dbVer,
@@ -1390,7 +1540,7 @@ class WorkspaceRepository(context: Context) {
         }
         SystemStatusDto(
             isHealthy = true,
-            version = "1.32.0",
+            version = "1.38.0",
             serverTimeUtc = "Local Cached",
             dbConnected = false,
             dbVersion = "MariaDB (Local)",
@@ -1612,13 +1762,20 @@ class WorkspaceRepository(context: Context) {
                 .put("preferences", prefsObj)
                 .put("open_tabs", openTabsObj)
 
+            val token = getSessionToken()
             val payload = JSONObject().put("workspace", workspaceData)
+            if (token.isNotEmpty()) payload.put("session_token", token)
             val req = Request.Builder()
                 .url("${AppConfig.API_BASE_URL}workspace_sync.php")
+                .withOptionalBearerAuth()
                 .post(payload.toString().toRequestBody(jsonMediaType))
                 .build()
 
             httpClient.newCall(req).execute().use { resp ->
+                if (resp.code == 401) {
+                    clearLocalSessionOnUnauthorized()
+                    return@use false
+                }
                 resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
             }
         }.getOrDefault(false)
@@ -1628,9 +1785,14 @@ class WorkspaceRepository(context: Context) {
         runCatching {
             val req = Request.Builder()
                 .url("${AppConfig.API_BASE_URL}workspace_sync.php")
+                .withOptionalBearerAuth()
                 .get()
                 .build()
             httpClient.newCall(req).execute().use { resp ->
+                if (resp.code == 401) {
+                    clearLocalSessionOnUnauthorized()
+                    return@use null
+                }
                 if (resp.isSuccessful) {
                     val root = JSONObject(resp.body?.string().orEmpty())
                     if (root.optBoolean("ok", false)) {

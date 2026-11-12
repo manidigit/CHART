@@ -46,7 +46,8 @@ data class SymbolConfig(
     val lastSyncMode: String = "DB_CACHE_HIT",
     val fetchedNewBars: Int = 0,
     val isSyncing: Boolean = false,
-    val syncErrorText: String? = null
+    val syncErrorText: String? = null,
+    val providerStatus: String = "READY"
 ) {
     val compositeTabKey: String
         get() = "${symbolCode}_${activeProvider.id}_${timeframe}"

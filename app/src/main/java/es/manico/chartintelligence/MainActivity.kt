@@ -209,7 +209,7 @@ fun ChartIntelligenceApp(
                         isOwnerRegistered = state.isOwnerRegistered,
                         initialUsername = state.ownerUsername,
                         initialEmail = state.ownerEmail,
-                        initialPassword = state.savedPassword,
+                        initialPassword = "",
                         rememberCredentials = state.rememberCredentials,
                         authMode = state.authMode,
                         authErrorResId = state.authErrorResId,

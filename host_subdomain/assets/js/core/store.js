@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.37.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.38.0';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -555,6 +555,12 @@ function loadOpenTabsFromStorage() {
   }
 }
 
+try {
+  localStorage.removeItem('ci_saved_password');
+} catch {
+  // Ignore storage access errors
+}
+
 const isAutoAuthSaved =
   localStorage.getItem('ci_remember_creds') !== 'false' &&
   localStorage.getItem('ci_auto_authenticated') === 'true' &&
@@ -566,7 +572,7 @@ export const state = {
   isOwnerRegistered: Boolean(localStorage.getItem('ci_owner_username')),
   ownerUsername: localStorage.getItem('ci_owner_username') || '',
   ownerEmail: localStorage.getItem('ci_owner_email') || '',
-  savedPassword: localStorage.getItem('ci_saved_password') || '',
+  savedPassword: '',
   rememberCredentials: localStorage.getItem('ci_remember_creds') !== 'false',
   authMode: 'login',
   authErrorKey: '',

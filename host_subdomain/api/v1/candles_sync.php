@@ -27,6 +27,11 @@ use ChartIntelligence\Providers\TvDatafeedAdapter;
 use ChartIntelligence\Providers\TwelveDataAdapter;
 use ChartIntelligence\Providers\YahooFinanceAdapter;
 
+if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
+    ApiEnvelope::sendCorsAndSecurityHeaders('GET, OPTIONS');
+    exit;
+}
+
 $symbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $_GET['symbol'] ?? 'XAUUSD'));
 $provider = strtolower(preg_replace('/[^a-z0-9_]/', '', $_GET['provider'] ?? 'twelve_data'));
 $timeframe = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['timeframe'] ?? 'M15'));
@@ -50,8 +55,9 @@ $pdo = Database::getPdo();
 $chartId = \ChartIntelligence\Providers\ProviderCatalog::resolveChartId($symbol);
 $priceBasis = \ChartIntelligence\Providers\ProviderCatalog::resolvePriceBasis($symbol, $provider);
 
-// 1. Purge any previously persisted synthetic weekend micro-spread rows from MariaDB for intraday timeframes
-if ($pdo !== null && $timeframe !== 'D1' && $timeframe !== 'W1') {
+// 1. Purge only synthetic OTC weekend micro-spread rows (Fri 22:00 UTC .. Sun 21:59 UTC),
+// preserving legitimate quiet weekday Asian-session candles and 24/7 crypto bars.
+if ($pdo !== null && $timeframe !== 'D1' && $timeframe !== 'W1' && UtcTimeAnchor::isOtcWeekendSymbol($symbol)) {
     try {
         $purgeStmt = $pdo->prepare(
             "DELETE FROM candles
@@ -59,7 +65,8 @@ if ($pdo !== null && $timeframe !== 'D1' && $timeframe !== 'W1') {
                AND provider_id = :provider_id
                AND timeframe = :tf
                AND volume = 0
-               AND (high_price - low_price) < (open_price * 0.00018)"
+               AND (high_price - low_price) < (open_price * 0.00018)
+               AND (FLOOR(open_time_utc / 1000) MOD 604800) BETWEEN 165600 AND 338399"
         );
         $purgeStmt->execute([
             ':chart_id' => $chartId,

@@ -49,10 +49,19 @@ final class UtcTimeAnchor
         return ($openTimeUtcMs + $step) <= $now;
     }
 
-    public static function isOtcWeekendClosed(int $epochMs, string $symbolCode = 'XAUUSD'): bool
+    public static function isOtcWeekendSymbol(string $symbolCode = 'XAUUSD'): bool
     {
         $code = strtoupper(trim($symbolCode));
-        if (!in_array($code, self::OTC_WEEKEND_SYMBOLS, true) && !str_starts_with($code, 'XAU') && !str_starts_with($code, 'EUR')) {
+        return in_array($code, self::OTC_WEEKEND_SYMBOLS, true)
+            || str_starts_with($code, 'XAU')
+            || str_starts_with($code, 'XAG')
+            || str_starts_with($code, 'EUR')
+            || in_array($code, ['GBPUSD', 'USDJPY', 'USOIL'], true);
+    }
+
+    public static function isOtcWeekendClosed(int $epochMs, string $symbolCode = 'XAUUSD'): bool
+    {
+        if (!self::isOtcWeekendSymbol($symbolCode)) {
             return false;
         }
         $sec = intdiv($epochMs, 1000);
@@ -70,3 +79,4 @@ final class UtcTimeAnchor
         return false;
     }
 }
+

@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
-import { state } from '../core/store.js?v=1.37.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.37.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
+import { state } from '../core/store.js?v=1.38.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.38.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -43,6 +43,9 @@ export function renderTopHeaderBar(activeTab, i18n) {
   if (sym && sym.isSyncing) {
     statusDotColor = 'var(--gold)';
     statusText = i18n.t('chart_status_syncing');
+  } else if (sym && sym.providerStatus === 'API_KEY_REQUIRED') {
+    statusDotColor = 'var(--gold)';
+    statusText = i18n.getCurrentLanguage() === 'fa' ? 'نیاز به کلید API' : 'API Key Needed';
   } else if (sym && sym.syncError) {
     statusDotColor = 'var(--bear)';
     statusText = i18n.t('chart_status_error');

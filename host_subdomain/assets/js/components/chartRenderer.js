@@ -1,7 +1,7 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.37.0';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.37.0';
-import { state } from '../core/store.js?v=1.37.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.38.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.38.0';
+import { state } from '../core/store.js?v=1.38.0';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;
@@ -167,7 +167,31 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   ctx.fillRect(0, 0, w, h);
 
   const candles = tab.candles || [];
-  if (candles.length === 0) return;
+  if (candles.length === 0) {
+    const sym = (state.symbols || []).find((s) => s.symbolCode === tab.symbolCode);
+    const providerStatus = tab.providerStatus || (sym && sym.providerStatus) || '';
+    let msgKey = 'chart_state_empty';
+    let accentColor = textColor;
+    if (sym && sym.isSyncing) {
+      msgKey = 'chart_state_loading';
+      accentColor = '#F59E0B';
+    } else if (providerStatus === 'API_KEY_REQUIRED') {
+      msgKey = 'chart_state_api_key_required';
+      accentColor = '#F59E0B';
+    } else if (sym && sym.syncError) {
+      msgKey = 'chart_state_error';
+      accentColor = bearColor;
+    }
+    const label = i18n && typeof i18n.t === 'function' ? i18n.t(msgKey) : msgKey;
+    ctx.save();
+    ctx.fillStyle = accentColor;
+    ctx.font = '600 13px "Vazirmatn", "Inter", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(label, w / 2, h / 2, Math.max(200, w - 48));
+    ctx.restore();
+    return;
+  }
 
   const rightAxisW = 78;
   const bottomAxisH = 26;

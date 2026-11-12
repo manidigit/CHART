@@ -337,6 +337,7 @@ fun CandlestickCanvas(
     val volumeUnavailableLabel = stringResource(R.string.chart_volume_unavailable)
     val loadingStateLabel = stringResource(R.string.chart_state_loading)
     val errorStateLabel = stringResource(R.string.chart_state_error)
+    val apiKeyRequiredLabel = stringResource(R.string.chart_state_api_key_required)
     val emptyStateLabel = stringResource(R.string.chart_state_empty)
     val retryActionLabel = stringResource(R.string.chart_action_retry)
 
@@ -380,10 +381,19 @@ fun CandlestickCanvas(
                             textAlign = TextAlign.Center
                         )
                     } else {
+                        val isApiKeyRequired = tab.providerStatus == "API_KEY_REQUIRED"
                         Text(
-                            text = if (tab.hasError) errorStateLabel else emptyStateLabel,
+                            text = when {
+                                isApiKeyRequired -> apiKeyRequiredLabel
+                                tab.hasError -> errorStateLabel
+                                else -> emptyStateLabel
+                            },
                             style = MaterialTheme.typography.bodyMedium,
-                            color = if (tab.hasError) financialPalette.bearCandle else MaterialTheme.colorScheme.onSurfaceVariant,
+                            color = when {
+                                isApiKeyRequired -> Color(0xFFF59E0B)
+                                tab.hasError -> financialPalette.bearCandle
+                                else -> MaterialTheme.colorScheme.onSurfaceVariant
+                            },
                             textAlign = TextAlign.Center
                         )
                         Spacer(modifier = Modifier.height(14.dp))

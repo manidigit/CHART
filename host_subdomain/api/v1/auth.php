@@ -8,9 +8,7 @@ use ChartIntelligence\Core\ApiEnvelope;
 use ChartIntelligence\Core\Database;
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header('Access-Control-Allow-Origin: *');
-    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type');
+    ApiEnvelope::sendCorsAndSecurityHeaders('GET, POST, OPTIONS');
     exit;
 }
 
@@ -20,6 +18,7 @@ $action = $_GET['action'] ?? ($payload['action'] ?? 'status');
 
 $pdo = Database::getPdo();
 $fallbackFile = dirname(__DIR__, 2) . '/config/owner.local.json';
+$rateLimitFile = dirname(__DIR__, 2) . '/config/auth_ratelimit.local.json';
 
 if ($pdo !== null) {
     try {
@@ -43,6 +42,98 @@ if ($pdo !== null) {
 
 $sessionsFile = dirname(__DIR__, 2) . '/config/sessions.local.json';
 
+function extractSessionToken(array $payload): string
+{
+    $token = trim((string) ($payload['session_token'] ?? ($_GET['session_token'] ?? ($_GET['token'] ?? ''))));
+    if ($token === '') {
+        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
+        if (preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
+            $token = $matches[1];
+        }
+    }
+    return $token;
+}
+
+function getClientIpAddress(): string
+{
+    $forwarded = trim((string) ($_SERVER['HTTP_X_FORWARDED_FOR'] ?? ''));
+    if ($forwarded !== '') {
+        $parts = explode(',', $forwarded);
+        return trim($parts[0]);
+    }
+    return trim((string) ($_SERVER['REMOTE_ADDR'] ?? '0.0.0.0'));
+}
+
+function enforceRateLimit(string $rateLimitFile, string $bucket, int $maxAttempts, int $windowSec): void
+{
+    $ip = getClientIpAddress();
+    $key = hash('sha256', $bucket . '|' . $ip);
+    $now = time();
+    $records = [];
+    if (is_file($rateLimitFile)) {
+        $raw = json_decode((string) @file_get_contents($rateLimitFile), true);
+        if (is_array($raw)) {
+            foreach ($raw as $k => $timestamps) {
+                if (is_array($timestamps)) {
+                    $valid = array_values(array_filter($timestamps, static fn ($ts) => ((int) $ts) > ($now - 3600)));
+                    if (!empty($valid)) {
+                        $records[$k] = $valid;
+                    }
+                }
+            }
+        }
+    }
+    $recent = array_values(array_filter($records[$key] ?? [], static fn ($ts) => ((int) $ts) > ($now - $windowSec)));
+    if (count($recent) >= $maxAttempts) {
+        ApiEnvelope::sendError('RATE_LIMITED', 'error_rate_limited', 429);
+    }
+    $recent[] = $now;
+    $records[$key] = $recent;
+    $dir = dirname($rateLimitFile);
+    if (!is_dir($dir)) {
+        @mkdir($dir, 0755, true);
+    }
+    @file_put_contents($rateLimitFile, json_encode($records, JSON_UNESCAPED_UNICODE), LOCK_EX);
+}
+
+function clearRateLimitBucket(string $rateLimitFile, string $bucket): void
+{
+    if (!is_file($rateLimitFile)) {
+        return;
+    }
+    $key = hash('sha256', $bucket . '|' . getClientIpAddress());
+    $raw = json_decode((string) @file_get_contents($rateLimitFile), true);
+    if (is_array($raw) && isset($raw[$key])) {
+        unset($raw[$key]);
+        @file_put_contents($rateLimitFile, json_encode($raw, JSON_UNESCAPED_UNICODE), LOCK_EX);
+    }
+}
+
+function pruneExpiredSessions(?PDO $pdo, string $sessionsFile): void
+{
+    if ($pdo !== null) {
+        try {
+            $stmt = $pdo->prepare("DELETE FROM user_sessions WHERE expires_at_utc <= :now");
+            $stmt->execute([':now' => gmdate('Y-m-d H:i:s')]);
+        } catch (\Throwable) {}
+    }
+    if (is_file($sessionsFile)) {
+        $data = json_decode((string) @file_get_contents($sessionsFile), true);
+        if (is_array($data)) {
+            $now = time();
+            $pruned = [];
+            foreach ($data as $t => $s) {
+                if (isset($s['expires_ts']) && (int) $s['expires_ts'] > $now) {
+                    $pruned[$t] = $s;
+                }
+            }
+            if (count($pruned) !== count($data)) {
+                @file_put_contents($sessionsFile, json_encode($pruned, JSON_UNESCAPED_UNICODE), LOCK_EX);
+            }
+        }
+    }
+}
+
 function createSessionToken(?PDO $pdo, string $sessionsFile, string $username, string $email): string
 {
     $token = bin2hex(random_bytes(32));
@@ -51,6 +142,8 @@ function createSessionToken(?PDO $pdo, string $sessionsFile, string $username, s
 
     if ($pdo !== null) {
         try {
+            $del = $pdo->prepare("DELETE FROM user_sessions WHERE expires_at_utc <= :now");
+            $del->execute([':now' => gmdate('Y-m-d H:i:s')]);
             $stmt = $pdo->prepare("INSERT INTO user_sessions (token, username, email, expires_at_utc) VALUES (:t, :u, :e, :exp)");
             $stmt->execute([':t' => $token, ':u' => $username, ':e' => $email !== '' ? $email : null, ':exp' => $expiresUtc]);
         } catch (\Throwable) {}
@@ -58,7 +151,7 @@ function createSessionToken(?PDO $pdo, string $sessionsFile, string $username, s
 
     $sessions = [];
     if (is_file($sessionsFile)) {
-        $data = json_decode((string) file_get_contents($sessionsFile), true);
+        $data = json_decode((string) @file_get_contents($sessionsFile), true);
         if (is_array($data)) {
             $now = time();
             foreach ($data as $t => $s) {
@@ -76,7 +169,7 @@ function createSessionToken(?PDO $pdo, string $sessionsFile, string $username, s
     ];
     $dir = dirname($sessionsFile);
     if (!is_dir($dir)) @mkdir($dir, 0755, true);
-    @file_put_contents($sessionsFile, json_encode($sessions, JSON_UNESCAPED_UNICODE));
+    @file_put_contents($sessionsFile, json_encode($sessions, JSON_UNESCAPED_UNICODE), LOCK_EX);
 
     return $token;
 }
@@ -101,7 +194,7 @@ function verifySessionToken(?PDO $pdo, string $sessionsFile, string $token): ?ar
     }
 
     if (is_file($sessionsFile)) {
-        $data = json_decode((string) file_get_contents($sessionsFile), true);
+        $data = json_decode((string) @file_get_contents($sessionsFile), true);
         if (is_array($data) && isset($data[$token])) {
             $s = $data[$token];
             if (isset($s['expires_ts']) && (int) $s['expires_ts'] > time()) {
@@ -125,12 +218,37 @@ function revokeSessionToken(?PDO $pdo, string $sessionsFile, string $token): voi
         } catch (\Throwable) {}
     }
     if (is_file($sessionsFile)) {
-        $data = json_decode((string) file_get_contents($sessionsFile), true);
+        $data = json_decode((string) @file_get_contents($sessionsFile), true);
         if (is_array($data) && isset($data[$token])) {
             unset($data[$token]);
-            @file_put_contents($sessionsFile, json_encode($data, JSON_UNESCAPED_UNICODE));
+            @file_put_contents($sessionsFile, json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX);
         }
     }
+}
+
+function revokeAllSessions(?PDO $pdo, string $sessionsFile): void
+{
+    if ($pdo !== null) {
+        try {
+            $pdo->exec("DELETE FROM user_sessions");
+        } catch (\Throwable) {}
+    }
+    if (is_file($sessionsFile)) {
+        @file_put_contents($sessionsFile, json_encode([], JSON_UNESCAPED_UNICODE), LOCK_EX);
+    }
+}
+
+function isOwnerRegisteredAnywhere(?PDO $pdo, string $fallbackFile): bool
+{
+    if ($pdo !== null) {
+        try {
+            $stmt = $pdo->query("SELECT 1 FROM users WHERE role = 'owner' LIMIT 1");
+            if ($stmt && $stmt->fetch()) {
+                return true;
+            }
+        } catch (\Throwable) {}
+    }
+    return loadFallbackOwner($fallbackFile) !== null;
 }
 
 function loadFallbackOwner(string $file): ?array
@@ -138,7 +256,7 @@ function loadFallbackOwner(string $file): ?array
     if (!is_file($file)) {
         return null;
     }
-    $data = json_decode((string) file_get_contents($file), true);
+    $data = json_decode((string) @file_get_contents($file), true);
     return is_array($data) && !empty($data['username']) ? $data : null;
 }
 
@@ -161,7 +279,7 @@ function saveFallbackOwner(
         'reset_code_hash' => $resetCodeHash,
         'reset_expires_at_utc' => $resetExpiresAtUtc,
         'updated_at_utc' => gmdate('Y-m-d\TH:i:s\Z'),
-    ], JSON_UNESCAPED_UNICODE));
+    ], JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
 function sendRecoveryEmailMessage(string $email, string $username, string $code): bool
@@ -175,7 +293,11 @@ function sendRecoveryEmailMessage(string $email, string $username, string $code)
     $headers = "From: noreply@manico.es\r\n"
         . "Reply-To: noreply@manico.es\r\n"
         . "Content-Type: text/plain; charset=UTF-8\r\n";
-    return (bool) @mail($email, $subject, $body, $headers);
+    $sent = (bool) @mail($email, $subject, $body, $headers);
+    if (!$sent) {
+        error_log('[ChartIntelligence auth] Failed to dispatch recovery email via mail()');
+    }
+    return $sent;
 }
 
 if ($action === 'status') {
@@ -199,6 +321,9 @@ if ($action === 'status') {
 }
 
 if ($action === 'register_owner') {
+    if (isOwnerRegisteredAnywhere($pdo, $fallbackFile)) {
+        ApiEnvelope::sendError('OWNER_ALREADY_EXISTS', 'error_invalid_credentials', 403);
+    }
     $username = trim((string) ($payload['username'] ?? ''));
     $email = strtolower(trim((string) ($payload['email'] ?? '')));
     $password = (string) ($payload['password'] ?? '');
@@ -208,7 +333,7 @@ if ($action === 'register_owner') {
     if ($email !== '' && !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         ApiEnvelope::sendError('INVALID_EMAIL', 'error_invalid_email');
     }
-    if (mb_strlen($password) < 4) {
+    if (mb_strlen($password) < 8) {
         ApiEnvelope::sendError('PASSWORD_SHORT', 'error_password_short');
     }
     $hashAlgo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT;
@@ -233,13 +358,8 @@ if ($action === 'register_owner') {
 }
 
 if ($action === 'validate_session') {
-    $token = trim((string) ($payload['session_token'] ?? ($_GET['session_token'] ?? '')));
-    if ($token === '') {
-        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-        if (preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
-            $token = $matches[1];
-        }
-    }
+    pruneExpiredSessions($pdo, $sessionsFile);
+    $token = extractSessionToken($payload);
     $session = verifySessionToken($pdo, $sessionsFile, $token);
     if ($session !== null) {
         ApiEnvelope::sendSuccess([
@@ -253,18 +373,13 @@ if ($action === 'validate_session') {
 }
 
 if ($action === 'logout') {
-    $token = trim((string) ($payload['session_token'] ?? ($_GET['session_token'] ?? '')));
-    if ($token === '') {
-        $authHeader = $_SERVER['HTTP_AUTHORIZATION'] ?? '';
-        if (preg_match('/Bearer\s+(\S+)/i', $authHeader, $matches)) {
-            $token = $matches[1];
-        }
-    }
+    $token = extractSessionToken($payload);
     revokeSessionToken($pdo, $sessionsFile, $token);
     ApiEnvelope::sendSuccess(['logged_out' => true]);
 }
 
 if ($action === 'login') {
+    enforceRateLimit($rateLimitFile, 'login', 15, 600);
     $identifier = trim((string) ($payload['username'] ?? ''));
     $password = (string) ($payload['password'] ?? '');
     if ($identifier === '' || $password === '') {
@@ -280,6 +395,7 @@ if ($action === 'login') {
         $stmt->execute([':u' => $identifier, ':e' => $identifier]);
         $row = $stmt->fetch();
         if ($row && password_verify($password, (string) $row['password_hash'])) {
+            clearRateLimitBucket($rateLimitFile, 'login');
             $u = (string) $row['username'];
             $e = (string) ($row['email'] ?? '');
             $token = createSessionToken($pdo, $sessionsFile, $u, $e);
@@ -299,6 +415,7 @@ if ($action === 'login') {
             (!empty($fb['email']) && strcasecmp((string) $fb['email'], $identifier) === 0)) &&
         password_verify($password, (string) $fb['password_hash'])
     ) {
+        clearRateLimitBucket($rateLimitFile, 'login');
         $u = (string) $fb['username'];
         $e = (string) ($fb['email'] ?? '');
         $token = createSessionToken($pdo, $sessionsFile, $u, $e);
@@ -392,6 +509,10 @@ if ($action === 'google_sign_in') {
 }
 
 if ($action === 'update_profile') {
+    $session = verifySessionToken($pdo, $sessionsFile, extractSessionToken($payload));
+    if ($session === null && isOwnerRegisteredAnywhere($pdo, $fallbackFile)) {
+        ApiEnvelope::sendError('UNAUTHORIZED', 'error_invalid_credentials', 401);
+    }
     $email = strtolower(trim((string) ($payload['email'] ?? '')));
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         ApiEnvelope::sendError('INVALID_EMAIL', 'error_invalid_email');
@@ -418,19 +539,37 @@ if ($action === 'update_profile') {
 }
 
 if ($action === 'change_password') {
+    $session = verifySessionToken($pdo, $sessionsFile, extractSessionToken($payload));
+    if ($session === null && isOwnerRegisteredAnywhere($pdo, $fallbackFile)) {
+        ApiEnvelope::sendError('UNAUTHORIZED', 'error_invalid_credentials', 401);
+    }
     $newPassword = (string) ($payload['new_password'] ?? '');
-    if (mb_strlen($newPassword) < 4) {
+    if (mb_strlen($newPassword) < 8) {
         ApiEnvelope::sendError('PASSWORD_SHORT', 'error_password_short');
     }
     $hashAlgo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT;
     $hash = password_hash($newPassword, $hashAlgo);
 
+    $ownerUsername = $session['username'] ?? '';
+    $ownerEmail = $session['email'] ?? '';
     if ($pdo !== null) {
         $stmt = $pdo->prepare("UPDATE users SET password_hash = :h WHERE role = 'owner'");
         $stmt->execute([':h' => $hash]);
+        if ($ownerUsername === '') {
+            $uStmt = $pdo->query("SELECT username, email FROM users WHERE role = 'owner' LIMIT 1");
+            $uRow = $uStmt ? $uStmt->fetch() : false;
+            if ($uRow) {
+                $ownerUsername = (string) ($uRow['username'] ?? '');
+                $ownerEmail = (string) ($uRow['email'] ?? '');
+            }
+        }
     }
     $fb = loadFallbackOwner($fallbackFile);
     if ($fb !== null) {
+        if ($ownerUsername === '') {
+            $ownerUsername = (string) $fb['username'];
+            $ownerEmail = (string) ($fb['email'] ?? '');
+        }
         saveFallbackOwner(
             $fallbackFile,
             (string) $fb['username'],
@@ -438,10 +577,16 @@ if ($action === 'change_password') {
             (string) ($fb['email'] ?? '')
         );
     }
-    ApiEnvelope::sendSuccess(['password_updated' => true], 'settings_password_updated');
+    revokeAllSessions($pdo, $sessionsFile);
+    $freshToken = $ownerUsername !== '' ? createSessionToken($pdo, $sessionsFile, $ownerUsername, $ownerEmail) : '';
+    ApiEnvelope::sendSuccess([
+        'password_updated' => true,
+        'session_token' => $freshToken,
+    ], 'settings_password_updated');
 }
 
 if ($action === 'request_password_reset') {
+    enforceRateLimit($rateLimitFile, 'password_reset_req', 6, 900);
     $email = strtolower(trim((string) ($payload['email'] ?? '')));
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         ApiEnvelope::sendError('INVALID_EMAIL', 'error_invalid_email');
@@ -507,6 +652,7 @@ if ($action === 'request_password_reset') {
 }
 
 if ($action === 'confirm_password_reset') {
+    enforceRateLimit($rateLimitFile, 'password_reset_confirm', 10, 900);
     $email = strtolower(trim((string) ($payload['email'] ?? '')));
     $code = trim((string) ($payload['code'] ?? ''));
     $newPassword = (string) ($payload['new_password'] ?? '');
@@ -514,7 +660,7 @@ if ($action === 'confirm_password_reset') {
     if ($email === '' || $code === '' || $newPassword === '') {
         ApiEnvelope::sendError('EMPTY_CREDENTIALS', 'error_empty_credentials');
     }
-    if (mb_strlen($newPassword) < 4) {
+    if (mb_strlen($newPassword) < 8) {
         ApiEnvelope::sendError('PASSWORD_SHORT', 'error_password_short');
     }
 
@@ -571,9 +717,12 @@ if ($action === 'confirm_password_reset') {
     if ($fb !== null) {
         saveFallbackOwner($fallbackFile, (string) $fb['username'], $newHash, $email, null, null);
     }
+    revokeAllSessions($pdo, $sessionsFile);
+    $freshToken = $ownerUsername !== '' ? createSessionToken($pdo, $sessionsFile, $ownerUsername, $email) : '';
 
     ApiEnvelope::sendSuccess([
         'password_reset' => true,
+        'session_token' => $freshToken,
         'owner_username' => $ownerUsername,
         'owner_email' => $email,
     ], 'status_password_reset_success');

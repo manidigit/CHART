@@ -8,14 +8,12 @@ use ChartIntelligence\Core\ApiEnvelope;
 use ChartIntelligence\Core\Database;
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header('Access-Control-Allow-Origin: *');
-    header('Access-Control-Allow-Methods: GET, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, Authorization');
+    ApiEnvelope::sendCorsAndSecurityHeaders('GET, OPTIONS');
     exit;
 }
 
+ApiEnvelope::sendCorsAndSecurityHeaders('GET, OPTIONS');
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
 
 $nowSec = time();
 $nowMs = (int) round(microtime(true) * 1000);
@@ -117,7 +115,7 @@ if ($totalCandles === 0) {
 
 ApiEnvelope::sendSuccess([
     'status' => 'healthy',
-    'version' => '1.32.0',
+    'version' => '1.38.0',
     'phase' => 'Phase 1 - DB-First Central Core, 6-Provider & 22-Symbol Catalog',
     'server_time_utc' => $nowUtc,
     'server_time_ms' => $nowMs,

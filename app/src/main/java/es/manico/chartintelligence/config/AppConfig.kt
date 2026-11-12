@@ -22,6 +22,7 @@ object AppConfig {
     const val KEY_REMEMBER_CREDENTIALS: String = "pref_remember_credentials"
     const val KEY_SAVED_PASSWORD: String = "pref_saved_owner_password"
     const val KEY_SESSION_AUTHENTICATED: String = "pref_session_authenticated"
+    const val KEY_SESSION_TOKEN: String = "pref_session_token"
     const val KEY_OPEN_TABS_JSON: String = "pref_open_tabs_json"
 
     const val DEFAULT_LANGUAGE_CODE: String = "fa"

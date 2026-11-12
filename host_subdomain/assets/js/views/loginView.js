@@ -1,4 +1,4 @@
-import { state } from '../core/store.js?v=1.37.0';
+import { state } from '../core/store.js?v=1.38.0';
 
 export function renderLoginScreen(i18n) {
   const isReg = state.isOwnerRegistered;
@@ -128,7 +128,7 @@ export function renderLoginScreen(i18n) {
           <label class="tv-input-label">${i18n.t('label_password')}</label>
           <div class="tv-input-wrap">
             ${lockIconSvg}
-            <input class="tv-input" type="${pwType}" name="password" placeholder="••••••••" value="${state.rememberCredentials ? state.savedPassword || '' : ''}" required autocomplete="${isReg ? 'current-password' : 'new-password'}" />
+            <input class="tv-input" type="${pwType}" name="password" placeholder="••••••••" value="" required autocomplete="${isReg ? 'current-password' : 'new-password'}" />
             ${eyeToggleBtn}
           </div>
         </div>

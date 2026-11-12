@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.37.0';
-import { state, getAssetClass } from '../core/store.js?v=1.37.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.38.0';
+import { state, getAssetClass } from '../core/store.js?v=1.38.0';
 
 const STOCK_SYMBOLS = new Set([
   'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',

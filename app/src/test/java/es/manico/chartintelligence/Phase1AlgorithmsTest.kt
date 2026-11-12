@@ -519,8 +519,36 @@ class Phase1AlgorithmsTest {
         assertTrue(vp.vahPrice >= vp.pocPrice)
         assertTrue(vp.pocPrice >= vp.valPrice)
     }
+
+    @Test
+    fun securityAndProviderStatus_contractsMatchBackendExpectations() {
+        // 24/7 Crypto symbols must never be treated as OTC weekend-closed
+        val sundayMillis = 1794139200000L
+        assertFalse(UtcTimeAnchorAlgorithm.isOtcWeekendClosed(sundayMillis, "BTCUSD"))
+        assertFalse(UtcTimeAnchorAlgorithm.isOtcWeekendClosed(sundayMillis, "ETHUSD"))
+        assertTrue(UtcTimeAnchorAlgorithm.isOtcWeekendClosed(sundayMillis, "XAUUSD"))
+
+        // providerStatus defaults and API_KEY_REQUIRED contract
+        val symbolReady = es.manico.chartintelligence.data.model.SymbolConfig(
+            chartId = "chart_xauusd_main",
+            symbolCode = "XAUUSD"
+        )
+        assertEquals("READY", symbolReady.providerStatus)
+        val symbolMissingKey = symbolReady.copy(providerStatus = "API_KEY_REQUIRED", syncErrorText = "ERR_API_KEY_REQUIRED")
+        assertEquals("API_KEY_REQUIRED", symbolMissingKey.providerStatus)
+
+        val tabMissingKey = es.manico.chartintelligence.data.model.ChartTabState(
+            tabId = "XAUUSD_twelve_data",
+            chartId = "chart_xauusd_main",
+            symbolCode = "XAUUSD",
+            decimals = 2,
+            provider = es.manico.chartintelligence.data.model.ProviderId.TWELVE_DATA,
+            hasError = true,
+            providerStatus = symbolMissingKey.providerStatus
+        )
+        assertEquals("API_KEY_REQUIRED", tabMissingKey.providerStatus)
+
+        // Session token key must be configured cleanly
+        assertEquals("pref_session_token", es.manico.chartintelligence.config.AppConfig.KEY_SESSION_TOKEN)
+    }
 }
-
-
-
-

@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.37.0';
+import { I18nManager } from './core/i18n.js?v=1.38.0';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -16,7 +16,7 @@ import {
   registerAutoSyncCallback,
   INDICATOR_FLAG_KEYS,
   syncIndicatorsAcrossTabsAndPrefs,
-} from './core/store.js?v=1.37.0';
+} from './core/store.js?v=1.38.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -30,25 +30,25 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.37.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.37.0';
-import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.37.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.37.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.37.0';
+} from './services/apiService.js?v=1.38.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.38.0';
+import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.38.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.38.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.38.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.37.0';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.37.0';
+} from './views/headerView.js?v=1.38.0';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.38.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.37.0';
-import { renderPredictionModal } from './views/analysisView.js?v=1.37.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.37.0';
-import { renderRightIconRail } from './views/navigationView.js?v=1.37.0';
+} from './views/watchlistView.js?v=1.38.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.38.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.38.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.38.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -951,21 +951,58 @@ function bindCanvasEvents(activeTab) {
     { passive: false }
   );
 
-  // Mobile/Tablet Touch Support: 1-finger pan & 2-finger pinch-zoom
+  // Mobile/Tablet Touch Support: 1-finger pan, 2-finger pinch-zoom, and long-press crosshair inspection
   let touchStartX = 0;
+  let touchStartY = 0;
   let touchStartOffset = 0;
+  let touchMoved = false;
+  let isTouchInspecting = false;
+  let touchLongPressTimer = null;
   let pinchStartDist = 0;
   let pinchStartVisibleCount = 48;
+
+  const cancelTouchLongPress = () => {
+    if (touchLongPressTimer) {
+      clearTimeout(touchLongPressTimer);
+      touchLongPressTimer = null;
+    }
+  };
+
+  const updateTouchCrosshair = (clientX, clientY) => {
+    const meta = canvas._chartMeta;
+    if (!meta || !meta.visible || meta.visible.length === 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = clientX - rect.left;
+    const y = clientY - rect.top;
+    if (x <= meta.chartW) {
+      const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
+      activeTab.hoverIndex = idx;
+      activeTab.hoverY = y;
+      scheduleCanvasRedraw();
+    }
+  };
 
   canvas.addEventListener(
     'touchstart',
     (e) => {
+      cancelTouchLongPress();
+      touchMoved = false;
       if (e.touches.length === 1) {
         const rect = canvas.getBoundingClientRect();
-        touchStartX = e.touches[0].clientX - rect.left;
+        const t = e.touches[0];
+        touchStartX = t.clientX - rect.left;
+        touchStartY = t.clientY - rect.top;
         touchStartOffset = Number(activeTab.scrollOffset || 0);
         pinchStartDist = 0;
+        isTouchInspecting = false;
+        touchLongPressTimer = setTimeout(() => {
+          if (!touchMoved) {
+            isTouchInspecting = true;
+            updateTouchCrosshair(t.clientX, t.clientY);
+          }
+        }, 320);
       } else if (e.touches.length === 2) {
+        isTouchInspecting = false;
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         pinchStartDist = Math.hypot(dx, dy);
@@ -981,6 +1018,8 @@ function bindCanvasEvents(activeTab) {
       const meta = canvas._chartMeta;
       if (!meta) return;
       if (e.touches.length === 2 && pinchStartDist > 10) {
+        cancelTouchLongPress();
+        touchMoved = true;
         e.preventDefault();
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -994,9 +1033,20 @@ function bindCanvasEvents(activeTab) {
         }
         scheduleCanvasRedraw();
       } else if (e.touches.length === 1 && pinchStartDist === 0) {
-        e.preventDefault();
+        const t = e.touches[0];
+        if (isTouchInspecting) {
+          e.preventDefault();
+          updateTouchCrosshair(t.clientX, t.clientY);
+          return;
+        }
         const rect = canvas.getBoundingClientRect();
-        const x = e.touches[0].clientX - rect.left;
+        const x = t.clientX - rect.left;
+        const y = t.clientY - rect.top;
+        if (Math.hypot(x - touchStartX, y - touchStartY) > 8) {
+          touchMoved = true;
+          cancelTouchLongPress();
+        }
+        e.preventDefault();
         const dx = x - touchStartX;
         const deltaBars = Math.round(dx / Math.max(0.5, meta.slotW));
         const maxOffset = Math.max(0, (activeTab.candles || []).length - 5);
@@ -1013,6 +1063,13 @@ function bindCanvasEvents(activeTab) {
   canvas.addEventListener(
     'touchend',
     () => {
+      cancelTouchLongPress();
+      if (!touchMoved && !isTouchInspecting && activeTab.hoverIndex !== null) {
+        activeTab.hoverIndex = null;
+        activeTab.hoverY = null;
+        scheduleCanvasRedraw();
+      }
+      isTouchInspecting = false;
       pinchStartDist = 0;
       saveOpenTabsToStorage();
     },
@@ -1031,16 +1088,23 @@ function bindAuthForms() {
       const password = String(fd.get('password') || '');
       const confirm = String(fd.get('confirm_password') || '');
 
+      if (!state.isOwnerRegistered && password.length < 8) {
+        state.authErrorKey = 'error_password_short';
+        renderApp();
+        return;
+      }
       if (!state.isOwnerRegistered && password !== confirm) {
-        state.authErrorKey = 'login_error_password_mismatch';
+        state.authErrorKey = 'error_password_mismatch';
         renderApp();
         return;
       }
       const res = await loginOrRegisterOwner(username, email, password);
       if (!res.ok) {
-        state.authErrorKey = res.errorKey || 'login_error_invalid_credentials';
+        state.authErrorKey = res.errorKey || 'error_invalid_credentials';
       } else {
         state.authErrorKey = '';
+        await downloadWorkspaceSync();
+        ensureInitialTabs();
         await syncAllWatchlistSymbols(renderApp);
       }
       renderApp();
@@ -1053,13 +1117,13 @@ function bindAuthForms() {
       e.preventDefault();
       const fd = new FormData(forgotReq);
       const email = String(fd.get('email') || '').trim();
-      const ok = await requestPasswordResetCode(email);
-      if (ok) {
+      const res = await requestPasswordResetCode(email);
+      if (res && res.ok) {
         state.authMode = 'forgot_verify';
-        state.authInfoKey = 'forgot_code_sent_success';
+        state.authInfoKey = 'status_recovery_code_sent';
         state.authErrorKey = '';
       } else {
-        state.authErrorKey = 'forgot_error_email_not_found';
+        state.authErrorKey = (res && res.errorKey) || 'error_email_not_found';
       }
       renderApp();
     });
@@ -1074,18 +1138,23 @@ function bindAuthForms() {
       const code = String(fd.get('recovery_code') || '').trim();
       const np = String(fd.get('new_password') || '');
       const cp = String(fd.get('confirm_password') || '');
-      if (np !== cp) {
-        state.authErrorKey = 'login_error_password_mismatch';
+      if (np.length < 8) {
+        state.authErrorKey = 'error_password_short';
         renderApp();
         return;
       }
-      const ok = await confirmPasswordResetCode(email, code, np);
-      if (ok) {
+      if (np !== cp) {
+        state.authErrorKey = 'error_password_mismatch';
+        renderApp();
+        return;
+      }
+      const res = await confirmPasswordResetCode(email, code, np);
+      if (res && res.ok) {
         state.authMode = 'login';
-        state.authInfoKey = 'forgot_reset_success';
+        state.authInfoKey = 'status_password_reset_success';
         state.authErrorKey = '';
       } else {
-        state.authErrorKey = 'forgot_error_invalid_code';
+        state.authErrorKey = (res && res.errorKey) || 'error_invalid_recovery_code';
       }
       renderApp();
     });
@@ -1099,8 +1168,11 @@ function bindSettingsForms() {
       e.preventDefault();
       const fd = new FormData(emailForm);
       const email = String(fd.get('recovery_email') || '').trim();
-      await updateOwnerEmailOnServer(email);
-      state.statusBannerKey = 'settings_email_updated_toast';
+      const res = await updateOwnerEmailOnServer(email);
+      state.statusBannerKey = res && res.ok
+        ? 'settings_email_updated_toast'
+        : (res && res.errorKey) || 'error_invalid_email';
+      showFloatingToast(i18n.t(state.statusBannerKey));
       renderApp();
     });
   }
@@ -1111,8 +1183,17 @@ function bindSettingsForms() {
       e.preventDefault();
       const fd = new FormData(passForm);
       const np = String(fd.get('new_password') || '');
-      await updateOwnerPasswordOnServer(np);
-      state.statusBannerKey = 'settings_password_updated_toast';
+      if (np.length < 8) {
+        state.statusBannerKey = 'error_password_short';
+        showFloatingToast(i18n.t('error_password_short'));
+        renderApp();
+        return;
+      }
+      const res = await updateOwnerPasswordOnServer(np);
+      state.statusBannerKey = res && res.ok
+        ? 'settings_password_updated_toast'
+        : (res && res.errorKey) || 'error_unauthorized';
+      showFloatingToast(i18n.t(state.statusBannerKey));
       renderApp();
     });
   }
@@ -1828,6 +1909,8 @@ document.addEventListener('change', async (e) => {
     if (!state.rememberCredentials) {
       state.savedPassword = '';
       localStorage.removeItem('ci_saved_password');
+      localStorage.removeItem('ci_offline_pw_salt');
+      localStorage.removeItem('ci_offline_pw_hash');
       localStorage.removeItem('ci_auto_authenticated');
     }
   } else if (action === 'select-provider-dropdown') {

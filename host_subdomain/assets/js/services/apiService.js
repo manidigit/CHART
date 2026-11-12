@@ -12,11 +12,85 @@ import {
   normalizeHexForWeb,
   normalizeHexForAndroid,
   resolvePriceBasis,
-} from '../core/store.js?v=1.37.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.37.0';
+} from '../core/store.js?v=1.38.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.38.0';
+
+const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
+const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
+let pendingWorkspaceSync = false;
+
+function clearLocalAuthSession(clearOfflineVerifier = false) {
+  localStorage.removeItem('ci_session_token');
+  localStorage.removeItem('ci_saved_password');
+  localStorage.setItem('ci_auto_authenticated', 'false');
+  state.isAuthenticated = false;
+  if (clearOfflineVerifier) {
+    localStorage.removeItem(STORAGE_OFFLINE_SALT);
+    localStorage.removeItem(STORAGE_OFFLINE_HASH);
+  }
+}
+
+async function computeSaltedPasswordDigest(password, saltHex) {
+  if (typeof crypto === 'undefined' || !crypto.subtle || typeof TextEncoder === 'undefined') {
+    return '';
+  }
+  const enc = new TextEncoder();
+  const data = enc.encode(`${saltHex}:${password}`);
+  const digest = await crypto.subtle.digest('SHA-256', data);
+  return Array.from(new Uint8Array(digest))
+    .map((b) => b.toString(16).padStart(2, '0'))
+    .join('');
+}
+
+async function saveOfflinePasswordVerifier(password) {
+  try {
+    if (typeof crypto === 'undefined' || !crypto.getRandomValues || !crypto.subtle) return;
+    const saltBytes = new Uint8Array(16);
+    crypto.getRandomValues(saltBytes);
+    const saltHex = Array.from(saltBytes)
+      .map((b) => b.toString(16).padStart(2, '0'))
+      .join('');
+    const hashHex = await computeSaltedPasswordDigest(password, saltHex);
+    if (hashHex) {
+      localStorage.setItem(STORAGE_OFFLINE_SALT, saltHex);
+      localStorage.setItem(STORAGE_OFFLINE_HASH, hashHex);
+    }
+  } catch {
+    // Ignore WebCrypto unavailable
+  }
+}
+
+async function verifyOfflinePassword(password) {
+  try {
+    const saltHex = localStorage.getItem(STORAGE_OFFLINE_SALT) || '';
+    const storedHash = localStorage.getItem(STORAGE_OFFLINE_HASH) || '';
+    if (!saltHex || !storedHash) return false;
+    const candidate = await computeSaltedPasswordDigest(password, saltHex);
+    return Boolean(candidate && candidate === storedHash);
+  } catch {
+    return false;
+  }
+}
+
+function mapAuthErrorKey(resStatus, json, fallbackKey = 'error_invalid_credentials') {
+  if (resStatus === 429 || (json && json.error_code === 'RATE_LIMITED')) {
+    return 'error_rate_limited';
+  }
+  if (resStatus === 401 || (json && json.error_code === 'UNAUTHORIZED')) {
+    return 'error_unauthorized';
+  }
+  if (json && json.message_key) {
+    return String(json.message_key);
+  }
+  if (json && json.error_code === 'PASSWORD_SHORT') {
+    return 'error_password_short';
+  }
+  return fallbackKey;
+}
 
 export async function syncServerAuthStatus() {
+  localStorage.removeItem('ci_saved_password');
   const token = localStorage.getItem('ci_session_token');
   const remember = state.rememberCredentials;
 
@@ -24,14 +98,22 @@ export async function syncServerAuthStatus() {
   if (remember && token) {
     try {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-      const timer = controller ? setTimeout(() => controller.abort(), 3500) : null;
+      const timer = controller ? setTimeout(() => controller.abort(), 6500) : null;
       const res = await fetch('./api/v1/auth.php?action=validate_session', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${token}`,
+        },
         body: JSON.stringify({ session_token: token }),
         signal: controller ? controller.signal : undefined,
       });
       if (timer) clearTimeout(timer);
+      if (res.status === 401) {
+        clearLocalAuthSession(false);
+        state.isOwnerRegistered = true;
+        return;
+      }
       const json = await res.json();
       if (json && json.ok && json.data) {
         state.isAuthenticated = true;
@@ -53,7 +135,7 @@ export async function syncServerAuthStatus() {
 
   try {
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    const timer = controller ? setTimeout(() => controller.abort(), 3500) : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 6500) : null;
     const res = await fetch('./api/v1/auth.php?action=status&_t=' + Date.now(), {
       signal: controller ? controller.signal : undefined,
     });
@@ -73,10 +155,13 @@ export async function syncServerAuthStatus() {
         state.isAuthenticated = true;
       } else if (
         state.rememberCredentials &&
+        token &&
         localStorage.getItem('ci_auto_authenticated') === 'true' &&
         state.ownerUsername
       ) {
         state.isAuthenticated = true;
+      } else {
+        state.isAuthenticated = false;
       }
     }
   } catch {
@@ -90,11 +175,15 @@ export async function syncServerAuthStatus() {
 export async function loginOrRegisterOwner(username, email, password) {
   const action = state.isOwnerRegistered ? 'login' : 'register_owner';
   try {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timer = controller ? setTimeout(() => controller.abort(), 6500) : null;
     const res = await fetch(`./api/v1/auth.php?action=${action}`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ username, email, password }),
+      signal: controller ? controller.signal : undefined,
     });
+    if (timer) clearTimeout(timer);
     const json = await res.json();
     if (json && json.ok) {
       state.isOwnerRegistered = true;
@@ -108,78 +197,95 @@ export async function loginOrRegisterOwner(username, email, password) {
       if (token) {
         localStorage.setItem('ci_session_token', token);
       }
+      localStorage.removeItem('ci_saved_password');
 
       if (state.rememberCredentials) {
-        state.savedPassword = password;
-        localStorage.setItem('ci_saved_password', password);
         localStorage.setItem('ci_auto_authenticated', 'true');
+        await saveOfflinePasswordVerifier(password);
       } else {
-        state.savedPassword = '';
-        localStorage.removeItem('ci_saved_password');
         localStorage.removeItem('ci_auto_authenticated');
-        localStorage.removeItem('ci_session_token');
+        localStorage.removeItem(STORAGE_OFFLINE_SALT);
+        localStorage.removeItem(STORAGE_OFFLINE_HASH);
       }
       return { ok: true };
     }
     return {
       ok: false,
-      errorKey:
-        json && json.error && json.error.code === 'ERR_INVALID_CREDENTIALS'
-          ? 'login_error_invalid_credentials'
-          : 'login_error_invalid_credentials',
+      errorKey: mapAuthErrorKey(res.status, json, 'error_invalid_credentials'),
     };
   } catch {
-    // Fallback offline verification if server is temporarily unreachable
+    // Fallback offline verification against salted SHA-256 verifier when server is unreachable
     if (
+      state.rememberCredentials &&
       state.ownerUsername &&
       username.toLowerCase() === state.ownerUsername.toLowerCase() &&
-      state.savedPassword &&
-      password === state.savedPassword
+      (await verifyOfflinePassword(password))
     ) {
       state.isAuthenticated = true;
       localStorage.setItem('ci_auto_authenticated', 'true');
       return { ok: true };
     }
-    return { ok: false, errorKey: 'login_error_invalid_credentials' };
+    return { ok: false, errorKey: 'error_invalid_credentials' };
   }
 }
 
 export async function updateOwnerEmailOnServer(email) {
+  const token = localStorage.getItem('ci_session_token') || '';
   try {
     const res = await fetch('./api/v1/auth.php?action=update_profile', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ email, session_token: token }),
     });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return { ok: false, errorKey: 'error_unauthorized' };
+    }
     const json = await res.json();
     if (json && json.ok) {
       state.ownerEmail = email;
       localStorage.setItem('ci_owner_email', email);
-      return true;
+      return { ok: true };
     }
+    return { ok: false, errorKey: mapAuthErrorKey(res.status, json, 'error_invalid_email') };
   } catch {
-    // Fallback local
+    return { ok: false, errorKey: 'chart_state_error' };
   }
-  state.ownerEmail = email;
-  localStorage.setItem('ci_owner_email', email);
-  return true;
 }
 
 export async function updateOwnerPasswordOnServer(newPassword) {
+  const token = localStorage.getItem('ci_session_token') || '';
   try {
     const res = await fetch('./api/v1/auth.php?action=change_password', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ new_password: newPassword }),
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({ new_password: newPassword, session_token: token }),
     });
-    const json = await res.json();
-    if (json && json.ok && state.rememberCredentials) {
-      state.savedPassword = newPassword;
-      localStorage.setItem('ci_saved_password', newPassword);
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return { ok: false, errorKey: 'error_unauthorized' };
     }
-    return Boolean(json && json.ok);
+    const json = await res.json();
+    if (json && json.ok) {
+      const nextToken = json.data && json.data.session_token;
+      if (nextToken) {
+        localStorage.setItem('ci_session_token', nextToken);
+      }
+      localStorage.removeItem('ci_saved_password');
+      if (state.rememberCredentials) {
+        await saveOfflinePasswordVerifier(newPassword);
+      }
+      return { ok: true };
+    }
+    return { ok: false, errorKey: mapAuthErrorKey(res.status, json, 'error_password_short') };
   } catch {
-    return false;
+    return { ok: false, errorKey: 'chart_state_error' };
   }
 }
 
@@ -191,9 +297,10 @@ export async function requestPasswordResetCode(email) {
       body: JSON.stringify({ email }),
     });
     const json = await res.json();
-    return Boolean(json && json.ok);
+    if (json && json.ok) return { ok: true };
+    return { ok: false, errorKey: mapAuthErrorKey(res.status, json, 'error_email_not_found') };
   } catch {
-    return false;
+    return { ok: false, errorKey: 'error_email_not_found' };
   }
 }
 
@@ -205,13 +312,20 @@ export async function confirmPasswordResetCode(email, code, newPassword) {
       body: JSON.stringify({ email, code, new_password: newPassword }),
     });
     const json = await res.json();
-    if (json && json.ok && state.rememberCredentials) {
-      state.savedPassword = newPassword;
-      localStorage.setItem('ci_saved_password', newPassword);
+    if (json && json.ok) {
+      const nextToken = json.data && json.data.session_token;
+      if (nextToken) {
+        localStorage.setItem('ci_session_token', nextToken);
+      }
+      localStorage.removeItem('ci_saved_password');
+      if (state.rememberCredentials) {
+        await saveOfflinePasswordVerifier(newPassword);
+      }
+      return { ok: true };
     }
-    return Boolean(json && json.ok);
+    return { ok: false, errorKey: mapAuthErrorKey(res.status, json, 'error_invalid_recovery_code') };
   } catch {
-    return false;
+    return { ok: false, errorKey: 'error_invalid_recovery_code' };
   }
 }
 
@@ -220,15 +334,16 @@ export async function logoutOwnerOnServer() {
   try {
     await fetch('./api/v1/auth.php?action=logout', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
       body: JSON.stringify({ session_token: token }),
     });
   } catch {
     // Ignore network error on logout
   }
-  localStorage.removeItem('ci_session_token');
-  localStorage.setItem('ci_auto_authenticated', 'false');
-  state.isAuthenticated = false;
+  clearLocalAuthSession(true);
 }
 
 export async function fetchSystemStatus() {
@@ -246,8 +361,12 @@ export async function fetchSystemStatus() {
 }
 
 export async function uploadWorkspaceSync() {
-  if (state.isWorkspaceSyncing) return false;
+  if (state.isWorkspaceSyncing) {
+    pendingWorkspaceSync = true;
+    return false;
+  }
   state.isWorkspaceSyncing = true;
+  pendingWorkspaceSync = false;
   const token = localStorage.getItem('ci_session_token') || '';
   try {
     const p = state.chartPreferences || {};
@@ -329,10 +448,14 @@ export async function uploadWorkspaceSync() {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: token ? `Bearer ${token}` : '',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
       },
       body: JSON.stringify({ session_token: token, workspace }),
     });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return false;
+    }
     const json = await res.json();
     if (json && json.ok) {
       state.lastWorkspaceSyncedAt = (json.data && json.data.updated_at_utc) || new Date().toISOString();
@@ -342,6 +465,12 @@ export async function uploadWorkspaceSync() {
     // Non-fatal
   } finally {
     state.isWorkspaceSyncing = false;
+    if (pendingWorkspaceSync && state.isAuthenticated) {
+      pendingWorkspaceSync = false;
+      setTimeout(() => {
+        uploadWorkspaceSync().catch(() => {});
+      }, 150);
+    }
   }
   return false;
 }
@@ -350,10 +479,12 @@ export async function downloadWorkspaceSync() {
   const token = localStorage.getItem('ci_session_token') || '';
   try {
     const res = await fetch(`./api/v1/workspace_sync.php?_t=${Date.now()}`, {
-      headers: {
-        Authorization: token ? `Bearer ${token}` : '',
-      },
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
     });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return false;
+    }
     const json = await res.json();
     if (json && json.ok && json.data && json.data.workspace) {
       const ws = json.data.workspace;
@@ -864,6 +995,7 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
 
     sym.timeframe = effectiveTf;
     sym.candles = activeCandles;
+    sym.providerStatus = (activeMeta && activeMeta.provider_status) || 'READY';
     sym.priceBasis =
       (activeMeta && activeMeta.price_basis) || resolvePriceBasis(symbolCode, sym.activeProvider);
     if (activeMeta) {
@@ -895,6 +1027,7 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
               ? 'D1'
               : tab.timeframe;
         tab.provider = sym.activeProvider;
+        tab.providerStatus = sym.providerStatus;
         tab.timeframe = tabTf;
         tab.candles =
           syncedByTf[tabTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tabTf);
@@ -912,11 +1045,17 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
 
 export async function syncAllWatchlistSymbols(renderCallback) {
   const watchlist = state.symbols.filter((s) => s.inWatchlist);
-  for (const sym of watchlist) {
-    const activeTab = state.openTabs.find(
-      (t) => t.tabId === state.activeTabId && t.symbolCode === sym.symbolCode
+  const BATCH_SIZE = 4;
+  for (let i = 0; i < watchlist.length; i += BATCH_SIZE) {
+    const chunk = watchlist.slice(i, i + BATCH_SIZE);
+    await Promise.all(
+      chunk.map((sym) => {
+        const activeTab = state.openTabs.find(
+          (t) => t.tabId === state.activeTabId && t.symbolCode === sym.symbolCode
+        );
+        const tf = activeTab ? activeTab.timeframe : sym.timeframe || 'M15';
+        return syncSymbolNow(sym.symbolCode, tf, renderCallback, false);
+      })
     );
-    const tf = activeTab ? activeTab.timeframe : sym.timeframe || 'M15';
-    await syncSymbolNow(sym.symbolCode, tf, renderCallback, false);
   }
 }

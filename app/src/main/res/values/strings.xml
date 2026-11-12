@@ -16,7 +16,7 @@
     <string name="action_sign_in">Sign In</string>
     <string name="action_sign_out">Sign Out</string>
     <string name="error_empty_credentials">Please enter both username and password.</string>
-    <string name="error_password_short">Password must be at least 4 characters.</string>
+    <string name="error_password_short">Password must be at least 8 characters.</string>
     <string name="error_password_mismatch">Password and confirmation do not match.</string>
     <string name="error_invalid_credentials">Invalid username or password.</string>
     <string name="watchlist_title">Active Watchlist</string>
@@ -78,6 +78,7 @@
     <string name="chart_state_loading">Loading real market candles…</string>
     <string name="chart_state_empty">No market candles loaded yet. Tap Sync to fetch real market data.</string>
     <string name="chart_state_error">Could not reach market data feed. Check network connection and retry.</string>
+    <string name="chart_state_api_key_required">This data source requires your personal API key in Settings → Sync → BYOK.</string>
     <string name="chart_action_retry">Retry Sync</string>
     <string name="settings_title">Settings &amp; Symbol Sources</string>
     <string name="settings_appearance_section">Language &amp; Appearance</string>
@@ -207,7 +208,7 @@
     <string name="settings_group_sources">3. Data Sources &amp; Symbols</string>
     <string name="settings_group_params">4. Analysis &amp; TradingView Switches</string>
     <string name="settings_group_about">5. Server Health &amp; About</string>
-    <string name="settings_about_version">CHART Intelligence v1.35.0 · 22-Symbol Catalog, 7 Providers, Multi-Tab Bar &amp; BYOK</string>
+    <string name="settings_about_version">CHART Intelligence v1.38.0 · 22-Symbol Catalog, 7 Providers, Multi-Tab Bar &amp; BYOK</string>
     <string name="settings_tab_account">Account</string>
     <string name="settings_tab_appearance">Appearance</string>
     <string name="settings_tab_sources">Symbols</string>

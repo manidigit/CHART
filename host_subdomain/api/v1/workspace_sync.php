@@ -8,14 +8,12 @@ use ChartIntelligence\Core\ApiEnvelope;
 use ChartIntelligence\Core\Database;
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    header('Access-Control-Allow-Origin: *');
-    header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
-    header('Access-Control-Allow-Headers: Content-Type, Authorization');
+    ApiEnvelope::sendCorsAndSecurityHeaders('GET, POST, OPTIONS');
     exit;
 }
 
+ApiEnvelope::sendCorsAndSecurityHeaders('GET, POST, OPTIONS');
 header('Content-Type: application/json; charset=utf-8');
-header('Access-Control-Allow-Origin: *');
 
 $pdo = Database::getPdo();
 $sessionsFile = dirname(__DIR__, 2) . '/config/sessions.local.json';
@@ -72,18 +70,29 @@ if ($token !== '') {
     }
 }
 
-// If no valid session token provided, check if fallback owner exists for single-tenant local operation
-if ($username === null || $username === '') {
-    $ownerFile = dirname(__DIR__, 2) . '/config/owner.local.json';
-    if (is_file($ownerFile)) {
-        $ownerData = json_decode((string) file_get_contents($ownerFile), true);
-        if (is_array($ownerData) && !empty($ownerData['username'])) {
-            $username = (string) $ownerData['username'];
+// Check whether an owner account is already registered in MariaDB or owner.local.json
+$ownerRegistered = false;
+if ($pdo !== null) {
+    try {
+        $uStmt = $pdo->query("SELECT 1 FROM users WHERE role = 'owner' LIMIT 1");
+        if ($uStmt && $uStmt->fetch()) {
+            $ownerRegistered = true;
         }
+    } catch (\Throwable) {}
+}
+$ownerFile = dirname(__DIR__, 2) . '/config/owner.local.json';
+if (!$ownerRegistered && is_file($ownerFile)) {
+    $ownerData = json_decode((string) @file_get_contents($ownerFile), true);
+    if (is_array($ownerData) && !empty($ownerData['username'])) {
+        $ownerRegistered = true;
     }
 }
 
+// Require a valid session token whenever an owner exists
 if ($username === null || $username === '') {
+    if ($ownerRegistered) {
+        ApiEnvelope::sendError('UNAUTHORIZED', 'error_invalid_credentials', 401);
+    }
     $username = 'owner';
 }
 
@@ -151,7 +160,7 @@ if ($method === 'POST') {
         'username' => $username,
         'workspace' => $workspaceData,
         'updated_at_utc' => $nowIso,
-    ], JSON_UNESCAPED_UNICODE));
+    ], JSON_UNESCAPED_UNICODE), LOCK_EX);
 
     ApiEnvelope::sendSuccess([
         'synced' => true,

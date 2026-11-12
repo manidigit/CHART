@@ -1824,13 +1824,28 @@ body.theme-light .tv-ind-pill {
 }
 
 @media (max-width: 820px) {
+  .tv-topbar {
+    height: 46px;
+    min-height: 46px;
+    padding: 0 6px;
+  }
+  .tv-tool-btn,
+  .tv-open-tab-chip {
+    min-height: 36px;
+  }
+  .tv-rail-btn {
+    min-width: 40px;
+    min-height: 40px;
+  }
   .tv-right-panel {
     position: absolute;
     top: 0;
     bottom: 0;
     right: 42px;
-    width: 290px;
-    min-width: 290px;
+    width: min(320px, calc(100vw - 48px));
+    min-width: 240px;
+    max-width: 90vw;
+    z-index: 45;
     box-shadow: var(--shadow);
   }
 }
