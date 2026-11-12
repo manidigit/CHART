@@ -29,7 +29,7 @@ object AppConfig {
     const val DEFAULT_TIMEFRAME: String = "M15"
     val SUPPORTED_TIMEFRAMES: List<String> = listOf("M15", "M30", "H1", "H4", "D1", "W1")
 
-    const val DEFAULT_CANDLE_FETCH_LIMIT: Int = 500
+    const val DEFAULT_CANDLE_FETCH_LIMIT: Int = 2500
     const val MIN_VISIBLE_CANDLES: Int = 12
     const val MAX_VISIBLE_CANDLES: Int = 5000
     const val DEFAULT_VISIBLE_CANDLES: Int = 48

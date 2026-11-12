@@ -1,4 +1,4 @@
-import { PriceFormatter } from './priceFormatter.js?v=1.35.0';
+import { PriceFormatter } from './priceFormatter.js?v=1.36.0';
 
 /**
  * Independent Web Algorithm Module:

@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.35.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.35.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.36.0';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -15,7 +15,7 @@ export const DEFAULT_PREFS = {
   trendColor: '#2962FF',
   hLineColor: '#F59E0B',
   vLineColor: '#A855F7',
-  candleFetchLimit: 500,
+  candleFetchLimit: 2500,
   zoomStepCandles: 8,
   drawingHitTolerancePx: 28,
   hideWatchlistLogos: false,
@@ -33,6 +33,18 @@ export const DEFAULT_PREFS = {
   defaultDrawingWidthPx: 2.0,
   bollingerPeriod: 20,
   bollingerStdDev: 2.0,
+  showSma20: false,
+  showSma50: false,
+  showEma200: false,
+  showBollinger: false,
+  showOverlayMacd: false,
+  showRsi14: false,
+  showMacd: false,
+  showAtr14: false,
+  showStoch14: false,
+  showCci20: false,
+  showWillR14: false,
+  showRoc12: false,
 };
 
 export const PROVIDER_METHODS_CATALOG = [
@@ -355,7 +367,12 @@ function loadPreferences() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PREFS);
     if (!raw) return { ...DEFAULT_PREFS };
-    return { ...DEFAULT_PREFS, ...JSON.parse(raw) };
+    const parsed = JSON.parse(raw);
+    const merged = { ...DEFAULT_PREFS, ...parsed };
+    if (Number(merged.candleFetchLimit || 0) <= 500) {
+      merged.candleFetchLimit = 2500;
+    }
+    return merged;
   } catch {
     return { ...DEFAULT_PREFS };
   }
@@ -613,6 +630,58 @@ export function savePreferences(skipCloudSync = false) {
   if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
+export const INDICATOR_FLAG_KEYS = [
+  'showSma20',
+  'showSma50',
+  'showSma200',
+  'showEma20',
+  'showEma50',
+  'showEma200',
+  'showSupertrend',
+  'showVwap',
+  'showBollinger',
+  'showOverlayMacd',
+  'showRsi14',
+  'showMacd',
+  'showAtr14',
+  'showSmcStructure',
+  'showFvg',
+  'showVolumeProfile',
+  'showStoch14',
+  'showCci20',
+  'showWillR14',
+  'showRoc12',
+];
+
+export function syncIndicatorsAcrossTabsAndPrefs(sourceTab, skipSave = false) {
+  if (!sourceTab) return;
+  for (const k of INDICATOR_FLAG_KEYS) {
+    const val = Boolean(sourceTab[k]);
+    state.chartPreferences[k] = val;
+    for (const tab of state.openTabs) {
+      tab[k] = val;
+    }
+  }
+  if (sourceTab.bollingerPeriod !== undefined) {
+    const bp = Math.max(2, Math.min(200, Math.round(Number(sourceTab.bollingerPeriod) || 20)));
+    state.chartPreferences.bollingerPeriod = bp;
+    for (const tab of state.openTabs) {
+      tab.bollingerPeriod = bp;
+    }
+  }
+  if (sourceTab.bollingerStdDev !== undefined) {
+    const bsd = Math.max(0.5, Math.min(5.0, Number(sourceTab.bollingerStdDev) || 2.0));
+    state.chartPreferences.bollingerStdDev = bsd;
+    for (const tab of state.openTabs) {
+      tab.bollingerStdDev = bsd;
+    }
+  }
+  if (!skipSave) {
+    savePreferences();
+    saveOpenTabsToStorage();
+  }
+}
+
 export function resetColorsToDefault() {
   state.chartPreferences.bullColor = DEFAULT_PREFS.bullColor;
   state.chartPreferences.bearColor = DEFAULT_PREFS.bearColor;
@@ -792,24 +861,13 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
       }
     }
   } else if (normTf === 'D1' && (!current || current.length === 0)) {
-    // Do NOT overwrite state.candleCache[exactKey] with short intraday-derived D1 bars,
-    // so fetchFromBackend knows genuine D1 historical backfill is still required.
+    // Only use intraday-aggregated D1 if it spans at least 60 days; otherwise return empty
+    // so syncSymbolNow/fetchFromBackend immediately fetches full multi-year D1 bars from backend.
     const h4Key = `${symbolCode}_${provider}_H4`;
     const h4 = state.candleCache[h4Key] || loadCandlesFromLocalStorage(h4Key, 'H4');
-    if (h4 && h4.length > 0) {
-      current = TimeframeAggregator.aggregateCandles(h4, 'D1');
-    } else {
-      const h1Key = `${symbolCode}_${provider}_H1`;
-      const h1 = state.candleCache[h1Key] || loadCandlesFromLocalStorage(h1Key, 'H1');
-      if (h1 && h1.length > 0) {
-        current = TimeframeAggregator.aggregateCandles(h1, 'D1');
-      } else {
-        const m15Key = `${symbolCode}_${provider}_M15`;
-        const m15 = state.candleCache[m15Key] || loadCandlesFromLocalStorage(m15Key, 'M15');
-        if (m15 && m15.length > 0) {
-          current = TimeframeAggregator.aggregateCandles(m15, 'D1');
-        }
-      }
+    if (h4 && h4.length >= 360) {
+      const agg = TimeframeAggregator.aggregateCandles(h4, 'D1');
+      if (agg.length >= 60) current = agg;
     }
   } else if (normTf === 'W1' && (!current || current.length === 0)) {
     const d1Key = `${symbolCode}_${provider}_D1`;

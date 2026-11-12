@@ -12,9 +12,9 @@ import {
   normalizeHexForWeb,
   normalizeHexForAndroid,
   resolvePriceBasis,
-} from '../core/store.js?v=1.35.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.35.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.35.0';
+} from '../core/store.js?v=1.36.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.36.0';
 
 export async function syncServerAuthStatus() {
   const token = localStorage.getItem('ci_session_token');
@@ -661,7 +661,7 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
   });
 }
 
-async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, forceBackfill = false) {
+async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, forceBackfill = false) {
   const rawTf = String(timeframe || 'M15').toUpperCase();
   const normTf =
     provider === 'eia_brent_spot'
@@ -669,21 +669,21 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
       : provider === 'stooq' && rawTf !== 'W1'
         ? 'D1'
         : rawTf;
-  const safeLimit = Math.max(40, Math.min(5000, Number(limit) || 500));
+  const safeLimit = Math.max(500, Math.min(5000, Number(limit) || 2500));
   const nowMs = Date.now();
   const cacheKey = `${symbolCode}_${provider}_${normTf}`;
   const exactCached = state.candleCache[cacheKey];
   const existingCached = exactCached || getCachedOrAggregatedCandles(symbolCode, provider, normTf);
   const minBarsForDelta =
     normTf === 'M15'
-      ? 300
+      ? 1200
       : normTf === 'M30' || normTf === 'H1'
-        ? 240
+        ? 1000
         : normTf === 'H4'
-          ? 180
+          ? 500
           : normTf === 'D1'
-            ? 250
-            : 140;
+            ? 1000
+            : 250;
   const lastLocalOpenMs =
     !forceBackfill && exactCached && exactCached.length >= minBarsForDelta
       ? Number(exactCached[exactCached.length - 1].open_time_utc_ms || 0)
@@ -805,14 +805,14 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
       : sym.activeProvider === 'stooq' && rawRequestedTf !== 'W1'
         ? 'D1'
         : rawRequestedTf;
-  const fetchLimit = Math.max(40, Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 500));
+  const fetchLimit = Math.max(500, Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 2500));
 
   const timeframesToSync =
     sym.activeProvider === 'eia_brent_spot'
       ? ['D1']
       : sym.activeProvider === 'stooq'
         ? Array.from(new Set(['D1', effectiveTf]))
-        : Array.from(new Set(['M15', 'H1', 'H4', effectiveTf]));
+        : Array.from(new Set(['M15', 'H1', 'H4', 'D1', effectiveTf]));
 
   try {
     const results = await Promise.all(

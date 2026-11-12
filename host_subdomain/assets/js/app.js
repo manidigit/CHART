@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.35.0';
+import { I18nManager } from './core/i18n.js?v=1.36.0';
 import {
   state,
   savePreferences,
@@ -13,7 +13,9 @@ import {
   resetAlgoParamsToDefault,
   resetAllPreferencesToDefault,
   registerAutoSyncCallback,
-} from './core/store.js?v=1.35.0';
+  INDICATOR_FLAG_KEYS,
+  syncIndicatorsAcrossTabsAndPrefs,
+} from './core/store.js?v=1.36.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -27,25 +29,25 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.35.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.35.0';
-import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.35.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.35.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.35.0';
+} from './services/apiService.js?v=1.36.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.36.0';
+import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.36.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.36.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.36.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.35.0';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.35.0';
+} from './views/headerView.js?v=1.36.0';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.36.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.35.0';
-import { renderPredictionModal } from './views/analysisView.js?v=1.35.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.35.0';
-import { renderRightIconRail } from './views/navigationView.js?v=1.35.0';
+} from './views/watchlistView.js?v=1.36.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.36.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.36.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.36.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -73,6 +75,15 @@ function getActiveTab() {
 
 function ensureInitialTabs() {
   if (state.openTabs && state.openTabs.length > 0) {
+    // Determine active indicator state from chartPreferences or any tab that has indicators enabled
+    const effectiveIndicators = {};
+    for (const k of INDICATOR_FLAG_KEYS) {
+      effectiveIndicators[k] =
+        Boolean(state.chartPreferences[k]) ||
+        state.openTabs.some((t) => Boolean(t && t[k]));
+      state.chartPreferences[k] = effectiveIndicators[k];
+    }
+
     state.openTabs.forEach((tab) => {
       const sym = state.symbols.find((s) => s.symbolCode === tab.symbolCode);
       const prov = tab.provider || (sym ? sym.activeProvider : 'tvdatafeed');
@@ -87,6 +98,9 @@ function ensureInitialTabs() {
       const cached = getCachedOrAggregatedCandles(tab.symbolCode, prov, tf);
       tab.candles = cached.length > 0 ? cached : (sym && sym.candles) || [];
       tab.drawings = state.drawingsByChartId[tab.chartId] || tab.drawings || [];
+      for (const k of INDICATOR_FLAG_KEYS) {
+        tab[k] = effectiveIndicators[k];
+      }
       const fallbackColor =
         tab.activeDrawingColorHex ||
         tab.activeDrawingColor ||
@@ -115,7 +129,7 @@ function ensureInitialTabs() {
     const tabId = `tab_${sym.symbolCode}_${tf}`;
     const drawKey = `${sym.symbolCode}_${tf}`;
     const cached = getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, tf);
-    state.openTabs.push({
+    const tabObj = {
       tabId,
       chartId: drawKey,
       symbolCode: sym.symbolCode,
@@ -126,21 +140,6 @@ function ensureInitialTabs() {
       chartType: 'candles',
       showVolume: true,
       volumePaneRatio: 0.22,
-      showSma20: false,
-      showSma50: false,
-      showSma200: false,
-      showEma20: false,
-      showEma50: false,
-      showSupertrend: false,
-      showVwap: false,
-      showBollinger: false,
-      showOverlayMacd: false,
-      showRsi14: false,
-      showMacd: false,
-      showAtr14: false,
-      showSmcStructure: false,
-      showFvg: false,
-      showVolumeProfile: false,
       isLogScale: Boolean(state.chartPreferences.isLogScale),
       selectedRangePreset: null,
       visibleCount: 48,
@@ -155,7 +154,11 @@ function ensureInitialTabs() {
       selectedDrawingId: null,
       pendingTrendStart: null,
       drawings: state.drawingsByChartId[drawKey] || [],
-    });
+    };
+    for (const k of INDICATOR_FLAG_KEYS) {
+      tabObj[k] = Boolean(state.chartPreferences[k]);
+    }
+    state.openTabs.push(tabObj);
   });
 
   if (state.openTabs.length > 0) {
@@ -170,6 +173,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
   if (!sym) return;
   saveLastOpenedSymbol(symbolCode);
 
+  const curActive = getActiveTab();
   let existing = state.openTabs.find((t) => t.symbolCode === symbolCode);
   const rawTf = requestedTf || (existing ? existing.timeframe : sym.timeframe || 'M15');
   const tf =
@@ -187,10 +191,13 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     existing.provider = sym.activeProvider;
     existing.candles = cached.length > 0 ? cached : sym.candles || [];
     existing.drawings = state.drawingsByChartId[drawKey] || existing.drawings || [];
+    for (const k of INDICATOR_FLAG_KEYS) {
+      existing[k] = Boolean(curActive ? curActive[k] : state.chartPreferences[k]);
+    }
     state.activeTabId = existing.tabId;
+    syncIndicatorsAcrossTabsAndPrefs(existing, true);
   } else {
     const tabId = `tab_${symbolCode}_${Date.now()}`;
-    const curActive = getActiveTab();
     const newTab = {
       tabId,
       chartId: drawKey,
@@ -202,21 +209,6 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       chartType: curActive ? curActive.chartType || 'candles' : 'candles',
       showVolume: curActive ? curActive.showVolume !== false : true,
       volumePaneRatio: curActive ? curActive.volumePaneRatio || 0.22 : 0.22,
-      showSma20: curActive ? Boolean(curActive.showSma20) : false,
-      showSma50: curActive ? Boolean(curActive.showSma50) : false,
-      showSma200: curActive ? Boolean(curActive.showSma200) : false,
-      showEma20: curActive ? Boolean(curActive.showEma20) : false,
-      showEma50: curActive ? Boolean(curActive.showEma50) : false,
-      showSupertrend: curActive ? Boolean(curActive.showSupertrend) : false,
-      showVwap: curActive ? Boolean(curActive.showVwap) : false,
-      showBollinger: curActive ? Boolean(curActive.showBollinger) : false,
-      showOverlayMacd: curActive ? Boolean(curActive.showOverlayMacd) : false,
-      showRsi14: curActive ? Boolean(curActive.showRsi14) : false,
-      showMacd: curActive ? Boolean(curActive.showMacd) : false,
-      showAtr14: curActive ? Boolean(curActive.showAtr14) : false,
-      showSmcStructure: curActive ? Boolean(curActive.showSmcStructure) : false,
-      showFvg: curActive ? Boolean(curActive.showFvg) : false,
-      showVolumeProfile: curActive ? Boolean(curActive.showVolumeProfile) : false,
       isMagnetMode: curActive ? Boolean(curActive.isMagnetMode) : false,
       isLogScale: Boolean(state.chartPreferences.isLogScale),
       selectedRangePreset: null,
@@ -240,8 +232,12 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       pendingTrendStart: null,
       drawings: state.drawingsByChartId[drawKey] || [],
     };
+    for (const k of INDICATOR_FLAG_KEYS) {
+      newTab[k] = Boolean(curActive ? curActive[k] : state.chartPreferences[k]);
+    }
     state.openTabs.push(newTab);
     state.activeTabId = tabId;
+    syncIndicatorsAcrossTabsAndPrefs(newTab, true);
   }
 
   saveOpenTabs();
@@ -263,7 +259,7 @@ function computePresetBarCount(candles, rk) {
     All: 320,
   };
   if (!candles || candles.length === 0) return fallbackMap[rk] || 64;
-  if (rk === 'All') return Math.min(600, Math.max(24, candles.length));
+  if (rk === 'All') return Math.min(5000, Math.max(24, candles.length));
 
   const lastC = candles[candles.length - 1];
   const lastMs =
@@ -304,12 +300,12 @@ function computePresetBarCount(candles, rk) {
   if (count < 15) {
     count = Math.min(candles.length, fallbackMap[rk] || 64);
   }
-  return Math.max(15, Math.min(600, count));
+  return Math.max(15, Math.min(5000, count));
 }
 
 function renderOhlcvOverlay(activeTab) {
   if (!activeTab || !activeTab.candles || activeTab.candles.length === 0) return '';
-  const visibleCount = Math.max(15, Math.min(600, Math.round(activeTab.visibleCount || 48)));
+  const visibleCount = Math.max(15, Math.min(5000, Math.round(activeTab.visibleCount || 48)));
   const maxOffset = Math.max(0, activeTab.candles.length - 5);
   const offset = Math.max(0, Math.min(maxOffset, Math.round(activeTab.scrollOffset || 0)));
   const endIdx = Math.max(1, activeTab.candles.length - offset);
@@ -648,11 +644,11 @@ let pendingRafRedraw = 0;
 
 function minBarsForTimeframe(tf) {
   const norm = String(tf || 'M15').toUpperCase();
-  if (norm === 'M15') return 300;
-  if (norm === 'M30' || norm === 'H1') return 240;
-  if (norm === 'H4') return 180;
-  if (norm === 'D1') return 250;
-  return 140;
+  if (norm === 'M15') return 1200;
+  if (norm === 'M30' || norm === 'H1') return 1000;
+  if (norm === 'H4') return 500;
+  if (norm === 'D1') return 1000;
+  return 250;
 }
 
 function maybeTriggerDeepBackfill(tab) {
@@ -933,7 +929,7 @@ function bindCanvasEvents(activeTab) {
     (e) => {
       e.preventDefault();
       const step = e.deltaY > 0 ? Math.max(4, Number(state.chartPreferences.zoomStepCandles || 6)) : -Math.max(4, Number(state.chartPreferences.zoomStepCandles || 6));
-      const maxZoomCap = Math.max(600, Math.min(2500, (activeTab.candles || []).length));
+      const maxZoomCap = Math.max(1500, Math.min(5000, Math.round(((activeTab.candles || []).length || 600) * 1.4)));
       activeTab.visibleCount = Math.max(15, Math.min(maxZoomCap, (activeTab.visibleCount || 48) + step));
       if (step > 0) {
         maybeTriggerDeepBackfill(activeTab);
@@ -979,7 +975,7 @@ function bindCanvasEvents(activeTab) {
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         const dist = Math.max(10, Math.hypot(dx, dy));
         const zoomFactor = dist / pinchStartDist;
-        const maxZoomCap = Math.max(600, Math.min(2500, (activeTab.candles || []).length));
+        const maxZoomCap = Math.max(1500, Math.min(5000, Math.round(((activeTab.candles || []).length || 600) * 1.4)));
         const nextCount = Math.round(pinchStartVisibleCount / zoomFactor);
         activeTab.visibleCount = Math.max(15, Math.min(maxZoomCap, nextCount));
         if (zoomFactor < 1) {
@@ -1232,10 +1228,16 @@ document.addEventListener('click', async (e) => {
     state.statusBannerKey = ok ? 'status_workspace_synced' : '';
     renderApp();
   } else if (action === 'select-tab') {
+    const prevTab = activeTab;
     const nextTabId = el.getAttribute('data-tab-id');
     state.activeTabId = nextTabId;
     const selTab = state.openTabs.find((t) => t.tabId === nextTabId);
     if (selTab) {
+      if (prevTab) {
+        for (const k of INDICATOR_FLAG_KEYS) {
+          selTab[k] = Boolean(prevTab[k]);
+        }
+      }
       saveLastOpenedSymbol(selTab.symbolCode);
       selTab.candles = getCachedOrAggregatedCandles(
         selTab.symbolCode,
@@ -1404,39 +1406,39 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'toggle-sma20' && activeTab) {
     activeTab.showSma20 = !activeTab.showSma20;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-sma50' && activeTab) {
     activeTab.showSma50 = !activeTab.showSma50;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-sma200' && activeTab) {
     activeTab.showSma200 = !activeTab.showSma200;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-ema20' && activeTab) {
     activeTab.showEma20 = !activeTab.showEma20;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-ema50' && activeTab) {
     activeTab.showEma50 = !activeTab.showEma50;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-supertrend' && activeTab) {
     activeTab.showSupertrend = !activeTab.showSupertrend;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-vwap' && activeTab) {
     activeTab.showVwap = !activeTab.showVwap;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-bollinger' && activeTab) {
     activeTab.showBollinger = !activeTab.showBollinger;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-overlay-macd' && activeTab) {
     activeTab.showOverlayMacd = !activeTab.showOverlayMacd;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'set-bb-period') {
     const p = Math.max(5, Math.min(200, Number(el.getAttribute('data-period') || 20)));
@@ -1450,27 +1452,27 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'toggle-rsi14' && activeTab) {
     activeTab.showRsi14 = !activeTab.showRsi14;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-macd' && activeTab) {
     activeTab.showMacd = !activeTab.showMacd;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-atr14' && activeTab) {
     activeTab.showAtr14 = !activeTab.showAtr14;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-smc-structure' && activeTab) {
     activeTab.showSmcStructure = !activeTab.showSmcStructure;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-fvg' && activeTab) {
     activeTab.showFvg = !activeTab.showFvg;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-volume-profile' && activeTab) {
     activeTab.showVolumeProfile = !activeTab.showVolumeProfile;
-    saveOpenTabsToStorage();
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-log-scale' && activeTab) {
     activeTab.isLogScale = !activeTab.isLogScale;
@@ -1483,7 +1485,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'fit-content' && activeTab) {
     activeTab.scrollOffset = 0;
-    activeTab.visibleCount = Math.min(300, Math.max(24, (activeTab.candles || []).length));
+    activeTab.visibleCount = Math.min(2500, Math.max(24, (activeTab.candles || []).length));
     activeTab.priceScaleFactor = 1.0;
     saveOpenTabsToStorage();
     renderApp();
@@ -1557,7 +1559,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'zoom-out' && activeTab) {
     const step = Number(state.chartPreferences.zoomStepCandles || 8);
-    const maxZoomCap = Math.max(600, Math.min(2500, (activeTab.candles || []).length));
+    const maxZoomCap = Math.max(1500, Math.min(5000, Math.round(((activeTab.candles || []).length || 600) * 1.4)));
     activeTab.visibleCount = Math.min(maxZoomCap, (activeTab.visibleCount || 48) + step);
     saveOpenTabsToStorage();
     renderApp();

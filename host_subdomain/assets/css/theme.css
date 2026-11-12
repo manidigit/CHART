@@ -1118,8 +1118,8 @@ body.theme-light .tv-ind-pill {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 4px 8px;
+  flex-wrap: nowrap;
+  gap: 6px;
   min-width: 0;
 }
 
@@ -1128,6 +1128,8 @@ body.theme-light .tv-ind-pill {
   align-items: center;
   gap: 7px;
   min-width: 0;
+  flex: 1 1 auto;
+  overflow: hidden;
 }
 
 .tv-detail-sym-code {
@@ -1147,7 +1149,8 @@ body.theme-light .tv-ind-pill {
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 2px 6px;
-  max-width: 100%;
+  flex-shrink: 0;
+  max-width: 55%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1157,9 +1160,9 @@ body.theme-light .tv-ind-pill {
   font-size: 11px;
   color: var(--text-muted);
   line-height: 1.45;
-  white-space: normal;
-  overflow-wrap: anywhere;
-  word-break: break-word;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   min-width: 0;
 }
 
@@ -1167,16 +1170,18 @@ body.theme-light .tv-ind-pill {
   display: flex;
   align-items: baseline;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 2px 8px;
+  flex-wrap: nowrap;
+  gap: 6px;
   min-width: 0;
 }
 
 .tv-detail-price {
-  font-size: clamp(15px, 6cqi, 18px);
+  font-size: clamp(14px, 5.5cqi, 17.5px);
   font-weight: 800;
   color: var(--text-strong);
   white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .tv-detail-currency {
@@ -1187,9 +1192,10 @@ body.theme-light .tv-ind-pill {
 }
 
 .tv-detail-chg {
-  font-size: 11.5px;
+  font-size: 11px;
   font-weight: 700;
   white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .tv-detail-range-box {
@@ -1203,8 +1209,8 @@ body.theme-light .tv-ind-pill {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  flex-wrap: wrap;
-  gap: 2px 6px;
+  flex-wrap: nowrap;
+  gap: 4px;
   font-size: 10px;
   color: var(--text-muted);
   margin-bottom: 5px;
@@ -1226,7 +1232,7 @@ body.theme-light .tv-ind-pill {
 
 .tv-detail-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(84px, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 6px 8px;
   margin-top: 6px;
   min-width: 0;
@@ -1436,19 +1442,16 @@ body.theme-light .tv-ind-pill {
   padding: 16px;
 }
 
-/* Watchlist Category Filter Chips Bar (All | Metals | Energy | FX) */
+/* Watchlist Category Filter Chips Bar (All | Metals | Energy | Crypto | Indices | Stocks | FX) */
 .tv-wl-cat-bar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 4px;
-  padding: 5px 8px;
+  padding: 6px 8px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
-  overflow-x: auto;
-  scrollbar-width: none;
-}
-.tv-wl-cat-bar::-webkit-scrollbar {
-  display: none;
+  min-width: 0;
 }
 
 .tv-wl-cat-chip {
@@ -1458,10 +1461,13 @@ body.theme-light .tv-ind-pill {
   font-family: inherit;
   font-size: 10.5px;
   font-weight: 600;
-  padding: 2px 9px;
+  padding: 3px 8px;
   border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
+  flex: 1 1 auto;
+  text-align: center;
+  justify-content: center;
   transition: all 0.12s ease;
 }
 

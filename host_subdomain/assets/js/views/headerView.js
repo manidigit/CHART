@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.35.0';
-import { state, resolvePriceBasis } from '../core/store.js?v=1.35.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.35.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
+import { state, resolvePriceBasis } from '../core/store.js?v=1.36.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.36.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab

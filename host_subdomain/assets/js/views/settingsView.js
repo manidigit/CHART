@@ -1,5 +1,5 @@
-import { state, PROVIDER_METHODS_CATALOG, getCachedOrAggregatedCandles } from '../core/store.js?v=1.35.0';
-import { getAssetBadge, renderSymbolBadge } from './watchlistView.js?v=1.35.0';
+import { state, PROVIDER_METHODS_CATALOG, getCachedOrAggregatedCandles } from '../core/store.js?v=1.36.0';
+import { getAssetBadge, renderSymbolBadge } from './watchlistView.js?v=1.36.0';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';

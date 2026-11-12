@@ -450,7 +450,7 @@ export const TechnicalIndicators = {
     }
     if (!isFinite(minP) || !isFinite(maxP) || maxP <= minP) return null;
 
-    const binCount = Math.max(8, Math.min(48, numBins));
+    const binCount = Math.max(8, Math.min(48, Math.floor(Number(numBins) || 24)));
     const binSize = (maxP - minP) / binCount;
     const bins = Array.from({ length: binCount }, (_, idx) => ({
       index: idx,

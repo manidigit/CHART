@@ -1,4 +1,4 @@
-import { state } from '../core/store.js?v=1.35.0';
+import { state } from '../core/store.js?v=1.36.0';
 
 export function renderLoginScreen(i18n) {
   const isReg = state.isOwnerRegistered;

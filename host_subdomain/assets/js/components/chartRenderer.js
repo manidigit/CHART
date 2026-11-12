@@ -1,7 +1,7 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.35.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.35.0';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.35.0';
-import { state } from '../core/store.js?v=1.35.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.36.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.36.0';
+import { state } from '../core/store.js?v=1.36.0';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;
@@ -192,7 +192,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const chartH = pricePaneH;
   const volTopY = topPad + pricePaneH;
 
-  const visibleCount = Math.max(12, Math.min(600, Math.round(tab.visibleCount || 48)));
+  const visibleCount = Math.max(12, Math.min(5000, Math.round(tab.visibleCount || 48)));
   const maxOffset = Math.max(0, candles.length - Math.min(candles.length, visibleCount));
   const offset = Math.max(0, Math.min(maxOffset, Math.round(tab.scrollOffset || 0)));
 
@@ -285,8 +285,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     );
   }
 
-  const slotW = chartW / visible.length;
-  const bodyW = Math.max(1.2, Math.min(20, slotW * 0.68));
+  const effectiveSlots = Math.max(
+    visible.length,
+    Math.min(visibleCount, Math.max(visible.length, Math.round(candles.length * 1.4)))
+  );
+  const slotW = chartW / Math.max(1, effectiveSlots);
+  const bodyW = Math.max(1.0, Math.min(20, slotW * 0.68));
   const idxToX = (idx) => (idx + 0.5) * slotW;
 
   // Vertical Time Grid + Smart Calendar-Aligned X-Axis Labels

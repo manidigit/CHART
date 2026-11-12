@@ -588,7 +588,11 @@ fun CandlestickCanvas(
                     }
 
                     // 2. Vertical time grid lines across both panes aligned with smart time ticks
-                    val slotW = canvasW / visibleSlice.size.toFloat()
+                    val effectiveSlots = max(
+                        visibleSlice.size,
+                        min(visibleCount, max(visibleSlice.size, (candles.size * 1.4f).roundToInt()))
+                    )
+                    val slotW = canvasW / max(1, effectiveSlots).toFloat()
                     for (tick in smartTimeTicks) {
                         val x = (tick.index + 0.5f) * slotW
                         drawLine(

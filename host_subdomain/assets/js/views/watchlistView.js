@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.35.0';
-import { state } from '../core/store.js?v=1.35.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
+import { state } from '../core/store.js?v=1.36.0';
 
 const STOCK_SYMBOLS = new Set([
   'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
@@ -179,13 +179,14 @@ export function getInstrumentProfileMeta(symbolCode, providerBadge) {
     };
   }
   return {
-    sector: 'Global Foreign Exchange',
-    industry: 'G10 Interbank FX',
+    sector: 'Global Foreign Exchange & Equities',
+    industry: 'G10 Interbank FX / Large-Cap Equities',
     benchmark: `${code} · ${providerBadge}`,
     activeVenues: '30+ ECN Venues',
     dailyTurnover: '410.0B USD',
     payoutRatio: '6.50% (Swap)',
     yieldTtm: '3.45% (Rate Diff)',
+    epsDilutedTtm: '$6.45',
     figi: 'BBG0013HG040',
     isin: 'EU0009652759',
   };
@@ -366,13 +367,6 @@ export function renderRightSplitPanel(activeTab, i18n) {
                 data-symbol="${s.symbolCode}"
                 title="${i18n.t('watchlist_move_down')}"
               >▼</button>
-              <button
-                type="button"
-                class="tv-wl-remove-btn"
-                data-action="remove-from-watchlist"
-                data-symbol="${s.symbolCode}"
-                title="Remove from Watchlist"
-              >×</button>
             </div>
           </div>
         </div>
@@ -587,6 +581,22 @@ export function renderSymbolOverviewModal(i18n) {
 
   const revBars = finMode === 'ANNUAL' ? [42, 54, 62, 74, 84] : [48, 56, 63, 70, 78];
   const netBars = finMode === 'ANNUAL' ? [22, 28, 35, 43, 51] : [26, 30, 36, 41, 47];
+
+  const rangeKey = activeRange;
+  const pctStr = pct;
+  const pLow = minP;
+  const pHigh = maxP;
+  const closeP = d.lastClose;
+  const isPositive = isBull;
+  const avgVol =
+    candles.length > 0
+      ? candles.reduce((acc, c) => acc + (Number(c.volume) || 0), 0) / candles.length
+      : Number(d.volume || 0);
+  const techGauge = {
+    overallText: isBull
+      ? i18n.t('symbol_overview_gauge_buy') || 'Buy'
+      : i18n.t('symbol_overview_gauge_sell') || 'Sell',
+  };
 
   return `
     <div class="modal-backdrop" data-action="close-symbol-overview-backdrop">

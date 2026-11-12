@@ -615,18 +615,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val existingTab = currentTabs.firstOrNull { it.tabId == tabId }
 
         if (existingTab != null) {
+            val curActive = _uiState.value.activeTab
             _uiState.update { state ->
                 val nextStack = if (state.currentScreen != targetScreen) {
                     (state.screenBackStack + state.currentScreen).takeLast(6)
                 } else {
                     state.screenBackStack
                 }
+                val updatedTabs = if (curActive != null) {
+                    state.openTabs.map { tab ->
+                        tab.copy(
+                            showSma20 = curActive.showSma20,
+                            showSma50 = curActive.showSma50,
+                            showSma200 = curActive.showSma200,
+                            showEma20 = curActive.showEma20,
+                            showEma50 = curActive.showEma50,
+                            showSupertrend = curActive.showSupertrend,
+                            showVwap = curActive.showVwap,
+                            showBollinger = curActive.showBollinger,
+                            showOverlayMacd = curActive.showOverlayMacd,
+                            showRsi14 = curActive.showRsi14,
+                            showMacd = curActive.showMacd,
+                            showAtr14 = curActive.showAtr14,
+                            showSmcStructure = curActive.showSmcStructure,
+                            showFvg = curActive.showFvg,
+                            showVolumeProfile = curActive.showVolumeProfile
+                        )
+                    }
+                } else {
+                    state.openTabs
+                }
                 state.copy(
+                    openTabs = updatedTabs,
                     activeTabId = tabId,
                     currentScreen = targetScreen,
                     screenBackStack = nextStack
                 )
             }
+            repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
             if (existingTab.candles.isEmpty() && !existingTab.isLoading) {
                 syncSingleSymbolUpToNow(symbol.symbolCode)
             }
@@ -801,12 +827,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val backfilledSessionKeys = java.util.Collections.synchronizedSet(HashSet<String>())
 
     private fun minBarsForTimeframe(tf: String): Int = when (tf.uppercase()) {
-        "M15" -> 300
-        "M30", "H1" -> 240
-        "H4" -> 180
-        "D1" -> 250
-        "W1" -> 140
-        else -> 240
+        "M15" -> 1200
+        "M30", "H1" -> 1000
+        "H4" -> 500
+        "D1" -> 1000
+        "W1" -> 250
+        else -> 1000
     }
 
     private fun triggerBackfillIfHistoryShallow(tab: ChartTabState) {
@@ -860,7 +886,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 openTabs = state.openTabs.map { tab ->
                     if (tab.tabId == activeId) {
                         val delta = if (zoomIn) -step else step
-                        val maxCap = max(AppConfig.MIN_VISIBLE_CANDLES, tab.candles.size.coerceAtMost(AppConfig.MAX_VISIBLE_CANDLES))
+                        val maxCap = max(1500, (tab.candles.size * 1.4f).roundToInt()).coerceAtMost(AppConfig.MAX_VISIBLE_CANDLES)
                         val nextCount = (tab.visibleCandleCount + delta).coerceIn(
                             AppConfig.MIN_VISIBLE_CANDLES,
                             maxCap
@@ -899,7 +925,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             zoomFactor < 0.992f && rawScaled == tab.visibleCandleCount -> tab.visibleCandleCount + 1
                             else -> rawScaled
                         }
-                        val maxCap = max(AppConfig.MIN_VISIBLE_CANDLES, tab.candles.size.coerceAtMost(AppConfig.MAX_VISIBLE_CANDLES))
+                        val maxCap = max(1500, (tab.candles.size * 1.4f).roundToInt()).coerceAtMost(AppConfig.MAX_VISIBLE_CANDLES)
                         val nextCount = steppedScaled.coerceIn(AppConfig.MIN_VISIBLE_CANDLES, maxCap)
                         val maxOffset = (tab.candles.size - nextCount).coerceAtLeast(0)
                         val updated = tab.copy(
@@ -1299,195 +1325,135 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun toggleSma20OnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showSma20 ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showSma20 = !tab.showSma20) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showSma20 = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleSma50OnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showSma50 ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showSma50 = !tab.showSma50) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showSma50 = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleSma200OnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showSma200 ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showSma200 = !tab.showSma200) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showSma200 = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleEma20OnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showEma20 ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showEma20 = !tab.showEma20) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showEma20 = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleEma50OnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showEma50 ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showEma50 = !tab.showEma50) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showEma50 = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleBollingerOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showBollinger ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showBollinger = !tab.showBollinger) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showBollinger = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleSupertrendOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showSupertrend ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showSupertrend = !tab.showSupertrend) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showSupertrend = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleVwapOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showVwap ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showVwap = !tab.showVwap) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showVwap = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleRsi14OnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showRsi14 ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showRsi14 = !tab.showRsi14) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showRsi14 = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleMacdOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showMacd ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showMacd = !tab.showMacd) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showMacd = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleOverlayMacdOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showOverlayMacd ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showOverlayMacd = !tab.showOverlayMacd) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showOverlayMacd = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleAtr14OnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showAtr14 ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showAtr14 = !tab.showAtr14) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showAtr14 = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleSmcStructureOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showSmcStructure ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showSmcStructure = !tab.showSmcStructure) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showSmcStructure = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleFvgOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showFvg ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showFvg = !tab.showFvg) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showFvg = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleVolumeProfileOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val nextVal = !(_uiState.value.activeTab?.showVolumeProfile ?: return)
         _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showVolumeProfile = !tab.showVolumeProfile) else tab
-                }
-            )
+            state.copy(openTabs = state.openTabs.map { it.copy(showVolumeProfile = nextVal) })
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
