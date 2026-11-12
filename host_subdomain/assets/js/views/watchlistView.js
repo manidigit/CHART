@@ -26,6 +26,23 @@ export function getSymbolCategoryKey(symbolCode) {
   return 'FX';
 }
 
+export function getShortCategoryLabel(symbolCode, i18n) {
+  const catKey = getSymbolCategoryKey(symbolCode);
+  const raw =
+    catKey === 'METALS'
+      ? i18n?.t('watchlist_cat_metals') || 'Metals'
+      : catKey === 'ENERGY'
+        ? i18n?.t('watchlist_cat_energy') || 'Energy'
+        : catKey === 'CRYPTO'
+          ? i18n?.t('watchlist_cat_crypto') || 'Crypto'
+          : catKey === 'INDICES'
+            ? i18n?.t('watchlist_cat_indices') || 'Indices'
+            : catKey === 'STOCKS'
+              ? i18n?.t('watchlist_cat_stocks') || 'Stocks'
+              : i18n?.t('watchlist_cat_fx') || 'Forex';
+  return String(raw).replace(/\s*\([^)]*\)\s*/g, '').trim();
+}
+
 export function getAssetBadge(symbolCode) {
   const code = String(symbolCode || '').toUpperCase();
   if (code === 'XAUUSD') {
@@ -352,20 +369,29 @@ export function renderRightSplitPanel(activeTab, i18n) {
     return s.symbolCode.toUpperCase().includes(query) || title.includes(query);
   });
 
+  const allInWatchlist = state.symbols.filter((s) => s.inWatchlist);
+  const cleanCatLabel = (key, fallback) =>
+    String(i18n.t(key) || fallback).replace(/\s*\([^)]*\)\s*/g, '').trim();
   const categories = [
-    { key: 'ALL', label: i18n.t('watchlist_cat_all') || 'All' },
-    { key: 'METALS', label: i18n.t('watchlist_cat_metals') || 'Metals' },
-    { key: 'ENERGY', label: i18n.t('watchlist_cat_energy') || 'Energy' },
-    { key: 'CRYPTO', label: i18n.t('watchlist_cat_crypto') || 'Crypto' },
-    { key: 'INDICES', label: i18n.t('watchlist_cat_indices') || 'Indices' },
-    { key: 'STOCKS', label: i18n.t('watchlist_cat_stocks') || 'Stocks' },
-    { key: 'FX', label: i18n.t('watchlist_cat_fx') || 'Forex' },
-  ];
+    { key: 'ALL', label: cleanCatLabel('watchlist_cat_all', 'All') },
+    { key: 'METALS', label: cleanCatLabel('watchlist_cat_metals', 'Metals') },
+    { key: 'ENERGY', label: cleanCatLabel('watchlist_cat_energy', 'Energy') },
+    { key: 'CRYPTO', label: cleanCatLabel('watchlist_cat_crypto', 'Crypto') },
+    { key: 'INDICES', label: cleanCatLabel('watchlist_cat_indices', 'Indices') },
+    { key: 'STOCKS', label: cleanCatLabel('watchlist_cat_stocks', 'Stocks') },
+    { key: 'FX', label: cleanCatLabel('watchlist_cat_fx', 'Forex') },
+  ].map((cat) => ({
+    ...cat,
+    count:
+      cat.key === 'ALL'
+        ? allInWatchlist.length
+        : allInWatchlist.filter((s) => getSymbolCategoryKey(s.symbolCode) === cat.key).length,
+  }));
 
-  const catChipsHtml = categories
+  const catOptionsHtml = categories
     .map(
       (cat) =>
-        `<button type="button" class="tv-wl-cat-chip ${activeCat === cat.key ? 'active' : ''}" data-action="set-wl-category" data-category="${cat.key}">${cat.label}</button>`
+        `<option value="${cat.key}" ${activeCat === cat.key ? 'selected' : ''}>${cat.label} (${cat.count})</option>`
     )
     .join('');
 
@@ -452,9 +478,10 @@ export function renderRightSplitPanel(activeTab, i18n) {
     const pct = d.prevClose > 0 ? PriceFormatter.formatSignedPct(d.prevClose, d.lastClose) : '+0.00%';
     const isBull = diff >= 0;
     const sign = isBull ? '+' : '';
-    const badge = getAssetBadge(sym.symbolCode);
+    const shortCategory = getShortCategoryLabel(sym.symbolCode, i18n);
     const rawTitle = sym.customTitle || i18n.t('symbol_' + sym.symbolCode) || sym.symbolCode;
     const cleanTitle = rawTitle.replace(/\s*\([A-Z0-9_]+\)\s*/g, '').trim() || rawTitle;
+    const hasDistinctName = cleanTitle && cleanTitle.toUpperCase() !== sym.symbolCode.toUpperCase();
     const rangeSpan = Math.max(0.00001, d.dayHigh - d.dayLow);
     const posPct = Math.max(4, Math.min(96, Math.round(((d.lastClose - d.dayLow) / rangeSpan) * 100)));
 
@@ -462,14 +489,15 @@ export function renderRightSplitPanel(activeTab, i18n) {
       <div class="tv-symbol-details-pane" dir="ltr">
         <div class="tv-detail-header-row">
           <div class="tv-detail-title-group">
-            ${renderSymbolBadge(sym.symbolCode, 24)}
+            ${renderSymbolBadge(sym.symbolCode, 22)}
             <strong class="tv-detail-sym-code ltr-num">${sym.symbolCode}</strong>
+            ${
+              hasDistinctName
+                ? `<span class="tv-detail-sym-name-inline" dir="auto" title="${cleanTitle}">· ${cleanTitle}</span>`
+                : ''
+            }
           </div>
-          <span class="tv-detail-cat-pill ltr-num">${badge.category}</span>
-        </div>
-
-        <div class="tv-detail-subtitle" dir="auto">
-          ${cleanTitle}
+          <span class="tv-detail-cat-pill" dir="auto">${shortCategory}</span>
         </div>
 
         <div class="tv-detail-price-row">
@@ -546,8 +574,18 @@ export function renderRightSplitPanel(activeTab, i18n) {
           </button>
         </div>
 
-        <div class="tv-wl-cat-bar" dir="ltr">
-          ${catChipsHtml}
+        <div class="tv-wl-cat-bar">
+          <label class="tv-wl-cat-label" for="tv-wl-category-select">
+            ${i18n.getCurrentLanguage() === 'fa' ? 'بازار' : 'Market'}
+          </label>
+          <select
+            id="tv-wl-category-select"
+            class="tv-wl-cat-select"
+            data-action="set-wl-category-select"
+            dir="auto"
+          >
+            ${catOptionsHtml}
+          </select>
         </div>
 
         <div class="tv-wl-table-head" dir="ltr">

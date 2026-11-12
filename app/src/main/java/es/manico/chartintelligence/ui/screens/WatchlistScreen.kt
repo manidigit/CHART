@@ -34,10 +34,13 @@ import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -59,6 +62,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -241,51 +245,113 @@ fun WatchlistScreen(
                 }
             }
 
-            // Category Filter Chips Row (All | Metals | Energy | FX)
+            // Market Category Filter Combo Box (replaces overflowing horizontal chip train)
+            val categories = listOf(
+                "ALL" to stringResource(R.string.watchlist_filter_all),
+                "METALS" to stringResource(R.string.watchlist_filter_metals),
+                "ENERGY" to stringResource(R.string.watchlist_filter_energy),
+                "CRYPTO" to stringResource(R.string.watchlist_filter_crypto),
+                "INDICES" to stringResource(R.string.watchlist_filter_indices),
+                "STOCKS" to stringResource(R.string.watchlist_filter_stocks),
+                "FX" to stringResource(R.string.watchlist_filter_fx)
+            ).map { (catId, catLabel) ->
+                val count = if (catId == "ALL") {
+                    watchlistSymbols.size
+                } else {
+                    watchlistSymbols.count { sym ->
+                        val code = sym.symbolCode.uppercase()
+                        when (catId) {
+                            "METALS" -> code in listOf("XAUUSD", "XAGUSD") || code.contains("XAU") || code.contains("XAG")
+                            "ENERGY" -> code in listOf("SPOTBRENT", "BRENT_FUTURES", "USOIL") || code.contains("BRENT") || code.contains("OIL") || code.contains("WTI")
+                            "CRYPTO" -> code in listOf("BTCUSD", "ETHUSD") || code.contains("BTC") || code.contains("ETH")
+                            "INDICES" -> code in listOf("SPX500USD", "NDQ") || code.contains("SPX") || code.contains("NDQ") || code.contains("NAS")
+                            "STOCKS" -> code in listOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN")
+                            "FX" -> code in listOf("EURUSD", "GBPUSD", "USDJPY") || code.contains("EUR") || code.contains("GBP") || code.contains("JPY")
+                            else -> true
+                        }
+                    }
+                }
+                Triple(catId, catLabel, count)
+            }
+            var categoryMenuExpanded by remember { mutableStateOf(false) }
+            val activeCategoryEntry = categories.firstOrNull { it.first == selectedCategory } ?: categories.first()
+
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(MaterialTheme.colorScheme.surface)
-                    .horizontalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp, vertical = 6.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalAlignment = Alignment.CenterVertically
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                val categories = listOf(
-                    "ALL" to stringResource(R.string.watchlist_filter_all),
-                    "METALS" to stringResource(R.string.watchlist_filter_metals),
-                    "ENERGY" to stringResource(R.string.watchlist_filter_energy),
-                    "CRYPTO" to stringResource(R.string.watchlist_filter_crypto),
-                    "INDICES" to stringResource(R.string.watchlist_filter_indices),
-                    "STOCKS" to stringResource(R.string.watchlist_filter_stocks),
-                    "FX" to stringResource(R.string.watchlist_filter_fx)
+                Text(
+                    text = stringResource(R.string.settings_source_by_market),
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(0.45f, fill = false)
                 )
-                for ((catId, catLabel) in categories) {
-                    val isSelected = selectedCategory == catId
-                    Box(
+
+                Box(modifier = Modifier.weight(1f)) {
+                    Surface(
                         modifier = Modifier
-                            .heightIn(min = 32.dp)
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(
-                                if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
-                                else MaterialTheme.colorScheme.background
-                            )
-                            .border(
-                                1.dp,
-                                if (isSelected) MaterialTheme.colorScheme.primary else financialPalette.cardBorder,
-                                RoundedCornerShape(16.dp)
-                            )
-                            .clickable { selectedCategory = catId }
-                            .padding(horizontal = 14.dp, vertical = 6.dp)
-                            .testTag("watchlist_cat_${catId.lowercase()}"),
-                        contentAlignment = Alignment.Center
+                            .fillMaxWidth()
+                            .heightIn(min = 48.dp)
+                            .clip(RoundedCornerShape(8.dp))
+                            .clickable { categoryMenuExpanded = true }
+                            .testTag("watchlist_category_dropdown"),
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.background,
+                        border = BorderStroke(1.dp, financialPalette.cardBorder)
                     ) {
-                        Text(
-                            text = catLabel,
-                            style = MaterialTheme.typography.labelSmall,
-                            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 10.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${activeCategoryEntry.second} (${activeCategoryEntry.third})",
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Icon(
+                                imageVector = Icons.Outlined.ExpandMore,
+                                contentDescription = stringResource(R.string.settings_source_by_market),
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+
+                    DropdownMenu(
+                        expanded = categoryMenuExpanded,
+                        onDismissRequest = { categoryMenuExpanded = false }
+                    ) {
+                        for ((catId, catLabel, count) in categories) {
+                            val isSelected = selectedCategory == catId
+                            DropdownMenuItem(
+                                text = {
+                                    Text(
+                                        text = "$catLabel ($count)",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                    )
+                                },
+                                onClick = {
+                                    selectedCategory = catId
+                                    categoryMenuExpanded = false
+                                },
+                                modifier = Modifier.testTag("watchlist_cat_${catId.lowercase()}")
+                            )
+                        }
                     }
                 }
             }

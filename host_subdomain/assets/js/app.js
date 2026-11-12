@@ -39,15 +39,15 @@ import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.38.0';
+} from './views/headerView.js?v=1.38.1';
 import { renderLeftToolRail } from './views/toolRailView.js?v=1.38.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.38.0';
-import { renderPredictionModal } from './views/analysisView.js?v=1.38.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.38.0';
+} from './views/watchlistView.js?v=1.38.1';
+import { renderPredictionModal } from './views/analysisView.js?v=1.38.1';
+import { renderSettingsModal } from './views/settingsView.js?v=1.38.1';
 import { renderRightIconRail } from './views/navigationView.js?v=1.38.0';
 
 const i18n = new I18nManager();
@@ -1941,6 +1941,15 @@ document.addEventListener('change', async (e) => {
     }
   } else if (action === 'select-prediction-symbol') {
     openOrFocusSymbolTab(el.value);
+    renderApp();
+  } else if (action === 'set-wl-category-select') {
+    state.watchlistCategory = el.value || 'ALL';
+    renderApp();
+  } else if (action === 'set-settings-source-category-select') {
+    state.settingsSourceCategory = el.value || 'ALL';
+    renderApp();
+  } else if (action === 'select-explorer-provider-select') {
+    state.selectedExplorerProvider = el.value || 'tvdatafeed';
     renderApp();
   }
 });

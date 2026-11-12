@@ -1,5 +1,5 @@
 import { state, PROVIDER_METHODS_CATALOG, getCachedOrAggregatedCandles } from '../core/store.js?v=1.38.0';
-import { getAssetBadge, renderSymbolBadge, getSymbolCategoryKey } from './watchlistView.js?v=1.38.0';
+import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.38.1';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -38,47 +38,46 @@ export function renderSettingsModal(i18n) {
   const searchQuery = String(state.symbolExplorerSearchQuery || '').trim().toUpperCase();
 
   const marketCat = state.settingsSourceCategory || 'ALL';
+  const cleanCatLabel = (key, fallback) =>
+    String(i18n.t(key) || fallback).replace(/\s*\([^)]*\)\s*/g, '').trim();
+  const catScopeList = explorerMode === 'by_source' ? activeMethod.symbols : state.symbols;
   const marketCategories = [
-    { key: 'ALL', label: i18n.t('watchlist_cat_all') || 'All' },
-    { key: 'METALS', label: i18n.t('watchlist_cat_metals') || 'Metals' },
-    { key: 'ENERGY', label: i18n.t('watchlist_cat_energy') || 'Energy' },
-    { key: 'CRYPTO', label: i18n.t('watchlist_cat_crypto') || 'Crypto' },
-    { key: 'INDICES', label: i18n.t('watchlist_cat_indices') || 'Indices' },
-    { key: 'STOCKS', label: i18n.t('watchlist_cat_stocks') || 'Stocks' },
-    { key: 'FX', label: i18n.t('watchlist_cat_fx') || 'Forex' },
-  ];
-  const marketCategoryChipsHtml = marketCategories
+    { key: 'ALL', label: cleanCatLabel('watchlist_cat_all', 'All') },
+    { key: 'METALS', label: cleanCatLabel('watchlist_cat_metals', 'Metals') },
+    { key: 'ENERGY', label: cleanCatLabel('watchlist_cat_energy', 'Energy') },
+    { key: 'CRYPTO', label: cleanCatLabel('watchlist_cat_crypto', 'Crypto') },
+    { key: 'INDICES', label: cleanCatLabel('watchlist_cat_indices', 'Indices') },
+    { key: 'STOCKS', label: cleanCatLabel('watchlist_cat_stocks', 'Stocks') },
+    { key: 'FX', label: cleanCatLabel('watchlist_cat_fx', 'Forex') },
+  ].map((cat) => ({
+    ...cat,
+    count:
+      cat.key === 'ALL'
+        ? catScopeList.length
+        : catScopeList.filter((item) => (item.category || getSymbolCategoryKey(item.symbolCode)) === cat.key).length,
+  }));
+
+  const marketCategoryOptionsHtml = marketCategories
     .map(
       (cat) => `
-      <button
-        type="button"
-        class="chip ${marketCat === cat.key ? 'active' : ''}"
-        data-action="set-settings-source-category"
-        data-category="${cat.key}"
-        style="font-size: 11px; padding: 4px 10px;"
-      >${cat.label}</button>
+      <option value="${cat.key}" ${marketCat === cat.key ? 'selected' : ''}>
+        ${cat.label} (${cat.count})
+      </option>
     `
     )
     .join('');
 
   // Mode 1: Filter by Collection Method (Source -> Symbols filtered by Market Category)
-  const methodChipsHtml = PROVIDER_METHODS_CATALOG.map((m) => {
+  const providerOptionsHtml = PROVIDER_METHODS_CATALOG.map((m) => {
     const isSel = m.providerId === activeMethod.providerId;
     const catCount =
       marketCat === 'ALL'
         ? m.symbols.length
         : m.symbols.filter((s) => (s.category || getSymbolCategoryKey(s.symbolCode)) === marketCat).length;
     return `
-      <button
-        type="button"
-        class="chip ${isSel ? 'active' : ''}"
-        data-action="select-explorer-provider"
-        data-provider="${m.providerId}"
-        style="font-size: 11.5px; padding: 5px 11px;"
-      >
-        <span class="ltr-num" style="font-weight: 700;">${m.badgeLabel}</span>
-        <span style="opacity: 0.75; margin-inline-start: 4px;">(${catCount})</span>
-      </button>
+      <option value="${m.providerId}" ${isSel ? 'selected' : ''}>
+        ${m.badgeLabel} (${catCount})
+      </option>
     `;
   }).join('');
 
@@ -187,7 +186,7 @@ export function renderSettingsModal(i18n) {
 
   const symbolsList = filteredSymbols
     .map((s) => {
-      const badge = getAssetBadge(s.symbolCode);
+      const shortCategory = getShortCategoryLabel(s.symbolCode, i18n);
       const rawTitle = s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode;
       const cleanTitle = rawTitle.replace(/\s*\([A-Z0-9_]+\)\s*/g, '').trim() || rawTitle;
       return `
@@ -200,7 +199,7 @@ export function renderSettingsModal(i18n) {
                 <span class="ltr-num" style="font-size: 10px; font-weight: 700; color: var(--primary); padding: 1px 5px; border-radius: 4px; background: var(--primary-soft);">${s.symbolCode}</span>
               </div>
               <div class="ltr-num" style="font-size: 10.5px; color: var(--text-muted); margin-top: 1px;">
-                ${badge.category} · ${(s.candles || []).length} bars
+                ${shortCategory} · ${(s.candles || []).length} bars
               </div>
             </div>
           </div>
@@ -413,17 +412,63 @@ export function renderSettingsModal(i18n) {
           </div>
         </div>
 
-        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 6px;">${i18n.t('settings_source_category_label') || 'Filter Symbols by Market'}</div>
-        <div style="display: flex; gap: 5px; overflow-x: auto; padding-bottom: 6px; margin-bottom: 8px;">
-          ${marketCategoryChipsHtml}
+        <div class="tv-source-filters-grid">
+          <div class="tv-combo-field">
+            <label class="tv-combo-label" for="settings-source-category-select">
+              ${i18n.t('settings_source_category_label') || (isFa ? 'دسته‌بندی بازار' : 'Market Category')}
+            </label>
+            <select
+              id="settings-source-category-select"
+              class="input-field tv-combo-select"
+              data-action="set-settings-source-category-select"
+              dir="auto"
+            >
+              ${marketCategoryOptionsHtml}
+            </select>
+          </div>
+          ${
+            explorerMode === 'by_source'
+              ? `
+                <div class="tv-combo-field">
+                  <label class="tv-combo-label" for="settings-source-provider-select">
+                    ${isFa ? 'منبع جمع‌آوری داده' : 'Data Source / Provider'}
+                  </label>
+                  <select
+                    id="settings-source-provider-select"
+                    class="input-field tv-combo-select ltr-num"
+                    data-action="select-explorer-provider-select"
+                  >
+                    ${providerOptionsHtml}
+                  </select>
+                </div>
+              `
+              : `
+                <div class="tv-combo-field">
+                  <label class="tv-combo-label" for="settings-symbol-search-input">
+                    ${isFa ? 'جستجو و افزودن نماد' : 'Search & Add Symbol'}
+                  </label>
+                  <div style="display: flex; gap: 6px; align-items: center;">
+                    <input
+                      id="settings-symbol-search-input"
+                      type="text"
+                      class="input-field"
+                      style="flex: 1; min-width: 120px; min-height: 34px; font-size: 12px;"
+                      placeholder="${isFa ? 'جستجوی کد یا نام نماد...' : 'Search symbol code or name...'}"
+                      value="${state.symbolExplorerSearchQuery || ''}"
+                      data-action="search-explorer-symbol"
+                    />
+                    <button type="button" class="btn btn-primary" style="min-height: 34px;" data-action="open-add-symbol-modal">
+                      + ${i18n.t('settings_add_custom_symbol')}
+                    </button>
+                  </div>
+                </div>
+              `
+          }
         </div>
 
         ${
           explorerMode === 'by_source'
             ? `
-              <div style="display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px;">
-                ${methodChipsHtml}
-              </div>
               ${methodSpecCardHtml}
               <div class="row-between" style="margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
                 <span style="font-size: 12px; font-weight: 700; color: var(--text-strong);">
@@ -440,19 +485,6 @@ export function renderSettingsModal(i18n) {
               ${sourceSymbolsRowsHtml}
             `
             : `
-              <div class="row-between" style="margin-bottom: 10px; gap: 8px; flex-wrap: wrap;">
-                <input
-                  type="text"
-                  class="input-field"
-                  style="flex: 1; min-width: 180px; height: 32px; font-size: 12px;"
-                  placeholder="${isFa ? 'جستجوی کد یا نام نماد...' : 'Search symbol code or name...'}"
-                  value="${state.symbolExplorerSearchQuery || ''}"
-                  data-action="search-explorer-symbol"
-                />
-                <button type="button" class="btn btn-sm btn-primary" data-action="open-add-symbol-modal">
-                  + ${i18n.t('settings_add_custom_symbol')}
-                </button>
-              </div>
               ${symbolsList}
             `
         }

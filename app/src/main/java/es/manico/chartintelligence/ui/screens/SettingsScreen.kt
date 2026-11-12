@@ -42,6 +42,8 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
@@ -667,80 +669,197 @@ fun SettingsScreen(
                             }
                         }
 
-                        // Market Category Filter Chips (All | Metals | Energy | Crypto | Indices | Stocks | FX)
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = stringResource(R.string.settings_source_by_market),
-                                style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        val methodCatalog = ProviderId.providerMethodCatalog
+                        val activeMethodSpec = methodCatalog.firstOrNull { it.providerId == selectedExplorerProvider }
+                            ?: methodCatalog.first()
+                        val filteredMethodSymbols = activeMethodSpec.supportedSymbols.filter {
+                            matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
+                        }
+                        val marketCats = listOf(
+                            "ALL" to stringResource(R.string.watchlist_filter_all),
+                            "METALS" to stringResource(R.string.watchlist_filter_metals),
+                            "ENERGY" to stringResource(R.string.watchlist_filter_energy),
+                            "CRYPTO" to stringResource(R.string.watchlist_filter_crypto),
+                            "INDICES" to stringResource(R.string.watchlist_filter_indices),
+                            "STOCKS" to stringResource(R.string.watchlist_filter_stocks),
+                            "FX" to stringResource(R.string.watchlist_filter_fx)
+                        ).map { (catKey, catLabel) ->
+                            val count = if (explorerMode == "by_source") {
+                                activeMethodSpec.supportedSymbols.count {
+                                    matchesSettingsMarketCategory(it.symbolCode, catKey)
+                                }
+                            } else {
+                                symbols.count { matchesSettingsMarketCategory(it.symbolCode, catKey) }
+                            }
+                            Triple(catKey, catLabel, count)
+                        }
+                        var marketMenuExpanded by remember { mutableStateOf(false) }
+                        var providerMenuExpanded by remember { mutableStateOf(false) }
+                        val activeCatEntry = marketCats.firstOrNull { it.first == selectedMarketCategory } ?: marketCats.first()
+                        val activeProvCount = activeMethodSpec.supportedSymbols.count {
+                            matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
+                        }
+
+                        // Two Clean Combo Boxes Side-by-Side (Market Category + Data Source)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                val marketCats = listOf(
-                                    "ALL" to stringResource(R.string.watchlist_filter_all),
-                                    "METALS" to stringResource(R.string.watchlist_filter_metals),
-                                    "ENERGY" to stringResource(R.string.watchlist_filter_energy),
-                                    "CRYPTO" to stringResource(R.string.watchlist_filter_crypto),
-                                    "INDICES" to stringResource(R.string.watchlist_filter_indices),
-                                    "STOCKS" to stringResource(R.string.watchlist_filter_stocks),
-                                    "FX" to stringResource(R.string.watchlist_filter_fx)
+                                Text(
+                                    text = stringResource(R.string.settings_source_by_market),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
-                                for ((catKey, catLabel) in marketCats) {
-                                    FilterChip(
-                                        selected = selectedMarketCategory == catKey,
-                                        onClick = { selectedMarketCategory = catKey },
-                                        label = {
+                                Box {
+                                    Surface(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .heightIn(min = 48.dp)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .clickable { marketMenuExpanded = true }
+                                            .testTag("settings_source_category_dropdown"),
+                                        shape = RoundedCornerShape(8.dp),
+                                        color = MaterialTheme.colorScheme.background,
+                                        border = BorderStroke(1.dp, financialPalette.cardBorder)
+                                    ) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(horizontal = 10.dp, vertical = 10.dp),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
                                             Text(
-                                                text = catLabel,
-                                                style = MaterialTheme.typography.labelSmall,
-                                                maxLines = 1
+                                                text = "${activeCatEntry.second} (${activeCatEntry.third})",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.SemiBold,
+                                                color = MaterialTheme.colorScheme.onSurface,
+                                                maxLines = 1,
+                                                overflow = TextOverflow.Ellipsis,
+                                                modifier = Modifier.weight(1f)
                                             )
-                                        },
-                                        modifier = Modifier.testTag("settings_source_cat_${catKey.lowercase()}")
+                                            Icon(
+                                                imageVector = Icons.Outlined.ExpandMore,
+                                                contentDescription = stringResource(R.string.settings_source_by_market),
+                                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                modifier = Modifier.size(18.dp)
+                                            )
+                                        }
+                                    }
+                                    DropdownMenu(
+                                        expanded = marketMenuExpanded,
+                                        onDismissRequest = { marketMenuExpanded = false }
+                                    ) {
+                                        for ((catKey, catLabel, count) in marketCats) {
+                                            val isSelected = selectedMarketCategory == catKey
+                                            DropdownMenuItem(
+                                                text = {
+                                                    Text(
+                                                        text = "$catLabel ($count)",
+                                                        style = MaterialTheme.typography.bodySmall,
+                                                        fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                        color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                },
+                                                onClick = {
+                                                    selectedMarketCategory = catKey
+                                                    marketMenuExpanded = false
+                                                },
+                                                modifier = Modifier.testTag("settings_source_cat_${catKey.lowercase()}")
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+
+                            if (explorerMode == "by_source") {
+                                Column(
+                                    modifier = Modifier.weight(1f),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Text(
+                                        text = if (isFa) "منبع جمع‌آوری داده" else "Data Source",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
+                                    Box {
+                                        Surface(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 48.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .clickable { providerMenuExpanded = true }
+                                                .testTag("settings_source_provider_dropdown"),
+                                            shape = RoundedCornerShape(8.dp),
+                                            color = MaterialTheme.colorScheme.background,
+                                            border = BorderStroke(1.dp, financialPalette.cardBorder)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .padding(horizontal = 10.dp, vertical = 10.dp),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "${activeMethodSpec.providerId.badgeLabel} ($activeProvCount)",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis,
+                                                    modifier = Modifier.weight(1f)
+                                                )
+                                                Icon(
+                                                    imageVector = Icons.Outlined.ExpandMore,
+                                                    contentDescription = if (isFa) "انتخاب منبع داده" else "Select Data Source",
+                                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        DropdownMenu(
+                                            expanded = providerMenuExpanded,
+                                            onDismissRequest = { providerMenuExpanded = false }
+                                        ) {
+                                            for (spec in methodCatalog) {
+                                                val isProvSelected = spec.providerId == selectedExplorerProvider
+                                                val catCount = spec.supportedSymbols.count {
+                                                    matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
+                                                }
+                                                DropdownMenuItem(
+                                                    text = {
+                                                        Text(
+                                                            text = "${spec.providerId.badgeLabel} ($catCount)",
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            fontFamily = JetBrainsMonoFontFamily,
+                                                            fontWeight = if (isProvSelected) FontWeight.Bold else FontWeight.Medium,
+                                                            color = if (isProvSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    },
+                                                    onClick = {
+                                                        selectedExplorerProvider = spec.providerId
+                                                        providerMenuExpanded = false
+                                                    },
+                                                    modifier = Modifier.testTag("select_explorer_provider_${spec.providerId.id}")
+                                                )
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
 
                         if (explorerMode == "by_source") {
-                            val methodCatalog = ProviderId.providerMethodCatalog
-                            val activeMethodSpec = methodCatalog.firstOrNull { it.providerId == selectedExplorerProvider }
-                                ?: methodCatalog.first()
-                            val filteredMethodSymbols = activeMethodSpec.supportedSymbols.filter {
-                                matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
-                            }
-
-                            // Provider Method Selector Chips (Single-row horizontal scroll to avoid clutter)
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                            ) {
-                                for (spec in methodCatalog) {
-                                    val isProvSelected = spec.providerId == selectedExplorerProvider
-                                    val catCount = spec.supportedSymbols.count {
-                                        matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
-                                    }
-                                    FilterChip(
-                                        selected = isProvSelected,
-                                        onClick = { selectedExplorerProvider = spec.providerId },
-                                        label = {
-                                            Text(
-                                                text = "${spec.providerId.badgeLabel} ($catCount)",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontFamily = JetBrainsMonoFontFamily,
-                                                fontWeight = if (isProvSelected) FontWeight.Bold else FontWeight.Medium
-                                            )
-                                        },
-                                        modifier = Modifier.testTag("select_explorer_provider_${spec.providerId.id}")
-                                    )
-                                }
-                            }
 
                             if (selectedMarketCategory != "ALL" && filteredMethodSymbols.isNotEmpty()) {
                                 OutlinedButton(
