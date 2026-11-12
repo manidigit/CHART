@@ -395,7 +395,8 @@ class WorkspaceRepository(context: Context) {
                 twelveDataApiKey = obj.optString("twelveDataApiKey", ""),
                 stooqApiKey = obj.optString("stooqApiKey", ""),
                 alphaVantageApiKey = obj.optString("alphaVantageApiKey", ""),
-                finnhubApiKey = obj.optString("finnhubApiKey", "")
+                finnhubApiKey = obj.optString("finnhubApiKey", ""),
+                timezoneMode = obj.optString("timezoneMode", "UTC").uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" }
             )
         }.getOrDefault(ChartPreferences())
     }
@@ -432,6 +433,7 @@ class WorkspaceRepository(context: Context) {
         obj.put("stooqApiKey", prefsObj.stooqApiKey)
         obj.put("alphaVantageApiKey", prefsObj.alphaVantageApiKey)
         obj.put("finnhubApiKey", prefsObj.finnhubApiKey)
+        obj.put("timezoneMode", prefsObj.timezoneMode)
         prefs.edit().putString(AppConfig.KEY_CHART_PREFERENCES_JSON, obj.toString()).apply()
     }
 
@@ -1559,6 +1561,7 @@ class WorkspaceRepository(context: Context) {
                 .put("stooqApiKey", preferences.stooqApiKey)
                 .put("alphaVantageApiKey", preferences.alphaVantageApiKey)
                 .put("finnhubApiKey", preferences.finnhubApiKey)
+                .put("timezoneMode", preferences.timezoneMode)
 
             val tabsArr = JSONArray()
             for (t in openTabs) {
@@ -1713,7 +1716,8 @@ class WorkspaceRepository(context: Context) {
                     twelveDataApiKey = prefsJson.optString("twelveDataApiKey", cur.twelveDataApiKey),
                     stooqApiKey = prefsJson.optString("stooqApiKey", cur.stooqApiKey),
                     alphaVantageApiKey = prefsJson.optString("alphaVantageApiKey", cur.alphaVantageApiKey),
-                    finnhubApiKey = prefsJson.optString("finnhubApiKey", cur.finnhubApiKey)
+                    finnhubApiKey = prefsJson.optString("finnhubApiKey", cur.finnhubApiKey),
+                    timezoneMode = prefsJson.optString("timezoneMode", cur.timezoneMode).uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" }
                 )
                 saveChartPreferences(updatedPrefs)
                 changed = true

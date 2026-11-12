@@ -119,6 +119,13 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
         return next
     }
 
+    fun updateTimezoneMode(current: ChartPreferences, mode: String): ChartPreferences {
+        val norm = if (mode.equals("LOCAL", ignoreCase = true)) "LOCAL" else "UTC"
+        val next = current.copy(timezoneMode = norm)
+        repository.saveChartPreferences(next)
+        return next
+    }
+
     fun updateTradingViewPreference(
         current: ChartPreferences,
         transform: (ChartPreferences) -> ChartPreferences

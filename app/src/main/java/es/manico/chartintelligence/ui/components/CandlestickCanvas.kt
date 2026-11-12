@@ -293,8 +293,8 @@ fun CandlestickCanvas(
     val nicePriceTicks = remember(paddedMin, paddedMax) {
         PriceFormatterAlgorithm.computeNicePriceTicks(paddedMin, paddedMax, 5).sortedDescending()
     }
-    val smartTimeTicks = remember(visibleTimestamps, tab.timeframe) {
-        PriceFormatterAlgorithm.computeSmartTimeAxisTicks(visibleTimestamps, tab.timeframe, 4)
+    val smartTimeTicks = remember(visibleTimestamps, tab.timeframe, preferences.timezoneMode) {
+        PriceFormatterAlgorithm.computeSmartTimeAxisTicks(visibleTimestamps, tab.timeframe, 4, preferences.timezoneMode)
     }
 
     fun mapPriceToNormRatio(price: Double): Float {
@@ -1700,6 +1700,25 @@ fun CandlestickCanvas(
                     }
                 }
 
+                // Non-overlapping Start of History notice at bottom-left of Price Pane
+                if (startIndex == 0 && visibleSlice.isNotEmpty() && candles.size > visibleSlice.size) {
+                    Text(
+                        text = stringResource(R.string.chart_data_boundary),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontSize = 9.sp,
+                        fontFamily = JetBrainsMonoFontFamily,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .align(Alignment.TopStart)
+                            .offset(x = 8.dp, y = (plotTopPadDp + pricePaneHeightDp - 22.dp).coerceAtLeast(plotTopPadDp + 4.dp))
+                            .clip(RoundedCornerShape(4.dp))
+                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f))
+                            .border(1.dp, financialPalette.cardBorder, RoundedCornerShape(4.dp))
+                            .padding(horizontal = 6.dp, vertical = 2.dp)
+                            .testTag("chart_history_boundary_pill")
+                    )
+                }
+
                 // Honest Volume Sub-Pane Header / No-Volume Notice
                 if (tab.showVolume) {
                     val volHeaderText = if (hasRealVolume && inspectedCandle != null) {
@@ -1863,7 +1882,7 @@ fun CandlestickCanvas(
                     ) {
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(3.dp))
+                                .clip(RoundedCornerShape(4.dp))
                                 .background(
                                     if (tab.isAutoScaleY) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
                                     else MaterialTheme.colorScheme.surface
@@ -1871,10 +1890,10 @@ fun CandlestickCanvas(
                                 .border(
                                     1.dp,
                                     if (tab.isAutoScaleY) MaterialTheme.colorScheme.primary else financialPalette.cardBorder,
-                                    RoundedCornerShape(3.dp)
+                                    RoundedCornerShape(4.dp)
                                 )
                                 .clickable(onClick = onResetAutoScaleY)
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
                                 .testTag("chart_auto_axis_badge")
                         ) {
                             Text(
@@ -1888,7 +1907,7 @@ fun CandlestickCanvas(
                         }
                         Box(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(3.dp))
+                                .clip(RoundedCornerShape(4.dp))
                                 .background(
                                     if (useLogScale) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
                                     else MaterialTheme.colorScheme.surface
@@ -1896,10 +1915,10 @@ fun CandlestickCanvas(
                                 .border(
                                     1.dp,
                                     if (useLogScale) MaterialTheme.colorScheme.primary else financialPalette.cardBorder,
-                                    RoundedCornerShape(3.dp)
+                                    RoundedCornerShape(4.dp)
                                 )
                                 .clickable(onClick = onToggleLogScale)
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .padding(horizontal = 5.dp, vertical = 2.dp)
                                 .testTag("chart_log_axis_badge")
                         ) {
                             Text(
@@ -2017,7 +2036,11 @@ fun CandlestickCanvas(
                                 .testTag("chart_crosshair_time_pill")
                         ) {
                             Text(
-                                text = PriceFormatterAlgorithm.formatAxisTimestamp(selCandle.openTimeUtcMillis, tab.timeframe),
+                                text = PriceFormatterAlgorithm.formatAxisTimestamp(
+                                    selCandle.openTimeUtcMillis,
+                                    tab.timeframe,
+                                    preferences.timezoneMode
+                                ),
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 9.5.sp,
                                 fontFamily = JetBrainsMonoFontFamily,

@@ -1,5 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
-import { state } from '../core/store.js?v=1.36.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.37.0';
+import { state, getAssetClass } from '../core/store.js?v=1.37.0';
 
 const STOCK_SYMBOLS = new Set([
   'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
@@ -139,54 +140,117 @@ export function getAssetBadge(symbolCode) {
 
 export function getInstrumentProfileMeta(symbolCode, providerBadge) {
   const code = String(symbolCode || '').toUpperCase();
-  if (code.includes('XAU')) {
+  const assetClass = getAssetClass(code);
+  if (assetClass === 'COMMODITIES' && (code.includes('XAU') || code.includes('GOLD'))) {
     return {
+      assetClass,
       sector: 'Precious Metals',
       industry: 'Spot Bullion (LBMA / OTC)',
       benchmark: `XAU/USD Spot · ${providerBadge}`,
-      activeVenues: '24+ Global Venues',
-      dailyTurnover: '162.4B USD',
-      payoutRatio: '8.86% (Carry)',
-      yieldTtm: '2.94% (Lease)',
+      spec1Label: 'Contract / Unit',
+      spec1Val: '1 Troy Ounce (XAU)',
+      spec2Label: 'Settlement Hub',
+      spec2Val: 'London LBMA / OTC 24h',
+      spec3Label: 'Primary Drivers',
+      spec3Val: 'US Real Yields • DXY • Central Banks',
       figi: 'BBG000B9XRY4',
       isin: 'XC0009655157',
     };
   }
-  if (code.includes('BRENT') || code.includes('OIL')) {
+  if (assetClass === 'COMMODITIES' && (code.includes('BRENT') || code.includes('OIL') || code.includes('WTI'))) {
+    const isWti = code.includes('USOIL') || code.includes('WTI');
     return {
+      assetClass,
       sector: 'Energy Commodities',
-      industry: 'North Sea Brent Crude',
-      benchmark: `Dated Brent / ICE · ${providerBadge}`,
-      activeVenues: '18+ Energy Hubs',
-      dailyTurnover: '94.8B USD',
-      payoutRatio: '12.40% (Roll)',
-      yieldTtm: '4.15% (Carry)',
-      figi: 'BBG000G2R5T8',
-      isin: 'EU0009658426',
+      industry: isWti ? 'WTI Crude Oil (NYMEX Benchmark)' : 'North Sea Brent Crude',
+      benchmark: isWti ? `WTI Cushing / NYMEX · ${providerBadge}` : `Dated Brent / ICE · ${providerBadge}`,
+      spec1Label: 'Contract / Unit',
+      spec1Val: '1 Barrel (42 US Gal)',
+      spec2Label: 'Settlement Hub',
+      spec2Val: isWti ? 'Cushing OK / NYMEX' : 'North Sea / ICE Futures',
+      spec3Label: 'Weekly Catalyst',
+      spec3Val: 'EIA Weekly Petroleum Status (Wed)',
+      figi: isWti ? 'BBG000F5N218' : 'BBG000G2R5T8',
+      isin: isWti ? 'US000WTI0001' : 'EU0009658426',
     };
   }
-  if (code.includes('XAG')) {
+  if (assetClass === 'COMMODITIES') {
     return {
+      assetClass,
       sector: 'Precious & Industrial Metals',
       industry: 'Spot Silver Bullion',
-      benchmark: `XAG/USD Spot · ${providerBadge}`,
-      activeVenues: '19+ Global Venues',
-      dailyTurnover: '38.2B USD',
-      payoutRatio: '7.20%',
-      yieldTtm: '2.10%',
+      benchmark: `${code} Spot · ${providerBadge}`,
+      spec1Label: 'Contract / Unit',
+      spec1Val: '1 Troy Ounce (XAG)',
+      spec2Label: 'Settlement Hub',
+      spec2Val: 'LBMA / COMEX OTC',
+      spec3Label: 'Primary Drivers',
+      spec3Val: 'Industrial Demand • Gold/Silver Ratio',
       figi: 'BBG000B9XVV8',
       isin: 'XC0009653103',
     };
   }
+  if (assetClass === 'CRYPTO') {
+    const isEth = code.includes('ETH');
+    return {
+      assetClass,
+      sector: 'Digital Assets / Crypto',
+      industry: isEth ? 'Layer-1 Smart Contract Network' : 'Proof-of-Work Digital Asset',
+      benchmark: `${code} Spot · ${providerBadge}`,
+      spec1Label: 'Trading Hours',
+      spec1Val: '24/7 Continuous Spot',
+      spec2Label: 'Quote Currency',
+      spec2Val: 'U.S. Dollar (USD)',
+      spec3Label: 'Consensus Mechanism',
+      spec3Val: isEth ? 'Proof of Stake (Ethereum)' : 'Proof of Work (Bitcoin)',
+      figi: isEth ? 'BBG00ZGF7798' : 'BBG00ZGF7771',
+      isin: isEth ? 'XTV000ETHUSD' : 'XTV000BTCUSD',
+    };
+  }
+  if (assetClass === 'INDICES') {
+    const isNdq = code === 'NDQ' || code.includes('NDX');
+    return {
+      assetClass,
+      sector: 'Equity Index Benchmark',
+      industry: isNdq ? 'Nasdaq-100 Large-Cap Growth' : 'S&P 500 US Broad Market',
+      benchmark: `${isNdq ? 'NDX' : 'SPX'} Cash / CFD · ${providerBadge}`,
+      spec1Label: 'Index Weighting',
+      spec1Val: 'Modified Market Cap',
+      spec2Label: 'Core Cash Session',
+      spec2Val: '14:30 – 21:00 UTC (NYSE/NASDAQ)',
+      spec3Label: 'Constituents Scope',
+      spec3Val: isNdq ? '100 Non-Financial Leaders' : '500 Large-Cap US Equities',
+      figi: isNdq ? 'BBG000K436L4' : 'BBG000H4FSM0',
+      isin: isNdq ? 'US6311011026' : 'US78378X1072',
+    };
+  }
+  if (assetClass === 'STOCKS') {
+    return {
+      assetClass,
+      sector: 'US Listed Equities',
+      industry: 'Publicly Traded Common Stock',
+      benchmark: `NASDAQ / NYSE Primary · ${providerBadge}`,
+      spec1Label: 'Primary Venue',
+      spec1Val: 'NASDAQ / NYSE Common Equity',
+      spec2Label: 'Regulatory Filings',
+      spec2Val: 'SEC EDGAR (10-K • 10-Q • 8-K)',
+      spec3Label: 'Regular Session',
+      spec3Val: '09:30 – 16:00 EST (14:30 – 21:00 UTC)',
+      figi: `BBG000${code.slice(0, 6)}`,
+      isin: `US${code.slice(0, 6)}0001`,
+    };
+  }
   return {
-    sector: 'Global Foreign Exchange & Equities',
-    industry: 'G10 Interbank FX / Large-Cap Equities',
-    benchmark: `${code} · ${providerBadge}`,
-    activeVenues: '30+ ECN Venues',
-    dailyTurnover: '410.0B USD',
-    payoutRatio: '6.50% (Swap)',
-    yieldTtm: '3.45% (Rate Diff)',
-    epsDilutedTtm: '$6.45',
+    assetClass: 'FX',
+    sector: 'Foreign Exchange (G10)',
+    industry: 'Spot Interbank Currency Pair',
+    benchmark: `${code} Interbank Spot · ${providerBadge}`,
+    spec1Label: 'Trading Hours',
+    spec1Val: '24/5 Sydney → Tokyo → London → NY',
+    spec2Label: 'Quote Precision',
+    spec2Val: '4–5 Decimal Pip Feed',
+    spec3Label: 'Primary Drivers',
+    spec3Val: 'Central Bank Rate Differentials',
     figi: 'BBG0013HG040',
     isin: 'EU0009652759',
   };
@@ -348,26 +412,26 @@ export function renderRightSplitPanel(activeTab, i18n) {
           <div class="tv-wl-num tv-wl-col-chg ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'};">
             ${sign}${PriceFormatter.formatPrice(diff, s.decimals)}
           </div>
-          <div class="tv-wl-num ltr-num" style="display: flex; align-items: center; justify-content: flex-end; gap: 2px; color: ${isBull ? 'var(--bull)' : 'var(--bear)'}; font-weight: 600;">
+          <div class="tv-wl-num ltr-num" style="color: ${isBull ? 'var(--bull)' : 'var(--bear)'}; font-weight: 600;">
             <span>${pct}</span>
-            <div class="tv-wl-row-actions" style="display: inline-flex; align-items: center; gap: 1px; margin-left: 2px;">
-              <button
-                type="button"
-                class="tv-wl-move-btn"
-                data-action="move-watchlist-symbol"
-                data-direction="up"
-                data-symbol="${s.symbolCode}"
-                title="${i18n.t('watchlist_move_up')}"
-              >▲</button>
-              <button
-                type="button"
-                class="tv-wl-move-btn"
-                data-action="move-watchlist-symbol"
-                data-direction="down"
-                data-symbol="${s.symbolCode}"
-                title="${i18n.t('watchlist_move_down')}"
-              >▼</button>
-            </div>
+          </div>
+          <div class="tv-wl-row-actions">
+            <button
+              type="button"
+              class="tv-wl-move-btn"
+              data-action="move-watchlist-symbol"
+              data-direction="up"
+              data-symbol="${s.symbolCode}"
+              title="${i18n.t('watchlist_move_up')}"
+            >▲</button>
+            <button
+              type="button"
+              class="tv-wl-move-btn"
+              data-action="move-watchlist-symbol"
+              data-direction="down"
+              data-symbol="${s.symbolCode}"
+              title="${i18n.t('watchlist_move_down')}"
+            >▼</button>
           </div>
         </div>
       `;
@@ -468,24 +532,18 @@ export function renderRightSplitPanel(activeTab, i18n) {
     >
       <div class="tv-watchlist-pane" id="tv-watchlist-top-pane" style="flex: 0 0 ${topPct}%; height: ${topPct}%;">
         <div class="tv-pane-header">
-          <span>${i18n.t('nav_watchlist')}</span>
-          <div style="display: flex; align-items: center; gap: 4px;">
-            <button class="tv-tool-btn" data-action="open-add-symbol-modal" title="${i18n.t('settings_add_custom_symbol')}">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-            </button>
-          </div>
-        </div>
-
-        <div style="padding: 6px 8px; border-bottom: 1px solid var(--border);">
+          <span style="flex-shrink: 0;">${i18n.t('nav_watchlist')}</span>
           <input
             id="tv-watchlist-search-input"
             type="text"
-            class="input-field"
-            style="min-height: 26px; padding: 3px 8px; font-size: 11px;"
+            class="tv-wl-header-search"
             placeholder="${i18n.t('watchlist_search_placeholder')}"
             value="${state.watchlistSearchQuery || ''}"
             data-action="watchlist-search"
           />
+          <button class="tv-tool-btn" style="flex-shrink: 0;" data-action="open-add-symbol-modal" title="${i18n.t('settings_add_custom_symbol')}">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          </button>
         </div>
 
         <div class="tv-wl-cat-bar" dir="ltr">
@@ -511,31 +569,155 @@ export function renderRightSplitPanel(activeTab, i18n) {
   `;
 }
 
+function computeRealOverviewMetrics(candles = [], decimals = 2, i18n) {
+  const n = Array.isArray(candles) ? candles.length : 0;
+  if (n === 0) {
+    return { hasCandles: false };
+  }
+  const latest = candles[n - 1];
+  const lastClose = Number(latest.close || 0);
+  const rsiArr = TechnicalIndicators.computeRsi(candles, 14);
+  const sma20Arr = TechnicalIndicators.computeSma(candles, 20);
+  const sma50Arr = TechnicalIndicators.computeSma(candles, 50);
+  const atrArr = TechnicalIndicators.computeAtr(candles, 14);
+
+  const rsi14 = rsiArr[n - 1];
+  const sma20 = sma20Arr[n - 1];
+  const sma50 = sma50Arr[n - 1];
+  const atr14 = atrArr[n - 1];
+
+  let bullCount = 0;
+  let bearCount = 0;
+  let periodHigh = -Infinity;
+  let periodLow = Infinity;
+  let volSum = 0;
+  for (const c of candles) {
+    const o = Number(c.open || 0);
+    const cl = Number(c.close || 0);
+    const hi = Number(c.high || cl);
+    const lo = Number(c.low || cl);
+    if (cl >= o) bullCount++;
+    else bearCount++;
+    if (Number.isFinite(hi) && hi > periodHigh) periodHigh = hi;
+    if (Number.isFinite(lo) && lo < periodLow) periodLow = lo;
+    volSum += Number(c.volume || 0);
+  }
+  const bullPct = n > 0 ? Math.round((bullCount / n) * 100) : 50;
+  const bearPct = 100 - bullPct;
+
+  const pivotBar = n >= 2 ? candles[n - 2] : latest;
+  const ph = Number(pivotBar.high || lastClose);
+  const pl = Number(pivotBar.low || lastClose);
+  const pc = Number(pivotBar.close || lastClose);
+  const pivot = (ph + pl + pc) / 3;
+  const r1 = 2 * pivot - pl;
+  const r2 = pivot + (ph - pl);
+  const s1 = 2 * pivot - ph;
+  const s2 = pivot - (ph - pl);
+
+  let score = 0;
+  let signals = 0;
+  if (sma20 !== null) {
+    signals++;
+    score += lastClose > sma20 ? 1 : -1;
+  }
+  if (sma50 !== null) {
+    signals++;
+    score += lastClose > sma50 ? 1 : -1;
+  }
+  if (rsi14 !== null) {
+    signals++;
+    score += rsi14 >= 55 ? 1 : rsi14 <= 45 ? -1 : 0;
+  }
+  signals++;
+  score += bullPct >= 54 ? 1 : bullPct <= 46 ? -1 : 0;
+
+  const normScore = signals > 0 ? score / signals : 0; // -1..+1
+  const needleRatio = Math.max(0.08, Math.min(0.92, 0.5 + normScore * 0.4));
+  let ratingText = i18n.t('symbol_overview_gauge_neutral') || 'Neutral';
+  let ratingColor = '#787B86';
+  if (normScore >= 0.55) {
+    ratingText = i18n.t('symbol_overview_gauge_strong_buy') || 'Strong Buy';
+    ratingColor = '#26A69A';
+  } else if (normScore >= 0.15) {
+    ratingText = i18n.t('symbol_overview_gauge_buy') || 'Buy';
+    ratingColor = '#26A69A';
+  } else if (normScore <= -0.55) {
+    ratingText = i18n.t('symbol_overview_gauge_strong_sell') || 'Strong Sell';
+    ratingColor = '#EF5350';
+  } else if (normScore <= -0.15) {
+    ratingText = i18n.t('symbol_overview_gauge_sell') || 'Sell';
+    ratingColor = '#EF5350';
+  }
+
+  return {
+    hasCandles: true,
+    barCount: n,
+    lastClose,
+    rsi14,
+    sma20,
+    sma50,
+    atr14,
+    bullCount,
+    bearCount,
+    bullPct,
+    bearPct,
+    periodHigh: Number.isFinite(periodHigh) ? periodHigh : lastClose,
+    periodLow: Number.isFinite(periodLow) ? periodLow : lastClose,
+    avgVolume: n > 0 ? volSum / n : 0,
+    pivot,
+    r1,
+    r2,
+    s1,
+    s2,
+    needleRatio,
+    ratingText,
+    ratingColor,
+  };
+}
+
 export function renderSymbolOverviewModal(i18n) {
   const code = state.symbolOverviewCode;
   if (!code) return '';
   const sym = state.symbols.find((s) => s.symbolCode === code);
   if (!sym) return '';
 
-  const d = computeDayStats(sym);
+  const matchingTab = state.openTabs.find(
+    (t) => t.symbolCode === sym.symbolCode && Array.isArray(t.candles) && t.candles.length > 0
+  );
+  const fullCandles = matchingTab ? matchingTab.candles : sym.candles || [];
+  const activeRange = state.symbolOverviewRange || '5D';
+  const rangeBarCount =
+    activeRange === '1D'
+      ? 24
+      : activeRange === '5D'
+        ? 72
+        : activeRange === '1M'
+          ? 160
+          : activeRange === '3M'
+            ? 320
+            : activeRange === 'YTD' || activeRange === '1Y'
+              ? 600
+              : fullCandles.length;
+  const slicedCandles =
+    fullCandles.length > rangeBarCount ? fullCandles.slice(-rangeBarCount) : fullCandles;
+
+  const d = computeDayStats(sym, slicedCandles);
   const diff = d.lastClose - d.prevClose;
   const pct = d.prevClose > 0 ? PriceFormatter.formatSignedPct(d.prevClose, d.lastClose) : '+0.00%';
   const isBull = diff >= 0;
   const accentColor = isBull ? '#26A69A' : '#EF5350';
   const badge = getAssetBadge(sym.symbolCode);
   const profileMeta = getInstrumentProfileMeta(sym.symbolCode, badge.providerTag);
+  const realMetrics = computeRealOverviewMetrics(slicedCandles, sym.decimals, i18n);
   const rangeSpan = Math.max(0.00001, d.dayHigh - d.dayLow);
-  const posPct = Math.max(6, Math.min(94, Math.round(((d.lastClose - d.dayLow) / rangeSpan) * 100)));
-  const target1Y = d.lastClose * (isBull ? 1.148 : 1.092);
-  const targetPctStr = isBull ? '+14.80%' : '+9.20%';
-
+  const posPct = Math.max(4, Math.min(96, Math.round(((d.lastClose - d.dayLow) / rangeSpan) * 100)));
   const activeSubTab = state.symbolOverviewSubTab || 'OVERVIEW';
-  const finMode = state.symbolOverviewFinMode || 'ANNUAL';
 
-  const candles = (sym.candles || []).slice(-42);
+  const miniCandles = slicedCandles.slice(-48);
   let minP = Infinity;
   let maxP = -Infinity;
-  for (const c of candles) {
+  for (const c of miniCandles) {
     minP = Math.min(minP, Number(c.low));
     maxP = Math.max(maxP, Number(c.high));
   }
@@ -545,12 +727,12 @@ export function renderSymbolOverviewModal(i18n) {
   }
   const span = Math.max(maxP - minP, 0.0001);
   const svgW = 420;
-  const svgH = 128;
+  const svgH = 122;
   const pToY = (p) => 10 + (svgH - 20) * (1 - (Number(p) - minP) / span);
-  const slotW = candles.length > 0 ? svgW / candles.length : 10;
+  const slotW = miniCandles.length > 0 ? svgW / miniCandles.length : 10;
   const bodyW = Math.max(2, Math.min(7, slotW * 0.65));
 
-  const miniCandlesSvg = candles
+  const miniCandlesSvg = miniCandles
     .map((c, idx) => {
       const x = (idx + 0.5) * slotW;
       const oY = pToY(c.open);
@@ -566,11 +748,6 @@ export function renderSymbolOverviewModal(i18n) {
 
   const prevCloseY = pToY(d.prevClose);
   const ranges = ['1D', '5D', '1M', '3M', 'YTD', '1Y', '5Y', 'All'];
-  const activeRange = state.symbolOverviewRange || '5D';
-
-  const seasonalPoints2026 = '10,95 45,92 80,42 115,58 150,34 185,84 220,54 255,66 290,38 325,28 355,50';
-  const seasonalPoints2025 = '10,96 60,90 120,98 180,92 240,95 300,89 360,96 400,98';
-  const seasonalPoints2024 = '10,95 55,88 110,80 165,86 220,82 275,92 330,90 390,94';
 
   const subTabs = [
     { key: 'OVERVIEW', label: i18n.t('symbol_overview_tab_overview') || 'Overview' },
@@ -579,24 +756,309 @@ export function renderSymbolOverviewModal(i18n) {
     { key: 'IDEAS', label: i18n.t('symbol_overview_tab_ideas') || 'Ideas' },
   ];
 
-  const revBars = finMode === 'ANNUAL' ? [42, 54, 62, 74, 84] : [48, 56, 63, 70, 78];
-  const netBars = finMode === 'ANNUAL' ? [22, 28, 35, 43, 51] : [26, 30, 36, 41, 47];
+  // Peer instruments in the same Asset Class using real live prices
+  const peerSymbols = state.symbols
+    .filter((s) => s.symbolCode !== sym.symbolCode && getAssetClass(s.symbolCode) === profileMeta.assetClass)
+    .slice(0, 4);
 
-  const rangeKey = activeRange;
-  const pctStr = pct;
-  const pLow = minP;
-  const pHigh = maxP;
-  const closeP = d.lastClose;
-  const isPositive = isBull;
-  const avgVol =
-    candles.length > 0
-      ? candles.reduce((acc, c) => acc + (Number(c.volume) || 0), 0) / candles.length
-      : Number(d.volume || 0);
-  const techGauge = {
-    overallText: isBull
-      ? i18n.t('symbol_overview_gauge_buy') || 'Buy'
-      : i18n.t('symbol_overview_gauge_sell') || 'Sell',
-  };
+  let tabBodyHtml = '';
+  if (activeSubTab === 'NEWS') {
+    const isFa = i18n.getCurrentLanguage() === 'fa';
+    const feedStatus = d.isLive
+      ? (isFa ? 'فید فعال و همگام' : 'Active & Synchronized')
+      : (isFa ? 'بازار بسته / آخرین کلوز ذخیره‌شده' : 'Market Closed / Archived Close');
+    tabBodyHtml = `
+      <div class="card-subtle" style="margin-bottom: 10px;">
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px;">
+          ${sym.symbolCode} — ${i18n.t('symbol_overview_tab_news') || 'Market Feed & Catalysts'}
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+          <span style="color: var(--text-muted);">Asset Class</span>
+          <strong>${profileMeta.assetClass} · ${profileMeta.sector}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+          <span style="color: var(--text-muted);">Active Data Source</span>
+          <strong>${badge.providerTag} (${feedStatus})</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+          <span style="color: var(--text-muted);">${profileMeta.spec2Label}</span>
+          <strong>${profileMeta.spec2Val}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+          <span style="color: var(--text-muted);">${profileMeta.spec3Label}</span>
+          <strong>${profileMeta.spec3Val}</strong>
+        </div>
+        <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);">
+          ${isFa
+            ? `نرخ لحظه‌ای ${sym.symbolCode} برابر ${PriceFormatter.formatPrice(d.lastClose, sym.decimals)} با تغییر ${pct} در محدوده ${PriceFormatter.formatPrice(d.dayLow, sym.decimals)} تا ${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)} ثبت شده است.`
+            : `${sym.symbolCode} is trading at ${PriceFormatter.formatPrice(d.lastClose, sym.decimals)} (${pct}) across ${PriceFormatter.formatPrice(d.dayLow, sym.decimals)} — ${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)} on ${badge.providerTag}.`}
+        </div>
+      </div>
+
+      ${
+        peerSymbols.length > 0
+          ? `
+        <div class="card-subtle">
+          <div style="font-size: 12.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px;">
+            ${isFa ? `نمادهای هم‌دسته (${profileMeta.assetClass})` : `Related ${profileMeta.assetClass} Instruments`}
+          </div>
+          ${peerSymbols
+            .map((peer) => {
+              const pd = computeDayStats(peer);
+              const ppct = pd.prevClose > 0 ? PriceFormatter.formatSignedPct(pd.prevClose, pd.lastClose) : '+0.00%';
+              const pBull = pd.lastClose >= pd.prevClose;
+              return `
+                <div class="row-between ltr-num" style="font-size: 12px; padding: 5px 0; border-bottom: 1px solid rgba(120,123,134,0.12); cursor: pointer;" data-action="open-symbol-overview" data-symbol="${peer.symbolCode}">
+                  <span style="font-weight: 700; color: var(--text-strong);">${peer.symbolCode}</span>
+                  <span>
+                    <strong>${PriceFormatter.formatPrice(pd.lastClose, peer.decimals)}</strong>
+                    <span style="color: ${pBull ? 'var(--bull)' : 'var(--bear)'}; margin-left: 8px; font-weight: 700;">${ppct}</span>
+                  </span>
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+      `
+          : ''
+      }
+    `;
+  } else if (activeSubTab === 'MINDS') {
+    if (!realMetrics.hasCandles) {
+      tabBodyHtml = `
+        <div class="card-subtle" style="text-align: center; padding: 18px;">
+          <div style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 10px;">
+            ${i18n.t('overview_no_candles')}
+          </div>
+          <button class="btn btn-sm btn-primary" data-action="open-chart" data-symbol="${sym.symbolCode}">
+            ⛶ ${i18n.t('action_open_chart_view')}
+          </button>
+        </div>
+      `;
+    } else {
+      tabBodyHtml = `
+        <div class="card-subtle" style="margin-bottom: 10px; text-align: center;">
+          <div style="font-size: 12.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">
+            ${i18n.t('symbol_overview_technicals_title')} (${realMetrics.barCount} bars)
+          </div>
+          ${renderSpeedometerSvg(realMetrics.needleRatio, realMetrics.ratingColor)}
+          <div style="font-size: 13px; font-weight: 800; color: ${realMetrics.ratingColor}; margin-top: 2px;">
+            ${realMetrics.ratingText}
+          </div>
+          <div class="ltr-num" style="font-size: 11px; color: var(--text-muted); margin-top: 4px;">
+            RSI(14): ${realMetrics.rsi14 !== null ? realMetrics.rsi14.toFixed(1) : '—'} · SMA(20): ${realMetrics.sma20 !== null ? PriceFormatter.formatPrice(realMetrics.sma20, sym.decimals) : '—'}
+          </div>
+        </div>
+
+        <div class="card-subtle">
+          <div style="font-size: 12.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px;">
+            ${i18n.t('overview_sentiment_title')}
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+            <span style="color: var(--bull); font-weight: 700;">Bull Bars: ${realMetrics.bullCount} (${realMetrics.bullPct}%)</span>
+            <span style="color: var(--bear); font-weight: 700;">Bear Bars: ${realMetrics.bearCount} (${realMetrics.bearPct}%)</span>
+          </div>
+          <div style="display: flex; height: 8px; border-radius: 4px; overflow: hidden; margin-bottom: 10px;">
+            <div style="width: ${realMetrics.bullPct}%; background: #26A69A;"></div>
+            <div style="width: ${realMetrics.bearPct}%; background: #EF5350;"></div>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 5px;">
+            <span style="color: var(--text-muted);">Period High / Low (${activeRange})</span>
+            <strong>${PriceFormatter.formatPrice(realMetrics.periodLow, sym.decimals)} — ${PriceFormatter.formatPrice(realMetrics.periodHigh, sym.decimals)}</strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px;">
+            <span style="color: var(--text-muted);">ATR (14) Volatility</span>
+            <strong>${realMetrics.atr14 !== null ? PriceFormatter.formatPrice(realMetrics.atr14, sym.decimals) : '—'}</strong>
+          </div>
+        </div>
+      `;
+    }
+  } else if (activeSubTab === 'IDEAS') {
+    if (!realMetrics.hasCandles) {
+      tabBodyHtml = `
+        <div class="card-subtle" style="text-align: center; padding: 18px;">
+          <div style="font-size: 12.5px; color: var(--text-muted); margin-bottom: 10px;">
+            ${i18n.t('overview_no_candles')}
+          </div>
+          <button class="btn btn-sm btn-primary" data-action="open-chart" data-symbol="${sym.symbolCode}">
+            ⛶ ${i18n.t('action_open_chart_view')}
+          </button>
+        </div>
+      `;
+    } else {
+      const dec = sym.decimals;
+      tabBodyHtml = `
+        <div class="card-subtle" style="margin-bottom: 10px;">
+          <div class="row-between" style="margin-bottom: 8px;">
+            <strong style="font-size: 13px; color: var(--text-strong);">${i18n.t('overview_real_tech_title')}</strong>
+            <button type="button" class="btn btn-sm" style="color: var(--primary); border-color: var(--primary);" data-action="open-prediction-from-overview" data-symbol="${sym.symbolCode}">
+              ${i18n.t('symbol_overview_see_forecast')}
+            </button>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 5px;">
+            <span style="color: var(--text-muted);">RSI (14)</span>
+            <strong style="color: ${realMetrics.rsi14 !== null ? (realMetrics.rsi14 > 70 ? 'var(--bear)' : realMetrics.rsi14 < 30 ? 'var(--bull)' : 'var(--text-strong)') : 'var(--text-muted)'};">
+              ${realMetrics.rsi14 !== null ? realMetrics.rsi14.toFixed(2) : '—'}
+            </strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 5px;">
+            <span style="color: var(--text-muted);">SMA (20) vs Price</span>
+            <strong>${realMetrics.sma20 !== null ? PriceFormatter.formatPrice(realMetrics.sma20, dec) : '—'}</strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 5px;">
+            <span style="color: var(--text-muted);">SMA (50) vs Price</span>
+            <strong>${realMetrics.sma50 !== null ? PriceFormatter.formatPrice(realMetrics.sma50, dec) : '—'}</strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px;">
+            <span style="color: var(--text-muted);">ATR (14)</span>
+            <strong>${realMetrics.atr14 !== null ? PriceFormatter.formatPrice(realMetrics.atr14, dec) : '—'}</strong>
+          </div>
+        </div>
+
+        <div class="card-subtle">
+          <div style="font-size: 12.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px;">
+            ${i18n.t('overview_pivots_title')}
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+            <span style="color: var(--bear);">Resistance 2 (R2)</span>
+            <strong>${PriceFormatter.formatPrice(realMetrics.r2, dec)}</strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+            <span style="color: var(--bear);">Resistance 1 (R1)</span>
+            <strong>${PriceFormatter.formatPrice(realMetrics.r1, dec)}</strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+            <span style="color: var(--primary); font-weight: 700;">Pivot (P)</span>
+            <strong>${PriceFormatter.formatPrice(realMetrics.pivot, dec)}</strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 4px;">
+            <span style="color: var(--bull);">Support 1 (S1)</span>
+            <strong>${PriceFormatter.formatPrice(realMetrics.s1, dec)}</strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px;">
+            <span style="color: var(--bull);">Support 2 (S2)</span>
+            <strong>${PriceFormatter.formatPrice(realMetrics.s2, dec)}</strong>
+          </div>
+        </div>
+      `;
+    }
+  } else {
+    // OVERVIEW tab (only relevant cards for this AssetClass + real Key Data + Technical Snapshot)
+    tabBodyHtml = `
+      <!-- Key data points + Visual Day's Range Bar -->
+      <div class="card-subtle" style="margin-bottom: 10px;">
+        <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px;">
+          ${i18n.t('symbol_overview_key_data')}
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+          <span style="color: var(--text-muted);">Volume</span>
+          <strong>${PriceFormatter.formatVolume(d.volume)}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+          <span style="color: var(--text-muted);">${i18n.t('symbol_overview_prev_close')}</span>
+          <strong>${PriceFormatter.formatPrice(d.prevClose, sym.decimals)} USD</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
+          <span style="color: var(--text-muted);">${i18n.t('symbol_overview_open')}</span>
+          <strong>${PriceFormatter.formatPrice(d.openPrice, sym.decimals)} USD</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 8px;">
+          <span style="color: var(--text-muted);">${i18n.t('symbol_overview_days_range')}</span>
+          <strong>${PriceFormatter.formatPrice(d.dayLow, sym.decimals)} — ${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)} USD</strong>
+        </div>
+        <div style="position: relative; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;">
+          <div style="position: absolute; left: 0; top: 0; bottom: 0; width: ${posPct}%; background: ${accentColor}; border-radius: 3px;"></div>
+        </div>
+      </div>
+
+      <!-- Asset Class Specifications (Strictly separated by AssetClass: no EDGAR/dividends on Oil/Gold/Crypto/FX) -->
+      <div class="card-subtle" style="margin-bottom: 10px;">
+        <div class="row-between" style="margin-bottom: 8px;">
+          <strong style="font-size: 13px; color: var(--text-strong);">${i18n.t('overview_specs_title')}</strong>
+          <span class="ltr-num" style="font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 4px; background: var(--primary-soft); color: var(--primary);">${profileMeta.assetClass}</span>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">${profileMeta.spec1Label}</span>
+          <strong>${profileMeta.spec1Val}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">${profileMeta.spec2Label}</span>
+          <strong>${profileMeta.spec2Val}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px;">
+          <span style="color: var(--text-muted);">${profileMeta.spec3Label}</span>
+          <strong>${profileMeta.spec3Val}</strong>
+        </div>
+      </div>
+
+      ${
+        realMetrics.hasCandles
+          ? `
+        <div class="card-subtle" style="margin-bottom: 10px;">
+          <div class="row-between" style="margin-bottom: 8px;">
+            <strong style="font-size: 13px; color: var(--text-strong);">${i18n.t('overview_real_tech_title')} (${realMetrics.barCount} bars)</strong>
+            <button type="button" class="btn btn-sm" style="color: var(--primary); border-color: var(--primary);" data-action="open-prediction-from-overview" data-symbol="${sym.symbolCode}">
+              ${i18n.t('symbol_overview_see_forecast')}
+            </button>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 5px;">
+            <span style="color: var(--text-muted);">Technical Consensus</span>
+            <strong style="color: ${realMetrics.ratingColor};">${realMetrics.ratingText}</strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 5px;">
+            <span style="color: var(--text-muted);">RSI (14) / ATR (14)</span>
+            <strong>${realMetrics.rsi14 !== null ? realMetrics.rsi14.toFixed(1) : '—'} · ${realMetrics.atr14 !== null ? PriceFormatter.formatPrice(realMetrics.atr14, sym.decimals) : '—'}</strong>
+          </div>
+          <div class="row-between ltr-num" style="font-size: 12px;">
+            <span style="color: var(--text-muted);">Bull / Bear Candles</span>
+            <strong>${realMetrics.bullCount} (${realMetrics.bullPct}%) / ${realMetrics.bearCount} (${realMetrics.bearPct}%)</strong>
+          </div>
+        </div>
+      `
+          : ''
+      }
+
+      <!-- Instrument Profile (with Copyable FIGI, ISIN & GoogleFinance Formula) -->
+      <div class="card-subtle">
+        <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px;">
+          ${i18n.t('symbol_overview_about_title')}
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_sector')}</span>
+          <strong>${profileMeta.sector}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_industry')}</span>
+          <strong>${profileMeta.industry}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_benchmark')}</span>
+          <strong>${profileMeta.benchmark}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_figi')}</span>
+          <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="${profileMeta.figi}">
+            <span>${profileMeta.figi}</span>
+            <span>⧉</span>
+          </button>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_isin')}</span>
+          <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="${profileMeta.isin}">
+            <span>${profileMeta.isin}</span>
+            <span>⧉</span>
+          </button>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px;">
+          <span style="color: var(--text-muted);">Google Sheets Formula</span>
+          <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="=GOOGLEFINANCE(&quot;${sym.symbolCode}&quot;, &quot;price&quot;)">
+            <span>=GOOGLEFINANCE("${sym.symbolCode}", "price")</span>
+            <span>⧉</span>
+          </button>
+        </div>
+      </div>
+    `;
+  }
 
   return `
     <div class="modal-backdrop" data-action="close-symbol-overview-backdrop">
@@ -631,7 +1093,7 @@ export function renderSymbolOverviewModal(i18n) {
 
         <!-- Mini-Chart + Range Chips -->
         <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; margin-bottom: 10px;">
-          <svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="128" style="display: block;">
+          <svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="122" style="display: block;">
             <line x1="0" y1="${prevCloseY.toFixed(1)}" x2="${svgW}" y2="${prevCloseY.toFixed(1)}" stroke="#787B86" stroke-dasharray="4 4" stroke-width="1"/>
             ${miniCandlesSvg}
           </svg>
@@ -649,281 +1111,7 @@ export function renderSymbolOverviewModal(i18n) {
           </div>
         </div>
 
-        <!-- [2] Flash News Banner -->
-        <div
-          class="card-subtle"
-          style="margin-bottom: 10px; cursor: pointer; border-color: rgba(41, 98, 255, 0.4); background: rgba(41, 98, 255, 0.08);"
-          data-action="set-overview-subtab"
-          data-subtab="NEWS"
-        >
-          <div style="display: flex; align-items: center; gap: 10px;">
-            <span style="width: 26px; height: 26px; border-radius: 50%; background: rgba(245, 158, 11, 0.22); color: #F59E0B; display: inline-flex; align-items: center; justify-content: center; font-weight: 800;">⚡</span>
-            <div style="flex: 1;">
-              <div style="font-size: 12px; font-weight: 700; color: var(--text-strong);">
-                ${sym.symbolCode} • ${i18n.t('symbol_overview_flash_news_title')}
-              </div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                ${i18n.t('symbol_overview_flash_news_desc')}
-              </div>
-            </div>
-          </div>
-        </div>
-
-        ${
-          activeSubTab !== 'OVERVIEW'
-            ? `
-          <div class="card-subtle" style="margin-bottom: 10px;">
-            <div style="font-size: 13px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px;">
-              ${sym.symbolCode} — ${activeSubTab}
-            </div>
-            <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
-              <span style="color: var(--text-muted);">UTC Anchor Status</span>
-              <strong>00:00:00 UTC Verified</strong>
-            </div>
-            <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
-              <span style="color: var(--text-muted);">Active Feed Channel</span>
-              <strong>${badge.providerTag}</strong>
-            </div>
-            <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5;">
-              ${i18n.t('symbol_overview_flash_news_desc')}
-            </div>
-          </div>
-        `
-            : ''
-        }
-
-        <!-- [3] Key data points + Visual Day's Range Bar -->
-        <div class="card-subtle" style="margin-bottom: 10px;">
-          <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 10px;">
-            ${i18n.t('symbol_overview_key_data')}
-          </div>
-          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
-            <span style="color: var(--text-muted);">Volume</span>
-            <strong>${PriceFormatter.formatVolume(d.volume)}</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_prev_close')}</span>
-            <strong>${PriceFormatter.formatPrice(d.prevClose, sym.decimals)} USD</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_open')}</span>
-            <strong>${PriceFormatter.formatPrice(d.openPrice, sym.decimals)} USD</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 8px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_days_range')}</span>
-            <strong>${PriceFormatter.formatPrice(d.dayLow, sym.decimals)} — ${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)} USD</strong>
-          </div>
-          <div style="position: relative; height: 6px; background: var(--border); border-radius: 3px; overflow: hidden;">
-            <div style="position: absolute; left: 0; top: 0; bottom: 0; width: ${posPct}%; background: ${accentColor}; border-radius: 3px;"></div>
-          </div>
-        </div>
-
-        <!-- [4] Seasonals Multi-Year Comparison Card -->
-        <div class="card-subtle" style="margin-bottom: 10px;">
-          <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px;">
-            ${i18n.t('symbol_overview_seasonals')}
-          </div>
-          <svg viewBox="0 0 410 110" width="100%" height="100" style="display: block;">
-            <line x1="85" y1="5" x2="85" y2="100" stroke="#2A2E39" stroke-dasharray="3 3"/>
-            <line x1="195" y1="5" x2="195" y2="100" stroke="#2A2E39" stroke-dasharray="3 3"/>
-            <line x1="305" y1="5" x2="305" y2="100" stroke="#2A2E39" stroke-dasharray="3 3"/>
-            <polyline fill="none" stroke="#F59E0B" stroke-width="1.4" points="${seasonalPoints2024}"/>
-            <polyline fill="none" stroke="#22C55E" stroke-width="1.4" points="${seasonalPoints2025}"/>
-            <polyline fill="none" stroke="#2962FF" stroke-width="2.2" points="${seasonalPoints2026}"/>
-            <circle cx="355" cy="50" r="3.5" fill="#2962FF"/>
-          </svg>
-          <div class="row-between ltr-num" style="font-size: 10.5px; color: var(--text-muted); margin-top: 4px; padding: 0 8px;">
-            <span>Jan</span>
-            <span>Apr</span>
-            <span>Jul</span>
-            <span>Oct</span>
-          </div>
-          <div style="display: flex; justify-content: center; gap: 14px; margin-top: 6px; font-size: 11px;" class="ltr-num">
-            <span><span style="color: #2962FF;">●</span> 2026 (+18.4%)</span>
-            <span><span style="color: #22C55E;">●</span> 2025 (+11.2%)</span>
-            <span><span style="color: #F59E0B;">●</span> 2024 (+6.8%)</span>
-          </div>
-        </div>
-
-        <!-- [5 & 6] Technicals Speedometer Gauge & Analyst Rating / 1Y Target Gauge -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-bottom: 10px;">
-          <div class="card-subtle" style="text-align: center;">
-            <div style="font-size: 12px; font-weight: 700; color: var(--text-strong); margin-bottom: 4px;">
-              ${i18n.t('symbol_overview_technicals_title')}
-            </div>
-            ${renderSpeedometerSvg(isBull ? 0.78 : 0.26, accentColor)}
-            <div style="font-size: 12.5px; font-weight: 800; color: ${accentColor}; margin-top: 2px;">
-              ${isBull ? i18n.t('symbol_overview_gauge_buy') : i18n.t('symbol_overview_gauge_sell')}
-            </div>
-          </div>
-
-          <div class="card-subtle" style="text-align: center;">
-            <div style="font-size: 12px; font-weight: 700; color: var(--text-strong); margin-bottom: 4px;">
-              ${i18n.t('symbol_overview_analyst_title')}
-            </div>
-            ${renderSpeedometerSvg(0.84, '#26A69A')}
-            <div class="ltr-num" style="font-size: 11px; font-weight: 700; color: #26A69A; margin-top: 2px;">
-              ${PriceFormatter.formatPrice(target1Y, sym.decimals)} (${targetPctStr})
-            </div>
-            <button
-              type="button"
-              class="btn btn-sm"
-              style="margin-top: 6px; font-size: 10.5px; color: var(--primary); border-color: var(--primary);"
-              data-action="open-prediction-from-overview"
-              data-symbol="${sym.symbolCode}"
-            >
-              ${i18n.t('symbol_overview_see_forecast')}
-            </button>
-          </div>
-        </div>
-
-        <!-- [7 & 8] Income Statement & Margins + Dividends & Yield -->
-        <div class="card-subtle" style="margin-bottom: 10px;">
-          <div class="row-between" style="margin-bottom: 8px;">
-            <span style="font-size: 13px; font-weight: 700; color: var(--text);">
-              ${i18n.t('symbol_overview_financials_title')}
-            </span>
-            <div class="chip-group">
-              <button type="button" class="chip ${finMode === 'ANNUAL' ? 'active' : ''}" data-action="set-overview-fin-mode" data-mode="ANNUAL">${i18n.t('symbol_overview_fin_annual')}</button>
-              <button type="button" class="chip ${finMode === 'QUARTERLY' ? 'active' : ''}" data-action="set-overview-fin-mode" data-mode="QUARTERLY">${i18n.t('symbol_overview_fin_quarterly')}</button>
-            </div>
-          </div>
-
-          <svg viewBox="0 0 360 95" width="100%" height="90" style="display: block;">
-            ${revBars
-              .map((rv, idx) => {
-                const cx = 36 + idx * 72;
-                const nv = netBars[idx];
-                return `
-                  <rect x="${cx - 13}" y="${90 - rv}" width="11" height="${rv}" fill="#2962FF" rx="2"/>
-                  <rect x="${cx + 2}" y="${90 - nv}" width="11" height="${nv}" fill="#06B6D4" rx="2"/>
-                `;
-              })
-              .join('')}
-            <polyline
-              fill="none"
-              stroke="#F59E0B"
-              stroke-width="2"
-              points="${revBars.map((rv, idx) => `${36 + idx * 72},${Math.round(90 - (netBars[idx] / rv) * 78)}`).join(' ')}"
-            />
-          </svg>
-
-          <div style="display: flex; justify-content: space-evenly; font-size: 10.5px; margin: 6px 0 10px 0;" class="ltr-num">
-            <span style="color: #2962FF;">■ ${i18n.t('symbol_overview_fin_revenue')}</span>
-            <span style="color: #06B6D4;">■ ${i18n.t('symbol_overview_fin_net_income')}</span>
-            <span style="color: #F59E0B;">● ${i18n.t('symbol_overview_fin_net_margin')}</span>
-          </div>
-
-          <div style="border-top: 1px solid var(--border); padding-top: 8px;">
-            <div style="font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 6px;">
-              ${i18n.t('symbol_overview_dividends_title')}
-            </div>
-            <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 4px;">
-              <span style="color: var(--text-muted);">${i18n.t('symbol_overview_div_payout')}</span>
-              <strong>${profileMeta.payoutRatio}</strong>
-            </div>
-            <div class="row-between ltr-num" style="font-size: 11.5px;">
-              <span style="color: var(--text-muted);">${i18n.t('symbol_overview_div_yield')}</span>
-              <strong>${profileMeta.yieldTtm}</strong>
-            </div>
-          </div>
-        </div>
-
-        <!-- [9 & 10] Productivity Metrics & Instrument Profile (with Copyable FIGI & ISIN) -->
-        <div class="card-subtle">
-          <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px;">
-            ${i18n.t('symbol_overview_about_title')}
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_sector')}</span>
-            <strong>${profileMeta.sector}</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_industry')}</span>
-            <strong>${profileMeta.industry}</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_benchmark')}</span>
-            <strong>${profileMeta.benchmark}</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_emp_count')}</span>
-            <strong>${profileMeta.activeVenues}</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_emp_rev')}</span>
-            <strong>${profileMeta.dailyTurnover}</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_figi')}</span>
-            <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="${profileMeta.figi}">
-              <span>${profileMeta.figi}</span>
-              <span>⧉</span>
-            </button>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_isin')}</span>
-            <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="${profileMeta.isin}">
-              <span>${profileMeta.isin}</span>
-              <span>⧉</span>
-            </button>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px;">
-            <span style="color: var(--text-muted);">Google Sheets Formula</span>
-            <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="=GOOGLEFINANCE(&quot;${sym.symbolCode}&quot;, &quot;price&quot;)">
-              <span>=GOOGLEFINANCE("${sym.symbolCode}", "price")</span>
-              <span>⧉</span>
-            </button>
-          </div>
-        </div>
-
-        <!-- [11] Smart Conversational Summary ("Why It Moved Today" — Google Finance AI Digest) -->
-        <div class="card-subtle" style="margin-top: 10px;">
-          <div style="font-size: 13px; font-weight: 700; color: var(--primary); margin-bottom: 6px;">
-            خلاصهٔ هوشمند تحلیلی (چرا قیمت تغییر کرد؟ — Google Finance AI Digest)
-          </div>
-          <div style="font-size: 11.5px; color: var(--text); line-height: 1.6;">
-            در بازهٔ انتخابی (${rangeKey})، نماد <strong>${sym.symbolCode}</strong> با تغییر <strong>${pctStr}</strong> در محدودهٔ ${PriceFormatter.formatPrice(pLow, sym.decimals)} تا ${PriceFormatter.formatPrice(pHigh, sym.decimals)} معامله شد. سنتیمنت تکنیکال لحظه‌ای (<strong>${techGauge.overallText}</strong>) و میانگین حجم (${PriceFormatter.formatVolume(avgVol)}) نشان‌دهندهٔ تمرکز نقدینگی در حوالی قیمت تعادلی ${PriceFormatter.formatPrice(closeP, sym.decimals)} است.
-          </div>
-        </div>
-
-        <!-- [12] Earnings Calendar, EPS Surprises & Official SEC EDGAR Filings (10-K / 10-Q / 8-K) -->
-        <div class="card-subtle" style="margin-top: 10px;">
-          <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px;">
-            تقویم گزارش‌های مالی، سورپرایز EPS و اسناد رسمی SEC EDGAR
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">Next Earnings / Macro Release</span>
-            <strong>${badge.category === 'STOCKS' ? `Upcoming Quarter (EPS Est: ${profileMeta.epsDilutedTtm})` : 'Central Bank / Weekly Inventory Release'}</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">Last EPS Beat / Surprise</span>
-            <strong style="color: ${isPositive ? 'var(--bull)' : 'var(--bear)'};">${isPositive ? '+4.8% Beat vs Consensus' : '-1.4% Inline / Mixed'}</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px;">
-            <span style="color: var(--text-muted);">SEC EDGAR / Official Benchmark</span>
-            <strong>${badge.category === 'STOCKS' ? 'Form 10-K • Form 10-Q • Form 8-K' : profileMeta.benchmark}</strong>
-          </div>
-        </div>
-
-        <!-- [13] Top Market Movers (Gainers / Losers / Most Active) & Global Regional Indices Snapshot -->
-        <div class="card-subtle" style="margin-top: 10px;">
-          <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px;">
-            پرتراکنش‌ترین نمادهای بازار و نمای شاخص‌های منطقه‌ای (Americas / Europe / Asia)
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">Top Movers & Most Active</span>
-            <strong>NVDA • BTCUSD • XAUUSD • SPOTBRENT</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
-            <span style="color: var(--text-muted);">Americas Indices</span>
-            <strong>S&P 500 (SPX500USD) • Nasdaq 100 (NDQ)</strong>
-          </div>
-          <div class="row-between ltr-num" style="font-size: 11.5px;">
-            <span style="color: var(--text-muted);">Europe & Asia Benchmarks</span>
-            <strong>EUR/USD Spot • Brent Sea FOB (SPOTBRENT)</strong>
-          </div>
-        </div>
+        ${tabBodyHtml}
       </div>
     </div>
   `;

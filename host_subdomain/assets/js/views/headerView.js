@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
-import { state, resolvePriceBasis } from '../core/store.js?v=1.36.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.36.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
+import { state } from '../core/store.js?v=1.37.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.37.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -98,17 +98,6 @@ export function renderTopHeaderBar(activeTab, i18n) {
     })
     .join('');
 
-  const priceBasis =
-    (sym && sym.priceBasis) ||
-    resolvePriceBasis(activeCode, sym ? sym.activeProvider : 'tvdatafeed');
-  const rawSyncMode = (sym && sym.lastSyncMode) || 'DB_CACHE_HIT';
-  const syncModeBadge =
-    rawSyncMode === 'DELTA_SYNC'
-      ? 'DELTA'
-      : rawSyncMode === 'INITIAL_BACKFILL'
-        ? 'SEED'
-        : 'CACHE';
-
   return `
     <header class="tv-topbar" dir="ltr">
       <div class="tv-topbar-left">
@@ -166,20 +155,14 @@ export function renderTopHeaderBar(activeTab, i18n) {
       </div>
 
       <div class="tv-topbar-right">
-        ${
-          sym
-            ? `<div class="ltr-num" title="Provider: ${sym.activeProvider} | Price Basis: ${priceBasis} | Sync: ${rawSyncMode}" style="display: inline-flex; align-items: center; gap: 5px; padding: 3px 8px; border-radius: 4px; background: var(--bg); border: 1px solid var(--border); font-size: 10.5px;">
-                 <span style="width: 7px; height: 7px; border-radius: 50%; background: ${statusDotColor}; display: inline-block;"></span>
-                 <span style="color: var(--text-strong); font-weight: 700;">${sym.activeProvider}</span>
-                 <span style="color: var(--text-muted);">·</span>
-                 <span style="color: var(--primary); font-weight: 600;">${priceBasis}</span>
-                 <span style="color: var(--text-muted);">·</span>
-                 <span style="color: var(--text-muted); font-weight: 600;">${syncModeBadge}</span>
-                 <span style="color: var(--text-muted);">·</span>
-                 <span style="color: ${statusDotColor}; font-weight: 600;">${statusText}</span>
-               </div>`
-            : ''
-        }
+        <span
+          class="ltr-num"
+          title="${sym ? `${sym.activeProvider} · ${statusText}` : statusText}"
+          style="display: inline-flex; align-items: center; gap: 5px; padding: 0 6px; font-size: 11px; color: ${statusDotColor}; font-weight: 600;"
+        >
+          <span style="width: 7px; height: 7px; border-radius: 50%; background: ${statusDotColor}; display: inline-block;"></span>
+          <span>${statusText}</span>
+        </span>
 
         <button class="tv-tool-btn" data-action="take-chart-snapshot" title="${i18n.t('action_take_snapshot')}">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
@@ -207,11 +190,14 @@ export function renderBottomChartBar(activeTab, i18n) {
     })
     .join('');
 
+  const isFa = i18n.getCurrentLanguage() === 'fa';
   const isLog = Boolean(activeTab.isLogScale ?? state.chartPreferences.isLogScale);
   const isAuto =
-    Number(activeTab.priceScaleFactor || 1) === 1 &&
-    Number(activeTab.verticalPriceOffset || 0) === 0;
-  const nowUtcStr = new Date().toISOString().slice(11, 19) + ' UTC';
+    activeTab.isAutoScaleY !== false &&
+    Math.abs(Number(activeTab.priceScaleFactor || 1) - 1) < 0.01 &&
+    Math.abs(Number(activeTab.verticalPriceOffset || 0)) < 0.0001;
+  const tzMode = state.chartPreferences.timezoneMode === 'LOCAL' ? 'LOCAL' : 'UTC';
+  const nowClockStr = PriceFormatter.formatLiveClock(tzMode);
 
   return `
     <div class="tv-bottom-bar" dir="ltr">
@@ -223,14 +209,21 @@ export function renderBottomChartBar(activeTab, i18n) {
       </div>
 
       <div class="tv-bottom-scales">
-        <span id="tv-live-utc-clock" class="ltr-num" style="color: var(--text-muted); font-size: 11px; margin-right: 4px; white-space: nowrap;">
-          ${nowUtcStr}
-        </span>
+        <button
+          type="button"
+          id="tv-live-utc-clock"
+          class="tv-scale-btn ltr-num"
+          data-action="toggle-timezone-mode"
+          title="${isFa ? 'تغییر ساعت بین UTC و ساعت محلی سیستم' : 'Click to toggle between UTC and Local System Time'}"
+          style="color: var(--text); font-size: 11px; margin-right: 4px; white-space: nowrap;"
+        >
+          ${nowClockStr}
+        </button>
         <div class="tv-divider"></div>
-        <button class="tv-scale-btn ltr-num ${isLog ? 'active' : ''}" data-action="toggle-log-scale" title="${i18n.t('tv_log_scale')}">
+        <button type="button" class="tv-scale-btn ltr-num ${isLog ? 'active' : ''}" data-action="toggle-log-scale" title="${i18n.t('tv_log_scale')}">
           log
         </button>
-        <button class="tv-scale-btn ltr-num ${isAuto ? 'active' : ''}" data-action="reset-price-scale" title="${i18n.t('chart_auto_scale')}">
+        <button type="button" class="tv-scale-btn ltr-num ${isAuto ? 'active' : ''}" data-action="reset-price-scale" title="${i18n.t('chart_auto_scale')}">
           auto
         </button>
       </div>

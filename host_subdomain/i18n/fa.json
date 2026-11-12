@@ -271,5 +271,16 @@
   "settings_byok_title": "مدیریت کلیدهای شخصی منابع داده (BYOK — Bring Your Own Key)",
   "settings_byok_subtitle": "در صورت تمایل، کلیدهای API رایگان یا شخصی خود را برای افزایش سقف درخواست‌ها ثبت کنید؛ این کلیدها بین وب و اندروید همگام‌سازی می‌شوند.",
   "settings_byok_save": "ذخیره و همگام‌سازی کلیدهای API",
-  "settings_byok_saved": "کلیدهای شخصی API با موفقیت ذخیره و همگام‌سازی شدند."
+  "settings_byok_saved": "کلیدهای شخصی API با موفقیت ذخیره و همگام‌سازی شدند.",
+  "settings_timezone_label": "ساعت نمودار و محور زمان",
+  "settings_timezone_utc": "گرینویچ (UTC)",
+  "settings_timezone_local": "ساعت محلی سیستم (Local)",
+  "settings_technical_accordion": "جزئیات فنی سرور و دیتابیس",
+  "settings_source_category_label": "فیلتر نمادها بر اساس بازار",
+  "settings_source_batch_label": "تغییر منبع کل دسته",
+  "overview_no_candles": "برای محاسبه اندیکاتورها و پیوت‌های واقعی، ابتدا نمودار این نماد را باز یا همگام‌سازی کنید.",
+  "overview_specs_title": "مشخصات کلاس دارایی",
+  "overview_real_tech_title": "اندیکاتورهای محاسبه‌شده از کندل",
+  "overview_sentiment_title": "سنتیمنت کندل‌های بازه فعلی",
+  "overview_pivots_title": "سطوح پیوت کلاسیک (Floor Pivots)"
 }

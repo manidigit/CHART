@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -331,6 +332,7 @@ fun DrawingToolbar(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -347,7 +349,7 @@ fun DrawingToolbar(
                     )
                     Box(
                         modifier = Modifier
-                            .size(32.dp)
+                            .size(36.dp)
                             .clip(CircleShape)
                             .background(MaterialTheme.colorScheme.surfaceVariant)
                             .clickable(onClick = onToggleCollapsed),
@@ -357,150 +359,170 @@ fun DrawingToolbar(
                             imageVector = Icons.Outlined.Close,
                             contentDescription = stringResource(R.string.draw_tools_toggle),
                             tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(16.dp)
+                            modifier = Modifier.size(18.dp)
                         )
                     }
                 }
 
-                // Icon Grid of Drawing Tools
-                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        BottomSheetToolItem(
-                            icon = Icons.Outlined.AdsClick,
-                            codeLabel = "CSR",
+                // 4-Column Symmetrical Grid of Drawing Tools (Zero Truncation)
+                data class SheetDrawEntry(
+                    val codeLabel: String,
+                    val selected: Boolean,
+                    val accentColor: Color? = null,
+                    val testTag: String,
+                    val onClick: () -> Unit,
+                    val icon: ImageVector? = null,
+                    val customIcon: (@Composable () -> Unit)? = null
+                )
+
+                val sheetEntries = buildList {
+                    add(
+                        SheetDrawEntry(
+                            codeLabel = "Cursor",
                             selected = activeTool == DrawingTool.CURSOR,
-                            onClick = {
-                                onSelectTool(DrawingTool.CURSOR)
-                                onToggleCollapsed()
-                            },
-                            testTag = "sheet_draw_tool_cursor"
+                            testTag = "sheet_draw_tool_cursor",
+                            onClick = { onSelectTool(DrawingTool.CURSOR); onToggleCollapsed() },
+                            icon = Icons.Outlined.AdsClick
                         )
-                        BottomSheetToolItem(
-                            icon = Icons.Outlined.Timeline,
-                            codeLabel = "TREND",
+                    )
+                    add(
+                        SheetDrawEntry(
+                            codeLabel = "Trend",
                             selected = activeTool == DrawingTool.TREND_LINE,
-                            onClick = {
-                                onSelectTool(DrawingTool.TREND_LINE)
-                                onToggleCollapsed()
-                            },
-                            testTag = "sheet_draw_tool_trend"
+                            testTag = "sheet_draw_tool_trend",
+                            onClick = { onSelectTool(DrawingTool.TREND_LINE); onToggleCollapsed() },
+                            icon = Icons.Outlined.Timeline
                         )
-                        BottomSheetCustomToolItem(
-                            codeLabel = "FIB",
+                    )
+                    add(
+                        SheetDrawEntry(
+                            codeLabel = "Fib",
                             selected = activeTool == DrawingTool.FIB_RETRACEMENT,
-                            onClick = {
-                                onSelectTool(DrawingTool.FIB_RETRACEMENT)
-                                onToggleCollapsed()
-                            },
-                            testTag = "sheet_draw_tool_fib"
-                        ) {
-                            FibSymbolIcon(
-                                tint = if (activeTool == DrawingTool.FIB_RETRACEMENT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        BottomSheetCustomToolItem(
-                            codeLabel = "LONG",
+                            testTag = "sheet_draw_tool_fib",
+                            onClick = { onSelectTool(DrawingTool.FIB_RETRACEMENT); onToggleCollapsed() },
+                            customIcon = {
+                                FibSymbolIcon(
+                                    tint = if (activeTool == DrawingTool.FIB_RETRACEMENT) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        )
+                    )
+                    add(
+                        SheetDrawEntry(
+                            codeLabel = "H-Line",
+                            selected = activeTool == DrawingTool.HORIZONTAL_LINE,
+                            testTag = "sheet_draw_tool_hline",
+                            onClick = { onSelectTool(DrawingTool.HORIZONTAL_LINE); onToggleCollapsed() },
+                            icon = Icons.Outlined.HorizontalRule
+                        )
+                    )
+                    add(
+                        SheetDrawEntry(
+                            codeLabel = "V-Line",
+                            selected = activeTool == DrawingTool.VERTICAL_LINE,
+                            testTag = "sheet_draw_tool_vline",
+                            onClick = { onSelectTool(DrawingTool.VERTICAL_LINE); onToggleCollapsed() },
+                            icon = Icons.Outlined.VerticalAlignCenter
+                        )
+                    )
+                    add(
+                        SheetDrawEntry(
+                            codeLabel = "Long",
                             selected = activeTool == DrawingTool.LONG_POSITION,
                             accentColor = Color(0xFF26A69A),
-                            onClick = {
-                                onSelectTool(DrawingTool.LONG_POSITION)
-                                onToggleCollapsed()
-                            },
-                            testTag = "sheet_draw_tool_long"
-                        ) {
-                            LongPositionSymbolIcon()
-                        }
-                        BottomSheetCustomToolItem(
-                            codeLabel = "SHORT",
+                            testTag = "sheet_draw_tool_long",
+                            onClick = { onSelectTool(DrawingTool.LONG_POSITION); onToggleCollapsed() },
+                            customIcon = { LongPositionSymbolIcon() }
+                        )
+                    )
+                    add(
+                        SheetDrawEntry(
+                            codeLabel = "Short",
                             selected = activeTool == DrawingTool.SHORT_POSITION,
                             accentColor = Color(0xFFEF5350),
-                            onClick = {
-                                onSelectTool(DrawingTool.SHORT_POSITION)
-                                onToggleCollapsed()
-                            },
-                            testTag = "sheet_draw_tool_short"
-                        ) {
-                            ShortPositionSymbolIcon()
-                        }
-                        BottomSheetToolItem(
-                            icon = Icons.Outlined.HorizontalRule,
-                            codeLabel = "H-LINE",
-                            selected = activeTool == DrawingTool.HORIZONTAL_LINE,
-                            onClick = {
-                                onSelectTool(DrawingTool.HORIZONTAL_LINE)
-                                onToggleCollapsed()
-                            },
-                            testTag = "sheet_draw_tool_hline"
+                            testTag = "sheet_draw_tool_short",
+                            onClick = { onSelectTool(DrawingTool.SHORT_POSITION); onToggleCollapsed() },
+                            customIcon = { ShortPositionSymbolIcon() }
                         )
-                        BottomSheetToolItem(
-                            icon = Icons.Outlined.VerticalAlignCenter,
-                            codeLabel = "V-LINE",
-                            selected = activeTool == DrawingTool.VERTICAL_LINE,
-                            onClick = {
-                                onSelectTool(DrawingTool.VERTICAL_LINE)
-                                onToggleCollapsed()
-                            },
-                            testTag = "sheet_draw_tool_vline"
+                    )
+                    add(
+                        SheetDrawEntry(
+                            codeLabel = "Magnet",
+                            selected = isMagnetMode,
+                            testTag = "sheet_draw_tool_magnet",
+                            onClick = { onToggleMagnetMode() },
+                            customIcon = {
+                                MagnetSymbolIcon(
+                                    tint = if (isMagnetMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                )
+                            }
                         )
-
-                        // Magnet Mode Button in BottomSheet
-                        Column(
-                            modifier = Modifier
-                                .width(64.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(if (isMagnetMode) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f) else MaterialTheme.colorScheme.surfaceVariant)
-                                .border(1.dp, if (isMagnetMode) MaterialTheme.colorScheme.primary else palette.cardBorder, RoundedCornerShape(8.dp))
-                                .clickable { onToggleMagnetMode() }
-                                .padding(vertical = 8.dp)
-                                .testTag("sheet_draw_tool_magnet"),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            MagnetSymbolIcon(
-                                tint = if (isMagnetMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "MAGNET",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = if (isMagnetMode) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-
-                        if (hasSelectedDrawing) {
-                            BottomSheetToolItem(
-                                icon = Icons.Outlined.DeleteOutline,
-                                codeLabel = "DEL",
+                    )
+                    if (hasSelectedDrawing) {
+                        add(
+                            SheetDrawEntry(
+                                codeLabel = "Delete",
                                 selected = false,
                                 accentColor = palette.bearCandle,
-                                onClick = {
-                                    onDeleteSelected()
-                                    onToggleCollapsed()
-                                },
-                                testTag = "sheet_draw_delete_selected"
+                                testTag = "sheet_draw_delete_selected",
+                                onClick = { onDeleteSelected(); onToggleCollapsed() },
+                                icon = Icons.Outlined.DeleteOutline
                             )
-                        }
-                        if (totalDrawingsCount > 0) {
-                            BottomSheetToolItem(
-                                icon = Icons.Outlined.DeleteSweep,
-                                codeLabel = "CLR ($totalDrawingsCount)",
-                                selected = false,
-                                accentColor = palette.bearCandle,
-                                onClick = {
-                                    onClearAll()
-                                    onToggleCollapsed()
-                                },
-                                testTag = "sheet_draw_clear_all"
-                            )
-                        }
+                        )
                     }
+                    if (totalDrawingsCount > 0) {
+                        add(
+                            SheetDrawEntry(
+                                codeLabel = "Clear ($totalDrawingsCount)",
+                                selected = false,
+                                accentColor = palette.bearCandle,
+                                testTag = "sheet_draw_clear_all",
+                                onClick = { onClearAll(); onToggleCollapsed() },
+                                icon = Icons.Outlined.DeleteSweep
+                            )
+                        )
+                    }
+                }
+
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Column(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        sheetEntries.chunked(4).forEach { rowItems ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                rowItems.forEach { item ->
+                                    if (item.customIcon != null) {
+                                        BottomSheetCustomToolItem(
+                                            codeLabel = item.codeLabel,
+                                            selected = item.selected,
+                                            accentColor = item.accentColor,
+                                            onClick = item.onClick,
+                                            testTag = item.testTag,
+                                            modifier = Modifier.weight(1f),
+                                            iconContent = item.customIcon
+                                        )
+                                    } else {
+                                        BottomSheetToolItem(
+                                            icon = item.icon ?: Icons.Outlined.Edit,
+                                            codeLabel = item.codeLabel,
+                                            selected = item.selected,
+                                            accentColor = item.accentColor,
+                                            onClick = item.onClick,
+                                            testTag = item.testTag,
+                                            modifier = Modifier.weight(1f)
+                                        )
+                                    }
+                                }
+                                repeat(4 - rowItems.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
                     }
 
                     // Compact Color & Stroke Width Trigger Row (Popup flyouts)
@@ -510,20 +532,21 @@ fun DrawingToolbar(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = 4.dp),
+                            .padding(top = 6.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // Color Selector Trigger Button
-                        Box {
+                        Box(modifier = Modifier.weight(1f)) {
                             val curSwatch = DRAWING_COLOR_SWATCHES.find { it.first.equals(activeDrawingColorHex, ignoreCase = true) }?.second ?: Color(0xFF2962FF)
                             Row(
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                                     .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
                                     .clickable { showColorMenu = true }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
                                     .testTag("draw_color_picker_trigger"),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -556,7 +579,7 @@ fun DrawingToolbar(
                                         val isColorSelected = activeDrawingColorHex.equals(hex, ignoreCase = true)
                                         Box(
                                             modifier = Modifier
-                                                .size(28.dp)
+                                                .size(30.dp)
                                                 .clip(CircleShape)
                                                 .background(swatchColor)
                                                 .border(
@@ -576,18 +599,19 @@ fun DrawingToolbar(
                         }
 
                         // Stroke Width Selector Trigger Button
-                        Box {
+                        Box(modifier = Modifier.weight(1f)) {
                             val curLabel = DRAWING_WIDTH_OPTIONS.find { abs(it.first - activeDrawingWidthDp) < 0.35f }?.second ?: "${activeDrawingWidthDp.toInt()}px"
                             val onSurfaceColor = MaterialTheme.colorScheme.onSurface
                             val primaryColor = MaterialTheme.colorScheme.primary
 
                             Row(
                                 modifier = Modifier
+                                    .fillMaxWidth()
                                     .clip(RoundedCornerShape(8.dp))
                                     .background(MaterialTheme.colorScheme.surfaceVariant)
                                     .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
                                     .clickable { showWidthMenu = true }
-                                    .padding(horizontal = 12.dp, vertical = 8.dp)
+                                    .padding(horizontal = 12.dp, vertical = 10.dp)
                                     .testTag("draw_width_picker_trigger"),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -653,10 +677,11 @@ fun DrawingToolbar(
                     }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
+                Spacer(modifier = Modifier.height(20.dp))
             }
         }
     }
+}
 
 @Composable
 private fun DrawingIconButton(
@@ -696,6 +721,7 @@ private fun BottomSheetToolItem(
     selected: Boolean,
     onClick: () -> Unit,
     testTag: String,
+    modifier: Modifier = Modifier,
     accentColor: Color? = null
 ) {
     val palette = LocalFinancialPalette.current
@@ -705,13 +731,12 @@ private fun BottomSheetToolItem(
     val contentColor = if (selected || accentColor != null) baseAccent else MaterialTheme.colorScheme.onSurface
 
     Column(
-        modifier = Modifier
-            .width(64.dp)
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
             .border(1.dp, borderColor, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp)
+            .padding(horizontal = 4.dp, vertical = 10.dp)
             .testTag(testTag),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -727,7 +752,8 @@ private fun BottomSheetToolItem(
             style = MaterialTheme.typography.labelSmall,
             fontFamily = JetBrainsMonoFontFamily,
             fontWeight = FontWeight.Bold,
-            color = contentColor
+            color = contentColor,
+            maxLines = 1
         )
     }
 }
@@ -738,6 +764,7 @@ private fun BottomSheetCustomToolItem(
     selected: Boolean,
     onClick: () -> Unit,
     testTag: String,
+    modifier: Modifier = Modifier,
     accentColor: Color? = null,
     iconContent: @Composable () -> Unit
 ) {
@@ -748,13 +775,12 @@ private fun BottomSheetCustomToolItem(
     val contentColor = if (selected || accentColor != null) baseAccent else MaterialTheme.colorScheme.onSurface
 
     Column(
-        modifier = Modifier
-            .width(64.dp)
+        modifier = modifier
             .clip(RoundedCornerShape(8.dp))
             .background(bgColor)
             .border(1.dp, borderColor, RoundedCornerShape(8.dp))
             .clickable(onClick = onClick)
-            .padding(vertical = 8.dp)
+            .padding(horizontal = 4.dp, vertical = 10.dp)
             .testTag(testTag),
         horizontalAlignment = Alignment.CenterHorizontally,
         verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -770,8 +796,10 @@ private fun BottomSheetCustomToolItem(
             style = MaterialTheme.typography.labelSmall,
             fontFamily = JetBrainsMonoFontFamily,
             fontWeight = FontWeight.Bold,
-            color = contentColor
+            color = contentColor,
+            maxLines = 1
         )
     }
 }
+
 

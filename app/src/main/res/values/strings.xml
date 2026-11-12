@@ -330,4 +330,21 @@
     <string name="settings_byok_subtitle">Optionally configure your personal API keys to raise rate limits; synced across Web and Android.</string>
     <string name="settings_byok_save">Save &amp; Sync API Keys</string>
     <string name="settings_byok_saved">Personal API keys saved and synced successfully.</string>
+    <string name="chart_data_boundary">Start of history</string>
+    <string name="settings_timezone_label">Chart Clock Timezone</string>
+    <string name="settings_timezone_utc">UTC (Greenwich)</string>
+    <string name="settings_timezone_local">Local System Time</string>
+    <string name="settings_technical_accordion">Technical Info &amp; Developer Logs</string>
+    <string name="settings_source_by_market">Filter by Market</string>
+    <string name="settings_source_default_for_cat">Category Source Preset</string>
+    <string name="chart_fit_short">Fit All</string>
+    <string name="chart_sync_short">Sync</string>
+    <string name="chart_clock_short">Clock</string>
+    <string name="overview_technicals_title">Candle Technicals &amp; Pivots</string>
+    <string name="overview_contract_specs">Contract &amp; Commodity Specs</string>
+    <string name="overview_crypto_metrics">Crypto Market &amp; Network Range</string>
+    <string name="overview_index_metrics">Index Breadth &amp; Benchmark</string>
+    <string name="overview_fx_metrics">FX Pair &amp; Session Profile</string>
+    <string name="overview_stock_metrics">Corporate &amp; Valuation Profile</string>
+    <string name="overview_no_candles">Open this symbol chart to load closed candles and compute real technical indicators and pivots.</string>
 </resources>

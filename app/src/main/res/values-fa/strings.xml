@@ -330,4 +330,21 @@
     <string name="settings_byok_subtitle">در صورت تمایل، کلیدهای API شخصی خود را برای افزایش سقف درخواست‌ها ثبت کنید (همگام با وب و اندروید).</string>
     <string name="settings_byok_save">ذخیره و همگام‌سازی کلیدهای API</string>
     <string name="settings_byok_saved">کلیدهای شخصی API با موفقیت ذخیره و همگام‌سازی شدند.</string>
+    <string name="chart_data_boundary">ابتدای تاریخچه موجود</string>
+    <string name="settings_timezone_label">منطقه زمانی ساعت نمودار</string>
+    <string name="settings_timezone_utc">ساعت گرینویچ (UTC)</string>
+    <string name="settings_timezone_local">ساعت محلی دستگاه</string>
+    <string name="settings_technical_accordion">اطلاعات فنی و توسعه‌دهنده</string>
+    <string name="settings_source_by_market">فیلتر بر اساس بازار</string>
+    <string name="settings_source_default_for_cat">منبع پیش‌فرض دسته</string>
+    <string name="chart_fit_short">نمایش کل</string>
+    <string name="chart_sync_short">همگام‌سازی</string>
+    <string name="chart_clock_short">ساعت</string>
+    <string name="overview_technicals_title">تحلیل تکنیکال و پیوت‌های واقعی</string>
+    <string name="overview_contract_specs">مشخصات قرارداد و بازار کالا</string>
+    <string name="overview_crypto_metrics">شاخص‌های شبکه و دامنه رمزارز</string>
+    <string name="overview_index_metrics">شاخص‌های کلان و بنچمارک</string>
+    <string name="overview_fx_metrics">پروفایل جفت‌ارز و سشن</string>
+    <string name="overview_stock_metrics">اطلاعات شرکت و ارزش‌گذاری</string>
+    <string name="overview_no_candles">برای محاسبه اندیکاتورها و پیوت‌های واقعی، ابتدا نمودار این نماد را باز کرده تا کندل‌ها بارگذاری شوند.</string>
 </resources>

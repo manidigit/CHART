@@ -1049,6 +1049,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
     }
 
     fun selectCandleOnActiveTab(candleIndex: Int?) {
@@ -1559,6 +1560,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
     }
 
     fun projectScenarioLevelsToChart(
@@ -1642,6 +1645,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val next = preferenceCoordinator.updateTradingViewPreference(_uiState.value.chartPreferences, transform)
         _uiState.update { it.copy(chartPreferences = next) }
         scheduleDebouncedCloudSync()
+    }
+
+    fun updateTimezoneMode(mode: String) {
+        val next = preferenceCoordinator.updateTimezoneMode(_uiState.value.chartPreferences, mode)
+        _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleTimezoneMode() {
+        val nextMode = if (_uiState.value.chartPreferences.timezoneMode.equals("LOCAL", ignoreCase = true)) {
+            "UTC"
+        } else {
+            "LOCAL"
+        }
+        updateTimezoneMode(nextMode)
     }
 
     fun updateBullCandleColor(colorHex: String) {

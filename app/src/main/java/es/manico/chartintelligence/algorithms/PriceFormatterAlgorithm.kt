@@ -4,6 +4,7 @@ import es.manico.chartintelligence.data.model.CandleBar
 import java.math.BigDecimal
 import java.math.RoundingMode
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -19,10 +20,31 @@ import kotlin.math.min
 object PriceFormatterAlgorithm {
 
     private val shortAxisTimeFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("MM-dd HH:mm", Locale.US)
 
     private val dailyAxisTimeFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.US)
+
+    fun resolveZoneId(timezoneMode: String): ZoneId {
+        return if (timezoneMode.equals("LOCAL", ignoreCase = true)) {
+            ZoneId.systemDefault()
+        } else {
+            ZoneOffset.UTC
+        }
+    }
+
+    fun formatLiveClock(
+        timezoneMode: String = "UTC",
+        nowMillis: Long = System.currentTimeMillis()
+    ): String {
+        val isLocal = timezoneMode.equals("LOCAL", ignoreCase = true)
+        val zone = resolveZoneId(timezoneMode)
+        val zdt = Instant.ofEpochMilli(nowMillis).atZone(zone)
+        val hms = DateTimeFormatter.ofPattern("HH:mm:ss", Locale.US).format(zdt)
+        if (!isLocal) return "$hms UTC"
+        val offsetId = zdt.offset.id.let { if (it == "Z") "+00:00" else it }
+        return "$hms ($offsetId)"
+    }
 
     fun formatPrice(value: BigDecimal?, decimals: Int): String {
         if (value == null) return "—"
@@ -663,28 +685,28 @@ object PriceFormatterAlgorithm {
     }
 
     private val m15H1AxisTimeFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("dd MMM HH:mm", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("dd MMM HH:mm", Locale.US)
 
     private val h4AxisTimeFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("dd MMM HH:00", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("dd MMM HH:00", Locale.US)
 
     private val d1W1AxisTimeFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("dd MMM yyyy", Locale.US)
 
     private val hourOnlyFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("HH:mm", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("HH:mm", Locale.US)
 
     private val dayMonthFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("dd MMM", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("dd MMM", Locale.US)
 
     private val monthOnlyFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("MMM", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("MMM", Locale.US)
 
     private val monthYearFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("MMM yyyy", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("MMM yyyy", Locale.US)
 
     private val yearOnlyFormatter: DateTimeFormatter =
-        DateTimeFormatter.ofPattern("yyyy", Locale.US).withZone(ZoneOffset.UTC)
+        DateTimeFormatter.ofPattern("yyyy", Locale.US)
 
     fun computeNiceAxisBounds(rawLow: Double, rawHigh: Double, intervals: Int = 4): Pair<Double, Double> {
         if (!rawLow.isFinite() || !rawHigh.isFinite() || rawHigh <= rawLow) {
@@ -756,7 +778,8 @@ object PriceFormatterAlgorithm {
     fun computeSmartTimeAxisTicks(
         timestampsMillis: List<Long>,
         timeframe: String,
-        maxTicks: Int = 4
+        maxTicks: Int = 4,
+        timezoneMode: String = "UTC"
     ): List<SmartTimeTick> {
         val n = timestampsMillis.size
         if (n == 0) return emptyList()
@@ -765,6 +788,7 @@ object PriceFormatterAlgorithm {
         val spanDays = kotlin.math.max(0.0, (lastTs - firstTs).toDouble() / 86_400_000.0)
         val tfUpper = timeframe.uppercase(Locale.US)
         val isDailyOrHigher = tfUpper == "D1" || tfUpper == "W1"
+        val zone = resolveZoneId(timezoneMode)
 
         val step = kotlin.math.max(1, kotlin.math.floor(n.toDouble() / maxTicks.coerceAtLeast(2).toDouble()).toInt())
         val result = ArrayList<SmartTimeTick>()
@@ -775,7 +799,7 @@ object PriceFormatterAlgorithm {
         var i = 0
         while (i < n) {
             val ts = timestampsMillis[i]
-            val zdt = Instant.ofEpochMilli(ts).atZone(ZoneOffset.UTC)
+            val zdt = Instant.ofEpochMilli(ts).atZone(zone)
             val yr = zdt.year
             val mo = zdt.monthValue
             val dy = zdt.dayOfMonth
@@ -840,12 +864,16 @@ object PriceFormatterAlgorithm {
         return result
     }
 
-    fun formatAxisTimestamp(epochMillis: Long, timeframe: String): String {
-        val instant = Instant.ofEpochMilli(epochMillis)
+    fun formatAxisTimestamp(
+        epochMillis: Long,
+        timeframe: String,
+        timezoneMode: String = "UTC"
+    ): String {
+        val zdt = Instant.ofEpochMilli(epochMillis).atZone(resolveZoneId(timezoneMode))
         return when (timeframe.uppercase(Locale.US)) {
-            "D1", "W1" -> d1W1AxisTimeFormatter.format(instant)
-            "H4" -> h4AxisTimeFormatter.format(instant)
-            else -> m15H1AxisTimeFormatter.format(instant)
+            "D1", "W1" -> d1W1AxisTimeFormatter.format(zdt)
+            "H4" -> h4AxisTimeFormatter.format(zdt)
+            else -> m15H1AxisTimeFormatter.format(zdt)
         }
     }
 }

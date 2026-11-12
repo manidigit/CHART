@@ -17,6 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -32,6 +33,8 @@ import androidx.compose.material.icons.outlined.AccountCircle
 import androidx.compose.material.icons.outlined.Add
 import androidx.compose.material.icons.outlined.Check
 import androidx.compose.material.icons.outlined.Delete
+import androidx.compose.material.icons.outlined.ExpandLess
+import androidx.compose.material.icons.outlined.ExpandMore
 import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material.icons.outlined.Palette
 import androidx.compose.material.icons.outlined.Tune
@@ -71,6 +74,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import es.manico.chartintelligence.R
@@ -117,6 +121,7 @@ fun SettingsScreen(
     onUpdateBollingerParams: (Int, Float) -> Unit = { _, _ -> },
     onResetAllPreferences: () -> Unit = {},
     onUpdateTradingViewPreference: ((ChartPreferences) -> ChartPreferences) -> Unit = {},
+    onUpdateTimezoneMode: (String) -> Unit = {},
     onSaveApiKeys: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onAddCustomSymbol: (String, String, Int, ProviderId) -> Unit,
     onDeleteSymbol: (String) -> Unit,
@@ -396,42 +401,42 @@ fun SettingsScreen(
                             onThemeSelected = onThemeSelected
                         )
                         HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = stringResource(R.string.settings_chart_colors_section),
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = stringResource(R.string.settings_chart_colors_hint),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                text = stringResource(R.string.settings_chart_colors_section),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_chart_colors_hint),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             OutlinedButton(
                                 onClick = { showColorsBottomSheet = true },
                                 shape = RoundedCornerShape(8.dp),
                                 border = BorderStroke(1.dp, financialPalette.cardBorder),
-                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 6.dp),
+                                contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                                 modifier = Modifier
-                                    .height(36.dp)
+                                    .fillMaxWidth()
+                                    .heightIn(min = 42.dp)
                                     .testTag("open_chart_colors_sheet_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.Outlined.Palette,
                                     contentDescription = null,
-                                    modifier = Modifier.size(15.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
+                                Spacer(modifier = Modifier.width(8.dp))
                                 Text(
                                     text = stringResource(R.string.settings_chart_colors_section),
-                                    style = MaterialTheme.typography.labelSmall
+                                    style = MaterialTheme.typography.labelMedium,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
@@ -480,43 +485,43 @@ fun SettingsScreen(
 
                         HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
 
-                        // Persistent Default Drawing Line Stroke Width (1px / 2px / 3px / 4px)
-                        Row(
+                        // Persistent Default Drawing Line Stroke Width (Stacked vertically for readable mobile text)
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text(
-                                    text = if (currentLanguage == AppLanguage.FA) "ضخامت پیش‌فرض خطوط ترسیمی" else "Default Drawing Line Width",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.SemiBold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Text(
-                                    text = if (currentLanguage == AppLanguage.FA) "در حافظه باقی می‌ماند تا زمان بازنشانی (Reset)" else "Persists across sessions until Reset",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                            Text(
+                                text = if (currentLanguage == AppLanguage.FA) "ضخامت پیش‌فرض خطوط ترسیمی" else "Default Drawing Line Width",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.SemiBold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = if (currentLanguage == AppLanguage.FA) "در حافظه باقی می‌ماند تا زمان بازنشانی (Reset)" else "Persists across sessions until Reset",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
                             Row(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 for (wOpt in listOf(1.0f, 2.0f, 3.0f, 4.0f)) {
                                     val isSel = kotlin.math.abs(chartPreferences.defaultDrawingWidthDp - wOpt) < 0.35f
                                     Box(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
+                                            .weight(1f)
+                                            .heightIn(min = 38.dp)
+                                            .clip(RoundedCornerShape(8.dp))
                                             .background(if (isSel) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else MaterialTheme.colorScheme.background)
-                                            .border(1.dp, if (isSel) MaterialTheme.colorScheme.primary else financialPalette.cardBorder, RoundedCornerShape(6.dp))
+                                            .border(1.dp, if (isSel) MaterialTheme.colorScheme.primary else financialPalette.cardBorder, RoundedCornerShape(8.dp))
                                             .clickable { onUpdateDefaultDrawingWidth(wOpt) }
-                                            .padding(horizontal = 8.dp, vertical = 5.dp)
-                                            .testTag("settings_default_line_width_${wOpt.toInt()}px")
+                                            .testTag("settings_default_line_width_${wOpt.toInt()}px"),
+                                        contentAlignment = Alignment.Center
                                     ) {
                                         Text(
                                             text = "${wOpt.toInt()}px",
-                                            style = MaterialTheme.typography.labelSmall,
+                                            style = MaterialTheme.typography.labelMedium,
                                             fontFamily = JetBrainsMonoFontFamily,
                                             fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
                                             color = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
@@ -555,6 +560,8 @@ fun SettingsScreen(
                 if (activeSettingsTab == "sync") {
                 var explorerMode by rememberSaveable { mutableStateOf("by_source") }
                 var selectedExplorerProvider by rememberSaveable { mutableStateOf(ProviderId.TVDATAFEED) }
+                var selectedMarketCategory by rememberSaveable { mutableStateOf("ALL") }
+                var isFormulaExpanded by rememberSaveable { mutableStateOf(false) }
                 var symbolSearchQuery by rememberSaveable { mutableStateOf("") }
                 val isFa = currentLanguage == AppLanguage.FA
 
@@ -610,7 +617,9 @@ fun SettingsScreen(
                                 Spacer(modifier = Modifier.width(4.dp))
                                 Text(
                                     text = stringResource(R.string.settings_action_add_symbol),
-                                    style = MaterialTheme.typography.labelSmall
+                                    style = MaterialTheme.typography.labelSmall,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
@@ -627,8 +636,8 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             val modes = listOf(
-                                "by_source" to (if (isFa) "۱. انتخاب بر اساس منبع (روش ← نمادها)" else "1. By Data Source (Method → Symbols)"),
-                                "by_symbol" to (if (isFa) "۲. انتخاب بر اساس نماد (نماد ← منابع)" else "2. By Symbol (Symbol → Sources)")
+                                "by_source" to (if (isFa) "۱. بر اساس منبع" else "1. By Source"),
+                                "by_symbol" to (if (isFa) "۲. بر اساس نماد" else "2. By Symbol")
                             )
                             for ((modeKey, modeTitle) in modes) {
                                 val isModeSelected = explorerMode == modeKey
@@ -649,9 +658,50 @@ fun SettingsScreen(
                                             text = modeTitle,
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
                                             color = if (isModeSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
+                                }
+                            }
+                        }
+
+                        // Market Category Filter Chips (All | Metals | Energy | Crypto | Indices | Stocks | FX)
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Text(
+                                text = stringResource(R.string.settings_source_by_market),
+                                style = MaterialTheme.typography.labelSmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                val marketCats = listOf(
+                                    "ALL" to stringResource(R.string.watchlist_filter_all),
+                                    "METALS" to stringResource(R.string.watchlist_filter_metals),
+                                    "ENERGY" to stringResource(R.string.watchlist_filter_energy),
+                                    "CRYPTO" to stringResource(R.string.watchlist_filter_crypto),
+                                    "INDICES" to stringResource(R.string.watchlist_filter_indices),
+                                    "STOCKS" to stringResource(R.string.watchlist_filter_stocks),
+                                    "FX" to stringResource(R.string.watchlist_filter_fx)
+                                )
+                                for ((catKey, catLabel) in marketCats) {
+                                    FilterChip(
+                                        selected = selectedMarketCategory == catKey,
+                                        onClick = { selectedMarketCategory = catKey },
+                                        label = {
+                                            Text(
+                                                text = catLabel,
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1
+                                            )
+                                        },
+                                        modifier = Modifier.testTag("settings_source_cat_${catKey.lowercase()}")
+                                    )
                                 }
                             }
                         }
@@ -660,21 +710,28 @@ fun SettingsScreen(
                             val methodCatalog = ProviderId.providerMethodCatalog
                             val activeMethodSpec = methodCatalog.firstOrNull { it.providerId == selectedExplorerProvider }
                                 ?: methodCatalog.first()
+                            val filteredMethodSymbols = activeMethodSpec.supportedSymbols.filter {
+                                matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
+                            }
 
-                            // Provider Method Selector Chips
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            // Provider Method Selector Chips (Single-row horizontal scroll to avoid clutter)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
                                 for (spec in methodCatalog) {
                                     val isProvSelected = spec.providerId == selectedExplorerProvider
+                                    val catCount = spec.supportedSymbols.count {
+                                        matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
+                                    }
                                     FilterChip(
                                         selected = isProvSelected,
                                         onClick = { selectedExplorerProvider = spec.providerId },
                                         label = {
                                             Text(
-                                                text = "${spec.providerId.badgeLabel} (${spec.supportedSymbols.size})",
+                                                text = "${spec.providerId.badgeLabel} ($catCount)",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontFamily = JetBrainsMonoFontFamily,
                                                 fontWeight = if (isProvSelected) FontWeight.Bold else FontWeight.Medium
@@ -685,10 +742,38 @@ fun SettingsScreen(
                                 }
                             }
 
-                            // Method Formula & Isolated Storage Key Card
+                            if (selectedMarketCategory != "ALL" && filteredMethodSymbols.isNotEmpty()) {
+                                OutlinedButton(
+                                    onClick = {
+                                        for (srcSym in filteredMethodSymbols) {
+                                            onSelectProviderForSymbol(srcSym.symbolCode, activeMethodSpec.providerId)
+                                            val curSym = symbols.firstOrNull { it.symbolCode == srcSym.symbolCode }
+                                            if (curSym == null || !curSym.inWatchlist) {
+                                                onToggleSymbolInWatchlist(srcSym.symbolCode, true)
+                                            }
+                                        }
+                                    },
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 38.dp)
+                                        .testTag("apply_category_provider_button")
+                                ) {
+                                    Text(
+                                        text = "✓ ${stringResource(R.string.settings_source_default_for_cat)}: $selectedMarketCategory → ${activeMethodSpec.providerId.badgeLabel}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+
+                            // Collapsible Technical Method Formula Accordion (Closed by default)
                             Surface(
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .clickable { isFormulaExpanded = !isFormulaExpanded }
                                     .testTag("active_method_formula_card"),
                                 shape = RoundedCornerShape(8.dp),
                                 color = MaterialTheme.colorScheme.background,
@@ -707,34 +792,39 @@ fun SettingsScreen(
                                             text = if (isFa) activeMethodSpec.nameFa else activeMethodSpec.nameEn,
                                             style = MaterialTheme.typography.bodySmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis,
+                                            modifier = Modifier.weight(1f)
                                         )
-                                        Text(
-                                            text = activeMethodSpec.methodCode,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        Icon(
+                                            imageVector = if (isFormulaExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                            contentDescription = stringResource(R.string.settings_technical_accordion),
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            modifier = Modifier.size(18.dp)
                                         )
                                     }
-                                    Text(
-                                        text = (if (isFa) "فرمول و الگوریتم جمع‌آوری: " else "Collection Formula: ") +
-                                            (if (isFa) activeMethodSpec.formulaFa else activeMethodSpec.formulaEn),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
-                                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    if (isFormulaExpanded) {
                                         Text(
-                                            text = "${activeMethodSpec.persistenceRule} · TF: ${activeMethodSpec.supportedTimeframes.joinToString(", ")}",
+                                            text = (if (isFa) "فرمول و الگوریتم جمع‌آوری: " else "Collection Formula: ") +
+                                                (if (isFa) activeMethodSpec.formulaFa else activeMethodSpec.formulaEn),
                                             style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            color = financialPalette.bullCandle
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
+                                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                            Text(
+                                                text = "${activeMethodSpec.persistenceRule} · TF: ${activeMethodSpec.supportedTimeframes.joinToString(", ")}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                color = financialPalette.bullCandle
+                                            )
+                                        }
                                     }
                                 }
                             }
 
-                            // Supported Symbols inside the selected Data Collection Method
-                            for (srcSym in activeMethodSpec.supportedSymbols) {
+                            // Supported Symbols inside selected Source & Category
+                            for (srcSym in filteredMethodSymbols) {
                                 val existingSym = symbols.firstOrNull { it.symbolCode == srcSym.symbolCode }
                                 val isActiveWithThisSource = existingSym != null &&
                                     existingSym.inWatchlist &&
@@ -772,21 +862,27 @@ fun SettingsScreen(
                                                     text = if (isFa) srcSym.labelFa else srcSym.labelEn,
                                                     style = MaterialTheme.typography.bodySmall,
                                                     fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurface
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
                                                 )
                                                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                                     val barsInfo = if (existingSym != null && existingSym.activeProvider == activeMethodSpec.providerId) {
-                                                        " · ${existingSym.storedCandleCount} bars (${existingSym.lastSyncMode})"
+                                                        " · ${existingSym.storedCandleCount} bars"
                                                     } else ""
                                                     Text(
-                                                        text = "${srcSym.symbolCode} · Ticker: ${srcSym.providerTicker}$barsInfo",
+                                                        text = "${srcSym.symbolCode} · ${srcSym.providerTicker}$barsInfo",
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontFamily = JetBrainsMonoFontFamily,
-                                                        color = MaterialTheme.colorScheme.primary
+                                                        color = MaterialTheme.colorScheme.primary,
+                                                        maxLines = 1,
+                                                        overflow = TextOverflow.Ellipsis
                                                     )
                                                 }
                                             }
                                         }
+
+                                        Spacer(modifier = Modifier.width(6.dp))
 
                                         Button(
                                             onClick = {
@@ -798,16 +894,18 @@ fun SettingsScreen(
                                             shape = RoundedCornerShape(6.dp),
                                             contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                             modifier = Modifier
-                                                .height(32.dp)
+                                                .height(34.dp)
                                                 .testTag("activate_source_symbol_${activeMethodSpec.providerId.id}_${srcSym.symbolCode.lowercase()}")
                                         ) {
                                             Text(
                                                 text = if (isActiveWithThisSource) {
-                                                    if (isFa) "✓ فعال در واچ‌لیست" else "✓ Active"
+                                                    if (isFa) "✓ فعال" else "✓ Active"
                                                 } else {
-                                                    if (isFa) "افزودن با این منبع" else "Use Source"
+                                                    if (isFa) "انتخاب" else "Use Source"
                                                 },
-                                                style = MaterialTheme.typography.labelSmall
+                                                style = MaterialTheme.typography.labelSmall,
+                                                maxLines = 1,
+                                                softWrap = false
                                             )
                                         }
                                     }
@@ -838,14 +936,16 @@ fun SettingsScreen(
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
 
-                        val filteredSymbols = if (explorerMode == "by_symbol" && symbolSearchQuery.isNotBlank()) {
-                            val q = symbolSearchQuery.trim().uppercase()
-                            symbols.filter {
+                        val filteredSymbols = symbols.filter {
+                            val matchesCat = matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
+                            val matchesQ = if (explorerMode == "by_symbol" && symbolSearchQuery.isNotBlank()) {
+                                val q = symbolSearchQuery.trim().uppercase()
                                 it.symbolCode.uppercase().contains(q) ||
                                     (it.customTitle?.uppercase()?.contains(q) == true)
+                            } else {
+                                true
                             }
-                        } else {
-                            symbols
+                            matchesCat && matchesQ
                         }
 
                         for (symbol in filteredSymbols) {
@@ -1186,6 +1286,53 @@ fun SettingsScreen(
                             testTag = "switch_tv_high_low_labels"
                         )
 
+                        // Chart Clock & X-Axis Timezone Selector (UTC / Local)
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.settings_timezone_label),
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val tzIsLocal = chartPreferences.timezoneMode.equals("LOCAL", ignoreCase = true)
+                                FilterChip(
+                                    selected = !tzIsLocal,
+                                    onClick = { onUpdateTimezoneMode("UTC") },
+                                    label = {
+                                        Text(
+                                            text = stringResource(R.string.settings_timezone_utc),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 1
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("settings_tz_utc")
+                                )
+                                FilterChip(
+                                    selected = tzIsLocal,
+                                    onClick = { onUpdateTimezoneMode("LOCAL") },
+                                    label = {
+                                        Text(
+                                            text = stringResource(R.string.settings_timezone_local),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            maxLines = 1
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("settings_tz_local")
+                                )
+                            }
+                        }
+
                         HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
 
                         // Customizable Bollinger Bands (Period & StdDev) in Chart Settings
@@ -1344,6 +1491,7 @@ fun SettingsScreen(
                 // Server Health & Cloud Workspace Status (under Sync tab) + About (under Theme/Sync)
                 // =========================================================================
                 if (activeSettingsTab == "sync" || activeSettingsTab == "theme") {
+                var isDiagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1364,6 +1512,9 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(6.dp)
                             ) {
@@ -1378,7 +1529,10 @@ fun SettingsScreen(
                                     text = stringResource(R.string.server_status_title),
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f, fill = false)
                                 )
                                 Surface(
                                     shape = RoundedCornerShape(4.dp),
@@ -1389,7 +1543,9 @@ fun SettingsScreen(
                                         text = systemStatus?.dbVersion ?: "MariaDB",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontFamily = JetBrainsMonoFontFamily,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(horizontal = 5.dp, vertical = 2.dp),
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
@@ -1400,91 +1556,120 @@ fun SettingsScreen(
                                 enabled = !isWorkspaceSyncing,
                                 shape = RoundedCornerShape(6.dp),
                                 border = BorderStroke(1.dp, financialPalette.cardBorder),
-                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                                 modifier = Modifier
-                                    .height(32.dp)
+                                    .heightIn(min = 34.dp)
                                     .testTag("sync_cloud_workspace_button")
                             ) {
                                 Text(
                                     text = if (isWorkspaceSyncing) "☁️ " + stringResource(R.string.server_status_syncing) else "☁️ " + stringResource(R.string.server_status_btn_sync),
                                     style = MaterialTheme.typography.labelSmall,
-                                    color = MaterialTheme.colorScheme.primary
+                                    color = MaterialTheme.colorScheme.primary,
+                                    maxLines = 1,
+                                    softWrap = false
                                 )
                             }
                         }
 
+                        // Collapsible Technical Diagnostics (Closed by default to reduce clutter)
                         Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(6.dp))
+                                .background(MaterialTheme.colorScheme.background)
+                                .clickable { isDiagnosticsExpanded = !isDiagnosticsExpanded }
+                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.background,
-                                border = BorderStroke(1.dp, financialPalette.cardBorder)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text(
-                                        text = stringResource(R.string.server_status_db_candles),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    val candleStr = systemStatus?.totalCandles?.let { if (it > 0) it.toString() else "5,000+" } ?: "5,000+"
-                                    Text(
-                                        text = candleStr,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        fontWeight = FontWeight.Bold,
-                                        fontFamily = JetBrainsMonoFontFamily,
-                                        color = financialPalette.bullCandle
-                                    )
-                                }
-                            }
+                            Text(
+                                text = stringResource(R.string.settings_technical_accordion),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            Icon(
+                                imageVector = if (isDiagnosticsExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.size(16.dp)
+                            )
+                        }
 
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.background,
-                                border = BorderStroke(1.dp, financialPalette.cardBorder)
+                        if (isDiagnosticsExpanded) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text(
-                                        text = stringResource(R.string.server_status_server_utc),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    val utcStr = systemStatus?.serverTimeUtc?.takeIf { it.isNotBlank() }?.let {
-                                        if (it.length >= 19) it.substring(11, 19) + " UTC" else it
-                                    } ?: "UTC Connected"
-                                    Text(
-                                        text = utcStr,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontFamily = JetBrainsMonoFontFamily,
-                                        color = MaterialTheme.colorScheme.onSurface
-                                    )
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.background,
+                                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.server_status_db_candles),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        val candleStr = systemStatus?.totalCandles?.let { if (it > 0) it.toString() else "5,000+" } ?: "5,000+"
+                                        Text(
+                                            text = candleStr,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = financialPalette.bullCandle
+                                        )
+                                    }
                                 }
-                            }
 
-                            Surface(
-                                modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(6.dp),
-                                color = MaterialTheme.colorScheme.background,
-                                border = BorderStroke(1.dp, financialPalette.cardBorder)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    Text(
-                                        text = stringResource(R.string.server_status_cloud_sync),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    val syncStr = lastWorkspaceSyncedAt ?: stringResource(R.string.server_status_local_synced)
-                                    Text(
-                                        text = syncStr,
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = FontWeight.SemiBold,
-                                        fontFamily = JetBrainsMonoFontFamily,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.background,
+                                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.server_status_server_utc),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        val utcStr = systemStatus?.serverTimeUtc?.takeIf { it.isNotBlank() }?.let {
+                                            if (it.length >= 19) it.substring(11, 19) + " UTC" else it
+                                        } ?: "UTC Connected"
+                                        Text(
+                                            text = utcStr,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.background,
+                                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(
+                                            text = stringResource(R.string.server_status_cloud_sync),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        val syncStr = lastWorkspaceSyncedAt ?: stringResource(R.string.server_status_local_synced)
+                                        Text(
+                                            text = syncStr,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
                             }
                         }
@@ -1552,6 +1737,8 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
@@ -1613,6 +1800,8 @@ fun SettingsScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -1871,5 +2060,19 @@ private fun TradingViewSwitchRow(
             onCheckedChange = onCheckedChange,
             modifier = Modifier.testTag(testTag)
         )
+    }
+}
+
+private fun matchesSettingsMarketCategory(symbolCode: String, category: String): Boolean {
+    if (category == "ALL") return true
+    val code = symbolCode.trim().uppercase()
+    return when (category) {
+        "METALS" -> code in setOf("XAUUSD", "XAGUSD") || code.contains("XAU") || code.contains("XAG")
+        "ENERGY" -> code in setOf("SPOTBRENT", "BRENT_FUTURES", "USOIL") || code.contains("BRENT") || code.contains("OIL") || code.contains("WTI")
+        "CRYPTO" -> code in setOf("BTCUSD", "ETHUSD") || code.contains("BTC") || code.contains("ETH")
+        "INDICES" -> code in setOf("SPX500USD", "NDQ") || code.contains("SPX") || code.contains("NDQ") || code.contains("NAS")
+        "STOCKS" -> code in setOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN")
+        "FX" -> code in setOf("EURUSD", "GBPUSD", "USDJPY") || code.contains("EUR") || code.contains("GBP") || code.contains("JPY")
+        else -> true
     }
 }

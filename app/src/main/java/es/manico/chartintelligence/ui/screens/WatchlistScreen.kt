@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,11 +27,14 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
+import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -63,8 +67,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.LocalClipboardManager
@@ -73,11 +76,15 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
+import es.manico.chartintelligence.data.model.AssetClass
+import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartPreferences
+import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.ui.components.AssetSymbolBadge
@@ -85,24 +92,17 @@ import es.manico.chartintelligence.ui.components.WatchlistRowCard
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 import java.math.BigDecimal
-import java.math.RoundingMode
+import kotlin.math.abs
 import kotlin.math.cos
+import kotlin.math.roundToInt
 import kotlin.math.sin
 
-/**
- * Mandatory Watchlist Screen Structure (with P1-UPG-6 Symbol Overview & P1-UPG-7 Gestures/48dp Audit):
- * [1] Safe Area / Status Bar Inset (handled by parent Scaffold)
- * [2] Compact Header (48.dp): Left = Watchlist Title, Right = '+' Button (48.dp touch target)
- * [3] Search Bar + Category Filter Chips (All | Metals | Energy | FX)
- * [4] Symbol List: Vertical-only LazyColumn with Pull-to-Refresh and Swipe-to-Remove
- * [5] Full P1-UPG-6 Symbol Overview Sheet (Mini-Chart, 4 Tabs, Flash News, Key Data + Day Range Bar,
- *     Seasonals, Technicals Speedometer Gauge, Analyst Rating & 1Y Target Gauge, Financials, Dividends, Profile)
- */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun WatchlistScreen(
     watchlistSymbols: List<SymbolConfig>,
     allSymbols: List<SymbolConfig> = watchlistSymbols,
+    openTabs: List<ChartTabState> = emptyList(),
     isSyncingAll: Boolean,
     statusBannerResId: Int?,
     preferences: ChartPreferences = ChartPreferences(),
@@ -126,7 +126,6 @@ fun WatchlistScreen(
     var overviewSymbolCode by rememberSaveable { mutableStateOf<String?>(null) }
     var overviewSubTab by rememberSaveable { mutableStateOf("OVERVIEW") }
     var overviewRange by rememberSaveable { mutableStateOf("5D") }
-    var financialPeriodMode by rememberSaveable { mutableStateOf("ANNUAL") }
 
     val filteredWatchlist = watchlistSymbols.filter { sym ->
         val code = sym.symbolCode.uppercase()
@@ -157,62 +156,89 @@ fun WatchlistScreen(
                 .fillMaxSize()
                 .widthIn(max = 640.dp)
         ) {
-            // [2] Compact 48.dp Header: Left = Watchlist Title, Right = '+' Button (48.dp touch target per P1-UPG-7)
-            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+            // [2] Compact Single-Row 52.dp Header: Title + Inline Compact Search Input + '+' Button (48.dp)
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = 52.dp)
+                    .background(MaterialTheme.colorScheme.surface)
+                    .padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Text(
+                    text = stringResource(R.string.nav_watchlist),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    maxLines = 1,
+                    softWrap = false
+                )
+
                 Row(
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .height(48.dp)
-                        .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .weight(1f)
+                        .height(36.dp)
+                        .clip(RoundedCornerShape(8.dp))
+                        .background(MaterialTheme.colorScheme.background)
+                        .border(1.dp, financialPalette.cardBorder, RoundedCornerShape(8.dp))
+                        .padding(horizontal = 8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    Text(
-                        text = stringResource(R.string.nav_watchlist),
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
+                    Icon(
+                        imageVector = Icons.Outlined.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(16.dp)
                     )
-
-                    IconButton(
-                        onClick = { showAddSymbolSheet = true },
-                        modifier = Modifier
-                            .size(48.dp)
-                            .testTag("watchlist_add_symbol_button")
-                    ) {
+                    Box(modifier = Modifier.weight(1f)) {
+                        if (searchQuery.isEmpty()) {
+                            Text(
+                                text = stringResource(R.string.watchlist_search_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                        BasicTextField(
+                            value = searchQuery,
+                            onValueChange = { searchQuery = it },
+                            singleLine = true,
+                            textStyle = MaterialTheme.typography.bodySmall.copy(
+                                color = MaterialTheme.colorScheme.onSurface
+                            ),
+                            cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("watchlist_search_input")
+                        )
+                    }
+                    if (searchQuery.isNotEmpty()) {
                         Icon(
-                            imageVector = Icons.Outlined.Add,
-                            contentDescription = stringResource(R.string.settings_action_add_symbol),
-                            tint = MaterialTheme.colorScheme.onSurface
+                            imageVector = Icons.Outlined.Close,
+                            contentDescription = stringResource(R.string.action_cancel),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier
+                                .size(16.dp)
+                                .clickable { searchQuery = "" }
                         )
                     }
                 }
-            }
 
-            // Watchlist Search Input Bar (100% Parity with Web Watchlist Search)
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .background(MaterialTheme.colorScheme.surface)
-                    .padding(horizontal = 16.dp, vertical = 4.dp)
-            ) {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it },
-                    placeholder = {
-                        Text(
-                            text = stringResource(R.string.watchlist_search_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    singleLine = true,
-                    shape = RoundedCornerShape(8.dp),
+                IconButton(
+                    onClick = { showAddSymbolSheet = true },
                     modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("watchlist_search_input")
-                )
+                        .size(48.dp)
+                        .testTag("watchlist_add_symbol_button")
+                ) {
+                    Icon(
+                        imageVector = Icons.Outlined.Add,
+                        contentDescription = stringResource(R.string.settings_action_add_symbol),
+                        tint = MaterialTheme.colorScheme.onSurface
+                    )
+                }
             }
 
             // Category Filter Chips Row (All | Metals | Energy | FX)
@@ -359,7 +385,7 @@ fun WatchlistScreen(
         }
     }
 
-    // Full P1-UPG-6 TradingView Symbol Overview BottomSheet (All 10 Analytical Cards + 4 Sub-tabs)
+    // Honest Real-Data Symbol Overview BottomSheet (No fake seasonals / no fake SEC filings on non-stocks)
     val overviewSymbol = allSymbols.firstOrNull { it.symbolCode == overviewSymbolCode }
     if (overviewSymbol != null) {
         val overviewSheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -369,25 +395,40 @@ fun WatchlistScreen(
             containerColor = MaterialTheme.colorScheme.surface,
             contentColor = MaterialTheme.colorScheme.onSurface
         ) {
-            val lastClose = overviewSymbol.lastClose ?: BigDecimal("100.00")
-            val prevClose = overviewSymbol.prevClose ?: lastClose
+            val matchingTab = openTabs.firstOrNull { it.symbolCode == overviewSymbol.symbolCode }
+            val loadedCandles = matchingTab?.candles ?: emptyList()
+            val slicedCandles = when (overviewRange) {
+                "1D" -> loadedCandles.takeLast(48)
+                "5D" -> loadedCandles.takeLast(96)
+                "1M" -> loadedCandles.takeLast(160)
+                "3M" -> loadedCandles.takeLast(240)
+                else -> loadedCandles.takeLast(400)
+            }
+
+            val lastClose = loadedCandles.lastOrNull()?.close ?: overviewSymbol.lastClose ?: BigDecimal.ZERO
+            val prevClose = overviewSymbol.prevClose
+                ?: loadedCandles.getOrNull(loadedCandles.size - 2)?.close
+                ?: lastClose
             val isBull = lastClose >= prevClose
             val accentColor = if (isBull) preferences.bullCandleColor else preferences.bearCandleColor
             val diffStr = PriceFormatterAlgorithm.formatSignedPriceDiff(prevClose, lastClose, overviewSymbol.decimals)
             val pctStr = PriceFormatterAlgorithm.formatSignedPercentChange(prevClose, lastClose)
-            val lowEst = lastClose.multiply(BigDecimal("0.992"))
-            val highEst = lastClose.multiply(BigDecimal("1.008"))
-            val rangeSpan = (highEst - lowEst).toFloat().coerceAtLeast(0.0001f)
-            val dayPosRatio = ((lastClose - lowEst).toFloat() / rangeSpan).coerceIn(0.08f, 0.92f)
-            val target1Y = lastClose.multiply(BigDecimal(if (isBull) "1.148" else "1.092")).setScale(overviewSymbol.decimals, RoundingMode.HALF_UP)
-            val targetPctStr = if (isBull) "+14.80%" else "+9.20%"
 
+            val metrics = computeOverviewRealMetrics(slicedCandles, lastClose, prevClose)
             val profileMeta = getInstrumentProfileMeta(overviewSymbol.symbolCode, overviewSymbol.activeProvider.badgeLabel)
+            val specsTitleRes = when (overviewSymbol.assetClass) {
+                AssetClass.COMMODITIES -> R.string.overview_contract_specs
+                AssetClass.CRYPTO -> R.string.overview_crypto_metrics
+                AssetClass.INDICES -> R.string.overview_index_metrics
+                AssetClass.FX -> R.string.overview_fx_metrics
+                AssetClass.STOCKS -> R.string.overview_stock_metrics
+            }
 
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 8.dp)
                     .testTag("symbol_overview_sheet"),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -400,6 +441,7 @@ fun WatchlistScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Row(
+                            modifier = Modifier.weight(1f),
                             verticalAlignment = Alignment.CenterVertically,
                             horizontalArrangement = Arrangement.spacedBy(10.dp)
                         ) {
@@ -407,47 +449,60 @@ fun WatchlistScreen(
                                 symbolCode = overviewSymbol.symbolCode,
                                 sizeDp = 38.dp
                             )
-                            Column {
+                            Column(modifier = Modifier.weight(1f)) {
                                 Row(
                                     verticalAlignment = Alignment.CenterVertically,
                                     horizontalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
                                         text = PriceFormatterAlgorithm.formatPrice(lastClose, overviewSymbol.decimals),
-                                        style = MaterialTheme.typography.headlineSmall,
+                                        style = MaterialTheme.typography.titleLarge,
                                         fontFamily = JetBrainsMonoFontFamily,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        maxLines = 1
                                     )
                                     Text(
                                         text = "$diffStr ($pctStr)",
-                                        style = MaterialTheme.typography.bodyMedium,
+                                        style = MaterialTheme.typography.labelLarge,
                                         fontFamily = JetBrainsMonoFontFamily,
                                         fontWeight = FontWeight.Bold,
-                                        color = accentColor
+                                        color = accentColor,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 Text(
                                     text = "${overviewSymbol.symbolCode} • ${overviewSymbol.activeProvider.badgeLabel} • USD",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = JetBrainsMonoFontFamily,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
                                 )
                             }
                         }
+
+                        Spacer(modifier = Modifier.width(8.dp))
 
                         Button(
                             onClick = {
                                 overviewSymbolCode = null
                                 onOpenSymbolInChartTab(overviewSymbol)
                             },
-                            modifier = Modifier.testTag("symbol_overview_open_full_chart_button")
+                            modifier = Modifier
+                                .heightIn(min = 40.dp)
+                                .testTag("symbol_overview_open_full_chart_button")
                         ) {
-                            Text("⛶ ${stringResource(R.string.symbol_overview_open_chart)}")
+                            Text(
+                                text = "⛶ ${stringResource(R.string.symbol_overview_open_chart)}",
+                                maxLines = 1,
+                                softWrap = false
+                            )
                         }
                     }
                 }
 
-                // [1b] 4 Sub-Tabs: Overview | News | Minds | Ideas (Per P1-UPG-6 Section 10.7.1)
+                // [1b] 4 Sub-Tabs: Overview | News | Minds | Ideas (True Tab Switching)
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -490,688 +545,472 @@ fun WatchlistScreen(
                     }
                 }
 
-                // Mini-Chart with Previous Close Line & Range Selector Chips (1D..All)
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                    border = BorderStroke(1.dp, financialPalette.cardBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Canvas(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(105.dp)
+                when (overviewSubTab) {
+                    "OVERVIEW" -> {
+                        // Mini-Chart Card (Renders Real Candles when loaded, Honest Empty Card otherwise)
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                            border = BorderStroke(1.dp, financialPalette.cardBorder)
                         ) {
-                            val w = size.width
-                            val h = size.height
-                            val prevY = h * 0.54f
-                            drawLine(
-                                color = Color(0xFF787B86),
-                                start = Offset(0f, prevY),
-                                end = Offset(w, prevY),
-                                strokeWidth = 2f,
-                                pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 8f), 0f)
-                            )
-                            val sampleOffsets = when (overviewRange) {
-                                "1D" -> listOf(0.62f, 0.58f, 0.64f, 0.52f, 0.48f, 0.51f, 0.44f, 0.39f, 0.42f, 0.34f, 0.36f, 0.28f)
-                                "1M", "3M" -> listOf(0.74f, 0.68f, 0.71f, 0.60f, 0.54f, 0.58f, 0.46f, 0.49f, 0.38f, 0.41f, 0.30f, 0.25f)
-                                else -> listOf(0.68f, 0.64f, 0.59f, 0.63f, 0.55f, 0.49f, 0.53f, 0.43f, 0.46f, 0.37f, 0.33f, 0.27f)
-                            }
-                            val slotW = w / sampleOffsets.size
-                            sampleOffsets.forEachIndexed { idx, ratio ->
-                                val cx = (idx + 0.5f) * slotW
-                                val cy = h * (if (isBull) ratio else (1f - ratio))
-                                val openY = h * (if (isBull) (ratio + 0.05f) else (1f - ratio - 0.05f))
-                                val wickTop = minOf(cy, openY) - 8f
-                                val wickBot = maxOf(cy, openY) + 8f
-                                val candleCol = if (idx % 3 == 1) preferences.bearCandleColor else accentColor
-                                drawLine(
-                                    color = candleCol,
-                                    start = Offset(cx, wickTop.coerceAtLeast(4f)),
-                                    end = Offset(cx, wickBot.coerceAtMost(h - 4f)),
-                                    strokeWidth = 2.5f
-                                )
-                                drawRect(
-                                    color = candleCol,
-                                    topLeft = Offset(cx - slotW * 0.28f, minOf(cy, openY)),
-                                    size = Size(slotW * 0.56f, kotlin.math.abs(cy - openY).coerceAtLeast(5f))
-                                )
-                            }
-                        }
-
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            Column(
+                                modifier = Modifier.padding(12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                val ranges = listOf("1D", "5D", "1M", "3M", "YTD", "1Y", "5Y", "All")
-                                for (r in ranges) {
-                                    val selected = overviewRange == r
-                                    Box(
+                                if (slicedCandles.size >= 2) {
+                                    Canvas(
                                         modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(
-                                                if (selected) MaterialTheme.colorScheme.primary
-                                                else Color.Transparent
-                                            )
-                                            .clickable { overviewRange = r }
-                                            .padding(horizontal = 9.dp, vertical = 4.dp)
-                                            .testTag("symbol_overview_range_$r")
+                                            .fillMaxWidth()
+                                            .height(110.dp)
                                     ) {
-                                        Text(
-                                            text = r,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            fontWeight = FontWeight.Bold,
-                                            color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        val w = size.width
+                                        val h = size.height
+                                        val displayBars = slicedCandles.takeLast(40)
+                                        val maxHi = displayBars.maxOf { it.high.toDouble() }
+                                        val minLo = displayBars.minOf { it.low.toDouble() }
+                                        val span = (maxHi - minLo).coerceAtLeast(1e-6)
+                                        fun priceToY(p: Double): Float {
+                                            return (h * 0.08f) + (((maxHi - p) / span).toFloat() * (h * 0.84f))
+                                        }
+                                        val slotW = w / displayBars.size.toFloat()
+                                        val bodyW = (slotW * 0.6f).coerceIn(2f, 10f)
+                                        displayBars.forEachIndexed { idx, bar ->
+                                            val cx = (idx + 0.5f) * slotW
+                                            val openY = priceToY(bar.open.toDouble())
+                                            val closeY = priceToY(bar.close.toDouble())
+                                            val highY = priceToY(bar.high.toDouble())
+                                            val lowY = priceToY(bar.low.toDouble())
+                                            val col = if (bar.close >= bar.open) preferences.bullCandleColor else preferences.bearCandleColor
+                                            drawLine(
+                                                color = col,
+                                                start = Offset(cx, highY),
+                                                end = Offset(cx, lowY),
+                                                strokeWidth = 2f
+                                            )
+                                            drawRect(
+                                                color = col,
+                                                topLeft = Offset(cx - bodyW / 2f, minOf(openY, closeY)),
+                                                size = Size(bodyW, abs(closeY - openY).coerceAtLeast(2.5f))
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.overview_no_candles),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                        modifier = Modifier.padding(vertical = 12.dp)
+                                    )
+                                }
+
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        val ranges = listOf("1D", "5D", "1M", "3M", "YTD", "1Y", "5Y", "All")
+                                        for (r in ranges) {
+                                            val selected = overviewRange == r
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(6.dp))
+                                                    .background(
+                                                        if (selected) MaterialTheme.colorScheme.primary
+                                                        else Color.Transparent
+                                                    )
+                                                    .clickable { overviewRange = r }
+                                                    .padding(horizontal = 9.dp, vertical = 4.dp)
+                                                    .testTag("symbol_overview_range_$r")
+                                            ) {
+                                                Text(
+                                                    text = r,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                }
 
-                // [2] Flash News Banner (P1-UPG-6 Item 2)
-                Surface(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { overviewSubTab = "NEWS" }
-                        .testTag("symbol_overview_flash_news_banner"),
-                    shape = RoundedCornerShape(10.dp),
-                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
-                ) {
-                    Row(
-                        modifier = Modifier.padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Box(
+                        // Flash Brief Banner -> Switches directly to News tab
+                        Surface(
                             modifier = Modifier
-                                .size(28.dp)
-                                .clip(CircleShape)
-                                .background(Color(0xFFF59E0B).copy(alpha = 0.2f)),
-                            contentAlignment = Alignment.Center
+                                .fillMaxWidth()
+                                .clickable { overviewSubTab = "NEWS" }
+                                .testTag("symbol_overview_flash_news_banner"),
+                            shape = RoundedCornerShape(10.dp),
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f))
                         ) {
-                            Text(
-                                text = "⚡",
-                                style = MaterialTheme.typography.bodyMedium
-                            )
-                        }
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "${overviewSymbol.symbolCode} • ${stringResource(R.string.symbol_overview_flash_news_title)}",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = stringResource(R.string.symbol_overview_flash_news_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                if (overviewSubTab == "NEWS" || overviewSubTab == "MINDS" || overviewSubTab == "IDEAS") {
-                    Card(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                        border = BorderStroke(1.dp, financialPalette.cardBorder)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(10.dp)
-                        ) {
-                            Text(
-                                text = "${overviewSymbol.symbolCode} — $overviewSubTab",
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            OverviewDataRow(
-                                label = "UTC Anchor Status",
-                                value = "00:00:00 UTC Verified"
-                            )
-                            OverviewDataRow(
-                                label = "Active Feed Channel",
-                                value = overviewSymbol.activeProvider.badgeLabel
-                            )
-                            OverviewDataRow(
-                                label = "Stored Closed Bars",
-                                value = "${overviewSymbol.storedCandleCount} bars"
-                            )
-                            Text(
-                                text = stringResource(R.string.symbol_overview_flash_news_desc),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                    }
-                }
-
-                // [3] Key data points Card with Horizontal Day's Range Slider Bar (P1-UPG-6 Item 3)
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                    border = BorderStroke(1.dp, financialPalette.cardBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.symbol_overview_key_data),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_volume),
-                            value = "${overviewSymbol.storedCandleCount} bars"
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_prev_close),
-                            value = "${PriceFormatterAlgorithm.formatPrice(prevClose, overviewSymbol.decimals)} USD"
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_open),
-                            value = "${PriceFormatterAlgorithm.formatPrice(prevClose, overviewSymbol.decimals)} USD"
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_days_range),
-                            value = "${PriceFormatterAlgorithm.formatPrice(lowEst, overviewSymbol.decimals)} — ${PriceFormatterAlgorithm.formatPrice(highEst, overviewSymbol.decimals)} USD"
-                        )
-
-                        // Visual Horizontal Day's Range Slider Bar
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                            Row(
+                                modifier = Modifier.padding(12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
                                 Box(
                                     modifier = Modifier
-                                        .fillMaxWidth()
-                                        .height(6.dp)
-                                        .clip(RoundedCornerShape(3.dp))
-                                        .background(financialPalette.cardBorder)
+                                        .size(28.dp)
+                                        .clip(CircleShape)
+                                        .background(Color(0xFFF59E0B).copy(alpha = 0.2f)),
+                                    contentAlignment = Alignment.Center
                                 ) {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxWidth(fraction = dayPosRatio)
-                                            .height(6.dp)
-                                            .clip(RoundedCornerShape(3.dp))
-                                            .background(accentColor)
-                                    )
+                                    Text(text = "⚡", style = MaterialTheme.typography.bodyMedium)
                                 }
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
-                                        text = "L: ${PriceFormatterAlgorithm.formatPrice(lowEst, overviewSymbol.decimals)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontFamily = JetBrainsMonoFontFamily,
-                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        text = "${overviewSymbol.symbolCode} • ${stringResource(R.string.symbol_overview_flash_news_title)}",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface
                                     )
                                     Text(
-                                        text = "H: ${PriceFormatterAlgorithm.formatPrice(highEst, overviewSymbol.decimals)}",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontFamily = JetBrainsMonoFontFamily,
+                                        text = stringResource(R.string.symbol_overview_flash_news_desc),
+                                        style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
                             }
                         }
-                    }
-                }
 
-                // [4] Seasonals Card (2026 / 2025 / 2024 Multi-Line Chart — P1-UPG-6 Item 4)
-                Card(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                    border = BorderStroke(1.dp, financialPalette.cardBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.symbol_overview_seasonals),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Canvas(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(100.dp)
-                        ) {
-                            val w = size.width
-                            val h = size.height
-                            val pts2026 = listOf(0.75f, 0.68f, 0.35f, 0.58f, 0.25f, 0.48f, 0.22f, 0.38f)
-                            val pts2025 = listOf(0.82f, 0.78f, 0.72f, 0.80f, 0.68f, 0.74f, 0.64f, 0.60f)
-                            val pts2024 = listOf(0.88f, 0.84f, 0.79f, 0.85f, 0.80f, 0.86f, 0.77f, 0.81f)
-
-                            fun drawSeasonalLine(pts: List<Float>, color: Color, strokeW: Float) {
-                                val path = Path()
-                                pts.forEachIndexed { idx, r ->
-                                    val x = w * (idx.toFloat() / (pts.size - 1).toFloat())
-                                    val y = h * r
-                                    if (idx == 0) path.moveTo(x, y) else path.lineTo(x, y)
-                                }
-                                drawPath(path = path, color = color, style = Stroke(width = strokeW))
-                            }
-                            drawSeasonalLine(pts2024, Color(0xFFF59E0B), 3f)
-                            drawSeasonalLine(pts2025, Color(0xFF26A69A), 3f)
-                            drawSeasonalLine(pts2026, Color(0xFF2962FF), 5f)
-                            drawCircle(
-                                color = Color(0xFF2962FF),
-                                radius = 7f,
-                                center = Offset(w, h * pts2026.last())
-                            )
-                        }
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text("Jan", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Apr", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Jul", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                                Text("Oct", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly
-                            ) {
-                                Text("● 2026 (+18.4%)", color = Color(0xFF2962FF), fontFamily = JetBrainsMonoFontFamily, style = MaterialTheme.typography.labelSmall)
-                                Text("● 2025 (+11.2%)", color = Color(0xFF26A69A), fontFamily = JetBrainsMonoFontFamily, style = MaterialTheme.typography.labelSmall)
-                                Text("● 2024 (+6.8%)", color = Color(0xFFF59E0B), fontFamily = JetBrainsMonoFontFamily, style = MaterialTheme.typography.labelSmall)
-                            }
-                        }
-                    }
-                }
-
-                // [5] Technicals Speedometer Gauge & [6] Analyst Rating / 1Y Target Gauge (P1-UPG-6 Items 7 & 8)
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(10.dp)
-                ) {
-                    // Technicals Speedometer Card
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("symbol_overview_technicals_card"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                        border = BorderStroke(1.dp, financialPalette.cardBorder)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.symbol_overview_technicals_title),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            SpeedometerGaugeCanvas(
-                                needleRatio = if (isBull) 0.78f else 0.26f,
-                                accentColor = accentColor
-                            )
-                            Text(
-                                text = stringResource(
-                                    if (isBull) R.string.symbol_overview_gauge_buy
-                                    else R.string.symbol_overview_gauge_sell
-                                ),
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.ExtraBold,
-                                color = accentColor
-                            )
-                        }
-                    }
-
-                    // Analyst Rating & 1Y Price Target Card
-                    Card(
-                        modifier = Modifier
-                            .weight(1f)
-                            .testTag("symbol_overview_analyst_card"),
-                        shape = RoundedCornerShape(10.dp),
-                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                        border = BorderStroke(1.dp, financialPalette.cardBorder)
-                    ) {
-                        Column(
-                            modifier = Modifier.padding(12.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally,
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
-                        ) {
-                            Text(
-                                text = stringResource(R.string.symbol_overview_analyst_title),
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                            SpeedometerGaugeCanvas(
-                                needleRatio = 0.84f,
-                                accentColor = Color(0xFF26A69A)
-                            )
-                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                Text(
-                                    text = "${PriceFormatterAlgorithm.formatPrice(target1Y, overviewSymbol.decimals)} ($targetPctStr)",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    color = Color(0xFF26A69A)
-                                )
-                            }
-                            TextButton(
-                                onClick = {
-                                    overviewSymbolCode = null
-                                    onNavigateToPrediction()
-                                },
-                                contentPadding = PaddingValues(horizontal = 6.dp, vertical = 0.dp),
-                                modifier = Modifier
-                                    .height(28.dp)
-                                    .testTag("symbol_overview_see_forecast_button")
-                            ) {
-                                Text(
-                                    text = stringResource(R.string.symbol_overview_see_forecast),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary
-                                )
-                            }
-                        }
-                    }
-                }
-
-                // [7] Financials: Income Statement & Net Margin % Card + Dividends & Yield (P1-UPG-6 Items 5 & 6)
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("symbol_overview_financials_card"),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                    border = BorderStroke(1.dp, financialPalette.cardBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Row(
+                        // Key Data Points + Genuine Period Range
+                        Card(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                            border = BorderStroke(1.dp, financialPalette.cardBorder)
                         ) {
-                            Text(
-                                text = stringResource(R.string.symbol_overview_financials_title),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                listOf(
-                                    "ANNUAL" to stringResource(R.string.symbol_overview_fin_annual),
-                                    "QUARTERLY" to stringResource(R.string.symbol_overview_fin_quarterly)
-                                ).forEach { (modeKey, modeLabel) ->
-                                    val active = financialPeriodMode == modeKey
-                                    Box(
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(6.dp))
-                                            .background(
-                                                if (active) MaterialTheme.colorScheme.primary
-                                                else MaterialTheme.colorScheme.surface
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.symbol_overview_key_data),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                OverviewDataRow(
+                                    label = stringResource(R.string.symbol_overview_volume),
+                                    value = "${loadedCandles.size.coerceAtLeast(overviewSymbol.storedCandleCount)} bars"
+                                )
+                                OverviewDataRow(
+                                    label = stringResource(R.string.symbol_overview_prev_close),
+                                    value = "${PriceFormatterAlgorithm.formatPrice(prevClose, overviewSymbol.decimals)} USD"
+                                )
+                                OverviewDataRow(
+                                    label = stringResource(R.string.symbol_overview_days_range),
+                                    value = "${PriceFormatterAlgorithm.formatPrice(metrics.rangeLow, overviewSymbol.decimals)} — ${PriceFormatterAlgorithm.formatPrice(metrics.rangeHigh, overviewSymbol.decimals)} USD"
+                                )
+
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(6.dp)
+                                                .clip(RoundedCornerShape(3.dp))
+                                                .background(financialPalette.cardBorder)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .fillMaxWidth(fraction = metrics.rangePositionRatio)
+                                                    .height(6.dp)
+                                                    .clip(RoundedCornerShape(3.dp))
+                                                    .background(accentColor)
                                             )
-                                            .clickable { financialPeriodMode = modeKey }
-                                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                                    ) {
-                                        Text(
-                                            text = modeLabel,
-                                            style = MaterialTheme.typography.labelSmall,
-                                            color = if (active) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
+                                        }
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "L: ${PriceFormatterAlgorithm.formatPrice(metrics.rangeLow, overviewSymbol.decimals)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = "H: ${PriceFormatterAlgorithm.formatPrice(metrics.rangeHigh, overviewSymbol.decimals)}",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
                                     }
                                 }
                             }
                         }
 
-                        Canvas(
+                        // Real Candle Technicals Speedometer (Strictly derived from loaded candles)
+                        Card(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .height(84.dp)
+                                .testTag("symbol_overview_technicals_card"),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                            border = BorderStroke(1.dp, financialPalette.cardBorder)
                         ) {
-                            val w = size.width
-                            val h = size.height
-                            val revBars = if (financialPeriodMode == "ANNUAL") {
-                                listOf(0.52f, 0.64f, 0.72f, 0.85f, 0.94f)
-                            } else {
-                                listOf(0.60f, 0.68f, 0.74f, 0.82f, 0.90f)
-                            }
-                            val netBars = if (financialPeriodMode == "ANNUAL") {
-                                listOf(0.28f, 0.34f, 0.41f, 0.50f, 0.58f)
-                            } else {
-                                listOf(0.32f, 0.36f, 0.42f, 0.48f, 0.55f)
-                            }
-                            val slotW = w / revBars.size
-                            val marginPath = Path()
-                            revBars.forEachIndexed { idx, revRatio ->
-                                val cx = (idx + 0.5f) * slotW
-                                val revH = h * revRatio
-                                val netH = h * netBars[idx]
-                                drawRect(
-                                    color = Color(0xFF2962FF),
-                                    topLeft = Offset(cx - 14f, h - revH),
-                                    size = Size(12f, revH)
-                                )
-                                drawRect(
-                                    color = Color(0xFF06B6D4),
-                                    topLeft = Offset(cx + 2f, h - netH),
-                                    size = Size(12f, netH)
-                                )
-                                val my = h * (1f - (netBars[idx] / revRatio) * 0.9f)
-                                if (idx == 0) marginPath.moveTo(cx, my) else marginPath.lineTo(cx, my)
-                            }
-                            drawPath(
-                                path = marginPath,
-                                color = Color(0xFFF59E0B),
-                                style = Stroke(width = 3.5f)
-                            )
-                        }
-
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceEvenly
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
-                                Text("■ ${stringResource(R.string.symbol_overview_fin_revenue)}", color = Color(0xFF2962FF), style = MaterialTheme.typography.labelSmall)
-                                Text("■ ${stringResource(R.string.symbol_overview_fin_net_income)}", color = Color(0xFF06B6D4), style = MaterialTheme.typography.labelSmall)
-                                Text("● ${stringResource(R.string.symbol_overview_fin_net_margin)}", color = Color(0xFFF59E0B), style = MaterialTheme.typography.labelSmall)
+                                Text(
+                                    text = stringResource(R.string.overview_technicals_title),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (metrics.hasRealCandles) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(
+                                            horizontalAlignment = Alignment.CenterHorizontally,
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            SpeedometerGaugeCanvas(
+                                                needleRatio = metrics.needleRatio,
+                                                accentColor = accentColor
+                                            )
+                                            Text(
+                                                text = stringResource(
+                                                    when {
+                                                        metrics.needleRatio >= 0.62f -> R.string.symbol_overview_gauge_buy
+                                                        metrics.needleRatio <= 0.38f -> R.string.symbol_overview_gauge_sell
+                                                        else -> R.string.symbol_overview_gauge_neutral
+                                                    }
+                                                ),
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.ExtraBold,
+                                                color = accentColor
+                                            )
+                                        }
+                                        Column(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(start = 12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            OverviewDataRow(
+                                                label = "RSI (14)",
+                                                value = metrics.rsi14?.let { String.format(java.util.Locale.US, "%.1f", it) } ?: "—"
+                                            )
+                                            OverviewDataRow(
+                                                label = "SMA (20)",
+                                                value = metrics.sma20?.let { PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(it), overviewSymbol.decimals) } ?: "—"
+                                            )
+                                            OverviewDataRow(
+                                                label = "SMA (50)",
+                                                value = metrics.sma50?.let { PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(it), overviewSymbol.decimals) } ?: "—"
+                                            )
+                                            OverviewDataRow(
+                                                label = "ATR (14)",
+                                                value = metrics.atr14?.let { PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(it), overviewSymbol.decimals) } ?: "—"
+                                            )
+                                        }
+                                    }
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.overview_no_candles),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
                             }
                         }
 
-                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
-
-                        Text(
-                            text = stringResource(R.string.symbol_overview_dividends_title),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_div_payout),
-                            value = profileMeta.payoutRatio
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_div_yield),
-                            value = profileMeta.yieldTtm
-                        )
+                        // Asset-Class-Specific Specifications & Profile (Zero fake SEC/Earnings on Commodities/Crypto/FX)
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("symbol_overview_about_card"),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                            border = BorderStroke(1.dp, financialPalette.cardBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(specsTitleRes),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                OverviewDataRow(
+                                    label = stringResource(R.string.symbol_overview_about_sector),
+                                    value = profileMeta.sector
+                                )
+                                OverviewDataRow(
+                                    label = stringResource(R.string.symbol_overview_about_industry),
+                                    value = profileMeta.industry
+                                )
+                                OverviewDataRow(
+                                    label = stringResource(R.string.symbol_overview_about_benchmark),
+                                    value = profileMeta.benchmark
+                                )
+                                OverviewDataRow(
+                                    label = stringResource(R.string.symbol_overview_emp_count),
+                                    value = profileMeta.activeVenues
+                                )
+                                OverviewCopyableRow(
+                                    label = stringResource(R.string.symbol_overview_about_figi),
+                                    value = profileMeta.figi,
+                                    onCopy = { clipboardManager.setText(AnnotatedString(profileMeta.figi)) }
+                                )
+                                OverviewCopyableRow(
+                                    label = stringResource(R.string.symbol_overview_about_isin),
+                                    value = profileMeta.isin,
+                                    onCopy = { clipboardManager.setText(AnnotatedString(profileMeta.isin)) }
+                                )
+                            }
+                        }
                     }
-                }
 
-                // [8] Key Productivity & [9] About / Instrument Profile Card with Copyable Identifiers (P1-UPG-6 Items 9 & 10)
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("symbol_overview_about_card"),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                    border = BorderStroke(1.dp, financialPalette.cardBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = stringResource(R.string.symbol_overview_about_title),
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_about_sector),
-                            value = profileMeta.sector
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_about_industry),
-                            value = profileMeta.industry
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_about_benchmark),
-                            value = profileMeta.benchmark
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_emp_count),
-                            value = profileMeta.activeVenues
-                        )
-                        OverviewDataRow(
-                            label = stringResource(R.string.symbol_overview_emp_rev),
-                            value = profileMeta.dailyTurnover
-                        )
-                        OverviewCopyableRow(
-                            label = stringResource(R.string.symbol_overview_about_figi),
-                            value = profileMeta.figi,
-                            onCopy = { clipboardManager.setText(AnnotatedString(profileMeta.figi)) }
-                        )
-                        OverviewCopyableRow(
-                            label = stringResource(R.string.symbol_overview_about_isin),
-                            value = profileMeta.isin,
-                            onCopy = { clipboardManager.setText(AnnotatedString(profileMeta.isin)) }
-                        )
-                        val gfFormula = "=GOOGLEFINANCE(\"${overviewSymbol.symbolCode}\", \"price\")"
-                        OverviewCopyableRow(
-                            label = "فرمول مستقیم Google Sheets",
-                            value = gfFormula,
-                            onCopy = { clipboardManager.setText(AnnotatedString(gfFormula)) }
-                        )
+                    "NEWS" -> {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                            border = BorderStroke(1.dp, financialPalette.cardBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "${overviewSymbol.symbolCode} — ${stringResource(R.string.symbol_overview_tab_news)}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                OverviewDataRow(
+                                    label = "Asset Class",
+                                    value = overviewSymbol.assetClass.name
+                                )
+                                OverviewDataRow(
+                                    label = "Active Feed Channel",
+                                    value = overviewSymbol.activeProvider.badgeLabel
+                                )
+                                OverviewDataRow(
+                                    label = "UTC Anchor Status",
+                                    value = "00:00:00 UTC Verified"
+                                )
+                                OverviewDataRow(
+                                    label = "Price Basis",
+                                    value = overviewSymbol.activeProvider.resolvePriceBasis(overviewSymbol.symbolCode)
+                                )
+                                OverviewDataRow(
+                                    label = "Primary Macro Driver",
+                                    value = profileMeta.macroDrivers
+                                )
+                                OutlinedButton(
+                                    onClick = {
+                                        overviewSymbolCode = null
+                                        onOpenSymbolInChartTab(overviewSymbol)
+                                    },
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Text(stringResource(R.string.symbol_overview_open_chart))
+                                }
+                            }
+                        }
                     }
-                }
 
-                // [10] Smart Conversational Summary ("Why It Moved Today") & Analyst Consensus Card
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("symbol_overview_smart_summary_card"),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                    border = BorderStroke(1.dp, financialPalette.cardBorder)
-                ) {
-                    val moveDirectionFa = if (isBull) "رشد" else "اصلاح"
-                    val summaryText = "در بازهٔ انتخابی ($overviewRange)، نماد ${overviewSymbol.symbolCode} با $moveDirectionFa $pctStr در محدودهٔ ${
-                        PriceFormatterAlgorithm.formatPrice(lowEst, overviewSymbol.decimals)
-                    } تا ${
-                        PriceFormatterAlgorithm.formatPrice(highEst, overviewSymbol.decimals)
-                    } معامله شد. سنتیمنت تکنیکال لحظه‌ای و گردش معاملات (${profileMeta.dailyTurnover}) نشان‌دهندهٔ تمرکز نقدینگی در حوالی قیمت تعادلی ${
-                        PriceFormatterAlgorithm.formatPrice(lastClose, overviewSymbol.decimals)
-                    } است."
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = "خلاصهٔ هوشمند تحلیلی (چرا قیمت تغییر کرد؟ — Google Finance AI Digest)",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = summaryText,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
+                    "MINDS" -> {
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                            border = BorderStroke(1.dp, financialPalette.cardBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "${overviewSymbol.symbolCode} — ${stringResource(R.string.symbol_overview_tab_minds)}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (metrics.hasRealCandles) {
+                                    OverviewDataRow(
+                                        label = "Recent Window Bars",
+                                        value = "${metrics.recentTotalBars} bars (${overviewSymbol.timeframe})"
+                                    )
+                                    OverviewDataRow(
+                                        label = "Bullish vs Bearish Candles",
+                                        value = "${metrics.bullCount} Bull / ${metrics.bearCount} Bear (${metrics.bullPercent}%)"
+                                    )
+                                    OverviewDataRow(
+                                        label = "Period High / Low",
+                                        value = "${PriceFormatterAlgorithm.formatPrice(metrics.rangeHigh, overviewSymbol.decimals)} / ${PriceFormatterAlgorithm.formatPrice(metrics.rangeLow, overviewSymbol.decimals)}"
+                                    )
+                                    OverviewDataRow(
+                                        label = "ATR (14) Volatility",
+                                        value = metrics.atr14?.let { PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(it), overviewSymbol.decimals) } ?: "—"
+                                    )
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.overview_no_candles),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                            }
+                        }
                     }
-                }
 
-                // [11] Earnings Calendar, EPS Surprises & Official SEC EDGAR Filings (10-K / 10-Q / 8-K)
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("symbol_overview_earnings_edgar_card"),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                    border = BorderStroke(1.dp, financialPalette.cardBorder)
-                ) {
-                    val isEquity = overviewSymbol.symbolCode in listOf(
-                        "NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN"
-                    )
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "تقویم گزارش‌های مالی، سورپرایز EPS و اسناد رسمی SEC EDGAR",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OverviewDataRow(
-                            label = "گزارش فصلی بعدی (Next Earnings / Macro Release)",
-                            value = if (isEquity) "Q1 / Q2 Upcoming (Yield: ${profileMeta.yieldTtm})" else "جلسه آتی بانک مرکزی / گزارش هفتگی موجودی"
-                        )
-                        OverviewDataRow(
-                            label = "سورپرایز سود هر سهم (Last EPS Beat / Miss)",
-                            value = if (isBull) "+4.8% Beat vs Consensus" else "-1.4% Inline / Mixed"
-                        )
-                        OverviewDataRow(
-                            label = "آخرین صورت‌های مالی رسمی (SEC EDGAR / Benchmark)",
-                            value = if (isEquity) "Form 10-K (Annual) • Form 10-Q (Quarterly) • Form 8-K" else "Official Benchmark Series (${profileMeta.benchmark})"
-                        )
-                    }
-                }
-
-                // [12] Top Market Movers (Gainers / Losers / Most Active) & Global Regional Indices Snapshot
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("symbol_overview_market_movers_card"),
-                    shape = RoundedCornerShape(10.dp),
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
-                    border = BorderStroke(1.dp, financialPalette.cardBorder)
-                ) {
-                    val topGainer = allSymbols.firstOrNull()?.symbolCode ?: "NVDA"
-                    val mostActive = allSymbols.lastOrNull()?.symbolCode ?: "BTCUSD"
-                    Column(
-                        modifier = Modifier.padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Text(
-                            text = "پرتراکنش‌ترین نمادهای بازار و نمای شاخص‌های منطقه‌ای (Americas / Europe / Asia)",
-                            style = MaterialTheme.typography.titleSmall,
-                            fontWeight = FontWeight.Bold
-                        )
-                        OverviewDataRow(
-                            label = "پیشتازان واچ‌لیست (Top Gainer / Most Active)",
-                            value = "$topGainer • $mostActive"
-                        )
-                        OverviewDataRow(
-                            label = "شاخص‌های آمریکا (Americas)",
-                            value = "S&P 500 (SPX500USD) • Nasdaq 100 (NDQ)"
-                        )
-                        OverviewDataRow(
-                            label = "شاخص‌های اروپا و آسیا (Europe & Asia)",
-                            value = "EUR/USD Benchmark • Brent Sea FOB (SPOTBRENT)"
-                        )
+                    else -> {
+                        // IDEAS tab: Genuine Classic Floor Pivots + Scenario Forecast CTA
+                        Card(
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.background),
+                            border = BorderStroke(1.dp, financialPalette.cardBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                Text(
+                                    text = "${overviewSymbol.symbolCode} — ${stringResource(R.string.symbol_overview_tab_ideas)}",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                if (metrics.hasRealCandles) {
+                                    OverviewDataRow("Resistance 2 (R2)", PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(metrics.r2), overviewSymbol.decimals))
+                                    OverviewDataRow("Resistance 1 (R1)", PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(metrics.r1), overviewSymbol.decimals))
+                                    OverviewDataRow("Central Pivot (P)", PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(metrics.pivot), overviewSymbol.decimals))
+                                    OverviewDataRow("Support 1 (S1)", PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(metrics.s1), overviewSymbol.decimals))
+                                    OverviewDataRow("Support 2 (S2)", PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(metrics.s2), overviewSymbol.decimals))
+                                } else {
+                                    Text(
+                                        text = stringResource(R.string.overview_no_candles),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Button(
+                                    onClick = {
+                                        overviewSymbolCode = null
+                                        onNavigateToPrediction()
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 44.dp)
+                                        .testTag("symbol_overview_see_forecast_button")
+                                ) {
+                                    Text(stringResource(R.string.symbol_overview_see_forecast))
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -1192,6 +1031,8 @@ fun WatchlistScreen(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
@@ -1286,6 +1127,120 @@ fun WatchlistScreen(
     }
 }
 
+private data class OverviewRealMetrics(
+    val hasRealCandles: Boolean,
+    val rangeLow: BigDecimal,
+    val rangeHigh: BigDecimal,
+    val rangePositionRatio: Float,
+    val rsi14: Double?,
+    val sma20: Double?,
+    val sma50: Double?,
+    val atr14: Double?,
+    val recentTotalBars: Int,
+    val bullCount: Int,
+    val bearCount: Int,
+    val bullPercent: Int,
+    val needleRatio: Float,
+    val pivot: Double,
+    val r1: Double,
+    val r2: Double,
+    val s1: Double,
+    val s2: Double
+)
+
+private fun computeOverviewRealMetrics(
+    candles: List<CandleBar>,
+    lastClose: BigDecimal,
+    prevClose: BigDecimal
+): OverviewRealMetrics {
+    if (candles.isEmpty()) {
+        val lo = minOf(lastClose, prevClose)
+        val hi = maxOf(lastClose, prevClose)
+        val p = lastClose.toDouble()
+        return OverviewRealMetrics(
+            hasRealCandles = false,
+            rangeLow = lo,
+            rangeHigh = hi,
+            rangePositionRatio = if (lastClose >= prevClose) 0.72f else 0.28f,
+            rsi14 = null,
+            sma20 = null,
+            sma50 = null,
+            atr14 = null,
+            recentTotalBars = 0,
+            bullCount = 0,
+            bearCount = 0,
+            bullPercent = 50,
+            needleRatio = 0.5f,
+            pivot = p,
+            r1 = p,
+            r2 = p,
+            s1 = p,
+            s2 = p
+        )
+    }
+
+    val rangeLow = candles.minOf { it.low }
+    val rangeHigh = candles.maxOf { it.high }
+    val span = (rangeHigh - rangeLow).toFloat().coerceAtLeast(0.0001f)
+    val posRatio = ((lastClose - rangeLow).toFloat() / span).coerceIn(0.06f, 0.94f)
+
+    val closes = candles.map { it.close.toDouble() }
+    val rsi14 = PriceFormatterAlgorithm.computeRsiValues(closes, 14).lastOrNull()
+    val sma20 = PriceFormatterAlgorithm.computeSmaValues(closes, 20).lastOrNull()
+    val sma50 = PriceFormatterAlgorithm.computeSmaValues(closes, 50).lastOrNull()
+    val atr14 = PriceFormatterAlgorithm.computeAtrValues(candles, 14).lastOrNull()
+
+    val recent = candles.takeLast(24)
+    val bullCount = recent.count { it.close >= it.open }
+    val bearCount = recent.size - bullCount
+    val bullPercent = if (recent.isNotEmpty()) ((bullCount * 100f) / recent.size).roundToInt() else 50
+
+    var score = 0f
+    val lc = lastClose.toDouble()
+    if (sma20 != null) score += if (lc >= sma20) 1f else -1f
+    if (sma50 != null) score += if (lc >= sma50) 1f else -1f
+    if (rsi14 != null) {
+        score += when {
+            rsi14 > 55.0 -> 1f
+            rsi14 < 45.0 -> -1f
+            else -> 0f
+        }
+    }
+    score += if (bullCount >= bearCount) 0.5f else -0.5f
+    val needleRatio = (0.5f + (score / 7.0f)).coerceIn(0.12f, 0.88f)
+
+    val pivotCandle = candles.getOrNull(candles.size - 2) ?: candles.last()
+    val ph = pivotCandle.high.toDouble()
+    val pl = pivotCandle.low.toDouble()
+    val pc = pivotCandle.close.toDouble()
+    val pivot = (ph + pl + pc) / 3.0
+    val r1 = (2.0 * pivot) - pl
+    val s1 = (2.0 * pivot) - ph
+    val r2 = pivot + (ph - pl)
+    val s2 = pivot - (ph - pl)
+
+    return OverviewRealMetrics(
+        hasRealCandles = true,
+        rangeLow = rangeLow,
+        rangeHigh = rangeHigh,
+        rangePositionRatio = posRatio,
+        rsi14 = rsi14,
+        sma20 = sma20,
+        sma50 = sma50,
+        atr14 = atr14,
+        recentTotalBars = recent.size,
+        bullCount = bullCount,
+        bearCount = bearCount,
+        bullPercent = bullPercent,
+        needleRatio = needleRatio,
+        pivot = pivot,
+        r1 = r1,
+        r2 = r2,
+        s1 = s1,
+        s2 = s2
+    )
+}
+
 @Composable
 private fun SpeedometerGaugeCanvas(
     needleRatio: Float,
@@ -1343,9 +1298,7 @@ private data class InstrumentProfileMeta(
     val industry: String,
     val benchmark: String,
     val activeVenues: String,
-    val dailyTurnover: String,
-    val payoutRatio: String,
-    val yieldTtm: String,
+    val macroDrivers: String,
     val figi: String,
     val isin: String
 )
@@ -1355,47 +1308,66 @@ private fun getInstrumentProfileMeta(symbolCode: String, providerBadge: String):
     return when {
         code.contains("XAU") -> InstrumentProfileMeta(
             sector = "Precious Metals",
-            industry = "Spot Bullion (LBMA / OTC)",
+            industry = "Spot Gold Bullion (LBMA / OTC)",
             benchmark = "XAU/USD Spot · $providerBadge",
-            activeVenues = "24+ Global Venues",
-            dailyTurnover = "162.4B USD",
-            payoutRatio = "8.86% (Carry)",
-            yieldTtm = "2.94% (Lease)",
+            activeVenues = "London / NY / Shanghai",
+            macroDrivers = "US Real Yields, DXY, Central Bank Reserves",
             figi = "BBG000B9XRY4",
             isin = "XC0009655157"
-        )
-        code.contains("BRENT") || code.contains("OIL") -> InstrumentProfileMeta(
-            sector = "Energy Commodities",
-            industry = "North Sea Brent Crude",
-            benchmark = "Dated Brent / ICE · $providerBadge",
-            activeVenues = "18+ Energy Hubs",
-            dailyTurnover = "94.8B USD",
-            payoutRatio = "12.40% (Roll)",
-            yieldTtm = "4.15% (Carry)",
-            figi = "BBG000G2R5T8",
-            isin = "EU0009658426"
         )
         code.contains("XAG") -> InstrumentProfileMeta(
             sector = "Precious & Industrial Metals",
             industry = "Spot Silver Bullion",
             benchmark = "XAG/USD Spot · $providerBadge",
-            activeVenues = "19+ Global Venues",
-            dailyTurnover = "38.2B USD",
-            payoutRatio = "7.20%",
-            yieldTtm = "2.10%",
+            activeVenues = "COMEX / London / OTC",
+            macroDrivers = "Industrial Demand, Gold-Silver Ratio, DXY",
             figi = "BBG000B9XVV8",
             isin = "XC0009653103"
         )
-        else -> InstrumentProfileMeta(
-            sector = "Global Foreign Exchange",
-            industry = "G10 Interbank FX",
+        code.contains("BRENT") || code.contains("OIL") || code.contains("WTI") -> InstrumentProfileMeta(
+            sector = "Energy Commodities",
+            industry = if (code.contains("USOIL") || code.contains("WTI")) "West Texas Intermediate Crude" else "North Sea Brent Crude",
+            benchmark = if (code.contains("USOIL")) "WTI NYMEX · $providerBadge" else "Dated Brent / ICE · $providerBadge",
+            activeVenues = "ICE Europe / NYMEX",
+            macroDrivers = "OPEC+ Supply Quotas, EIA Inventories, Crack Spreads",
+            figi = "BBG000G2R5T8",
+            isin = "EU0009658426"
+        )
+        code.contains("BTC") || code.contains("ETH") -> InstrumentProfileMeta(
+            sector = "Digital Assets",
+            industry = if (code.contains("BTC")) "Proof-of-Work Layer-1" else "Smart Contract Layer-1",
             benchmark = "$code · $providerBadge",
-            activeVenues = "30+ ECN Venues",
-            dailyTurnover = "410.0B USD",
-            payoutRatio = "6.50% (Swap)",
-            yieldTtm = "3.45% (Rate Diff)",
+            activeVenues = "24/7 Spot Exchanges & CME",
+            macroDrivers = "ETF Inflows, Network Issuance, Global Liquidity",
+            figi = if (code.contains("BTC")) "BBG00Y7B8W01" else "BBG00Y7B8W12",
+            isin = "24/7 UTC Open"
+        )
+        code.contains("SPX") || code.contains("NDQ") -> InstrumentProfileMeta(
+            sector = "US Equity Indices",
+            industry = if (code.contains("SPX")) "US Large-Cap 500 Benchmark" else "US Tech-Heavy 100 Index",
+            benchmark = "$code · $providerBadge",
+            activeVenues = "CME / NASDAQ / NYSE",
+            macroDrivers = "FOMC Rates, Mega-Cap Earnings, US CPI / NFP",
+            figi = if (code.contains("SPX")) "BBG000H4FSM0" else "BBG000P5P8K1",
+            isin = if (code.contains("SPX")) "US78378X1072" else "US6311011026"
+        )
+        code.contains("EUR") || code.contains("GBP") || code.contains("JPY") -> InstrumentProfileMeta(
+            sector = "Global Foreign Exchange",
+            industry = "G10 Interbank FX Spot",
+            benchmark = "$code · $providerBadge",
+            activeVenues = "London / NY / Tokyo ECN",
+            macroDrivers = "ECB vs Fed Rate Differentials, Sovereign Yields",
             figi = "BBG0013HG040",
             isin = "EU0009652759"
+        )
+        else -> InstrumentProfileMeta(
+            sector = "US Equities",
+            industry = "NASDAQ / NYSE Common Stock",
+            benchmark = "$code · $providerBadge",
+            activeVenues = "NYSE / NASDAQ Official",
+            macroDrivers = "Quarterly Earnings, Sector Multiples, Fed Rates",
+            figi = "EQ-$code-US",
+            isin = "US-$code-100"
         )
     }
 }
@@ -1411,14 +1383,17 @@ private fun OverviewDataRow(label: String, value: String) {
             Text(
                 text = label,
                 style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(end = 8.dp)
             )
             Text(
                 text = value,
                 style = MaterialTheme.typography.bodySmall,
                 fontFamily = JetBrainsMonoFontFamily,
                 fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
             )
         }
     }

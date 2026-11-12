@@ -3,6 +3,28 @@ package es.manico.chartintelligence.data.model
 import androidx.annotation.StringRes
 import java.math.BigDecimal
 
+enum class AssetClass {
+    STOCKS,
+    COMMODITIES,
+    CRYPTO,
+    INDICES,
+    FX
+}
+
+fun assetClassForSymbol(symbolCode: String): AssetClass {
+    val code = symbolCode.trim().uppercase()
+    return when {
+        code in setOf("SPOTBRENT", "BRENT_FUTURES", "USOIL", "XAUUSD", "XAGUSD") ||
+            code.contains("BRENT") || code.contains("OIL") || code.startsWith("XAU") || code.startsWith("XAG") -> AssetClass.COMMODITIES
+        code in setOf("BTCUSD", "ETHUSD") || code.endsWith("USDT") ||
+            (code.endsWith("USD") && (code.startsWith("BTC") || code.startsWith("ETH") || code.startsWith("SOL") || code.startsWith("XRP"))) -> AssetClass.CRYPTO
+        code in setOf("SPX500USD", "NDQ") || code.contains("SPX") || code.contains("NDX") || code.contains("US100") || code.contains("US500") -> AssetClass.INDICES
+        code in setOf("EURUSD", "GBPUSD", "USDJPY", "AUDUSD", "USDCAD", "USDCHF") ||
+            (code.length == 6 && (code.startsWith("EUR") || code.startsWith("GBP") || code.endsWith("JPY"))) -> AssetClass.FX
+        else -> AssetClass.STOCKS
+    }
+}
+
 data class SymbolConfig(
     val chartId: String,
     val symbolCode: String,
@@ -31,4 +53,7 @@ data class SymbolConfig(
 
     val isCustom: Boolean
         get() = !customTitle.isNullOrBlank() || titleResId == null
+
+    val assetClass: AssetClass
+        get() = assetClassForSymbol(symbolCode)
 }

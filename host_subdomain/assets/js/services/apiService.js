@@ -12,9 +12,9 @@ import {
   normalizeHexForWeb,
   normalizeHexForAndroid,
   resolvePriceBasis,
-} from '../core/store.js?v=1.36.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.36.0';
+} from '../core/store.js?v=1.37.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.37.0';
 
 export async function syncServerAuthStatus() {
   const token = localStorage.getItem('ci_session_token');
@@ -260,6 +260,7 @@ export async function uploadWorkspaceSync() {
       verticalLineColorHex: normalizeHexForAndroid(p.vLineColor, 'FFA855F7'),
       defaultDrawingColorHex: normalizeHexForAndroid(p.defaultDrawingColorHex || p.trendColor, 'FF2962FF'),
       defaultDrawingWidthDp: Number(p.defaultDrawingWidthPx || 2.0),
+      timezoneMode: p.timezoneMode === 'LOCAL' ? 'LOCAL' : 'UTC',
       bollingerPeriod: Number(p.bollingerPeriod || 20),
       bollingerStdDev: Number(p.bollingerStdDev || 2.0),
       logarithmicScaleDefault: Boolean(p.isLogScale),
@@ -314,6 +315,7 @@ export async function uploadWorkspaceSync() {
           showFvg: Boolean(t.showFvg),
           showVolumeProfile: Boolean(t.showVolumeProfile),
           showVolume: t.showVolume !== false,
+          isLogScale: Boolean(t.isLogScale),
           isMagnetMode: Boolean(t.isMagnetMode),
           activeDrawingColorHex: normalizeHexForAndroid(
             t.activeDrawingColorHex || t.activeDrawingColor || p.defaultDrawingColorHex,
@@ -381,6 +383,7 @@ export async function downloadWorkspaceSync() {
         if (p.bollingerPeriod !== undefined) mappedPrefs.bollingerPeriod = Math.max(5, Math.min(200, Number(p.bollingerPeriod || 20)));
         if (p.bollingerStdDev !== undefined) mappedPrefs.bollingerStdDev = Math.max(0.5, Math.min(5.0, Number(p.bollingerStdDev || 2.0)));
         if (p.logarithmicScaleDefault !== undefined && p.isLogScale === undefined) mappedPrefs.isLogScale = Boolean(p.logarithmicScaleDefault);
+        if (p.timezoneMode !== undefined) mappedPrefs.timezoneMode = String(p.timezoneMode).toUpperCase() === 'LOCAL' ? 'LOCAL' : 'UTC';
         if (p.rememberLastChartOnDevice !== undefined && p.rememberLastChart === undefined) mappedPrefs.rememberLastChart = Boolean(p.rememberLastChartOnDevice);
         if (p.pickerVibrations !== undefined && p.pickerVibrates === undefined) mappedPrefs.pickerVibrates = Boolean(p.pickerVibrations);
         if (p.showPickerScrollMagnifiers !== undefined && p.showScrollMagnifier === undefined) mappedPrefs.showScrollMagnifier = Boolean(p.showPickerScrollMagnifiers);
@@ -465,7 +468,7 @@ export async function downloadWorkspaceSync() {
             showFvg: Boolean(t.showFvg),
             showVolumeProfile: Boolean(t.showVolumeProfile),
             isMagnetMode: Boolean(t.isMagnetMode),
-            isLogScale: Boolean(state.chartPreferences.isLogScale),
+            isLogScale: t.isLogScale !== undefined ? Boolean(t.isLogScale) : Boolean(state.chartPreferences.isLogScale),
             selectedRangePreset: null,
             visibleCount: Number(t.visibleCount || 48),
             scrollOffset: Number(t.scrollOffset || 0),

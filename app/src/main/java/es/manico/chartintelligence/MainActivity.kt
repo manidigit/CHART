@@ -230,6 +230,7 @@ fun ChartIntelligenceApp(
                         WorkspaceScreen.WATCHLIST -> WatchlistScreen(
                             watchlistSymbols = state.watchlistSymbols,
                             allSymbols = state.symbols,
+                            openTabs = state.openTabs,
                             isSyncingAll = state.isSyncingAll,
                             statusBannerResId = state.statusBannerResId,
                             preferences = state.chartPreferences,
@@ -282,6 +283,7 @@ fun ChartIntelligenceApp(
                             onScaleYAxisByDrag = mainViewModel::scaleYAxisByDrag,
                             onResetAutoScaleY = mainViewModel::resetAutoScaleY,
                             onToggleLogScale = mainViewModel::toggleLogScaleOnActiveTab,
+                            onToggleTimezoneMode = mainViewModel::toggleTimezoneMode,
                             onSelectCandle = mainViewModel::selectCandleOnActiveTab,
                             onSelectDrawingTool = mainViewModel::selectDrawingTool,
                             onToggleMagnetMode = mainViewModel::toggleMagnetModeOnActiveTab,
@@ -336,6 +338,7 @@ fun ChartIntelligenceApp(
                             onUpdateBollingerParams = mainViewModel::updateBollingerParams,
                             onResetAllPreferences = mainViewModel::resetAllPreferencesToDefault,
                             onUpdateTradingViewPreference = mainViewModel::updateTradingViewPreference,
+                            onUpdateTimezoneMode = mainViewModel::updateTimezoneMode,
                             onSaveApiKeys = mainViewModel::updatePersonalApiKeys,
                             onAddCustomSymbol = mainViewModel::addCustomSymbol,
                             onDeleteSymbol = mainViewModel::deleteSymbol

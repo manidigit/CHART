@@ -1,7 +1,7 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.36.0';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.36.0';
-import { state } from '../core/store.js?v=1.36.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.37.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.37.0';
+import { state } from '../core/store.js?v=1.37.0';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;
@@ -152,6 +152,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const h = rect.height;
   const isDark = state.isDarkTheme;
   const prefs = state.chartPreferences;
+  const tzMode = prefs.timezoneMode === 'LOCAL' ? 'LOCAL' : 'UTC';
   const isLog = Boolean(tab.isLogScale ?? prefs.isLogScale);
 
   const bgColor = isDark ? '#131722' : '#FFFFFF';
@@ -221,9 +222,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
   if (!Number.isFinite(rawMin) || !Number.isFinite(rawMax)) return;
 
-  const scaleFactor = Math.max(0.25, Math.min(4.0, Number(tab.priceScaleFactor || 1.0)));
+  const isAutoY = tab.isAutoScaleY !== false;
+  const scaleFactor = isAutoY ? 1.0 : Math.max(0.25, Math.min(4.0, Number(tab.priceScaleFactor || 1.0)));
   const baseRange = Math.max(rawMax - rawMin, 0.0001);
-  const midPrice = (rawMax + rawMin) / 2.0 + Number(tab.verticalPriceOffset || 0.0);
+  const midPrice = (rawMax + rawMin) / 2.0 + (isAutoY ? 0 : Number(tab.verticalPriceOffset || 0.0));
   const halfRange = (baseRange * scaleFactor) / 2.0;
   const pad = halfRange * 0.16;
   const minP = Math.max(isLog ? 0.000001 : -Infinity, midPrice - halfRange - pad);
@@ -287,14 +289,14 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
   const effectiveSlots = Math.max(
     visible.length,
-    Math.min(visibleCount, Math.max(visible.length, Math.round(candles.length * 1.4)))
+    Math.min(visibleCount, candles.length + Math.min(12, Math.round(visible.length * 0.08)))
   );
   const slotW = chartW / Math.max(1, effectiveSlots);
   const bodyW = Math.max(1.0, Math.min(20, slotW * 0.68));
   const idxToX = (idx) => (idx + 0.5) * slotW;
 
   // Vertical Time Grid + Smart Calendar-Aligned X-Axis Labels
-  const smartTicks = PriceFormatter.computeSmartTimeAxisTicks(visible, chartW, tab.timeframe);
+  const smartTicks = PriceFormatter.computeSmartTimeAxisTicks(visible, chartW, tab.timeframe, tzMode);
   for (const tick of smartTicks) {
     const x = idxToX(tick.index);
     ctx.strokeStyle = gridColor;
@@ -312,24 +314,36 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.fillText(tick.text, lblX, topPad + totalChartH + 17);
   }
 
-  // Data Boundary Marker when scrolled to beginning of loaded history
-  if (startIdx === 0 && visible.length > 0) {
+  // Data Boundary Marker when scrolled to beginning of loaded history (placed at bottom-left of price pane to avoid OHLC overlay collision)
+  if (startIdx === 0 && visible.length > 0 && candles.length > 0) {
     const firstX = idxToX(0);
     ctx.save();
     ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = '#F59E0B';
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.7)';
     ctx.beginPath();
     ctx.moveTo(firstX, topPad);
     ctx.lineTo(firstX, topPad + totalChartH);
     ctx.stroke();
     ctx.restore();
-    ctx.fillStyle = '#F59E0B';
+
+    const boundaryText = `${i18n ? i18n.t('chart_data_boundary') : 'Start of loaded history'} (${tab.timeframe || 'M15'})`;
     ctx.font = '600 10px "JetBrains Mono", sans-serif';
-    ctx.fillText(
-      i18n ? i18n.t('chart_data_boundary') : 'Start of history',
-      Math.max(8, firstX + 6),
-      topPad + 14
-    );
+    const bTextW = ctx.measureText(boundaryText).width + 14;
+    const bx = Math.max(8, Math.min(chartW - bTextW - 8, firstX + 6));
+    const by = topPad + chartH - 24;
+    ctx.fillStyle = isDark ? 'rgba(245, 158, 11, 0.14)' : 'rgba(245, 158, 11, 0.18)';
+    ctx.strokeStyle = 'rgba(245, 158, 11, 0.55)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    if (ctx.roundRect) {
+      ctx.roundRect(bx, by, bTextW, 18, 4);
+    } else {
+      ctx.rect(bx, by, bTextW, 18);
+    }
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = '#F59E0B';
+    ctx.fillText(boundaryText, bx + 7, by + 12.5);
   }
 
   // Clip main Price Pane for price overlays & candles
@@ -1275,7 +1289,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
     const timeText = PriceFormatter.formatCandleUtc(
       hc.open_time_utc_ms || hc.openTimeUtc || hc.open_time_utc_iso,
-      tab.timeframe
+      tab.timeframe,
+      tzMode
     );
     ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
     const tw = ctx.measureText(timeText).width + 14;

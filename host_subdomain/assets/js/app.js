@@ -1,6 +1,7 @@
-import { I18nManager } from './core/i18n.js?v=1.36.0';
+import { I18nManager } from './core/i18n.js?v=1.37.0';
 import {
   state,
+  PROVIDER_METHODS_CATALOG,
   savePreferences,
   saveSymbolsToStorage,
   saveDrawings,
@@ -15,7 +16,7 @@ import {
   registerAutoSyncCallback,
   INDICATOR_FLAG_KEYS,
   syncIndicatorsAcrossTabsAndPrefs,
-} from './core/store.js?v=1.36.0';
+} from './core/store.js?v=1.37.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -29,25 +30,25 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.36.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.36.0';
-import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.36.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.36.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.36.0';
+} from './services/apiService.js?v=1.37.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.37.0';
+import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.37.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.37.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.37.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.36.0';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.36.0';
+} from './views/headerView.js?v=1.37.0';
+import { renderLeftToolRail } from './views/toolRailView.js?v=1.37.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.36.0';
-import { renderPredictionModal } from './views/analysisView.js?v=1.36.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.36.0';
-import { renderRightIconRail } from './views/navigationView.js?v=1.36.0';
+} from './views/watchlistView.js?v=1.37.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.37.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.37.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.37.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -644,30 +645,37 @@ let pendingRafRedraw = 0;
 
 function minBarsForTimeframe(tf) {
   const norm = String(tf || 'M15').toUpperCase();
-  if (norm === 'M15') return 1200;
-  if (norm === 'M30' || norm === 'H1') return 1000;
-  if (norm === 'H4') return 500;
-  if (norm === 'D1') return 1000;
-  return 250;
+  if (norm === 'M15') return 4800;
+  if (norm === 'M30' || norm === 'H1') return 4000;
+  if (norm === 'H4') return 2000;
+  if (norm === 'D1') return 2500;
+  return 600;
 }
 
 function maybeTriggerDeepBackfill(tab) {
   if (!tab || !tab.symbolCode) return;
   const tf = String(tab.timeframe || 'M15').toUpperCase();
+  const configuredMax = Math.max(500, Math.min(5000, Number(state.chartPreferences.candleFetchLimit || 5000)));
+  const goalBars = Math.min(configuredMax, minBarsForTimeframe(tf));
   const count = Array.isArray(tab.candles) ? tab.candles.length : 0;
-  if (count >= minBarsForTimeframe(tf)) return;
-  const attemptKey = `${tab.symbolCode}_${tf}`;
-  if (tab._backfillAttemptedKey === attemptKey) return;
+  if (count >= goalBars) return;
+  const attemptKey = `${tab.symbolCode}_${tab.provider || 'tvdatafeed'}_${tf}_${count}`;
+  if (tab._backfillAttemptedKey === attemptKey || tab._isBackfilling) return;
   tab._backfillAttemptedKey = attemptKey;
+  tab._isBackfilling = true;
   syncSymbolNow(
     tab.symbolCode,
     tf,
     () => {
       tab.candles = getCachedOrAggregatedCandles(tab.symbolCode, tab.provider, tf);
+      tab._isBackfilling = false;
       scheduleCanvasRedraw();
     },
     true
-  ).catch(() => {});
+  )
+    .catch(() => {
+      tab._isBackfilling = false;
+    });
 }
 
 function redrawActiveCanvas() {
@@ -868,6 +876,7 @@ function bindCanvasEvents(activeTab) {
 
     if (isScalingAxis) {
       const dy = y - scaleStartY;
+      activeTab.isAutoScaleY = false;
       activeTab.priceScaleFactor = Math.max(0.25, Math.min(4.0, scaleStartFactor * (1 + dy * 0.005)));
       scheduleCanvasRedraw();
       return;
@@ -918,8 +927,10 @@ function bindCanvasEvents(activeTab) {
     const x = e.clientX - rect.left;
     const meta = canvas._chartMeta;
     if (meta && x > meta.chartW) {
+      activeTab.isAutoScaleY = true;
       activeTab.priceScaleFactor = 1.0;
       activeTab.verticalPriceOffset = 0.0;
+      saveOpenTabsToStorage();
       renderApp();
     }
   });
@@ -929,7 +940,7 @@ function bindCanvasEvents(activeTab) {
     (e) => {
       e.preventDefault();
       const step = e.deltaY > 0 ? Math.max(4, Number(state.chartPreferences.zoomStepCandles || 6)) : -Math.max(4, Number(state.chartPreferences.zoomStepCandles || 6));
-      const maxZoomCap = Math.max(1500, Math.min(5000, Math.round(((activeTab.candles || []).length || 600) * 1.4)));
+      const maxZoomCap = Math.min(5000, Math.max(200, ((activeTab.candles || []).length || 400) + 12));
       activeTab.visibleCount = Math.max(15, Math.min(maxZoomCap, (activeTab.visibleCount || 48) + step));
       if (step > 0) {
         maybeTriggerDeepBackfill(activeTab);
@@ -1474,28 +1485,87 @@ document.addEventListener('click', async (e) => {
     activeTab.showVolumeProfile = !activeTab.showVolumeProfile;
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
-  } else if (action === 'toggle-log-scale' && activeTab) {
-    activeTab.isLogScale = !activeTab.isLogScale;
-    state.chartPreferences.isLogScale = activeTab.isLogScale;
+  } else if (action === 'toggle-timezone-mode') {
+    const nextTz = state.chartPreferences.timezoneMode === 'LOCAL' ? 'UTC' : 'LOCAL';
+    state.chartPreferences.timezoneMode = nextTz;
     savePreferences();
     renderApp();
-  } else if (action === 'reset-price-scale' && activeTab) {
-    activeTab.priceScaleFactor = 1.0;
-    activeTab.verticalPriceOffset = 0.0;
+    redrawActiveCanvas();
+    showFloatingToast(
+      i18n.getCurrentLanguage() === 'fa'
+        ? nextTz === 'LOCAL'
+          ? 'ساعت نمودار: زمان محلی سیستم'
+          : 'ساعت نمودار: گرینویچ (UTC)'
+        : nextTz === 'LOCAL'
+          ? 'Chart Time: Local System Time'
+          : 'Chart Time: UTC'
+    );
+  } else if (action === 'set-timezone-mode') {
+    const mode = el.getAttribute('data-tz') === 'LOCAL' ? 'LOCAL' : 'UTC';
+    state.chartPreferences.timezoneMode = mode;
+    savePreferences();
     renderApp();
+    redrawActiveCanvas();
+  } else if (action === 'toggle-log-scale' && activeTab) {
+    activeTab.isLogScale = !Boolean(activeTab.isLogScale ?? state.chartPreferences.isLogScale);
+    state.chartPreferences.isLogScale = activeTab.isLogScale;
+    savePreferences();
+    saveOpenTabs();
+    renderApp();
+    redrawActiveCanvas();
+    showFloatingToast(
+      i18n.getCurrentLanguage() === 'fa'
+        ? activeTab.isLogScale
+          ? 'مقیاس لگاریتمی (Log) فعال شد'
+          : 'مقیاس خطی (Linear) فعال شد'
+        : activeTab.isLogScale
+          ? 'Logarithmic scale enabled'
+          : 'Linear price scale restored'
+    );
+  } else if (action === 'reset-price-scale' && activeTab) {
+    const currentlyAuto =
+      activeTab.isAutoScaleY !== false &&
+      Math.abs(Number(activeTab.priceScaleFactor || 1) - 1) < 0.01 &&
+      Math.abs(Number(activeTab.verticalPriceOffset || 0)) < 0.0001;
+    if (currentlyAuto) {
+      activeTab.isAutoScaleY = false;
+      showFloatingToast(
+        i18n.getCurrentLanguage() === 'fa'
+          ? 'مقیاس عمودی دستی (Auto Scale خاموش)'
+          : 'Auto Scale OFF (Drag Y-axis to stretch)'
+      );
+    } else {
+      activeTab.isAutoScaleY = true;
+      activeTab.priceScaleFactor = 1.0;
+      activeTab.verticalPriceOffset = 0.0;
+      showFloatingToast(
+        i18n.getCurrentLanguage() === 'fa'
+          ? 'مقیاس عمودی خودکار (Auto Scale) فعال شد'
+          : 'Auto Scale ON (Price range fitted)'
+      );
+    }
+    saveOpenTabs();
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'fit-content' && activeTab) {
     activeTab.scrollOffset = 0;
-    activeTab.visibleCount = Math.min(2500, Math.max(24, (activeTab.candles || []).length));
+    activeTab.visibleCount = Math.min(5000, Math.max(24, (activeTab.candles || []).length));
+    activeTab.isAutoScaleY = true;
     activeTab.priceScaleFactor = 1.0;
-    saveOpenTabsToStorage();
+    activeTab.verticalPriceOffset = 0.0;
+    saveOpenTabs();
+    maybeTriggerDeepBackfill(activeTab);
     renderApp();
+    redrawActiveCanvas();
   } else if (action === 'reset-view' && activeTab) {
     activeTab.scrollOffset = 0;
     activeTab.visibleCount = 48;
+    activeTab.isAutoScaleY = true;
     activeTab.priceScaleFactor = 1.0;
     activeTab.verticalPriceOffset = 0.0;
-    saveOpenTabsToStorage();
+    saveOpenTabs();
     renderApp();
+    redrawActiveCanvas();
   } else if (action === 'set-tool' && activeTab) {
     const t = el.getAttribute('data-tool') || 'cursor';
     activeTab.activeTool = t;
@@ -1664,6 +1734,52 @@ document.addEventListener('click', async (e) => {
     saveSymbolsToStorage();
     renderApp();
     await syncSymbolNow(code, sym.timeframe || 'M15', renderApp, false);
+  } else if (action === 'set-settings-source-category') {
+    state.settingsSourceCategory = el.getAttribute('data-category') || 'ALL';
+    renderApp();
+  } else if (action === 'apply-category-provider') {
+    const prov = el.getAttribute('data-provider') || 'tvdatafeed';
+    const cat = el.getAttribute('data-category') || 'ALL';
+    const method = PROVIDER_METHODS_CATALOG.find((m) => m.providerId === prov);
+    if (method && Array.isArray(method.symbols)) {
+      const targetItems = method.symbols.filter(
+        (item) => cat === 'ALL' || item.category === cat
+      );
+      targetItems.forEach((item) => {
+        const code = item.symbolCode;
+        let sym = state.symbols.find((s) => s.symbolCode === code);
+        if (!sym) {
+          sym = {
+            chartId: `chart_${code.toLowerCase()}_main`,
+            symbolCode: code,
+            decimals: item.decimals || (code === 'EURUSD' ? 4 : code === 'SPOTBRENT' || code === 'XAGUSD' ? 3 : 2),
+            inWatchlist: true,
+            activeProvider: prov,
+            allowedProviders: ['tvdatafeed', 'biquote', 'twelve_data', 'dukascopy', 'yahoo_finance', 'stooq', 'eia_brent_spot'],
+            timeframe: prov === 'eia_brent_spot' ? 'D1' : 'M15',
+            storedCandleCount: 0,
+            lastSyncMode: 'DB_CACHE_HIT',
+            fetchedNewBars: 0,
+          };
+          state.symbols.push(sym);
+        } else {
+          sym.activeProvider = prov;
+          sym.inWatchlist = true;
+          if (prov === 'eia_brent_spot') sym.timeframe = 'D1';
+          else if (prov === 'stooq' && sym.timeframe !== 'W1') sym.timeframe = 'D1';
+        }
+        state.openTabs.forEach((t) => {
+          if (t.symbolCode === code) {
+            t.provider = prov;
+            if (prov === 'eia_brent_spot') t.timeframe = 'D1';
+          }
+        });
+      });
+      saveSymbolsToStorage();
+      saveOpenTabs();
+      renderApp();
+      syncAllWatchlistSymbols(renderApp);
+    }
   } else if (action === 'delta-sync-symbol') {
     const code = (el.getAttribute('data-symbol') || '').trim().toUpperCase();
     const sym = state.symbols.find((s) => s.symbolCode === code);
@@ -1963,7 +2079,7 @@ async function bootstrap() {
       if (state.isAuthenticated) {
         const clockEl = document.getElementById('tv-live-utc-clock');
         if (clockEl) {
-          clockEl.textContent = new Date().toISOString().slice(11, 19) + ' UTC';
+          clockEl.textContent = PriceFormatter.formatLiveClock(state.chartPreferences.timezoneMode);
         }
         redrawActiveCanvas();
       }

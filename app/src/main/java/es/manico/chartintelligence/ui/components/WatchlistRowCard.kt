@@ -15,6 +15,7 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
@@ -162,8 +163,9 @@ fun WatchlistRowCard(
 
                 Spacer(modifier = Modifier.width(12.dp))
 
-                // Right Column (Strictly Right-Aligned): Price (Line 1) + Change & % (Line 2)
+                // Right Column (Strictly Right-Aligned, Tabular Monospace): Price + Change & %
                 Column(
+                    modifier = Modifier.widthIn(min = 104.dp),
                     horizontalAlignment = Alignment.End
                 ) {
                     Text(
@@ -172,7 +174,9 @@ fun WatchlistRowCard(
                         fontFamily = JetBrainsMonoFontFamily,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onBackground,
-                        textAlign = TextAlign.End
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
+                        softWrap = false
                     )
                     Spacer(modifier = Modifier.height(2.dp))
                     Text(
@@ -181,12 +185,15 @@ fun WatchlistRowCard(
                         fontFamily = JetBrainsMonoFontFamily,
                         fontWeight = FontWeight.SemiBold,
                         color = changeColor,
-                        textAlign = TextAlign.End
+                        textAlign = TextAlign.End,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
                 if (onMoveUpClick != null || onMoveDownClick != null) {
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(8.dp))
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(2.dp)

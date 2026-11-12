@@ -952,22 +952,43 @@ body.theme-light .tv-ind-pill {
 }
 
 .tv-pane-header {
-  height: 36px;
-  min-height: 36px;
+  height: 38px;
+  min-height: 38px;
   padding: 0 8px;
   border-bottom: 1px solid var(--border);
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 6px;
   font-weight: 700;
   font-size: 12.5px;
   color: var(--text-strong);
   min-width: 0;
 }
 
+.tv-wl-header-search {
+  flex: 1 1 70px;
+  min-width: 60px;
+  height: 25px;
+  min-height: 25px;
+  padding: 2px 8px;
+  font-size: 11px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text);
+  font-family: inherit;
+  outline: none;
+  transition: border-color 0.14s ease;
+}
+
+.tv-wl-header-search:focus {
+  border-color: var(--primary);
+}
+
 .tv-wl-table-head {
   display: grid;
-  grid-template-columns: minmax(86px, 1.35fr) minmax(48px, 0.9fr) minmax(44px, 0.8fr) minmax(48px, 0.85fr);
+  grid-template-columns: minmax(86px, 1.35fr) minmax(48px, 0.9fr) minmax(44px, 0.8fr) minmax(52px, 0.85fr);
   gap: 4px;
   padding: 5px 8px;
   border-bottom: 1px solid var(--border);
@@ -987,8 +1008,9 @@ body.theme-light .tv-ind-pill {
 }
 
 .tv-wl-row {
+  position: relative;
   display: grid;
-  grid-template-columns: minmax(86px, 1.35fr) minmax(48px, 0.9fr) minmax(44px, 0.8fr) minmax(48px, 0.85fr);
+  grid-template-columns: minmax(86px, 1.35fr) minmax(48px, 0.9fr) minmax(44px, 0.8fr) minmax(52px, 0.85fr);
   align-items: center;
   gap: 4px;
   padding: 6px 8px;
@@ -1037,24 +1059,42 @@ body.theme-light .tv-ind-pill {
   cursor: grabbing;
 }
 
+.tv-wl-row-actions {
+  position: absolute;
+  right: 6px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  background: var(--surface-elevated);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 1px 4px;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
+  opacity: 0;
+  pointer-events: none;
+  z-index: 4;
+  transition: opacity 0.12s ease;
+}
+
+.tv-wl-row:hover .tv-wl-row-actions {
+  opacity: 1;
+  pointer-events: auto;
+}
+
 .tv-wl-move-btn {
   background: transparent;
   border: none;
   color: var(--text-muted);
   cursor: pointer;
-  padding: 0 1px;
-  font-size: 8px;
+  padding: 1px 2px;
+  font-size: 9px;
   line-height: 1;
-  opacity: 0;
-  transition: opacity 0.12s ease, color 0.12s ease;
-}
-
-.tv-wl-row:hover .tv-wl-move-btn {
-  opacity: 0.7;
+  transition: color 0.12s ease;
 }
 
 .tv-wl-move-btn:hover {
-  opacity: 1 !important;
   color: var(--primary);
 }
 
@@ -1091,6 +1131,7 @@ body.theme-light .tv-ind-pill {
 
 .tv-wl-num {
   text-align: right;
+  font-variant-numeric: tabular-nums;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -1445,13 +1486,20 @@ body.theme-light .tv-ind-pill {
 /* Watchlist Category Filter Chips Bar (All | Metals | Energy | Crypto | Indices | Stocks | FX) */
 .tv-wl-cat-bar {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 4px;
+  gap: 5px;
   padding: 6px 8px;
   border-bottom: 1px solid var(--border);
   background: var(--surface);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
   min-width: 0;
+}
+
+.tv-wl-cat-bar::-webkit-scrollbar {
+  display: none;
 }
 
 .tv-wl-cat-chip {
@@ -1461,11 +1509,11 @@ body.theme-light .tv-ind-pill {
   font-family: inherit;
   font-size: 10.5px;
   font-weight: 600;
-  padding: 3px 8px;
+  padding: 3px 9px;
   border-radius: 999px;
   cursor: pointer;
   white-space: nowrap;
-  flex: 1 1 auto;
+  flex: 0 0 auto;
   text-align: center;
   justify-content: center;
   transition: all 0.12s ease;
@@ -1481,6 +1529,48 @@ body.theme-light .tv-ind-pill {
   color: var(--primary);
   border-color: var(--primary);
   font-weight: 700;
+}
+
+/* Collapsible Settings Accordion */
+.tv-accordion {
+  margin-bottom: 10px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.tv-accordion > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 10px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-strong);
+  user-select: none;
+}
+
+.tv-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.tv-accordion > summary::after {
+  content: '▾';
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.tv-accordion[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.tv-accordion-body {
+  padding: 0 14px 12px 14px;
+  border-top: 1px solid var(--border);
 }
 
 /* Structured Settings Symbol Card Row */

@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
-import { state } from '../core/store.js?v=1.36.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.36.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
+import { state } from '../core/store.js?v=1.37.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.37.0';
 
 export function computeTechnicalAnalytics(candles) {
   if (!candles || candles.length === 0) return null;

@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.36.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.36.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.37.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.37.0';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -31,6 +31,7 @@ export const DEFAULT_PREFS = {
   showHighLowLabels: true,
   defaultDrawingColorHex: '#2962FF',
   defaultDrawingWidthPx: 2.0,
+  timezoneMode: 'UTC',
   bollingerPeriod: 20,
   bollingerStdDev: 2.0,
   showSma20: false,
@@ -211,6 +212,23 @@ export const PROVIDER_METHODS_CATALOG = [
     ],
   },
 ];
+
+export function getAssetClass(symbolCode) {
+  const code = String(symbolCode || '').trim().toUpperCase();
+  if (['SPOTBRENT', 'BRENT_FUTURES', 'USOIL', 'XAUUSD', 'XAGUSD'].includes(code) || code.includes('BRENT') || code.includes('OIL') || code.startsWith('XAU') || code.startsWith('XAG')) {
+    return 'COMMODITIES';
+  }
+  if (['BTCUSD', 'ETHUSD'].includes(code) || code.endsWith('USDT') || (code.endsWith('USD') && (code.startsWith('BTC') || code.startsWith('ETH') || code.startsWith('SOL') || code.startsWith('XRP')))) {
+    return 'CRYPTO';
+  }
+  if (['SPX500USD', 'NDQ'].includes(code) || code.includes('SPX') || code.includes('NDX') || code.includes('US100') || code.includes('US500')) {
+    return 'INDICES';
+  }
+  if (['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'USDCAD', 'USDCHF'].includes(code) || (code.length === 6 && (code.startsWith('EUR') || code.startsWith('GBP') || code.endsWith('JPY')))) {
+    return 'FX';
+  }
+  return 'STOCKS';
+}
 
 function createDefaultSymbolEntry(symbolCode, decimals, activeProvider, allowedProviders) {
   return {
@@ -586,6 +604,7 @@ export const state = {
   sourceExplorerMode: 'by_source',
   selectedExplorerProvider: 'tvdatafeed',
   symbolExplorerSearchQuery: '',
+  settingsSourceCategory: 'ALL',
   providerCatalogStats: [],
 
   rightPanelWidth: Math.max(
@@ -757,6 +776,7 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     scrollOffset: t.scrollOffset || 0,
     priceScaleFactor: t.priceScaleFactor || 1.0,
     verticalPriceOffset: t.verticalPriceOffset || 0.0,
+    isLogScale: Boolean(t.isLogScale),
     selectedRangePreset: t.selectedRangePreset || null,
     showSma20: Boolean(t.showSma20),
     showSma50: Boolean(t.showSma50),

@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -34,6 +36,7 @@ import androidx.compose.material.icons.outlined.Functions
 import androidx.compose.material.icons.outlined.HorizontalRule
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PhotoCamera
+import androidx.compose.material.icons.outlined.Schedule
 import androidx.compose.material.icons.outlined.ShowChart
 import androidx.compose.material.icons.outlined.Sync
 import androidx.compose.material.icons.outlined.Timeline
@@ -51,7 +54,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -72,6 +77,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.algorithms.MarketStatus
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
@@ -86,6 +92,7 @@ import es.manico.chartintelligence.ui.components.CandlestickCanvas
 import es.manico.chartintelligence.ui.components.DrawingToolbar
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
+import kotlinx.coroutines.delay
 import java.math.BigDecimal
 import kotlin.math.roundToInt
 
@@ -155,6 +162,7 @@ fun ChartViewScreen(
     onScaleYAxisByDrag: (Float) -> Unit,
     onResetAutoScaleY: () -> Unit,
     onToggleLogScale: () -> Unit = {},
+    onToggleTimezoneMode: () -> Unit = {},
     onSelectCandle: (Int?) -> Unit,
     onSelectDrawingTool: (DrawingTool) -> Unit,
     onToggleMagnetMode: () -> Unit = {},
@@ -177,6 +185,13 @@ fun ChartViewScreen(
     var activeSheet by rememberSaveable { mutableStateOf(ChartControlSheet.NONE) }
     val indicatorsScrollState = rememberScrollState()
     val symbolPickerScrollState = rememberScrollState()
+    var liveClockMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(Unit) {
+        while (true) {
+            liveClockMillis = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
 
     Column(
         modifier = modifier
@@ -341,15 +356,24 @@ fun ChartViewScreen(
                             )
                         }
 
-                        // Right: Read-only Data Source & Price Basis Badge (Grok Metadata Integration)
+                        // Compact Market Status Indicator + Clickable UTC/Local Clock
+                        val statusLabel = when {
+                            activeTab.isLoading -> stringResource(R.string.chart_status_syncing)
+                            marketStatus == MarketStatus.LIVE -> stringResource(R.string.chart_status_live)
+                            marketStatus == MarketStatus.MARKET_CLOSED -> stringResource(R.string.chart_status_market_closed)
+                            marketStatus == MarketStatus.DELAYED -> stringResource(R.string.chart_status_delayed)
+                            marketStatus == MarketStatus.CACHED -> stringResource(R.string.chart_status_cached)
+                            else -> stringResource(R.string.chart_status_error)
+                        }
                         Row(
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            horizontalArrangement = Arrangement.spacedBy(5.dp),
                             modifier = Modifier
                                 .clip(RoundedCornerShape(4.dp))
                                 .background(MaterialTheme.colorScheme.background)
                                 .border(1.dp, palette.cardBorder, RoundedCornerShape(4.dp))
-                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                .clickable(onClick = onToggleTimezoneMode)
+                                .padding(horizontal = 7.dp, vertical = 4.dp)
                                 .testTag("chart_market_status_pill")
                         ) {
                             Box(
@@ -358,13 +382,21 @@ fun ChartViewScreen(
                                     .clip(CircleShape)
                                     .background(statusDotColor)
                             )
-                            val priceBasis = activeTab.provider.resolvePriceBasis(activeTab.symbolCode)
                             Text(
-                                text = "${activeTab.provider.badgeLabel} • $priceBasis",
+                                text = PriceFormatterAlgorithm.formatLiveClock(preferences.timezoneMode, liveClockMillis),
                                 style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.SemiBold,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            Text(
+                                text = statusLabel,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.5.sp,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1
                             )
                         }
                     }
@@ -590,6 +622,7 @@ fun ChartViewScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .navigationBarsPadding()
                             .padding(horizontal = 16.dp, vertical = 8.dp),
                         verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
@@ -758,12 +791,24 @@ fun ChartViewScreen(
                                     )
 
                                     // Section 1: Main Chart Overlays (Package 2)
-                                    Text(
-                                        text = "۱. اندیکاتورهای روی چارت (Main Chart Overlays)",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "اندیکاتورهای روی چارت",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Main Chart Overlays",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
 
                                     val bbPeriod = preferences.bollingerPeriod.coerceIn(5, 200)
                                     val bbStdDev = preferences.bollingerStdDev.coerceIn(0.5f, 5.0f)
@@ -775,14 +820,15 @@ fun ChartViewScreen(
                                         StudyRowSpec("SMA 200", "Institutional Trend Baseline (200)", Color(0xFFF43F5E), activeTab.showSma200, onToggleSma200, "chart_sma200_toggle_button"),
                                         StudyRowSpec("Supertrend (10, 3)", "ATR Dynamic Trend Ribbon", Color(0xFF22C55E), activeTab.showSupertrend, onToggleSupertrend, "chart_supertrend_toggle_button"),
                                         StudyRowSpec("Session VWAP", "Volume Weighted Average Price", Color(0xFFEAB308), activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button"),
-                                        StudyRowSpec("Bollinger Bands ($bbPeriod, $bbStdDev)", "Volatility Channel ±${bbStdDev}σ (قابل تنظیم)", Color(0xFFA855F7), activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button"),
-                                        StudyRowSpec("MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی (بدون پنل جداگانه)", Color(0xFF2962FF), activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button")
+                                        StudyRowSpec("Bollinger Bands ($bbPeriod, $bbStdDev)", "Volatility Channel ±${bbStdDev}σ", Color(0xFFA855F7), activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button"),
+                                        StudyRowSpec("MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", Color(0xFF2962FF), activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button")
                                     )
 
                                     for (spec in overlaySpecs) {
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .heightIn(min = 48.dp)
                                                 .clickable(onClick = spec.onToggle)
                                                 .padding(vertical = 2.dp)
                                                 .testTag(spec.testTag),
@@ -909,12 +955,24 @@ fun ChartViewScreen(
                                     HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
 
                                     // Section 2: Smart Money Concepts (SMC) & Volume Profile (Package 3)
-                                    Text(
-                                        text = "۲. ساختار بازار، نقدینگی و پروفایل حجم (SMC & VRVP)",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "ساختار بازار و پروفایل حجم",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "SMC & VRVP",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
 
                                     val smcSpecs = listOf(
                                         StudyRowSpec("BOS / CHoCH & EQH / EQL", "Break of Structure, Change of Character & Equal Highs/Lows", Color(0xFF14B8A6), activeTab.showSmcStructure, onToggleSmcStructure, "chart_smc_toggle_button"),
@@ -926,6 +984,7 @@ fun ChartViewScreen(
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .heightIn(min = 48.dp)
                                                 .clickable(onClick = spec.onToggle)
                                                 .padding(vertical = 2.dp)
                                                 .testTag(spec.testTag),
@@ -966,12 +1025,24 @@ fun ChartViewScreen(
                                     HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
 
                                     // Section 3: Synchronized Multi-Pane Sub-Panels (Package 2)
-                                    Text(
-                                        text = "۳. پنل‌های پایینی همگام (Multi-Pane Oscillators)",
-                                        style = MaterialTheme.typography.labelMedium,
-                                        color = MaterialTheme.colorScheme.primary,
-                                        fontWeight = FontWeight.Bold
-                                    )
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "پنل‌های پایینی همگام",
+                                            style = MaterialTheme.typography.labelMedium,
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Text(
+                                            text = "Multi-Pane Oscillators",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
 
                                     // Volume Histogram + Height Selector (16% / 22% / 30%)
                                     Row(
@@ -1036,6 +1107,7 @@ fun ChartViewScreen(
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .heightIn(min = 48.dp)
                                                 .clickable(onClick = spec.onToggle)
                                                 .padding(vertical = 2.dp)
                                                 .testTag(spec.testTag),
@@ -1072,6 +1144,7 @@ fun ChartViewScreen(
                                             )
                                         }
                                     }
+                                    Spacer(modifier = Modifier.height(36.dp))
                                 }
                             }
 
@@ -1191,7 +1264,7 @@ fun ChartViewScreen(
                                         }
                                     }
 
-                                    // Viewport & Sync Actions
+                                    // Row 1: Scale & Clock Mode (48.dp Material 3 Ergonomic Targets)
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -1199,28 +1272,36 @@ fun ChartViewScreen(
                                         Box(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .height(38.dp)
-                                                .clip(RoundedCornerShape(6.dp))
-                                                .background(MaterialTheme.colorScheme.background)
-                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                .heightIn(min = 48.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(
+                                                    if (activeTab.isAutoScaleY) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
+                                                    else MaterialTheme.colorScheme.background
+                                                )
+                                                .border(
+                                                    1.dp,
+                                                    if (activeTab.isAutoScaleY) MaterialTheme.colorScheme.primary else palette.cardBorder,
+                                                    RoundedCornerShape(8.dp)
+                                                )
                                                 .clickable {
                                                     onResetAutoScaleY()
                                                     activeSheet = ChartControlSheet.NONE
                                                 }
+                                                .padding(horizontal = 6.dp)
                                                 .testTag("chart_auto_scale_button"),
                                             contentAlignment = Alignment.Center
                                         ) {
-                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Icon(Icons.Outlined.UnfoldMore, contentDescription = null, modifier = Modifier.size(15.dp))
-                                                Text(stringResource(R.string.chart_auto_scale), style = MaterialTheme.typography.labelSmall)
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                                                Icon(Icons.Outlined.UnfoldMore, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Text(stringResource(R.string.chart_auto_scale), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             }
                                         }
 
                                         Box(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .height(38.dp)
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .heightIn(min = 48.dp)
+                                                .clip(RoundedCornerShape(8.dp))
                                                 .background(
                                                     if (activeTab.isLogScale) MaterialTheme.colorScheme.primary.copy(alpha = 0.2f)
                                                     else MaterialTheme.colorScheme.background
@@ -1228,80 +1309,111 @@ fun ChartViewScreen(
                                                 .border(
                                                     1.dp,
                                                     if (activeTab.isLogScale) MaterialTheme.colorScheme.primary else palette.cardBorder,
-                                                    RoundedCornerShape(6.dp)
+                                                    RoundedCornerShape(8.dp)
                                                 )
                                                 .clickable {
                                                     onToggleLogScale()
                                                     activeSheet = ChartControlSheet.NONE
                                                 }
+                                                .padding(horizontal = 6.dp)
                                                 .testTag("chart_log_scale_button"),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Text(
                                                 text = stringResource(R.string.chart_axis_log),
-                                                style = MaterialTheme.typography.labelSmall,
+                                                style = MaterialTheme.typography.labelMedium,
                                                 fontFamily = JetBrainsMonoFontFamily,
                                                 fontWeight = FontWeight.Bold
                                             )
                                         }
 
+                                        val tzLabel = if (preferences.timezoneMode.equals("LOCAL", ignoreCase = true)) "Local" else "UTC"
                                         Box(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .height(38.dp)
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .heightIn(min = 48.dp)
+                                                .clip(RoundedCornerShape(8.dp))
                                                 .background(MaterialTheme.colorScheme.background)
-                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    onToggleTimezoneMode()
+                                                }
+                                                .padding(horizontal = 6.dp)
+                                                .testTag("chart_timezone_toggle_button"),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                                                Icon(Icons.Outlined.Schedule, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Text(tzLabel, style = MaterialTheme.typography.labelMedium, fontFamily = JetBrainsMonoFontFamily, fontWeight = FontWeight.Bold)
+                                            }
+                                        }
+                                    }
+
+                                    // Row 2: Viewport & Sync Actions (48.dp Material 3 Ergonomic Targets)
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .heightIn(min = 48.dp)
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.background)
+                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
                                                 .clickable {
                                                     onFitContent()
                                                     activeSheet = ChartControlSheet.NONE
                                                 }
+                                                .padding(horizontal = 6.dp)
                                                 .testTag("chart_fit_content_button"),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Icon(Icons.Outlined.FitScreen, contentDescription = null, modifier = Modifier.size(15.dp))
-                                                Text(stringResource(R.string.chart_fit_content), style = MaterialTheme.typography.labelSmall)
+                                                Icon(Icons.Outlined.FitScreen, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Text(stringResource(R.string.chart_fit_short), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             }
                                         }
 
                                         Box(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .height(38.dp)
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .heightIn(min = 48.dp)
+                                                .clip(RoundedCornerShape(8.dp))
                                                 .background(MaterialTheme.colorScheme.background)
-                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
                                                 .clickable {
                                                     onResetLatest()
                                                     activeSheet = ChartControlSheet.NONE
                                                 }
+                                                .padding(horizontal = 6.dp)
                                                 .testTag("chart_reset_latest_button"),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(15.dp))
-                                                Text(stringResource(R.string.chart_reset_view), style = MaterialTheme.typography.labelSmall)
+                                                Icon(Icons.Outlined.CenterFocusStrong, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Text(stringResource(R.string.chart_reset_view), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             }
                                         }
 
                                         Box(
                                             modifier = Modifier
                                                 .weight(1f)
-                                                .height(38.dp)
-                                                .clip(RoundedCornerShape(6.dp))
+                                                .heightIn(min = 48.dp)
+                                                .clip(RoundedCornerShape(8.dp))
                                                 .background(MaterialTheme.colorScheme.background)
-                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
                                                 .clickable {
                                                     onSyncActiveSymbolNow(activeTab.symbolCode)
                                                     activeSheet = ChartControlSheet.NONE
                                                 }
+                                                .padding(horizontal = 6.dp)
                                                 .testTag("chart_sync_active_tab_button"),
                                             contentAlignment = Alignment.Center
                                         ) {
                                             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                                Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(15.dp))
-                                                Text("Sync", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily)
+                                                Icon(Icons.Outlined.Sync, contentDescription = null, modifier = Modifier.size(16.dp))
+                                                Text(stringResource(R.string.chart_sync_short), style = MaterialTheme.typography.labelMedium, maxLines = 1)
                                             }
                                         }
                                     }

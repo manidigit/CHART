@@ -34,7 +34,8 @@ data class ChartSettingsGroup(
     val hideTabBarInLandscape: Boolean,
     val showCountdownToBarClose: Boolean,
     val showPrevCloseLine: Boolean,
-    val showHighLowLabels: Boolean
+    val showHighLowLabels: Boolean,
+    val timezoneMode: String = "UTC"
 )
 
 data class NotificationSettingsGroup(
@@ -92,6 +93,7 @@ data class ChartPreferences(
     val showCountdownToBarClose: Boolean = true,
     val showPrevCloseLine: Boolean = true,
     val showHighLowLabels: Boolean = true,
+    val timezoneMode: String = "UTC",
 
     // Group 4 (SYNC & BYOK): Personal API Keys (Bring Your Own Key)
     val twelveDataApiKey: String = "",
@@ -113,7 +115,8 @@ data class ChartPreferences(
             hideTabBarInLandscape = hideTabBarInLandscape,
             showCountdownToBarClose = showCountdownToBarClose,
             showPrevCloseLine = showPrevCloseLine,
-            showHighLowLabels = showHighLowLabels
+            showHighLowLabels = showHighLowLabels,
+            timezoneMode = timezoneMode
         )
 
     val notificationGroup: NotificationSettingsGroup

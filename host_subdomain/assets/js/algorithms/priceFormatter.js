@@ -51,12 +51,41 @@ export const PriceFormatter = {
     return { ticks, step: niceStep };
   },
 
+  getDateParts(epochMs, timezoneMode = 'UTC') {
+    const d = new Date(Number(epochMs));
+    const isLocal = String(timezoneMode || 'UTC').toUpperCase() === 'LOCAL';
+    return {
+      yr: isLocal ? d.getFullYear() : d.getUTCFullYear(),
+      mo: isLocal ? d.getMonth() : d.getUTCMonth(),
+      day: isLocal ? d.getDate() : d.getUTCDate(),
+      hr: isLocal ? d.getHours() : d.getUTCHours(),
+      mn: isLocal ? d.getMinutes() : d.getUTCMinutes(),
+      sec: isLocal ? d.getSeconds() : d.getUTCSeconds(),
+      dow: isLocal ? d.getDay() : d.getUTCDay(),
+      tzOffsetMin: isLocal ? -d.getTimezoneOffset() : 0,
+    };
+  },
+
+  formatLiveClock(timezoneMode = 'UTC', nowMs = Date.now()) {
+    const isLocal = String(timezoneMode || 'UTC').toUpperCase() === 'LOCAL';
+    const p = this.getDateParts(nowMs, isLocal ? 'LOCAL' : 'UTC');
+    const pad = (n) => String(n).padStart(2, '0');
+    const timeStr = `${pad(p.hr)}:${pad(p.mn)}:${pad(p.sec)}`;
+    if (!isLocal) return `${timeStr} UTC`;
+    const offMin = p.tzOffsetMin;
+    const sign = offMin >= 0 ? '+' : '-';
+    const absM = Math.abs(offMin);
+    const oh = pad(Math.floor(absM / 60));
+    const om = pad(absM % 60);
+    return `${timeStr} (${sign}${oh}:${om})`;
+  },
+
   /**
    * TradingView-Grade Smart Calendar-Aligned X-Axis Tick Generator.
    * Inspects both the active timeframe AND the actual visible calendar span (days/months/years)
    * to snap grid lines and labels onto true Year, Month, Day, or Round-Hour boundaries.
    */
-  computeSmartTimeAxisTicks(visible = [], chartW = 800, timeframe = 'M15') {
+  computeSmartTimeAxisTicks(visible = [], chartW = 800, timeframe = 'M15', timezoneMode = 'UTC') {
     if (!Array.isArray(visible) || visible.length === 0) return [];
     const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const pad = (n) => String(n).padStart(2, '0');
@@ -76,19 +105,15 @@ export const PriceFormatter = {
     for (let i = 0; i < visible.length; i++) {
       const ms = getMs(visible[i]);
       if (!ms) continue;
-      const d = new Date(ms);
-      const yr = d.getUTCFullYear();
-      const mo = d.getUTCMonth();
-      const day = d.getUTCDate();
-      const hr = d.getUTCHours();
-      const mn = d.getUTCMinutes();
+      const p = this.getDateParts(ms, timezoneMode);
+      const { yr, mo, day, hr, mn, dow } = p;
 
       const prevMs = i > 0 ? getMs(visible[i - 1]) : null;
-      const prevD = prevMs ? new Date(prevMs) : null;
+      const prevP = prevMs ? this.getDateParts(prevMs, timezoneMode) : null;
 
-      const isNewYear = !prevD || prevD.getUTCFullYear() !== yr;
-      const isNewMonth = !prevD || isNewYear || prevD.getUTCMonth() !== mo;
-      const isNewDay = !prevD || isNewMonth || prevD.getUTCDate() !== day;
+      const isNewYear = !prevP || prevP.yr !== yr;
+      const isNewMonth = !prevP || isNewYear || prevP.mo !== mo;
+      const isNewDay = !prevP || isNewMonth || prevP.day !== day;
 
       // 1. Multi-Year Span (> 420 days, e.g., 5Y / All)
       if (spanDays > 420) {
@@ -111,7 +136,7 @@ export const PriceFormatter = {
           isNewDay &&
           day >= 14 &&
           day <= 17 &&
-          (!prevD || prevD.getUTCDate() < 14)
+          (!prevP || prevP.day < 14)
         ) {
           // Clean mid-month day number (like TradingView: "Jul", "15", "Aug", "15")
           candidates.push({ index: i, text: String(day), isMajor: false, priority: 1 });
@@ -125,7 +150,7 @@ export const PriceFormatter = {
           candidates.push({ index: i, text: String(yr), isMajor: true, priority: 4 });
         } else if (isNewMonth && day <= 4) {
           candidates.push({ index: i, text: months[mo], isMajor: true, priority: 3 });
-        } else if (isNewDay && (d.getUTCDay() === 1 || day % 5 === 1)) {
+        } else if (isNewDay && (dow === 1 || day % 5 === 1)) {
           candidates.push({ index: i, text: `${day} ${months[mo]}`, isMajor: false, priority: 2 });
         }
         continue;
@@ -170,11 +195,11 @@ export const PriceFormatter = {
       const step = Math.max(1, Math.floor(visible.length / targetCount));
       for (let i = 0; i < visible.length; i += step) {
         const ms = getMs(visible[i]);
-        const d = new Date(ms);
+        const fp = this.getDateParts(ms, timezoneMode);
         const label =
           tf === 'D1' || tf === 'W1' || spanDays > 12
-            ? `${d.getUTCDate()} ${months[d.getUTCMonth()]}`
-            : `${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+            ? `${fp.day} ${months[fp.mo]}`
+            : `${pad(fp.hr)}:${pad(fp.mn)}`;
         candidates.push({ index: i, text: label, isMajor: i === 0, priority: 1 });
       }
     }
@@ -249,7 +274,7 @@ export const PriceFormatter = {
     return 900000;
   },
 
-  formatAdaptiveAxisTick(epochMs, prevTickEpochMs = null, timeframe = 'M15') {
+  formatAdaptiveAxisTick(epochMs, prevTickEpochMs = null, timeframe = 'M15', timezoneMode = 'UTC') {
     if (!epochMs) return { text: '', isMajor: false };
     const d = new Date(Number(epochMs));
     if (isNaN(d.getTime())) return { text: String(epochMs), isMajor: false };
@@ -258,20 +283,21 @@ export const PriceFormatter = {
     const pad = (n) => String(n).padStart(2, '0');
     const tf = String(timeframe).toUpperCase();
 
-    const year = d.getUTCFullYear();
-    const monthIdx = d.getUTCMonth();
+    const p = this.getDateParts(Number(epochMs), timezoneMode);
+    const year = p.yr;
+    const monthIdx = p.mo;
     const monthName = months[monthIdx];
-    const day = d.getUTCDate();
-    const hh = pad(d.getUTCHours());
-    const mm = pad(d.getUTCMinutes());
+    const day = p.day;
+    const hh = pad(p.hr);
+    const mm = pad(p.mn);
 
-    const prevD = prevTickEpochMs ? new Date(Number(prevTickEpochMs)) : null;
-    const isNewYear = !prevD || prevD.getUTCFullYear() !== year;
-    const isNewMonth = !prevD || isNewYear || prevD.getUTCMonth() !== monthIdx;
-    const isNewDay = !prevD || isNewMonth || prevD.getUTCDate() !== day;
+    const prevP = prevTickEpochMs ? this.getDateParts(Number(prevTickEpochMs), timezoneMode) : null;
+    const isNewYear = !prevP || prevP.yr !== year;
+    const isNewMonth = !prevP || isNewYear || prevP.mo !== monthIdx;
+    const isNewDay = !prevP || isNewMonth || prevP.day !== day;
 
     if (tf === 'D1' || tf === 'W1') {
-      if (isNewYear && prevD) {
+      if (isNewYear && prevP) {
         return { text: String(year), isMajor: true };
       }
       if (isNewMonth && day <= 7) {
@@ -288,7 +314,7 @@ export const PriceFormatter = {
     }
 
     if (isNewDay) {
-      if (d.getUTCHours() === 0 && d.getUTCMinutes() === 0) {
+      if (p.hr === 0 && p.mn === 0) {
         return { text: `${day} ${monthName}`, isMajor: true };
       }
       return { text: `${day} ${monthName} ${hh}:${mm}`, isMajor: true };
@@ -296,12 +322,12 @@ export const PriceFormatter = {
     return { text: `${hh}:${mm}`, isMajor: false };
   },
 
-  formatAxisTimestamp(epochMs, timeframe = 'M15') {
-    const res = this.formatAdaptiveAxisTick(epochMs, null, timeframe);
+  formatAxisTimestamp(epochMs, timeframe = 'M15', timezoneMode = 'UTC') {
+    const res = this.formatAdaptiveAxisTick(epochMs, null, timeframe, timezoneMode);
     return res.text;
   },
 
-  formatCompactAxisUtc(utcInput, timeframe = 'M15', prevUtcInput = null) {
+  formatCompactAxisUtc(utcInput, timeframe = 'M15', prevUtcInput = null, timezoneMode = 'UTC') {
     if (!utcInput) return '';
     const parseToMs = (val) => {
       if (!val) return null;
@@ -313,12 +339,12 @@ export const PriceFormatter = {
     const curMs = parseToMs(utcInput);
     const prevMs = parseToMs(prevUtcInput);
     if (curMs !== null) {
-      return this.formatAdaptiveAxisTick(curMs, prevMs, timeframe).text;
+      return this.formatAdaptiveAxisTick(curMs, prevMs, timeframe, timezoneMode).text;
     }
     return String(utcInput).slice(5, 16);
   },
 
-  formatCandleUtc(utcInput, timeframe = 'M15') {
+  formatCandleUtc(utcInput, timeframe = 'M15', timezoneMode = 'UTC') {
     if (!utcInput) return '';
     let ms = null;
     if (typeof utcInput === 'number') {
@@ -329,17 +355,19 @@ export const PriceFormatter = {
       if (!isNaN(p)) ms = p;
     }
     if (ms !== null) {
-      const d = new Date(ms);
+      const p = this.getDateParts(ms, timezoneMode);
       const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
       const pad = (n) => String(n).padStart(2, '0');
-      const day = pad(d.getUTCDate());
-      const mon = months[d.getUTCMonth()];
-      const yr = String(d.getUTCFullYear()).slice(-2);
+      const day = pad(p.day);
+      const mon = months[p.mo];
+      const yr = String(p.yr).slice(-2);
       const tf = String(timeframe).toUpperCase();
       if (tf === 'D1' || tf === 'W1') {
         return `${day} ${mon} '${yr}`;
       }
-      return `${day} ${mon} '${yr}  ${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())} UTC`;
+      const isLocal = String(timezoneMode || 'UTC').toUpperCase() === 'LOCAL';
+      const tzLabel = isLocal ? 'Local' : 'UTC';
+      return `${day} ${mon} '${yr}  ${pad(p.hr)}:${pad(p.mn)} ${tzLabel}`;
     }
     const s = String(utcInput);
     if (s.endsWith(' UTC')) return s;
