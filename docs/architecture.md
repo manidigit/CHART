@@ -1,7 +1,7 @@
 # معماری هسته مرکزی، ذخیره‌سازی افزایشی تاریخچه و قراردادهای همگام‌سازی (Central Core, DB-First Delta Sync & Sync Protocols)
 
-> **نسخه سند:** `1.32.0` · **وضعیت:** `DECIDED & IMPLEMENTED` · **تاریخ آخرین بازبینی:** `2026-11-11`  
-> این سند، مرجع فنی هسته مرکزی واحد (**Unified Central Core Engine**)، موتور ذخیره‌سازی افزایشی تاریخچه کندل‌ها (**DB-First Incremental Historical Engine**)، کاتالوگ مستقل ۶ روش جمع‌آوری داده (**Isolated Provider Methods Catalog**)، کاتالوگ استاندارد ۲۲ نماد واچ‌لیست به همراه اولویت منابع بر اساس طبقه دارایی و قراردادهای رسمی همگام‌سازی (**Sync Protocols**) بین نسخه **اندروید (Kotlin / Jetpack Compose)**، نسخه **وب (`chart.manico.es`)** و **دیتابیس مرکزی MariaDB** است.
+> **نسخه سند:** `1.35.0` · **وضعیت:** `DECIDED & IMPLEMENTED` · **تاریخ آخرین بازبینی:** `2026-11-12`  
+> این سند، مرجع فنی هسته مرکزی واحد (**Unified Central Core Engine**)، موتور ذخیره‌سازی افزایشی تاریخچه کندل‌ها (**DB-First Incremental Historical Engine**)، کاتالوگ مستقل ۷ روش جمع‌آوری داده (**Isolated Provider Methods Catalog** با افزودن `stooq` و پنل `BYOK`)، کاتالوگ استاندارد ۲۲ نماد واچ‌لیست به همراه اولویت منابع بر اساس طبقه دارایی و قراردادهای رسمی همگام‌سازی (**Sync Protocols**) بین نسخه **اندروید (Kotlin / Jetpack Compose)**، نسخه **وب (`chart.manico.es`)** و **دیتابیس مرکزی MariaDB** است.
 
 ---
 

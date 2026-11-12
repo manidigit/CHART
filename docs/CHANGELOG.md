@@ -7,7 +7,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.35.0] - 2026-11-11
+## [1.35.0] - 2026-11-12
 
 ### Added
 - **Multi-Tab Chart Strip (`Multi-Tab Chart Bar`) (Web & Android):**
@@ -21,6 +21,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Added personal API key configuration for Twelve Data, Stooq, Alpha Vantage, and Finnhub in the `sync` settings tab (`settingsView.js` and `SettingsScreen.kt`). Keys persist locally and sync across devices via `workspace_sync.php`.
 - **Transparent Price Basis & Sync Mode Metadata Badge (Web & Android):**
   - Displays explicit price basis (`Official FOB Spot`, `Interbank Spot`, `CFD / MT5 Feed`, `EOD Historical`, `Official Exchange`, `Spot REST`, `Futures Ref`) and sync mode (`DB_CACHE_HIT`, `DELTA_SYNC`, `INITIAL_BACKFILL`) metadata badges on the chart header status bar.
+- **Package 2 & Package 3 Comprehensive Indicators, SMC & Volume Profile Engine:**
+  - Added `M30` (`30m`) timeframe aggregation and selection across Web (`store.js`, `timeframeAggregator.js`) and Android (`TimeframeAggregatorAlgorithm.kt`, `AppConfig.kt`).
+  - Added full overlay indicators (`SMA 20/50/200`, `EMA 20/50`, `Supertrend 10,3`, `Session VWAP`, `Bollinger Bands 20,2`) and lower sync panes (`Volume`, `RSI 14`, `MACD 12,26,9`, `ATR 14`).
+  - Added automated Smart Market Structure (SMC) detection: `BOS / CHoCH`, `Equal Highs / Equal Lows (EQH / EQL)`, `Fair Value Gaps (FVG / Imbalance)`, and `Session Volume Profile VRVP` (`POC / VAH / VAL`).
+- **Strict User Settings & Last State Retention Specification (`Settings Persistence`):**
+  - Enforced mandatory persistence across local cache (`localStorage` / `SharedPreferences`) and MariaDB cloud sync (`workspace_sync.php`) for all user customizations—including custom candlestick colors, drawing line stroke widths (e.g. `2px` to `1px`), tool selections, timeframes, chart type, log/auto scales, and watchlist preferences—so they remain in their last configured state upon reopening, unless the explicit **"Reset to Defaults (`بازنشانی به تنظیمات اولیه`)"** action button is clicked.
+- **Overlay Classic MACD Indicator Option (`Overlay Classic MACD`):**
+  - Specified support for drawing Classic MACD line, signal curve, and histogram directly on the main chart canvas overlay (without opening a separate lower pane) alongside the standard lower pane oscillator mode.
+- **Customizable Bollinger Bands Parameters (`Bollinger Bands Settings`):**
+  - Added dedicated configuration inputs in the Settings / Indicators panel allowing users to adjust both the Period / Length (`default: 20`) and Standard Deviation Multiplier (`default: 2.0`) with real-time canvas recalculation and persistent storage.
+- **Full Viewport Auto-Fit & Range Zoom Fix Specification (`Chart Range Zoom Fix`):**
+  - Specified exact candle index bounds calculations, dynamic scale margin fitting, and auto-scale viewport adjustments when switching between timeframes (`1D`, `1W`) or selecting historical date ranges (`1D`..`6M`..`All`) to ensure 100% of visible candles render smoothly without truncation, clipping, or empty half-canvas gaps.
 
 ---
 

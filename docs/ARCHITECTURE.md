@@ -1,11 +1,11 @@
 # معماری هسته مرکزی، ذخیره‌سازی افزایشی تاریخچه و قراردادهای همگام‌سازی (Central Core, DB-First Delta Sync & Sync Protocols)
 
-> **نسخه سند:** `1.32.0` · **وضعیت:** `DECIDED & IMPLEMENTED` · **تاریخ آخرین بازبینی:** `2026-11-11`  
-> این سند هم‌راستا با [`docs/architecture.md`](./architecture.md) (نسخه `1.32.0`) و [`docs/CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md) است و مشخصات کامل هسته مرکزی، موتور ذخیره‌سازی افزایشی کندل‌ها (`DB-First Delta Sync`)، کاتالوگ مستقل ۶ روش جمع‌آوری داده (`ProviderCatalog`)، کاتالوگ استاندارد ۲۲ نماد واچ‌لیست و پروتکل‌های همگام‌سازی دوطرفه وب و اندروید را تعریف می‌کند.
+> **نسخه سند:** `1.35.0` · **وضعیت:** `DECIDED & IMPLEMENTED` · **تاریخ آخرین بازبینی:** `2026-11-12`  
+> این سند هم‌راستا با [`docs/architecture.md`](./architecture.md) (نسخه `1.35.0`) و [`docs/CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md) است و مشخصات کامل هسته مرکزی، موتور ذخیره‌سازی افزایشی کندل‌ها (`DB-First Delta Sync`)، کاتالوگ مستقل ۷ روش جمع‌آوری داده (`ProviderCatalog` شامل `stooq` و مدیریت `BYOK`)، کاتالوگ استاندارد ۲۲ نماد واچ‌لیست، نوار تب‌های چندگانه چارت و پروتکل‌های همگام‌سازی دوطرفه وب و اندروید را تعریف می‌کند.
 
 ---
 
-## خلاصه اجرایی معماری نسخه `1.32.0`
+## خلاصه اجرایی معماری نسخه `1.35.0`
 
 1. **موتور تاریخچه افزایشی دیتابیس‌محور (`DB-First Incremental Historical Engine`):**
    - جدول `candles` در MariaDB مرجع اول و دائمی کندل‌های بسته‌شده (`is_closed = 1`) است.
