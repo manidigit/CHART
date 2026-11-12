@@ -860,6 +860,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         tabToBackfill?.let { triggerBackfillIfHistoryShallow(it) }
     }
 
@@ -872,9 +873,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 openTabs = state.openTabs.map { tab ->
                     if (tab.tabId == activeId) {
                         // Pinch out (zoomFactor > 1) -> fewer candles visible (zoom in)
-                        val scaled = (tab.visibleCandleCount.toFloat() / zoomFactor).roundToInt()
+                        val rawScaled = (tab.visibleCandleCount.toFloat() / zoomFactor).roundToInt()
+                        val steppedScaled = when {
+                            zoomFactor > 1.008f && rawScaled == tab.visibleCandleCount -> tab.visibleCandleCount - 1
+                            zoomFactor < 0.992f && rawScaled == tab.visibleCandleCount -> tab.visibleCandleCount + 1
+                            else -> rawScaled
+                        }
                         val maxCap = max(AppConfig.MIN_VISIBLE_CANDLES, tab.candles.size.coerceAtMost(AppConfig.MAX_VISIBLE_CANDLES))
-                        val nextCount = scaled.coerceIn(AppConfig.MIN_VISIBLE_CANDLES, maxCap)
+                        val nextCount = steppedScaled.coerceIn(AppConfig.MIN_VISIBLE_CANDLES, maxCap)
                         val maxOffset = (tab.candles.size - nextCount).coerceAtLeast(0)
                         val updated = tab.copy(
                             visibleCandleCount = nextCount,
@@ -890,6 +896,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         tabToBackfill?.let { triggerBackfillIfHistoryShallow(it) }
     }
 
@@ -915,6 +922,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
     }
 
     fun panActiveTab(candleDelta: Int) {
@@ -937,6 +945,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         tabToBackfill?.let { triggerBackfillIfHistoryShallow(it) }
     }
 

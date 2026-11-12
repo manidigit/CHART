@@ -59,7 +59,7 @@ object CandleValidatorAlgorithm {
     ): List<CandleBar> {
         if (candles.isEmpty()) return emptyList()
         val normTf = timeframe.uppercase()
-        val isIntraday = normTf != "D1"
+        val isIntraday = normTf != "D1" && normTf != "W1"
 
         // Step 1: Remove intraday bars during OTC weekend closure that have zero volume or micro-range
         val step1 = candles.filter { bar ->

@@ -288,33 +288,40 @@ export async function uploadWorkspaceSync() {
         timeframe: s.timeframe || 'M15',
         isCustom: Boolean(s.isCustom),
       })),
-      open_tabs: (state.openTabs || []).map((t) => ({
-        symbolCode: t.symbolCode,
-        provider: t.provider,
-        timeframe: t.timeframe,
-        chartType: t.chartType,
-        visibleCount: t.visibleCount,
-        scrollOffset: t.scrollOffset,
-        showSma20: Boolean(t.showSma20),
-        showSma50: Boolean(t.showSma50),
-        showSma200: Boolean(t.showSma200),
-        showEma20: Boolean(t.showEma20),
-        showEma50: Boolean(t.showEma50),
-        showSupertrend: Boolean(t.showSupertrend),
-        showVwap: Boolean(t.showVwap),
-        showBollinger: Boolean(t.showBollinger),
-        showOverlayMacd: Boolean(t.showOverlayMacd),
-        showRsi14: Boolean(t.showRsi14),
-        showMacd: Boolean(t.showMacd),
-        showAtr14: Boolean(t.showAtr14),
-        showSmcStructure: Boolean(t.showSmcStructure),
-        showFvg: Boolean(t.showFvg),
-        showVolumeProfile: Boolean(t.showVolumeProfile),
-        showVolume: t.showVolume !== false,
-        isMagnetMode: Boolean(t.isMagnetMode),
-        activeDrawingColorHex: normalizeHexForAndroid(t.activeDrawingColorHex || p.defaultDrawingColorHex, 'FF2962FF'),
-        activeDrawingWidthDp: Number(t.activeDrawingWidthPx || p.defaultDrawingWidthPx || 2.0),
-      })),
+      open_tabs: {
+        lastOpenedSymbolCode: state.lastOpenedSymbolCode || 'SPOTBRENT',
+        tabs: (state.openTabs || []).map((t) => ({
+          tabId: t.tabId,
+          symbolCode: t.symbolCode,
+          provider: t.provider,
+          timeframe: t.timeframe,
+          chartType: t.chartType === 'line' ? 'line' : 'candlestick',
+          visibleCount: t.visibleCount,
+          scrollOffset: t.scrollOffset,
+          showSma20: Boolean(t.showSma20),
+          showSma50: Boolean(t.showSma50),
+          showSma200: Boolean(t.showSma200),
+          showEma20: Boolean(t.showEma20),
+          showEma50: Boolean(t.showEma50),
+          showSupertrend: Boolean(t.showSupertrend),
+          showVwap: Boolean(t.showVwap),
+          showBollinger: Boolean(t.showBollinger),
+          showOverlayMacd: Boolean(t.showOverlayMacd),
+          showRsi14: Boolean(t.showRsi14),
+          showMacd: Boolean(t.showMacd),
+          showAtr14: Boolean(t.showAtr14),
+          showSmcStructure: Boolean(t.showSmcStructure),
+          showFvg: Boolean(t.showFvg),
+          showVolumeProfile: Boolean(t.showVolumeProfile),
+          showVolume: t.showVolume !== false,
+          isMagnetMode: Boolean(t.isMagnetMode),
+          activeDrawingColorHex: normalizeHexForAndroid(
+            t.activeDrawingColorHex || t.activeDrawingColor || p.defaultDrawingColorHex,
+            'FF2962FF'
+          ),
+          activeDrawingWidthDp: Number(t.activeDrawingWidthPx || p.defaultDrawingWidthPx || 2.0),
+        })),
+      },
     };
     const res = await fetch('./api/v1/workspace_sync.php', {
       method: 'POST',
@@ -414,11 +421,24 @@ export async function downloadWorkspaceSync() {
         saveSymbolsToStorage(true);
       }
 
-      if (Array.isArray(ws.open_tabs) && ws.open_tabs.length > 0 && (!state.openTabs || state.openTabs.length === 0)) {
-        state.openTabs = ws.open_tabs.map((t, idx) => {
+      const incomingOpenTabs = Array.isArray(ws.open_tabs)
+        ? ws.open_tabs
+        : ws.open_tabs && Array.isArray(ws.open_tabs.tabs)
+          ? ws.open_tabs.tabs
+          : [];
+      if (ws.open_tabs && typeof ws.open_tabs === 'object' && ws.open_tabs.lastOpenedSymbolCode) {
+        state.lastOpenedSymbolCode = String(ws.open_tabs.lastOpenedSymbolCode).trim().toUpperCase();
+        localStorage.setItem('ci_last_opened_symbol_v2', state.lastOpenedSymbolCode);
+      }
+      if (incomingOpenTabs.length > 0 && (!state.openTabs || state.openTabs.length === 0)) {
+        state.openTabs = incomingOpenTabs.map((t, idx) => {
           const code = String(t.symbolCode || 'SPOTBRENT').toUpperCase();
           const tf = String(t.timeframe || 'M15').toUpperCase();
           const sym = state.symbols.find((s) => s.symbolCode === code);
+          const resolvedColor = normalizeHexForWeb(
+            t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex,
+            '#2962FF'
+          );
           return {
             tabId: t.tabId || `tab_${code}_${tf}_${idx}`,
             symbolCode: code,
@@ -426,7 +446,7 @@ export async function downloadWorkspaceSync() {
             timeframe: tf,
             decimals: sym ? sym.decimals : 2,
             candles: [],
-            chartType: t.chartType || 'candles',
+            chartType: String(t.chartType || '').toLowerCase() === 'line' ? 'line' : 'candles',
             showVolume: t.showVolume !== false,
             volumePaneRatio: 0.22,
             showSma20: Boolean(t.showSma20),
@@ -454,8 +474,11 @@ export async function downloadWorkspaceSync() {
             hoverIndex: null,
             hoverY: null,
             activeTool: 'cursor',
-            activeDrawingColorHex: normalizeHexForWeb(t.activeDrawingColorHex || state.chartPreferences.defaultDrawingColorHex, '#2962FF'),
-            activeDrawingWidthPx: Number(t.activeDrawingWidthDp || state.chartPreferences.defaultDrawingWidthPx || 2.0),
+            activeDrawingColor: resolvedColor,
+            activeDrawingColorHex: resolvedColor,
+            activeDrawingWidthPx: Number(
+              t.activeDrawingWidthDp || t.activeDrawingWidthPx || state.chartPreferences.defaultDrawingWidthPx || 2.0
+            ),
             selectedDrawingId: null,
             pendingTrendStart: null,
             drawings: state.drawingsByChartId[`${code}_${tf}`] || [],

@@ -282,8 +282,12 @@ export function normalizeCandle(raw, timeframe = 'M15', nowMs = Date.now()) {
   if (openMs + stepMs > nowMs) return null;
 
   if (String(timeframe).toUpperCase() === 'D1') {
-    const dow = new Date(openMs).getUTCDay();
-    if (dow === 0 || dow === 6) return null;
+    const symUpper = String(raw.symbol || raw.symbol_code || raw.symbolCode || '').toUpperCase();
+    const isCrypto24x7 = symUpper === 'BTCUSD' || symUpper === 'ETHUSD' || symUpper.endsWith('USDT');
+    if (!isCrypto24x7) {
+      const dow = new Date(openMs).getUTCDay();
+      if (dow === 0 || dow === 6) return null;
+    }
   }
 
   const o = Number(raw.open);
@@ -617,7 +621,13 @@ export function resetColorsToDefault() {
   state.chartPreferences.vLineColor = DEFAULT_PREFS.vLineColor;
   state.chartPreferences.defaultDrawingColorHex = DEFAULT_PREFS.defaultDrawingColorHex;
   state.chartPreferences.defaultDrawingWidthPx = DEFAULT_PREFS.defaultDrawingWidthPx;
+  for (const tab of state.openTabs) {
+    tab.activeDrawingColor = DEFAULT_PREFS.defaultDrawingColorHex;
+    tab.activeDrawingColorHex = DEFAULT_PREFS.defaultDrawingColorHex;
+    tab.activeDrawingWidthPx = DEFAULT_PREFS.defaultDrawingWidthPx;
+  }
   savePreferences();
+  saveOpenTabsToStorage();
 }
 
 export function resetAlgoParamsToDefault() {
@@ -633,6 +643,7 @@ export function resetAllPreferencesToDefault() {
   Object.assign(state.chartPreferences, { ...DEFAULT_PREFS });
   for (const tab of state.openTabs) {
     tab.activeDrawingColor = DEFAULT_PREFS.defaultDrawingColorHex;
+    tab.activeDrawingColorHex = DEFAULT_PREFS.defaultDrawingColorHex;
     tab.activeDrawingWidthPx = DEFAULT_PREFS.defaultDrawingWidthPx;
   }
   savePreferences();
@@ -695,7 +706,10 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showFvg: Boolean(t.showFvg),
     showVolumeProfile: Boolean(t.showVolumeProfile),
     isMagnetMode: Boolean(t.isMagnetMode),
-    activeDrawingColor: t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',
+    activeDrawingColor:
+      t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',
+    activeDrawingColorHex:
+      t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',
     activeDrawingWidthPx: Number(t.activeDrawingWidthPx || state.chartPreferences.defaultDrawingWidthPx || 2.0),
   }));
   localStorage.setItem(STORAGE_KEY_OPEN_TABS, JSON.stringify(clean));

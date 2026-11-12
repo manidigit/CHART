@@ -54,7 +54,7 @@ final class CandleValidator
             return [];
         }
         $normTf = strtoupper($timeframe);
-        $isIntraday = $normTf !== 'D1';
+        $isIntraday = !in_array($normTf, ['D1', 'W1'], true);
 
         $step1 = [];
         foreach ($candles as $bar) {

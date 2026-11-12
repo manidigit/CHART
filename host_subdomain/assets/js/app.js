@@ -87,6 +87,16 @@ function ensureInitialTabs() {
       const cached = getCachedOrAggregatedCandles(tab.symbolCode, prov, tf);
       tab.candles = cached.length > 0 ? cached : (sym && sym.candles) || [];
       tab.drawings = state.drawingsByChartId[tab.chartId] || tab.drawings || [];
+      const fallbackColor =
+        tab.activeDrawingColorHex ||
+        tab.activeDrawingColor ||
+        state.chartPreferences.defaultDrawingColorHex ||
+        '#2962FF';
+      tab.activeDrawingColorHex = fallbackColor;
+      tab.activeDrawingColor = fallbackColor;
+      tab.activeDrawingWidthPx = Number(
+        tab.activeDrawingWidthPx || state.chartPreferences.defaultDrawingWidthPx || 2.0
+      );
     });
     if (!state.activeTabId || !state.openTabs.some((t) => t.tabId === state.activeTabId)) {
       const preferred = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
@@ -860,7 +870,7 @@ function bindCanvasEvents(activeTab) {
 
     if (isDragging) {
       const dx = x - dragStartX;
-      const deltaBars = Math.round(dx / Math.max(2, meta.slotW));
+      const deltaBars = Math.round(dx / Math.max(0.5, meta.slotW));
       const maxOffset = Math.max(0, (activeTab.candles || []).length - 5);
       activeTab.scrollOffset = Math.max(0, Math.min(maxOffset, dragStartOffset + deltaBars));
       if (activeTab.scrollOffset >= Math.max(0, maxOffset - 15)) {
@@ -884,6 +894,9 @@ function bindCanvasEvents(activeTab) {
     window.removeEventListener('mouseup', window._ciCanvasMouseUp);
   }
   window._ciCanvasMouseUp = () => {
+    if (isDragging) {
+      saveOpenTabsToStorage();
+    }
     isDragging = false;
     isScalingAxis = false;
   };
@@ -910,14 +923,84 @@ function bindCanvasEvents(activeTab) {
     'wheel',
     (e) => {
       e.preventDefault();
-      const step = e.deltaY > 0 ? 6 : -6;
-      activeTab.visibleCount = Math.max(15, Math.min(600, (activeTab.visibleCount || 48) + step));
+      const step = e.deltaY > 0 ? Math.max(4, Number(state.chartPreferences.zoomStepCandles || 6)) : -Math.max(4, Number(state.chartPreferences.zoomStepCandles || 6));
+      const maxZoomCap = Math.max(600, Math.min(2500, (activeTab.candles || []).length));
+      activeTab.visibleCount = Math.max(15, Math.min(maxZoomCap, (activeTab.visibleCount || 48) + step));
       if (step > 0) {
         maybeTriggerDeepBackfill(activeTab);
       }
+      saveOpenTabsToStorage();
       scheduleCanvasRedraw();
     },
     { passive: false }
+  );
+
+  // Mobile/Tablet Touch Support: 1-finger pan & 2-finger pinch-zoom
+  let touchStartX = 0;
+  let touchStartOffset = 0;
+  let pinchStartDist = 0;
+  let pinchStartVisibleCount = 48;
+
+  canvas.addEventListener(
+    'touchstart',
+    (e) => {
+      if (e.touches.length === 1) {
+        const rect = canvas.getBoundingClientRect();
+        touchStartX = e.touches[0].clientX - rect.left;
+        touchStartOffset = Number(activeTab.scrollOffset || 0);
+        pinchStartDist = 0;
+      } else if (e.touches.length === 2) {
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        pinchStartDist = Math.hypot(dx, dy);
+        pinchStartVisibleCount = Number(activeTab.visibleCount || 48);
+      }
+    },
+    { passive: true }
+  );
+
+  canvas.addEventListener(
+    'touchmove',
+    (e) => {
+      const meta = canvas._chartMeta;
+      if (!meta) return;
+      if (e.touches.length === 2 && pinchStartDist > 10) {
+        e.preventDefault();
+        const dx = e.touches[0].clientX - e.touches[1].clientX;
+        const dy = e.touches[0].clientY - e.touches[1].clientY;
+        const dist = Math.max(10, Math.hypot(dx, dy));
+        const zoomFactor = dist / pinchStartDist;
+        const maxZoomCap = Math.max(600, Math.min(2500, (activeTab.candles || []).length));
+        const nextCount = Math.round(pinchStartVisibleCount / zoomFactor);
+        activeTab.visibleCount = Math.max(15, Math.min(maxZoomCap, nextCount));
+        if (zoomFactor < 1) {
+          maybeTriggerDeepBackfill(activeTab);
+        }
+        scheduleCanvasRedraw();
+      } else if (e.touches.length === 1 && pinchStartDist === 0) {
+        e.preventDefault();
+        const rect = canvas.getBoundingClientRect();
+        const x = e.touches[0].clientX - rect.left;
+        const dx = x - touchStartX;
+        const deltaBars = Math.round(dx / Math.max(0.5, meta.slotW));
+        const maxOffset = Math.max(0, (activeTab.candles || []).length - 5);
+        activeTab.scrollOffset = Math.max(0, Math.min(maxOffset, touchStartOffset + deltaBars));
+        if (activeTab.scrollOffset >= Math.max(0, maxOffset - 15)) {
+          maybeTriggerDeepBackfill(activeTab);
+        }
+        scheduleCanvasRedraw();
+      }
+    },
+    { passive: false }
+  );
+
+  canvas.addEventListener(
+    'touchend',
+    () => {
+      pinchStartDist = 0;
+      saveOpenTabsToStorage();
+    },
+    { passive: true }
   );
 }
 
@@ -1465,7 +1548,8 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'zoom-out' && activeTab) {
     const step = Number(state.chartPreferences.zoomStepCandles || 8);
-    activeTab.visibleCount = Math.min(600, (activeTab.visibleCount || 48) + step);
+    const maxZoomCap = Math.max(600, Math.min(2500, (activeTab.candles || []).length));
+    activeTab.visibleCount = Math.min(maxZoomCap, (activeTab.visibleCount || 48) + step);
     saveOpenTabsToStorage();
     renderApp();
     maybeTriggerDeepBackfill(activeTab);

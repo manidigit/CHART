@@ -411,9 +411,14 @@ fun CandlestickCanvas(
                 val currentSafeLogSpan by rememberUpdatedState(safeLogSpan)
                 val currentUseLogScale by rememberUpdatedState(useLogScale)
                 val currentPriceRatio by rememberUpdatedState(priceRatio)
-                val reusablePath1 = remember { Path() }
-                val reusablePath2 = remember { Path() }
-                val reusablePath3 = remember { Path() }
+                val currentStepMillis by rememberUpdatedState(stepMillis)
+                val currentOnPlaceDrawingAt by rememberUpdatedState(onPlaceDrawingAt)
+                val currentOnSelectDrawing by rememberUpdatedState(onSelectDrawing)
+                val currentOnSelectCandle by rememberUpdatedState(onSelectCandle)
+                val currentOnPinchZoom by rememberUpdatedState(onPinchZoom)
+                val currentOnPanCandles by rememberUpdatedState(onPanCandles)
+                val currentOnTranslateSelectedDrawing by rememberUpdatedState(onTranslateSelectedDrawing)
+                val pathPool = remember { Array(18) { Path() } }
 
                 // Multi-Pane Layered Financial Canvas (Main Price Pane + Separate Volume Sub-Pane)
                 Canvas(
@@ -460,7 +465,7 @@ fun CandlestickCanvas(
                                     return DrawingGeometryAlgorithm.timeUtcToCanvasX(
                                         timeUtcMillis = timeMs,
                                         visibleTimestamps = timestamps,
-                                        timeframeStepMillis = stepMillis,
+                                        timeframeStepMillis = currentStepMillis,
                                         canvasWidth = w
                                     )
                                 }
@@ -468,12 +473,12 @@ fun CandlestickCanvas(
                                 val rawTappedTimeUtc = DrawingGeometryAlgorithm.canvasXToTimeUtc(
                                     x = tapOffset.x,
                                     visibleTimestamps = timestamps,
-                                    timeframeStepMillis = stepMillis,
+                                    timeframeStepMillis = currentStepMillis,
                                     canvasWidth = w
                                 )
                                 val rawTappedPrice = yToPriceTap(tapOffset.y.coerceAtMost(pricePaneH))
 
-                                val slotW = (w / slice.size.toFloat()).coerceAtLeast(1f)
+                                val slotW = (w / slice.size.toFloat()).coerceAtLeast(0.5f)
                                 val localCandleIdx = (tapOffset.x / slotW).toInt().coerceIn(0, slice.lastIndex)
                                 val nearestCandle = slice.getOrNull(localCandleIdx)
 
@@ -494,7 +499,7 @@ fun CandlestickCanvas(
                                 }
 
                                 if (curTab.activeDrawingTool != DrawingTool.CURSOR) {
-                                    onPlaceDrawingAt(tappedTimeUtc, tappedPrice)
+                                    currentOnPlaceDrawingAt(tappedTimeUtc, tappedPrice)
                                 } else {
                                     val hitDrawing = DrawingGeometryAlgorithm.hitTestDrawing(
                                         drawings = curTab.drawings,
@@ -505,15 +510,15 @@ fun CandlestickCanvas(
                                         hitTolerancePx = curPrefs.drawingHitTolerancePx
                                     )
                                     if (hitDrawing != null) {
-                                        onSelectDrawing(hitDrawing.id)
+                                        currentOnSelectDrawing(hitDrawing.id)
                                     } else {
-                                        onSelectDrawing(null)
+                                        currentOnSelectDrawing(null)
                                         val localIdx = (tapOffset.x / slotW).toInt()
                                             .coerceIn(0, slice.lastIndex)
                                         if (curPrefs.chartVibrations) {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         }
-                                        onSelectCandle(currentStartIndex + localIdx)
+                                        currentOnSelectCandle(currentStartIndex + localIdx)
                                     }
                                 }
                             }
@@ -527,19 +532,19 @@ fun CandlestickCanvas(
                                 val pricePaneH = (h * currentPriceRatio).coerceAtLeast(1f)
                                 if (slice.isEmpty() || w <= 0f || h <= 0f) return@detectTransformGestures
 
-                                if (abs(zoom - 1f) > 0.015f) {
-                                    onPinchZoom(zoom)
+                                if (abs(zoom - 1f) > 0.008f) {
+                                    currentOnPinchZoom(zoom)
                                 }
 
-                                val slotW = (w / slice.size.toFloat()).coerceAtLeast(2f)
+                                val slotW = (w / slice.size.toFloat()).coerceAtLeast(0.5f)
 
                                 if (curTab.activeDrawingTool == DrawingTool.CURSOR && curTab.selectedDrawingId != null && abs(zoom - 1f) <= 0.015f) {
                                     val deltaSlots = (pan.x / slotW).roundToLong()
-                                    val deltaTimeMillis = deltaSlots * stepMillis
+                                    val deltaTimeMillis = deltaSlots * currentStepMillis
                                     val pricePerPx = currentPaddedSpan / pricePaneH.toDouble()
                                     val deltaPriceDouble = -pan.y.toDouble() * pricePerPx
                                     if (deltaTimeMillis != 0L || abs(deltaPriceDouble) > 1e-8) {
-                                        onTranslateSelectedDrawing(
+                                        currentOnTranslateSelectedDrawing(
                                             deltaTimeMillis,
                                             BigDecimal.valueOf(deltaPriceDouble)
                                         )
@@ -549,7 +554,7 @@ fun CandlestickCanvas(
                                     val deltaBars = (panCarryPx / slotW).roundToInt()
                                     if (deltaBars != 0) {
                                         panCarryPx -= deltaBars * slotW
-                                        onPanCandles(deltaBars)
+                                        currentOnPanCandles(deltaBars)
                                     }
                                 }
                             }
@@ -701,10 +706,18 @@ fun CandlestickCanvas(
                         }
 
                         // 4a. Optional Bollinger Bands (Period, StdDev) Shaded Channel + Upper/Lower/Basis Lines
+                        var pathPoolCursor = 0
+                        fun obtainPath(): Path {
+                            val p = pathPool[pathPoolCursor % pathPool.size]
+                            pathPoolCursor++
+                            p.reset()
+                            return p
+                        }
+
                         if (tab.showBollinger && visibleBollinger.isNotEmpty()) {
-                            reusablePath1.reset()
-                            reusablePath2.reset()
-                            reusablePath3.reset()
+                            val bbUpperPath = obtainPath()
+                            val bbLowerPath = obtainPath()
+                            val bbFillPath = obtainPath()
                             var firstValidIdx = -1
                             var validCount = 0
                             visibleBollinger.forEachIndexed { idx, bb ->
@@ -714,13 +727,13 @@ fun CandlestickCanvas(
                                     val lY = priceToY(bb.lower)
                                     if (firstValidIdx == -1) {
                                         firstValidIdx = idx
-                                        reusablePath1.moveTo(x, uY)
-                                        reusablePath2.moveTo(x, lY)
-                                        reusablePath3.moveTo(x, uY)
+                                        bbUpperPath.moveTo(x, uY)
+                                        bbLowerPath.moveTo(x, lY)
+                                        bbFillPath.moveTo(x, uY)
                                     } else {
-                                        reusablePath1.lineTo(x, uY)
-                                        reusablePath2.lineTo(x, lY)
-                                        reusablePath3.lineTo(x, uY)
+                                        bbUpperPath.lineTo(x, uY)
+                                        bbLowerPath.lineTo(x, lY)
+                                        bbFillPath.lineTo(x, uY)
                                     }
                                     validCount++
                                 }
@@ -729,21 +742,21 @@ fun CandlestickCanvas(
                                 for (idx in visibleBollinger.lastIndex downTo firstValidIdx) {
                                     val bb = visibleBollinger[idx] ?: continue
                                     val x = (idx + 0.5f) * slotW
-                                    reusablePath3.lineTo(x, priceToY(bb.lower))
+                                    bbFillPath.lineTo(x, priceToY(bb.lower))
                                 }
-                                reusablePath3.close()
+                                bbFillPath.close()
                                 val bbColor = Color(0xFFA855F7)
                                 drawPath(
-                                    path = reusablePath3,
+                                    path = bbFillPath,
                                     color = bbColor.copy(alpha = 0.09f)
                                 )
                                 drawPath(
-                                    path = reusablePath1,
+                                    path = bbUpperPath,
                                     color = bbColor.copy(alpha = 0.80f),
                                     style = Stroke(width = 1.5f)
                                 )
                                 drawPath(
-                                    path = reusablePath2,
+                                    path = bbLowerPath,
                                     color = bbColor.copy(alpha = 0.80f),
                                     style = Stroke(width = 1.5f)
                                 )
@@ -777,27 +790,27 @@ fun CandlestickCanvas(
                                 )
                             }
                         } else {
-                            reusablePath1.reset()
-                            reusablePath2.reset()
+                            val linePath = obtainPath()
+                            val areaPath = obtainPath()
                             visibleSlice.forEachIndexed { idx, candle ->
                                 val x = (idx + 0.5f) * slotW
                                 val y = priceToY(candle.close.toDouble())
                                 if (idx == 0) {
-                                    reusablePath1.moveTo(x, y)
-                                    reusablePath2.moveTo(x, pricePaneH)
-                                    reusablePath2.lineTo(x, y)
+                                    linePath.moveTo(x, y)
+                                    areaPath.moveTo(x, pricePaneH)
+                                    areaPath.lineTo(x, y)
                                 } else {
-                                    reusablePath1.lineTo(x, y)
-                                    reusablePath2.lineTo(x, y)
+                                    linePath.lineTo(x, y)
+                                    areaPath.lineTo(x, y)
                                 }
                                 if (idx == visibleSlice.lastIndex) {
-                                    reusablePath2.lineTo(x, pricePaneH)
-                                    reusablePath2.close()
+                                    areaPath.lineTo(x, pricePaneH)
+                                    areaPath.close()
                                 }
                             }
                             val lineColor = Color(0xFF2962FF)
                             drawPath(
-                                path = reusablePath2,
+                                path = areaPath,
                                 brush = Brush.verticalGradient(
                                     colors = listOf(
                                         lineColor.copy(alpha = 0.28f),
@@ -808,7 +821,7 @@ fun CandlestickCanvas(
                                 )
                             )
                             drawPath(
-                                path = reusablePath1,
+                                path = linePath,
                                 color = lineColor,
                                 style = Stroke(width = 2.4f)
                             )
@@ -816,23 +829,23 @@ fun CandlestickCanvas(
 
                         fun drawSeriesLine(series: List<Double?>, color: Color, strokeWidth: Float = 2.0f, dashed: Boolean = false) {
                             if (series.isEmpty()) return
-                            reusablePath1.reset()
+                            val seriesPath = obtainPath()
                             var started = false
                             series.forEachIndexed { idx, v ->
                                 if (v != null) {
                                     val x = (idx + 0.5f) * slotW
                                     val y = priceToY(v)
                                     if (!started) {
-                                        reusablePath1.moveTo(x, y)
+                                        seriesPath.moveTo(x, y)
                                         started = true
                                     } else {
-                                        reusablePath1.lineTo(x, y)
+                                        seriesPath.lineTo(x, y)
                                     }
                                 }
                             }
                             if (started) {
                                 drawPath(
-                                    path = reusablePath1,
+                                    path = seriesPath,
                                     color = color,
                                     style = Stroke(
                                         width = strokeWidth,
@@ -933,8 +946,8 @@ fun CandlestickCanvas(
                                 strokeWidth = 1.0f,
                                 pathEffect = dashEffect
                             )
-                            reusablePath1.reset()
-                            reusablePath2.reset()
+                            val ovMacdPath = obtainPath()
+                            val ovSigPath = obtainPath()
                             var mStarted = false
                             var sStarted = false
                             val histBarW = (slotW * 0.54f).coerceIn(2f, 12f)
@@ -954,27 +967,27 @@ fun CandlestickCanvas(
                                     }
                                     val mY = overlayMidY - ((pt.macd / maxAbs).toFloat() * overlayHalfH)
                                     if (!mStarted) {
-                                        reusablePath1.moveTo(x, mY)
+                                        ovMacdPath.moveTo(x, mY)
                                         mStarted = true
                                     } else {
-                                        reusablePath1.lineTo(x, mY)
+                                        ovMacdPath.lineTo(x, mY)
                                     }
                                     pt.signal?.let { sigVal ->
                                         val sY = overlayMidY - ((sigVal / maxAbs).toFloat() * overlayHalfH)
                                         if (!sStarted) {
-                                            reusablePath2.moveTo(x, sY)
+                                            ovSigPath.moveTo(x, sY)
                                             sStarted = true
                                         } else {
-                                            reusablePath2.lineTo(x, sY)
+                                            ovSigPath.lineTo(x, sY)
                                         }
                                     }
                                 }
                             }
                             if (mStarted) {
-                                drawPath(path = reusablePath1, color = Color(0xFF2962FF), style = Stroke(width = 2.0f))
+                                drawPath(path = ovMacdPath, color = Color(0xFF2962FF), style = Stroke(width = 2.0f))
                             }
                             if (sStarted) {
-                                drawPath(path = reusablePath2, color = Color(0xFFFF6D00), style = Stroke(width = 1.8f))
+                                drawPath(path = ovSigPath, color = Color(0xFFFF6D00), style = Stroke(width = 1.8f))
                             }
                         }
 
@@ -1332,22 +1345,22 @@ fun CandlestickCanvas(
                         drawLine(color = financialPalette.chartGrid, start = Offset(0f, y70), end = Offset(canvasW, y70), strokeWidth = 1f, pathEffect = dashEffect)
                         drawLine(color = financialPalette.chartGrid, start = Offset(0f, y30), end = Offset(canvasW, y30), strokeWidth = 1f, pathEffect = dashEffect)
 
-                        reusablePath1.reset()
+                        val rsiPath = pathPool[13].apply { reset() }
                         var started = false
                         visibleRsi14.forEachIndexed { idx, rv ->
                             if (rv != null) {
                                 val x = (idx + 0.5f) * slotW
                                 val y = rsiToY(rv)
                                 if (!started) {
-                                    reusablePath1.moveTo(x, y)
+                                    rsiPath.moveTo(x, y)
                                     started = true
                                 } else {
-                                    reusablePath1.lineTo(x, y)
+                                    rsiPath.lineTo(x, y)
                                 }
                             }
                         }
                         if (started) {
-                            drawPath(path = reusablePath1, color = Color(0xFFEC4899), style = Stroke(width = 1.8f))
+                            drawPath(path = rsiPath, color = Color(0xFFEC4899), style = Stroke(width = 1.8f))
                         }
                     }
 
@@ -1374,8 +1387,8 @@ fun CandlestickCanvas(
                         val halfH = (oscPaneH * 0.42f).coerceAtLeast(2f)
                         drawLine(color = financialPalette.chartGrid, start = Offset(0f, zeroY), end = Offset(canvasW, zeroY), strokeWidth = 1f, pathEffect = dashEffect)
 
-                        reusablePath1.reset()
-                        reusablePath2.reset()
+                        val macdPath = pathPool[14].apply { reset() }
+                        val sigPath = pathPool[15].apply { reset() }
                         var mStarted = false
                         var sStarted = false
 
@@ -1395,24 +1408,24 @@ fun CandlestickCanvas(
                                 }
                                 val my = zeroY - (pt.macd / maxAbs).toFloat() * halfH
                                 if (!mStarted) {
-                                    reusablePath1.moveTo(x, my)
+                                    macdPath.moveTo(x, my)
                                     mStarted = true
                                 } else {
-                                    reusablePath1.lineTo(x, my)
+                                    macdPath.lineTo(x, my)
                                 }
                                 if (pt.signal != null) {
                                     val sy = zeroY - (pt.signal / maxAbs).toFloat() * halfH
                                     if (!sStarted) {
-                                        reusablePath2.moveTo(x, sy)
+                                        sigPath.moveTo(x, sy)
                                         sStarted = true
                                     } else {
-                                        reusablePath2.lineTo(x, sy)
+                                        sigPath.lineTo(x, sy)
                                     }
                                 }
                             }
                         }
-                        if (mStarted) drawPath(path = reusablePath1, color = Color(0xFF3B82F6), style = Stroke(width = 1.7f))
-                        if (sStarted) drawPath(path = reusablePath2, color = Color(0xFFF59E0B), style = Stroke(width = 1.5f))
+                        if (mStarted) drawPath(path = macdPath, color = Color(0xFF3B82F6), style = Stroke(width = 1.7f))
+                        if (sStarted) drawPath(path = sigPath, color = Color(0xFFF59E0B), style = Stroke(width = 1.5f))
                     }
 
                     // 8d. ATR (14) Synchronized Sub-Pane
@@ -1431,7 +1444,7 @@ fun CandlestickCanvas(
                             val minAtr = validAtrs.minOrNull() ?: 0.0
                             val maxAtr = validAtrs.maxOrNull() ?: 1.0
                             val spanAtr = (maxAtr - minAtr).coerceAtLeast(1e-6)
-                            reusablePath1.reset()
+                            val atrPath = pathPool[16].apply { reset() }
                             var started = false
                             visibleAtr14.forEachIndexed { idx, av ->
                                 if (av != null) {
@@ -1439,15 +1452,15 @@ fun CandlestickCanvas(
                                     val norm = ((av - minAtr) / spanAtr).toFloat().coerceIn(0f, 1f)
                                     val y = aBot - 3f - norm * (oscPaneH - 6f).coerceAtLeast(2f)
                                     if (!started) {
-                                        reusablePath1.moveTo(x, y)
+                                        atrPath.moveTo(x, y)
                                         started = true
                                     } else {
-                                        reusablePath1.lineTo(x, y)
+                                        atrPath.lineTo(x, y)
                                     }
                                 }
                             }
                             if (started) {
-                                drawPath(path = reusablePath1, color = Color(0xFFF97316), style = Stroke(width = 1.8f))
+                                drawPath(path = atrPath, color = Color(0xFFF97316), style = Stroke(width = 1.8f))
                             }
                         }
                     }
