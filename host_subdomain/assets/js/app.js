@@ -190,6 +190,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     state.activeTabId = existing.tabId;
   } else {
     const tabId = `tab_${symbolCode}_${Date.now()}`;
+    const curActive = getActiveTab();
     const newTab = {
       tabId,
       chartId: drawKey,
@@ -198,24 +199,25 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       timeframe: tf,
       decimals: sym.decimals,
       candles: cached.length > 0 ? cached : sym.candles || [],
-      chartType: 'candles',
-      showVolume: true,
-      volumePaneRatio: 0.22,
-      showSma20: false,
-      showSma50: false,
-      showSma200: false,
-      showEma20: false,
-      showEma50: false,
-      showSupertrend: false,
-      showVwap: false,
-      showBollinger: false,
-      showOverlayMacd: false,
-      showRsi14: false,
-      showMacd: false,
-      showAtr14: false,
-      showSmcStructure: false,
-      showFvg: false,
-      showVolumeProfile: false,
+      chartType: curActive ? curActive.chartType || 'candles' : 'candles',
+      showVolume: curActive ? curActive.showVolume !== false : true,
+      volumePaneRatio: curActive ? curActive.volumePaneRatio || 0.22 : 0.22,
+      showSma20: curActive ? Boolean(curActive.showSma20) : false,
+      showSma50: curActive ? Boolean(curActive.showSma50) : false,
+      showSma200: curActive ? Boolean(curActive.showSma200) : false,
+      showEma20: curActive ? Boolean(curActive.showEma20) : false,
+      showEma50: curActive ? Boolean(curActive.showEma50) : false,
+      showSupertrend: curActive ? Boolean(curActive.showSupertrend) : false,
+      showVwap: curActive ? Boolean(curActive.showVwap) : false,
+      showBollinger: curActive ? Boolean(curActive.showBollinger) : false,
+      showOverlayMacd: curActive ? Boolean(curActive.showOverlayMacd) : false,
+      showRsi14: curActive ? Boolean(curActive.showRsi14) : false,
+      showMacd: curActive ? Boolean(curActive.showMacd) : false,
+      showAtr14: curActive ? Boolean(curActive.showAtr14) : false,
+      showSmcStructure: curActive ? Boolean(curActive.showSmcStructure) : false,
+      showFvg: curActive ? Boolean(curActive.showFvg) : false,
+      showVolumeProfile: curActive ? Boolean(curActive.showVolumeProfile) : false,
+      isMagnetMode: curActive ? Boolean(curActive.isMagnetMode) : false,
       isLogScale: Boolean(state.chartPreferences.isLogScale),
       selectedRangePreset: null,
       visibleCount: 48,
@@ -225,8 +227,15 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       hoverIndex: null,
       hoverY: null,
       activeTool: 'cursor',
-      activeDrawingColorHex: state.chartPreferences.defaultDrawingColorHex || '#2962FF',
-      activeDrawingWidthPx: Number(state.chartPreferences.defaultDrawingWidthPx || 2.0),
+      activeDrawingColorHex: curActive
+        ? curActive.activeDrawingColorHex || state.chartPreferences.defaultDrawingColorHex || '#2962FF'
+        : state.chartPreferences.defaultDrawingColorHex || '#2962FF',
+      activeDrawingColor: curActive
+        ? curActive.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF'
+        : state.chartPreferences.defaultDrawingColorHex || '#2962FF',
+      activeDrawingWidthPx: Number(
+        (curActive && curActive.activeDrawingWidthPx) || state.chartPreferences.defaultDrawingWidthPx || 2.0
+      ),
       selectedDrawingId: null,
       pendingTrendStart: null,
       drawings: state.drawingsByChartId[drawKey] || [],

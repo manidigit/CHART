@@ -638,6 +638,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
             val savedDrawings = repository.loadDrawingsForChart(symbol.chartId)
             val curPrefs = _uiState.value.chartPreferences
+            val curActive = _uiState.value.activeTab
             val newTab = ChartTabState(
                 tabId = tabId,
                 chartId = symbol.chartId,
@@ -646,8 +647,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 provider = symbol.activeProvider,
                 timeframe = symbol.timeframe,
                 candles = cachedCandles,
-                activeDrawingColorHex = curPrefs.defaultDrawingColorHex,
-                activeDrawingWidthDp = curPrefs.defaultDrawingWidthDp,
+                chartType = curActive?.chartType ?: ChartType.CANDLESTICK,
+                showVolume = curActive?.showVolume ?: true,
+                volumePaneRatio = curActive?.volumePaneRatio ?: 0.22f,
+                showSma20 = curActive?.showSma20 ?: false,
+                showSma50 = curActive?.showSma50 ?: false,
+                showSma200 = curActive?.showSma200 ?: false,
+                showEma20 = curActive?.showEma20 ?: false,
+                showEma50 = curActive?.showEma50 ?: false,
+                showSupertrend = curActive?.showSupertrend ?: false,
+                showVwap = curActive?.showVwap ?: false,
+                showBollinger = curActive?.showBollinger ?: false,
+                showOverlayMacd = curActive?.showOverlayMacd ?: false,
+                showRsi14 = curActive?.showRsi14 ?: false,
+                showMacd = curActive?.showMacd ?: false,
+                showAtr14 = curActive?.showAtr14 ?: false,
+                showSmcStructure = curActive?.showSmcStructure ?: false,
+                showFvg = curActive?.showFvg ?: false,
+                showVolumeProfile = curActive?.showVolumeProfile ?: false,
+                isMagnetMode = curActive?.isMagnetMode ?: false,
+                activeDrawingColorHex = curActive?.activeDrawingColorHex ?: curPrefs.defaultDrawingColorHex,
+                activeDrawingWidthDp = curActive?.activeDrawingWidthDp ?: curPrefs.defaultDrawingWidthDp,
                 drawings = savedDrawings,
                 isLoading = cachedCandles.isEmpty()
             )
