@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AdsClick
 import androidx.compose.material.icons.outlined.BarChart
@@ -131,8 +132,19 @@ fun ChartViewScreen(
     onToggleVolume: () -> Unit = {},
     onCycleVolumeHeight: () -> Unit = {},
     onToggleSma20: () -> Unit = {},
+    onToggleSma50: () -> Unit = {},
+    onToggleSma200: () -> Unit = {},
+    onToggleEma20: () -> Unit = {},
     onToggleEma50: () -> Unit = {},
     onToggleBollinger: () -> Unit = {},
+    onToggleSupertrend: () -> Unit = {},
+    onToggleVwap: () -> Unit = {},
+    onToggleRsi14: () -> Unit = {},
+    onToggleMacd: () -> Unit = {},
+    onToggleAtr14: () -> Unit = {},
+    onToggleSmcStructure: () -> Unit = {},
+    onToggleFvg: () -> Unit = {},
+    onToggleVolumeProfile: () -> Unit = {},
     onZoom: (Boolean) -> Unit,
     onPinchZoom: (Float) -> Unit,
     onPanCandles: (Int) -> Unit,
@@ -509,9 +521,13 @@ fun ChartViewScreen(
                         )
                     }
 
-                    // 4. Indicator Button (fx) -> Opens Unified 4-Indicator BottomSheet
-                    val hasActiveIndicator = activeTab.showSma20 || activeTab.showEma50 || activeTab.showBollinger || activeTab.showVolume
-                    val hasOverlayIndicator = activeTab.showSma20 || activeTab.showEma50 || activeTab.showBollinger
+                    // 4. Indicator Button (fx) -> Opens Unified Phase 2 Indicators, Oscillators & SMC BottomSheet
+                    val hasOverlayIndicator = activeTab.showSma20 || activeTab.showSma50 || activeTab.showSma200 ||
+                        activeTab.showEma20 || activeTab.showEma50 || activeTab.showBollinger ||
+                        activeTab.showSupertrend || activeTab.showVwap || activeTab.showRsi14 ||
+                        activeTab.showMacd || activeTab.showAtr14 || activeTab.showSmcStructure ||
+                        activeTab.showFvg || activeTab.showVolumeProfile
+                    val hasActiveIndicator = hasOverlayIndicator || activeTab.showVolume
                     Box(
                         modifier = Modifier
                             .size(36.dp)
@@ -716,163 +732,252 @@ fun ChartViewScreen(
                             }
 
                             ChartControlSheet.INDICATORS -> {
-                                Text(
-                                    text = stringResource(R.string.chart_control_indicators),
-                                    style = MaterialTheme.typography.titleMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                // 1. SMA 20
-                                Row(
+                                Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .clickable(onClick = onToggleSma20)
-                                        .padding(vertical = 4.dp)
-                                        .testTag("chart_sma20_toggle_button"),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
+                                        .verticalScroll(rememberScrollState()),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.Timeline,
-                                            contentDescription = "SMA 20",
-                                            tint = Color(0xFFF59E0B)
-                                        )
-                                        Text(
-                                            text = "SMA 20 (Simple Moving Average)",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                    Switch(
-                                        checked = activeTab.showSma20,
-                                        onCheckedChange = { onToggleSma20() }
+                                    Text(
+                                        text = stringResource(R.string.chart_control_indicators),
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                }
 
-                                HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
-
-                                // 2. EMA 50
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(onClick = onToggleEma50)
-                                        .padding(vertical = 4.dp)
-                                        .testTag("chart_ema50_toggle_button"),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.ShowChart,
-                                            contentDescription = "EMA 50",
-                                            tint = Color(0xFF06B6D4)
-                                        )
-                                        Text(
-                                            text = "EMA 50 (Exponential Moving Average)",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                    Switch(
-                                        checked = activeTab.showEma50,
-                                        onCheckedChange = { onToggleEma50() }
+                                    data class StudyRowSpec(
+                                        val title: String,
+                                        val subtitle: String,
+                                        val color: Color,
+                                        val checked: Boolean,
+                                        val onToggle: () -> Unit,
+                                        val testTag: String
                                     )
-                                }
 
-                                HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
-
-                                // 3. Bollinger Bands (20, 2)
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(onClick = onToggleBollinger)
-                                        .padding(vertical = 4.dp)
-                                        .testTag("chart_bollinger_toggle_button"),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.VerticalAlignCenter,
-                                            contentDescription = "Bollinger Bands",
-                                            tint = Color(0xFFA855F7)
-                                        )
-                                        Text(
-                                            text = "Bollinger Bands (20, 2)",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                    Switch(
-                                        checked = activeTab.showBollinger,
-                                        onCheckedChange = { onToggleBollinger() }
+                                    // Section 1: Main Chart Overlays (Package 2)
+                                    Text(
+                                        text = "۱. اندیکاتورهای روی چارت (Main Chart Overlays)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
                                     )
-                                }
 
-                                HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
+                                    val overlaySpecs = listOf(
+                                        StudyRowSpec("EMA 20", "Exponential Moving Average (20)", Color(0xFF38BDF8), activeTab.showEma20, onToggleEma20, "chart_ema20_toggle_button"),
+                                        StudyRowSpec("EMA 50", "Exponential Moving Average (50)", Color(0xFF06B6D4), activeTab.showEma50, onToggleEma50, "chart_ema50_toggle_button"),
+                                        StudyRowSpec("SMA 20", "Simple Moving Average (20)", Color(0xFFF59E0B), activeTab.showSma20, onToggleSma20, "chart_sma20_toggle_button"),
+                                        StudyRowSpec("SMA 50", "Simple Moving Average (50)", Color(0xFF10B981), activeTab.showSma50, onToggleSma50, "chart_sma50_toggle_button"),
+                                        StudyRowSpec("SMA 200", "Institutional Trend Baseline (200)", Color(0xFFF43F5E), activeTab.showSma200, onToggleSma200, "chart_sma200_toggle_button"),
+                                        StudyRowSpec("Supertrend (10, 3)", "ATR Dynamic Trend Ribbon", Color(0xFF22C55E), activeTab.showSupertrend, onToggleSupertrend, "chart_supertrend_toggle_button"),
+                                        StudyRowSpec("Session VWAP", "Volume Weighted Average Price", Color(0xFFEAB308), activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button"),
+                                        StudyRowSpec("Bollinger Bands (20, 2)", "Volatility Channel ±2σ", Color(0xFFA855F7), activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button")
+                                    )
 
-                                // 4. Volume Histogram + Height Selector (16% / 22% / 30%)
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable(onClick = onToggleVolume)
-                                        .padding(vertical = 4.dp)
-                                        .testTag("chart_volume_toggle_button"),
-                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.BarChart,
-                                            contentDescription = "Volume",
-                                            tint = MaterialTheme.colorScheme.primary
-                                        )
-                                        Text(
-                                            text = "${stringResource(R.string.chart_volume_panel)} (${(activeTab.volumePaneRatio * 100f).roundToInt()}%)",
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = FontWeight.SemiBold
-                                        )
-                                    }
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        if (activeTab.showVolume) {
-                                            Box(
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(6.dp))
-                                                    .background(MaterialTheme.colorScheme.background)
-                                                    .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
-                                                    .clickable(onClick = onCycleVolumeHeight)
-                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                    .testTag("chart_volume_resize_button")
+                                    for (spec in overlaySpecs) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable(onClick = spec.onToggle)
+                                                .padding(vertical = 2.dp)
+                                                .testTag(spec.testTag),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Text(
-                                                    text = "${(activeTab.volumePaneRatio * 100f).roundToInt()}%",
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontFamily = JetBrainsMonoFontFamily
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(10.dp)
+                                                        .clip(CircleShape)
+                                                        .background(spec.color)
                                                 )
+                                                Column {
+                                                    Text(
+                                                        text = spec.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                    Text(
+                                                        text = spec.subtitle,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
                                             }
+                                            Switch(
+                                                checked = spec.checked,
+                                                onCheckedChange = { spec.onToggle() }
+                                            )
                                         }
-                                        Switch(
-                                            checked = activeTab.showVolume,
-                                            onCheckedChange = { onToggleVolume() }
-                                        )
+                                    }
+
+                                    HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
+
+                                    // Section 2: Smart Money Concepts (SMC) & Volume Profile (Package 3)
+                                    Text(
+                                        text = "۲. ساختار بازار، نقدینگی و پروفایل حجم (SMC & VRVP)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    val smcSpecs = listOf(
+                                        StudyRowSpec("BOS / CHoCH & EQH / EQL", "Break of Structure, Change of Character & Equal Highs/Lows", Color(0xFF14B8A6), activeTab.showSmcStructure, onToggleSmcStructure, "chart_smc_toggle_button"),
+                                        StudyRowSpec("FVG / Imbalance Zones", "3-Candle Bullish & Bearish Fair Value Gaps", Color(0xFF6366F1), activeTab.showFvg, onToggleFvg, "chart_fvg_toggle_button"),
+                                        StudyRowSpec("Session Volume Profile (VRVP)", "POC, VAH & VAL (70% Value Area)", Color(0xFFF97316), activeTab.showVolumeProfile, onToggleVolumeProfile, "chart_vp_toggle_button")
+                                    )
+
+                                    for (spec in smcSpecs) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable(onClick = spec.onToggle)
+                                                .padding(vertical = 2.dp)
+                                                .testTag(spec.testTag),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(10.dp)
+                                                        .clip(CircleShape)
+                                                        .background(spec.color)
+                                                )
+                                                Column {
+                                                    Text(
+                                                        text = spec.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                    Text(
+                                                        text = spec.subtitle,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                            Switch(
+                                                checked = spec.checked,
+                                                onCheckedChange = { spec.onToggle() }
+                                            )
+                                        }
+                                    }
+
+                                    HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
+
+                                    // Section 3: Synchronized Multi-Pane Sub-Panels (Package 2)
+                                    Text(
+                                        text = "۳. پنل‌های پایینی همگام (Multi-Pane Oscillators)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        fontWeight = FontWeight.Bold
+                                    )
+
+                                    // Volume Histogram + Height Selector (16% / 22% / 30%)
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable(onClick = onToggleVolume)
+                                            .padding(vertical = 2.dp)
+                                            .testTag("chart_volume_toggle_button"),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.BarChart,
+                                                contentDescription = "Volume",
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                            Text(
+                                                text = "${stringResource(R.string.chart_volume_panel)} (${(activeTab.volumePaneRatio * 100f).roundToInt()}%)",
+                                                style = MaterialTheme.typography.bodyMedium,
+                                                fontWeight = FontWeight.SemiBold
+                                            )
+                                        }
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            if (activeTab.showVolume) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(MaterialTheme.colorScheme.background)
+                                                        .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                        .clickable(onClick = onCycleVolumeHeight)
+                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        .testTag("chart_volume_resize_button")
+                                                ) {
+                                                    Text(
+                                                        text = "${(activeTab.volumePaneRatio * 100f).roundToInt()}%",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontFamily = JetBrainsMonoFontFamily
+                                                    )
+                                                }
+                                            }
+                                            Switch(
+                                                checked = activeTab.showVolume,
+                                                onCheckedChange = { onToggleVolume() }
+                                            )
+                                        }
+                                    }
+
+                                    val oscSpecs = listOf(
+                                        StudyRowSpec("RSI 14", "Relative Strength Index (30 / 70 Levels)", Color(0xFFEC4899), activeTab.showRsi14, onToggleRsi14, "chart_rsi14_toggle_button"),
+                                        StudyRowSpec("MACD (12, 26, 9)", "Momentum Histogram + MACD / Signal", Color(0xFF3B82F6), activeTab.showMacd, onToggleMacd, "chart_macd_toggle_button"),
+                                        StudyRowSpec("ATR 14", "Wilder's Average True Range Volatility", Color(0xFFF97316), activeTab.showAtr14, onToggleAtr14, "chart_atr14_toggle_button")
+                                    )
+
+                                    for (spec in oscSpecs) {
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clickable(onClick = spec.onToggle)
+                                                .padding(vertical = 2.dp)
+                                                .testTag(spec.testTag),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(10.dp)
+                                                        .clip(CircleShape)
+                                                        .background(spec.color)
+                                                )
+                                                Column {
+                                                    Text(
+                                                        text = spec.title,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        fontWeight = FontWeight.SemiBold
+                                                    )
+                                                    Text(
+                                                        text = spec.subtitle,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                }
+                                            }
+                                            Switch(
+                                                checked = spec.checked,
+                                                onCheckedChange = { spec.onToggle() }
+                                            )
+                                        }
                                     }
                                 }
                             }

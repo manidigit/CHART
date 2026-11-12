@@ -5,6 +5,7 @@ import { state } from '../core/store.js?v=1.35.0';
 
 function getTimeframeDurationSeconds(tf) {
   if (tf === 'M15') return 15 * 60;
+  if (tf === 'M30') return 30 * 60;
   if (tf === 'H1') return 60 * 60;
   if (tf === 'H4') return 4 * 3600;
   if (tf === 'D1') return 24 * 3600;
@@ -15,7 +16,6 @@ function getTimeframeDurationSeconds(tf) {
 function computeCandleCountdownLabel(lastOpenEpochSec, tf) {
   if (!lastOpenEpochSec) return '';
   const normTf = String(tf || 'M15').toUpperCase();
-  // On Daily (D1) and Weekly (W1) timeframes, do not show intraday HH:MM:SS clock under the price pill
   if (normTf === 'D1' || normTf === 'W1') {
     return '';
   }
@@ -38,6 +38,30 @@ function computeCandleCountdownLabel(lastOpenEpochSec, tf) {
   return `${pad(mins)}:${pad(secs)}`;
 }
 
+function drawSeriesLine(ctx, series, startIdx, visibleLen, idxToX, priceToY, color, lineWidth = 1.6, dashed = false) {
+  ctx.save();
+  ctx.strokeStyle = color;
+  ctx.lineWidth = lineWidth;
+  if (dashed) ctx.setLineDash([4, 3]);
+  ctx.beginPath();
+  let started = false;
+  for (let idx = 0; idx < visibleLen; idx++) {
+    const val = series[startIdx + idx];
+    if (val !== null && val !== undefined && Number.isFinite(val)) {
+      const x = idxToX(idx);
+      const y = priceToY(val);
+      if (!started) {
+        ctx.moveTo(x, y);
+        started = true;
+      } else {
+        ctx.lineTo(x, y);
+      }
+    }
+  }
+  if (started) ctx.stroke();
+  ctx.restore();
+}
+
 export function renderCandlestickCanvas(canvas, tab, i18n) {
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -48,7 +72,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   canvas.height = Math.round(rect.height * dpr);
   ctx.scale(dpr, dpr);
 
-  // Force Canvas 2D context text direction and alignment to LTR
   ctx.direction = 'ltr';
   ctx.textAlign = 'left';
   ctx.textBaseline = 'alphabetic';
@@ -76,11 +99,23 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const rightAxisW = 78;
   const bottomAxisH = 26;
   const topPad = 16;
-  const totalChartH = Math.max(100, h - topPad - bottomAxisH);
+  const totalChartH = Math.max(120, h - topPad - bottomAxisH);
+
+  // Active sub-panes below main Price Pane
   const showVol = tab.showVolume !== false;
-  const volRatio = Math.max(0.12, Math.min(0.35, Number(tab.volumePaneRatio || 0.22)));
+  const activeOscillators = [];
+  if (tab.showRsi14) activeOscillators.push('RSI');
+  if (tab.showMacd) activeOscillators.push('MACD');
+  if (tab.showAtr14) activeOscillators.push('ATR');
+
+  const oscCount = activeOscillators.length;
+  const rawVolRatio = Math.max(0.10, Math.min(0.30, Number(tab.volumePaneRatio || 0.18)));
+  const volRatio = showVol ? (oscCount > 0 ? Math.min(0.14, rawVolRatio) : rawVolRatio) : 0;
+  const eachOscRatio = oscCount === 1 ? 0.18 : oscCount === 2 ? 0.15 : oscCount >= 3 ? 0.13 : 0;
+  const totalOscH = totalChartH * (eachOscRatio * oscCount);
   const volPaneH = showVol ? totalChartH * volRatio : 0;
-  const pricePaneH = totalChartH - volPaneH;
+  const pricePaneH = Math.max(80, totalChartH - volPaneH - totalOscH);
+
   const chartW = Math.max(120, w - rightAxisW);
   const chartH = pricePaneH;
   const volTopY = topPad + pricePaneH;
@@ -182,7 +217,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const bodyW = Math.max(1.2, Math.min(20, slotW * 0.68));
   const idxToX = (idx) => (idx + 0.5) * slotW;
 
-  // Vertical Time Grid + Smart Calendar-Aligned X-Axis Labels (Year, Month, Day, or Hour by Span & Timeframe)
+  // Vertical Time Grid + Smart Calendar-Aligned X-Axis Labels
   const smartTicks = PriceFormatter.computeSmartTimeAxisTicks(visible, chartW, tab.timeframe);
   for (const tick of smartTicks) {
     const x = idxToX(tick.index);
@@ -221,7 +256,173 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     );
   }
 
-  // Dashed Previous Close Reference Line (TradingView Standard)
+  // Clip main Price Pane for price overlays & candles
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, topPad, chartW, chartH);
+  ctx.clip();
+
+  // 1. Session / Visible Range Volume Profile (VRVP — POC / VAH / VAL)
+  if (tab.showVolumeProfile && visible.length >= 5) {
+    const vp = TechnicalIndicators.computeVolumeProfile(visible, 24, 0.70);
+    if (vp && Array.isArray(vp.bins)) {
+      const maxProfileW = Math.min(150, chartW * 0.26);
+      for (const bin of vp.bins) {
+        const yTop = priceToY(bin.high);
+        const yBot = priceToY(bin.low);
+        const barH = Math.max(1.5, Math.abs(yBot - yTop) - 1);
+        const totalW = bin.normWidth * maxProfileW;
+        if (totalW < 1) continue;
+        const bullRatio = bin.totalVol > 0 ? bin.bullVol / bin.totalVol : 0.5;
+        const bullW = totalW * bullRatio;
+        const bearW = totalW - bullW;
+        const rightX = chartW - 2;
+
+        ctx.fillStyle = bin.isPoc
+          ? 'rgba(245, 158, 11, 0.50)'
+          : bin.inValueArea
+            ? 'rgba(38, 166, 154, 0.30)'
+            : 'rgba(148, 163, 184, 0.16)';
+        ctx.fillRect(rightX - totalW, Math.min(yTop, yBot), bullW, barH);
+
+        ctx.fillStyle = bin.isPoc
+          ? 'rgba(245, 158, 11, 0.65)'
+          : bin.inValueArea
+            ? 'rgba(239, 83, 80, 0.30)'
+            : 'rgba(148, 163, 184, 0.22)';
+        ctx.fillRect(rightX - bearW, Math.min(yTop, yBot), bearW, barH);
+      }
+
+      // VAH & VAL dashed lines
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = 'rgba(56, 189, 248, 0.75)';
+      ctx.lineWidth = 1.1;
+      const vahY = priceToY(vp.vahPrice);
+      const valY = priceToY(vp.valPrice);
+      ctx.beginPath();
+      ctx.moveTo(chartW - maxProfileW - 36, vahY);
+      ctx.lineTo(chartW, vahY);
+      ctx.moveTo(chartW - maxProfileW - 36, valY);
+      ctx.lineTo(chartW, valY);
+      ctx.stroke();
+      ctx.restore();
+
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#38BDF8';
+      ctx.fillText(`VAH ${PriceFormatter.formatPrice(vp.vahPrice, tab.decimals)}`, chartW - maxProfileW - 34, vahY - 3);
+      ctx.fillText(`VAL ${PriceFormatter.formatPrice(vp.valPrice, tab.decimals)}`, chartW - maxProfileW - 34, valY + 10);
+
+      // POC solid golden line
+      const pocY = priceToY(vp.pocPrice);
+      ctx.strokeStyle = '#F59E0B';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      ctx.moveTo(0, pocY);
+      ctx.lineTo(chartW, pocY);
+      ctx.stroke();
+      ctx.fillStyle = '#F59E0B';
+      ctx.fillText(`POC ${PriceFormatter.formatPrice(vp.pocPrice, tab.decimals)}`, chartW - maxProfileW - 34, pocY - 4);
+    }
+  }
+
+  // 2. Smart Money Concepts (SMC): Fair Value Gaps (FVG) & Market Structure (BOS / CHoCH / EQH / EQL)
+  if ((tab.showFvg || tab.showSmcStructure) && candles.length >= 10) {
+    const smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3);
+
+    if (tab.showFvg && Array.isArray(smc.fvgs)) {
+      for (const fvg of smc.fvgs) {
+        if (fvg.endIndex < startIdx || fvg.startIndex >= endIdx) continue;
+        const visStart = Math.max(0, fvg.startIndex - startIdx);
+        const visEnd = Math.min(visible.length - 1, fvg.endIndex - startIdx);
+        const x1 = idxToX(visStart);
+        const x2 = Math.max(x1 + slotW, idxToX(visEnd));
+        const yTop = priceToY(fvg.top);
+        const yBot = priceToY(fvg.bottom);
+        const topY = Math.min(yTop, yBot);
+        const boxH = Math.max(3, Math.abs(yBot - yTop));
+
+        ctx.fillStyle =
+          fvg.direction === 1 ? 'rgba(38, 166, 154, 0.16)' : 'rgba(239, 83, 80, 0.16)';
+        ctx.fillRect(x1, topY, x2 - x1, boxH);
+
+        ctx.strokeStyle =
+          fvg.direction === 1 ? 'rgba(38, 166, 154, 0.48)' : 'rgba(239, 83, 80, 0.48)';
+        ctx.lineWidth = 1;
+        ctx.strokeRect(x1, topY, x2 - x1, boxH);
+
+        if (x2 - x1 >= 26) {
+          ctx.fillStyle = fvg.direction === 1 ? '#26A69A' : '#EF5350';
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          ctx.fillText('FVG', x1 + 4, topY + Math.min(boxH - 2, 10));
+        }
+      }
+    }
+
+    if (tab.showSmcStructure) {
+      // BOS & CHoCH structural breaks
+      if (Array.isArray(smc.structures)) {
+        for (const st of smc.structures) {
+          if (st.breakIndex < startIdx || st.startIndex >= endIdx) continue;
+          const visStart = Math.max(0, st.startIndex - startIdx);
+          const visBreak = Math.min(visible.length - 1, st.breakIndex - startIdx);
+          const x1 = idxToX(visStart);
+          const x2 = idxToX(visBreak);
+          const y = priceToY(st.price);
+          const col = st.direction === 1 ? '#26A69A' : '#EF5350';
+
+          ctx.save();
+          ctx.strokeStyle = col;
+          ctx.lineWidth = st.type === 'CHoCH' ? 1.5 : 1.2;
+          ctx.setLineDash(st.type === 'CHoCH' ? [5, 3] : [2, 2]);
+          ctx.beginPath();
+          ctx.moveTo(x1, y);
+          ctx.lineTo(x2, y);
+          ctx.stroke();
+          ctx.restore();
+
+          const midX = (x1 + x2) / 2;
+          const label = st.type;
+          ctx.font = 'bold 9px "JetBrains Mono", monospace';
+          const tw = ctx.measureText(label).width;
+          ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.85)' : 'rgba(255, 255, 255, 0.88)';
+          const badgeY = st.direction === 1 ? y - 13 : y + 3;
+          ctx.fillRect(midX - tw / 2 - 3, badgeY, tw + 6, 11);
+          ctx.fillStyle = col;
+          ctx.fillText(label, midX - tw / 2, badgeY + 8.5);
+        }
+      }
+
+      // Equal Highs (EQH) & Equal Lows (EQL)
+      if (Array.isArray(smc.equalLevels)) {
+        for (const eq of smc.equalLevels) {
+          if (eq.endIndex < startIdx || eq.startIndex >= endIdx) continue;
+          const visStart = Math.max(0, eq.startIndex - startIdx);
+          const visEnd = Math.min(visible.length - 1, eq.endIndex - startIdx);
+          const x1 = idxToX(visStart);
+          const x2 = idxToX(visEnd);
+          const y = priceToY(eq.price);
+          const col = eq.type === 'EQH' ? '#F59E0B' : '#38BDF8';
+
+          ctx.save();
+          ctx.strokeStyle = col;
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([2, 3]);
+          ctx.beginPath();
+          ctx.moveTo(x1, y);
+          ctx.lineTo(x2, y);
+          ctx.stroke();
+          ctx.restore();
+
+          ctx.fillStyle = col;
+          ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+          ctx.fillText(eq.type, (x1 + x2) / 2 - 8, eq.type === 'EQH' ? y - 4 : y + 10);
+        }
+      }
+    }
+  }
+
+  // Dashed Previous Close Reference Line
   if (prefs.showPrevCloseLine !== false && candles.length >= 2) {
     const prevClose = Number(candles[candles.length - 2].close);
     const prevY = priceToY(prevClose);
@@ -238,7 +439,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // Bollinger Bands (20, 2) Overlay (if enabled in Indicators Modal)
+  // Bollinger Bands (20, 2) Overlay
   if (tab.showBollinger && candles.length >= 20) {
     const bbArr = TechnicalIndicators.computeBollingerBands(candles, 20, 2.0);
     ctx.save();
@@ -361,55 +562,44 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.restore();
   }
 
-  // SMA 20 Overlay
+  // Moving Averages & Main Overlays
   if (tab.showSma20 && candles.length >= 20) {
-    const smaArr = TechnicalIndicators.computeSma(candles, 20);
+    drawSeriesLine(ctx, TechnicalIndicators.computeSma(candles, 20), startIdx, visible.length, idxToX, priceToY, '#F59E0B', 1.6);
+  }
+  if (tab.showSma50 && candles.length >= 50) {
+    drawSeriesLine(ctx, TechnicalIndicators.computeSma(candles, 50), startIdx, visible.length, idxToX, priceToY, '#38BDF8', 1.6);
+  }
+  if (tab.showSma200 && candles.length >= 30) {
+    const p200 = Math.min(200, candles.length);
+    drawSeriesLine(ctx, TechnicalIndicators.computeSma(candles, p200), startIdx, visible.length, idxToX, priceToY, '#EC4899', 1.8);
+  }
+  if (tab.showEma20 && candles.length >= 20) {
+    drawSeriesLine(ctx, TechnicalIndicators.computeEma(candles, 20), startIdx, visible.length, idxToX, priceToY, '#10B981', 1.5);
+  }
+  if (tab.showEma50 && candles.length >= 50) {
+    drawSeriesLine(ctx, TechnicalIndicators.computeEma(candles, 50), startIdx, visible.length, idxToX, priceToY, '#06B6D4', 1.6);
+  }
+  if (tab.showVwap && candles.length >= 2) {
+    drawSeriesLine(ctx, TechnicalIndicators.computeVwap(candles), startIdx, visible.length, idxToX, priceToY, '#EAB308', 1.6, true);
+  }
+  if (tab.showSupertrend && candles.length >= 10) {
+    const stArr = TechnicalIndicators.computeSupertrend(candles, 10, 3.0);
     ctx.save();
-    ctx.strokeStyle = '#F59E0B';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    let started = false;
-    visible.forEach((c, idx) => {
-      const val = smaArr[startIdx + idx];
-      if (val !== null && Number.isFinite(val)) {
-        const x = idxToX(idx);
-        const y = priceToY(val);
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-    });
-    ctx.stroke();
+    ctx.lineWidth = 2.0;
+    for (let idx = 1; idx < visible.length; idx++) {
+      const prevSt = stArr[startIdx + idx - 1];
+      const curSt = stArr[startIdx + idx];
+      if (!prevSt || !curSt) continue;
+      ctx.strokeStyle = curSt.direction === 1 ? '#26A69A' : '#EF5350';
+      ctx.beginPath();
+      ctx.moveTo(idxToX(idx - 1), priceToY(prevSt.value));
+      ctx.lineTo(idxToX(idx), priceToY(curSt.value));
+      ctx.stroke();
+    }
     ctx.restore();
   }
 
-  // EMA 50 Overlay
-  if (tab.showEma50 && candles.length >= 50) {
-    const emaArr = TechnicalIndicators.computeEma(candles, 50);
-    ctx.save();
-    ctx.strokeStyle = '#06B6D4';
-    ctx.lineWidth = 1.6;
-    ctx.beginPath();
-    let started = false;
-    visible.forEach((c, idx) => {
-      const val = emaArr[startIdx + idx];
-      if (val !== null && Number.isFinite(val)) {
-        const x = idxToX(idx);
-        const y = priceToY(val);
-        if (!started) {
-          ctx.moveTo(x, y);
-          started = true;
-        } else {
-          ctx.lineTo(x, y);
-        }
-      }
-    });
-    ctx.stroke();
-    ctx.restore();
-  }
+  ctx.restore(); // End Price Pane clip
 
   // Separate Volume Sub-Pane
   if (showVol && volPaneH > 16) {
@@ -461,6 +651,162 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         10,
         volTopY + 13
       );
+    }
+  }
+
+  // Synchronized Multi-Pane Oscillators (RSI 14, MACD 12,26,9, ATR 14)
+  let currentSubTopY = volTopY + volPaneH;
+  const eachOscH = oscCount > 0 ? totalOscH / oscCount : 0;
+  const activeIdxGlobal =
+    tab.hoverIndex !== null && tab.hoverIndex !== undefined && visible[tab.hoverIndex]
+      ? startIdx + tab.hoverIndex
+      : candles.length - 1;
+
+  for (const oscType of activeOscillators) {
+    const paneTop = currentSubTopY;
+    const paneH = eachOscH;
+    currentSubTopY += paneH;
+    if (paneH < 24) continue;
+
+    // Top border of oscillator pane
+    ctx.strokeStyle = gridColor;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(0, paneTop);
+    ctx.lineTo(w, paneTop);
+    ctx.stroke();
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(0, paneTop, chartW, paneH);
+    ctx.clip();
+
+    if (oscType === 'RSI') {
+      const rsiArr = TechnicalIndicators.computeRsi(candles, 14);
+      const rsiToY = (val) => paneTop + 6 + (paneH - 12) * (1 - Math.max(0, Math.min(100, val)) / 100);
+      const y70 = rsiToY(70);
+      const y50 = rsiToY(50);
+      const y30 = rsiToY(30);
+
+      // 30..70 channel fill
+      ctx.fillStyle = 'rgba(168, 85, 247, 0.07)';
+      ctx.fillRect(0, y70, chartW, Math.max(2, y30 - y70));
+
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = 'rgba(168, 85, 247, 0.45)';
+      ctx.beginPath();
+      ctx.moveTo(0, y70);
+      ctx.lineTo(chartW, y70);
+      ctx.moveTo(0, y30);
+      ctx.lineTo(chartW, y30);
+      ctx.strokeStyle = gridColor;
+      ctx.moveTo(0, y50);
+      ctx.lineTo(chartW, y50);
+      ctx.stroke();
+      ctx.restore();
+
+      drawSeriesLine(ctx, rsiArr, startIdx, visible.length, idxToX, rsiToY, '#A855F7', 1.6);
+
+      const curRsi = rsiArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#A855F7';
+      ctx.fillText(
+        `RSI (14): ${curRsi !== null && curRsi !== undefined ? curRsi.toFixed(2) : '—'}`,
+        10,
+        paneTop + 13
+      );
+      ctx.restore();
+
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText('70', chartW + 6, y70 + 3);
+      ctx.fillText('30', chartW + 6, y30 + 3);
+    } else if (oscType === 'MACD') {
+      const macdArr = TechnicalIndicators.computeMacd(candles, 12, 26, 9);
+      let maxAbs = 0.0001;
+      for (let idx = 0; idx < visible.length; idx++) {
+        const item = macdArr[startIdx + idx];
+        if (!item) continue;
+        if (item.macd !== null) maxAbs = Math.max(maxAbs, Math.abs(item.macd));
+        if (item.signal !== null) maxAbs = Math.max(maxAbs, Math.abs(item.signal));
+        if (item.histogram !== null) maxAbs = Math.max(maxAbs, Math.abs(item.histogram));
+      }
+      const macdToY = (val) =>
+        paneTop + 6 + (paneH - 12) * (0.5 - Math.max(-maxAbs, Math.min(maxAbs, val)) / (2 * maxAbs));
+      const zeroY = macdToY(0);
+
+      ctx.strokeStyle = gridColor;
+      ctx.beginPath();
+      ctx.moveTo(0, zeroY);
+      ctx.lineTo(chartW, zeroY);
+      ctx.stroke();
+
+      // Histogram bars
+      for (let idx = 0; idx < visible.length; idx++) {
+        const item = macdArr[startIdx + idx];
+        if (!item || item.histogram === null) continue;
+        const x = idxToX(idx);
+        const hy = macdToY(item.histogram);
+        const topBar = Math.min(zeroY, hy);
+        const barH = Math.max(1.5, Math.abs(hy - zeroY));
+        ctx.fillStyle = item.histogram >= 0 ? 'rgba(38, 166, 154, 0.55)' : 'rgba(239, 83, 80, 0.55)';
+        ctx.fillRect(x - bodyW / 2, topBar, bodyW, barH);
+      }
+
+      const macdLine = macdArr.map((x) => (x ? x.macd : null));
+      const sigLine = macdArr.map((x) => (x ? x.signal : null));
+      drawSeriesLine(ctx, macdLine, startIdx, visible.length, idxToX, macdToY, '#2962FF', 1.5);
+      drawSeriesLine(ctx, sigLine, startIdx, visible.length, idxToX, macdToY, '#F59E0B', 1.4);
+
+      const curM = macdArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#2962FF';
+      const mStr = curM && curM.macd !== null ? curM.macd.toFixed(tab.decimals) : '—';
+      const sStr = curM && curM.signal !== null ? curM.signal.toFixed(tab.decimals) : '—';
+      const hStr = curM && curM.histogram !== null ? curM.histogram.toFixed(tab.decimals) : '—';
+      ctx.fillText(`MACD (12,26,9): ${mStr}  Sig: ${sStr}  Hist: ${hStr}`, 10, paneTop + 13);
+      ctx.restore();
+
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText('0.00', chartW + 6, zeroY + 3);
+    } else if (oscType === 'ATR') {
+      const atrArr = TechnicalIndicators.computeAtr(candles, 14);
+      let minA = Infinity;
+      let maxA = -Infinity;
+      for (let idx = 0; idx < visible.length; idx++) {
+        const v = atrArr[startIdx + idx];
+        if (v !== null && v !== undefined) {
+          minA = Math.min(minA, v);
+          maxA = Math.max(maxA, v);
+        }
+      }
+      if (!isFinite(minA) || !isFinite(maxA) || maxA <= minA) {
+        minA = 0;
+        maxA = 1;
+      }
+      const spanA = Math.max(1e-8, maxA - minA);
+      const atrToY = (val) => paneTop + 8 + (paneH - 16) * (1 - (val - minA) / spanA);
+
+      drawSeriesLine(ctx, atrArr, startIdx, visible.length, idxToX, atrToY, '#F43F5E', 1.6);
+
+      const curAtr = atrArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#F43F5E';
+      ctx.fillText(
+        `ATR (14): ${curAtr !== null && curAtr !== undefined ? PriceFormatter.formatPrice(curAtr, tab.decimals) : '—'}`,
+        10,
+        paneTop + 13
+      );
+      ctx.restore();
+
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText(PriceFormatter.formatPrice(maxA, tab.decimals), chartW + 6, paneTop + 12);
+      ctx.fillText(PriceFormatter.formatPrice(minA, tab.decimals), chartW + 6, paneTop + paneH - 4);
+    } else {
+      ctx.restore();
     }
   }
 
@@ -600,7 +946,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fillStyle = 'rgba(245, 158, 11, 0.20)';
       ctx.fillRect(minX, Math.min(y05, y0618), maxX - minX, Math.max(2, Math.abs(y0618 - y05)));
 
-      // 0.382 - 0.500 zone
       const p0382 = levels.find((l) => l.ratio === 0.382)?.price;
       if (p0382 !== undefined) {
         const y0382 = priceToY(p0382);
@@ -608,7 +953,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         ctx.fillRect(minX, Math.min(y0382, y05), maxX - minX, Math.max(2, Math.abs(y05 - y0382)));
       }
 
-      // Diagonal anchor line (dashed)
       ctx.save();
       ctx.setLineDash([4, 4]);
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.45)';
@@ -619,7 +963,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
       ctx.restore();
 
-      // Levels
       levels.forEach((lvl) => {
         const ly = priceToY(lvl.price);
         const isGolden = lvl.ratio === 0.5 || lvl.ratio === 0.618;
@@ -644,7 +987,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       const yTarget = priceToY(d.targetPrice);
       const yStop = priceToY(d.stopPrice);
 
-      // Target (Green)
       const targetTop = Math.min(yTarget, yEntry);
       const targetH = Math.max(2, Math.abs(yEntry - yTarget));
       ctx.fillStyle = 'rgba(38, 166, 154, 0.22)';
@@ -656,7 +998,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.lineTo(rightX, yTarget);
       ctx.stroke();
 
-      // Stop (Red)
       const stopTop = Math.min(yEntry, yStop);
       const stopH = Math.max(2, Math.abs(yStop - yEntry));
       ctx.fillStyle = 'rgba(239, 83, 80, 0.22)';
@@ -668,7 +1009,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.lineTo(rightX, yStop);
       ctx.stroke();
 
-      // Entry (White)
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = baseW;
       ctx.beginPath();
@@ -676,7 +1016,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.lineTo(rightX, yEntry);
       ctx.stroke();
 
-      // R/R badge
       const risk = Math.abs(d.entryPrice - d.stopPrice);
       const reward = Math.abs(d.targetPrice - d.entryPrice);
       const rr = risk > 1e-8 ? (reward / risk).toFixed(2) : '1.00';
@@ -693,7 +1032,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       const yTarget = priceToY(d.targetPrice);
       const yStop = priceToY(d.stopPrice);
 
-      // Target (Green - below entry)
       const targetTop = Math.min(yEntry, yTarget);
       const targetH = Math.max(2, Math.abs(yTarget - yEntry));
       ctx.fillStyle = 'rgba(38, 166, 154, 0.22)';
@@ -705,7 +1043,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.lineTo(rightX, yTarget);
       ctx.stroke();
 
-      // Stop (Red - above entry)
       const stopTop = Math.min(yStop, yEntry);
       const stopH = Math.max(2, Math.abs(yEntry - yStop));
       ctx.fillStyle = 'rgba(239, 83, 80, 0.22)';
@@ -717,7 +1054,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.lineTo(rightX, yStop);
       ctx.stroke();
 
-      // Entry (White)
       ctx.strokeStyle = '#FFFFFF';
       ctx.lineWidth = baseW;
       ctx.beginPath();
@@ -725,7 +1061,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.lineTo(rightX, yEntry);
       ctx.stroke();
 
-      // R/R badge
       const risk = Math.abs(d.stopPrice - d.entryPrice);
       const reward = Math.abs(d.entryPrice - d.targetPrice);
       const rr = risk > 1e-8 ? (reward / risk).toFixed(2) : '1.00';
@@ -769,7 +1104,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.stroke();
     ctx.restore();
 
-    // Right-axis Crosshair Price Pill
     const pillBgCross = isDark ? '#2A2E39' : '#1E293B';
     ctx.fillStyle = pillBgCross;
     ctx.fillRect(chartW, hy - 10, rightAxisW, 20);
@@ -778,7 +1112,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.textAlign = 'left';
     ctx.fillText(PriceFormatter.formatPrice(hoverPrice, tab.decimals), chartW + 6, hy + 4);
 
-    // Bottom-axis Crosshair UTC Timestamp Pill
     const timeText = PriceFormatter.formatCandleUtc(
       hc.open_time_utc_ms || hc.openTimeUtc || hc.open_time_utc_iso,
       tab.timeframe

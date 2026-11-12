@@ -31,7 +31,7 @@ $symbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $_GET['symbol'] ?? 'XAU
 $provider = strtolower(preg_replace('/[^a-z0-9_]/', '', $_GET['provider'] ?? 'twelve_data'));
 $timeframe = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['timeframe'] ?? 'M15'));
 $userApiKey = trim((string) ($_GET['api_key'] ?? $_SERVER['HTTP_X_PROVIDER_API_KEY'] ?? ''));
-if (!in_array($timeframe, ['M15', 'H1', 'H4', 'D1', 'W1'], true)) {
+if (!in_array($timeframe, ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'], true)) {
     $timeframe = 'M15';
 }
 if ($provider === 'eia_brent_spot') {

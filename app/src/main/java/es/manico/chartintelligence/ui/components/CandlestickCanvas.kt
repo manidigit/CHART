@@ -143,7 +143,7 @@ fun CandlestickCanvas(
         UtcTimeAnchorAlgorithm.timeframeStepMillis(tab.timeframe)
     }
 
-    // Compute full-series SMA 20, EMA 50, and Bollinger Bands (20, 2) and slice to visible window
+    // Compute full-series overlays & oscillators and slice to visible window
     val fullCloses = remember(candles) { candles.map { it.close.toDouble() } }
     val fullSma20 = remember(fullCloses, tab.showSma20) {
         if (!tab.showSma20 || fullCloses.isEmpty()) emptyList()
@@ -152,6 +152,33 @@ fun CandlestickCanvas(
     val visibleSma20 = remember(fullSma20, startIndex, endIndexExclusive) {
         if (fullSma20.isEmpty()) emptyList()
         else fullSma20.subList(startIndex, endIndexExclusive.coerceAtMost(fullSma20.size))
+    }
+
+    val fullSma50 = remember(fullCloses, tab.showSma50) {
+        if (!tab.showSma50 || fullCloses.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeSmaValues(fullCloses, 50)
+    }
+    val visibleSma50 = remember(fullSma50, startIndex, endIndexExclusive) {
+        if (fullSma50.isEmpty()) emptyList()
+        else fullSma50.subList(startIndex, endIndexExclusive.coerceAtMost(fullSma50.size))
+    }
+
+    val fullSma200 = remember(fullCloses, tab.showSma200) {
+        if (!tab.showSma200 || fullCloses.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeSmaValues(fullCloses, 200)
+    }
+    val visibleSma200 = remember(fullSma200, startIndex, endIndexExclusive) {
+        if (fullSma200.isEmpty()) emptyList()
+        else fullSma200.subList(startIndex, endIndexExclusive.coerceAtMost(fullSma200.size))
+    }
+
+    val fullEma20 = remember(fullCloses, tab.showEma20) {
+        if (!tab.showEma20 || fullCloses.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeEmaValues(fullCloses, 20)
+    }
+    val visibleEma20 = remember(fullEma20, startIndex, endIndexExclusive) {
+        if (fullEma20.isEmpty()) emptyList()
+        else fullEma20.subList(startIndex, endIndexExclusive.coerceAtMost(fullEma20.size))
     }
 
     val fullEma50 = remember(fullCloses, tab.showEma50) {
@@ -172,6 +199,62 @@ fun CandlestickCanvas(
         else fullBollinger.subList(startIndex, endIndexExclusive.coerceAtMost(fullBollinger.size))
     }
 
+    val fullSupertrend = remember(candles, tab.showSupertrend) {
+        if (!tab.showSupertrend || candles.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeSupertrendValues(candles, 10, 3.0)
+    }
+    val visibleSupertrend = remember(fullSupertrend, startIndex, endIndexExclusive) {
+        if (fullSupertrend.isEmpty()) emptyList()
+        else fullSupertrend.subList(startIndex, endIndexExclusive.coerceAtMost(fullSupertrend.size))
+    }
+
+    val fullVwap = remember(candles, tab.showVwap) {
+        if (!tab.showVwap || candles.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeVwapValues(candles)
+    }
+    val visibleVwap = remember(fullVwap, startIndex, endIndexExclusive) {
+        if (fullVwap.isEmpty()) emptyList()
+        else fullVwap.subList(startIndex, endIndexExclusive.coerceAtMost(fullVwap.size))
+    }
+
+    val fullRsi14 = remember(fullCloses, tab.showRsi14) {
+        if (!tab.showRsi14 || fullCloses.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeRsiValues(fullCloses, 14)
+    }
+    val visibleRsi14 = remember(fullRsi14, startIndex, endIndexExclusive) {
+        if (fullRsi14.isEmpty()) emptyList()
+        else fullRsi14.subList(startIndex, endIndexExclusive.coerceAtMost(fullRsi14.size))
+    }
+
+    val fullMacd = remember(fullCloses, tab.showMacd) {
+        if (!tab.showMacd || fullCloses.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeMacdValues(fullCloses, 12, 26, 9)
+    }
+    val visibleMacd = remember(fullMacd, startIndex, endIndexExclusive) {
+        if (fullMacd.isEmpty()) emptyList()
+        else fullMacd.subList(startIndex, endIndexExclusive.coerceAtMost(fullMacd.size))
+    }
+
+    val fullAtr14 = remember(candles, tab.showAtr14) {
+        if (!tab.showAtr14 || candles.isEmpty()) emptyList()
+        else PriceFormatterAlgorithm.computeAtrValues(candles, 14)
+    }
+    val visibleAtr14 = remember(fullAtr14, startIndex, endIndexExclusive) {
+        if (fullAtr14.isEmpty()) emptyList()
+        else fullAtr14.subList(startIndex, endIndexExclusive.coerceAtMost(fullAtr14.size))
+    }
+
+    val visibleSmcResult = remember(visibleSlice, tab.showSmcStructure, tab.showFvg) {
+        if ((!tab.showSmcStructure && !tab.showFvg) || visibleSlice.isEmpty()) null
+        else PriceFormatterAlgorithm.detectSmcMarketStructures(visibleSlice, 3)
+    }
+
+    val visibleVolumeProfile = remember(visibleSlice, tab.showVolumeProfile) {
+        if (!tab.showVolumeProfile || visibleSlice.isEmpty()) null
+        else PriceFormatterAlgorithm.computeVolumeProfile(visibleSlice, 24, 0.70)
+    }
+
+    val inspectedIdx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
     val inspectedCandle = remember(tab.selectedCandleIndex, visibleSlice) {
         val idx = tab.selectedCandleIndex
         if (idx != null && idx in candles.indices) {
@@ -180,27 +263,17 @@ fun CandlestickCanvas(
             visibleSlice.lastOrNull()
         }
     }
-    val inspectedSma20 = remember(tab.selectedCandleIndex, fullSma20, startIndex, endIndexExclusive) {
-        if (fullSma20.isEmpty()) null
-        else {
-            val idx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
-            fullSma20.getOrNull(idx)
-        }
-    }
-    val inspectedEma50 = remember(tab.selectedCandleIndex, fullEma50, startIndex, endIndexExclusive) {
-        if (fullEma50.isEmpty()) null
-        else {
-            val idx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
-            fullEma50.getOrNull(idx)
-        }
-    }
-    val inspectedBollinger = remember(tab.selectedCandleIndex, fullBollinger, startIndex, endIndexExclusive) {
-        if (fullBollinger.isEmpty()) null
-        else {
-            val idx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
-            fullBollinger.getOrNull(idx)
-        }
-    }
+    val inspectedSma20 = fullSma20.getOrNull(inspectedIdx)
+    val inspectedSma50 = fullSma50.getOrNull(inspectedIdx)
+    val inspectedSma200 = fullSma200.getOrNull(inspectedIdx)
+    val inspectedEma20 = fullEma20.getOrNull(inspectedIdx)
+    val inspectedEma50 = fullEma50.getOrNull(inspectedIdx)
+    val inspectedBollinger = fullBollinger.getOrNull(inspectedIdx)
+    val inspectedSupertrend = fullSupertrend.getOrNull(inspectedIdx)
+    val inspectedVwap = fullVwap.getOrNull(inspectedIdx)
+    val inspectedRsi14 = fullRsi14.getOrNull(inspectedIdx)
+    val inspectedMacd = fullMacd.getOrNull(inspectedIdx)
+    val inspectedAtr14 = fullAtr14.getOrNull(inspectedIdx)
 
     var panCarryPx by remember(tab.tabId, tab.timeframe) { mutableFloatStateOf(0f) }
 
@@ -249,8 +322,21 @@ fun CandlestickCanvas(
     val maxRawVolume = visibleSlice.maxOfOrNull { it.volume.toDouble() } ?: 0.0
     val hasRealVolume = maxRawVolume > 0.0
     val maxVolume = maxRawVolume.coerceAtLeast(1.0)
-    val volRatio = if (tab.showVolume) tab.volumePaneRatio.coerceIn(0.15f, 0.32f) else 0f
-    val priceRatio = 1f - volRatio
+    val activeOscCount = (if (tab.showRsi14) 1 else 0) + (if (tab.showMacd) 1 else 0) + (if (tab.showAtr14) 1 else 0)
+    val eachOscRatio = when {
+        activeOscCount == 0 -> 0f
+        activeOscCount == 1 -> 0.14f
+        activeOscCount == 2 -> 0.12f
+        else -> 0.10f
+    }
+    val totalOscRatio = eachOscRatio * activeOscCount
+    val baseVolRatio = if (tab.showVolume) tab.volumePaneRatio.coerceIn(0.14f, 0.30f) else 0f
+    val volRatio = if (baseVolRatio + totalOscRatio > 0.48f) {
+        (0.48f - totalOscRatio).coerceAtLeast(0.10f)
+    } else {
+        baseVolRatio
+    }
+    val priceRatio = (1f - volRatio - totalOscRatio).coerceAtLeast(0.48f)
 
     val volumeUnavailableLabel = stringResource(R.string.chart_volume_unavailable)
     val loadingStateLabel = stringResource(R.string.chart_state_loading)
@@ -523,6 +609,82 @@ fun CandlestickCanvas(
 
                     // 4. Main Price Pane Rendering (Clipped strictly to Main Price Pane)
                     clipRect(left = 0f, top = 0f, right = canvasW, bottom = pricePaneH) {
+                        // 4.0a Package 3: Session / Visible Range Volume Profile (VRVP — POC / VAH / VAL)
+                        if (tab.showVolumeProfile && visibleVolumeProfile != null) {
+                            val maxBarW = canvasW * 0.24f
+                            for (bin in visibleVolumeProfile.bins) {
+                                val yTop = priceToY(bin.high)
+                                val yBot = priceToY(bin.low)
+                                val barH = max(1.5f, abs(yBot - yTop) - 0.8f)
+                                val totalW = bin.normWidth * maxBarW
+                                if (totalW > 0.5f) {
+                                    val bullRatio = if (bin.totalVol > 0.0) (bin.bullVol / bin.totalVol).toFloat() else 0.5f
+                                    val bullW = totalW * bullRatio
+                                    val bearW = totalW - bullW
+                                    val alpha = if (bin.isPoc) 0.52f else if (bin.inValueArea) 0.30f else 0.14f
+                                    val xRight = canvasW - 2f
+                                    drawRect(
+                                        color = bullColor.copy(alpha = alpha),
+                                        topLeft = Offset(xRight - totalW, min(yTop, yBot)),
+                                        size = Size(bullW, barH)
+                                    )
+                                    drawRect(
+                                        color = bearColor.copy(alpha = alpha),
+                                        topLeft = Offset(xRight - bearW, min(yTop, yBot)),
+                                        size = Size(bearW, barH)
+                                    )
+                                }
+                            }
+                            val pocY = priceToY(visibleVolumeProfile.pocPrice)
+                            drawLine(
+                                color = Color(0xFFF97316).copy(alpha = 0.88f),
+                                start = Offset(canvasW * 0.40f, pocY),
+                                end = Offset(canvasW, pocY),
+                                strokeWidth = 1.6f
+                            )
+                            val vahY = priceToY(visibleVolumeProfile.vahPrice)
+                            val valY = priceToY(visibleVolumeProfile.valPrice)
+                            drawLine(
+                                color = Color(0xFF38BDF8).copy(alpha = 0.65f),
+                                start = Offset(canvasW * 0.55f, vahY),
+                                end = Offset(canvasW, vahY),
+                                strokeWidth = 1.1f,
+                                pathEffect = dashEffect
+                            )
+                            drawLine(
+                                color = Color(0xFF38BDF8).copy(alpha = 0.65f),
+                                start = Offset(canvasW * 0.55f, valY),
+                                end = Offset(canvasW, valY),
+                                strokeWidth = 1.1f,
+                                pathEffect = dashEffect
+                            )
+                        }
+
+                        // 4.0b Package 3: Fair Value Gaps (FVG / Imbalance Shaded Boxes)
+                        if (tab.showFvg && visibleSmcResult != null) {
+                            for (fvg in visibleSmcResult.fvgs) {
+                                val x1 = (fvg.startIndex + 0.5f) * slotW
+                                val x2 = min(canvasW, (fvg.endIndex + 0.8f) * slotW)
+                                val yTop = priceToY(fvg.top)
+                                val yBot = priceToY(fvg.bottom)
+                                val boxTop = min(yTop, yBot)
+                                val boxH = max(2f, abs(yBot - yTop))
+                                val boxW = max(6f, x2 - x1)
+                                val fvgColor = if (fvg.direction == 1) bullColor else bearColor
+                                drawRect(
+                                    color = fvgColor.copy(alpha = 0.16f),
+                                    topLeft = Offset(x1, boxTop),
+                                    size = Size(boxW, boxH)
+                                )
+                                drawRect(
+                                    color = fvgColor.copy(alpha = 0.50f),
+                                    topLeft = Offset(x1, boxTop),
+                                    size = Size(boxW, boxH),
+                                    style = Stroke(width = 1.0f)
+                                )
+                            }
+                        }
+
                         // 4a. Optional Bollinger Bands (20, 2) Shaded Channel + Upper/Lower/Basis Lines
                         if (tab.showBollinger && visibleBollinger.isNotEmpty()) {
                             val upperPath = Path()
@@ -636,53 +798,95 @@ fun CandlestickCanvas(
                             )
                         }
 
-                        // 5a. Optional SMA 20 Overlay Line (#F59E0B)
-                        if (tab.showSma20 && visibleSma20.isNotEmpty()) {
-                            val smaPath = Path()
+                        fun drawSeriesLine(series: List<Double?>, color: Color, strokeWidth: Float = 2.0f, dashed: Boolean = false) {
+                            if (series.isEmpty()) return
+                            val path = Path()
                             var started = false
-                            visibleSma20.forEachIndexed { idx, smaVal ->
-                                if (smaVal != null) {
+                            series.forEachIndexed { idx, v ->
+                                if (v != null) {
                                     val x = (idx + 0.5f) * slotW
-                                    val y = priceToY(smaVal)
+                                    val y = priceToY(v)
                                     if (!started) {
-                                        smaPath.moveTo(x, y)
+                                        path.moveTo(x, y)
                                         started = true
                                     } else {
-                                        smaPath.lineTo(x, y)
+                                        path.lineTo(x, y)
                                     }
                                 }
                             }
                             if (started) {
                                 drawPath(
-                                    path = smaPath,
-                                    color = Color(0xFFF59E0B),
-                                    style = Stroke(width = 2.0f)
+                                    path = path,
+                                    color = color,
+                                    style = Stroke(
+                                        width = strokeWidth,
+                                        pathEffect = if (dashed) dashEffect else null
+                                    )
                                 )
                             }
                         }
 
-                        // 5b. Optional EMA 50 Overlay Line (#06B6D4)
-                        if (tab.showEma50 && visibleEma50.isNotEmpty()) {
-                            val emaPath = Path()
-                            var started = false
-                            visibleEma50.forEachIndexed { idx, emaVal ->
-                                if (emaVal != null) {
-                                    val x = (idx + 0.5f) * slotW
-                                    val y = priceToY(emaVal)
-                                    if (!started) {
-                                        emaPath.moveTo(x, y)
-                                        started = true
-                                    } else {
-                                        emaPath.lineTo(x, y)
-                                    }
-                                }
-                            }
-                            if (started) {
-                                drawPath(
-                                    path = emaPath,
-                                    color = Color(0xFF06B6D4),
-                                    style = Stroke(width = 2.0f)
+                        // 5a. SMA 20 / 50 / 200 & EMA 20 / 50 & Session VWAP
+                        if (tab.showSma20) drawSeriesLine(visibleSma20, Color(0xFFF59E0B), 2.0f)
+                        if (tab.showSma50) drawSeriesLine(visibleSma50, Color(0xFF10B981), 2.0f)
+                        if (tab.showSma200) drawSeriesLine(visibleSma200, Color(0xFFF43F5E), 2.3f)
+                        if (tab.showEma20) drawSeriesLine(visibleEma20, Color(0xFF38BDF8), 1.9f)
+                        if (tab.showEma50) drawSeriesLine(visibleEma50, Color(0xFF06B6D4), 2.0f)
+                        if (tab.showVwap) drawSeriesLine(visibleVwap, Color(0xFFEAB308), 1.9f, dashed = true)
+
+                        // 5b. Supertrend (10, 3) Directional Segments
+                        if (tab.showSupertrend && visibleSupertrend.isNotEmpty()) {
+                            for (i in 1 until visibleSupertrend.size) {
+                                val prev = visibleSupertrend[i - 1] ?: continue
+                                val cur = visibleSupertrend[i] ?: continue
+                                val x1 = (i - 0.5f) * slotW
+                                val y1 = priceToY(prev.value)
+                                val x2 = (i + 0.5f) * slotW
+                                val y2 = priceToY(cur.value)
+                                val stColor = if (cur.direction == 1) Color(0xFF22C55E) else Color(0xFFEF4444)
+                                drawLine(
+                                    color = stColor,
+                                    start = Offset(x1, y1),
+                                    end = Offset(x2, y2),
+                                    strokeWidth = 2.3f
                                 )
+                            }
+                        }
+
+                        // 5c. Package 3: Smart Money Concepts (BOS / CHoCH & EQH / EQL)
+                        if (tab.showSmcStructure && visibleSmcResult != null) {
+                            for (st in visibleSmcResult.structures) {
+                                val x1 = (st.startIndex + 0.5f) * slotW
+                                val x2 = (st.breakIndex + 0.5f) * slotW
+                                val y = priceToY(st.price)
+                                val stColor = if (st.direction == 1) Color(0xFF22C55E) else Color(0xFFEF4444)
+                                drawLine(
+                                    color = stColor,
+                                    start = Offset(x1, y),
+                                    end = Offset(x2, y),
+                                    strokeWidth = if (st.type == "CHoCH") 2.1f else 1.6f,
+                                    pathEffect = if (st.type == "CHoCH") null else dashEffect
+                                )
+                                drawCircle(
+                                    color = stColor,
+                                    radius = 3.5f,
+                                    center = Offset(x2, y)
+                                )
+                            }
+                            for (eq in visibleSmcResult.equalLevels) {
+                                val x1 = (eq.startIndex + 0.5f) * slotW
+                                val x2 = (eq.endIndex + 0.5f) * slotW
+                                val y = priceToY(eq.price)
+                                val eqColor = if (eq.type == "EQH") Color(0xFFF59E0B) else Color(0xFF38BDF8)
+                                drawLine(
+                                    color = eqColor,
+                                    start = Offset(x1, y),
+                                    end = Offset(x2, y),
+                                    strokeWidth = 1.5f,
+                                    pathEffect = dashEffect
+                                )
+                                drawCircle(color = eqColor, radius = 3.0f, center = Offset(x1, y))
+                                drawCircle(color = eqColor, radius = 3.0f, center = Offset(x2, y))
                             }
                         }
 
@@ -970,15 +1174,20 @@ fun CandlestickCanvas(
                         }
                     }
 
-                    // 8. Separate Dedicated Volume Sub-Pane below Price Pane
-                    if (tab.showVolume && volPaneH > 4f) {
+                    // 8. Separate Dedicated Volume Sub-Pane & Multi-Pane Oscillators (RSI 14, MACD, ATR 14)
+                    val actualVolH = if (tab.showVolume) canvasH * volRatio else 0f
+                    var nextSubPaneTop = pricePaneH
+                    if (tab.showVolume && actualVolH > 4f) {
+                        val vTop = nextSubPaneTop
+                        val vBot = vTop + actualVolH
+                        nextSubPaneTop = vBot
                         drawLine(
                             color = financialPalette.cardBorder,
-                            start = Offset(0f, volPaneTop),
-                            end = Offset(canvasW, volPaneTop),
+                            start = Offset(0f, vTop),
+                            end = Offset(canvasW, vTop),
                             strokeWidth = 1.2f
                         )
-                        val midVolY = volPaneTop + volPaneH * 0.5f
+                        val midVolY = vTop + actualVolH * 0.5f
                         drawLine(
                             color = financialPalette.chartGrid.copy(alpha = 0.6f),
                             start = Offset(0f, midVolY),
@@ -988,7 +1197,7 @@ fun CandlestickCanvas(
                         )
 
                         if (hasRealVolume) {
-                            val usableVolH = (volPaneH - 8f).coerceAtLeast(2f)
+                            val usableVolH = (actualVolH - 6f).coerceAtLeast(2f)
                             visibleSlice.forEachIndexed { idx, candle ->
                                 val volFrac = (candle.volume.toDouble() / maxVolume).toFloat().coerceIn(0f, 1f)
                                 if (volFrac > 0f) {
@@ -1001,10 +1210,156 @@ fun CandlestickCanvas(
                                     }
                                     drawRect(
                                         color = volColor,
-                                        topLeft = Offset(centerX - bodyW / 2f, canvasH - barH),
+                                        topLeft = Offset(centerX - bodyW / 2f, vBot - barH),
                                         size = Size(bodyW, barH)
                                     )
                                 }
+                            }
+                        }
+                    }
+
+                    val oscPaneH = canvasH * eachOscRatio
+                    // 8b. RSI (14) Synchronized Sub-Pane
+                    if (tab.showRsi14 && oscPaneH > 8f) {
+                        val rTop = nextSubPaneTop
+                        val rBot = rTop + oscPaneH
+                        nextSubPaneTop = rBot
+                        drawLine(
+                            color = financialPalette.cardBorder,
+                            start = Offset(0f, rTop),
+                            end = Offset(canvasW, rTop),
+                            strokeWidth = 1.2f
+                        )
+                        fun rsiToY(v: Double): Float {
+                            val clamped = v.coerceIn(0.0, 100.0).toFloat()
+                            return rTop + 3f + (1f - clamped / 100f) * (oscPaneH - 6f).coerceAtLeast(2f)
+                        }
+                        val y70 = rsiToY(70.0)
+                        val y30 = rsiToY(30.0)
+                        drawRect(
+                            color = Color(0xFFEC4899).copy(alpha = 0.07f),
+                            topLeft = Offset(0f, min(y70, y30)),
+                            size = Size(canvasW, abs(y30 - y70).coerceAtLeast(1f))
+                        )
+                        drawLine(color = financialPalette.chartGrid, start = Offset(0f, y70), end = Offset(canvasW, y70), strokeWidth = 1f, pathEffect = dashEffect)
+                        drawLine(color = financialPalette.chartGrid, start = Offset(0f, y30), end = Offset(canvasW, y30), strokeWidth = 1f, pathEffect = dashEffect)
+
+                        val rsiPath = Path()
+                        var started = false
+                        visibleRsi14.forEachIndexed { idx, rv ->
+                            if (rv != null) {
+                                val x = (idx + 0.5f) * slotW
+                                val y = rsiToY(rv)
+                                if (!started) {
+                                    rsiPath.moveTo(x, y)
+                                    started = true
+                                } else {
+                                    rsiPath.lineTo(x, y)
+                                }
+                            }
+                        }
+                        if (started) {
+                            drawPath(path = rsiPath, color = Color(0xFFEC4899), style = Stroke(width = 1.8f))
+                        }
+                    }
+
+                    // 8c. MACD (12, 26, 9) Synchronized Sub-Pane
+                    if (tab.showMacd && oscPaneH > 8f) {
+                        val mTop = nextSubPaneTop
+                        val mBot = mTop + oscPaneH
+                        nextSubPaneTop = mBot
+                        drawLine(
+                            color = financialPalette.cardBorder,
+                            start = Offset(0f, mTop),
+                            end = Offset(canvasW, mTop),
+                            strokeWidth = 1.2f
+                        )
+                        var maxAbs = 1e-6
+                        for (pt in visibleMacd) {
+                            if (pt != null) {
+                                maxAbs = max(maxAbs, abs(pt.macd))
+                                if (pt.signal != null) maxAbs = max(maxAbs, abs(pt.signal))
+                                if (pt.histogram != null) maxAbs = max(maxAbs, abs(pt.histogram))
+                            }
+                        }
+                        val zeroY = mTop + oscPaneH * 0.5f
+                        val halfH = (oscPaneH * 0.42f).coerceAtLeast(2f)
+                        drawLine(color = financialPalette.chartGrid, start = Offset(0f, zeroY), end = Offset(canvasW, zeroY), strokeWidth = 1f, pathEffect = dashEffect)
+
+                        val macdPath = Path()
+                        val sigPath = Path()
+                        var mStarted = false
+                        var sStarted = false
+
+                        visibleMacd.forEachIndexed { idx, pt ->
+                            if (pt != null) {
+                                val x = (idx + 0.5f) * slotW
+                                if (pt.histogram != null) {
+                                    val hY = zeroY - (pt.histogram / maxAbs).toFloat() * halfH
+                                    val barTop = min(zeroY, hY)
+                                    val barH = abs(hY - zeroY).coerceAtLeast(1.2f)
+                                    val hColor = if (pt.histogram >= 0.0) bullColor.copy(alpha = 0.55f) else bearColor.copy(alpha = 0.55f)
+                                    drawRect(
+                                        color = hColor,
+                                        topLeft = Offset(x - bodyW / 2f, barTop),
+                                        size = Size(bodyW, barH)
+                                    )
+                                }
+                                val my = zeroY - (pt.macd / maxAbs).toFloat() * halfH
+                                if (!mStarted) {
+                                    macdPath.moveTo(x, my)
+                                    mStarted = true
+                                } else {
+                                    macdPath.lineTo(x, my)
+                                }
+                                if (pt.signal != null) {
+                                    val sy = zeroY - (pt.signal / maxAbs).toFloat() * halfH
+                                    if (!sStarted) {
+                                        sigPath.moveTo(x, sy)
+                                        sStarted = true
+                                    } else {
+                                        sigPath.lineTo(x, sy)
+                                    }
+                                }
+                            }
+                        }
+                        if (mStarted) drawPath(path = macdPath, color = Color(0xFF3B82F6), style = Stroke(width = 1.7f))
+                        if (sStarted) drawPath(path = sigPath, color = Color(0xFFF59E0B), style = Stroke(width = 1.5f))
+                    }
+
+                    // 8d. ATR (14) Synchronized Sub-Pane
+                    if (tab.showAtr14 && oscPaneH > 8f) {
+                        val aTop = nextSubPaneTop
+                        val aBot = aTop + oscPaneH
+                        nextSubPaneTop = aBot
+                        drawLine(
+                            color = financialPalette.cardBorder,
+                            start = Offset(0f, aTop),
+                            end = Offset(canvasW, aTop),
+                            strokeWidth = 1.2f
+                        )
+                        val validAtrs = visibleAtr14.filterNotNull()
+                        if (validAtrs.isNotEmpty()) {
+                            val minAtr = validAtrs.minOrNull() ?: 0.0
+                            val maxAtr = validAtrs.maxOrNull() ?: 1.0
+                            val spanAtr = (maxAtr - minAtr).coerceAtLeast(1e-6)
+                            val atrPath = Path()
+                            var started = false
+                            visibleAtr14.forEachIndexed { idx, av ->
+                                if (av != null) {
+                                    val x = (idx + 0.5f) * slotW
+                                    val norm = ((av - minAtr) / spanAtr).toFloat().coerceIn(0f, 1f)
+                                    val y = aBot - 3f - norm * (oscPaneH - 6f).coerceAtLeast(2f)
+                                    if (!started) {
+                                        atrPath.moveTo(x, y)
+                                        started = true
+                                    } else {
+                                        atrPath.lineTo(x, y)
+                                    }
+                                }
+                            }
+                            if (started) {
+                                drawPath(path = atrPath, color = Color(0xFFF97316), style = Stroke(width = 1.8f))
                             }
                         }
                     }
@@ -1103,6 +1458,36 @@ fun CandlestickCanvas(
                                 color = Color(0xFFF59E0B)
                             )
                         }
+                        if (tab.showSma50 && inspectedSma50 != null) {
+                            Text(
+                                text = "SMA50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma50), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF10B981)
+                            )
+                        }
+                        if (tab.showSma200 && inspectedSma200 != null) {
+                            Text(
+                                text = "SMA200 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma200), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF43F5E)
+                            )
+                        }
+                        if (tab.showEma20 && inspectedEma20 != null) {
+                            Text(
+                                text = "EMA20 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma20), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF38BDF8)
+                            )
+                        }
                         if (tab.showEma50 && inspectedEma50 != null) {
                             Text(
                                 text = "EMA50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma50), tab.decimals)}",
@@ -1113,6 +1498,27 @@ fun CandlestickCanvas(
                                 color = Color(0xFF06B6D4)
                             )
                         }
+                        if (tab.showSupertrend && inspectedSupertrend != null) {
+                            val stDir = if (inspectedSupertrend.direction == 1) "▲" else "▼"
+                            Text(
+                                text = "ST $stDir ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSupertrend.value), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = if (inspectedSupertrend.direction == 1) Color(0xFF22C55E) else Color(0xFFEF4444)
+                            )
+                        }
+                        if (tab.showVwap && inspectedVwap != null) {
+                            Text(
+                                text = "VWAP ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedVwap), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEAB308)
+                            )
+                        }
                         if (tab.showBollinger && inspectedBollinger != null) {
                             Text(
                                 text = "BB ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.lower), tab.decimals)}–${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.upper), tab.decimals)}",
@@ -1121,6 +1527,67 @@ fun CandlestickCanvas(
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFA855F7)
+                            )
+                        }
+                        if (tab.showRsi14 && inspectedRsi14 != null) {
+                            Text(
+                                text = "RSI14 ${String.format(java.util.Locale.US, "%.1f", inspectedRsi14)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEC4899)
+                            )
+                        }
+                        if (tab.showMacd && inspectedMacd != null) {
+                            Text(
+                                text = "MACD ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedMacd.macd), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF3B82F6)
+                            )
+                        }
+                        if (tab.showAtr14 && inspectedAtr14 != null) {
+                            Text(
+                                text = "ATR14 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedAtr14), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF97316)
+                            )
+                        }
+                        if (tab.showVolumeProfile && visibleVolumeProfile != null) {
+                            Text(
+                                text = "POC ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(visibleVolumeProfile.pocPrice), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF97316)
+                            )
+                        }
+                        if (tab.showSmcStructure && visibleSmcResult != null) {
+                            val latestBrk = visibleSmcResult.structures.lastOrNull()
+                            Text(
+                                text = if (latestBrk != null) "SMC ${latestBrk.type}" else "SMC ON",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF14B8A6)
+                            )
+                        }
+                        if (tab.showFvg && visibleSmcResult != null) {
+                            Text(
+                                text = "FVG (${visibleSmcResult.fvgs.size})",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF6366F1)
                             )
                         }
                     }

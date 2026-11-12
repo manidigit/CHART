@@ -76,9 +76,9 @@ export function renderPredictionModal(activeTab, i18n) {
     .join('');
 
   const allowedTfs =
-    activeTab && activeTab.provider === 'eia_brent_spot'
+    activeTab && (activeTab.provider === 'eia_brent_spot' || activeTab.provider === 'stooq')
       ? ['D1', 'W1']
-      : ['M15', 'H1', 'H4', 'D1', 'W1'];
+      : ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'];
   const tfChips = allowedTfs
     .map((tf) => {
       const isAct = activeTab && activeTab.timeframe === tf;

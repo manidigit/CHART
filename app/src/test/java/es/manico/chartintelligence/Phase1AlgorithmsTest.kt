@@ -455,7 +455,72 @@ class Phase1AlgorithmsTest {
         assertFalse(tab.isLogScale)
         assertEquals("chart_spotbrent_main", tab.chartId)
     }
+
+    @Test
+    fun phase2And3_supportsM30AndComputesIndicatorsOscillatorsSmcAndVolumeProfile() {
+        assertEquals("30m", PriceFormatterAlgorithm.displayTimeframeLabel("M30"))
+        assertTrue("M30" in es.manico.chartintelligence.config.AppConfig.SUPPORTED_TIMEFRAMES)
+        assertEquals(30L * 60_000L, UtcTimeAnchorAlgorithm.timeframeStepMillis("M30"))
+
+        val baseTimeMs = 1793923200000L
+        val stepMs = 15L * 60_000L
+        val bars = (0 until 40).map { i ->
+            val basePrice = 2700.0 + (i * 2.5) + if (i % 4 == 0) -3.0 else 4.0
+            val open = BigDecimal.valueOf(basePrice)
+            val high = BigDecimal.valueOf(basePrice + 8.0 + (i % 3) * 2.0)
+            val low = BigDecimal.valueOf(basePrice - 5.0)
+            val close = BigDecimal.valueOf(basePrice + 3.5)
+            val vol = BigDecimal.valueOf(100.0 + i * 15.0)
+            CandleValidatorAlgorithm.sanitizeAndValidate(
+                rawOpenTimeMillis = baseTimeMs + i * stepMs,
+                timeframe = "M15",
+                open = open,
+                high = high,
+                low = low,
+                close = close,
+                volume = vol
+            )!!
+        }
+
+        val m30Bars = TimeframeAggregatorAlgorithm.aggregateCandles(
+            sourceCandles = bars,
+            targetTimeframe = "M30",
+            nowUtcMillis = baseTimeMs + 50 * stepMs
+        )
+        assertEquals(20, m30Bars.size)
+        assertEquals(baseTimeMs, m30Bars.first().openTimeUtcMillis)
+
+        val closes = bars.map { it.close.toDouble() }
+        val sma50 = PriceFormatterAlgorithm.computeSmaValues(closes, 20)
+        val ema20 = PriceFormatterAlgorithm.computeEmaValues(closes, 20)
+        val vwap = PriceFormatterAlgorithm.computeVwapValues(bars)
+        val atr14 = PriceFormatterAlgorithm.computeAtrValues(bars, 14)
+        val supertrend = PriceFormatterAlgorithm.computeSupertrendValues(bars, 10, 3.0)
+        val rsi14 = PriceFormatterAlgorithm.computeRsiValues(closes, 14)
+        val macd = PriceFormatterAlgorithm.computeMacdValues(closes, 12, 26, 9)
+        val smc = PriceFormatterAlgorithm.detectSmcMarketStructures(bars, 3)
+        val vp = PriceFormatterAlgorithm.computeVolumeProfile(bars, 24, 0.70)
+
+        assertNotNull(sma50.last())
+        assertNotNull(ema20.last())
+        assertNotNull(vwap.last())
+        assertNotNull(atr14.last())
+        assertTrue(atr14.last()!! > 0.0)
+        assertNotNull(supertrend.last())
+        assertTrue(supertrend.last()!!.direction in listOf(-1, 1))
+        assertNotNull(rsi14.last())
+        assertTrue(rsi14.last()!! in 0.0..100.0)
+        assertNotNull(macd.last())
+        assertNotNull(macd.last()!!.signal)
+        assertNotNull(macd.last()!!.histogram)
+        assertNotNull(smc)
+        assertNotNull(vp)
+        assertEquals(24, vp!!.bins.size)
+        assertTrue(vp.vahPrice >= vp.pocPrice)
+        assertTrue(vp.pocPrice >= vp.valPrice)
+    }
 }
+
 
 
 

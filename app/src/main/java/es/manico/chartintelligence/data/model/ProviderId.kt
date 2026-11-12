@@ -83,7 +83,7 @@ enum class ProviderId(
                 formulaEn = "Direct WebSocket stream (wss://data.tradingview.com) + deterministic M15->H1->H4 UTC bucket aggregation & weekend comb filter",
                 endpointProtocol = "WSS Socket.IO + Local Python/PHP Bridge (tvdatafeed)",
                 persistenceRule = "UNIQUE(chart_id, 'tvdatafeed', timeframe, open_time_utc) — بدون جایگزینی پنهان (Strict Isolation)",
-                supportedTimeframes = listOf("M15", "H1", "H4", "D1"),
+                supportedTimeframes = listOf("M15", "M30", "H1", "H4", "D1", "W1"),
                 supportedSymbols = listOf(
                     ProviderSourceSymbolSpec("SPOTBRENT", "PEPPERSTONE:SPOTBRENT", "نفت برنت اسپات (Pepperstone)", "Brent Crude Spot (Pepperstone)"),
                     ProviderSourceSymbolSpec("ETHUSD", "BITSTAMP:ETHUSD", "اتریوم / دلار آمریکا (Bitstamp)", "Ethereum / USD (Bitstamp)"),
@@ -118,7 +118,7 @@ enum class ProviderId(
                 formulaEn = "Free multi-asset feed for BTCUSD, ETHUSD, XAGUSD, XAUUSD, SPOTBRENT, USOIL, and EURUSD with incremental delta persistence",
                 endpointProtocol = "HTTPS JSON Feed (biquote / Public Multi-Asset Engine)",
                 persistenceRule = "UNIQUE(chart_id, 'biquote', timeframe, open_time_utc) — بدون جایگزینی پنهان (Strict Isolation)",
-                supportedTimeframes = listOf("M15", "H1", "H4", "D1"),
+                supportedTimeframes = listOf("M15", "M30", "H1", "H4", "D1"),
                 supportedSymbols = listOf(
                     ProviderSourceSymbolSpec("SPOTBRENT", "BIQUOTE:UKOIL", "نفت برنت اسپات (biquote)", "Brent Crude Spot (biquote)"),
                     ProviderSourceSymbolSpec("ETHUSD", "BIQUOTE:ETHUSD", "اتریوم / دلار آمریکا (biquote)", "Ethereum / USD (biquote)"),
@@ -138,7 +138,7 @@ enum class ProviderId(
                 formulaEn = "Official Twelve Data REST /time_series (UTC) with API key and incremental delta outputsize",
                 endpointProtocol = "HTTPS REST JSON (api.twelvedata.com/time_series)",
                 persistenceRule = "UNIQUE(chart_id, 'twelve_data', timeframe, open_time_utc) — بدون جایگزینی پنهان (Strict Isolation)",
-                supportedTimeframes = listOf("M15", "H1", "H4", "D1"),
+                supportedTimeframes = listOf("M15", "M30", "H1", "H4", "D1", "W1"),
                 supportedSymbols = listOf(
                     ProviderSourceSymbolSpec("SPOTBRENT", "XBR/USD", "نفت برنت اسپات (XBR/USD)", "Brent Crude Spot (XBR/USD)"),
                     ProviderSourceSymbolSpec("ETHUSD", "ETH/USD", "اتریوم / دلار آمریکا (ETH/USD)", "Ethereum / USD (ETH/USD)"),
@@ -173,7 +173,7 @@ enum class ProviderId(
                 formulaEn = "Swiss interbank OHLCV feed aligned to 00:00 UTC boundaries (Zero-Key Free Feed)",
                 endpointProtocol = "HTTPS JSON Feed (Dukascopy Bank SA)",
                 persistenceRule = "UNIQUE(chart_id, 'dukascopy', timeframe, open_time_utc) — بدون جایگزینی پنهان (Strict Isolation)",
-                supportedTimeframes = listOf("M15", "H1", "H4", "D1"),
+                supportedTimeframes = listOf("M15", "M30", "H1", "H4", "D1"),
                 supportedSymbols = listOf(
                     ProviderSourceSymbolSpec("SPOTBRENT", "BRENT.CMD/USD", "نفت برنت بین‌بانکی", "Interbank Brent Crude"),
                     ProviderSourceSymbolSpec("XAGUSD", "XAGUSD", "نقره بین‌بانکی سوئیس", "Swiss Interbank Silver"),
@@ -190,7 +190,7 @@ enum class ProviderId(
                 formulaEn = "Primary free feed for US Equities (NVDA..SAN) and Indices (SPX500USD, NDQ) via Yahoo Finance v8 chart API",
                 endpointProtocol = "HTTPS REST v8 (query1.finance.yahoo.com/v8/finance/chart)",
                 persistenceRule = "UNIQUE(chart_id, 'yahoo_finance', timeframe, open_time_utc) — بدون جایگزینی پنهان (Strict Isolation)",
-                supportedTimeframes = listOf("M15", "H1", "H4", "D1"),
+                supportedTimeframes = listOf("M15", "M30", "H1", "H4", "D1", "W1"),
                 supportedSymbols = listOf(
                     ProviderSourceSymbolSpec("SPOTBRENT", "BZ=F", "نفت برنت مرجع یاهو (BZ=F)", "Brent Reference (BZ=F)"),
                     ProviderSourceSymbolSpec("ETHUSD", "ETH-USD", "اتریوم به دلار (ETH-USD)", "Ethereum / USD (ETH-USD)"),

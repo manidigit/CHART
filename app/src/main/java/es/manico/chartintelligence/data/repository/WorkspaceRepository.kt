@@ -560,9 +560,9 @@ class WorkspaceRepository(context: Context) {
             }
         }
 
-        // For H1 and H4, merge any newer closed bars aggregated from cached M15 / H1
+        // For M30, H1 and H4, merge any newer closed bars aggregated from cached M15 / H1
         // so stale disk caches never block freshly synced intraday bars
-        if (normTf in listOf("H1", "H4")) {
+        if (normTf in listOf("M30", "H1", "H4")) {
             val m15Key = "${symbolCode}_${provider.id}_M15"
             val m15Candles = candleMemoryStore[m15Key] ?: loadCandlesFromPrefs(m15Key, "M15")
             if (m15Candles.isNotEmpty()) {
@@ -719,6 +719,14 @@ class WorkspaceRepository(context: Context) {
             val m15Key = "${symbol.symbolCode}_${symbol.activeProvider.id}_M15"
             candleMemoryStore[m15Key] = m15Bars
             saveCandlesToPrefs(m15Key, m15Bars, configuredFetchLimit)
+
+            val aggM30 = TimeframeAggregatorAlgorithm.aggregateCandles(m15Bars, "M30")
+            val mergedM30 = CandleValidatorAlgorithm.mergeIdempotent(
+                existing = syncedByTf["M30"].orEmpty(),
+                incoming = aggM30,
+                timeframe = "M30"
+            ).takeLast(configuredFetchLimit)
+            syncedByTf["M30"] = mergedM30
 
             val aggH1 = TimeframeAggregatorAlgorithm.aggregateCandles(m15Bars, "H1")
             val mergedH1 = CandleValidatorAlgorithm.mergeIdempotent(
@@ -1426,8 +1434,19 @@ class WorkspaceRepository(context: Context) {
                         scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
                         showVolume = obj.optBoolean("showVolume", true),
                         showSma20 = obj.optBoolean("showSma20", false),
+                        showSma50 = obj.optBoolean("showSma50", false),
+                        showSma200 = obj.optBoolean("showSma200", false),
+                        showEma20 = obj.optBoolean("showEma20", false),
                         showEma50 = obj.optBoolean("showEma50", false),
                         showBollinger = obj.optBoolean("showBollinger", false),
+                        showSupertrend = obj.optBoolean("showSupertrend", false),
+                        showVwap = obj.optBoolean("showVwap", false),
+                        showRsi14 = obj.optBoolean("showRsi14", false),
+                        showMacd = obj.optBoolean("showMacd", false),
+                        showAtr14 = obj.optBoolean("showAtr14", false),
+                        showSmcStructure = obj.optBoolean("showSmcStructure", false),
+                        showFvg = obj.optBoolean("showFvg", false),
+                        showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
                         isLogScale = obj.optBoolean("isLogScale", false),
                         drawings = loadDrawingsForChart(chartId)
                     )
@@ -1451,8 +1470,19 @@ class WorkspaceRepository(context: Context) {
                 .put("scrollOffset", t.scrollOffsetFromRight)
                 .put("showVolume", t.showVolume)
                 .put("showSma20", t.showSma20)
+                .put("showSma50", t.showSma50)
+                .put("showSma200", t.showSma200)
+                .put("showEma20", t.showEma20)
                 .put("showEma50", t.showEma50)
                 .put("showBollinger", t.showBollinger)
+                .put("showSupertrend", t.showSupertrend)
+                .put("showVwap", t.showVwap)
+                .put("showRsi14", t.showRsi14)
+                .put("showMacd", t.showMacd)
+                .put("showAtr14", t.showAtr14)
+                .put("showSmcStructure", t.showSmcStructure)
+                .put("showFvg", t.showFvg)
+                .put("showVolumeProfile", t.showVolumeProfile)
                 .put("isLogScale", t.isLogScale)
             arr.put(obj)
         }
@@ -1530,8 +1560,19 @@ class WorkspaceRepository(context: Context) {
                     .put("scrollOffset", t.scrollOffsetFromRight)
                     .put("showVolume", t.showVolume)
                     .put("showSma20", t.showSma20)
+                    .put("showSma50", t.showSma50)
+                    .put("showSma200", t.showSma200)
+                    .put("showEma20", t.showEma20)
                     .put("showEma50", t.showEma50)
                     .put("showBollinger", t.showBollinger)
+                    .put("showSupertrend", t.showSupertrend)
+                    .put("showVwap", t.showVwap)
+                    .put("showRsi14", t.showRsi14)
+                    .put("showMacd", t.showMacd)
+                    .put("showAtr14", t.showAtr14)
+                    .put("showSmcStructure", t.showSmcStructure)
+                    .put("showFvg", t.showFvg)
+                    .put("showVolumeProfile", t.showVolumeProfile)
                     .put("isLogScale", t.isLogScale)
                 tabsArr.put(tObj)
             }
@@ -1716,8 +1757,19 @@ class WorkspaceRepository(context: Context) {
                             scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
                             showVolume = obj.optBoolean("showVolume", true),
                             showSma20 = obj.optBoolean("showSma20", false),
+                            showSma50 = obj.optBoolean("showSma50", false),
+                            showSma200 = obj.optBoolean("showSma200", false),
+                            showEma20 = obj.optBoolean("showEma20", false),
                             showEma50 = obj.optBoolean("showEma50", false),
                             showBollinger = obj.optBoolean("showBollinger", false),
+                            showSupertrend = obj.optBoolean("showSupertrend", false),
+                            showVwap = obj.optBoolean("showVwap", false),
+                            showRsi14 = obj.optBoolean("showRsi14", false),
+                            showMacd = obj.optBoolean("showMacd", false),
+                            showAtr14 = obj.optBoolean("showAtr14", false),
+                            showSmcStructure = obj.optBoolean("showSmcStructure", false),
+                            showFvg = obj.optBoolean("showFvg", false),
+                            showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
                             isLogScale = obj.optBoolean("isLogScale", false),
                             drawings = loadDrawingsForChart(chartId)
                         )

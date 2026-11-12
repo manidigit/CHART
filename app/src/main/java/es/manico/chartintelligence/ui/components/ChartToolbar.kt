@@ -101,8 +101,8 @@ fun ChartToolbar(
             horizontalArrangement = Arrangement.spacedBy(4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Group 1: Compact Timeframe Chips (15m, 1h, 4h, 1D)
-            val timeframes = listOf("M15", "H1", "H4", "D1")
+            // Group 1: Compact Timeframe Chips (15m, 30m, 1h, 4h, 1D, 1W)
+            val timeframes = listOf("M15", "M30", "H1", "H4", "D1", "W1")
             for (tf in timeframes) {
                 val enabled = tf in allowedTimeframes
                 val isSelected = activeTimeframe.equals(tf, ignoreCase = true)

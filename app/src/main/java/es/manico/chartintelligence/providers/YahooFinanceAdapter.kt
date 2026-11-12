@@ -72,9 +72,11 @@ class YahooFinanceAdapter(
         }
         val normalizedTf = timeframe.uppercase()
         val (interval, range, sourceTf) = when (normalizedTf) {
+            "W1" -> Triple("1wk", "5y", "W1")
             "D1" -> Triple("1d", "1y", "D1")
             "H4" -> Triple("60m", "3mo", "H1")
             "H1" -> Triple("60m", "1mo", "H1")
+            "M30" -> Triple("30m", "1mo", "M30")
             else -> Triple("15m", "5d", "M15")
         }
 

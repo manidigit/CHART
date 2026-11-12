@@ -1133,6 +1133,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleSma50OnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showSma50 = !tab.showSma50) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleSma200OnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showSma200 = !tab.showSma200) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleEma20OnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showEma20 = !tab.showEma20) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
     }
 
     fun toggleEma50OnActiveTab() {
@@ -1144,6 +1181,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        scheduleDebouncedCloudSync()
     }
 
     fun toggleBollingerOnActiveTab() {
@@ -1155,6 +1193,103 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleSupertrendOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showSupertrend = !tab.showSupertrend) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleVwapOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showVwap = !tab.showVwap) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleRsi14OnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showRsi14 = !tab.showRsi14) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleMacdOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showMacd = !tab.showMacd) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleAtr14OnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showAtr14 = !tab.showAtr14) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleSmcStructureOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showSmcStructure = !tab.showSmcStructure) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleFvgOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showFvg = !tab.showFvg) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleVolumeProfileOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showVolumeProfile = !tab.showVolumeProfile) else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
     }
 
     fun setDrawingColorOnActiveTab(colorHex: String) {

@@ -118,7 +118,7 @@ final class ProviderCatalog
                 'status_code' => 'READY',
                 'formula_fa' => 'آرشیو پایه ۵۰۰۰ کندل در دیتابیس مرکزی + دریافت افزایشی کندل‌های جدید از سوکت زنده wss://data.tradingview.com با تراز دقیق UTC 00:00 و حفظ کامل شدوها (Wicks).',
                 'formula_en' => '5,000-bar base archive in MariaDB + incremental delta sync via wss://data.tradingview.com WebSocket with exact 00:00 UTC alignment and full wick preservation.',
-                'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
+                'supported_timeframes' => ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
                 'storage_key_rule' => 'UNIQUE(chart_id, "tvdatafeed", timeframe, open_time_utc)',
                 'symbols' => $buildSymbolList([
                     'SPOTBRENT' => 'PEPPERSTONE:SPOTBRENT',
@@ -156,7 +156,7 @@ final class ProviderCatalog
                 'status_code' => 'READY',
                 'formula_fa' => 'اولویت اول برای بیت‌کوین، اتریوم و نقره؛ دریافت سریع کندل‌های بسته‌شده UTC بدون نیاز به کلید API پولی و ذخیره افزایشی فقط کندل‌های جدید در MariaDB.',
                 'formula_en' => 'Primary free feed for BTCUSD, ETHUSD, and XAGUSD; fetches closed UTC candles without paid API keys and appends only incremental delta bars to MariaDB.',
-                'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
+                'supported_timeframes' => ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
                 'storage_key_rule' => 'UNIQUE(chart_id, "biquote", timeframe, open_time_utc)',
                 'symbols' => $buildSymbolList([
                     'SPOTBRENT' => 'BIQUOTE:UKOIL',
@@ -179,7 +179,7 @@ final class ProviderCatalog
                 'status_code' => $hasTwelveKey ? 'READY' : 'API_KEY_OPTIONAL_ARCHIVE',
                 'formula_fa' => 'اولویت اول برای طلای جهانی (XAUUSD)؛ فراخوانی اندپوینت api.twelvedata.com/time_series با کلید اختصاصی و دریافت صرفاً کندل‌های جدید جاافتاده (outputsize = deltaBars).',
                 'formula_en' => 'Primary feed for XAUUSD; queries api.twelvedata.com/time_series with API key using incremental outputsize = deltaBars after initial history is stored in MariaDB.',
-                'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
+                'supported_timeframes' => ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
                 'storage_key_rule' => 'UNIQUE(chart_id, "twelve_data", timeframe, open_time_utc)',
                 'symbols' => $buildSymbolList([
                     'SPOTBRENT' => 'XBR/USD',
@@ -217,7 +217,7 @@ final class ProviderCatalog
                 'status_code' => 'READY',
                 'formula_fa' => 'استخراج کندل‌های استاندارد بین‌بانکی سوئیس با حذف کامل کندل‌های مصنوعی تعطیلات آخر هفته (volume = 0) و ذخیره‌سازی ماندگار در جدول candles.',
                 'formula_en' => 'Interbank historical OHLC feed with strict weekend synthetic tick filtering and permanent MariaDB persistence.',
-                'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
+                'supported_timeframes' => ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
                 'storage_key_rule' => 'UNIQUE(chart_id, "dukascopy", timeframe, open_time_utc)',
                 'symbols' => $buildSymbolList([
                     'SPOTBRENT' => 'BRENT.CMD/USD',
@@ -237,7 +237,7 @@ final class ProviderCatalog
                 'status_code' => 'READY',
                 'formula_fa' => 'اولویت اول برای سهام آمریکا (NVDA تا SAN) و شاخص‌ها (SPX500USD، NDQ)؛ دریافت کندل از query1.finance.yahoo.com/v8/finance/chart با بازه کوتاه در حالت Delta Sync.',
                 'formula_en' => 'Primary free engine for US Equities (NVDA..SAN) and Indices (SPX500USD, NDQ); fetches from query1.finance.yahoo.com/v8/finance/chart with short delta windows.',
-                'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
+                'supported_timeframes' => ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
                 'storage_key_rule' => 'UNIQUE(chart_id, "yahoo_finance", timeframe, open_time_utc)',
                 'symbols' => $buildSymbolList([
                     'SPOTBRENT' => 'BZ=F',

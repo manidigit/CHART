@@ -45,6 +45,7 @@ final class YahooFinanceAdapter
             'D1' => ['1d', $isDelta ? '5d' : '2y', 'D1'],
             'H4' => ['60m', $isDelta ? '5d' : '3mo', 'H1'],
             'H1' => ['60m', $isDelta ? '5d' : '1mo', 'H1'],
+            'M30' => ['30m', $isDelta ? '5d' : '1mo', 'M30'],
             default => ['15m', $isDelta ? '1d' : '5d', 'M15'],
         };
 

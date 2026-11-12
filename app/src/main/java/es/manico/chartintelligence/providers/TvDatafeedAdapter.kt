@@ -186,6 +186,7 @@ class TvDatafeedAdapter(
             return when (normTf) {
                 "H4" -> fridayMidnightMs + (20L * 3_600_000L)
                 "H1" -> fridayMidnightMs + (21L * 3_600_000L)
+                "M30" -> fridayMidnightMs + (21L * 3_600_000L) + (30L * 60_000L)
                 else -> fridayMidnightMs + (21L * 3_600_000L) + (45L * 60_000L)
             }
         }
@@ -206,6 +207,7 @@ class TvDatafeedAdapter(
         val normTf = timeframe.uppercase()
         val tvInterval = when (normTf) {
             "M15" -> "15"
+            "M30" -> "30"
             "H1" -> "60"
             "H4" -> "240"
             "D1" -> "1D"

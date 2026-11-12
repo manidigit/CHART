@@ -231,6 +231,7 @@ export const PriceFormatter = {
   displayTimeframeLabel(tf = 'M15') {
     const norm = String(tf).toUpperCase();
     if (norm === 'M15') return '15m';
+    if (norm === 'M30') return '30m';
     if (norm === 'H1') return '1h';
     if (norm === 'H4') return '4h';
     if (norm === 'D1') return '1D';
@@ -244,6 +245,7 @@ export const PriceFormatter = {
     if (tf === 'D1') return 86400000;
     if (tf === 'H4') return 14400000;
     if (tf === 'H1') return 3600000;
+    if (tf === 'M30') return 1800000;
     return 900000;
   },
 

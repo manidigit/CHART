@@ -25,7 +25,7 @@ final class BiquoteAdapter
     ): array {
         $cleanSymbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $symbol));
         $normTf = strtoupper($timeframe);
-        if (!in_array($normTf, ['M15', 'H1', 'H4', 'D1', 'W1'], true)) {
+        if (!in_array($normTf, ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'], true)) {
             $normTf = 'M15';
         }
 
@@ -67,6 +67,7 @@ final class BiquoteAdapter
             $binancePair = $cleanSymbol === 'BTCUSD' ? 'BTCUSDT' : 'ETHUSDT';
             $binanceInterval = match ($normTf) {
                 'M15' => '15m',
+                'M30' => '30m',
                 'H1' => '1h',
                 'H4' => '4h',
                 'D1' => '1d',

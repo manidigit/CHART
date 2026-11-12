@@ -41,7 +41,7 @@ export const PROVIDER_METHODS_CATALOG = [
     requiresApiKey: false,
     formulaFa: 'آرشیو پایه ۵۰۰۰ کندل در دیتابیس مرکزی + دریافت افزایشی کندل‌های جدید از سوکت زنده wss://data.tradingview.com با تراز دقیق UTC 00:00 و حفظ کامل شدوها (Wicks).',
     formulaEn: '5,000-bar base archive in MariaDB + incremental delta sync via wss://data.tradingview.com WebSocket with exact 00:00 UTC alignment and full wick preservation.',
-    supportedTimeframes: ['M15', 'H1', 'H4', 'D1', 'W1'],
+    supportedTimeframes: ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
     storageKeyRule: 'UNIQUE(chart_id, "tvdatafeed", timeframe, open_time_utc)',
     symbols: [
       { symbolCode: 'SPOTBRENT', providerTicker: 'PEPPERSTONE:SPOTBRENT', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude (Spot)', category: 'ENERGY', decimals: 3 },
@@ -77,7 +77,7 @@ export const PROVIDER_METHODS_CATALOG = [
     requiresApiKey: false,
     formulaFa: 'اولویت اول برای بیت‌کوین، اتریوم و نقره؛ دریافت سریع کندل‌های بسته‌شده UTC بدون نیاز به کلید API پولی و ذخیره افزایشی فقط کندل‌های جدید در MariaDB.',
     formulaEn: 'Primary free feed for BTCUSD, ETHUSD, and XAGUSD; fetches closed UTC candles without paid API keys and appends only incremental delta bars to MariaDB.',
-    supportedTimeframes: ['M15', 'H1', 'H4', 'D1', 'W1'],
+    supportedTimeframes: ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
     storageKeyRule: 'UNIQUE(chart_id, "biquote", timeframe, open_time_utc)',
     symbols: [
       { symbolCode: 'SPOTBRENT', providerTicker: 'BIQUOTE:UKOIL', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude (Spot)', category: 'ENERGY', decimals: 3 },
@@ -98,7 +98,7 @@ export const PROVIDER_METHODS_CATALOG = [
     requiresApiKey: true,
     formulaFa: 'اولویت اول برای طلای جهانی (XAUUSD)؛ فراخوانی اندپوینت api.twelvedata.com/time_series با کلید اختصاصی و دریافت صرفاً کندل‌های جدید جاافتاده (outputsize = deltaBars).',
     formulaEn: 'Primary feed for XAUUSD; queries api.twelvedata.com/time_series with API key using incremental outputsize = deltaBars after initial history is stored in MariaDB.',
-    supportedTimeframes: ['M15', 'H1', 'H4', 'D1', 'W1'],
+    supportedTimeframes: ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
     storageKeyRule: 'UNIQUE(chart_id, "twelve_data", timeframe, open_time_utc)',
     symbols: [
       { symbolCode: 'SPOTBRENT', providerTicker: 'XBR/USD', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude (Spot)', category: 'ENERGY', decimals: 3 },
@@ -134,7 +134,7 @@ export const PROVIDER_METHODS_CATALOG = [
     requiresApiKey: false,
     formulaFa: 'استخراج کندل‌های استاندارد بین‌بانکی با حذف کامل کندل‌های مصنوعی تعطیلات آخر هفته (volume = 0) و ذخیره‌سازی ماندگار در جدول candles.',
     formulaEn: 'Interbank historical OHLC feed with strict weekend synthetic tick filtering and permanent MariaDB persistence.',
-    supportedTimeframes: ['M15', 'H1', 'H4', 'D1', 'W1'],
+    supportedTimeframes: ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
     storageKeyRule: 'UNIQUE(chart_id, "dukascopy", timeframe, open_time_utc)',
     symbols: [
       { symbolCode: 'SPOTBRENT', providerTicker: 'BRENT.CMD/USD', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude (Spot)', category: 'ENERGY', decimals: 3 },
@@ -152,7 +152,7 @@ export const PROVIDER_METHODS_CATALOG = [
     requiresApiKey: false,
     formulaFa: 'اولویت اول برای سهام آمریکا (NVDA تا SAN) و شاخص‌ها (SPX500USD، NDQ)؛ دریافت کندل از query1.finance.yahoo.com/v8/finance/chart با انتخاب هوشمند بازه کوتاه در حالت Delta Sync.',
     formulaEn: 'Primary free engine for US Equities (NVDA..SAN) and Indices (SPX500USD, NDQ); fetches from query1.finance.yahoo.com/v8/finance/chart with short delta windows.',
-    supportedTimeframes: ['M15', 'H1', 'H4', 'D1', 'W1'],
+    supportedTimeframes: ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
     storageKeyRule: 'UNIQUE(chart_id, "yahoo_finance", timeframe, open_time_utc)',
     symbols: [
       { symbolCode: 'SPOTBRENT', providerTicker: 'BZ=F', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude (Spot)', category: 'ENERGY', decimals: 3 },
@@ -661,9 +661,20 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     verticalPriceOffset: t.verticalPriceOffset || 0.0,
     selectedRangePreset: t.selectedRangePreset || null,
     showSma20: Boolean(t.showSma20),
+    showSma50: Boolean(t.showSma50),
+    showSma200: Boolean(t.showSma200),
+    showEma20: Boolean(t.showEma20),
     showEma50: Boolean(t.showEma50),
+    showSupertrend: Boolean(t.showSupertrend),
+    showVwap: Boolean(t.showVwap),
     showBollinger: Boolean(t.showBollinger),
     showVolume: t.showVolume !== false,
+    showRsi14: Boolean(t.showRsi14),
+    showMacd: Boolean(t.showMacd),
+    showAtr14: Boolean(t.showAtr14),
+    showSmcStructure: Boolean(t.showSmcStructure),
+    showFvg: Boolean(t.showFvg),
+    showVolumeProfile: Boolean(t.showVolumeProfile),
   }));
   localStorage.setItem(STORAGE_KEY_OPEN_TABS, JSON.stringify(clean));
   if (!skipCloudSync) scheduleDebouncedCloudSync();
@@ -707,7 +718,7 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
     }
   }
 
-  if (normTf === 'H1' || normTf === 'H4') {
+  if (normTf === 'M30' || normTf === 'H1' || normTf === 'H4') {
     const m15Key = `${symbolCode}_${provider}_M15`;
     const m15 = state.candleCache[m15Key] || loadCandlesFromLocalStorage(m15Key, 'M15');
     if (m15 && m15.length > 0) {

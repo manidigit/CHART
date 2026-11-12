@@ -32,7 +32,7 @@ final class TvDatafeedAdapter
     ): array {
         $cleanSymbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $symbol));
         $normTf = strtoupper($timeframe);
-        if (!in_array($normTf, ['M15', 'H1', 'H4', 'D1', 'W1'], true)) {
+        if (!in_array($normTf, ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'], true)) {
             $normTf = 'M15';
         }
 
@@ -126,8 +126,8 @@ final class TvDatafeedAdapter
             }
         }
 
-        // If higher timeframe (H1/H4) is requested and M15 has newer closed bars, merge aggregated M15 from tvdatafeed
-        if (in_array($normTf, ['H1', 'H4'], true)) {
+        // If higher timeframe (M30/H1/H4) is requested and M15 has newer closed bars, merge aggregated M15 from tvdatafeed
+        if (in_array($normTf, ['M30', 'H1', 'H4'], true)) {
             $m15 = self::readFromNormalizedJson($dataDir, $cleanSymbol, 'M15', 1500, $nowMs);
             if (!empty($m15)) {
                 $cleanM15 = CandleValidator::filterSyntheticWeekendAndCombCandles($m15, $cleanSymbol, 'M15');
@@ -189,6 +189,7 @@ final class TvDatafeedAdapter
             return match ($timeframe) {
                 'H4' => $fridayMidnightMs + (20 * 3600000),
                 'H1' => $fridayMidnightMs + (21 * 3600000),
+                'M30' => $fridayMidnightMs + (21 * 3600000) + (30 * 60000),
                 default => $fridayMidnightMs + (21 * 3600000) + (45 * 60000),
             };
         }
@@ -209,6 +210,7 @@ final class TvDatafeedAdapter
     ): array {
         $tvCode = match ($timeframe) {
             'M15' => '15',
+            'M30' => '30',
             'H1' => '60',
             'H4' => '240',
             'D1' => '1D',

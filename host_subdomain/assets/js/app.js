@@ -116,8 +116,19 @@ function ensureInitialTabs() {
       showVolume: true,
       volumePaneRatio: 0.22,
       showSma20: false,
+      showSma50: false,
+      showSma200: false,
+      showEma20: false,
       showEma50: false,
+      showSupertrend: false,
+      showVwap: false,
       showBollinger: false,
+      showRsi14: false,
+      showMacd: false,
+      showAtr14: false,
+      showSmcStructure: false,
+      showFvg: false,
+      showVolumeProfile: false,
       isLogScale: Boolean(state.chartPreferences.isLogScale),
       selectedRangePreset: null,
       visibleCount: 48,
@@ -179,8 +190,19 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       showVolume: true,
       volumePaneRatio: 0.22,
       showSma20: false,
+      showSma50: false,
+      showSma200: false,
+      showEma20: false,
       showEma50: false,
+      showSupertrend: false,
+      showVwap: false,
       showBollinger: false,
+      showRsi14: false,
+      showMacd: false,
+      showAtr14: false,
+      showSmcStructure: false,
+      showFvg: false,
+      showVolumeProfile: false,
       isLogScale: Boolean(state.chartPreferences.isLogScale),
       selectedRangePreset: null,
       visibleCount: 48,
@@ -287,21 +309,27 @@ function renderOhlcvOverlay(activeTab) {
   const pct = Number(c.open) > 0 ? PriceFormatter.formatSignedPct(c.open, c.close) : '+0.00%';
 
   const indPills = [];
-  if (activeTab.showSma20) {
-    indPills.push(
-      `<span class="tv-ind-pill" style="color: #F59E0B;">SMA 20 <span style="cursor:pointer; opacity:0.8;" data-action="toggle-sma20">✕</span></span>`
-    );
-  }
-  if (activeTab.showEma50) {
-    indPills.push(
-      `<span class="tv-ind-pill" style="color: #06B6D4;">EMA 50 <span style="cursor:pointer; opacity:0.8;" data-action="toggle-ema50">✕</span></span>`
-    );
-  }
-  if (activeTab.showBollinger) {
-    indPills.push(
-      `<span class="tv-ind-pill" style="color: #A855F7;">BB (20, 2) <span style="cursor:pointer; opacity:0.8;" data-action="toggle-bollinger">✕</span></span>`
-    );
-  }
+  const pushPill = (flag, color, label, action) => {
+    if (flag) {
+      indPills.push(
+        `<span class="tv-ind-pill" style="color: ${color};">${label} <span style="cursor:pointer; opacity:0.8;" data-action="${action}">✕</span></span>`
+      );
+    }
+  };
+  pushPill(activeTab.showSma20, '#F59E0B', 'SMA 20', 'toggle-sma20');
+  pushPill(activeTab.showSma50, '#38BDF8', 'SMA 50', 'toggle-sma50');
+  pushPill(activeTab.showSma200, '#EC4899', 'SMA 200', 'toggle-sma200');
+  pushPill(activeTab.showEma20, '#10B981', 'EMA 20', 'toggle-ema20');
+  pushPill(activeTab.showEma50, '#06B6D4', 'EMA 50', 'toggle-ema50');
+  pushPill(activeTab.showSupertrend, '#26A69A', 'Supertrend (10,3)', 'toggle-supertrend');
+  pushPill(activeTab.showVwap, '#EAB308', 'VWAP', 'toggle-vwap');
+  pushPill(activeTab.showBollinger, '#A855F7', 'BB (20,2)', 'toggle-bollinger');
+  pushPill(activeTab.showSmcStructure, '#26A69A', 'SMC (BOS/CHoCH)', 'toggle-smc-structure');
+  pushPill(activeTab.showFvg, '#10B981', 'FVG', 'toggle-fvg');
+  pushPill(activeTab.showVolumeProfile, '#F59E0B', 'VP (POC/VAH/VAL)', 'toggle-volume-profile');
+  pushPill(activeTab.showRsi14, '#A855F7', 'RSI 14', 'toggle-rsi14');
+  pushPill(activeTab.showMacd, '#2962FF', 'MACD', 'toggle-macd');
+  pushPill(activeTab.showAtr14, '#F43F5E', 'ATR 14', 'toggle-atr14');
 
   return `
     <div class="tv-ohlc-overlay ltr-num" dir="ltr">
@@ -1204,12 +1232,59 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'toggle-sma20' && activeTab) {
     activeTab.showSma20 = !activeTab.showSma20;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-sma50' && activeTab) {
+    activeTab.showSma50 = !activeTab.showSma50;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-sma200' && activeTab) {
+    activeTab.showSma200 = !activeTab.showSma200;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-ema20' && activeTab) {
+    activeTab.showEma20 = !activeTab.showEma20;
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'toggle-ema50' && activeTab) {
     activeTab.showEma50 = !activeTab.showEma50;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-supertrend' && activeTab) {
+    activeTab.showSupertrend = !activeTab.showSupertrend;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-vwap' && activeTab) {
+    activeTab.showVwap = !activeTab.showVwap;
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'toggle-bollinger' && activeTab) {
     activeTab.showBollinger = !activeTab.showBollinger;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-rsi14' && activeTab) {
+    activeTab.showRsi14 = !activeTab.showRsi14;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-macd' && activeTab) {
+    activeTab.showMacd = !activeTab.showMacd;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-atr14' && activeTab) {
+    activeTab.showAtr14 = !activeTab.showAtr14;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-smc-structure' && activeTab) {
+    activeTab.showSmcStructure = !activeTab.showSmcStructure;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-fvg' && activeTab) {
+    activeTab.showFvg = !activeTab.showFvg;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-volume-profile' && activeTab) {
+    activeTab.showVolumeProfile = !activeTab.showVolumeProfile;
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'toggle-log-scale' && activeTab) {
     activeTab.isLogScale = !activeTab.isLogScale;

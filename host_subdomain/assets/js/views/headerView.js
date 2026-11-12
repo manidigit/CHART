@@ -10,7 +10,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
   const allowedTfs =
     activeTab && (activeTab.provider === 'eia_brent_spot' || activeTab.provider === 'stooq')
       ? ['D1', 'W1']
-      : ['M15', 'H1', 'H4', 'D1', 'W1'];
+      : ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'];
 
   const tfButtons = allowedTfs
     .map((tf) => {
@@ -21,9 +21,20 @@ export function renderTopHeaderBar(activeTab, i18n) {
 
   const activeIndicatorsCount = activeTab
     ? (activeTab.showSma20 ? 1 : 0) +
+      (activeTab.showSma50 ? 1 : 0) +
+      (activeTab.showSma200 ? 1 : 0) +
+      (activeTab.showEma20 ? 1 : 0) +
       (activeTab.showEma50 ? 1 : 0) +
+      (activeTab.showSupertrend ? 1 : 0) +
+      (activeTab.showVwap ? 1 : 0) +
       (activeTab.showBollinger ? 1 : 0) +
-      (activeTab.showVolume !== false ? 1 : 0)
+      (activeTab.showVolume !== false ? 1 : 0) +
+      (activeTab.showRsi14 ? 1 : 0) +
+      (activeTab.showMacd ? 1 : 0) +
+      (activeTab.showAtr14 ? 1 : 0) +
+      (activeTab.showSmcStructure ? 1 : 0) +
+      (activeTab.showFvg ? 1 : 0) +
+      (activeTab.showVolumeProfile ? 1 : 0)
     : 1;
 
   let statusDotColor = 'var(--bull)';
@@ -231,81 +242,70 @@ export function renderIndicatorsModal(activeTab, i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
   const volRatioPct = Math.round((activeTab.volumePaneRatio || 0.22) * 100);
 
+  const renderToggleRow = (color, title, subtitle, isActive, actionName) => `
+    <div class="card-subtle row-between" style="padding: 8px 11px;">
+      <div>
+        <div style="font-weight: 700; color: var(--text-strong); font-size: 12.5px;">
+          <span style="display: inline-block; width: 9px; height: 9px; border-radius: 50%; background: ${color}; margin-inline-end: 6px;"></span>
+          ${title}
+        </div>
+        <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+          ${subtitle}
+        </div>
+      </div>
+      <button
+        class="btn btn-sm ${isActive ? 'btn-primary' : ''}"
+        data-action="${actionName}"
+      >
+        ${isActive ? (isFa ? 'فعال ✓' : 'Active ✓') : isFa ? 'افزودن' : 'Add'}
+      </button>
+    </div>
+  `;
+
   return `
     <div class="modal-backdrop" data-action="close-modal-backdrop">
-      <div class="modal-card" style="max-width: 480px;" dir="${isFa ? 'rtl' : 'ltr'}">
+      <div class="modal-card" style="max-width: 560px; max-height: 86vh; display: flex; flex-direction: column;" dir="${isFa ? 'rtl' : 'ltr'}">
         <div class="tv-modal-header">
           <div style="display: flex; align-items: center; gap: 8px;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-            <span>${isFa ? 'اندیکاتورها و ابزارهای تحلیلی چارت' : 'Indicators & Chart Studies'}</span>
+            <span>${isFa ? 'اندیکاتورها، اسیلاتورهای چندپنلی و ساختار بازار (SMC)' : 'Indicators, Multi-Pane Oscillators & SMC'}</span>
           </div>
           <button class="btn btn-sm btn-icon" data-action="close-modal">✕</button>
         </div>
 
-        <div class="tv-modal-body" style="display: flex; flex-direction: column; gap: 10px;">
-          <!-- 1. SMA 20 -->
-          <div class="card-subtle row-between">
-            <div>
-              <div style="font-weight: 700; color: var(--text-strong); font-size: 13px;">
-                <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #F59E0B; margin-inline-end: 6px;"></span>
-                SMA 20 (Simple Moving Average)
-              </div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                ${isFa ? 'میانگین متحرک ساده ۲۰ دوره‌ای روی قیمت پایانی کندل‌ها' : '20-Period Simple Moving Average on Close price'}
-              </div>
-            </div>
-            <button
-              class="btn btn-sm ${activeTab.showSma20 ? 'btn-primary' : ''}"
-              data-action="toggle-sma20"
-            >
-              ${activeTab.showSma20 ? (isFa ? 'فعال ✓' : 'Active ✓') : isFa ? 'افزودن' : 'Add'}
-            </button>
+        <div class="tv-modal-body" style="display: flex; flex-direction: column; gap: 8px; overflow-y: auto; padding-bottom: 14px;">
+          <div style="font-size: 11px; font-weight: 800; color: var(--primary); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 2px;">
+            ${isFa ? '۱. اندیکاتورهای روند روی چارت اصلی (Main Pane Overlays)' : '1. Main Chart Trend & Volatility Overlays'}
           </div>
+          ${renderToggleRow('#F59E0B', 'SMA 20', isFa ? 'میانگین متحرک ساده ۲۰ دوره‌ای' : '20-Period Simple Moving Average', activeTab.showSma20, 'toggle-sma20')}
+          ${renderToggleRow('#38BDF8', 'SMA 50', isFa ? 'میانگین متحرک ساده ۵۰ دوره‌ای' : '50-Period Simple Moving Average', activeTab.showSma50, 'toggle-sma50')}
+          ${renderToggleRow('#EC4899', 'SMA 200', isFa ? 'میانگین متحرک ساده ۲۰۰ دوره‌ای (روند کلان)' : '200-Period Institutional Simple Moving Average', activeTab.showSma200, 'toggle-sma200')}
+          ${renderToggleRow('#10B981', 'EMA 20', isFa ? 'میانگین متحرک نمایی سریع ۲۰ دوره‌ای' : '20-Period Fast Exponential Moving Average', activeTab.showEma20, 'toggle-ema20')}
+          ${renderToggleRow('#06B6D4', 'EMA 50', isFa ? 'میانگین متحرک نمایی ۵۰ دوره‌ای' : '50-Period Exponential Moving Average', activeTab.showEma50, 'toggle-ema50')}
+          ${renderToggleRow('#26A69A', 'Supertrend (10, 3)', isFa ? 'خط روند هوشمند سوپرترند (سبز صعودی / قرمز نزولی)' : 'Dynamic ATR Supertrend trailing stop (Period 10, Mult 3)', activeTab.showSupertrend, 'toggle-supertrend')}
+          ${renderToggleRow('#EAB308', 'Session VWAP', isFa ? 'میانگین قیمت وزنی حجم (تراز سشن روزانه UTC)' : 'Session-Anchored Volume Weighted Average Price', activeTab.showVwap, 'toggle-vwap')}
+          ${renderToggleRow('#A855F7', 'Bollinger Bands (20, 2)', isFa ? 'کانال نوسان بولینگر (دوره ۲۰ و انحراف معیار ۲)' : '20-Period Bollinger volatility channel (±2σ)', activeTab.showBollinger, 'toggle-bollinger')}
 
-          <!-- 2. EMA 50 -->
-          <div class="card-subtle row-between">
-            <div>
-              <div style="font-weight: 700; color: var(--text-strong); font-size: 13px;">
-                <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #06B6D4; margin-inline-end: 6px;"></span>
-                EMA 50 (Exponential Moving Average)
-              </div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                ${isFa ? 'میانگین متحرک نمایی ۵۰ دوره‌ای جهت تشخیص روند میان‌مدت' : '50-Period Exponential Moving Average for trend direction'}
-              </div>
-            </div>
-            <button
-              class="btn btn-sm ${activeTab.showEma50 ? 'btn-primary' : ''}"
-              data-action="toggle-ema50"
-            >
-              ${activeTab.showEma50 ? (isFa ? 'فعال ✓' : 'Active ✓') : isFa ? 'افزودن' : 'Add'}
-            </button>
+          <div style="font-size: 11px; font-weight: 800; color: var(--gold); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 8px;">
+            ${isFa ? '۲. ساختار بازار هوشمند (SMC) و پروفایل حجم (Volume Profile)' : '2. Smart Money Concepts (SMC) & Volume Profile'}
           </div>
+          ${renderToggleRow('#26A69A', 'BOS / CHoCH & EQH / EQL', isFa ? 'تشخیص خودکار شکست ساختار (BOS)، تغییر کاراکتر (CHoCH) و نقدینگی سقف/کف برابر' : 'Auto Market Structure Breaks (BOS/CHoCH) & Equal Highs/Lows liquidity pools', activeTab.showSmcStructure, 'toggle-smc-structure')}
+          ${renderToggleRow('#10B981', 'Fair Value Gaps (FVG / Imbalance)', isFa ? 'ترسیم خودکار باکس گپ‌های ارزش منصفانه صعودی و نزولی تسویه‌نشده' : 'Highlight unmitigated 3-candle Bullish & Bearish Fair Value Gaps', activeTab.showFvg, 'toggle-fvg')}
+          ${renderToggleRow('#F59E0B', 'Volume Profile (VRVP — POC / VAH / VAL)', isFa ? 'پروفایل حجم محدوده قابل مشاهده به همراه خطوط POC، VAH و VAL (۷۰٪)' : 'Visible Range Volume Profile histogram with Point of Control & 70% Value Area', activeTab.showVolumeProfile, 'toggle-volume-profile')}
 
-          <!-- 3. Bollinger Bands (20, 2) -->
-          <div class="card-subtle row-between">
-            <div>
-              <div style="font-weight: 700; color: var(--text-strong); font-size: 13px;">
-                <span style="display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #A855F7; margin-inline-end: 6px;"></span>
-                Bollinger Bands (20, 2)
-              </div>
-              <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
-                ${isFa ? 'کانال نوسان بولینگر (دوره ۲۰ و انحراف معیار ۲)' : '20-Period Bollinger volatility channel (±2σ)'}
-              </div>
-            </div>
-            <button
-              class="btn btn-sm ${activeTab.showBollinger ? 'btn-primary' : ''}"
-              data-action="toggle-bollinger"
-            >
-              ${activeTab.showBollinger ? (isFa ? 'فعال ✓' : 'Active ✓') : isFa ? 'افزودن' : 'Add'}
-            </button>
+          <div style="font-size: 11px; font-weight: 800; color: #38BDF8; text-transform: uppercase; letter-spacing: 0.4px; margin-top: 8px;">
+            ${isFa ? '۳. پنل‌های پایینی همگام (Multi-Pane Sub-Charts)' : '3. Synchronized Sub-Pane Oscillators'}
           </div>
+          ${renderToggleRow('#A855F7', 'RSI (14)', isFa ? 'شاخص قدرت نسبی ۱۴ دوره‌ای با سطوح اشباع ۳۰ و ۷۰ در پنل پایین' : '14-Period Wilder Relative Strength Index with 30/70 levels', activeTab.showRsi14, 'toggle-rsi14')}
+          ${renderToggleRow('#2962FF', 'MACD (12, 26, 9)', isFa ? 'خطوط مکدی، سیگنال و هیستوگرام مومنتوم در پنل پایین' : 'MACD Line, Signal Line, and Momentum Histogram sub-pane', activeTab.showMacd, 'toggle-macd')}
+          ${renderToggleRow('#F43F5E', 'ATR (14)', isFa ? 'میانگین دامنه نوسان واقعی ۱۴ دوره‌ای در پنل مجزای پایین' : '14-Period Wilder Average True Range volatility sub-pane', activeTab.showAtr14, 'toggle-atr14')}
 
-          <!-- 4. Volume Pane & Height Control -->
-          <div class="card-subtle">
+          <!-- Volume Pane & Height Control -->
+          <div class="card-subtle" style="padding: 8px 11px;">
             <div class="row-between">
               <div>
-                <div style="font-weight: 700; color: var(--text-strong); font-size: 13px;">
-                  <span style="display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: #26A69A; margin-inline-end: 6px;"></span>
+                <div style="font-weight: 700; color: var(--text-strong); font-size: 12.5px;">
+                  <span style="display: inline-block; width: 9px; height: 9px; border-radius: 2px; background: #26A69A; margin-inline-end: 6px;"></span>
                   Volume (${i18n.t('chart_volume_toggle')})
                 </div>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
@@ -323,7 +323,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
             ${
               activeTab.showVolume !== false
                 ? `
-              <div class="row-between" style="margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--border); font-size: 11.5px;">
+              <div class="row-between" style="margin-top: 8px; padding-top: 6px; border-top: 1px solid var(--border); font-size: 11.5px;">
                 <span style="color: var(--text-muted);">${isFa ? 'نسبت ارتفاع پنل حجم:' : 'Volume Pane Height:'}</span>
                 <div class="chip-group ltr-num">
                   <button class="chip ${volRatioPct <= 18 ? 'active' : ''}" data-action="set-volume-height" data-ratio="0.16">16%</button>
