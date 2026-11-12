@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.38.1] - 2026-11-12
+
+### Changed & Refined
+- **Dual-Combo-Box Architecture in Settings Data Sources (Web & Android):**
+  - Replaced the horizontal chip/pill train in Settings -> Data Sources & Symbols with two responsive combo boxes (dropdown menus) side-by-side:
+    1. **Market Category Combo Box:** Allows selecting the market segment (`All (22)`, `Metals`, `Energy`, `Crypto`, `Indices`, `Stocks`, `Forex`) with dynamic item count badges.
+    2. **Data Source / Provider Combo Box:** Allows selecting the collection provider (`TradingView Wick`, `biquote Feed`, `Twelve Data API`, `Dukascopy`, `Yahoo Finance`, `EIA FOB`) with real-time filtered symbol counts.
+- **Watchlist Market Filter Dropdown (Web & Android):**
+  - Replaced overflowing horizontal filter pills with a compact TradingView-standard dropdown combo box showing active category counts (`All (22)`, `Metals`, `Energy`, `Crypto`, `Indices`, `Stocks`, `Forex`).
+- **Clean Bottom-Right Symbol Details Header (Web):**
+  - Fixed duplicate symbol name repetition. Streamlined layout into a single clean header displaying `[Icon] SYMBOL · Clean Name` alongside a concise market category badge pill (e.g. `Energy`, `Metals`), removing redundant subtitle repetitions.
+- **Documentation & Research Notes Added:**
+  - Added `docs/GPT_CODE_REVIEW_RECOMMENDATIONS.md` containing GPT's technical review, data engine analysis, and prioritized 12-item bug fix backlog.
+
+---
+
+## [1.38.0] - 2026-11-12
+
+### Security & Hardening
+- **Zero Plain-Text Credentials:**
+  - Completely purged plain-text password storage from `localStorage` in `apiService.js` and Android `SharedPreferences`. Replaced with secure SHA-256 password hashing with server-issued salt, token-based session persistence, and secure auto-authentication.
+- **Hardened Database-First Architecture:**
+  - Enforced strict MariaDB schema types, idempotent candle upserts, and sanitized API endpoints (`ApiEnvelope.php`, `auth.php`, `workspace_sync.php`, `candles_sync.php`, `system/status.php`).
+- **BYOK (Bring Your Own Key) Isolation:**
+  - Ensured custom API keys for Twelve Data, Stooq, Alpha Vantage, and Finnhub are isolated and never leak plain-text credentials into public error responses.
+
+---
+
 ## [1.35.0] - 2026-11-12
 
 ### Added
