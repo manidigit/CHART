@@ -32,6 +32,7 @@ import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -114,15 +115,6 @@ fun CandlestickCanvas(
     val haptic = LocalHapticFeedback.current
     val useLogScale = tab.isLogScale || (tab.activeDateRange == "All" && preferences.logarithmicScaleDefault)
 
-    var nowEpochMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(preferences.showCountdownToBarClose) {
-        if (preferences.showCountdownToBarClose) {
-            while (true) {
-                nowEpochMillis = System.currentTimeMillis()
-                delay(1000L)
-            }
-        }
-    }
     val bullColor = preferences.bullCandleColor
     val bearColor = preferences.bearCandleColor
     val trendColor = preferences.trendLineColor
@@ -145,7 +137,7 @@ fun CandlestickCanvas(
         UtcTimeAnchorAlgorithm.timeframeStepMillis(tab.timeframe)
     }
 
-    // Compute full-series overlays & oscillators and slice to visible window
+    // Compute full-series overlays & oscillators once per candle list and slice O(1) to visible window
     val fullCloses = remember(candles) { candles.map { it.close.toDouble() } }
     val fullSma20 = remember(fullCloses, tab.showSma20) {
         if (!tab.showSma20 || fullCloses.isEmpty()) emptyList()
@@ -248,9 +240,9 @@ fun CandlestickCanvas(
         else fullAtr14.subList(startIndex, endIndexExclusive.coerceAtMost(fullAtr14.size))
     }
 
-    val visibleSmcResult = remember(visibleSlice, tab.showSmcStructure, tab.showFvg) {
-        if ((!tab.showSmcStructure && !tab.showFvg) || visibleSlice.isEmpty()) null
-        else PriceFormatterAlgorithm.detectSmcMarketStructures(visibleSlice, 3)
+    val fullSmcResult = remember(candles, tab.showSmcStructure, tab.showFvg) {
+        if ((!tab.showSmcStructure && !tab.showFvg) || candles.isEmpty()) null
+        else PriceFormatterAlgorithm.detectSmcMarketStructures(candles, 3)
     }
 
     val visibleVolumeProfile = remember(visibleSlice, tab.showVolumeProfile) {
@@ -406,6 +398,23 @@ fun CandlestickCanvas(
                     }
                 }
             } else {
+                val currentTab by rememberUpdatedState(tab)
+                val currentPreferences by rememberUpdatedState(preferences)
+                val currentVisibleSlice by rememberUpdatedState(visibleSlice)
+                val currentVisibleTimestamps by rememberUpdatedState(visibleTimestamps)
+                val currentStartIndex by rememberUpdatedState(startIndex)
+                val currentPaddedMin by rememberUpdatedState(paddedMin)
+                val currentPaddedMax by rememberUpdatedState(paddedMax)
+                val currentPaddedSpan by rememberUpdatedState(paddedSpan)
+                val currentSafeLogMin by rememberUpdatedState(safeLogMin)
+                val currentSafeLogMax by rememberUpdatedState(safeLogMax)
+                val currentSafeLogSpan by rememberUpdatedState(safeLogSpan)
+                val currentUseLogScale by rememberUpdatedState(useLogScale)
+                val currentPriceRatio by rememberUpdatedState(priceRatio)
+                val reusablePath1 = remember { Path() }
+                val reusablePath2 = remember { Path() }
+                val reusablePath3 = remember { Path() }
+
                 // Multi-Pane Layered Financial Canvas (Main Price Pane + Separate Volume Sub-Pane)
                 Canvas(
                     modifier = Modifier
@@ -416,36 +425,41 @@ fun CandlestickCanvas(
                             top = plotTopPadDp,
                             bottom = plotBottomPadDp
                         )
-                        .pointerInput(
-                            visibleSlice,
-                            startIndex,
-                            tab.activeDrawingTool,
-                            tab.drawings,
-                            tab.selectedDrawingId,
-                            paddedMin,
-                            paddedMax,
-                            priceRatio
-                        ) {
+                        .pointerInput(tab.tabId, tab.timeframe) {
                             detectTapGestures { tapOffset ->
-                                if (visibleSlice.isEmpty() || size.width <= 0 || size.height <= 0) return@detectTapGestures
+                                val slice = currentVisibleSlice
+                                val timestamps = currentVisibleTimestamps
+                                val curTab = currentTab
+                                val curPrefs = currentPreferences
+                                if (slice.isEmpty() || size.width <= 0 || size.height <= 0) return@detectTapGestures
                                 val w = size.width.toFloat()
                                 val h = size.height.toFloat()
-                                val pricePaneH = (h * priceRatio).coerceAtLeast(1f)
+                                val pricePaneH = (h * currentPriceRatio).coerceAtLeast(1f)
 
-                                fun priceToY(p: Double): Float {
-                                    return (mapPriceToNormRatio(p) * pricePaneH).coerceIn(0f, pricePaneH)
+                                fun priceToYTap(p: Double): Float {
+                                    val ratio = if (currentUseLogScale && currentPaddedMin > 0.0) {
+                                        val lp = ln(max(p, 1e-6))
+                                        ((currentSafeLogMax - lp) / currentSafeLogSpan).toFloat().coerceIn(0f, 1f)
+                                    } else {
+                                        ((currentPaddedMax - p) / currentPaddedSpan).toFloat().coerceIn(0f, 1f)
+                                    }
+                                    return (ratio * pricePaneH).coerceIn(0f, pricePaneH)
                                 }
 
-                                fun yToPrice(y: Float): BigDecimal {
+                                fun yToPriceTap(y: Float): BigDecimal {
                                     val clampedRatio = (y / pricePaneH).coerceIn(0f, 1f).toDouble()
-                                    val raw = mapNormRatioToPrice(clampedRatio)
+                                    val raw = if (currentUseLogScale && currentPaddedMin > 0.0) {
+                                        exp(currentSafeLogMax - clampedRatio * currentSafeLogSpan)
+                                    } else {
+                                        currentPaddedMax - clampedRatio * currentPaddedSpan
+                                    }
                                     return CandleValidatorAlgorithm.normalizeDecimal(BigDecimal.valueOf(raw))
                                 }
 
-                                fun timeToX(timeMs: Long): Float {
+                                fun timeToXTap(timeMs: Long): Float {
                                     return DrawingGeometryAlgorithm.timeUtcToCanvasX(
                                         timeUtcMillis = timeMs,
-                                        visibleTimestamps = visibleTimestamps,
+                                        visibleTimestamps = timestamps,
                                         timeframeStepMillis = stepMillis,
                                         canvasWidth = w
                                     )
@@ -453,17 +467,17 @@ fun CandlestickCanvas(
 
                                 val rawTappedTimeUtc = DrawingGeometryAlgorithm.canvasXToTimeUtc(
                                     x = tapOffset.x,
-                                    visibleTimestamps = visibleTimestamps,
+                                    visibleTimestamps = timestamps,
                                     timeframeStepMillis = stepMillis,
                                     canvasWidth = w
                                 )
-                                val rawTappedPrice = yToPrice(tapOffset.y.coerceAtMost(pricePaneH))
+                                val rawTappedPrice = yToPriceTap(tapOffset.y.coerceAtMost(pricePaneH))
 
-                                val slotW = (w / visibleSlice.size.toFloat()).coerceAtLeast(1f)
-                                val localCandleIdx = (tapOffset.x / slotW).toInt().coerceIn(0, visibleSlice.lastIndex)
-                                val nearestCandle = visibleSlice.getOrNull(localCandleIdx)
+                                val slotW = (w / slice.size.toFloat()).coerceAtLeast(1f)
+                                val localCandleIdx = (tapOffset.x / slotW).toInt().coerceIn(0, slice.lastIndex)
+                                val nearestCandle = slice.getOrNull(localCandleIdx)
 
-                                val (tappedTimeUtc, tappedPrice) = if (tab.isMagnetMode && nearestCandle != null) {
+                                val (tappedTimeUtc, tappedPrice) = if (curTab.isMagnetMode && nearestCandle != null) {
                                     val snappedP = DrawingGeometryAlgorithm.snapToCandleOhlc(
                                         open = nearestCandle.open,
                                         high = nearestCandle.high,
@@ -471,7 +485,7 @@ fun CandlestickCanvas(
                                         close = nearestCandle.close,
                                         rawPrice = rawTappedPrice
                                     )
-                                    if (preferences.chartVibrations) {
+                                    if (curPrefs.chartVibrations) {
                                         haptic.performHapticFeedback(HapticFeedbackType.LongPress)
                                     }
                                     Pair(nearestCandle.openTimeUtcMillis, snappedP)
@@ -479,56 +493,50 @@ fun CandlestickCanvas(
                                     Pair(rawTappedTimeUtc, rawTappedPrice)
                                 }
 
-                                if (tab.activeDrawingTool != DrawingTool.CURSOR) {
+                                if (curTab.activeDrawingTool != DrawingTool.CURSOR) {
                                     onPlaceDrawingAt(tappedTimeUtc, tappedPrice)
                                 } else {
                                     val hitDrawing = DrawingGeometryAlgorithm.hitTestDrawing(
-                                        drawings = tab.drawings,
+                                        drawings = curTab.drawings,
                                         tapX = tapOffset.x,
                                         tapY = tapOffset.y,
-                                        timeToX = ::timeToX,
-                                        priceToY = ::priceToY,
-                                        hitTolerancePx = preferences.drawingHitTolerancePx
+                                        timeToX = ::timeToXTap,
+                                        priceToY = ::priceToYTap,
+                                        hitTolerancePx = curPrefs.drawingHitTolerancePx
                                     )
                                     if (hitDrawing != null) {
                                         onSelectDrawing(hitDrawing.id)
                                     } else {
                                         onSelectDrawing(null)
-                                        val slotW = w / visibleSlice.size.toFloat()
                                         val localIdx = (tapOffset.x / slotW).toInt()
-                                            .coerceIn(0, visibleSlice.lastIndex)
-                                        if (preferences.chartVibrations) {
+                                            .coerceIn(0, slice.lastIndex)
+                                        if (curPrefs.chartVibrations) {
                                             haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
                                         }
-                                        onSelectCandle(startIndex + localIdx)
+                                        onSelectCandle(currentStartIndex + localIdx)
                                     }
                                 }
                             }
                         }
-                        .pointerInput(
-                            visibleSlice,
-                            tab.selectedDrawingId,
-                            tab.activeDrawingTool,
-                            paddedSpan,
-                            stepMillis,
-                            priceRatio
-                        ) {
+                        .pointerInput(tab.tabId, tab.timeframe) {
                             detectTransformGestures { _, pan, zoom, _ ->
+                                val slice = currentVisibleSlice
+                                val curTab = currentTab
                                 val w = size.width.toFloat()
                                 val h = size.height.toFloat()
-                                val pricePaneH = (h * priceRatio).coerceAtLeast(1f)
-                                if (visibleSlice.isEmpty() || w <= 0f || h <= 0f) return@detectTransformGestures
+                                val pricePaneH = (h * currentPriceRatio).coerceAtLeast(1f)
+                                if (slice.isEmpty() || w <= 0f || h <= 0f) return@detectTransformGestures
 
                                 if (abs(zoom - 1f) > 0.015f) {
                                     onPinchZoom(zoom)
                                 }
 
-                                val slotW = (w / visibleSlice.size.toFloat()).coerceAtLeast(3f)
+                                val slotW = (w / slice.size.toFloat()).coerceAtLeast(2f)
 
-                                if (tab.activeDrawingTool == DrawingTool.CURSOR && tab.selectedDrawingId != null && abs(zoom - 1f) <= 0.015f) {
+                                if (curTab.activeDrawingTool == DrawingTool.CURSOR && curTab.selectedDrawingId != null && abs(zoom - 1f) <= 0.015f) {
                                     val deltaSlots = (pan.x / slotW).roundToLong()
                                     val deltaTimeMillis = deltaSlots * stepMillis
-                                    val pricePerPx = paddedSpan / pricePaneH.toDouble()
+                                    val pricePerPx = currentPaddedSpan / pricePaneH.toDouble()
                                     val deltaPriceDouble = -pan.y.toDouble() * pricePerPx
                                     if (deltaTimeMillis != 0L || abs(deltaPriceDouble) > 1e-8) {
                                         onTranslateSelectedDrawing(
@@ -664,11 +672,14 @@ fun CandlestickCanvas(
                             )
                         }
 
-                        // 4.0b Package 3: Fair Value Gaps (FVG / Imbalance Shaded Boxes)
-                        if (tab.showFvg && visibleSmcResult != null) {
-                            for (fvg in visibleSmcResult.fvgs) {
-                                val x1 = (fvg.startIndex + 0.5f) * slotW
-                                val x2 = min(canvasW, (fvg.endIndex + 0.8f) * slotW)
+                        // 4.0b Package 3: Fair Value Gaps (FVG / Imbalance Shaded Boxes) mapped from fullSmcResult
+                        if (tab.showFvg && fullSmcResult != null) {
+                            for (fvg in fullSmcResult.fvgs) {
+                                if (fvg.endIndex < startIndex || fvg.startIndex >= endIndexExclusive) continue
+                                val localStart = (fvg.startIndex - startIndex).coerceAtLeast(0)
+                                val localEnd = (fvg.endIndex - startIndex).coerceAtMost(visibleSlice.lastIndex)
+                                val x1 = (localStart + 0.5f) * slotW
+                                val x2 = min(canvasW, (localEnd + 0.8f) * slotW)
                                 val yTop = priceToY(fvg.top)
                                 val yBot = priceToY(fvg.bottom)
                                 val boxTop = min(yTop, yBot)
@@ -689,49 +700,50 @@ fun CandlestickCanvas(
                             }
                         }
 
-                        // 4a. Optional Bollinger Bands (20, 2) Shaded Channel + Upper/Lower/Basis Lines
+                        // 4a. Optional Bollinger Bands (Period, StdDev) Shaded Channel + Upper/Lower/Basis Lines
                         if (tab.showBollinger && visibleBollinger.isNotEmpty()) {
-                            val upperPath = Path()
-                            val lowerPath = Path()
-                            val fillPath = Path()
-                            val validIndices = ArrayList<Int>()
+                            reusablePath1.reset()
+                            reusablePath2.reset()
+                            reusablePath3.reset()
+                            var firstValidIdx = -1
+                            var validCount = 0
                             visibleBollinger.forEachIndexed { idx, bb ->
                                 if (bb != null) {
                                     val x = (idx + 0.5f) * slotW
                                     val uY = priceToY(bb.upper)
                                     val lY = priceToY(bb.lower)
-                                    if (validIndices.isEmpty()) {
-                                        upperPath.moveTo(x, uY)
-                                        lowerPath.moveTo(x, lY)
-                                        fillPath.moveTo(x, uY)
+                                    if (firstValidIdx == -1) {
+                                        firstValidIdx = idx
+                                        reusablePath1.moveTo(x, uY)
+                                        reusablePath2.moveTo(x, lY)
+                                        reusablePath3.moveTo(x, uY)
                                     } else {
-                                        upperPath.lineTo(x, uY)
-                                        lowerPath.lineTo(x, lY)
-                                        fillPath.lineTo(x, uY)
+                                        reusablePath1.lineTo(x, uY)
+                                        reusablePath2.lineTo(x, lY)
+                                        reusablePath3.lineTo(x, uY)
                                     }
-                                    validIndices.add(idx)
+                                    validCount++
                                 }
                             }
-                            if (validIndices.size >= 2) {
-                                for (k in validIndices.indices.reversed()) {
-                                    val idx = validIndices[k]
+                            if (validCount >= 2) {
+                                for (idx in visibleBollinger.lastIndex downTo firstValidIdx) {
                                     val bb = visibleBollinger[idx] ?: continue
                                     val x = (idx + 0.5f) * slotW
-                                    fillPath.lineTo(x, priceToY(bb.lower))
+                                    reusablePath3.lineTo(x, priceToY(bb.lower))
                                 }
-                                fillPath.close()
+                                reusablePath3.close()
                                 val bbColor = Color(0xFFA855F7)
                                 drawPath(
-                                    path = fillPath,
+                                    path = reusablePath3,
                                     color = bbColor.copy(alpha = 0.09f)
                                 )
                                 drawPath(
-                                    path = upperPath,
+                                    path = reusablePath1,
                                     color = bbColor.copy(alpha = 0.80f),
                                     style = Stroke(width = 1.5f)
                                 )
                                 drawPath(
-                                    path = lowerPath,
+                                    path = reusablePath2,
                                     color = bbColor.copy(alpha = 0.80f),
                                     style = Stroke(width = 1.5f)
                                 )
@@ -765,27 +777,27 @@ fun CandlestickCanvas(
                                 )
                             }
                         } else {
-                            val linePath = Path()
-                            val areaPath = Path()
+                            reusablePath1.reset()
+                            reusablePath2.reset()
                             visibleSlice.forEachIndexed { idx, candle ->
                                 val x = (idx + 0.5f) * slotW
                                 val y = priceToY(candle.close.toDouble())
                                 if (idx == 0) {
-                                    linePath.moveTo(x, y)
-                                    areaPath.moveTo(x, pricePaneH)
-                                    areaPath.lineTo(x, y)
+                                    reusablePath1.moveTo(x, y)
+                                    reusablePath2.moveTo(x, pricePaneH)
+                                    reusablePath2.lineTo(x, y)
                                 } else {
-                                    linePath.lineTo(x, y)
-                                    areaPath.lineTo(x, y)
+                                    reusablePath1.lineTo(x, y)
+                                    reusablePath2.lineTo(x, y)
                                 }
                                 if (idx == visibleSlice.lastIndex) {
-                                    areaPath.lineTo(x, pricePaneH)
-                                    areaPath.close()
+                                    reusablePath2.lineTo(x, pricePaneH)
+                                    reusablePath2.close()
                                 }
                             }
                             val lineColor = Color(0xFF2962FF)
                             drawPath(
-                                path = areaPath,
+                                path = reusablePath2,
                                 brush = Brush.verticalGradient(
                                     colors = listOf(
                                         lineColor.copy(alpha = 0.28f),
@@ -796,7 +808,7 @@ fun CandlestickCanvas(
                                 )
                             )
                             drawPath(
-                                path = linePath,
+                                path = reusablePath1,
                                 color = lineColor,
                                 style = Stroke(width = 2.4f)
                             )
@@ -804,23 +816,23 @@ fun CandlestickCanvas(
 
                         fun drawSeriesLine(series: List<Double?>, color: Color, strokeWidth: Float = 2.0f, dashed: Boolean = false) {
                             if (series.isEmpty()) return
-                            val path = Path()
+                            reusablePath1.reset()
                             var started = false
                             series.forEachIndexed { idx, v ->
                                 if (v != null) {
                                     val x = (idx + 0.5f) * slotW
                                     val y = priceToY(v)
                                     if (!started) {
-                                        path.moveTo(x, y)
+                                        reusablePath1.moveTo(x, y)
                                         started = true
                                     } else {
-                                        path.lineTo(x, y)
+                                        reusablePath1.lineTo(x, y)
                                     }
                                 }
                             }
                             if (started) {
                                 drawPath(
-                                    path = path,
+                                    path = reusablePath1,
                                     color = color,
                                     style = Stroke(
                                         width = strokeWidth,
@@ -857,11 +869,14 @@ fun CandlestickCanvas(
                             }
                         }
 
-                        // 5c. Package 3: Smart Money Concepts (BOS / CHoCH & EQH / EQL)
-                        if (tab.showSmcStructure && visibleSmcResult != null) {
-                            for (st in visibleSmcResult.structures) {
-                                val x1 = (st.startIndex + 0.5f) * slotW
-                                val x2 = (st.breakIndex + 0.5f) * slotW
+                        // 5c. Package 3: Smart Money Concepts (BOS / CHoCH & EQH / EQL) mapped from fullSmcResult
+                        if (tab.showSmcStructure && fullSmcResult != null) {
+                            for (st in fullSmcResult.structures) {
+                                if (st.breakIndex < startIndex || st.startIndex >= endIndexExclusive) continue
+                                val localStart = (st.startIndex - startIndex).coerceIn(0, visibleSlice.lastIndex)
+                                val localBreak = (st.breakIndex - startIndex).coerceIn(0, visibleSlice.lastIndex)
+                                val x1 = (localStart + 0.5f) * slotW
+                                val x2 = (localBreak + 0.5f) * slotW
                                 val y = priceToY(st.price)
                                 val stColor = if (st.direction == 1) Color(0xFF22C55E) else Color(0xFFEF4444)
                                 drawLine(
@@ -877,9 +892,12 @@ fun CandlestickCanvas(
                                     center = Offset(x2, y)
                                 )
                             }
-                            for (eq in visibleSmcResult.equalLevels) {
-                                val x1 = (eq.startIndex + 0.5f) * slotW
-                                val x2 = (eq.endIndex + 0.5f) * slotW
+                            for (eq in fullSmcResult.equalLevels) {
+                                if (eq.endIndex < startIndex || eq.startIndex >= endIndexExclusive) continue
+                                val localStart = (eq.startIndex - startIndex).coerceIn(0, visibleSlice.lastIndex)
+                                val localEnd = (eq.endIndex - startIndex).coerceIn(0, visibleSlice.lastIndex)
+                                val x1 = (localStart + 0.5f) * slotW
+                                val x2 = (localEnd + 0.5f) * slotW
                                 val y = priceToY(eq.price)
                                 val eqColor = if (eq.type == "EQH") Color(0xFFF59E0B) else Color(0xFF38BDF8)
                                 drawLine(
@@ -915,8 +933,8 @@ fun CandlestickCanvas(
                                 strokeWidth = 1.0f,
                                 pathEffect = dashEffect
                             )
-                            val macdPath = Path()
-                            val sigPath = Path()
+                            reusablePath1.reset()
+                            reusablePath2.reset()
                             var mStarted = false
                             var sStarted = false
                             val histBarW = (slotW * 0.54f).coerceIn(2f, 12f)
@@ -936,27 +954,27 @@ fun CandlestickCanvas(
                                     }
                                     val mY = overlayMidY - ((pt.macd / maxAbs).toFloat() * overlayHalfH)
                                     if (!mStarted) {
-                                        macdPath.moveTo(x, mY)
+                                        reusablePath1.moveTo(x, mY)
                                         mStarted = true
                                     } else {
-                                        macdPath.lineTo(x, mY)
+                                        reusablePath1.lineTo(x, mY)
                                     }
                                     pt.signal?.let { sigVal ->
                                         val sY = overlayMidY - ((sigVal / maxAbs).toFloat() * overlayHalfH)
                                         if (!sStarted) {
-                                            sigPath.moveTo(x, sY)
+                                            reusablePath2.moveTo(x, sY)
                                             sStarted = true
                                         } else {
-                                            sigPath.lineTo(x, sY)
+                                            reusablePath2.lineTo(x, sY)
                                         }
                                     }
                                 }
                             }
                             if (mStarted) {
-                                drawPath(path = macdPath, color = Color(0xFF2962FF), style = Stroke(width = 2.0f))
+                                drawPath(path = reusablePath1, color = Color(0xFF2962FF), style = Stroke(width = 2.0f))
                             }
                             if (sStarted) {
-                                drawPath(path = sigPath, color = Color(0xFFFF6D00), style = Stroke(width = 1.8f))
+                                drawPath(path = reusablePath2, color = Color(0xFFFF6D00), style = Stroke(width = 1.8f))
                             }
                         }
 
@@ -1314,22 +1332,22 @@ fun CandlestickCanvas(
                         drawLine(color = financialPalette.chartGrid, start = Offset(0f, y70), end = Offset(canvasW, y70), strokeWidth = 1f, pathEffect = dashEffect)
                         drawLine(color = financialPalette.chartGrid, start = Offset(0f, y30), end = Offset(canvasW, y30), strokeWidth = 1f, pathEffect = dashEffect)
 
-                        val rsiPath = Path()
+                        reusablePath1.reset()
                         var started = false
                         visibleRsi14.forEachIndexed { idx, rv ->
                             if (rv != null) {
                                 val x = (idx + 0.5f) * slotW
                                 val y = rsiToY(rv)
                                 if (!started) {
-                                    rsiPath.moveTo(x, y)
+                                    reusablePath1.moveTo(x, y)
                                     started = true
                                 } else {
-                                    rsiPath.lineTo(x, y)
+                                    reusablePath1.lineTo(x, y)
                                 }
                             }
                         }
                         if (started) {
-                            drawPath(path = rsiPath, color = Color(0xFFEC4899), style = Stroke(width = 1.8f))
+                            drawPath(path = reusablePath1, color = Color(0xFFEC4899), style = Stroke(width = 1.8f))
                         }
                     }
 
@@ -1356,8 +1374,8 @@ fun CandlestickCanvas(
                         val halfH = (oscPaneH * 0.42f).coerceAtLeast(2f)
                         drawLine(color = financialPalette.chartGrid, start = Offset(0f, zeroY), end = Offset(canvasW, zeroY), strokeWidth = 1f, pathEffect = dashEffect)
 
-                        val macdPath = Path()
-                        val sigPath = Path()
+                        reusablePath1.reset()
+                        reusablePath2.reset()
                         var mStarted = false
                         var sStarted = false
 
@@ -1377,24 +1395,24 @@ fun CandlestickCanvas(
                                 }
                                 val my = zeroY - (pt.macd / maxAbs).toFloat() * halfH
                                 if (!mStarted) {
-                                    macdPath.moveTo(x, my)
+                                    reusablePath1.moveTo(x, my)
                                     mStarted = true
                                 } else {
-                                    macdPath.lineTo(x, my)
+                                    reusablePath1.lineTo(x, my)
                                 }
                                 if (pt.signal != null) {
                                     val sy = zeroY - (pt.signal / maxAbs).toFloat() * halfH
                                     if (!sStarted) {
-                                        sigPath.moveTo(x, sy)
+                                        reusablePath2.moveTo(x, sy)
                                         sStarted = true
                                     } else {
-                                        sigPath.lineTo(x, sy)
+                                        reusablePath2.lineTo(x, sy)
                                     }
                                 }
                             }
                         }
-                        if (mStarted) drawPath(path = macdPath, color = Color(0xFF3B82F6), style = Stroke(width = 1.7f))
-                        if (sStarted) drawPath(path = sigPath, color = Color(0xFFF59E0B), style = Stroke(width = 1.5f))
+                        if (mStarted) drawPath(path = reusablePath1, color = Color(0xFF3B82F6), style = Stroke(width = 1.7f))
+                        if (sStarted) drawPath(path = reusablePath2, color = Color(0xFFF59E0B), style = Stroke(width = 1.5f))
                     }
 
                     // 8d. ATR (14) Synchronized Sub-Pane
@@ -1413,7 +1431,7 @@ fun CandlestickCanvas(
                             val minAtr = validAtrs.minOrNull() ?: 0.0
                             val maxAtr = validAtrs.maxOrNull() ?: 1.0
                             val spanAtr = (maxAtr - minAtr).coerceAtLeast(1e-6)
-                            val atrPath = Path()
+                            reusablePath1.reset()
                             var started = false
                             visibleAtr14.forEachIndexed { idx, av ->
                                 if (av != null) {
@@ -1421,15 +1439,15 @@ fun CandlestickCanvas(
                                     val norm = ((av - minAtr) / spanAtr).toFloat().coerceIn(0f, 1f)
                                     val y = aBot - 3f - norm * (oscPaneH - 6f).coerceAtLeast(2f)
                                     if (!started) {
-                                        atrPath.moveTo(x, y)
+                                        reusablePath1.moveTo(x, y)
                                         started = true
                                     } else {
-                                        atrPath.lineTo(x, y)
+                                        reusablePath1.lineTo(x, y)
                                     }
                                 }
                             }
                             if (started) {
-                                drawPath(path = atrPath, color = Color(0xFFF97316), style = Stroke(width = 1.8f))
+                                drawPath(path = reusablePath1, color = Color(0xFFF97316), style = Stroke(width = 1.8f))
                             }
                         }
                     }
@@ -1640,8 +1658,8 @@ fun CandlestickCanvas(
                                 color = Color(0xFFF97316)
                             )
                         }
-                        if (tab.showSmcStructure && visibleSmcResult != null) {
-                            val latestBrk = visibleSmcResult.structures.lastOrNull()
+                        if (tab.showSmcStructure && fullSmcResult != null) {
+                            val latestBrk = fullSmcResult.structures.lastOrNull { it.breakIndex < endIndexExclusive }
                             Text(
                                 text = if (latestBrk != null) "SMC ${latestBrk.type}" else "SMC ON",
                                 style = MaterialTheme.typography.labelSmall,
@@ -1651,9 +1669,10 @@ fun CandlestickCanvas(
                                 color = Color(0xFF14B8A6)
                             )
                         }
-                        if (tab.showFvg && visibleSmcResult != null) {
+                        if (tab.showFvg && fullSmcResult != null) {
+                            val visFvgCount = fullSmcResult.fvgs.count { it.endIndex >= startIndex && it.startIndex < endIndexExclusive }
                             Text(
-                                text = "FVG (${visibleSmcResult.fvgs.size})",
+                                text = "FVG ($visFvgCount)",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
@@ -1768,14 +1787,6 @@ fun CandlestickCanvas(
                         val curOffsetPx = with(density) { (pricePaneHeightDp * curRatio - 9.dp).roundToPx() }
                         val curBg = if (latestCandle.isBullish) bullColor else bearColor
                         val isIntradayTf = tab.timeframe.uppercase() !in listOf("D1", "W1")
-                        val remSec = max(0L, ((stepMillis - (nowEpochMillis % stepMillis)) % stepMillis) / 1000L)
-                        val countdownText = remember(remSec, stepMillis) {
-                            val hrs = remSec / 3600L
-                            val mins = (remSec % 3600L) / 60L
-                            val secs = remSec % 60L
-                            if (hrs > 0L) String.format(java.util.Locale.US, "%02d:%02d:%02d", hrs, mins, secs)
-                            else String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
-                        }
                         Column(
                             horizontalAlignment = Alignment.End,
                             modifier = Modifier
@@ -1795,13 +1806,7 @@ fun CandlestickCanvas(
                                 color = Color.White
                             )
                             if (preferences.showCountdownToBarClose && isIntradayTf) {
-                                Text(
-                                    text = countdownText,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 8.sp,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    color = Color.White.copy(alpha = 0.9f)
-                                )
+                                BarCloseCountdownText(stepMillis = stepMillis)
                             }
                         }
                     }
@@ -2008,4 +2013,30 @@ fun CandlestickCanvas(
             }
         }
     }
+}
+
+@Composable
+private fun BarCloseCountdownText(stepMillis: Long) {
+    var nowEpochMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(stepMillis) {
+        while (true) {
+            nowEpochMillis = System.currentTimeMillis()
+            delay(1000L)
+        }
+    }
+    val remSec = max(0L, ((stepMillis - (nowEpochMillis % stepMillis)) % stepMillis) / 1000L)
+    val countdownText = remember(remSec, stepMillis) {
+        val hrs = remSec / 3600L
+        val mins = (remSec % 3600L) / 60L
+        val secs = remSec % 60L
+        if (hrs > 0L) String.format(java.util.Locale.US, "%02d:%02d:%02d", hrs, mins, secs)
+        else String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
+    }
+    Text(
+        text = countdownText,
+        style = MaterialTheme.typography.labelSmall,
+        fontSize = 8.sp,
+        fontFamily = JetBrainsMonoFontFamily,
+        color = Color.White.copy(alpha = 0.9f)
+    )
 }

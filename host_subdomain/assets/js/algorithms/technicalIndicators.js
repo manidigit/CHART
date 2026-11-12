@@ -38,25 +38,30 @@ export const TechnicalIndicators = {
   },
 
   computeBollingerBands(candles = [], period = 20, stdMult = 2.0) {
-    if (!Array.isArray(candles) || candles.length === 0) return [];
-    const out = new Array(candles.length).fill(null);
-    for (let i = period - 1; i < candles.length; i++) {
-      let sum = 0;
-      for (let j = i - period + 1; j <= i; j++) {
-        sum += Number(candles[j].close || 0);
+    if (!Array.isArray(candles) || candles.length === 0 || period < 1) return [];
+    const n = candles.length;
+    const out = new Array(n).fill(null);
+    let sum = 0;
+    let sqSum = 0;
+    for (let i = 0; i < n; i++) {
+      const c = Number(candles[i].close || 0);
+      sum += c;
+      sqSum += c * c;
+      if (i >= period) {
+        const oldC = Number(candles[i - period].close || 0);
+        sum -= oldC;
+        sqSum -= oldC * oldC;
       }
-      const mean = sum / period;
-      let sqSum = 0;
-      for (let j = i - period + 1; j <= i; j++) {
-        const diff = Number(candles[j].close || 0) - mean;
-        sqSum += diff * diff;
+      if (i >= period - 1) {
+        const mean = sum / period;
+        const variance = Math.max(0, sqSum / period - mean * mean);
+        const std = Math.sqrt(variance);
+        out[i] = {
+          middle: mean,
+          upper: mean + stdMult * std,
+          lower: mean - stdMult * std,
+        };
       }
-      const std = Math.sqrt(sqSum / period);
-      out[i] = {
-        middle: mean,
-        upper: mean + stdMult * std,
-        lower: mean - stdMult * std,
-      };
     }
     return out;
   },

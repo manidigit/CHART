@@ -743,8 +743,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
 
         val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode } ?: return
+        val minRequiredBars = minBarsForTimeframe(normalizedTf)
+        val needsFullBackfill = immediateCandles.size < minRequiredBars
         viewModelScope.launch {
-            val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(targetSymbol, normalizedTf)
+            val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(
+                symbol = targetSymbol,
+                requestedTimeframe = normalizedTf,
+                forceBackfill = needsFullBackfill
+            )
             _uiState.update { state ->
                 state.copy(
                     symbols = state.symbols.map {
@@ -772,6 +778,46 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private val backfilledSessionKeys = java.util.Collections.synchronizedSet(HashSet<String>())
+
+    private fun minBarsForTimeframe(tf: String): Int = when (tf.uppercase()) {
+        "M15" -> 300
+        "M30", "H1" -> 240
+        "H4" -> 180
+        "D1" -> 250
+        "W1" -> 140
+        else -> 240
+    }
+
+    private fun triggerBackfillIfHistoryShallow(tab: ChartTabState) {
+        val key = "${tab.symbolCode}_${tab.provider.id}_${tab.timeframe}"
+        val minBars = minBarsForTimeframe(tab.timeframe)
+        if (tab.candles.size >= minBars || !backfilledSessionKeys.add(key)) return
+        val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == tab.symbolCode } ?: return
+        viewModelScope.launch {
+            val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(
+                symbol = targetSymbol,
+                requestedTimeframe = tab.timeframe,
+                forceBackfill = true
+            )
+            _uiState.update { state ->
+                state.copy(
+                    symbols = state.symbols.map {
+                        if (it.symbolCode == syncedSymbol.symbolCode) syncedSymbol else it
+                    },
+                    openTabs = state.openTabs.map { t ->
+                        if (t.tabId == tab.tabId && t.timeframe == tab.timeframe) {
+                            applyUpdatedCandlesPreservingViewport(t, mergedCandles, tab.timeframe)
+                        } else {
+                            t
+                        }
+                    }
+                )
+            }
+            repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        }
+    }
+
     fun selectChartTypeForActiveTab(chartType: ChartType) {
         val activeId = _uiState.value.activeTab?.tabId ?: return
         _uiState.update { state ->
@@ -788,6 +834,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun zoomActiveTab(zoomIn: Boolean) {
         val activeId = _uiState.value.activeTab?.tabId ?: return
         val step = _uiState.value.chartPreferences.zoomStepCandles.coerceIn(2, 32)
+        var tabToBackfill: ChartTabState? = null
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
@@ -799,21 +846,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             maxCap
                         )
                         val maxOffset = (tab.candles.size - nextCount).coerceAtLeast(0)
-                        tab.copy(
+                        val updated = tab.copy(
                             visibleCandleCount = nextCount,
                             scrollOffsetFromRight = tab.scrollOffsetFromRight.coerceIn(0, maxOffset)
                         )
+                        if (!zoomIn && nextCount >= tab.candles.size - 10) {
+                            tabToBackfill = updated
+                        }
+                        updated
                     } else {
                         tab
                     }
                 }
             )
         }
+        tabToBackfill?.let { triggerBackfillIfHistoryShallow(it) }
     }
 
     fun pinchZoomActiveTab(zoomFactor: Float) {
         if (zoomFactor <= 0f) return
         val activeId = _uiState.value.activeTab?.tabId ?: return
+        var tabToBackfill: ChartTabState? = null
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
@@ -823,16 +876,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         val maxCap = max(AppConfig.MIN_VISIBLE_CANDLES, tab.candles.size.coerceAtMost(AppConfig.MAX_VISIBLE_CANDLES))
                         val nextCount = scaled.coerceIn(AppConfig.MIN_VISIBLE_CANDLES, maxCap)
                         val maxOffset = (tab.candles.size - nextCount).coerceAtLeast(0)
-                        tab.copy(
+                        val updated = tab.copy(
                             visibleCandleCount = nextCount,
                             scrollOffsetFromRight = tab.scrollOffsetFromRight.coerceIn(0, maxOffset)
                         )
+                        if (zoomFactor < 1f && nextCount >= tab.candles.size - 10) {
+                            tabToBackfill = updated
+                        }
+                        updated
                     } else {
                         tab
                     }
                 }
             )
         }
+        tabToBackfill?.let { triggerBackfillIfHistoryShallow(it) }
     }
 
     fun fitContentOnActiveTab() {
@@ -861,19 +919,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun panActiveTab(candleDelta: Int) {
         val activeId = _uiState.value.activeTab?.tabId ?: return
+        var tabToBackfill: ChartTabState? = null
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
                     if (tab.tabId == activeId) {
                         val maxOffset = (tab.candles.size - tab.visibleCandleCount).coerceAtLeast(0)
                         val nextOffset = (tab.scrollOffsetFromRight + candleDelta).coerceIn(0, maxOffset)
-                        tab.copy(scrollOffsetFromRight = nextOffset)
+                        val updated = tab.copy(scrollOffsetFromRight = nextOffset)
+                        if (candleDelta > 0 && nextOffset >= (maxOffset - 15).coerceAtLeast(0)) {
+                            tabToBackfill = updated
+                        }
+                        updated
                     } else {
                         tab
                     }
                 }
             )
         }
+        tabToBackfill?.let { triggerBackfillIfHistoryShallow(it) }
     }
 
     fun resetActiveTabPosition() {
@@ -1073,8 +1137,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             repository.saveSymbolCatalog(_uiState.value.symbols)
             repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
             val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode } ?: return
+            val needsFullBackfill = immediateCandles.size < max(targetBars + 20, minBarsForTimeframe(resolvedTf))
             viewModelScope.launch {
-                val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(targetSymbol, resolvedTf)
+                val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(
+                    symbol = targetSymbol,
+                    requestedTimeframe = resolvedTf,
+                    forceBackfill = needsFullBackfill
+                )
                 _uiState.update { state ->
                     state.copy(
                         symbols = state.symbols.map {
@@ -1124,12 +1193,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
 
-        // If user is on D1/W1 and local cache has fewer candles than requested by 6M/1Y, trigger background sync
-        if (active.timeframe in listOf("D1", "W1") && active.candles.size < 180) {
+        // If local cache has fewer candles than requested by the range preset or timeframe threshold, trigger background backfill
+        val minRequired = max(preset.targetBars + 20, minBarsForTimeframe(active.timeframe))
+        if (active.candles.size < minRequired) {
             val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode }
             if (targetSymbol != null) {
                 viewModelScope.launch {
-                    val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(targetSymbol, active.timeframe)
+                    val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(
+                        symbol = targetSymbol,
+                        requestedTimeframe = active.timeframe,
+                        forceBackfill = true
+                    )
                     _uiState.update { state ->
                         state.copy(
                             symbols = state.symbols.map {

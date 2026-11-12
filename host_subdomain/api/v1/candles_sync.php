@@ -112,7 +112,15 @@ $syncMode = 'INITIAL_BACKFILL';
 $incomingDeltaCandles = [];
 $fetchedNewBars = 0;
 
-$minRequiredBarsForCache = ($timeframe === 'D1' || $timeframe === 'W1') ? 120 : 30;
+$minRequiredBarsForCache = match ($timeframe) {
+    'M15' => 300,
+    'M30' => 240,
+    'H1' => 240,
+    'H4' => 180,
+    'D1' => 250,
+    'W1' => 140,
+    default => 240,
+};
 
 if ($pdo !== null && $storedCount >= $minRequiredBarsForCache && !$forceBackfill && $maxOpenMs >= $expectedLastClosedOpenMs) {
     // [STATE 1: DB_CACHE_HIT] Historical candles up to the latest closed UTC bucket are already stored in MariaDB.

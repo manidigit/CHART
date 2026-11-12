@@ -573,8 +573,11 @@ class WorkspaceRepository(context: Context) {
         }
 
         // For M30, H1 and H4, merge any newer closed bars aggregated from cached M15 / H1
-        // so stale disk caches never block freshly synced intraday bars
+        // for immediate zero-flicker display, without overwriting candleMemoryStore[exactKey]
+        // if exactKey does not yet hold full native timeframe history.
         if (normTf in listOf("M30", "H1", "H4")) {
+            val minNativeBars = if (normTf == "H4") 180 else 240
+            val hasFullNativeCache = (current?.size ?: 0) >= minNativeBars
             val m15Key = "${symbolCode}_${provider.id}_M15"
             val m15Candles = candleMemoryStore[m15Key] ?: loadCandlesFromPrefs(m15Key, "M15")
             if (m15Candles.isNotEmpty()) {
@@ -585,7 +588,9 @@ class WorkspaceRepository(context: Context) {
                     } else {
                         CandleValidatorAlgorithm.mergeIdempotent(current, aggregatedFromM15, normTf)
                     }
-                    candleMemoryStore[exactKey] = current
+                    if (hasFullNativeCache) {
+                        candleMemoryStore[exactKey] = current
+                    }
                 }
             }
             if (normTf == "H4") {
@@ -599,7 +604,9 @@ class WorkspaceRepository(context: Context) {
                         } else {
                             CandleValidatorAlgorithm.mergeIdempotent(current, aggregatedFromH1, "H4")
                         }
-                        candleMemoryStore[exactKey] = current
+                        if (hasFullNativeCache) {
+                            candleMemoryStore[exactKey] = current
+                        }
                     }
                 }
             }
@@ -655,7 +662,8 @@ class WorkspaceRepository(context: Context) {
 
     suspend fun syncSymbolUpToNow(
         symbol: SymbolConfig,
-        requestedTimeframe: String = symbol.timeframe
+        requestedTimeframe: String = symbol.timeframe,
+        forceBackfill: Boolean = false
     ): Pair<SymbolConfig, List<CandleBar>> = coroutineScope {
         val adapter = adapters[symbol.activeProvider] ?: DukascopyAdapter(httpClient)
         val effectiveTimeframe = when (symbol.activeProvider) {
@@ -665,24 +673,32 @@ class WorkspaceRepository(context: Context) {
         }
         val configuredFetchLimit = loadChartPreferences().candleFetchLimit.coerceIn(40, 5000)
 
-        // When syncing an intraday-capable provider, always sync M15, H1, and H4 (plus D1 if requested)
-        // from the last stored candle up to now so all three intraday timeframes are up-to-date.
+        // Sync the requested timeframe directly (and M15 if not already cached) to avoid WebSocket congestion
+        // while guaranteeing deep historical backfill on whichever timeframe the user is viewing.
         val timeframesToSync = when (symbol.activeProvider) {
             ProviderId.EIA_BRENT_SPOT -> listOf("D1")
             ProviderId.STOOQ -> listOf("D1", effectiveTimeframe).distinct()
             else -> buildSet {
-                add("M15")
-                add("H1")
-                add("H4")
                 add(effectiveTimeframe)
+                val m15Key = "${symbol.symbolCode}_${symbol.activeProvider.id}_M15"
+                if (candleMemoryStore[m15Key].isNullOrEmpty()) {
+                    add("M15")
+                }
             }.toList()
         }
 
         val syncJobs = timeframesToSync.associateWith { tf ->
             val tfKey = "${symbol.symbolCode}_${symbol.activeProvider.id}_${tf}"
             val existingTf = candleMemoryStore[tfKey] ?: loadCandlesFromPrefs(tfKey, tf)
-            val minBarsForDelta = if (tf == "D1" || tf == "W1") 180 else 60
-            val sinceOpenTimeMs = if (existingTf.size >= minBarsForDelta) {
+            val minBarsForDelta = when (tf) {
+                "M15" -> 300
+                "M30", "H1" -> 240
+                "H4" -> 180
+                "D1" -> 250
+                "W1" -> 140
+                else -> 240
+            }
+            val sinceOpenTimeMs = if (!forceBackfill && existingTf.size >= minBarsForDelta) {
                 existingTf.lastOrNull()?.openTimeUtcMillis ?: 0L
             } else {
                 0L
@@ -721,45 +737,7 @@ class WorkspaceRepository(context: Context) {
             syncedByTf[tf] = combined
         }
 
-        // Cross-aggregate M15 -> H1 -> H4 so H1 and H4 are guaranteed to include all newly closed M15/H1 buckets
-        val m15Bars = syncedByTf["M15"].orEmpty()
-        if (m15Bars.isNotEmpty()) {
-            val m15Key = "${symbol.symbolCode}_${symbol.activeProvider.id}_M15"
-            candleMemoryStore[m15Key] = m15Bars
-            saveCandlesToPrefs(m15Key, m15Bars, configuredFetchLimit)
-
-            val aggM30 = TimeframeAggregatorAlgorithm.aggregateCandles(m15Bars, "M30")
-            val mergedM30 = CandleValidatorAlgorithm.mergeIdempotent(
-                existing = syncedByTf["M30"].orEmpty(),
-                incoming = aggM30,
-                timeframe = "M30"
-            ).takeLast(configuredFetchLimit)
-            syncedByTf["M30"] = mergedM30
-
-            val aggH1 = TimeframeAggregatorAlgorithm.aggregateCandles(m15Bars, "H1")
-            val mergedH1 = CandleValidatorAlgorithm.mergeIdempotent(
-                existing = syncedByTf["H1"].orEmpty(),
-                incoming = aggH1,
-                timeframe = "H1"
-            ).takeLast(configuredFetchLimit)
-            syncedByTf["H1"] = mergedH1
-        }
-
-        val h1Bars = syncedByTf["H1"].orEmpty()
-        if (h1Bars.isNotEmpty()) {
-            val h1Key = "${symbol.symbolCode}_${symbol.activeProvider.id}_H1"
-            candleMemoryStore[h1Key] = h1Bars
-            saveCandlesToPrefs(h1Key, h1Bars, configuredFetchLimit)
-
-            val aggH4 = TimeframeAggregatorAlgorithm.aggregateCandles(h1Bars, "H4")
-            val mergedH4 = CandleValidatorAlgorithm.mergeIdempotent(
-                existing = syncedByTf["H4"].orEmpty(),
-                incoming = aggH4,
-                timeframe = "H4"
-            ).takeLast(configuredFetchLimit)
-            syncedByTf["H4"] = mergedH4
-        }
-
+        // Persist only genuinely synced timeframes so short aggregated bars never masquerade as full native history
         for ((tf, bars) in syncedByTf) {
             if (bars.isNotEmpty()) {
                 val tfKey = "${symbol.symbolCode}_${symbol.activeProvider.id}_${tf}"
@@ -767,6 +745,10 @@ class WorkspaceRepository(context: Context) {
                 saveCandlesToPrefs(tfKey, bars, configuredFetchLimit)
             }
         }
+
+        val m15Bars = syncedByTf["M15"]
+            ?: candleMemoryStore["${symbol.symbolCode}_${symbol.activeProvider.id}_M15"]
+            ?: emptyList()
 
         val merged = syncedByTf[effectiveTimeframe].orEmpty()
         // Use the most recent intraday M15/H1 bar for watchlist lastClose if effectiveTimeframe is D1 (still open today)

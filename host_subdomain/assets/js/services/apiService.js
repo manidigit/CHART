@@ -651,9 +651,18 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
   const cacheKey = `${symbolCode}_${provider}_${normTf}`;
   const exactCached = state.candleCache[cacheKey];
   const existingCached = exactCached || getCachedOrAggregatedCandles(symbolCode, provider, normTf);
-  const minBarsForDelta = normTf === 'D1' || normTf === 'W1' ? 120 : 30;
+  const minBarsForDelta =
+    normTf === 'M15'
+      ? 300
+      : normTf === 'M30' || normTf === 'H1'
+        ? 240
+        : normTf === 'H4'
+          ? 180
+          : normTf === 'D1'
+            ? 250
+            : 140;
   const lastLocalOpenMs =
-    exactCached && exactCached.length >= minBarsForDelta
+    !forceBackfill && exactCached && exactCached.length >= minBarsForDelta
       ? Number(exactCached[exactCached.length - 1].open_time_utc_ms || 0)
       : 0;
 
@@ -666,7 +675,7 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
   }
   const apiKeyParam = userApiKey ? `&api_key=${encodeURIComponent(userApiKey)}` : '';
   const sinceParam = !forceBackfill && lastLocalOpenMs > 0 ? `&since_ms=${lastLocalOpenMs}` : '';
-  const backfillParam = forceBackfill ? '&backfill=1' : '';
+  const backfillParam = forceBackfill || lastLocalOpenMs === 0 ? '&backfill=1' : '';
   const url = `./api/v1/candles_sync.php?symbol=${encodeURIComponent(
     symbolCode
   )}&provider=${encodeURIComponent(provider)}&timeframe=${encodeURIComponent(
@@ -714,27 +723,36 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
 
   const lastStoredOpenMs = candles.length > 0 ? Number(candles[candles.length - 1].open_time_utc_ms) : 0;
   const expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMs);
+  const hasShallowHistory = forceBackfill || candles.length < minBarsForDelta;
 
-  // Only connect to TradingView WebSocket if tvdatafeed is still behind expectedLastClosedOpenMs
-  if (provider === 'tvdatafeed' && (candles.length === 0 || lastStoredOpenMs < expectedLastClosedOpenMs)) {
+  // Connect to TradingView WebSocket if history is shallow OR latest closed bar is behind expectedLastClosedOpenMs
+  if (
+    provider === 'tvdatafeed' &&
+    (candles.length === 0 || hasShallowHistory || lastStoredOpenMs < expectedLastClosedOpenMs)
+  ) {
     const stepMs = PriceFormatter.stepMilliseconds(normTf);
     const gapBars =
-      lastStoredOpenMs > 0
-        ? Math.min(1500, Math.max(20, Math.ceil((nowMs - lastStoredOpenMs) / stepMs) + 12))
-        : Math.min(1500, safeLimit);
+      hasShallowHistory || lastStoredOpenMs <= 0
+        ? Math.min(1500, Math.max(500, safeLimit))
+        : Math.min(1500, Math.max(20, Math.ceil((nowMs - lastStoredOpenMs) / stepMs) + 12));
 
     const liveWsBars = await fetchDirectFromTradingViewBrowserWs(symbolCode, normTf, gapBars, nowMs);
-    const newerWsBars = liveWsBars.filter((b) => Number(b.open_time_utc_ms || 0) > lastStoredOpenMs);
-    if (newerWsBars.length > 0) {
-      candles = mergeCandlesIdempotent(candles, newerWsBars, normTf, nowMs);
-      syncMeta.sync_mode = lastStoredOpenMs > 0 ? 'DELTA_SYNC' : 'INITIAL_BACKFILL';
-      syncMeta.fetched_new_bars = Number(syncMeta.fetched_new_bars || 0) + newerWsBars.length;
+    if (liveWsBars.length > 0) {
+      const prevCount = candles.length;
+      candles = mergeCandlesIdempotent(candles, liveWsBars, normTf, nowMs);
+      const addedCount = Math.max(
+        0,
+        candles.length - prevCount,
+        liveWsBars.filter((b) => Number(b.open_time_utc_ms || 0) > lastStoredOpenMs).length
+      );
+      syncMeta.sync_mode = !hasShallowHistory && lastStoredOpenMs > 0 ? 'DELTA_SYNC' : 'INITIAL_BACKFILL';
+      syncMeta.fetched_new_bars = Number(syncMeta.fetched_new_bars || 0) + addedCount;
     }
     if (normTf === 'H4') {
       const liveH1Bars = await fetchDirectFromTradingViewBrowserWs(
         symbolCode,
         'H1',
-        Math.min(1500, gapBars * 4),
+        Math.min(1500, Math.max(500, gapBars * 4)),
         nowMs
       );
       if (liveH1Bars.length > 0) {

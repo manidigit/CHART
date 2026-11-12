@@ -740,6 +740,18 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
     }
   }
 
+  const minNativeBars =
+    normTf === 'M15'
+      ? 300
+      : normTf === 'M30' || normTf === 'H1'
+        ? 240
+        : normTf === 'H4'
+          ? 180
+          : normTf === 'D1'
+            ? 250
+            : 140;
+  const hasFullNativeCache = Array.isArray(current) && current.length >= minNativeBars;
+
   if (normTf === 'M30' || normTf === 'H1' || normTf === 'H4') {
     const m15Key = `${symbolCode}_${provider}_M15`;
     const m15 = state.candleCache[m15Key] || loadCandlesFromLocalStorage(m15Key, 'M15');
@@ -747,7 +759,9 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
       const aggFromM15 = TimeframeAggregator.aggregateCandles(m15, normTf);
       if (aggFromM15.length > 0) {
         current = mergeCandlesIdempotent(current || [], aggFromM15, normTf);
-        state.candleCache[exactKey] = current;
+        if (hasFullNativeCache) {
+          state.candleCache[exactKey] = current;
+        }
       }
     }
     if (normTf === 'H4') {
@@ -757,7 +771,9 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
         const aggFromH1 = TimeframeAggregator.aggregateCandles(h1, 'H4');
         if (aggFromH1.length > 0) {
           current = mergeCandlesIdempotent(current || [], aggFromH1, 'H4');
-          state.candleCache[exactKey] = current;
+          if (hasFullNativeCache) {
+            state.candleCache[exactKey] = current;
+          }
         }
       }
     }

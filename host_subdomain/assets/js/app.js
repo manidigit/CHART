@@ -625,7 +625,41 @@ function bindPanelResizers() {
   }
 }
 
+let pendingRafRedraw = 0;
+
+function minBarsForTimeframe(tf) {
+  const norm = String(tf || 'M15').toUpperCase();
+  if (norm === 'M15') return 300;
+  if (norm === 'M30' || norm === 'H1') return 240;
+  if (norm === 'H4') return 180;
+  if (norm === 'D1') return 250;
+  return 140;
+}
+
+function maybeTriggerDeepBackfill(tab) {
+  if (!tab || !tab.symbolCode) return;
+  const tf = String(tab.timeframe || 'M15').toUpperCase();
+  const count = Array.isArray(tab.candles) ? tab.candles.length : 0;
+  if (count >= minBarsForTimeframe(tf)) return;
+  const attemptKey = `${tab.symbolCode}_${tf}`;
+  if (tab._backfillAttemptedKey === attemptKey) return;
+  tab._backfillAttemptedKey = attemptKey;
+  syncSymbolNow(
+    tab.symbolCode,
+    tf,
+    () => {
+      tab.candles = getCachedOrAggregatedCandles(tab.symbolCode, tab.provider, tf);
+      scheduleCanvasRedraw();
+    },
+    true
+  ).catch(() => {});
+}
+
 function redrawActiveCanvas() {
+  if (pendingRafRedraw) {
+    cancelAnimationFrame(pendingRafRedraw);
+    pendingRafRedraw = 0;
+  }
   const canvas = document.getElementById('main-chart-canvas');
   const activeTab = getActiveTab();
   if (canvas && activeTab) {
@@ -642,6 +676,14 @@ function redrawActiveCanvas() {
       }
     }
   }
+}
+
+function scheduleCanvasRedraw() {
+  if (pendingRafRedraw) return;
+  pendingRafRedraw = requestAnimationFrame(() => {
+    pendingRafRedraw = 0;
+    redrawActiveCanvas();
+  });
 }
 
 function bindCanvasEvents(activeTab) {
@@ -812,7 +854,7 @@ function bindCanvasEvents(activeTab) {
     if (isScalingAxis) {
       const dy = y - scaleStartY;
       activeTab.priceScaleFactor = Math.max(0.25, Math.min(4.0, scaleStartFactor * (1 + dy * 0.005)));
-      redrawActiveCanvas();
+      scheduleCanvasRedraw();
       return;
     }
 
@@ -821,27 +863,36 @@ function bindCanvasEvents(activeTab) {
       const deltaBars = Math.round(dx / Math.max(2, meta.slotW));
       const maxOffset = Math.max(0, (activeTab.candles || []).length - 5);
       activeTab.scrollOffset = Math.max(0, Math.min(maxOffset, dragStartOffset + deltaBars));
-      redrawActiveCanvas();
+      if (activeTab.scrollOffset >= Math.max(0, maxOffset - 15)) {
+        maybeTriggerDeepBackfill(activeTab);
+      }
+      scheduleCanvasRedraw();
       return;
     }
 
     if (x <= meta.chartW) {
       const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
-      activeTab.hoverIndex = idx;
-      activeTab.hoverY = y;
-      redrawActiveCanvas();
+      if (activeTab.hoverIndex !== idx || Math.abs((activeTab.hoverY || 0) - y) >= 1) {
+        activeTab.hoverIndex = idx;
+        activeTab.hoverY = y;
+        scheduleCanvasRedraw();
+      }
     }
   });
 
-  window.addEventListener('mouseup', () => {
+  if (window._ciCanvasMouseUp) {
+    window.removeEventListener('mouseup', window._ciCanvasMouseUp);
+  }
+  window._ciCanvasMouseUp = () => {
     isDragging = false;
     isScalingAxis = false;
-  });
+  };
+  window.addEventListener('mouseup', window._ciCanvasMouseUp);
 
   canvas.addEventListener('mouseleave', () => {
     activeTab.hoverIndex = null;
     activeTab.hoverY = null;
-    redrawActiveCanvas();
+    scheduleCanvasRedraw();
   });
 
   canvas.addEventListener('dblclick', (e) => {
@@ -861,7 +912,10 @@ function bindCanvasEvents(activeTab) {
       e.preventDefault();
       const step = e.deltaY > 0 ? 6 : -6;
       activeTab.visibleCount = Math.max(15, Math.min(600, (activeTab.visibleCount || 48) + step));
-      redrawActiveCanvas();
+      if (step > 0) {
+        maybeTriggerDeepBackfill(activeTab);
+      }
+      scheduleCanvasRedraw();
     },
     { passive: false }
   );
@@ -1184,7 +1238,8 @@ document.addEventListener('click', async (e) => {
     saveOpenTabsToStorage();
     renderApp();
     redrawActiveCanvas();
-    const needsFullBackfill = (newTf === 'D1' || newTf === 'W1') && (!activeTab.candles || activeTab.candles.length < 120);
+    const minReqTf = minBarsForTimeframe(newTf);
+    const needsFullBackfill = !activeTab.candles || activeTab.candles.length < minReqTf;
     await syncSymbolNow(activeTab.symbolCode, newTf, () => {
       activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
       renderApp();
@@ -1223,7 +1278,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
     redrawActiveCanvas();
 
-    const minRequiredBars = targetTf === 'D1' || targetTf === 'W1' ? 140 : 40;
+    const minRequiredBars = minBarsForTimeframe(targetTf);
     const needsFullBackfill = !activeTab.candles || activeTab.candles.length < minRequiredBars;
     if (tfChanged || needsFullBackfill) {
       await syncSymbolNow(activeTab.symbolCode, targetTf, () => {
@@ -1413,6 +1468,7 @@ document.addEventListener('click', async (e) => {
     activeTab.visibleCount = Math.min(600, (activeTab.visibleCount || 48) + step);
     saveOpenTabsToStorage();
     renderApp();
+    maybeTriggerDeepBackfill(activeTab);
   } else if (action === 'set-wl-category') {
     state.watchlistCategory = el.getAttribute('data-category') || 'ALL';
     renderApp();

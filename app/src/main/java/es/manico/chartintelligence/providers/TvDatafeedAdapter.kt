@@ -79,6 +79,15 @@ class TvDatafeedAdapter(
             }
         }.getOrNull().orEmpty()
 
+        val minBarsForFullHistory = when (normTf) {
+            "M15" -> 300
+            "M30", "H1" -> 240
+            "H4" -> 180
+            "D1" -> 250
+            "W1" -> 140
+            else -> 240
+        }
+        val hasShallowHistory = sinceOpenTimeMs == 0L && backendCandles.size < minBarsForFullHistory
         val lastStoredOpenMs = maxOf(
             sinceOpenTimeMs,
             backendCandles.lastOrNull()?.openTimeUtcMillis ?: 0L
@@ -86,23 +95,28 @@ class TvDatafeedAdapter(
         val expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMillis)
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(normTf)
 
-        // 2. If backend candles are behind the latest closed UTC bucket, fetch ONLY the missing delta bars from TradingView WebSocket
+        // 2. If backend candles are shallow or behind the latest closed UTC bucket, fetch from TradingView WebSocket
         var mergedCandles = backendCandles
-        if ((mergedCandles.isEmpty() && sinceOpenTimeMs == 0L) || lastStoredOpenMs < expectedLastClosedOpenMs) {
-            val gapBars = if (lastStoredOpenMs > 0L) {
+        if (hasShallowHistory || lastStoredOpenMs < expectedLastClosedOpenMs) {
+            val gapBars = if (lastStoredOpenMs > 0L && !hasShallowHistory) {
                 (((nowMillis - lastStoredOpenMs) / stepMs).toInt() + 16).coerceIn(24, 1500)
             } else {
-                safeLimit.coerceIn(200, 1500)
+                safeLimit.coerceIn(500, 1500)
             }
 
             val directTvCandles = runCatching {
                 fetchDirectFromTradingViewWs(cleanSymbol, normTf, gapBars, nowMillis)
-            }.getOrNull().orEmpty().filter { sinceOpenTimeMs <= 0L || it.openTimeUtcMillis >= sinceOpenTimeMs }
+            }.getOrNull().orEmpty().filter {
+                hasShallowHistory || sinceOpenTimeMs <= 0L || it.openTimeUtcMillis >= sinceOpenTimeMs
+            }
 
             if (directTvCandles.isNotEmpty()) {
-                if (lastStoredOpenMs > 0L) {
+                if (lastStoredOpenMs > 0L && !hasShallowHistory) {
                     syncMode = "DELTA_SYNC"
                     fetchedNewBars = maxOf(fetchedNewBars, directTvCandles.count { it.openTimeUtcMillis > lastStoredOpenMs })
+                } else {
+                    syncMode = "INITIAL_BACKFILL"
+                    fetchedNewBars = maxOf(fetchedNewBars, directTvCandles.size)
                 }
                 mergedCandles = CandleValidatorAlgorithm.mergeIdempotent(
                     existing = mergedCandles,
@@ -115,11 +129,11 @@ class TvDatafeedAdapter(
             // For H4, also aggregate closed H1 bars from TradingView so 00:00/04:00/08:00/12:00/16:00/20:00 UTC buckets are exact
             if (normTf == "H4") {
                 val directH1 = runCatching {
-                    fetchDirectFromTradingViewWs(cleanSymbol, "H1", (gapBars * 4).coerceIn(64, 1500), nowMillis)
+                    fetchDirectFromTradingViewWs(cleanSymbol, "H1", (gapBars * 4).coerceIn(120, 1500), nowMillis)
                 }.getOrNull().orEmpty()
                 if (directH1.isNotEmpty()) {
                     val aggregatedH4 = TimeframeAggregatorAlgorithm.aggregateCandles(directH1, "H4", nowMillis)
-                        .filter { sinceOpenTimeMs <= 0L || it.openTimeUtcMillis >= sinceOpenTimeMs }
+                        .filter { hasShallowHistory || sinceOpenTimeMs <= 0L || it.openTimeUtcMillis >= sinceOpenTimeMs }
                     if (aggregatedH4.isNotEmpty()) {
                         mergedCandles = CandleValidatorAlgorithm.mergeIdempotent(
                             existing = mergedCandles,

@@ -62,6 +62,78 @@ function drawSeriesLine(ctx, series, startIdx, visibleLen, idxToX, priceToY, col
   ctx.restore();
 }
 
+function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
+  const n = candles.length;
+  const firstBar = n > 0 ? candles[0] : null;
+  const lastBar = n > 0 ? candles[n - 1] : null;
+  const firstMs = firstBar ? Number(firstBar.open_time_utc_ms || firstBar.openTimeSec || 0) : 0;
+  const lastMs = lastBar ? Number(lastBar.open_time_utc_ms || lastBar.openTimeSec || 0) : 0;
+  const lastClose = lastBar ? Number(lastBar.close || 0) : 0;
+  const cacheKey = `${n}_${firstMs}_${lastMs}_${lastClose}_${bbPeriod}_${bbStdDev}`;
+
+  if (!tab._indCache || tab._indCache.key !== cacheKey) {
+    tab._indCache = {
+      key: cacheKey,
+      sma20: null,
+      sma50: null,
+      sma200: null,
+      ema20: null,
+      ema50: null,
+      bollinger: null,
+      vwap: null,
+      supertrend: null,
+      macd: null,
+      macdLine: null,
+      sigLine: null,
+      rsi14: null,
+      atr14: null,
+      smc: null,
+      vpKey: null,
+      vp: null,
+    };
+  }
+  const cache = tab._indCache;
+  return {
+    getSma20: () => (cache.sma20 || (cache.sma20 = TechnicalIndicators.computeSma(candles, 20))),
+    getSma50: () => (cache.sma50 || (cache.sma50 = TechnicalIndicators.computeSma(candles, 50))),
+    getSma200: () => {
+      if (!cache.sma200) {
+        const p200 = Math.min(200, candles.length);
+        cache.sma200 = TechnicalIndicators.computeSma(candles, p200);
+      }
+      return cache.sma200;
+    },
+    getEma20: () => (cache.ema20 || (cache.ema20 = TechnicalIndicators.computeEma(candles, 20))),
+    getEma50: () => (cache.ema50 || (cache.ema50 = TechnicalIndicators.computeEma(candles, 50))),
+    getBollinger: () =>
+      cache.bollinger ||
+      (cache.bollinger = TechnicalIndicators.computeBollingerBands(candles, bbPeriod, bbStdDev)),
+    getVwap: () => (cache.vwap || (cache.vwap = TechnicalIndicators.computeVwap(candles))),
+    getSupertrend: () =>
+      cache.supertrend || (cache.supertrend = TechnicalIndicators.computeSupertrend(candles, 10, 3.0)),
+    getMacd: () => {
+      if (!cache.macd) {
+        cache.macd = TechnicalIndicators.computeMacd(candles, 12, 26, 9);
+        cache.macdLine = cache.macd.map((x) => (x ? x.macd : null));
+        cache.sigLine = cache.macd.map((x) => (x ? x.signal : null));
+      }
+      return cache;
+    },
+    getRsi14: () => (cache.rsi14 || (cache.rsi14 = TechnicalIndicators.computeRsi(candles, 14))),
+    getAtr14: () => (cache.atr14 || (cache.atr14 = TechnicalIndicators.computeAtr(candles, 14))),
+    getSmc: () =>
+      cache.smc || (cache.smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3)),
+    getVolumeProfile: (visible, startIdx, endIdx) => {
+      const vKey = `${startIdx}_${endIdx}`;
+      if (cache.vpKey !== vKey || !cache.vp) {
+        cache.vpKey = vKey;
+        cache.vp = TechnicalIndicators.computeVolumeProfile(visible, 24, 0.70);
+      }
+      return cache.vp;
+    },
+  };
+}
+
 export function renderCandlestickCanvas(canvas, tab, i18n) {
   const ctx = canvas.getContext('2d');
   const dpr = window.devicePixelRatio || 1;
@@ -262,9 +334,13 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   ctx.rect(0, topPad, chartW, chartH);
   ctx.clip();
 
+  const bbPeriod = Math.max(5, Math.min(200, Number(prefs.bollingerPeriod || 20)));
+  const bbStdDev = Math.max(0.5, Math.min(5.0, Number(prefs.bollingerStdDev || 2.0)));
+  const indCache = getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev);
+
   // 1. Session / Visible Range Volume Profile (VRVP — POC / VAH / VAL)
   if (tab.showVolumeProfile && visible.length >= 5) {
-    const vp = TechnicalIndicators.computeVolumeProfile(visible, 24, 0.70);
+    const vp = indCache.getVolumeProfile(visible, startIdx, endIdx);
     if (vp && Array.isArray(vp.bins)) {
       const maxProfileW = Math.min(150, chartW * 0.26);
       for (const bin of vp.bins) {
@@ -328,7 +404,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
   // 2. Smart Money Concepts (SMC): Fair Value Gaps (FVG) & Market Structure (BOS / CHoCH / EQH / EQL)
   if ((tab.showFvg || tab.showSmcStructure) && candles.length >= 10) {
-    const smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3);
+    const smc = indCache.getSmc();
 
     if (tab.showFvg && Array.isArray(smc.fvgs)) {
       for (const fvg of smc.fvgs) {
@@ -440,10 +516,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
 
   // Bollinger Bands (Configurable Period & StdDev) Overlay
-  const bbPeriod = Math.max(5, Math.min(200, Number(prefs.bollingerPeriod || 20)));
-  const bbStdDev = Math.max(0.5, Math.min(5.0, Number(prefs.bollingerStdDev || 2.0)));
   if (tab.showBollinger && candles.length >= bbPeriod) {
-    const bbArr = TechnicalIndicators.computeBollingerBands(candles, bbPeriod, bbStdDev);
+    const bbArr = indCache.getBollinger();
     ctx.save();
     const upperPts = [];
     const lowerPts = [];
@@ -566,26 +640,25 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
   // Moving Averages & Main Overlays
   if (tab.showSma20 && candles.length >= 20) {
-    drawSeriesLine(ctx, TechnicalIndicators.computeSma(candles, 20), startIdx, visible.length, idxToX, priceToY, '#F59E0B', 1.6);
+    drawSeriesLine(ctx, indCache.getSma20(), startIdx, visible.length, idxToX, priceToY, '#F59E0B', 1.6);
   }
   if (tab.showSma50 && candles.length >= 50) {
-    drawSeriesLine(ctx, TechnicalIndicators.computeSma(candles, 50), startIdx, visible.length, idxToX, priceToY, '#38BDF8', 1.6);
+    drawSeriesLine(ctx, indCache.getSma50(), startIdx, visible.length, idxToX, priceToY, '#38BDF8', 1.6);
   }
   if (tab.showSma200 && candles.length >= 30) {
-    const p200 = Math.min(200, candles.length);
-    drawSeriesLine(ctx, TechnicalIndicators.computeSma(candles, p200), startIdx, visible.length, idxToX, priceToY, '#EC4899', 1.8);
+    drawSeriesLine(ctx, indCache.getSma200(), startIdx, visible.length, idxToX, priceToY, '#EC4899', 1.8);
   }
   if (tab.showEma20 && candles.length >= 20) {
-    drawSeriesLine(ctx, TechnicalIndicators.computeEma(candles, 20), startIdx, visible.length, idxToX, priceToY, '#10B981', 1.5);
+    drawSeriesLine(ctx, indCache.getEma20(), startIdx, visible.length, idxToX, priceToY, '#10B981', 1.5);
   }
   if (tab.showEma50 && candles.length >= 50) {
-    drawSeriesLine(ctx, TechnicalIndicators.computeEma(candles, 50), startIdx, visible.length, idxToX, priceToY, '#06B6D4', 1.6);
+    drawSeriesLine(ctx, indCache.getEma50(), startIdx, visible.length, idxToX, priceToY, '#06B6D4', 1.6);
   }
   if (tab.showVwap && candles.length >= 2) {
-    drawSeriesLine(ctx, TechnicalIndicators.computeVwap(candles), startIdx, visible.length, idxToX, priceToY, '#EAB308', 1.6, true);
+    drawSeriesLine(ctx, indCache.getVwap(), startIdx, visible.length, idxToX, priceToY, '#EAB308', 1.6, true);
   }
   if (tab.showSupertrend && candles.length >= 10) {
-    const stArr = TechnicalIndicators.computeSupertrend(candles, 10, 3.0);
+    const stArr = indCache.getSupertrend();
     ctx.save();
     ctx.lineWidth = 2.0;
     for (let idx = 1; idx < visible.length; idx++) {
@@ -603,7 +676,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
   // Overlay Classic MACD (12, 26, 9) directly on Main Price Chart (Lower 28% band of Price Pane)
   if (tab.showOverlayMacd && candles.length >= 26) {
-    const macdArr = TechnicalIndicators.computeMacd(candles, 12, 26, 9);
+    const { macd: macdArr } = indCache.getMacd();
     const visMacd = macdArr.slice(startIdx, endIdx).filter(Boolean);
     if (visMacd.length > 0) {
       let maxAbs = 0.0001;
@@ -768,7 +841,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.clip();
 
     if (oscType === 'RSI') {
-      const rsiArr = TechnicalIndicators.computeRsi(candles, 14);
+      const rsiArr = indCache.getRsi14();
       const rsiToY = (val) => paneTop + 6 + (paneH - 12) * (1 - Math.max(0, Math.min(100, val)) / 100);
       const y70 = rsiToY(70);
       const y50 = rsiToY(50);
@@ -809,7 +882,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fillText('70', chartW + 6, y70 + 3);
       ctx.fillText('30', chartW + 6, y30 + 3);
     } else if (oscType === 'MACD') {
-      const macdArr = TechnicalIndicators.computeMacd(candles, 12, 26, 9);
+      const { macd: macdArr, macdLine, sigLine } = indCache.getMacd();
       let maxAbs = 0.0001;
       for (let idx = 0; idx < visible.length; idx++) {
         const item = macdArr[startIdx + idx];
@@ -840,8 +913,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         ctx.fillRect(x - bodyW / 2, topBar, bodyW, barH);
       }
 
-      const macdLine = macdArr.map((x) => (x ? x.macd : null));
-      const sigLine = macdArr.map((x) => (x ? x.signal : null));
       drawSeriesLine(ctx, macdLine, startIdx, visible.length, idxToX, macdToY, '#2962FF', 1.5);
       drawSeriesLine(ctx, sigLine, startIdx, visible.length, idxToX, macdToY, '#F59E0B', 1.4);
 
@@ -858,7 +929,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fillStyle = textColor;
       ctx.fillText('0.00', chartW + 6, zeroY + 3);
     } else if (oscType === 'ATR') {
-      const atrArr = TechnicalIndicators.computeAtr(candles, 14);
+      const atrArr = indCache.getAtr14();
       let minA = Infinity;
       let maxA = -Infinity;
       for (let idx = 0; idx < visible.length; idx++) {

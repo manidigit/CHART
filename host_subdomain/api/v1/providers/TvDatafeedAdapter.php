@@ -77,16 +77,25 @@ final class TvDatafeedAdapter
             ? $sinceOpenMs
             : (!empty($existing) ? (int) $existing[count($existing) - 1]['open_time_utc_ms'] : 0);
 
+        $minBarsForFullHistory = match ($normTf) {
+            'M15' => 300,
+            'M30', 'H1' => 240,
+            'H4' => 180,
+            'D1' => 250,
+            'W1' => 140,
+            default => 240,
+        };
+        $hasShallowHistory = $sinceOpenMs <= 0 && count($existing) < $minBarsForFullHistory;
         $expectedLastClosedOpenMs = self::computeExpectedLastClosedOpenMs($normTf, $nowMs);
         $needsIncrementalSync = $lastStoredOpenMs < $expectedLastClosedOpenMs;
 
-        if ($needsIncrementalSync || ($sinceOpenMs <= 0 && empty($existing) && $tryLiveCli)) {
-            $gapBars = $lastStoredOpenMs > 0
+        if ($needsIncrementalSync || ($hasShallowHistory && $tryLiveCli)) {
+            $gapBars = ($lastStoredOpenMs > 0 && !$hasShallowHistory)
                 ? (int) ceil(max(0, $nowMs - $lastStoredOpenMs) / max(1, $stepMs)) + 16
                 : $limit;
-            $barsToFetch = $lastStoredOpenMs > 0
+            $barsToFetch = ($lastStoredOpenMs > 0 && !$hasShallowHistory)
                 ? max(16, min(1500, $gapBars))
-                : max(120, min(1500, $gapBars));
+                : max(500, min(1500, $gapBars));
 
             // Primary: Pure PHP TradingView WebSocket Client (works on shared hosts without exec)
             $liveCandles = self::fetchLiveFromTradingViewWs($tvSymbol, $exchange, $normTf, $barsToFetch, $nowMs);

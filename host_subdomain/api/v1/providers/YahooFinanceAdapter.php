@@ -41,12 +41,12 @@ final class YahooFinanceAdapter
         $isDelta = $sinceOpenMs > 0 && ($nowMs - $sinceOpenMs) < (5 * 86400000);
 
         [$interval, $range, $sourceTf] = match ($normTf) {
-            'W1' => ['1d', $isDelta ? '1mo' : '5y', 'D1'],
-            'D1' => ['1d', $isDelta ? '5d' : '2y', 'D1'],
-            'H4' => ['60m', $isDelta ? '5d' : '3mo', 'H1'],
-            'H1' => ['60m', $isDelta ? '5d' : '1mo', 'H1'],
-            'M30' => ['30m', $isDelta ? '5d' : '1mo', 'M30'],
-            default => ['15m', $isDelta ? '1d' : '5d', 'M15'],
+            'W1' => ['1d', $isDelta ? '1mo' : '10y', 'D1'],
+            'D1' => ['1d', $isDelta ? '5d' : '10y', 'D1'],
+            'H4' => ['60m', $isDelta ? '5d' : '730d', 'H1'],
+            'H1' => ['60m', $isDelta ? '5d' : '730d', 'H1'],
+            'M30' => ['30m', $isDelta ? '5d' : '60d', 'M30'],
+            default => ['15m', $isDelta ? '5d' : '60d', 'M15'],
         };
 
         $url = sprintf(
