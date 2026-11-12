@@ -11,6 +11,7 @@ import {
   getCachedOrAggregatedCandles,
   resetColorsToDefault,
   resetAlgoParamsToDefault,
+  resetAllPreferencesToDefault,
   registerAutoSyncCallback,
 } from './core/store.js?v=1.35.0';
 import {
@@ -123,6 +124,7 @@ function ensureInitialTabs() {
       showSupertrend: false,
       showVwap: false,
       showBollinger: false,
+      showOverlayMacd: false,
       showRsi14: false,
       showMacd: false,
       showAtr14: false,
@@ -138,8 +140,8 @@ function ensureInitialTabs() {
       hoverIndex: null,
       hoverY: null,
       activeTool: 'cursor',
-      activeDrawingColorHex: '#2962FF',
-      activeDrawingWidthPx: 2.0,
+      activeDrawingColorHex: state.chartPreferences.defaultDrawingColorHex || '#2962FF',
+      activeDrawingWidthPx: Number(state.chartPreferences.defaultDrawingWidthPx || 2.0),
       selectedDrawingId: null,
       pendingTrendStart: null,
       drawings: state.drawingsByChartId[drawKey] || [],
@@ -197,6 +199,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       showSupertrend: false,
       showVwap: false,
       showBollinger: false,
+      showOverlayMacd: false,
       showRsi14: false,
       showMacd: false,
       showAtr14: false,
@@ -212,8 +215,8 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       hoverIndex: null,
       hoverY: null,
       activeTool: 'cursor',
-      activeDrawingColorHex: '#2962FF',
-      activeDrawingWidthPx: 2.0,
+      activeDrawingColorHex: state.chartPreferences.defaultDrawingColorHex || '#2962FF',
+      activeDrawingWidthPx: Number(state.chartPreferences.defaultDrawingWidthPx || 2.0),
       selectedDrawingId: null,
       pendingTrendStart: null,
       drawings: state.drawingsByChartId[drawKey] || [],
@@ -323,7 +326,10 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showEma50, '#06B6D4', 'EMA 50', 'toggle-ema50');
   pushPill(activeTab.showSupertrend, '#26A69A', 'Supertrend (10,3)', 'toggle-supertrend');
   pushPill(activeTab.showVwap, '#EAB308', 'VWAP', 'toggle-vwap');
-  pushPill(activeTab.showBollinger, '#A855F7', 'BB (20,2)', 'toggle-bollinger');
+  const bbP = Number(state.chartPreferences.bollingerPeriod || 20);
+  const bbS = Number(state.chartPreferences.bollingerStdDev || 2.0);
+  pushPill(activeTab.showBollinger, '#A855F7', `BB (${bbP},${bbS})`, 'toggle-bollinger');
+  pushPill(activeTab.showOverlayMacd, '#2962FF', 'MACD Classic (Overlay)', 'toggle-overlay-macd');
   pushPill(activeTab.showSmcStructure, '#26A69A', 'SMC (BOS/CHoCH)', 'toggle-smc-structure');
   pushPill(activeTab.showFvg, '#10B981', 'FVG', 'toggle-fvg');
   pushPill(activeTab.showVolumeProfile, '#F59E0B', 'VP (POC/VAH/VAL)', 'toggle-volume-profile');
@@ -492,9 +498,12 @@ export function renderApp() {
     const scrollPositions = {};
     const scrollSelectors = [
       '.tv-wl-list',
+      '.watchlist-container',
       '.tv-symbol-details-pane',
       '.tv-settings-body',
+      '.tv-modal-body',
       '.modal-body',
+      '.symbol-overview-modal',
       '.tv-symbol-overview-modal-body',
       '#tv-watchlist-top-pane',
       '.tv-symbols-table-container'
@@ -1165,19 +1174,28 @@ document.addEventListener('click', async (e) => {
     activeTab.chartId = `${activeTab.symbolCode}_${newTf}`;
     activeTab.selectedRangePreset = null;
     activeTab.scrollOffset = 0;
+    activeTab.priceScaleFactor = 1.0;
+    activeTab.verticalPriceOffset = 0.0;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
-    saveOpenTabsToStorage();
     activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
+    if (activeTab.candles && activeTab.candles.length > 0) {
+      activeTab.visibleCount = Math.min(Math.max(24, activeTab.visibleCount || 48), Math.max(24, activeTab.candles.length));
+    }
+    saveOpenTabsToStorage();
     renderApp();
     redrawActiveCanvas();
+    const needsFullBackfill = (newTf === 'D1' || newTf === 'W1') && (!activeTab.candles || activeTab.candles.length < 120);
     await syncSymbolNow(activeTab.symbolCode, newTf, () => {
+      activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
       renderApp();
       redrawActiveCanvas();
-    });
+    }, needsFullBackfill);
   } else if (action === 'set-date-range' && activeTab) {
     const rk = el.getAttribute('data-range') || 'All';
     activeTab.selectedRangePreset = rk;
     activeTab.scrollOffset = 0;
+    activeTab.priceScaleFactor = 1.0;
+    activeTab.verticalPriceOffset = 0.0;
 
     // TradingView-style automatic timeframe resolution for historical date range presets
     let targetTf = activeTab.timeframe || 'D1';
@@ -1199,13 +1217,15 @@ document.addEventListener('click', async (e) => {
     activeTab.timeframe = targetTf;
     activeTab.chartId = `${activeTab.symbolCode}_${targetTf}`;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
-    saveOpenTabsToStorage();
     activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, targetTf);
     activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
+    saveOpenTabsToStorage();
     renderApp();
     redrawActiveCanvas();
 
-    if (tfChanged || !activeTab.candles || activeTab.candles.length < 30) {
+    const minRequiredBars = targetTf === 'D1' || targetTf === 'W1' ? 140 : 40;
+    const needsFullBackfill = !activeTab.candles || activeTab.candles.length < minRequiredBars;
+    if (tfChanged || needsFullBackfill) {
       await syncSymbolNow(activeTab.symbolCode, targetTf, () => {
         activeTab.candles = getCachedOrAggregatedCandles(
           activeTab.symbolCode,
@@ -1213,22 +1233,27 @@ document.addEventListener('click', async (e) => {
           targetTf
         );
         activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
+        saveOpenTabsToStorage();
         renderApp();
         redrawActiveCanvas();
-      });
+      }, needsFullBackfill);
     }
   } else if (action === 'set-chart-type' && activeTab) {
     activeTab.chartType = el.getAttribute('data-type') || 'candles';
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'toggle-volume' && activeTab) {
     activeTab.showVolume = activeTab.showVolume === false;
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'cycle-volume-height' && activeTab) {
     const cur = Number(activeTab.volumePaneRatio || 0.22);
     activeTab.volumePaneRatio = cur < 0.19 ? 0.22 : cur < 0.26 ? 0.3 : 0.16;
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'set-volume-height' && activeTab) {
     activeTab.volumePaneRatio = Math.max(0.12, Math.min(0.35, Number(el.getAttribute('data-ratio') || 0.22)));
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'toggle-sma20' && activeTab) {
     activeTab.showSma20 = !activeTab.showSma20;
@@ -1261,6 +1286,20 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'toggle-bollinger' && activeTab) {
     activeTab.showBollinger = !activeTab.showBollinger;
     saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'toggle-overlay-macd' && activeTab) {
+    activeTab.showOverlayMacd = !activeTab.showOverlayMacd;
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'set-bb-period') {
+    const p = Math.max(5, Math.min(200, Number(el.getAttribute('data-period') || 20)));
+    state.chartPreferences.bollingerPeriod = p;
+    savePreferences();
+    renderApp();
+  } else if (action === 'set-bb-stddev') {
+    const sd = Math.max(0.5, Math.min(5.0, Number(el.getAttribute('data-stddev') || 2.0)));
+    state.chartPreferences.bollingerStdDev = sd;
+    savePreferences();
     renderApp();
   } else if (action === 'toggle-rsi14' && activeTab) {
     activeTab.showRsi14 = !activeTab.showRsi14;
@@ -1299,12 +1338,14 @@ document.addEventListener('click', async (e) => {
     activeTab.scrollOffset = 0;
     activeTab.visibleCount = Math.min(300, Math.max(24, (activeTab.candles || []).length));
     activeTab.priceScaleFactor = 1.0;
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'reset-view' && activeTab) {
     activeTab.scrollOffset = 0;
     activeTab.visibleCount = 48;
     activeTab.priceScaleFactor = 1.0;
     activeTab.verticalPriceOffset = 0.0;
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'set-tool' && activeTab) {
     const t = el.getAttribute('data-tool') || 'cursor';
@@ -1315,6 +1356,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'toggle-magnet' && activeTab) {
     activeTab.isMagnetMode = !activeTab.isMagnetMode;
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'delete-drawing' && activeTab) {
     if (activeTab.selectedDrawingId) {
@@ -1324,20 +1366,52 @@ document.addEventListener('click', async (e) => {
       renderApp();
     }
   } else if (action === 'set-draw-color' && activeTab) {
-    activeTab.activeDrawingColorHex = el.getAttribute('data-color') || '#2962FF';
+    const col = el.getAttribute('data-color') || '#2962FF';
+    activeTab.activeDrawingColorHex = col;
+    activeTab.activeDrawingColor = col;
+    state.chartPreferences.defaultDrawingColorHex = col;
+    if (activeTab.selectedDrawingId) {
+      activeTab.drawings = (activeTab.drawings || []).map((d) =>
+        d.id === activeTab.selectedDrawingId ? { ...d, color: col, colorHex: col } : d
+      );
+      saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    }
+    savePreferences();
+    saveOpenTabsToStorage();
     state.activeRailPopup = null;
     renderApp();
   } else if (action === 'set-draw-width' && activeTab) {
-    activeTab.activeDrawingWidthPx = Number(el.getAttribute('data-width') || 2.0);
+    const w = Number(el.getAttribute('data-width') || 2.0);
+    activeTab.activeDrawingWidthPx = w;
+    state.chartPreferences.defaultDrawingWidthPx = w;
+    if (activeTab.selectedDrawingId) {
+      activeTab.drawings = (activeTab.drawings || []).map((d) =>
+        d.id === activeTab.selectedDrawingId
+          ? { ...d, strokeWidth: w, strokeWidthDp: w, lineWidthPx: w }
+          : d
+      );
+      saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    }
+    savePreferences();
+    saveOpenTabsToStorage();
     state.activeRailPopup = null;
+    renderApp();
+  } else if (action === 'set-default-draw-width') {
+    const w = Number(el.getAttribute('data-width') || 2.0);
+    state.chartPreferences.defaultDrawingWidthPx = w;
+    if (activeTab) activeTab.activeDrawingWidthPx = w;
+    savePreferences();
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'zoom-in' && activeTab) {
     const step = Number(state.chartPreferences.zoomStepCandles || 8);
     activeTab.visibleCount = Math.max(15, (activeTab.visibleCount || 48) - step);
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'zoom-out' && activeTab) {
     const step = Number(state.chartPreferences.zoomStepCandles || 8);
     activeTab.visibleCount = Math.min(600, (activeTab.visibleCount || 48) + step);
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'set-wl-category') {
     state.watchlistCategory = el.getAttribute('data-category') || 'ALL';
@@ -1347,6 +1421,9 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'reset-algo-params') {
     resetAlgoParamsToDefault();
+    renderApp();
+  } else if (action === 'reset-all-defaults') {
+    resetAllPreferencesToDefault();
     renderApp();
   } else if (action === 'clear-drawings' && activeTab) {
     activeTab.drawings = [];

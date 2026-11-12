@@ -131,7 +131,9 @@ fun CandlestickCanvas(
     val candles = tab.candles
     val totalCount = candles.size
     val visibleCount = tab.visibleCandleCount.coerceIn(12, max(12, totalCount))
-    val endIndexExclusive = (totalCount - tab.scrollOffsetFromRight).coerceIn(1, max(1, totalCount))
+    val maxScrollOffset = (totalCount - visibleCount).coerceAtLeast(0)
+    val effectiveScrollOffset = tab.scrollOffsetFromRight.coerceIn(0, maxScrollOffset)
+    val endIndexExclusive = (totalCount - effectiveScrollOffset).coerceIn(1, max(1, totalCount))
     val startIndex = (endIndexExclusive - visibleCount).coerceAtLeast(0)
     val visibleSlice = remember(candles, startIndex, endIndexExclusive) {
         if (candles.isEmpty()) emptyList() else candles.subList(startIndex, endIndexExclusive)
@@ -190,9 +192,11 @@ fun CandlestickCanvas(
         else fullEma50.subList(startIndex, endIndexExclusive.coerceAtMost(fullEma50.size))
     }
 
-    val fullBollinger = remember(fullCloses, tab.showBollinger) {
+    val bbPeriod = preferences.bollingerPeriod.coerceIn(5, 200)
+    val bbStdDev = preferences.bollingerStdDev.coerceIn(0.5f, 5.0f).toDouble()
+    val fullBollinger = remember(fullCloses, tab.showBollinger, bbPeriod, bbStdDev) {
         if (!tab.showBollinger || fullCloses.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeBollingerBands(fullCloses, 20, 2.0)
+        else PriceFormatterAlgorithm.computeBollingerBands(fullCloses, bbPeriod, bbStdDev)
     }
     val visibleBollinger = remember(fullBollinger, startIndex, endIndexExclusive) {
         if (fullBollinger.isEmpty()) emptyList()
@@ -226,8 +230,8 @@ fun CandlestickCanvas(
         else fullRsi14.subList(startIndex, endIndexExclusive.coerceAtMost(fullRsi14.size))
     }
 
-    val fullMacd = remember(fullCloses, tab.showMacd) {
-        if (!tab.showMacd || fullCloses.isEmpty()) emptyList()
+    val fullMacd = remember(fullCloses, tab.showMacd, tab.showOverlayMacd) {
+        if ((!tab.showMacd && !tab.showOverlayMacd) || fullCloses.isEmpty()) emptyList()
         else PriceFormatterAlgorithm.computeMacdValues(fullCloses, 12, 26, 9)
     }
     val visibleMacd = remember(fullMacd, startIndex, endIndexExclusive) {
@@ -890,6 +894,72 @@ fun CandlestickCanvas(
                             }
                         }
 
+                        // 5d. Overlay Classic MACD directly on Main Price Canvas (without separate bottom pane)
+                        if (tab.showOverlayMacd && visibleMacd.isNotEmpty()) {
+                            var maxAbs = 1e-6
+                            for (pt in visibleMacd) {
+                                if (pt != null) {
+                                    maxAbs = max(maxAbs, abs(pt.macd))
+                                    pt.signal?.let { maxAbs = max(maxAbs, abs(it)) }
+                                    pt.histogram?.let { maxAbs = max(maxAbs, abs(it)) }
+                                }
+                            }
+                            val overlayTop = pricePaneH * 0.70f
+                            val overlayBot = pricePaneH * 0.98f
+                            val overlayMidY = (overlayTop + overlayBot) / 2f
+                            val overlayHalfH = ((overlayBot - overlayTop) / 2f - 4f).coerceAtLeast(4f)
+                            drawLine(
+                                color = Color(0xFF94A3B8).copy(alpha = 0.35f),
+                                start = Offset(0f, overlayMidY),
+                                end = Offset(canvasW, overlayMidY),
+                                strokeWidth = 1.0f,
+                                pathEffect = dashEffect
+                            )
+                            val macdPath = Path()
+                            val sigPath = Path()
+                            var mStarted = false
+                            var sStarted = false
+                            val histBarW = (slotW * 0.54f).coerceIn(2f, 12f)
+                            visibleMacd.forEachIndexed { idx, pt ->
+                                if (pt != null) {
+                                    val x = (idx + 0.5f) * slotW
+                                    pt.histogram?.let { histVal ->
+                                        val histY = overlayMidY - ((histVal / maxAbs).toFloat() * overlayHalfH)
+                                        val hTop = min(overlayMidY, histY)
+                                        val hHeight = max(1.5f, abs(histY - overlayMidY))
+                                        val hColor = if (histVal >= 0.0) bullColor.copy(alpha = 0.48f) else bearColor.copy(alpha = 0.48f)
+                                        drawRect(
+                                            color = hColor,
+                                            topLeft = Offset(x - histBarW / 2f, hTop),
+                                            size = Size(histBarW, hHeight)
+                                        )
+                                    }
+                                    val mY = overlayMidY - ((pt.macd / maxAbs).toFloat() * overlayHalfH)
+                                    if (!mStarted) {
+                                        macdPath.moveTo(x, mY)
+                                        mStarted = true
+                                    } else {
+                                        macdPath.lineTo(x, mY)
+                                    }
+                                    pt.signal?.let { sigVal ->
+                                        val sY = overlayMidY - ((sigVal / maxAbs).toFloat() * overlayHalfH)
+                                        if (!sStarted) {
+                                            sigPath.moveTo(x, sY)
+                                            sStarted = true
+                                        } else {
+                                            sigPath.lineTo(x, sY)
+                                        }
+                                    }
+                                }
+                            }
+                            if (mStarted) {
+                                drawPath(path = macdPath, color = Color(0xFF2962FF), style = Stroke(width = 2.0f))
+                            }
+                            if (sStarted) {
+                                drawPath(path = sigPath, color = Color(0xFFFF6D00), style = Stroke(width = 1.8f))
+                            }
+                        }
+
                         // 6a. Previous Close Horizontal Dashed Line across Main Price Pane
                         if (preferences.showPrevCloseLine && candles.size >= 2) {
                             val prevCloseCandle = candles[candles.size - 2]
@@ -1521,7 +1591,7 @@ fun CandlestickCanvas(
                         }
                         if (tab.showBollinger && inspectedBollinger != null) {
                             Text(
-                                text = "BB ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.lower), tab.decimals)}–${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.upper), tab.decimals)}",
+                                text = "BB($bbPeriod,${String.format(java.util.Locale.US, "%.1f", bbStdDev)}) ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.lower), tab.decimals)}–${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.upper), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
@@ -1539,9 +1609,10 @@ fun CandlestickCanvas(
                                 color = Color(0xFFEC4899)
                             )
                         }
-                        if (tab.showMacd && inspectedMacd != null) {
+                        if ((tab.showMacd || tab.showOverlayMacd) && inspectedMacd != null) {
+                            val macdTag = if (tab.showOverlayMacd) "MACD(Ovr)" else "MACD"
                             Text(
-                                text = "MACD ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedMacd.macd), tab.decimals)}",
+                                text = "$macdTag ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedMacd.macd), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,

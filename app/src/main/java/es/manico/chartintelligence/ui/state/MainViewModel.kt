@@ -637,6 +637,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 timeframe = symbol.timeframe
             )
             val savedDrawings = repository.loadDrawingsForChart(symbol.chartId)
+            val curPrefs = _uiState.value.chartPreferences
             val newTab = ChartTabState(
                 tabId = tabId,
                 chartId = symbol.chartId,
@@ -645,6 +646,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 provider = symbol.activeProvider,
                 timeframe = symbol.timeframe,
                 candles = cachedCandles,
+                activeDrawingColorHex = curPrefs.defaultDrawingColorHex,
+                activeDrawingWidthDp = curPrefs.defaultDrawingWidthDp,
                 drawings = savedDrawings,
                 isLoading = cachedCandles.isEmpty()
             )
@@ -661,6 +664,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     screenBackStack = nextStack
                 )
             }
+            repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
             if (cachedCandles.isEmpty()) {
                 syncSingleSymbolUpToNow(symbol.symbolCode)
             }
@@ -709,11 +713,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 },
                 openTabs = state.openTabs.map { tab ->
                     if (tab.tabId == active.tabId) {
+                        val nextVisible = if (immediateCandles.isNotEmpty()) {
+                            tab.visibleCandleCount.coerceIn(
+                                AppConfig.MIN_VISIBLE_CANDLES,
+                                max(AppConfig.MIN_VISIBLE_CANDLES, immediateCandles.size)
+                            )
+                        } else {
+                            tab.visibleCandleCount
+                        }
                         tab.copy(
                             timeframe = normalizedTf,
                             candles = immediateCandles,
+                            activeDateRange = null,
+                            visibleCandleCount = nextVisible,
                             scrollOffsetFromRight = 0,
                             selectedCandleIndex = null,
+                            isAutoScaleY = true,
+                            yPriceScaleFactor = 1.0f,
                             isLoading = immediateCandles.isEmpty(),
                             hasError = false
                         )
@@ -724,6 +740,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             )
         }
         repository.saveSymbolCatalog(_uiState.value.symbols)
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
 
         val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode } ?: return
         viewModelScope.launch {
@@ -735,13 +752,23 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     },
                     openTabs = state.openTabs.map { tab ->
                         if (tab.tabId == active.tabId && tab.timeframe == normalizedTf) {
-                            applyUpdatedCandlesPreservingViewport(tab, mergedCandles, normalizedTf)
+                            val updated = applyUpdatedCandlesPreservingViewport(tab, mergedCandles, normalizedTf)
+                            val clampedVis = if (mergedCandles.isNotEmpty()) {
+                                updated.visibleCandleCount.coerceIn(
+                                    AppConfig.MIN_VISIBLE_CANDLES,
+                                    max(AppConfig.MIN_VISIBLE_CANDLES, mergedCandles.size)
+                                )
+                            } else {
+                                updated.visibleCandleCount
+                            }
+                            updated.copy(visibleCandleCount = clampedVis)
                         } else {
                             tab
                         }
                     }
                 )
             }
+            repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         }
     }
 
@@ -754,6 +781,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
     }
 
     fun zoomActiveTab(zoomIn: Boolean) {
@@ -1042,6 +1071,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 )
             }
             repository.saveSymbolCatalog(_uiState.value.symbols)
+            repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
             val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode } ?: return
             viewModelScope.launch {
                 val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(targetSymbol, resolvedTf)
@@ -1056,7 +1086,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 val refreshedPreset = updated.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) }
                                 updated.copy(
                                     activeDateRange = refreshedPreset?.id ?: rangeId,
-                                    visibleCandleCount = refreshedPreset?.targetBars ?: updated.visibleCandleCount
+                                    visibleCandleCount = refreshedPreset?.targetBars ?: updated.visibleCandleCount,
+                                    scrollOffsetFromRight = 0,
+                                    isAutoScaleY = true,
+                                    yPriceScaleFactor = 1.0f
                                 )
                             } else {
                                 tab
@@ -1064,6 +1097,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     )
                 }
+                repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
             }
             return
         }
@@ -1088,6 +1122,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+
+        // If user is on D1/W1 and local cache has fewer candles than requested by 6M/1Y, trigger background sync
+        if (active.timeframe in listOf("D1", "W1") && active.candles.size < 180) {
+            val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode }
+            if (targetSymbol != null) {
+                viewModelScope.launch {
+                    val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(targetSymbol, active.timeframe)
+                    _uiState.update { state ->
+                        state.copy(
+                            symbols = state.symbols.map {
+                                if (it.symbolCode == syncedSymbol.symbolCode) syncedSymbol else it
+                            },
+                            openTabs = state.openTabs.map { tab ->
+                                if (tab.tabId == active.tabId && tab.timeframe == active.timeframe) {
+                                    val updated = applyUpdatedCandlesPreservingViewport(tab, mergedCandles, active.timeframe)
+                                    val refreshedPreset = updated.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) }
+                                    updated.copy(
+                                        activeDateRange = refreshedPreset?.id ?: rangeId,
+                                        visibleCandleCount = refreshedPreset?.targetBars ?: updated.visibleCandleCount,
+                                        scrollOffsetFromRight = 0,
+                                        isAutoScaleY = true,
+                                        yPriceScaleFactor = 1.0f
+                                    )
+                                } else {
+                                    tab
+                                }
+                            }
+                        )
+                    }
+                    repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+                }
+            }
+        }
     }
 
     fun toggleVolumeOnActiveTab() {
@@ -1099,6 +1167,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
     }
 
     fun cycleVolumePaneHeightOnActiveTab() {
@@ -1122,6 +1192,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
     }
 
     fun toggleSma20OnActiveTab() {
@@ -1133,6 +1204,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1145,6 +1217,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1157,6 +1230,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1169,6 +1243,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1181,6 +1256,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1193,6 +1269,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1205,6 +1282,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1217,6 +1295,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1229,6 +1308,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1241,6 +1321,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleOverlayMacdOnActiveTab() {
+        val activeId = _uiState.value.activeTab?.tabId ?: return
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == activeId) tab.copy(showOverlayMacd = !tab.showOverlayMacd) else tab
+                }
+            )
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1253,6 +1347,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1265,6 +1360,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1277,6 +1373,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
@@ -1289,31 +1386,40 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun setDrawingColorOnActiveTab(colorHex: String) {
         val active = _uiState.value.activeTab ?: return
         val updatedTab = drawingCoordinator.updateActiveDrawingColor(active, colorHex)
+        val nextPrefs = preferenceCoordinator.updateDefaultDrawingColor(_uiState.value.chartPreferences, colorHex)
         _uiState.update { state ->
             state.copy(
+                chartPreferences = nextPrefs,
                 openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == active.tabId) updatedTab else tab
+                    if (tab.tabId == active.tabId) updatedTab else tab.copy(activeDrawingColorHex = colorHex)
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
     }
 
     fun setDrawingWidthOnActiveTab(widthDp: Float) {
         val active = _uiState.value.activeTab ?: return
         val updatedTab = drawingCoordinator.updateActiveDrawingWidth(active, widthDp)
+        val nextPrefs = preferenceCoordinator.updateDefaultDrawingWidth(_uiState.value.chartPreferences, widthDp)
         _uiState.update { state ->
             state.copy(
+                chartPreferences = nextPrefs,
                 openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == active.tabId) updatedTab else tab
+                    if (tab.tabId == active.tabId) updatedTab else tab.copy(activeDrawingWidthDp = widthDp)
                 }
             )
         }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
     }
 
     fun toggleDrawingDockOnActiveTab() {
@@ -1499,6 +1605,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleDebouncedCloudSync()
     }
 
+    fun updateDefaultDrawingWidth(widthDp: Float) {
+        val next = preferenceCoordinator.updateDefaultDrawingWidth(_uiState.value.chartPreferences, widthDp)
+        _uiState.update { state ->
+            state.copy(
+                chartPreferences = next,
+                openTabs = state.openTabs.map { tab -> tab.copy(activeDrawingWidthDp = next.defaultDrawingWidthDp) }
+            )
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun updateBollingerParams(period: Int, stdDev: Float) {
+        val next = preferenceCoordinator.updateBollingerParams(_uiState.value.chartPreferences, period, stdDev)
+        _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
+    }
+
     fun updateAlgorithmParams(fetchLimit: Int, zoomStep: Int, touchTolerance: Float) {
         val next = preferenceCoordinator.updateAlgorithmParams(_uiState.value.chartPreferences, fetchLimit, zoomStep, touchTolerance)
         _uiState.update { it.copy(chartPreferences = next) }
@@ -1507,13 +1631,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetChartColorsToDefault() {
         val next = preferenceCoordinator.resetChartColorsToDefault(_uiState.value.chartPreferences)
-        _uiState.update { it.copy(chartPreferences = next) }
+        _uiState.update { state ->
+            state.copy(
+                chartPreferences = next,
+                openTabs = state.openTabs.map { tab ->
+                    tab.copy(
+                        activeDrawingColorHex = next.defaultDrawingColorHex,
+                        activeDrawingWidthDp = next.defaultDrawingWidthDp
+                    )
+                }
+            )
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun resetAlgorithmParamsToDefault() {
         val next = preferenceCoordinator.resetAlgorithmParamsToDefault(_uiState.value.chartPreferences)
         _uiState.update { it.copy(chartPreferences = next) }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun resetAllPreferencesToDefault() {
+        val next = preferenceCoordinator.resetAllPreferencesToDefault(_uiState.value.chartPreferences)
+        _uiState.update { state ->
+            state.copy(
+                chartPreferences = next,
+                openTabs = state.openTabs.map { tab ->
+                    tab.copy(
+                        activeDrawingColorHex = next.defaultDrawingColorHex,
+                        activeDrawingWidthDp = next.defaultDrawingWidthDp
+                    )
+                }
+            )
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 

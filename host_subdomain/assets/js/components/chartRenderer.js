@@ -121,7 +121,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const volTopY = topPad + pricePaneH;
 
   const visibleCount = Math.max(12, Math.min(600, Math.round(tab.visibleCount || 48)));
-  const maxOffset = Math.max(0, candles.length - 5);
+  const maxOffset = Math.max(0, candles.length - Math.min(candles.length, visibleCount));
   const offset = Math.max(0, Math.min(maxOffset, Math.round(tab.scrollOffset || 0)));
 
   const endIdx = Math.max(1, candles.length - offset);
@@ -439,9 +439,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // Bollinger Bands (20, 2) Overlay
-  if (tab.showBollinger && candles.length >= 20) {
-    const bbArr = TechnicalIndicators.computeBollingerBands(candles, 20, 2.0);
+  // Bollinger Bands (Configurable Period & StdDev) Overlay
+  const bbPeriod = Math.max(5, Math.min(200, Number(prefs.bollingerPeriod || 20)));
+  const bbStdDev = Math.max(0.5, Math.min(5.0, Number(prefs.bollingerStdDev || 2.0)));
+  if (tab.showBollinger && candles.length >= bbPeriod) {
+    const bbArr = TechnicalIndicators.computeBollingerBands(candles, bbPeriod, bbStdDev);
     ctx.save();
     const upperPts = [];
     const lowerPts = [];
@@ -597,6 +599,90 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
     }
     ctx.restore();
+  }
+
+  // Overlay Classic MACD (12, 26, 9) directly on Main Price Chart (Lower 28% band of Price Pane)
+  if (tab.showOverlayMacd && candles.length >= 26) {
+    const macdArr = TechnicalIndicators.computeMacd(candles, 12, 26, 9);
+    const visMacd = macdArr.slice(startIdx, endIdx).filter(Boolean);
+    if (visMacd.length > 0) {
+      let maxAbs = 0.0001;
+      for (const m of visMacd) {
+        maxAbs = Math.max(
+          maxAbs,
+          Math.abs(Number(m.macd || 0)),
+          Math.abs(Number(m.signal || 0)),
+          Math.abs(Number(m.histogram || 0))
+        );
+      }
+      const bandTopY = topPad + chartH * 0.70;
+      const bandBottomY = topPad + chartH - 6;
+      const zeroY = (bandTopY + bandBottomY) / 2;
+      const halfBandH = Math.max(12, (bandBottomY - bandTopY) * 0.45);
+      const macdToY = (v) => zeroY - (Number(v || 0) / maxAbs) * halfBandH;
+
+      ctx.save();
+      ctx.setLineDash([4, 4]);
+      ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(100, 116, 139, 0.35)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(0, zeroY);
+      ctx.lineTo(chartW, zeroY);
+      ctx.stroke();
+      ctx.restore();
+
+      // Histogram bars
+      for (let idx = 0; idx < visible.length; idx++) {
+        const pt = macdArr[startIdx + idx];
+        if (!pt || !Number.isFinite(pt.histogram)) continue;
+        const x = idxToX(idx);
+        const hY = macdToY(pt.histogram);
+        const topBarY = Math.min(zeroY, hY);
+        const barH = Math.max(1.5, Math.abs(hY - zeroY));
+        ctx.fillStyle = pt.histogram >= 0 ? 'rgba(38, 166, 154, 0.38)' : 'rgba(239, 83, 80, 0.38)';
+        ctx.fillRect(x - bodyW * 0.42, topBarY, Math.max(1.5, bodyW * 0.84), barH);
+      }
+
+      // MACD Line (#2962FF)
+      ctx.save();
+      ctx.strokeStyle = '#2962FF';
+      ctx.lineWidth = 1.6;
+      ctx.beginPath();
+      let startedM = false;
+      for (let idx = 0; idx < visible.length; idx++) {
+        const pt = macdArr[startIdx + idx];
+        if (!pt || !Number.isFinite(pt.macd)) continue;
+        const x = idxToX(idx);
+        const y = macdToY(pt.macd);
+        if (!startedM) {
+          ctx.moveTo(x, y);
+          startedM = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      if (startedM) ctx.stroke();
+
+      // Signal Line (#FF6D00)
+      ctx.strokeStyle = '#FF6D00';
+      ctx.lineWidth = 1.4;
+      ctx.beginPath();
+      let startedS = false;
+      for (let idx = 0; idx < visible.length; idx++) {
+        const pt = macdArr[startIdx + idx];
+        if (!pt || !Number.isFinite(pt.signal)) continue;
+        const x = idxToX(idx);
+        const y = macdToY(pt.signal);
+        if (!startedS) {
+          ctx.moveTo(x, y);
+          startedS = true;
+        } else {
+          ctx.lineTo(x, y);
+        }
+      }
+      if (startedS) ctx.stroke();
+      ctx.restore();
+    }
   }
 
   ctx.restore(); // End Price Pane clip

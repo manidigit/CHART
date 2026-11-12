@@ -34,13 +34,14 @@ data class ChartTabState(
     val showVwap: Boolean = false,
     val showRsi14: Boolean = false,
     val showMacd: Boolean = false,
+    val showOverlayMacd: Boolean = false,
     val showAtr14: Boolean = false,
     val showSmcStructure: Boolean = false,
     val showFvg: Boolean = false,
     val showVolumeProfile: Boolean = false,
     val activeDrawingTool: DrawingTool = DrawingTool.CURSOR,
     val activeDrawingColorHex: String = "FF2962FF",
-    val activeDrawingWidthDp: Float = 2.2f,
+    val activeDrawingWidthDp: Float = 2.0f,
     val isDrawingDockCollapsed: Boolean = true,
     val isMagnetMode: Boolean = false,
     val drawings: List<ChartDrawing> = emptyList(),
@@ -76,16 +77,16 @@ data class ChartTabState(
 
         data class Spec(val id: String, val durationMs: Long, val defaultBars: Int)
         val specs = listOf(
-            Spec("1D", 1L * dayMs, 96),
-            Spec("5D", 5L * dayMs, 120),
-            Spec("1W", 7L * dayMs, 168),
-            Spec("1M", 30L * dayMs, 180),
+            Spec("1D", 1L * dayMs, 60),
+            Spec("5D", 5L * dayMs, 90),
+            Spec("1W", 7L * dayMs, 110),
+            Spec("1M", 30L * dayMs, 120),
             Spec("3M", 90L * dayMs, 90),
-            Spec("6M", 180L * dayMs, 180),
-            Spec("9M", 270L * dayMs, 270),
-            Spec("YTD", max(dayMs, lastTs - ytdStartMs), 180),
-            Spec("1Y", 365L * dayMs, 260),
-            Spec("5Y", 1825L * dayMs, 260),
+            Spec("6M", 180L * dayMs, 130),
+            Spec("9M", 270L * dayMs, 195),
+            Spec("YTD", max(dayMs, lastTs - ytdStartMs), 130),
+            Spec("1Y", 365L * dayMs, 252),
+            Spec("5Y", 1825L * dayMs, total),
             Spec("All", max(dayMs, spanMs), total)
         )
 
@@ -95,16 +96,17 @@ data class ChartTabState(
                     id = "All",
                     label = "All",
                     enabled = total >= 2,
-                    targetBars = total.coerceIn(AppConfig.MIN_VISIBLE_CANDLES, max(AppConfig.MIN_VISIBLE_CANDLES, total))
+                    targetBars = total.coerceAtLeast(AppConfig.MIN_VISIBLE_CANDLES)
                 )
             } else {
                 val cutoff = lastTs - spec.durationMs
                 val matching = candles.count { it.openTimeUtcMillis >= cutoff }
-                val target = if (matching >= 2) {
-                    min(total, max(AppConfig.MIN_VISIBLE_CANDLES, matching))
+                val rawTarget = if (matching >= AppConfig.MIN_VISIBLE_CANDLES) {
+                    matching
                 } else {
-                    min(total, max(AppConfig.MIN_VISIBLE_CANDLES, spec.defaultBars))
+                    spec.defaultBars
                 }
+                val target = min(total, max(AppConfig.MIN_VISIBLE_CANDLES, rawTarget))
                 DateRangePresetOption(
                     id = spec.id,
                     label = spec.id,

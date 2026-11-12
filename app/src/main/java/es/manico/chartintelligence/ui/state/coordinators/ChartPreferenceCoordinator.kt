@@ -43,6 +43,27 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
         return next
     }
 
+    fun updateDefaultDrawingColor(current: ChartPreferences, colorHex: String): ChartPreferences {
+        val next = current.copy(defaultDrawingColorHex = colorHex)
+        repository.saveChartPreferences(next)
+        return next
+    }
+
+    fun updateDefaultDrawingWidth(current: ChartPreferences, widthDp: Float): ChartPreferences {
+        val next = current.copy(defaultDrawingWidthDp = widthDp.coerceIn(1.0f, 8.0f))
+        repository.saveChartPreferences(next)
+        return next
+    }
+
+    fun updateBollingerParams(current: ChartPreferences, period: Int, stdDev: Float): ChartPreferences {
+        val next = current.copy(
+            bollingerPeriod = period.coerceIn(5, 200),
+            bollingerStdDev = stdDev.coerceIn(0.5f, 5.0f)
+        )
+        repository.saveChartPreferences(next)
+        return next
+    }
+
     fun updateAlgorithmParams(
         current: ChartPreferences,
         fetchLimit: Int,
@@ -66,7 +87,9 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
             trendLineColorHex = "FF2962FF",
             horizontalLineColorHex = "FF38BDF8",
             verticalLineColorHex = "FFF59E0B",
-            chartGridColorHex = "FF2A2E39"
+            chartGridColorHex = "FF2A2E39",
+            defaultDrawingColorHex = "FF2962FF",
+            defaultDrawingWidthDp = 2.0f
         )
         repository.saveChartPreferences(next)
         return next
@@ -77,7 +100,20 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
             candleFetchLimit = 500,
             maxVisibleCandles = 5000,
             zoomStepCandles = 8,
-            drawingHitTolerancePx = 28f
+            drawingHitTolerancePx = 28f,
+            bollingerPeriod = 20,
+            bollingerStdDev = 2.0f
+        )
+        repository.saveChartPreferences(next)
+        return next
+    }
+
+    fun resetAllPreferencesToDefault(current: ChartPreferences): ChartPreferences {
+        val next = ChartPreferences(
+            twelveDataApiKey = current.twelveDataApiKey,
+            stooqApiKey = current.stooqApiKey,
+            alphaVantageApiKey = current.alphaVantageApiKey,
+            finnhubApiKey = current.finnhubApiKey
         )
         repository.saveChartPreferences(next)
         return next

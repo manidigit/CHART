@@ -11,6 +11,7 @@ import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartDrawing
 import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
+import es.manico.chartintelligence.data.model.ChartType
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.i18n.AppLanguage
@@ -368,11 +369,18 @@ class WorkspaceRepository(context: Context) {
                 horizontalLineColorHex = obj.optString("horizontalLineColorHex", "FF38BDF8"),
                 verticalLineColorHex = obj.optString("verticalLineColorHex", "FFF59E0B"),
                 chartGridColorHex = if (rawGrid == "FF1E293B") "FF2A2E39" else rawGrid,
+                defaultDrawingColorHex = normalizeAndroidHex(
+                    obj.optString("defaultDrawingColorHex", "FF2962FF"),
+                    "FF2962FF"
+                ),
+                defaultDrawingWidthDp = obj.optDouble("defaultDrawingWidthDp", 2.0).toFloat().coerceIn(1.0f, 8.0f),
                 candleFetchLimit = obj.optInt("candleFetchLimit", AppConfig.DEFAULT_CANDLE_FETCH_LIMIT).coerceIn(40, 5000),
                 minVisibleCandles = obj.optInt("minVisibleCandles", 12),
                 maxVisibleCandles = obj.optInt("maxVisibleCandles", AppConfig.MAX_VISIBLE_CANDLES).coerceAtLeast(5000),
                 zoomStepCandles = obj.optInt("zoomStepCandles", 8),
                 drawingHitTolerancePx = obj.optDouble("drawingHitTolerancePx", 28.0).toFloat(),
+                bollingerPeriod = obj.optInt("bollingerPeriod", 20).coerceIn(5, 200),
+                bollingerStdDev = obj.optDouble("bollingerStdDev", 2.0).toFloat().coerceIn(0.5f, 5.0f),
                 hideWatchlistLogos = obj.optBoolean("hideWatchlistLogos", false),
                 showSymbolScreen = obj.optBoolean("showSymbolScreen", true),
                 chartVibrations = obj.optBoolean("chartVibrations", true),
@@ -400,11 +408,15 @@ class WorkspaceRepository(context: Context) {
         obj.put("horizontalLineColorHex", prefsObj.horizontalLineColorHex)
         obj.put("verticalLineColorHex", prefsObj.verticalLineColorHex)
         obj.put("chartGridColorHex", prefsObj.chartGridColorHex)
+        obj.put("defaultDrawingColorHex", prefsObj.defaultDrawingColorHex)
+        obj.put("defaultDrawingWidthDp", prefsObj.defaultDrawingWidthDp.toDouble())
         obj.put("candleFetchLimit", prefsObj.candleFetchLimit.coerceIn(40, 5000))
         obj.put("minVisibleCandles", prefsObj.minVisibleCandles)
         obj.put("maxVisibleCandles", prefsObj.maxVisibleCandles.coerceAtLeast(5000))
         obj.put("zoomStepCandles", prefsObj.zoomStepCandles)
         obj.put("drawingHitTolerancePx", prefsObj.drawingHitTolerancePx.toDouble())
+        obj.put("bollingerPeriod", prefsObj.bollingerPeriod.coerceIn(5, 200))
+        obj.put("bollingerStdDev", prefsObj.bollingerStdDev.coerceIn(0.5f, 5.0f).toDouble())
         obj.put("hideWatchlistLogos", prefsObj.hideWatchlistLogos)
         obj.put("showSymbolScreen", prefsObj.showSymbolScreen)
         obj.put("chartVibrations", prefsObj.chartVibrations)
@@ -598,7 +610,6 @@ class WorkspaceRepository(context: Context) {
                 val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h4Candles, "D1")
                 if (aggregated.isNotEmpty()) {
                     current = aggregated
-                    candleMemoryStore[exactKey] = current
                 }
             } else {
                 val h1Key = "${symbolCode}_${provider.id}_H1"
@@ -607,7 +618,6 @@ class WorkspaceRepository(context: Context) {
                     val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h1Candles, "D1")
                     if (aggregated.isNotEmpty()) {
                         current = aggregated
-                        candleMemoryStore[exactKey] = current
                     }
                 } else {
                     val m15Key = "${symbolCode}_${provider.id}_M15"
@@ -616,7 +626,6 @@ class WorkspaceRepository(context: Context) {
                         val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(m15Candles, "D1")
                         if (aggregated.isNotEmpty()) {
                             current = aggregated
-                            candleMemoryStore[exactKey] = current
                         }
                     }
                 }
@@ -628,7 +637,6 @@ class WorkspaceRepository(context: Context) {
                 val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(d1Candles, "W1")
                 if (aggregated.isNotEmpty()) {
                     current = aggregated
-                    candleMemoryStore[exactKey] = current
                 }
             } else {
                 val h4Key = "${symbolCode}_${provider.id}_H4"
@@ -637,7 +645,6 @@ class WorkspaceRepository(context: Context) {
                     val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h4Candles, "W1")
                     if (aggregated.isNotEmpty()) {
                         current = aggregated
-                        candleMemoryStore[exactKey] = current
                     }
                 }
             }
@@ -674,7 +681,8 @@ class WorkspaceRepository(context: Context) {
         val syncJobs = timeframesToSync.associateWith { tf ->
             val tfKey = "${symbol.symbolCode}_${symbol.activeProvider.id}_${tf}"
             val existingTf = candleMemoryStore[tfKey] ?: loadCandlesFromPrefs(tfKey, tf)
-            val sinceOpenTimeMs = if (existingTf.size >= 15) {
+            val minBarsForDelta = if (tf == "D1" || tf == "W1") 180 else 60
+            val sinceOpenTimeMs = if (existingTf.size >= minBarsForDelta) {
                 existingTf.lastOrNull()?.openTimeUtcMillis ?: 0L
             } else {
                 0L
@@ -1412,6 +1420,7 @@ class WorkspaceRepository(context: Context) {
         return runCatching {
             val arr = JSONArray(raw)
             val catalog = loadSymbolCatalog().associateBy { it.symbolCode.uppercase() }
+            val curPrefs = loadChartPreferences()
             val list = ArrayList<ChartTabState>(arr.length())
             for (i in 0 until arr.length()) {
                 val obj = arr.optJSONObject(i) ?: continue
@@ -1422,6 +1431,8 @@ class WorkspaceRepository(context: Context) {
                 val tf = obj.optString("timeframe", def?.timeframe ?: "M15").uppercase()
                 val chartId = def?.chartId ?: "chart_${symCode.lowercase()}_custom"
                 val tabId = obj.optString("tabId", "tab_${symCode}_${tf}_$i")
+                val rawChartType = obj.optString("chartType", "candlestick")
+                val parsedChartType = ChartType.entries.find { it.name.equals(rawChartType, ignoreCase = true) } ?: ChartType.CANDLESTICK
                 list.add(
                     ChartTabState(
                         tabId = tabId,
@@ -1430,6 +1441,7 @@ class WorkspaceRepository(context: Context) {
                         decimals = obj.optInt("decimals", def?.decimals ?: 2),
                         provider = provId,
                         timeframe = tf,
+                        chartType = parsedChartType,
                         visibleCandleCount = obj.optInt("visibleCount", AppConfig.DEFAULT_VISIBLE_CANDLES).coerceIn(AppConfig.MIN_VISIBLE_CANDLES, AppConfig.MAX_VISIBLE_CANDLES),
                         scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
                         showVolume = obj.optBoolean("showVolume", true),
@@ -1443,11 +1455,21 @@ class WorkspaceRepository(context: Context) {
                         showVwap = obj.optBoolean("showVwap", false),
                         showRsi14 = obj.optBoolean("showRsi14", false),
                         showMacd = obj.optBoolean("showMacd", false),
+                        showOverlayMacd = obj.optBoolean("showOverlayMacd", false),
                         showAtr14 = obj.optBoolean("showAtr14", false),
                         showSmcStructure = obj.optBoolean("showSmcStructure", false),
                         showFvg = obj.optBoolean("showFvg", false),
                         showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
                         isLogScale = obj.optBoolean("isLogScale", false),
+                        activeDrawingColorHex = normalizeAndroidHex(
+                            obj.optString("activeDrawingColorHex", curPrefs.defaultDrawingColorHex),
+                            curPrefs.defaultDrawingColorHex
+                        ),
+                        activeDrawingWidthDp = obj.optDouble(
+                            "activeDrawingWidthDp",
+                            curPrefs.defaultDrawingWidthDp.toDouble()
+                        ).toFloat().coerceIn(1.0f, 8.0f),
+                        isMagnetMode = obj.optBoolean("isMagnetMode", false),
                         drawings = loadDrawingsForChart(chartId)
                     )
                 )
@@ -1479,11 +1501,15 @@ class WorkspaceRepository(context: Context) {
                 .put("showVwap", t.showVwap)
                 .put("showRsi14", t.showRsi14)
                 .put("showMacd", t.showMacd)
+                .put("showOverlayMacd", t.showOverlayMacd)
                 .put("showAtr14", t.showAtr14)
                 .put("showSmcStructure", t.showSmcStructure)
                 .put("showFvg", t.showFvg)
                 .put("showVolumeProfile", t.showVolumeProfile)
                 .put("isLogScale", t.isLogScale)
+                .put("activeDrawingColorHex", t.activeDrawingColorHex)
+                .put("activeDrawingWidthDp", t.activeDrawingWidthDp.toDouble())
+                .put("isMagnetMode", t.isMagnetMode)
             arr.put(obj)
         }
         prefs.edit().putString(AppConfig.KEY_OPEN_TABS_JSON, arr.toString()).apply()
@@ -1528,9 +1554,14 @@ class WorkspaceRepository(context: Context) {
                 .put("horizontalLineColorHex", preferences.horizontalLineColorHex)
                 .put("verticalLineColorHex", preferences.verticalLineColorHex)
                 .put("chartGridColorHex", preferences.chartGridColorHex)
+                .put("defaultDrawingColorHex", preferences.defaultDrawingColorHex)
+                .put("defaultDrawingWidthDp", preferences.defaultDrawingWidthDp.toDouble())
+                .put("defaultDrawingWidthPx", preferences.defaultDrawingWidthDp.toDouble())
                 .put("candleFetchLimit", preferences.candleFetchLimit)
                 .put("zoomStepCandles", preferences.zoomStepCandles)
                 .put("drawingHitTolerancePx", preferences.drawingHitTolerancePx.toDouble())
+                .put("bollingerPeriod", preferences.bollingerPeriod)
+                .put("bollingerStdDev", preferences.bollingerStdDev.toDouble())
                 .put("hideWatchlistLogos", preferences.hideWatchlistLogos)
                 .put("showSymbolScreen", preferences.showSymbolScreen)
                 .put("chartVibrations", preferences.chartVibrations)
@@ -1569,11 +1600,16 @@ class WorkspaceRepository(context: Context) {
                     .put("showVwap", t.showVwap)
                     .put("showRsi14", t.showRsi14)
                     .put("showMacd", t.showMacd)
+                    .put("showOverlayMacd", t.showOverlayMacd)
                     .put("showAtr14", t.showAtr14)
                     .put("showSmcStructure", t.showSmcStructure)
                     .put("showFvg", t.showFvg)
                     .put("showVolumeProfile", t.showVolumeProfile)
                     .put("isLogScale", t.isLogScale)
+                    .put("activeDrawingColorHex", t.activeDrawingColorHex)
+                    .put("activeDrawingWidthDp", t.activeDrawingWidthDp.toDouble())
+                    .put("activeDrawingWidthPx", t.activeDrawingWidthDp.toDouble())
+                    .put("isMagnetMode", t.isMagnetMode)
                 tabsArr.put(tObj)
             }
 
@@ -1656,9 +1692,19 @@ class WorkspaceRepository(context: Context) {
                         prefsJson.optString("verticalLineColorHex", prefsJson.optString("vLineColor", "")),
                         cur.verticalLineColorHex
                     ),
+                    defaultDrawingColorHex = normalizeAndroidHex(
+                        prefsJson.optString("defaultDrawingColorHex", prefsJson.optString("defaultDrawingColor", "")),
+                        cur.defaultDrawingColorHex
+                    ),
+                    defaultDrawingWidthDp = prefsJson.optDouble(
+                        "defaultDrawingWidthDp",
+                        prefsJson.optDouble("defaultDrawingWidthPx", cur.defaultDrawingWidthDp.toDouble())
+                    ).toFloat().coerceIn(1.0f, 8.0f),
                     candleFetchLimit = prefsJson.optInt("candleFetchLimit", cur.candleFetchLimit).coerceIn(40, 5000),
                     zoomStepCandles = prefsJson.optInt("zoomStepCandles", cur.zoomStepCandles).coerceIn(2, 30),
                     drawingHitTolerancePx = prefsJson.optDouble("drawingHitTolerancePx", cur.drawingHitTolerancePx.toDouble()).toFloat().coerceIn(12f, 60f),
+                    bollingerPeriod = prefsJson.optInt("bollingerPeriod", cur.bollingerPeriod).coerceIn(5, 200),
+                    bollingerStdDev = prefsJson.optDouble("bollingerStdDev", cur.bollingerStdDev.toDouble()).toFloat().coerceIn(0.5f, 5.0f),
                     hideWatchlistLogos = prefsJson.optBoolean("hideWatchlistLogos", cur.hideWatchlistLogos),
                     showSymbolScreen = prefsJson.optBoolean("showSymbolScreen", cur.showSymbolScreen),
                     chartVibrations = prefsJson.optBoolean("chartVibrations", cur.chartVibrations),
@@ -1735,6 +1781,7 @@ class WorkspaceRepository(context: Context) {
             }
             if (openTabsArr != null && openTabsArr.length() > 0) {
                 val catalog = loadSymbolCatalog().associateBy { it.symbolCode.uppercase() }
+                val curPrefs = loadChartPreferences()
                 val parsedTabs = ArrayList<ChartTabState>(openTabsArr.length())
                 for (i in 0 until openTabsArr.length()) {
                     val obj = openTabsArr.optJSONObject(i) ?: continue
@@ -1745,6 +1792,8 @@ class WorkspaceRepository(context: Context) {
                     val tf = obj.optString("timeframe", def?.timeframe ?: "M15").uppercase()
                     val chartId = def?.chartId ?: "chart_${symCode.lowercase()}_custom"
                     val tabId = obj.optString("tabId", "tab_${symCode}_${tf}_$i")
+                    val rawChartType = obj.optString("chartType", "candlestick")
+                    val parsedChartType = ChartType.entries.find { it.name.equals(rawChartType, ignoreCase = true) } ?: ChartType.CANDLESTICK
                     parsedTabs.add(
                         ChartTabState(
                             tabId = tabId,
@@ -1753,6 +1802,7 @@ class WorkspaceRepository(context: Context) {
                             decimals = obj.optInt("decimals", def?.decimals ?: 2),
                             provider = provId,
                             timeframe = tf,
+                            chartType = parsedChartType,
                             visibleCandleCount = obj.optInt("visibleCount", AppConfig.DEFAULT_VISIBLE_CANDLES).coerceIn(AppConfig.MIN_VISIBLE_CANDLES, AppConfig.MAX_VISIBLE_CANDLES),
                             scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
                             showVolume = obj.optBoolean("showVolume", true),
@@ -1766,11 +1816,21 @@ class WorkspaceRepository(context: Context) {
                             showVwap = obj.optBoolean("showVwap", false),
                             showRsi14 = obj.optBoolean("showRsi14", false),
                             showMacd = obj.optBoolean("showMacd", false),
+                            showOverlayMacd = obj.optBoolean("showOverlayMacd", false),
                             showAtr14 = obj.optBoolean("showAtr14", false),
                             showSmcStructure = obj.optBoolean("showSmcStructure", false),
                             showFvg = obj.optBoolean("showFvg", false),
                             showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
                             isLogScale = obj.optBoolean("isLogScale", false),
+                            activeDrawingColorHex = normalizeAndroidHex(
+                                obj.optString("activeDrawingColorHex", curPrefs.defaultDrawingColorHex),
+                                curPrefs.defaultDrawingColorHex
+                            ),
+                            activeDrawingWidthDp = obj.optDouble(
+                                "activeDrawingWidthDp",
+                                obj.optDouble("activeDrawingWidthPx", curPrefs.defaultDrawingWidthDp.toDouble())
+                            ).toFloat().coerceIn(1.0f, 8.0f),
+                            isMagnetMode = obj.optBoolean("isMagnetMode", false),
                             drawings = loadDrawingsForChart(chartId)
                         )
                     )

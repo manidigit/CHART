@@ -141,10 +141,12 @@ fun ChartViewScreen(
     onToggleVwap: () -> Unit = {},
     onToggleRsi14: () -> Unit = {},
     onToggleMacd: () -> Unit = {},
+    onToggleOverlayMacd: () -> Unit = {},
     onToggleAtr14: () -> Unit = {},
     onToggleSmcStructure: () -> Unit = {},
     onToggleFvg: () -> Unit = {},
     onToggleVolumeProfile: () -> Unit = {},
+    onUpdateBollingerParams: (Int, Float) -> Unit = { _, _ -> },
     onZoom: (Boolean) -> Unit,
     onPinchZoom: (Float) -> Unit,
     onPanCandles: (Int) -> Unit,
@@ -173,6 +175,8 @@ fun ChartViewScreen(
     val context = LocalContext.current
     val snapshotCopiedMsg = stringResource(R.string.snapshot_copied_success)
     var activeSheet by rememberSaveable { mutableStateOf(ChartControlSheet.NONE) }
+    val indicatorsScrollState = rememberScrollState()
+    val symbolPickerScrollState = rememberScrollState()
 
     Column(
         modifier = modifier
@@ -525,8 +529,8 @@ fun ChartViewScreen(
                     val hasOverlayIndicator = activeTab.showSma20 || activeTab.showSma50 || activeTab.showSma200 ||
                         activeTab.showEma20 || activeTab.showEma50 || activeTab.showBollinger ||
                         activeTab.showSupertrend || activeTab.showVwap || activeTab.showRsi14 ||
-                        activeTab.showMacd || activeTab.showAtr14 || activeTab.showSmcStructure ||
-                        activeTab.showFvg || activeTab.showVolumeProfile
+                        activeTab.showMacd || activeTab.showOverlayMacd || activeTab.showAtr14 ||
+                        activeTab.showSmcStructure || activeTab.showFvg || activeTab.showVolumeProfile
                     val hasActiveIndicator = hasOverlayIndicator || activeTab.showVolume
                     Box(
                         modifier = Modifier
@@ -735,7 +739,7 @@ fun ChartViewScreen(
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .verticalScroll(rememberScrollState()),
+                                        .verticalScroll(indicatorsScrollState),
                                     verticalArrangement = Arrangement.spacedBy(8.dp)
                                 ) {
                                     Text(
@@ -761,6 +765,8 @@ fun ChartViewScreen(
                                         fontWeight = FontWeight.Bold
                                     )
 
+                                    val bbPeriod = preferences.bollingerPeriod.coerceIn(5, 200)
+                                    val bbStdDev = preferences.bollingerStdDev.coerceIn(0.5f, 5.0f)
                                     val overlaySpecs = listOf(
                                         StudyRowSpec("EMA 20", "Exponential Moving Average (20)", Color(0xFF38BDF8), activeTab.showEma20, onToggleEma20, "chart_ema20_toggle_button"),
                                         StudyRowSpec("EMA 50", "Exponential Moving Average (50)", Color(0xFF06B6D4), activeTab.showEma50, onToggleEma50, "chart_ema50_toggle_button"),
@@ -769,7 +775,8 @@ fun ChartViewScreen(
                                         StudyRowSpec("SMA 200", "Institutional Trend Baseline (200)", Color(0xFFF43F5E), activeTab.showSma200, onToggleSma200, "chart_sma200_toggle_button"),
                                         StudyRowSpec("Supertrend (10, 3)", "ATR Dynamic Trend Ribbon", Color(0xFF22C55E), activeTab.showSupertrend, onToggleSupertrend, "chart_supertrend_toggle_button"),
                                         StudyRowSpec("Session VWAP", "Volume Weighted Average Price", Color(0xFFEAB308), activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button"),
-                                        StudyRowSpec("Bollinger Bands (20, 2)", "Volatility Channel ±2σ", Color(0xFFA855F7), activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button")
+                                        StudyRowSpec("Bollinger Bands ($bbPeriod, $bbStdDev)", "Volatility Channel ±${bbStdDev}σ (قابل تنظیم)", Color(0xFFA855F7), activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button"),
+                                        StudyRowSpec("MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی (بدون پنل جداگانه)", Color(0xFF2962FF), activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button")
                                     )
 
                                     for (spec in overlaySpecs) {
@@ -810,6 +817,92 @@ fun ChartViewScreen(
                                                 checked = spec.checked,
                                                 onCheckedChange = { spec.onToggle() }
                                             )
+                                        }
+                                    }
+
+                                    // Bollinger Bands Inline Parameter Customizer (Period & StdDev)
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(MaterialTheme.colorScheme.background)
+                                            .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                            .padding(10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                                    ) {
+                                        Text(
+                                            text = "تنظیمات باندهای بولینگر (Bollinger Period & StdDev):",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFFA855F7)
+                                        )
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "Period:",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            for (pOpt in listOf(10, 14, 20, 30, 50)) {
+                                                val sel = bbPeriod == pOpt
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(if (sel) Color(0xFFA855F7).copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
+                                                        .border(1.dp, if (sel) Color(0xFFA855F7) else palette.cardBorder, RoundedCornerShape(6.dp))
+                                                        .clickable { onUpdateBollingerParams(pOpt, bbStdDev) }
+                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        .testTag("bb_period_chip_$pOpt")
+                                                ) {
+                                                    Text(
+                                                        text = pOpt.toString(),
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                                                        color = if (sel) Color(0xFFA855F7) else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                            }
+                                        }
+                                        Row(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .horizontalScroll(rememberScrollState()),
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "StdDev:",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            for (sdOpt in listOf(1.5f, 2.0f, 2.5f, 3.0f)) {
+                                                val sel = kotlin.math.abs(bbStdDev - sdOpt) < 0.05f
+                                                Box(
+                                                    modifier = Modifier
+                                                        .clip(RoundedCornerShape(6.dp))
+                                                        .background(if (sel) Color(0xFFA855F7).copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
+                                                        .border(1.dp, if (sel) Color(0xFFA855F7) else palette.cardBorder, RoundedCornerShape(6.dp))
+                                                        .clickable { onUpdateBollingerParams(bbPeriod, sdOpt) }
+                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        .testTag("bb_stddev_chip_${(sdOpt * 10).toInt()}")
+                                                ) {
+                                                    Text(
+                                                        text = "${sdOpt}σ",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                                                        color = if (sel) Color(0xFFA855F7) else MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
 

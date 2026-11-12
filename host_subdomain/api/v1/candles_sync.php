@@ -112,11 +112,13 @@ $syncMode = 'INITIAL_BACKFILL';
 $incomingDeltaCandles = [];
 $fetchedNewBars = 0;
 
-if ($pdo !== null && $storedCount >= 5 && !$forceBackfill && $maxOpenMs >= $expectedLastClosedOpenMs) {
+$minRequiredBarsForCache = ($timeframe === 'D1' || $timeframe === 'W1') ? 120 : 30;
+
+if ($pdo !== null && $storedCount >= $minRequiredBarsForCache && !$forceBackfill && $maxOpenMs >= $expectedLastClosedOpenMs) {
     // [STATE 1: DB_CACHE_HIT] Historical candles up to the latest closed UTC bucket are already stored in MariaDB.
     // ZERO external API / WebSocket calls are made!
     $syncMode = 'DB_CACHE_HIT';
-} elseif ($pdo !== null && $storedCount > 0 && !$forceBackfill && $maxOpenMs < $expectedLastClosedOpenMs) {
+} elseif ($pdo !== null && $storedCount >= $minRequiredBarsForCache && !$forceBackfill && $maxOpenMs < $expectedLastClosedOpenMs) {
     // [STATE 2: DELTA_SYNC] Historical candles exist in MariaDB up to $maxOpenMs.
     // Fetch ONLY the missing newly closed candles since $maxOpenMs!
     $syncMode = 'DELTA_SYNC';

@@ -28,6 +28,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showSupertrend ? 1 : 0) +
       (activeTab.showVwap ? 1 : 0) +
       (activeTab.showBollinger ? 1 : 0) +
+      (activeTab.showOverlayMacd ? 1 : 0) +
       (activeTab.showVolume !== false ? 1 : 0) +
       (activeTab.showRsi14 ? 1 : 0) +
       (activeTab.showMacd ? 1 : 0) +
@@ -284,7 +285,32 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('#06B6D4', 'EMA 50', isFa ? 'میانگین متحرک نمایی ۵۰ دوره‌ای' : '50-Period Exponential Moving Average', activeTab.showEma50, 'toggle-ema50')}
           ${renderToggleRow('#26A69A', 'Supertrend (10, 3)', isFa ? 'خط روند هوشمند سوپرترند (سبز صعودی / قرمز نزولی)' : 'Dynamic ATR Supertrend trailing stop (Period 10, Mult 3)', activeTab.showSupertrend, 'toggle-supertrend')}
           ${renderToggleRow('#EAB308', 'Session VWAP', isFa ? 'میانگین قیمت وزنی حجم (تراز سشن روزانه UTC)' : 'Session-Anchored Volume Weighted Average Price', activeTab.showVwap, 'toggle-vwap')}
-          ${renderToggleRow('#A855F7', 'Bollinger Bands (20, 2)', isFa ? 'کانال نوسان بولینگر (دوره ۲۰ و انحراف معیار ۲)' : '20-Period Bollinger volatility channel (±2σ)', activeTab.showBollinger, 'toggle-bollinger')}
+          ${renderToggleRow('#A855F7', `Bollinger Bands (${state.chartPreferences.bollingerPeriod || 20}, ${state.chartPreferences.bollingerStdDev || 2})`, isFa ? 'کانال نوسان بولینگر با قابلیت تنظیم دوره (Period) و انحراف معیار (StdDev)' : 'Configurable Bollinger volatility channel (Period & StdDev)', activeTab.showBollinger, 'toggle-bollinger')}
+          <div class="card-subtle" style="padding: 8px 11px; margin-top: -4px; border-top: 1px dashed var(--border);">
+            <div class="row-between" style="font-size: 11.5px; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
+              <span style="color: var(--text-muted);">${isFa ? 'دوره باند بولینگر (Period):' : 'Bollinger Period:'}</span>
+              <div class="chip-group ltr-num">
+                ${[10, 14, 20, 30, 50]
+                  .map(
+                    (pVal) =>
+                      `<button type="button" class="chip ${Number(state.chartPreferences.bollingerPeriod || 20) === pVal ? 'active' : ''}" data-action="set-bb-period" data-period="${pVal}">${pVal}</button>`
+                  )
+                  .join('')}
+              </div>
+            </div>
+            <div class="row-between" style="font-size: 11.5px; flex-wrap: wrap; gap: 6px;">
+              <span style="color: var(--text-muted);">${isFa ? 'ضریب انحراف معیار (StdDev):' : 'Bollinger StdDev:'}</span>
+              <div class="chip-group ltr-num">
+                ${[1.5, 2.0, 2.5, 3.0]
+                  .map(
+                    (sdVal) =>
+                      `<button type="button" class="chip ${Math.abs(Number(state.chartPreferences.bollingerStdDev || 2.0) - sdVal) < 0.05 ? 'active' : ''}" data-action="set-bb-stddev" data-stddev="${sdVal}">${sdVal}σ</button>`
+                  )
+                  .join('')}
+              </div>
+            </div>
+          </div>
+          ${renderToggleRow('#2962FF', isFa ? 'MACD Classic (روی چارت اصلی — Overlay)' : 'MACD Classic (Main Chart Overlay)', isFa ? 'نمایش مکدی کلاسیک (۱۲، ۲۶، ۹) مستقیماً روی خود چارت قیمت بدون ایجاد پنل جداگانه در پایین' : 'Render Classic MACD (12, 26, 9) directly overlaid on the main price canvas', activeTab.showOverlayMacd, 'toggle-overlay-macd')}
 
           <div style="font-size: 11px; font-weight: 800; color: var(--gold); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 8px;">
             ${isFa ? '۲. ساختار بازار هوشمند (SMC) و پروفایل حجم (Volume Profile)' : '2. Smart Money Concepts (SMC) & Volume Profile'}

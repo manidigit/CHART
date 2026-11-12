@@ -113,6 +113,9 @@ fun SettingsScreen(
     onResetColors: () -> Unit,
     onUpdateAlgoParams: (Int, Int, Float) -> Unit,
     onResetAlgoParams: () -> Unit,
+    onUpdateDefaultDrawingWidth: (Float) -> Unit = {},
+    onUpdateBollingerParams: (Int, Float) -> Unit = { _, _ -> },
+    onResetAllPreferences: () -> Unit = {},
     onUpdateTradingViewPreference: ((ChartPreferences) -> ChartPreferences) -> Unit = {},
     onSaveApiKeys: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onAddCustomSymbol: (String, String, Int, ProviderId) -> Unit,
@@ -473,6 +476,74 @@ fun SettingsScreen(
                                         .background(chartPreferences.bullCandleColor)
                                 )
                             }
+                        }
+
+                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+
+                        // Persistent Default Drawing Line Stroke Width (1px / 2px / 3px / 4px)
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (currentLanguage == AppLanguage.FA) "ضخامت پیش‌فرض خطوط ترسیمی" else "Default Drawing Line Width",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (currentLanguage == AppLanguage.FA) "در حافظه باقی می‌ماند تا زمان بازنشانی (Reset)" else "Persists across sessions until Reset",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Row(
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                for (wOpt in listOf(1.0f, 2.0f, 3.0f, 4.0f)) {
+                                    val isSel = kotlin.math.abs(chartPreferences.defaultDrawingWidthDp - wOpt) < 0.35f
+                                    Box(
+                                        modifier = Modifier
+                                            .clip(RoundedCornerShape(6.dp))
+                                            .background(if (isSel) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f) else MaterialTheme.colorScheme.background)
+                                            .border(1.dp, if (isSel) MaterialTheme.colorScheme.primary else financialPalette.cardBorder, RoundedCornerShape(6.dp))
+                                            .clickable { onUpdateDefaultDrawingWidth(wOpt) }
+                                            .padding(horizontal = 8.dp, vertical = 5.dp)
+                                            .testTag("settings_default_line_width_${wOpt.toInt()}px")
+                                    ) {
+                                        Text(
+                                            text = "${wOpt.toInt()}px",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontWeight = if (isSel) FontWeight.Bold else FontWeight.Medium,
+                                            color = if (isSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+
+                        // Unified Reset All Settings to Factory Defaults Button
+                        OutlinedButton(
+                            onClick = onResetAllPreferences,
+                            shape = RoundedCornerShape(8.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.error.copy(alpha = 0.65f)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 42.dp)
+                                .testTag("reset_all_settings_button")
+                        ) {
+                            Text(
+                                text = if (currentLanguage == AppLanguage.FA) "↺ بازنشانی تمامی تنظیمات و رنگ‌ها به حالت اولیه (Reset)" else "↺ Reset All Colors, Line Widths & Settings to Default",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.error
+                            )
                         }
                     }
                 }
@@ -1114,6 +1185,76 @@ fun SettingsScreen(
                             onCheckedChange = { v -> onUpdateTradingViewPreference { it.copy(showHighLowLabels = v) } },
                             testTag = "switch_tv_high_low_labels"
                         )
+
+                        HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+
+                        // Customizable Bollinger Bands (Period & StdDev) in Chart Settings
+                        val bbPeriod = chartPreferences.bollingerPeriod.coerceIn(5, 200)
+                        val bbStdDev = chartPreferences.bollingerStdDev.coerceIn(0.5f, 5.0f)
+                        Text(
+                            text = if (currentLanguage == AppLanguage.FA) "تنظیمات اندیکاتور باندهای بولینگر (Bollinger Bands)" else "Bollinger Bands Parameters (Period & StdDev)",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "Period:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            for (pOpt in listOf(10, 14, 20, 30, 50)) {
+                                val sel = bbPeriod == pOpt
+                                FilterChip(
+                                    selected = sel,
+                                    onClick = { onUpdateBollingerParams(pOpt, bbStdDev) },
+                                    label = {
+                                        Text(
+                                            text = pOpt.toString(),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("settings_bb_period_$pOpt")
+                                )
+                            }
+                        }
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "StdDev:",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            for (sdOpt in listOf(1.5f, 2.0f, 2.5f, 3.0f)) {
+                                val sel = kotlin.math.abs(bbStdDev - sdOpt) < 0.05f
+                                FilterChip(
+                                    selected = sel,
+                                    onClick = { onUpdateBollingerParams(bbPeriod, sdOpt) },
+                                    label = {
+                                        Text(
+                                            text = "${sdOpt}σ",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily
+                                        )
+                                    },
+                                    modifier = Modifier.testTag("settings_bb_stddev_${(sdOpt * 10).toInt()}")
+                                )
+                            }
+                        }
                     }
                 }
                 }

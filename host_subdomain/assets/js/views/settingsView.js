@@ -464,6 +464,26 @@ export function renderSettingsModal(i18n) {
             </svg>
           </div>
         </div>
+
+        <div class="row-between" style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); flex-wrap: wrap; gap: 8px;">
+          <span style="font-size: 12px; font-weight: 600; color: var(--text);">
+            ${isFa ? 'ضخامت پیش‌فرض خطوط ترسیمی (پایدار در حافظه):' : 'Default Drawing Line Width (Persistent):'}
+          </span>
+          <div class="chip-group ltr-num">
+            ${[1, 2, 3, 4]
+              .map(
+                (wVal) =>
+                  `<button type="button" class="chip ${Math.round(Number(p.defaultDrawingWidthPx || 2)) === wVal ? 'active' : ''}" data-action="set-default-draw-width" data-width="${wVal}">${wVal}px</button>`
+              )
+              .join('')}
+          </div>
+        </div>
+
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end;">
+          <button type="button" class="btn btn-sm" style="color: var(--bear); border-color: var(--bear);" data-action="reset-all-defaults">
+            ↺ ${isFa ? 'بازنشانی تمامی تنظیمات و رنگ‌ها به حالت اولیه (Reset All)' : 'Reset All Settings & Colors to Factory Defaults'}
+          </button>
+        </div>
       </div>
 
       <div class="card-subtle">
@@ -541,6 +561,37 @@ export function renderSettingsModal(i18n) {
           <div class="row-between ltr-num" style="font-size: 10px; color: var(--text-dim);">
             <span>12px</span><span>28px</span><span>44px</span><span>60px</span>
           </div>
+        </div>
+
+        <div style="margin-top: 14px; padding-top: 10px; border-top: 1px solid var(--border);">
+          <div class="row-between" style="font-size: 12px; margin-bottom: 8px; flex-wrap: wrap; gap: 6px;">
+            <span>${isFa ? 'دوره پیش‌فرض باند بولینگر (Bollinger Period):' : 'Default Bollinger Bands Period:'}</span>
+            <div class="chip-group ltr-num">
+              ${[10, 14, 20, 30, 50]
+                .map(
+                  (pVal) =>
+                    `<button type="button" class="chip ${Number(p.bollingerPeriod || 20) === pVal ? 'active' : ''}" data-action="set-bb-period" data-period="${pVal}">${pVal}</button>`
+                )
+                .join('')}
+            </div>
+          </div>
+          <div class="row-between" style="font-size: 12px; flex-wrap: wrap; gap: 6px;">
+            <span>${isFa ? 'ضریب انحراف معیار بولینگر (StdDev Multiplier):' : 'Bollinger StdDev Multiplier:'}</span>
+            <div class="chip-group ltr-num">
+              ${[1.5, 2.0, 2.5, 3.0]
+                .map(
+                  (sdVal) =>
+                    `<button type="button" class="chip ${Math.abs(Number(p.bollingerStdDev || 2.0) - sdVal) < 0.05 ? 'active' : ''}" data-action="set-bb-stddev" data-stddev="${sdVal}">${sdVal}σ</button>`
+                )
+                .join('')}
+            </div>
+          </div>
+        </div>
+
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end;">
+          <button type="button" class="btn btn-sm" style="color: var(--bear); border-color: var(--bear);" data-action="reset-all-defaults">
+            ↺ ${isFa ? 'بازنشانی تمامی تنظیمات و رنگ‌ها به حالت اولیه (Reset All)' : 'Reset All Settings & Colors to Factory Defaults'}
+          </button>
         </div>
       </div>
 

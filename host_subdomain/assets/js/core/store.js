@@ -29,6 +29,10 @@ export const DEFAULT_PREFS = {
   showCountdownToBarClose: true,
   showPrevCloseLine: true,
   showHighLowLabels: true,
+  defaultDrawingColorHex: '#2962FF',
+  defaultDrawingWidthPx: 2.0,
+  bollingerPeriod: 20,
+  bollingerStdDev: 2.0,
 };
 
 export const PROVIDER_METHODS_CATALOG = [
@@ -611,6 +615,8 @@ export function resetColorsToDefault() {
   state.chartPreferences.trendColor = DEFAULT_PREFS.trendColor;
   state.chartPreferences.hLineColor = DEFAULT_PREFS.hLineColor;
   state.chartPreferences.vLineColor = DEFAULT_PREFS.vLineColor;
+  state.chartPreferences.defaultDrawingColorHex = DEFAULT_PREFS.defaultDrawingColorHex;
+  state.chartPreferences.defaultDrawingWidthPx = DEFAULT_PREFS.defaultDrawingWidthPx;
   savePreferences();
 }
 
@@ -618,7 +624,19 @@ export function resetAlgoParamsToDefault() {
   state.chartPreferences.candleFetchLimit = DEFAULT_PREFS.candleFetchLimit;
   state.chartPreferences.zoomStepCandles = DEFAULT_PREFS.zoomStepCandles;
   state.chartPreferences.drawingHitTolerancePx = DEFAULT_PREFS.drawingHitTolerancePx;
+  state.chartPreferences.bollingerPeriod = DEFAULT_PREFS.bollingerPeriod;
+  state.chartPreferences.bollingerStdDev = DEFAULT_PREFS.bollingerStdDev;
   savePreferences();
+}
+
+export function resetAllPreferencesToDefault() {
+  Object.assign(state.chartPreferences, { ...DEFAULT_PREFS });
+  for (const tab of state.openTabs) {
+    tab.activeDrawingColor = DEFAULT_PREFS.defaultDrawingColorHex;
+    tab.activeDrawingWidthPx = DEFAULT_PREFS.defaultDrawingWidthPx;
+  }
+  savePreferences();
+  saveOpenTabsToStorage();
 }
 
 export function saveSymbolsToStorage(skipCloudSync = false) {
@@ -668,6 +686,7 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showSupertrend: Boolean(t.showSupertrend),
     showVwap: Boolean(t.showVwap),
     showBollinger: Boolean(t.showBollinger),
+    showOverlayMacd: Boolean(t.showOverlayMacd),
     showVolume: t.showVolume !== false,
     showRsi14: Boolean(t.showRsi14),
     showMacd: Boolean(t.showMacd),
@@ -675,6 +694,9 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showSmcStructure: Boolean(t.showSmcStructure),
     showFvg: Boolean(t.showFvg),
     showVolumeProfile: Boolean(t.showVolumeProfile),
+    isMagnetMode: Boolean(t.isMagnetMode),
+    activeDrawingColor: t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',
+    activeDrawingWidthPx: Number(t.activeDrawingWidthPx || state.chartPreferences.defaultDrawingWidthPx || 2.0),
   }));
   localStorage.setItem(STORAGE_KEY_OPEN_TABS, JSON.stringify(clean));
   if (!skipCloudSync) scheduleDebouncedCloudSync();
@@ -740,23 +762,22 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
       }
     }
   } else if (normTf === 'D1' && (!current || current.length === 0)) {
+    // Do NOT overwrite state.candleCache[exactKey] with short intraday-derived D1 bars,
+    // so fetchFromBackend knows genuine D1 historical backfill is still required.
     const h4Key = `${symbolCode}_${provider}_H4`;
     const h4 = state.candleCache[h4Key] || loadCandlesFromLocalStorage(h4Key, 'H4');
     if (h4 && h4.length > 0) {
       current = TimeframeAggregator.aggregateCandles(h4, 'D1');
-      if (current.length > 0) state.candleCache[exactKey] = current;
     } else {
       const h1Key = `${symbolCode}_${provider}_H1`;
       const h1 = state.candleCache[h1Key] || loadCandlesFromLocalStorage(h1Key, 'H1');
       if (h1 && h1.length > 0) {
         current = TimeframeAggregator.aggregateCandles(h1, 'D1');
-        if (current.length > 0) state.candleCache[exactKey] = current;
       } else {
         const m15Key = `${symbolCode}_${provider}_M15`;
         const m15 = state.candleCache[m15Key] || loadCandlesFromLocalStorage(m15Key, 'M15');
         if (m15 && m15.length > 0) {
           current = TimeframeAggregator.aggregateCandles(m15, 'D1');
-          if (current.length > 0) state.candleCache[exactKey] = current;
         }
       }
     }
@@ -765,13 +786,11 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
     const d1 = state.candleCache[d1Key] || loadCandlesFromLocalStorage(d1Key, 'D1');
     if (d1 && d1.length > 0) {
       current = TimeframeAggregator.aggregateCandles(d1, 'W1');
-      if (current.length > 0) state.candleCache[exactKey] = current;
     } else {
       const h4Key = `${symbolCode}_${provider}_H4`;
       const h4 = state.candleCache[h4Key] || loadCandlesFromLocalStorage(h4Key, 'H4');
       if (h4 && h4.length > 0) {
         current = TimeframeAggregator.aggregateCandles(h4, 'W1');
-        if (current.length > 0) state.candleCache[exactKey] = current;
       }
     }
   }

@@ -27,6 +27,8 @@ data class ChartSettingsGroup(
     val maxVisibleCandles: Int,
     val zoomStepCandles: Int,
     val drawingHitTolerancePx: Float,
+    val bollingerPeriod: Int,
+    val bollingerStdDev: Float,
     val logarithmicScaleDefault: Boolean,
     val rememberLastChartOnDevice: Boolean,
     val hideTabBarInLandscape: Boolean,
@@ -49,12 +51,14 @@ data class ThemeSettingsGroup(
     val trendLineColorHex: String,
     val horizontalLineColorHex: String,
     val verticalLineColorHex: String,
-    val chartGridColorHex: String
+    val chartGridColorHex: String,
+    val defaultDrawingColorHex: String,
+    val defaultDrawingWidthDp: Float
 )
 
 /**
  * Dynamic user preferences for chart visual theme colors, algorithm parameters,
- * and categorized TradingView switches synced with the Central Core Engine.
+ * drawing defaults, Bollinger parameters, and categorized TradingView switches synced with the Central Core Engine.
  */
 data class ChartPreferences(
     // Group 5 (THEME): Visual Theme Colors (Stored as 32-bit ARGB hex strings e.g. "FF26A69A")
@@ -64,13 +68,17 @@ data class ChartPreferences(
     val horizontalLineColorHex: String = "FF38BDF8", // Sky Blue H-Line
     val verticalLineColorHex: String = "FFF59E0B",   // Amber V-Line
     val chartGridColorHex: String = "FF2A2E39",     // TradingView Grid Dark (#2A2E39)
+    val defaultDrawingColorHex: String = "FF2962FF", // Persistent default drawing line color
+    val defaultDrawingWidthDp: Float = 2.0f,        // Persistent default drawing line stroke width (px/dp)
 
-    // Group 2 (CHART): Algorithm & Scale Calculation Parameters
+    // Group 2 (CHART): Algorithm, Indicator & Scale Calculation Parameters
     val candleFetchLimit: Int = 500,
     val minVisibleCandles: Int = 12,
     val maxVisibleCandles: Int = 5000,
     val zoomStepCandles: Int = 8,
     val drawingHitTolerancePx: Float = 28f,
+    val bollingerPeriod: Int = 20,
+    val bollingerStdDev: Float = 2.0f,
 
     // Group 3 (NOTIFICATIONS & HAPTICS) + Group 2 (CHART) Toggles
     val hideWatchlistLogos: Boolean = false,
@@ -98,6 +106,8 @@ data class ChartPreferences(
             maxVisibleCandles = maxVisibleCandles,
             zoomStepCandles = zoomStepCandles,
             drawingHitTolerancePx = drawingHitTolerancePx,
+            bollingerPeriod = bollingerPeriod,
+            bollingerStdDev = bollingerStdDev,
             logarithmicScaleDefault = logarithmicScaleDefault,
             rememberLastChartOnDevice = rememberLastChartOnDevice,
             hideTabBarInLandscape = hideTabBarInLandscape,
@@ -122,7 +132,9 @@ data class ChartPreferences(
             trendLineColorHex = trendLineColorHex,
             horizontalLineColorHex = horizontalLineColorHex,
             verticalLineColorHex = verticalLineColorHex,
-            chartGridColorHex = chartGridColorHex
+            chartGridColorHex = chartGridColorHex,
+            defaultDrawingColorHex = defaultDrawingColorHex,
+            defaultDrawingWidthDp = defaultDrawingWidthDp
         )
 
     fun parseColor(hex: String, fallback: Color): Color {

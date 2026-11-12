@@ -258,6 +258,10 @@ export async function uploadWorkspaceSync() {
       trendLineColorHex: normalizeHexForAndroid(p.trendColor, 'FF2962FF'),
       horizontalLineColorHex: normalizeHexForAndroid(p.hLineColor, 'FFF59E0B'),
       verticalLineColorHex: normalizeHexForAndroid(p.vLineColor, 'FFA855F7'),
+      defaultDrawingColorHex: normalizeHexForAndroid(p.defaultDrawingColorHex || p.trendColor, 'FF2962FF'),
+      defaultDrawingWidthDp: Number(p.defaultDrawingWidthPx || 2.0),
+      bollingerPeriod: Number(p.bollingerPeriod || 20),
+      bollingerStdDev: Number(p.bollingerStdDev || 2.0),
       logarithmicScaleDefault: Boolean(p.isLogScale),
       rememberLastChartOnDevice: Boolean(p.rememberLastChart),
       pickerVibrations: Boolean(p.pickerVibrates),
@@ -292,9 +296,24 @@ export async function uploadWorkspaceSync() {
         visibleCount: t.visibleCount,
         scrollOffset: t.scrollOffset,
         showSma20: Boolean(t.showSma20),
+        showSma50: Boolean(t.showSma50),
+        showSma200: Boolean(t.showSma200),
+        showEma20: Boolean(t.showEma20),
         showEma50: Boolean(t.showEma50),
+        showSupertrend: Boolean(t.showSupertrend),
+        showVwap: Boolean(t.showVwap),
         showBollinger: Boolean(t.showBollinger),
+        showOverlayMacd: Boolean(t.showOverlayMacd),
+        showRsi14: Boolean(t.showRsi14),
+        showMacd: Boolean(t.showMacd),
+        showAtr14: Boolean(t.showAtr14),
+        showSmcStructure: Boolean(t.showSmcStructure),
+        showFvg: Boolean(t.showFvg),
+        showVolumeProfile: Boolean(t.showVolumeProfile),
         showVolume: t.showVolume !== false,
+        isMagnetMode: Boolean(t.isMagnetMode),
+        activeDrawingColorHex: normalizeHexForAndroid(t.activeDrawingColorHex || p.defaultDrawingColorHex, 'FF2962FF'),
+        activeDrawingWidthDp: Number(t.activeDrawingWidthPx || p.defaultDrawingWidthPx || 2.0),
       })),
     };
     const res = await fetch('./api/v1/workspace_sync.php', {
@@ -350,6 +369,10 @@ export async function downloadWorkspaceSync() {
         if (p.trendLineColorHex && !p.trendColor) mappedPrefs.trendColor = normalizeHexForWeb(p.trendLineColorHex, '#2962FF');
         if (p.horizontalLineColorHex && !p.hLineColor) mappedPrefs.hLineColor = normalizeHexForWeb(p.horizontalLineColorHex, '#F59E0B');
         if (p.verticalLineColorHex && !p.vLineColor) mappedPrefs.vLineColor = normalizeHexForWeb(p.verticalLineColorHex, '#A855F7');
+        if (p.defaultDrawingColorHex) mappedPrefs.defaultDrawingColorHex = normalizeHexForWeb(p.defaultDrawingColorHex, '#2962FF');
+        if (p.defaultDrawingWidthDp !== undefined) mappedPrefs.defaultDrawingWidthPx = Number(p.defaultDrawingWidthDp || 2.0);
+        if (p.bollingerPeriod !== undefined) mappedPrefs.bollingerPeriod = Math.max(5, Math.min(200, Number(p.bollingerPeriod || 20)));
+        if (p.bollingerStdDev !== undefined) mappedPrefs.bollingerStdDev = Math.max(0.5, Math.min(5.0, Number(p.bollingerStdDev || 2.0)));
         if (p.logarithmicScaleDefault !== undefined && p.isLogScale === undefined) mappedPrefs.isLogScale = Boolean(p.logarithmicScaleDefault);
         if (p.rememberLastChartOnDevice !== undefined && p.rememberLastChart === undefined) mappedPrefs.rememberLastChart = Boolean(p.rememberLastChartOnDevice);
         if (p.pickerVibrations !== undefined && p.pickerVibrates === undefined) mappedPrefs.pickerVibrates = Boolean(p.pickerVibrations);
@@ -407,8 +430,21 @@ export async function downloadWorkspaceSync() {
             showVolume: t.showVolume !== false,
             volumePaneRatio: 0.22,
             showSma20: Boolean(t.showSma20),
+            showSma50: Boolean(t.showSma50),
+            showSma200: Boolean(t.showSma200),
+            showEma20: Boolean(t.showEma20),
             showEma50: Boolean(t.showEma50),
+            showSupertrend: Boolean(t.showSupertrend),
+            showVwap: Boolean(t.showVwap),
             showBollinger: Boolean(t.showBollinger),
+            showOverlayMacd: Boolean(t.showOverlayMacd),
+            showRsi14: Boolean(t.showRsi14),
+            showMacd: Boolean(t.showMacd),
+            showAtr14: Boolean(t.showAtr14),
+            showSmcStructure: Boolean(t.showSmcStructure),
+            showFvg: Boolean(t.showFvg),
+            showVolumeProfile: Boolean(t.showVolumeProfile),
+            isMagnetMode: Boolean(t.isMagnetMode),
             isLogScale: Boolean(state.chartPreferences.isLogScale),
             selectedRangePreset: null,
             visibleCount: Number(t.visibleCount || 48),
@@ -418,8 +454,8 @@ export async function downloadWorkspaceSync() {
             hoverIndex: null,
             hoverY: null,
             activeTool: 'cursor',
-            activeDrawingColorHex: '#2962FF',
-            activeDrawingWidthPx: 2.0,
+            activeDrawingColorHex: normalizeHexForWeb(t.activeDrawingColorHex || state.chartPreferences.defaultDrawingColorHex, '#2962FF'),
+            activeDrawingWidthPx: Number(t.activeDrawingWidthDp || state.chartPreferences.defaultDrawingWidthPx || 2.0),
             selectedDrawingId: null,
             pendingTrendStart: null,
             drawings: state.drawingsByChartId[`${code}_${tf}`] || [],
@@ -613,10 +649,12 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 500, fo
   const safeLimit = Math.max(40, Math.min(5000, Number(limit) || 500));
   const nowMs = Date.now();
   const cacheKey = `${symbolCode}_${provider}_${normTf}`;
-  const existingCached = state.candleCache[cacheKey] || getCachedOrAggregatedCandles(symbolCode, provider, normTf);
+  const exactCached = state.candleCache[cacheKey];
+  const existingCached = exactCached || getCachedOrAggregatedCandles(symbolCode, provider, normTf);
+  const minBarsForDelta = normTf === 'D1' || normTf === 'W1' ? 120 : 30;
   const lastLocalOpenMs =
-    existingCached && existingCached.length >= 20
-      ? Number(existingCached[existingCached.length - 1].open_time_utc_ms || 0)
+    exactCached && exactCached.length >= minBarsForDelta
+      ? Number(exactCached[exactCached.length - 1].open_time_utc_ms || 0)
       : 0;
 
   const prefs = state.chartPreferences || {};
