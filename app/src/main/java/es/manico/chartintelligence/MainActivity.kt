@@ -42,8 +42,6 @@ import es.manico.chartintelligence.ui.screens.SettingsScreen
 import es.manico.chartintelligence.ui.screens.WatchlistScreen
 import es.manico.chartintelligence.ui.state.MainViewModel
 import es.manico.chartintelligence.ui.state.WorkspaceScreen
-import android.content.res.Configuration
-import androidx.compose.ui.platform.LocalConfiguration
 import es.manico.chartintelligence.ui.theme.ChartIntelligenceTheme
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 
@@ -62,11 +60,7 @@ fun ChartIntelligenceApp(
     mainViewModel: MainViewModel = viewModel()
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
-    val configuration = LocalConfiguration.current
-    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
-    val hideBottomBar = state.currentScreen == WorkspaceScreen.CHART_VIEW &&
-        state.chartPreferences.hideTabBarInLandscape &&
-        isLandscape
+    val hideBottomBar = state.currentScreen == WorkspaceScreen.CHART_VIEW
 
     val handleSignOut: () -> Unit = {
         mainViewModel.signOut()

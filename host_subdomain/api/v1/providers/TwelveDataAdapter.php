@@ -19,6 +19,8 @@ use ChartIntelligence\Core\Database;
  */
 final class TwelveDataAdapter
 {
+    public static string $lastError = '';
+
     public static function hasConfiguredApiKey(string $customApiKey = ''): bool
     {
         if (trim($customApiKey) !== '') {
@@ -36,10 +38,12 @@ final class TwelveDataAdapter
         int $sinceOpenMs = 0,
         string $customApiKey = ''
     ): array {
+        self::$lastError = '';
         $cfg = Database::getConfig();
         $apiKey = trim($customApiKey !== '' ? $customApiKey : (string) ($cfg['TWELVE_DATA_API_KEY'] ?? ''));
         if ($apiKey === '') {
             // Strict isolation: return empty array so candles_sync.php serves only pure twelve_data archive from MariaDB
+            self::$lastError = 'Twelve Data API key not configured';
             return [];
         }
 
@@ -84,10 +88,12 @@ final class TwelveDataAdapter
         $ctx = stream_context_create(['http' => ['timeout' => 8]]);
         $raw = @file_get_contents($url, false, $ctx);
         if ($raw === false) {
+            self::$lastError = 'Twelve Data network request failed';
             return [];
         }
         $json = json_decode($raw, true);
         if (!is_array($json) || empty($json['values']) || !is_array($json['values'])) {
+            self::$lastError = (string) ($json['message'] ?? 'Twelve Data returned empty values');
             return [];
         }
 

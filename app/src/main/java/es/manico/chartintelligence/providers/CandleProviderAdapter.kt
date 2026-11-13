@@ -10,7 +10,9 @@ data class ProviderSyncResult(
     val candles: List<CandleBar>,
     val syncedAtUtcIso: String,
     val syncMode: String = "DB_CACHE_HIT",
-    val fetchedNewBars: Int = 0
+    val fetchedNewBars: Int = 0,
+    val fetchSucceeded: Boolean = true,
+    val errorMessage: String? = null
 )
 
 /**

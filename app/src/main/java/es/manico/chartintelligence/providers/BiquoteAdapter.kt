@@ -44,6 +44,8 @@ class BiquoteAdapter(
 
         var syncMode = if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL"
         var fetchedNewBars = 0
+        var backendSucceeded = false
+        var backendError: String? = null
 
         // 1. Query central server DB-First endpoint (`provider=biquote`)
         val backendCandles = runCatching {
@@ -51,28 +53,44 @@ class BiquoteAdapter(
             val url = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$cleanSymbol&provider=biquote&timeframe=$normTf&limit=$safeLimit&refresh=1$sinceParam"
             val request = Request.Builder().url(url).get().build()
             httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) emptyList()
-                else {
-                    val bodyStr = response.body?.string().orEmpty()
-                    val root = runCatching { JSONObject(bodyStr) }.getOrNull()
-                    val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
-                    if (meta != null) {
-                        syncMode = meta.optString("sync_mode", meta.optString("mode", syncMode))
-                        fetchedNewBars = meta.optInt("fetched_new_bars", 0)
-                    }
-                    parseBackendCandles(bodyStr, normTf, nowMillis)
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Backend HTTP ${response.code}")
                 }
+                backendSucceeded = true
+                val bodyStr = response.body?.string().orEmpty()
+                val root = runCatching { JSONObject(bodyStr) }.getOrNull()
+                val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
+                if (meta != null) {
+                    syncMode = meta.optString("sync_mode", meta.optString("mode", syncMode))
+                    fetchedNewBars = meta.optInt("fetched_new_bars", 0)
+                }
+                parseBackendCandles(bodyStr, normTf, nowMillis)
             }
+        }.onFailure { err ->
+            backendError = err.message ?: "Biquote backend unreachable"
         }.getOrNull().orEmpty()
 
-        val finalCandles = if (backendCandles.isNotEmpty() || sinceOpenTimeMs > 0L) {
+        var fetchSucceeded = backendSucceeded
+        var errorMsg: String? = backendError
+        val finalCandles = if (backendCandles.isNotEmpty() || (backendSucceeded && sinceOpenTimeMs > 0L)) {
             CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(backendCandles, cleanSymbol, normTf)
         } else {
+            var directSucceeded = false
             val direct = runCatching {
-                fetchDirectPublicFeed(cleanSymbol, normTf, safeLimit, sinceOpenTimeMs, nowMillis)
+                val res = fetchDirectPublicFeed(cleanSymbol, normTf, safeLimit, sinceOpenTimeMs, nowMillis)
+                directSucceeded = true
+                res
+            }.onFailure { err ->
+                errorMsg = errorMsg ?: err.message ?: "Direct public feed unreachable"
             }.getOrNull().orEmpty()
-            syncMode = if (sinceOpenTimeMs > 0L) "DELTA_SYNC" else "INITIAL_BACKFILL"
-            fetchedNewBars = direct.size
+            if (directSucceeded) {
+                fetchSucceeded = true
+                errorMsg = null
+                syncMode = if (sinceOpenTimeMs > 0L) "DELTA_SYNC" else "INITIAL_BACKFILL"
+                fetchedNewBars = direct.size
+            } else if (!fetchSucceeded) {
+                syncMode = "OFFLINE_CACHE"
+            }
             CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(direct, cleanSymbol, normTf)
         }
 
@@ -83,7 +101,9 @@ class BiquoteAdapter(
             candles = finalCandles.takeLast(safeLimit),
             syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
             syncMode = syncMode,
-            fetchedNewBars = fetchedNewBars
+            fetchedNewBars = fetchedNewBars,
+            fetchSucceeded = fetchSucceeded,
+            errorMessage = errorMsg
         )
     }
 

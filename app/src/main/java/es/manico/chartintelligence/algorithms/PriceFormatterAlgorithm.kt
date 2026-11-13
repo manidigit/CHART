@@ -175,23 +175,56 @@ object PriceFormatterAlgorithm {
     }
 
     /**
-     * Session-anchored VWAP (resets at UTC day rollover for intraday timeframes, or rolling 20-bar on D1/W1).
+     * Session-anchored VWAP:
+     * - Intraday timeframes reset strictly at [UtcTimeAnchorAlgorithm.getSessionDayKey] boundaries.
+     * - D1/W1 timeframes compute a 20-bar rolling VWAP.
      */
-    fun computeVwapValues(candles: List<CandleBar>): List<Double?> {
+    fun computeVwapValues(
+        candles: List<CandleBar>,
+        timeframe: String = "M15",
+        symbolCode: String = ""
+    ): List<Double?> {
         if (candles.isEmpty()) return emptyList()
+        val normTf = timeframe.uppercase()
         val result = ArrayList<Double?>(candles.size)
+        if (normTf == "D1" || normTf == "W1") {
+            val window = 20
+            for (i in candles.indices) {
+                val startIdx = maxOf(0, i - window + 1)
+                var sumPV = 0.0
+                var sumV = 0.0
+                var sumT = 0.0
+                var count = 0
+                for (j in startIdx..i) {
+                    val c = candles[j]
+                    val typical = (c.high.toDouble() + c.low.toDouble() + c.close.toDouble()) / 3.0
+                    val v = c.volume.toDouble().coerceAtLeast(0.0)
+                    sumPV += typical * v
+                    sumV += v
+                    sumT += typical
+                    count++
+                }
+                result.add(if (sumV > 0.0) sumPV / sumV else (sumT / count.coerceAtLeast(1)))
+            }
+            return result
+        }
+
         var cumPV = 0.0
         var cumV = 0.0
-        var prevDayBucket = Long.MIN_VALUE
+        var prevSessionKey = ""
         for (c in candles) {
-            val dayBucket = c.openTimeUtcMillis / 86_400_000L
-            if (dayBucket != prevDayBucket) {
+            val sessionKey = if (symbolCode.isNotBlank()) {
+                UtcTimeAnchorAlgorithm.getSessionDayKey(c.openTimeUtcMillis, symbolCode)
+            } else {
+                (c.openTimeUtcMillis / 86_400_000L).toString()
+            }
+            if (sessionKey != prevSessionKey) {
                 cumPV = 0.0
                 cumV = 0.0
-                prevDayBucket = dayBucket
+                prevSessionKey = sessionKey
             }
             val typical = (c.high.toDouble() + c.low.toDouble() + c.close.toDouble()) / 3.0
-            val vol = c.volume.toDouble().let { if (it > 0.0) it else 1.0 }
+            val vol = c.volume.toDouble().coerceAtLeast(0.0)
             cumPV += typical * vol
             cumV += vol
             result.add(if (cumV > 0.0) cumPV / cumV else typical)
@@ -596,17 +629,21 @@ object PriceFormatterAlgorithm {
         val bins: List<VolumeProfileBin>,
         val pocPrice: Double,
         val vahPrice: Double,
-        val valPrice: Double
+        val valPrice: Double,
+        val hasRealVolume: Boolean = true,
+        val isEstimated: Boolean = false
     )
 
     /**
      * Package 3 Session / Visible Range Volume Profile (VRVP):
-     * Computes 24 horizontal price bins, Point of Control (POC), Value Area High (VAH), and Value Area Low (VAL — 70%).
+     * Computes 24 horizontal price bins distributing each bar's volume proportionally across all
+     * price bins touched by `[low, high]`, plus POC, VAH, VAL (70%), and honest `isEstimated` flag.
      */
     fun computeVolumeProfile(
         candles: List<CandleBar>,
         numBins: Int = 24,
-        valueAreaRatio: Double = 0.70
+        valueAreaRatio: Double = 0.70,
+        volumeType: VolumeType = VolumeType.REAL_EXCHANGE
     ): VolumeProfileResult? {
         if (candles.size < 2 || numBins < 4) return null
         val minLow = candles.minOfOrNull { it.low.toDouble() } ?: return null
@@ -614,21 +651,50 @@ object PriceFormatterAlgorithm {
         val span = maxHigh - minLow
         if (!span.isFinite() || span <= 0.0) return null
 
+        val hasRealVolume = candles.any { it.volume.toDouble() > 0.0 }
+        val isEstimated = !hasRealVolume || volumeType != VolumeType.REAL_EXCHANGE
+
         val binStep = span / numBins.toDouble()
         val bullArr = DoubleArray(numBins)
         val bearArr = DoubleArray(numBins)
         val totalArr = DoubleArray(numBins)
 
         for (c in candles) {
-            val typical = (c.high.toDouble() + c.low.toDouble() + c.close.toDouble()) / 3.0
-            val rawVol = c.volume.toDouble().let { if (it > 0.0) it else 1.0 }
-            val idx = ((typical - minLow) / binStep).toInt().coerceIn(0, numBins - 1)
-            if (c.isBullish) {
-                bullArr[idx] += rawVol
+            val cLow = c.low.toDouble()
+            val cHigh = c.high.toDouble()
+            val rawVol = c.volume.toDouble().let { if (hasRealVolume) it.coerceAtLeast(0.0) else 1.0 }
+            if (rawVol <= 0.0) continue
+
+            val lowIdx = ((cLow - minLow) / binStep).toInt().coerceIn(0, numBins - 1)
+            val highIdx = ((cHigh - minLow) / binStep).toInt().coerceIn(0, numBins - 1)
+            val loBin = minOf(lowIdx, highIdx)
+            val hiBin = maxOf(lowIdx, highIdx)
+            val barRange = cHigh - cLow
+
+            if (barRange <= 0.0 || loBin == hiBin) {
+                val share = rawVol / ((hiBin - loBin + 1).toDouble())
+                for (b in loBin..hiBin) {
+                    if (c.isBullish) bullArr[b] += share else bearArr[b] += share
+                    totalArr[b] += share
+                }
             } else {
-                bearArr[idx] += rawVol
+                var weightSum = 0.0
+                val weights = DoubleArray(hiBin - loBin + 1)
+                for (b in loBin..hiBin) {
+                    val bLow = minLow + b * binStep
+                    val bHigh = bLow + binStep
+                    val overlap = maxOf(0.0, minOf(cHigh, bHigh) - maxOf(cLow, bLow))
+                    weights[b - loBin] = overlap
+                    weightSum += overlap
+                }
+                val denom = if (weightSum > 0.0) weightSum else (hiBin - loBin + 1).toDouble()
+                for (b in loBin..hiBin) {
+                    val w = if (weightSum > 0.0) weights[b - loBin] else 1.0
+                    val share = rawVol * (w / denom)
+                    if (c.isBullish) bullArr[b] += share else bearArr[b] += share
+                    totalArr[b] += share
+                }
             }
-            totalArr[idx] += rawVol
         }
 
         var pocIdx = 0
@@ -680,7 +746,9 @@ object PriceFormatterAlgorithm {
             bins = bins,
             pocPrice = bins[pocIdx].mid,
             vahPrice = bins[vaHighIdx].high,
-            valPrice = bins[vaLowIdx].low
+            valPrice = bins[vaLowIdx].low,
+            hasRealVolume = hasRealVolume,
+            isEstimated = isEstimated
         )
     }
 

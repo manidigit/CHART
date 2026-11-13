@@ -5,6 +5,8 @@ import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import es.manico.chartintelligence.R
+import es.manico.chartintelligence.algorithms.ConnectionStatus
+import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
 import es.manico.chartintelligence.config.AppConfig
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartPreferences
@@ -21,6 +23,7 @@ import es.manico.chartintelligence.ui.state.coordinators.SymbolCatalogCoordinato
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -80,6 +83,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val symbolCoordinator = SymbolCatalogCoordinator(repository)
     private val preferenceCoordinator = ChartPreferenceCoordinator(repository)
 
+    private val initialOpenTabs = repository.loadSavedOpenTabs()
+    private val initialActiveTabId = repository.loadActiveTabId()
+        ?.takeIf { savedId -> initialOpenTabs.any { it.tabId == savedId } }
+        ?: initialOpenTabs.firstOrNull()?.tabId
+
     private val _uiState = MutableStateFlow(
         Phase1UiState(
             language = repository.loadLanguage(),
@@ -91,12 +99,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             rememberCredentials = repository.loadRememberCredentials(),
             symbols = symbolCoordinator.loadInitialCatalog(),
             chartPreferences = preferenceCoordinator.loadInitialPreferences(),
-            openTabs = repository.loadSavedOpenTabs()
+            openTabs = initialOpenTabs,
+            activeTabId = initialActiveTabId
         )
     )
     val uiState: StateFlow<Phase1UiState> = _uiState.asStateFlow()
 
     private var autoSyncJob: kotlinx.coroutines.Job? = null
+    private val lastAutoSyncAtMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
 
     init {
         viewModelScope.launch {
@@ -132,6 +142,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val uncachedWatchlist = _uiState.value.watchlistSymbols.filter { it.storedCandleCount == 0 }
         if (uncachedWatchlist.isNotEmpty()) {
             syncAllWatchlistUpToNow()
+        }
+
+        // Timeframe-aware periodic sync loop near bar close when chart is active and market is open
+        viewModelScope.launch {
+            while (true) {
+                val snapshot = _uiState.value
+                val activeTab = snapshot.activeTab
+                if (!snapshot.isAuthenticated || snapshot.currentScreen != WorkspaceScreen.CHART_VIEW || activeTab == null) {
+                    delay(10_000L)
+                    continue
+                }
+                val nowMs = System.currentTimeMillis()
+                if (!UtcTimeAnchorAlgorithm.isMarketOpen(nowMs, activeTab.symbolCode)) {
+                    delay(30_000L)
+                    continue
+                }
+                val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(activeTab.timeframe)
+                val openMs = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(nowMs, activeTab.timeframe)
+                val closePlusMarginMs = openMs + stepMs + 2_000L
+                val waitMs = (closePlusMarginMs - nowMs).coerceIn(5_000L, 60_000L)
+                delay(waitMs)
+
+                val latestState = _uiState.value
+                val tabNow = latestState.activeTab ?: continue
+                if (!latestState.isAuthenticated ||
+                    latestState.currentScreen != WorkspaceScreen.CHART_VIEW ||
+                    tabNow.tabId != activeTab.tabId ||
+                    tabNow.isLoading
+                ) {
+                    continue
+                }
+                val nowAfterWait = System.currentTimeMillis()
+                if (!UtcTimeAnchorAlgorithm.isMarketOpen(nowAfterWait, tabNow.symbolCode)) continue
+
+                val syncKey = "${tabNow.tabId}_${tabNow.timeframe}"
+                val prevAuto = lastAutoSyncAtMs[syncKey] ?: 0L
+                val minIntervalMs = if (tabNow.timeframe.uppercase() in listOf("D1", "W1")) 60_000L else 15_000L
+                if (nowAfterWait - prevAuto >= minIntervalMs) {
+                    lastAutoSyncAtMs[syncKey] = nowAfterWait
+                    performSingleSymbolSync(tabNow.symbolCode, quiet = true)
+                }
+            }
         }
     }
 
@@ -454,6 +506,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         repository.saveSymbolCatalog(enriched)
         val newTabId = "${symbolCode}_${provider.id}"
+        val canonicalChartId = UtcTimeAnchorAlgorithm.canonicalChartKey(symbolCode, targetTf)
+        val legacyChartId = enriched.firstOrNull { it.symbolCode == symbolCode }?.chartId
+            ?: UtcTimeAnchorAlgorithm.legacyChartId(symbolCode)
+        val reloadedDrawings = repository.loadDrawingsForChart(canonicalChartId, legacyChartId)
+        val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(targetTf)
+        val lastCloseMs = latest?.let { it.openTimeUtcMillis + stepMs } ?: 0L
+        var persistedActiveId: String? = null
         _uiState.update { state ->
             var nextActiveTabId = state.activeTabId
             val updatedTabs = state.openTabs.map { tab ->
@@ -463,9 +522,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     tab.copy(
                         tabId = newTabId,
+                        chartId = canonicalChartId,
                         provider = provider,
                         timeframe = targetTf,
                         candles = candles,
+                        drawings = reloadedDrawings,
+                        selectedDrawingId = null,
+                        pendingTrendPoint = null,
                         scrollOffsetFromRight = 0,
                         selectedCandleIndex = null,
                         isLoading = candles.isEmpty(),
@@ -477,31 +540,41 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             "API_KEY_REQUIRED"
                         } else {
                             "READY"
-                        }
+                        },
+                        lastCandleCloseMs = lastCloseMs
                     )
                 } else {
                     tab
                 }
             }
+            persistedActiveId = nextActiveTabId
             state.copy(
                 symbols = enriched,
                 openTabs = updatedTabs,
                 activeTabId = nextActiveTabId
             )
         }
+        repository.saveActiveTabId(persistedActiveId)
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
         syncSingleSymbolUpToNow(symbolCode)
     }
 
     /**
      * Updates a tab's candles while preserving the user's current logical viewport position
-     * when scrolled back in history (scrollOffsetFromRight > 0).
+     * when scrolled back in history (scrollOffsetFromRight > 0), and propagates honest
+     * connectivity/freshness telemetry without masking errors or offline cache hits.
      */
     private fun applyUpdatedCandlesPreservingViewport(
         tab: ChartTabState,
         newCandles: List<CandleBar>,
         newTimeframe: String = tab.timeframe,
-        providerStatus: String = tab.providerStatus
+        providerStatus: String = tab.providerStatus,
+        connectionStatus: ConnectionStatus = if (newCandles.isNotEmpty()) ConnectionStatus.CONNECTED_LIVE else ConnectionStatus.SYNC_ERROR,
+        syncErrorText: String? = null,
+        lastSuccessfulFetchMs: Long = tab.lastSuccessfulFetchMs,
+        lastCandleCloseMs: Long = tab.lastCandleCloseMs,
+        sessionPrevClose: BigDecimal? = tab.sessionPrevClose
     ): ChartTabState {
         val nextOffset = if (tab.timeframe == newTimeframe && tab.scrollOffsetFromRight > 0 && tab.candles.isNotEmpty()) {
             val addedRightCount = (newCandles.size - tab.candles.size).coerceAtLeast(0)
@@ -510,17 +583,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         } else {
             0
         }
+        val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(newTimeframe)
+        val computedCloseMs = newCandles.lastOrNull()?.let { it.openTimeUtcMillis + stepMs } ?: lastCandleCloseMs
+        val isSyncFailure = connectionStatus == ConnectionStatus.SYNC_ERROR ||
+            connectionStatus == ConnectionStatus.CACHED_OFFLINE ||
+            providerStatus == "API_KEY_REQUIRED"
         return tab.copy(
             timeframe = newTimeframe,
             candles = newCandles,
             scrollOffsetFromRight = nextOffset,
             isLoading = false,
-            hasError = newCandles.isEmpty(),
-            providerStatus = if (newCandles.isNotEmpty()) "READY" else providerStatus
+            hasError = if (newCandles.isEmpty()) true else (connectionStatus == ConnectionStatus.SYNC_ERROR),
+            providerStatus = if (isSyncFailure || newCandles.isEmpty()) providerStatus else "READY",
+            connectionStatus = connectionStatus,
+            syncErrorText = syncErrorText,
+            lastSuccessfulFetchMs = lastSuccessfulFetchMs,
+            lastCandleCloseMs = computedCloseMs,
+            sessionPrevClose = sessionPrevClose ?: tab.sessionPrevClose
         )
     }
 
     fun syncSingleSymbolUpToNow(symbolCode: String) {
+        performSingleSymbolSync(symbolCode, quiet = false)
+    }
+
+    private fun performSingleSymbolSync(symbolCode: String, quiet: Boolean) {
         val target = _uiState.value.symbols.firstOrNull { it.symbolCode == symbolCode } ?: return
         val activeTabTf = _uiState.value.activeTab
             ?.takeIf { it.symbolCode == symbolCode && it.provider == target.activeProvider }
@@ -533,7 +620,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 },
                 openTabs = state.openTabs.map { tab ->
                     if (tab.symbolCode == symbolCode && tab.provider == target.activeProvider) {
-                        tab.copy(isLoading = true, hasError = false)
+                        tab.copy(
+                            isLoading = tab.candles.isEmpty(),
+                            hasError = false,
+                            connectionStatus = ConnectionStatus.SYNCING
+                        )
                     } else {
                         tab
                     }
@@ -553,18 +644,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             tab = tab,
                             newCandles = mergedCandles,
                             newTimeframe = syncedSymbol.timeframe,
-                            providerStatus = syncedSymbol.providerStatus
+                            providerStatus = syncedSymbol.providerStatus,
+                            connectionStatus = syncedSymbol.connectionStatus,
+                            syncErrorText = syncedSymbol.syncErrorText,
+                            lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
+                            lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
+                            sessionPrevClose = syncedSymbol.prevClose
                         )
                     } else {
                         tab
                     }
                 }
+                val banner = when {
+                    quiet -> state.statusBannerResId
+                    syncedSymbol.connectionStatus == ConnectionStatus.SYNC_ERROR ||
+                        syncedSymbol.connectionStatus == ConnectionStatus.CACHED_OFFLINE -> null
+                    mergedCandles.isNotEmpty() -> R.string.status_synced_ok
+                    else -> null
+                }
                 state.copy(
                     symbols = newSymbols,
                     openTabs = newTabs,
-                    statusBannerResId = if (mergedCandles.isNotEmpty()) R.string.status_synced_ok else null
+                    statusBannerResId = banner
                 )
             }
+            repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         }
     }
 
@@ -599,24 +703,34 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val newTabs = state.openTabs.map { tab ->
                     val syncedSym = updatedMap[tab.symbolCode]
                     val refreshed = candlesBySymbolProvider["${tab.symbolCode}_${tab.provider.id}"]
-                    if (refreshed != null && tab.timeframe == (syncedSym?.timeframe ?: tab.timeframe)) {
+                    if (syncedSym != null && refreshed != null && tab.timeframe == syncedSym.timeframe) {
                         applyUpdatedCandlesPreservingViewport(
                             tab = tab,
                             newCandles = refreshed,
                             newTimeframe = tab.timeframe,
-                            providerStatus = syncedSym?.providerStatus ?: tab.providerStatus
+                            providerStatus = syncedSym.providerStatus,
+                            connectionStatus = syncedSym.connectionStatus,
+                            syncErrorText = syncedSym.syncErrorText,
+                            lastSuccessfulFetchMs = syncedSym.lastSuccessfulFetchMs,
+                            lastCandleCloseMs = syncedSym.lastCandleCloseMs,
+                            sessionPrevClose = syncedSym.prevClose
                         )
                     } else {
                         tab
                     }
                 }
+                val anyHealthySync = updatedMap.values.any {
+                    it.connectionStatus == ConnectionStatus.CONNECTED_LIVE ||
+                        it.connectionStatus == ConnectionStatus.MARKET_CLOSED
+                }
                 state.copy(
                     isSyncingAll = false,
                     symbols = newSymbols,
                     openTabs = newTabs,
-                    statusBannerResId = R.string.status_synced_ok
+                    statusBannerResId = if (anyHealthySync) R.string.status_synced_ok else null
                 )
             }
+            repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         }
     }
 
@@ -678,6 +792,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     screenBackStack = nextStack
                 )
             }
+            repository.saveActiveTabId(tabId)
             repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
             if (existingTab.candles.isEmpty() && !existingTab.isLoading) {
                 syncSingleSymbolUpToNow(symbol.symbolCode)
@@ -688,12 +803,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 provider = symbol.activeProvider,
                 timeframe = symbol.timeframe
             )
-            val savedDrawings = repository.loadDrawingsForChart(symbol.chartId)
+            val canonicalChartId = UtcTimeAnchorAlgorithm.canonicalChartKey(symbol.symbolCode, symbol.timeframe)
+            val savedDrawings = repository.loadDrawingsForChart(canonicalChartId, symbol.chartId)
             val curPrefs = _uiState.value.chartPreferences
             val curActive = _uiState.value.activeTab
+            val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(symbol.timeframe)
+            val lastCloseMs = cachedCandles.lastOrNull()?.let { it.openTimeUtcMillis + stepMs } ?: symbol.lastCandleCloseMs
             val newTab = ChartTabState(
                 tabId = tabId,
-                chartId = symbol.chartId,
+                chartId = canonicalChartId,
                 symbolCode = symbol.symbolCode,
                 decimals = symbol.decimals,
                 provider = symbol.activeProvider,
@@ -722,7 +840,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 activeDrawingWidthDp = curActive?.activeDrawingWidthDp ?: curPrefs.defaultDrawingWidthDp,
                 drawings = savedDrawings,
                 isLoading = cachedCandles.isEmpty(),
-                providerStatus = symbol.providerStatus
+                providerStatus = symbol.providerStatus,
+                syncErrorText = symbol.syncErrorText,
+                lastSuccessfulFetchMs = symbol.lastSuccessfulFetchMs,
+                lastCandleCloseMs = lastCloseMs,
+                connectionStatus = symbol.connectionStatus,
+                sessionPrevClose = symbol.prevClose
             )
             _uiState.update { state ->
                 val nextStack = if (state.currentScreen != targetScreen) {
@@ -737,6 +860,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     screenBackStack = nextStack
                 )
             }
+            repository.saveActiveTabId(tabId)
             repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
             if (cachedCandles.isEmpty()) {
                 syncSingleSymbolUpToNow(symbol.symbolCode)
@@ -746,9 +870,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun selectChartTab(tabId: String) {
         _uiState.update { it.copy(activeTabId = tabId) }
+        repository.saveActiveTabId(tabId)
     }
 
     fun closeChartTab(tabId: String) {
+        var nextActiveId: String? = null
         _uiState.update { state ->
             val remaining = state.openTabs.filterNot { it.tabId == tabId }
             val nextActive = if (state.activeTabId == tabId) {
@@ -756,16 +882,20 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             } else {
                 state.activeTabId
             }
+            nextActiveId = nextActive
             state.copy(
                 openTabs = remaining,
                 activeTabId = nextActive
             )
         }
+        repository.saveActiveTabId(nextActiveId)
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
     }
 
     /**
-     * Switches the active tab's timeframe (M15, H1, H4, D1).
+     * Switches the active tab's timeframe (M15, H1, H4, D1, W1).
      * Immediately displays cached or aggregated candles from lower timeframes so there is zero flicker,
+     * switches drawings cleanly to canonical `SYMBOL_TIMEFRAME` storage,
      * and launches a background sync to fetch full historical candles for the selected timeframe.
      */
     fun selectTimeframeForActiveTab(newTimeframe: String) {
@@ -778,6 +908,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             provider = active.provider,
             timeframe = normalizedTf
         )
+        val canonicalChartId = UtcTimeAnchorAlgorithm.canonicalChartKey(active.symbolCode, normalizedTf)
+        val legacyChartId = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode }?.chartId
+            ?: UtcTimeAnchorAlgorithm.legacyChartId(active.symbolCode)
+        val tfDrawings = repository.loadDrawingsForChart(canonicalChartId, legacyChartId)
 
         _uiState.update { state ->
             state.copy(
@@ -795,8 +929,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             tab.visibleCandleCount
                         }
                         tab.copy(
+                            chartId = canonicalChartId,
                             timeframe = normalizedTf,
                             candles = immediateCandles,
+                            drawings = tfDrawings,
+                            selectedDrawingId = null,
+                            pendingTrendPoint = null,
                             activeDateRange = null,
                             visibleCandleCount = nextVisible,
                             scrollOffsetFromRight = 0,
@@ -835,7 +973,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 tab = tab,
                                 newCandles = mergedCandles,
                                 newTimeframe = normalizedTf,
-                                providerStatus = syncedSymbol.providerStatus
+                                providerStatus = syncedSymbol.providerStatus,
+                                connectionStatus = syncedSymbol.connectionStatus,
+                                syncErrorText = syncedSymbol.syncErrorText,
+                                lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
+                                lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
+                                sessionPrevClose = syncedSymbol.prevClose
                             )
                             val clampedVis = if (mergedCandles.isNotEmpty()) {
                                 updated.visibleCandleCount.coerceIn(
@@ -889,7 +1032,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 tab = t,
                                 newCandles = mergedCandles,
                                 newTimeframe = tab.timeframe,
-                                providerStatus = syncedSymbol.providerStatus
+                                providerStatus = syncedSymbol.providerStatus,
+                                connectionStatus = syncedSymbol.connectionStatus,
+                                syncErrorText = syncedSymbol.syncErrorText,
+                                lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
+                                lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
+                                sessionPrevClose = syncedSymbol.prevClose
                             )
                         } else {
                             t
@@ -1200,6 +1348,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 provider = active.provider,
                 timeframe = resolvedTf
             )
+            val canonicalChartId = UtcTimeAnchorAlgorithm.canonicalChartKey(active.symbolCode, resolvedTf)
+            val legacyChartId = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode }?.chartId
+                ?: UtcTimeAnchorAlgorithm.legacyChartId(active.symbolCode)
+            val tfDrawings = repository.loadDrawingsForChart(canonicalChartId, legacyChartId)
             val tempTab = active.copy(timeframe = resolvedTf, candles = immediateCandles)
             val preset = tempTab.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) }
             val targetBars = preset?.targetBars ?: AppConfig.DEFAULT_VISIBLE_CANDLES
@@ -1212,8 +1364,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     openTabs = state.openTabs.map { tab ->
                         if (tab.tabId == active.tabId) {
                             tab.copy(
+                                chartId = canonicalChartId,
                                 timeframe = resolvedTf,
                                 candles = immediateCandles,
+                                drawings = tfDrawings,
+                                selectedDrawingId = null,
+                                pendingTrendPoint = null,
                                 activeDateRange = preset?.id ?: rangeId,
                                 visibleCandleCount = targetBars,
                                 scrollOffsetFromRight = 0,
@@ -1244,7 +1400,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         },
                         openTabs = state.openTabs.map { tab ->
                             if (tab.tabId == active.tabId && tab.timeframe == resolvedTf) {
-                                val updated = applyUpdatedCandlesPreservingViewport(tab, mergedCandles, resolvedTf)
+                                val updated = applyUpdatedCandlesPreservingViewport(
+                                    tab = tab,
+                                    newCandles = mergedCandles,
+                                    newTimeframe = resolvedTf,
+                                    providerStatus = syncedSymbol.providerStatus,
+                                    connectionStatus = syncedSymbol.connectionStatus,
+                                    syncErrorText = syncedSymbol.syncErrorText,
+                                    lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
+                                    lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
+                                    sessionPrevClose = syncedSymbol.prevClose
+                                )
                                 val refreshedPreset = updated.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) }
                                 updated.copy(
                                     activeDateRange = refreshedPreset?.id ?: rangeId,
@@ -1304,7 +1470,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             },
                             openTabs = state.openTabs.map { tab ->
                                 if (tab.tabId == active.tabId && tab.timeframe == active.timeframe) {
-                                    val updated = applyUpdatedCandlesPreservingViewport(tab, mergedCandles, active.timeframe)
+                                    val updated = applyUpdatedCandlesPreservingViewport(
+                                        tab = tab,
+                                        newCandles = mergedCandles,
+                                        newTimeframe = active.timeframe,
+                                        providerStatus = syncedSymbol.providerStatus,
+                                        connectionStatus = syncedSymbol.connectionStatus,
+                                        syncErrorText = syncedSymbol.syncErrorText,
+                                        lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
+                                        lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
+                                        sessionPrevClose = syncedSymbol.prevClose
+                                    )
                                     val refreshedPreset = updated.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) }
                                     updated.copy(
                                         activeDateRange = refreshedPreset?.id ?: rangeId,
@@ -1579,13 +1755,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun deleteSymbol(symbolCode: String) {
         val updated = symbolCoordinator.deleteSymbol(_uiState.value.symbols, symbolCode)
         val updatedTabs = _uiState.value.openTabs.filterNot { it.symbolCode == symbolCode }
+        var nextActiveId: String? = null
         _uiState.update { state ->
+            val candidate = if (state.activeTabId?.startsWith("${symbolCode}_") == true) {
+                updatedTabs.lastOrNull()?.tabId
+            } else {
+                state.activeTabId
+            }
+            nextActiveId = candidate
             state.copy(
                 symbols = updated,
                 openTabs = updatedTabs,
-                activeTabId = if (state.activeTabId?.startsWith(symbolCode) == true) updatedTabs.lastOrNull()?.tabId else state.activeTabId
+                activeTabId = candidate
             )
         }
+        repository.saveActiveTabId(nextActiveId)
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
     }
 
     fun toggleLogScaleOnActiveTab() {
@@ -1662,20 +1847,19 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         alphaVantageKey: String,
         finnhubKey: String
     ) {
-        val next = _uiState.value.chartPreferences.copy(
-            twelveDataApiKey = twelveDataKey.trim(),
-            stooqApiKey = stooqKey.trim(),
-            alphaVantageApiKey = alphaVantageKey.trim(),
-            finnhubApiKey = finnhubKey.trim()
+        // BYOK keys are strictly stored locally on device and never synced to cloud workspace
+        val next = repository.saveLocalByokKeys(
+            twelveData = twelveDataKey,
+            stooq = stooqKey,
+            alphaVantage = alphaVantageKey,
+            finnhub = finnhubKey
         )
-        repository.saveChartPreferences(next)
         _uiState.update {
             it.copy(
                 chartPreferences = next,
                 statusBannerResId = R.string.settings_byok_saved
             )
         }
-        scheduleDebouncedCloudSync()
     }
 
     fun updateTradingViewPreference(transform: (ChartPreferences) -> ChartPreferences) {
@@ -1824,21 +2008,27 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val refreshedSymbols = repository.loadSymbolCatalog()
             val refreshedPrefs = repository.loadChartPreferences()
             val savedTabs = repository.loadSavedOpenTabs()
+            val savedActiveId = repository.loadActiveTabId()
             val nowTimeStr = java.time.LocalTime.now().toString().take(5)
             _uiState.update { state ->
                 val tabsToUse = if (state.openTabs.isNotEmpty()) {
                     state.openTabs.map { tab ->
-                        tab.copy(drawings = repository.loadDrawingsForChart(tab.chartId))
+                        tab.copy(
+                            drawings = repository.loadDrawingsForChart(
+                                tab.chartId,
+                                UtcTimeAnchorAlgorithm.legacyChartId(tab.symbolCode)
+                            )
+                        )
                     }
                 } else if (savedTabs.isNotEmpty()) {
                     savedTabs
                 } else {
                     emptyList()
                 }
-                val activeId = if (tabsToUse.any { it.tabId == state.activeTabId }) {
-                    state.activeTabId
-                } else {
-                    tabsToUse.firstOrNull()?.tabId
+                val activeId = when {
+                    tabsToUse.any { it.tabId == state.activeTabId } -> state.activeTabId
+                    savedActiveId != null && tabsToUse.any { it.tabId == savedActiveId } -> savedActiveId
+                    else -> tabsToUse.firstOrNull()?.tabId
                 }
                 state.copy(
                     symbols = refreshedSymbols,

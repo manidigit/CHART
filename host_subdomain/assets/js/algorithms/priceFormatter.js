@@ -274,6 +274,122 @@ export const PriceFormatter = {
     return 900000;
   },
 
+  isCrypto24x7(symbolCode = '') {
+    const code = String(symbolCode || '').trim().toUpperCase();
+    return code === 'BTCUSD' || code === 'ETHUSD' || code.endsWith('USDT');
+  },
+
+  getSessionCalendar(symbolCode = 'XAUUSD') {
+    const code = String(symbolCode || '').trim().toUpperCase();
+    if (this.isCrypto24x7(code)) return 'CRYPTO_24_7';
+    const usEquities = [
+      'SPX500USD', 'NDQ', 'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT',
+      'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
+    ];
+    if (usEquities.includes(code)) return 'US_EQUITIES';
+    return 'OTC_FX_METALS';
+  },
+
+  getInstrumentTimezone(symbolCode = 'XAUUSD') {
+    const cal = this.getSessionCalendar(symbolCode);
+    if (cal === 'CRYPTO_24_7') return 'UTC';
+    if (cal === 'US_EQUITIES') return 'America/New_York';
+    return 'Etc/GMT+0 (NY 17:00 Rollover)';
+  },
+
+  getVolumeType(symbolCode = 'XAUUSD', providerId = '') {
+    const prov = String(providerId || '').trim().toLowerCase();
+    if (prov === 'eia_brent_spot') return 'NONE';
+    const cal = this.getSessionCalendar(symbolCode);
+    if (cal === 'CRYPTO_24_7' || cal === 'US_EQUITIES') {
+      return ['yahoo_finance', 'twelve_data', 'stooq', 'tvdatafeed', 'biquote'].includes(prov)
+        ? 'REAL_EXCHANGE'
+        : 'TICK_ESTIMATED';
+    }
+    return 'TICK_ESTIMATED';
+  },
+
+  snapToOpenUtcMs(epochMs, timeframe = 'M15') {
+    const ms = Number(epochMs || 0);
+    if (!isFinite(ms) || ms <= 0) return 0;
+    const tf = String(timeframe || 'M15').toUpperCase();
+    const step = this.stepMilliseconds(tf);
+    if (tf === 'W1') {
+      const mondayOffsetMs = 259200000; // 3 days * 86400s * 1000ms (1970-01-01 was Thursday)
+      return Math.floor((ms + mondayOffsetMs) / step) * step - mondayOffsetMs;
+    }
+    return Math.floor(ms / step) * step;
+  },
+
+  _getNewYorkParts(epochMs) {
+    try {
+      const fmt = new Intl.DateTimeFormat('en-US', {
+        timeZone: 'America/New_York',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit',
+        weekday: 'short',
+        hour: '2-digit',
+        minute: '2-digit',
+        hourCycle: 'h23',
+      });
+      const parts = fmt.formatToParts(new Date(Number(epochMs)));
+      const map = {};
+      for (const p of parts) map[p.type] = p.value;
+      return {
+        year: Number(map.year),
+        month: Number(map.month),
+        day: Number(map.day),
+        hour: Number(map.hour) % 24,
+        minute: Number(map.minute),
+        weekday: String(map.weekday || ''),
+      };
+    } catch {
+      const d = new Date(Number(epochMs));
+      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+      return {
+        year: d.getUTCFullYear(),
+        month: d.getUTCMonth() + 1,
+        day: d.getUTCDate(),
+        hour: d.getUTCHours(),
+        minute: d.getUTCMinutes(),
+        weekday: days[d.getUTCDay()],
+      };
+    }
+  },
+
+  getSessionDayKey(epochMs, symbolCode = 'XAUUSD') {
+    const ms = Number(epochMs || 0);
+    const cal = this.getSessionCalendar(symbolCode);
+    if (cal === 'CRYPTO_24_7') {
+      return new Date(ms).toISOString().slice(0, 10);
+    }
+    // For OTC_FX_METALS (NY 17:00 rollover) add 7h to NY time so 17:00 NY flips to next day
+    // For US_EQUITIES use exact America/New_York calendar date
+    const shiftedMs = cal === 'OTC_FX_METALS' ? ms + 7 * 3600000 : ms;
+    const ny = this._getNewYorkParts(shiftedMs);
+    const pad = (n) => String(n).padStart(2, '0');
+    return `${ny.year}-${pad(ny.month)}-${pad(ny.day)}`;
+  },
+
+  isMarketOpen(epochMs = Date.now(), symbolCode = 'XAUUSD') {
+    const cal = this.getSessionCalendar(symbolCode);
+    if (cal === 'CRYPTO_24_7') return true;
+    if (cal === 'US_EQUITIES') {
+      const ny = this._getNewYorkParts(epochMs);
+      if (ny.weekday === 'Sat' || ny.weekday === 'Sun') return false;
+      const mins = ny.hour * 60 + ny.minute;
+      return mins >= 9 * 60 + 30 && mins < 16 * 60;
+    }
+    const d = new Date(Number(epochMs));
+    const dow = d.getUTCDay(); // 0=Sun..6=Sat
+    const hr = d.getUTCHours();
+    if (dow === 6) return false;
+    if (dow === 0) return hr >= 22;
+    if (dow === 5) return hr < 22;
+    return true;
+  },
+
   formatAdaptiveAxisTick(epochMs, prevTickEpochMs = null, timeframe = 'M15', timezoneMode = 'UTC') {
     if (!epochMs) return { text: '', isMajor: false };
     const d = new Date(Number(epochMs));

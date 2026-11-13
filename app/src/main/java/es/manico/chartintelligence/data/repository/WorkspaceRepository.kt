@@ -533,13 +533,50 @@ class WorkspaceRepository(context: Context) {
                 showCountdownToBarClose = obj.optBoolean("showCountdownToBarClose", true),
                 showPrevCloseLine = obj.optBoolean("showPrevCloseLine", true),
                 showHighLowLabels = obj.optBoolean("showHighLowLabels", true),
-                twelveDataApiKey = obj.optString("twelveDataApiKey", ""),
-                stooqApiKey = obj.optString("stooqApiKey", ""),
-                alphaVantageApiKey = obj.optString("alphaVantageApiKey", ""),
-                finnhubApiKey = obj.optString("finnhubApiKey", ""),
+                twelveDataApiKey = loadByokField("twelveDataApiKey", obj.optString("twelveDataApiKey", "")),
+                stooqApiKey = loadByokField("stooqApiKey", obj.optString("stooqApiKey", "")),
+                alphaVantageApiKey = loadByokField("alphaVantageApiKey", obj.optString("alphaVantageApiKey", "")),
+                finnhubApiKey = loadByokField("finnhubApiKey", obj.optString("finnhubApiKey", "")),
                 timezoneMode = obj.optString("timezoneMode", "UTC").uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" }
-            )
+            ).also { loaded ->
+                // One-time migration: scrub any legacy BYOK keys out of synced KEY_CHART_PREFERENCES_JSON
+                if (obj.has("twelveDataApiKey") || obj.has("stooqApiKey") ||
+                    obj.has("alphaVantageApiKey") || obj.has("finnhubApiKey")
+                ) {
+                    saveLocalByokKeys(
+                        twelveData = loaded.twelveDataApiKey,
+                        stooq = loaded.stooqApiKey,
+                        alphaVantage = loaded.alphaVantageApiKey,
+                        finnhub = loaded.finnhubApiKey
+                    )
+                    saveChartPreferences(loaded)
+                }
+            }
         }.getOrDefault(ChartPreferences())
+    }
+
+    private fun loadByokField(field: String, legacyFallback: String = ""): String {
+        val raw = prefs.getString(AppConfig.KEY_BYOK_LOCAL_JSON, null)
+        if (!raw.isNullOrBlank()) {
+            val v = runCatching { JSONObject(raw).optString(field, "") }.getOrDefault("")
+            if (v.isNotBlank()) return v
+        }
+        return legacyFallback
+    }
+
+    fun saveLocalByokKeys(
+        twelveData: String,
+        stooq: String,
+        alphaVantage: String,
+        finnhub: String
+    ): ChartPreferences {
+        val localObj = JSONObject()
+            .put("twelveDataApiKey", twelveData.trim())
+            .put("stooqApiKey", stooq.trim())
+            .put("alphaVantageApiKey", alphaVantage.trim())
+            .put("finnhubApiKey", finnhub.trim())
+        prefs.edit().putString(AppConfig.KEY_BYOK_LOCAL_JSON, localObj.toString()).apply()
+        return loadChartPreferences()
     }
 
     fun saveChartPreferences(prefsObj: ChartPreferences) {
@@ -570,10 +607,6 @@ class WorkspaceRepository(context: Context) {
         obj.put("showCountdownToBarClose", prefsObj.showCountdownToBarClose)
         obj.put("showPrevCloseLine", prefsObj.showPrevCloseLine)
         obj.put("showHighLowLabels", prefsObj.showHighLowLabels)
-        obj.put("twelveDataApiKey", prefsObj.twelveDataApiKey)
-        obj.put("stooqApiKey", prefsObj.stooqApiKey)
-        obj.put("alphaVantageApiKey", prefsObj.alphaVantageApiKey)
-        obj.put("finnhubApiKey", prefsObj.finnhubApiKey)
         obj.put("timezoneMode", prefsObj.timezoneMode)
         prefs.edit().putString(AppConfig.KEY_CHART_PREFERENCES_JSON, obj.toString()).apply()
     }
@@ -662,15 +695,92 @@ class WorkspaceRepository(context: Context) {
 
         return loadedList.map { symbol ->
             val candles = getCachedOrAggregatedCandles(symbol.symbolCode, symbol.activeProvider, symbol.timeframe)
+            val d1Fallback = if (symbol.timeframe.uppercase() !in setOf("D1", "W1")) {
+                getCachedOrAggregatedCandles(symbol.symbolCode, symbol.activeProvider, "D1")
+            } else {
+                emptyList()
+            }
             val latest = candles.lastOrNull()
-            val prev = if (candles.size >= 2) candles[candles.size - 2].close else latest?.open
+            val stats = computeSessionStats(candles, symbol.symbolCode, d1Fallback)
+            val stepMs = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.timeframeStepMillis(symbol.timeframe)
+            val lastCloseMs = latest?.let { it.openTimeUtcMillis + stepMs } ?: 0L
             symbol.copy(
                 lastClose = latest?.close,
-                prevClose = prev,
+                prevClose = stats.prevClose ?: latest?.open,
+                dayOpen = stats.dayOpen,
+                dayHigh = stats.dayHigh,
+                dayLow = stats.dayLow,
+                dayVolume = stats.dayVolume,
                 lastCandleUtc = latest?.openTimeUtcIso,
-                storedCandleCount = candles.size
+                storedCandleCount = candles.size,
+                lastCandleCloseMs = lastCloseMs
             )
         }
+    }
+
+    private data class SessionStatsResult(
+        val dayOpen: BigDecimal?,
+        val dayHigh: BigDecimal?,
+        val dayLow: BigDecimal?,
+        val dayVolume: BigDecimal?,
+        val prevClose: BigDecimal?
+    )
+
+    private fun computeSessionStats(
+        candles: List<CandleBar>,
+        symbolCode: String,
+        d1Fallback: List<CandleBar> = emptyList()
+    ): SessionStatsResult {
+        if (candles.isEmpty()) return SessionStatsResult(null, null, null, null, null)
+        val latest = candles.last()
+        val activeDayKey = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.getSessionDayKey(
+            latest.openTimeUtcMillis,
+            symbolCode
+        )
+        var dayOpen: BigDecimal? = null
+        var dayHigh: BigDecimal? = null
+        var dayLow: BigDecimal? = null
+        var dayVol = BigDecimal.ZERO
+        var priorSessionClose: BigDecimal? = null
+
+        for (bar in candles) {
+            val key = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.getSessionDayKey(
+                bar.openTimeUtcMillis,
+                symbolCode
+            )
+            if (key == activeDayKey) {
+                if (dayOpen == null) dayOpen = bar.open
+                if (dayHigh == null || bar.high > dayHigh) dayHigh = bar.high
+                if (dayLow == null || bar.low < dayLow) dayLow = bar.low
+                dayVol = dayVol.add(bar.volume)
+            } else if (key < activeDayKey) {
+                priorSessionClose = bar.close
+            }
+        }
+
+        if (priorSessionClose == null && d1Fallback.isNotEmpty()) {
+            for (dBar in d1Fallback) {
+                val dKey = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.getSessionDayKey(
+                    dBar.openTimeUtcMillis,
+                    symbolCode
+                )
+                if (dKey < activeDayKey) {
+                    priorSessionClose = dBar.close
+                }
+            }
+        }
+
+        val resolvedPrevClose = priorSessionClose
+            ?: candles.getOrNull(candles.size - 2)?.close
+            ?: latest.open
+
+        return SessionStatsResult(
+            dayOpen = dayOpen,
+            dayHigh = dayHigh,
+            dayLow = dayLow,
+            dayVolume = dayVol,
+            prevClose = resolvedPrevClose
+        )
     }
 
     fun saveSymbolCatalog(symbols: List<SymbolConfig>) {
@@ -724,7 +834,12 @@ class WorkspaceRepository(context: Context) {
             val m15Key = "${symbolCode}_${provider.id}_M15"
             val m15Candles = candleMemoryStore[m15Key] ?: loadCandlesFromPrefs(m15Key, "M15")
             if (m15Candles.isNotEmpty()) {
-                val aggregatedFromM15 = TimeframeAggregatorAlgorithm.aggregateCandles(m15Candles, normTf)
+                val aggregatedFromM15 = TimeframeAggregatorAlgorithm.aggregateCandles(
+                    sourceCandles = m15Candles,
+                    targetTimeframe = normTf,
+                    sourceTimeframe = "M15",
+                    symbolCode = symbolCode
+                )
                 if (aggregatedFromM15.isNotEmpty()) {
                     current = if (current.isNullOrEmpty()) {
                         aggregatedFromM15
@@ -740,7 +855,12 @@ class WorkspaceRepository(context: Context) {
                 val h1Key = "${symbolCode}_${provider.id}_H1"
                 val h1Candles = candleMemoryStore[h1Key] ?: loadCandlesFromPrefs(h1Key, "H1")
                 if (h1Candles.isNotEmpty()) {
-                    val aggregatedFromH1 = TimeframeAggregatorAlgorithm.aggregateCandles(h1Candles, "H4")
+                    val aggregatedFromH1 = TimeframeAggregatorAlgorithm.aggregateCandles(
+                        sourceCandles = h1Candles,
+                        targetTimeframe = "H4",
+                        sourceTimeframe = "H1",
+                        symbolCode = symbolCode
+                    )
                     if (aggregatedFromH1.isNotEmpty()) {
                         current = if (current.isNullOrEmpty()) {
                             aggregatedFromH1
@@ -757,7 +877,12 @@ class WorkspaceRepository(context: Context) {
             val h4Key = "${symbolCode}_${provider.id}_H4"
             val h4Candles = candleMemoryStore[h4Key] ?: loadCandlesFromPrefs(h4Key, "H4")
             if (h4Candles.isNotEmpty()) {
-                val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h4Candles, "D1")
+                val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(
+                    sourceCandles = h4Candles,
+                    targetTimeframe = "D1",
+                    sourceTimeframe = "H4",
+                    symbolCode = symbolCode
+                )
                 if (aggregated.isNotEmpty()) {
                     current = aggregated
                 }
@@ -765,7 +890,12 @@ class WorkspaceRepository(context: Context) {
                 val h1Key = "${symbolCode}_${provider.id}_H1"
                 val h1Candles = candleMemoryStore[h1Key] ?: loadCandlesFromPrefs(h1Key, "H1")
                 if (h1Candles.isNotEmpty()) {
-                    val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h1Candles, "D1")
+                    val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(
+                        sourceCandles = h1Candles,
+                        targetTimeframe = "D1",
+                        sourceTimeframe = "H1",
+                        symbolCode = symbolCode
+                    )
                     if (aggregated.isNotEmpty()) {
                         current = aggregated
                     }
@@ -773,7 +903,12 @@ class WorkspaceRepository(context: Context) {
                     val m15Key = "${symbolCode}_${provider.id}_M15"
                     val m15Candles = candleMemoryStore[m15Key] ?: loadCandlesFromPrefs(m15Key, "M15")
                     if (m15Candles.isNotEmpty()) {
-                        val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(m15Candles, "D1")
+                        val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(
+                            sourceCandles = m15Candles,
+                            targetTimeframe = "D1",
+                            sourceTimeframe = "M15",
+                            symbolCode = symbolCode
+                        )
                         if (aggregated.isNotEmpty()) {
                             current = aggregated
                         }
@@ -784,7 +919,12 @@ class WorkspaceRepository(context: Context) {
             val d1Key = "${symbolCode}_${provider.id}_D1"
             val d1Candles = candleMemoryStore[d1Key] ?: loadCandlesFromPrefs(d1Key, "D1")
             if (d1Candles.isNotEmpty()) {
-                val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(d1Candles, "W1")
+                val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(
+                    sourceCandles = d1Candles,
+                    targetTimeframe = "W1",
+                    sourceTimeframe = "D1",
+                    symbolCode = symbolCode
+                )
                 if (aggregated.isNotEmpty()) {
                     current = aggregated
                 }
@@ -792,7 +932,12 @@ class WorkspaceRepository(context: Context) {
                 val h4Key = "${symbolCode}_${provider.id}_H4"
                 val h4Candles = candleMemoryStore[h4Key] ?: loadCandlesFromPrefs(h4Key, "H4")
                 if (h4Candles.isNotEmpty()) {
-                    val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(h4Candles, "W1")
+                    val aggregated = TimeframeAggregatorAlgorithm.aggregateCandles(
+                        sourceCandles = h4Candles,
+                        targetTimeframe = "W1",
+                        sourceTimeframe = "H4",
+                        symbolCode = symbolCode
+                    )
                     if (aggregated.isNotEmpty()) {
                         current = aggregated
                     }
@@ -848,30 +993,53 @@ class WorkspaceRepository(context: Context) {
             }
             async(Dispatchers.IO) {
                 runCatching {
-                    val res = adapter.fetchClosedCandlesUpToNow(
+                    adapter.fetchClosedCandlesUpToNow(
                         symbolCode = symbol.symbolCode,
                         timeframe = tf,
                         limit = configuredFetchLimit,
                         sinceOpenTimeMs = sinceOpenTimeMs
                     )
-                    Triple(existingTf, res.candles, res.syncMode to res.fetchedNewBars)
-                }.getOrDefault(Triple(existingTf, emptyList(), "DB_CACHE_HIT" to 0))
+                }.fold(
+                    onSuccess = { res -> existingTf to res },
+                    onFailure = { err ->
+                        existingTf to es.manico.chartintelligence.providers.ProviderSyncResult(
+                            providerId = symbol.activeProvider,
+                            symbolCode = symbol.symbolCode,
+                            timeframe = tf,
+                            candles = emptyList(),
+                            syncedAtUtcIso = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.formatUtcIso(System.currentTimeMillis()),
+                            syncMode = "SYNC_ERROR",
+                            fetchedNewBars = 0,
+                            fetchSucceeded = false,
+                            errorMessage = err.message ?: "Sync failed"
+                        )
+                    }
+                )
             }
         }
 
         val syncedByTf = HashMap<String, List<CandleBar>>()
-        var effectiveSyncMode = "DB_CACHE_HIT"
+        var effectiveSyncMode = "OFFLINE_CACHE"
         var effectiveFetchedNew = 0
+        var effectiveFetchSucceeded = false
+        var effectiveErrorMsg: String? = null
+        val nowSyncMs = System.currentTimeMillis()
         for ((tf, job) in syncJobs) {
-            val (existingTf, incoming, metaPair) = job.await()
+            val (existingTf, syncResult) = job.await()
             if (tf == effectiveTimeframe) {
-                effectiveSyncMode = metaPair.first
-                effectiveFetchedNew = metaPair.second
+                effectiveFetchSucceeded = syncResult.fetchSucceeded
+                effectiveSyncMode = if (syncResult.fetchSucceeded) {
+                    syncResult.syncMode
+                } else {
+                    if (existingTf.isNotEmpty()) "OFFLINE_CACHE" else "SYNC_ERROR"
+                }
+                effectiveFetchedNew = syncResult.fetchedNewBars
+                effectiveErrorMsg = syncResult.errorMessage
             }
-            val combined = if (incoming.isNotEmpty()) {
+            val combined = if (syncResult.candles.isNotEmpty()) {
                 CandleValidatorAlgorithm.mergeIdempotent(
                     existing = existingTf,
-                    incoming = incoming,
+                    incoming = syncResult.candles,
                     timeframe = tf
                 ).takeLast(configuredFetchLimit)
             } else {
@@ -892,23 +1060,47 @@ class WorkspaceRepository(context: Context) {
         val m15Bars = syncedByTf["M15"]
             ?: candleMemoryStore["${symbol.symbolCode}_${symbol.activeProvider.id}_M15"]
             ?: emptyList()
+        val d1Bars = syncedByTf["D1"]
+            ?: candleMemoryStore["${symbol.symbolCode}_${symbol.activeProvider.id}_D1"]
+            ?: emptyList()
 
         val merged = syncedByTf[effectiveTimeframe].orEmpty()
         val missingTdKey = symbol.activeProvider == ProviderId.TWELVE_DATA &&
             loadChartPreferences().twelveDataApiKey.isBlank() &&
             merged.isEmpty()
-        val nextProviderStatus = if (missingTdKey) "API_KEY_REQUIRED" else "READY"
-        // Use the most recent intraday M15/H1 bar for watchlist lastClose if effectiveTimeframe is D1 (still open today)
+
+        val connectionStatus = when {
+            !effectiveFetchSucceeded && merged.isEmpty() -> es.manico.chartintelligence.algorithms.ConnectionStatus.SYNC_ERROR
+            !effectiveFetchSucceeded -> es.manico.chartintelligence.algorithms.ConnectionStatus.CACHED_OFFLINE
+            es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.isOtcWeekendClosed(nowSyncMs, symbol.symbolCode) ->
+                es.manico.chartintelligence.algorithms.ConnectionStatus.MARKET_CLOSED
+            else -> es.manico.chartintelligence.algorithms.ConnectionStatus.CONNECTED_LIVE
+        }
+        val nextProviderStatus = when {
+            missingTdKey -> "API_KEY_REQUIRED"
+            !effectiveFetchSucceeded && merged.isEmpty() -> "SYNC_ERROR"
+            !effectiveFetchSucceeded -> "OFFLINE_CACHE"
+            else -> "READY"
+        }
+        // Use the most recent intraday M15 bar for watchlist lastClose if effectiveTimeframe is D1
         val latestForQuote = if (effectiveTimeframe == "D1" && m15Bars.isNotEmpty()) {
             m15Bars.lastOrNull() ?: merged.lastOrNull()
         } else {
             merged.lastOrNull()
         }
-        val prev = if (merged.size >= 2) merged[merged.size - 2].close else latestForQuote?.open
+        val quoteSeries = if (m15Bars.isNotEmpty() && effectiveTimeframe == "D1") m15Bars else merged
+        val stats = computeSessionStats(quoteSeries, symbol.symbolCode, d1Bars)
+        val stepMs = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.timeframeStepMillis(effectiveTimeframe)
+        val lastCandleCloseMs = merged.lastOrNull()?.let { it.openTimeUtcMillis + stepMs } ?: 0L
+
         val updatedSymbol = symbol.copy(
             timeframe = effectiveTimeframe,
             lastClose = latestForQuote?.close,
-            prevClose = prev,
+            prevClose = stats.prevClose ?: latestForQuote?.open,
+            dayOpen = stats.dayOpen,
+            dayHigh = stats.dayHigh,
+            dayLow = stats.dayLow,
+            dayVolume = stats.dayVolume,
             lastCandleUtc = merged.lastOrNull()?.openTimeUtcIso ?: latestForQuote?.openTimeUtcIso,
             storedCandleCount = merged.size,
             lastSyncMode = effectiveSyncMode,
@@ -916,10 +1108,14 @@ class WorkspaceRepository(context: Context) {
             isSyncing = false,
             syncErrorText = when {
                 missingTdKey -> "ERR_API_KEY_REQUIRED"
+                !effectiveFetchSucceeded -> effectiveErrorMsg ?: "ERR_SYNC_OFFLINE"
                 merged.isEmpty() -> "ERR_NO_REAL_DATA"
                 else -> null
             },
-            providerStatus = nextProviderStatus
+            providerStatus = nextProviderStatus,
+            lastSuccessfulFetchMs = if (effectiveFetchSucceeded) nowSyncMs else symbol.lastSuccessfulFetchMs,
+            lastCandleCloseMs = lastCandleCloseMs,
+            connectionStatus = connectionStatus
         )
         updatedSymbol to merged
     }
@@ -1087,16 +1283,28 @@ class WorkspaceRepository(context: Context) {
         return arr
     }
 
-    fun loadDrawingsForChart(chartId: String): List<ChartDrawing> {
+    fun loadDrawingsForChart(chartId: String, legacyFallbackId: String? = null): List<ChartDrawing> {
         val inMem = drawingsMemoryStore[chartId]
         if (inMem != null) return inMem
         val raw = prefs.getString("${AppConfig.KEY_DRAWINGS_CACHE_PREFIX}$chartId", null)
-            ?: return emptyList()
-        val parsed = runCatching {
-            parseDrawingsArray(JSONArray(raw))
-        }.getOrDefault(emptyList())
-        drawingsMemoryStore[chartId] = parsed
-        return parsed
+        if (raw != null) {
+            val parsed = runCatching {
+                parseDrawingsArray(JSONArray(raw))
+            }.getOrDefault(emptyList())
+            drawingsMemoryStore[chartId] = parsed
+            return parsed
+        }
+        if (!legacyFallbackId.isNullOrBlank() && legacyFallbackId != chartId) {
+            val legacyRaw = prefs.getString("${AppConfig.KEY_DRAWINGS_CACHE_PREFIX}$legacyFallbackId", null)
+            if (legacyRaw != null) {
+                val parsed = runCatching {
+                    parseDrawingsArray(JSONArray(legacyRaw))
+                }.getOrDefault(emptyList())
+                drawingsMemoryStore[chartId] = parsed
+                return parsed
+            }
+        }
+        return emptyList()
     }
 
     fun saveDrawingsForChart(chartId: String, drawings: List<ChartDrawing>) {
@@ -1498,7 +1706,15 @@ class WorkspaceRepository(context: Context) {
 
     fun getAllCachedDrawings(chartIds: List<String>): Map<String, List<ChartDrawing>> {
         val map = HashMap<String, List<ChartDrawing>>()
-        for (cId in chartIds) {
+        val allKeys = buildSet {
+            addAll(chartIds)
+            for (prefKey in prefs.all.keys) {
+                if (prefKey.startsWith(AppConfig.KEY_DRAWINGS_CACHE_PREFIX)) {
+                    add(prefKey.removePrefix(AppConfig.KEY_DRAWINGS_CACHE_PREFIX))
+                }
+            }
+        }
+        for (cId in allKeys) {
             val list = loadDrawingsForChart(cId)
             if (list.isNotEmpty()) {
                 map[cId] = list
@@ -1539,14 +1755,27 @@ class WorkspaceRepository(context: Context) {
             if (res != null) return@withContext res
         }
         SystemStatusDto(
-            isHealthy = true,
+            isHealthy = false,
             version = "1.38.0",
-            serverTimeUtc = "Local Cached",
+            serverTimeUtc = "Offline",
             dbConnected = false,
-            dbVersion = "MariaDB (Local)",
+            dbVersion = "Offline (Local Cache)",
             totalCandles = 0L,
             registeredOwner = isOwnerAccountRegistered()
         )
+    }
+
+    fun loadActiveTabId(): String? {
+        return prefs.getString(AppConfig.KEY_ACTIVE_TAB_ID, null)?.takeIf { it.isNotBlank() }
+    }
+
+    fun saveActiveTabId(tabId: String?) {
+        val clean = tabId?.takeIf { it.isNotBlank() }
+        if (clean == null) {
+            prefs.edit().remove(AppConfig.KEY_ACTIVE_TAB_ID).apply()
+        } else {
+            prefs.edit().putString(AppConfig.KEY_ACTIVE_TAB_ID, clean).apply()
+        }
     }
 
     fun loadSavedOpenTabs(): List<ChartTabState> {
@@ -1563,19 +1792,24 @@ class WorkspaceRepository(context: Context) {
                 val def = catalog[symCode]
                 val provId = ProviderId.fromId(obj.optString("provider", def?.activeProvider?.id ?: "tvdatafeed"))
                 val tf = obj.optString("timeframe", def?.timeframe ?: "M15").uppercase()
-                val chartId = def?.chartId ?: "chart_${symCode.lowercase()}_custom"
+                val canonicalChartId = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.canonicalChartKey(symCode, tf)
+                val legacyChartId = def?.chartId ?: es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.legacyChartId(symCode)
                 val tabId = obj.optString("tabId", "tab_${symCode}_${tf}_$i")
                 val rawChartType = obj.optString("chartType", "candlestick")
                 val parsedChartType = ChartType.entries.find { it.name.equals(rawChartType, ignoreCase = true) } ?: ChartType.CANDLESTICK
+                val hydratedCandles = getCachedOrAggregatedCandles(symCode, provId, tf)
+                val stepMs = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.timeframeStepMillis(tf)
+                val lastCloseMs = hydratedCandles.lastOrNull()?.let { it.openTimeUtcMillis + stepMs } ?: 0L
                 list.add(
                     ChartTabState(
                         tabId = tabId,
-                        chartId = chartId,
+                        chartId = canonicalChartId,
                         symbolCode = symCode,
                         decimals = obj.optInt("decimals", def?.decimals ?: 2),
                         provider = provId,
                         timeframe = tf,
                         chartType = parsedChartType,
+                        candles = hydratedCandles,
                         visibleCandleCount = obj.optInt("visibleCount", AppConfig.DEFAULT_VISIBLE_CANDLES).coerceIn(AppConfig.MIN_VISIBLE_CANDLES, AppConfig.MAX_VISIBLE_CANDLES),
                         scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
                         showVolume = obj.optBoolean("showVolume", true),
@@ -1604,7 +1838,9 @@ class WorkspaceRepository(context: Context) {
                             curPrefs.defaultDrawingWidthDp.toDouble()
                         ).toFloat().coerceIn(1.0f, 8.0f),
                         isMagnetMode = obj.optBoolean("isMagnetMode", false),
-                        drawings = loadDrawingsForChart(chartId)
+                        drawings = loadDrawingsForChart(canonicalChartId, legacyChartId),
+                        lastCandleCloseMs = lastCloseMs,
+                        sessionPrevClose = def?.prevClose
                     )
                 )
             }
@@ -1660,12 +1896,16 @@ class WorkspaceRepository(context: Context) {
             val symbolByChartId = symbols.associateBy { it.chartId }
             for ((chartId, dList) in drawingsMap) {
                 val arr = serializeDrawingsArray(dList)
-                drawingsObj.put(chartId, arr)
-                // Also write under canonical ${symbolCode}_${timeframe} and ${symbolCode}_M15 keys for Web parity
                 val sym = symbolByChartId[chartId]
                 if (sym != null) {
-                    drawingsObj.put("${sym.symbolCode}_${sym.timeframe.uppercase()}", arr)
-                    drawingsObj.put("${sym.symbolCode}_M15", arr)
+                    // Migrate/write under canonical SYMBOL_TIMEFRAME while keeping legacy alias
+                    drawingsObj.put(
+                        es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.canonicalChartKey(sym.symbolCode, sym.timeframe),
+                        arr
+                    )
+                    drawingsObj.put(chartId, arr)
+                } else {
+                    drawingsObj.put(chartId, arr)
                 }
             }
 
@@ -1681,6 +1921,7 @@ class WorkspaceRepository(context: Context) {
                 symbolsArr.put(sObj)
             }
 
+            // Never include BYOK API keys in cloud workspace payload
             val prefsObj = JSONObject()
                 .put("bullCandleColorHex", preferences.bullCandleColorHex)
                 .put("bearCandleColorHex", preferences.bearCandleColorHex)
@@ -1707,10 +1948,6 @@ class WorkspaceRepository(context: Context) {
                 .put("showCountdownToBarClose", preferences.showCountdownToBarClose)
                 .put("showPrevCloseLine", preferences.showPrevCloseLine)
                 .put("showHighLowLabels", preferences.showHighLowLabels)
-                .put("twelveDataApiKey", preferences.twelveDataApiKey)
-                .put("stooqApiKey", preferences.stooqApiKey)
-                .put("alphaVantageApiKey", preferences.alphaVantageApiKey)
-                .put("finnhubApiKey", preferences.finnhubApiKey)
                 .put("timezoneMode", preferences.timezoneMode)
 
             val tabsArr = JSONArray()
@@ -1875,10 +2112,6 @@ class WorkspaceRepository(context: Context) {
                     showCountdownToBarClose = prefsJson.optBoolean("showCountdownToBarClose", cur.showCountdownToBarClose),
                     showPrevCloseLine = prefsJson.optBoolean("showPrevCloseLine", cur.showPrevCloseLine),
                     showHighLowLabels = prefsJson.optBoolean("showHighLowLabels", cur.showHighLowLabels),
-                    twelveDataApiKey = prefsJson.optString("twelveDataApiKey", cur.twelveDataApiKey),
-                    stooqApiKey = prefsJson.optString("stooqApiKey", cur.stooqApiKey),
-                    alphaVantageApiKey = prefsJson.optString("alphaVantageApiKey", cur.alphaVantageApiKey),
-                    finnhubApiKey = prefsJson.optString("finnhubApiKey", cur.finnhubApiKey),
                     timezoneMode = prefsJson.optString("timezoneMode", cur.timezoneMode).uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" }
                 )
                 saveChartPreferences(updatedPrefs)
@@ -1892,27 +2125,16 @@ class WorkspaceRepository(context: Context) {
                 changed = true
             }
 
-            // 3. Drawings (maps both canonical SYMBOL_TF keys and Android chartId keys)
+            // 3. Drawings (stores directly under canonical SYMBOL_TF key and maps legacy chartId keys)
             val drawingsObj = workspaceObj.optJSONObject("drawings")
             if (drawingsObj != null) {
-                val catalog = loadSymbolCatalog()
-                val chartIdBySymbol = catalog.associate { it.symbolCode.uppercase() to it.chartId }
                 val keys = drawingsObj.keys()
                 while (keys.hasNext()) {
                     val rawKey = keys.next()
                     val arr = drawingsObj.optJSONArray(rawKey) ?: continue
                     val parsedDrawings = parseDrawingsArray(arr)
                     if (parsedDrawings.isEmpty()) continue
-
-                    val targetChartId = when {
-                        rawKey.startsWith("chart_") -> rawKey
-                        rawKey.contains("_") -> {
-                            val symPrefix = rawKey.substringBeforeLast("_").uppercase()
-                            chartIdBySymbol[symPrefix] ?: "chart_${symPrefix.lowercase()}_custom"
-                        }
-                        else -> chartIdBySymbol[rawKey.uppercase()] ?: rawKey
-                    }
-                    saveDrawingsForChart(targetChartId, parsedDrawings)
+                    saveDrawingsForChart(rawKey, parsedDrawings)
                     changed = true
                 }
             }
@@ -1926,6 +2148,10 @@ class WorkspaceRepository(context: Context) {
                     saveLastOpenedSymbolCode(lastSym)
                     changed = true
                 }
+                val activeIdFromCloud = openTabsObj.optString("activeTabId", "").trim()
+                if (activeIdFromCloud.isNotEmpty()) {
+                    saveActiveTabId(activeIdFromCloud)
+                }
             }
             if (openTabsArr != null && openTabsArr.length() > 0) {
                 val catalog = loadSymbolCatalog().associateBy { it.symbolCode.uppercase() }
@@ -1938,19 +2164,22 @@ class WorkspaceRepository(context: Context) {
                     val def = catalog[symCode]
                     val provId = ProviderId.fromId(obj.optString("provider", def?.activeProvider?.id ?: "tvdatafeed"))
                     val tf = obj.optString("timeframe", def?.timeframe ?: "M15").uppercase()
-                    val chartId = def?.chartId ?: "chart_${symCode.lowercase()}_custom"
+                    val canonicalChartId = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.canonicalChartKey(symCode, tf)
+                    val legacyChartId = def?.chartId ?: es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.legacyChartId(symCode)
                     val tabId = obj.optString("tabId", "tab_${symCode}_${tf}_$i")
                     val rawChartType = obj.optString("chartType", "candlestick")
                     val parsedChartType = ChartType.entries.find { it.name.equals(rawChartType, ignoreCase = true) } ?: ChartType.CANDLESTICK
+                    val hydratedCandles = getCachedOrAggregatedCandles(symCode, provId, tf)
                     parsedTabs.add(
                         ChartTabState(
                             tabId = tabId,
-                            chartId = chartId,
+                            chartId = canonicalChartId,
                             symbolCode = symCode,
                             decimals = obj.optInt("decimals", def?.decimals ?: 2),
                             provider = provId,
                             timeframe = tf,
                             chartType = parsedChartType,
+                            candles = hydratedCandles,
                             visibleCandleCount = obj.optInt("visibleCount", AppConfig.DEFAULT_VISIBLE_CANDLES).coerceIn(AppConfig.MIN_VISIBLE_CANDLES, AppConfig.MAX_VISIBLE_CANDLES),
                             scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
                             showVolume = obj.optBoolean("showVolume", true),
@@ -1979,7 +2208,8 @@ class WorkspaceRepository(context: Context) {
                                 obj.optDouble("activeDrawingWidthPx", curPrefs.defaultDrawingWidthDp.toDouble())
                             ).toFloat().coerceIn(1.0f, 8.0f),
                             isMagnetMode = obj.optBoolean("isMagnetMode", false),
-                            drawings = loadDrawingsForChart(chartId)
+                            drawings = loadDrawingsForChart(canonicalChartId, legacyChartId),
+                            sessionPrevClose = def?.prevClose
                         )
                     )
                 }

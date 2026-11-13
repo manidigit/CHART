@@ -59,10 +59,11 @@ object CandleValidatorAlgorithm {
     ): List<CandleBar> {
         if (candles.isEmpty()) return emptyList()
         val normTf = timeframe.uppercase()
+        val isCrypto247 = UtcTimeAnchorAlgorithm.getSessionCalendar(symbolCode) == SessionCalendar.CRYPTO_24_7
         val isIntraday = normTf != "D1" && normTf != "W1"
 
-        // Step 1: Remove intraday bars during OTC weekend closure that have zero volume or micro-range
-        val step1 = candles.filter { bar ->
+        // Step 1: Remove intraday bars during OTC/market weekend closure that have zero volume or micro-range (skip for 24/7 crypto)
+        val step1 = if (isCrypto247) candles else candles.filter { bar ->
             val openD = bar.open.toDouble()
             val rangeD = (bar.high - bar.low).toDouble()
             val volD = bar.volume.toDouble()

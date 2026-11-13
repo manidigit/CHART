@@ -5,6 +5,9 @@ import {
   saveSymbolsToStorage,
   savePreferences,
   saveOpenTabsToStorage,
+  saveActiveTabId,
+  getLocalByokKeys,
+  getInstrumentSpec,
   mergeCandlesIdempotent,
   normalizeCandle,
   normalizeCanonicalChartKey,
@@ -369,7 +372,12 @@ export async function uploadWorkspaceSync() {
   pendingWorkspaceSync = false;
   const token = localStorage.getItem('ci_session_token') || '';
   try {
-    const p = state.chartPreferences || {};
+    const p = { ...(state.chartPreferences || {}) };
+    delete p.twelveDataApiKey;
+    delete p.stooqApiKey;
+    delete p.alphaVantageApiKey;
+    delete p.finnhubApiKey;
+
     const unifiedPrefs = {
       ...p,
       bullCandleColorHex: normalizeHexForAndroid(p.bullColor, 'FF26A69A'),
@@ -410,6 +418,7 @@ export async function uploadWorkspaceSync() {
       })),
       open_tabs: {
         lastOpenedSymbolCode: state.lastOpenedSymbolCode || 'SPOTBRENT',
+        activeTabId: state.activeTabId || '',
         tabs: (state.openTabs || []).map((t) => ({
           tabId: t.tabId,
           symbolCode: t.symbolCode,
@@ -504,6 +513,10 @@ export async function downloadWorkspaceSync() {
       if (ws.preferences && typeof ws.preferences === 'object') {
         const p = ws.preferences;
         const mappedPrefs = { ...state.chartPreferences, ...p };
+        delete mappedPrefs.twelveDataApiKey;
+        delete mappedPrefs.stooqApiKey;
+        delete mappedPrefs.alphaVantageApiKey;
+        delete mappedPrefs.finnhubApiKey;
         if (p.bullCandleColorHex && !p.bullColor) mappedPrefs.bullColor = normalizeHexForWeb(p.bullCandleColorHex, '#26A69A');
         if (p.bearCandleColorHex && !p.bearColor) mappedPrefs.bearColor = normalizeHexForWeb(p.bearCandleColorHex, '#EF5350');
         if (p.trendLineColorHex && !p.trendColor) mappedPrefs.trendColor = normalizeHexForWeb(p.trendLineColorHex, '#2962FF');
@@ -564,11 +577,15 @@ export async function downloadWorkspaceSync() {
         state.lastOpenedSymbolCode = String(ws.open_tabs.lastOpenedSymbolCode).trim().toUpperCase();
         localStorage.setItem('ci_last_opened_symbol_v2', state.lastOpenedSymbolCode);
       }
+      if (!state.activeTabId && ws.open_tabs && typeof ws.open_tabs === 'object' && ws.open_tabs.activeTabId) {
+        saveActiveTabId(String(ws.open_tabs.activeTabId));
+      }
       if (incomingOpenTabs.length > 0 && (!state.openTabs || state.openTabs.length === 0)) {
         state.openTabs = incomingOpenTabs.map((t, idx) => {
           const code = String(t.symbolCode || 'SPOTBRENT').toUpperCase();
           const tf = String(t.timeframe || 'M15').toUpperCase();
           const sym = state.symbols.find((s) => s.symbolCode === code);
+          const prov = t.provider || (sym ? sym.activeProvider : 'tvdatafeed');
           const resolvedColor = normalizeHexForWeb(
             t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex,
             '#2962FF'
@@ -576,10 +593,10 @@ export async function downloadWorkspaceSync() {
           return {
             tabId: t.tabId || `tab_${code}_${tf}_${idx}`,
             symbolCode: code,
-            provider: t.provider || (sym ? sym.activeProvider : 'tvdatafeed'),
+            provider: prov,
             timeframe: tf,
             decimals: sym ? sym.decimals : 2,
-            candles: [],
+            candles: getCachedOrAggregatedCandles(code, prov, tf),
             chartType: String(t.chartType || '').toLowerCase() === 'line' ? 'line' : 'candles',
             showVolume: t.showVolume !== false,
             volumePaneRatio: 0.22,
@@ -627,6 +644,9 @@ export async function downloadWorkspaceSync() {
           if (state.drawingsByChartId[key]) {
             tab.drawings = state.drawingsByChartId[key];
           }
+          if (!tab.candles || tab.candles.length === 0) {
+            tab.candles = getCachedOrAggregatedCandles(tab.symbolCode, tab.provider, tab.timeframe);
+          }
         });
       }
 
@@ -639,22 +659,41 @@ export async function downloadWorkspaceSync() {
   return false;
 }
 
-function computeExpectedLastClosedOpenMs(timeframe, nowMs = Date.now()) {
+function computeExpectedLastClosedOpenMs(timeframe, nowMs = Date.now(), symbolCode = 'XAUUSD') {
   const normTf = String(timeframe || 'M15').toUpperCase();
   const stepMs = PriceFormatter.stepMilliseconds(normTf);
-  const currentBucketOpenMs = Math.floor(nowMs / stepMs) * stepMs;
+  const currentBucketOpenMs = PriceFormatter.snapToOpenUtcMs(nowMs, normTf);
   const candidateOpenMs = currentBucketOpenMs - stepMs;
+  const cal = PriceFormatter.getSessionCalendar(symbolCode);
+
+  if (cal === 'CRYPTO_24_7') {
+    return candidateOpenMs;
+  }
 
   const d = new Date(nowMs);
   const dow = d.getUTCDay();
   const hour = d.getUTCHours();
 
+  if (normTf === 'W1') {
+    return candidateOpenMs;
+  }
+
   if (normTf === 'D1') {
     const todayMidnightMs = Math.floor(nowMs / 86400000) * 86400000;
     if (dow === 1) return todayMidnightMs - 3 * 86400000;
     if (dow === 0) return todayMidnightMs - 2 * 86400000;
-    if (dow === 6) return todayMidnightMs - 86400000;
     return todayMidnightMs - 86400000;
+  }
+
+  if (cal === 'US_EQUITIES') {
+    if (dow === 6 || dow === 0 || (dow === 1 && hour < 14)) {
+      const daysBackToFriday = dow === 6 ? 1 : dow === 0 ? 2 : 3;
+      const fridayMidnightMs = Math.floor(nowMs / 86400000) * 86400000 - daysBackToFriday * 86400000;
+      if (normTf === 'H4') return fridayMidnightMs + 16 * 3600000;
+      if (normTf === 'H1') return fridayMidnightMs + 20 * 3600000;
+      return fridayMidnightMs + 20 * 3600000 + 45 * 60000;
+    }
+    return candidateOpenMs;
   }
 
   if (dow === 6 || (dow === 0 && hour < 23)) {
@@ -676,7 +715,17 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
     }
     const normTf = String(timeframe || 'M15').toUpperCase();
     const tvInterval =
-      normTf === 'M15' ? '15' : normTf === 'H1' ? '60' : normTf === 'H4' ? '240' : '1D';
+      normTf === 'M15'
+        ? '15'
+        : normTf === 'M30'
+          ? '30'
+          : normTf === 'H1'
+            ? '60'
+            : normTf === 'H4'
+              ? '240'
+              : normTf === 'W1'
+                ? '1W'
+                : '1D';
     const stepMs = PriceFormatter.stepMilliseconds(normTf);
 
     let exchange = 'PEPPERSTONE';
@@ -749,13 +798,16 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
                 if (normTf === 'D1') {
                   const hourUtc = new Date(rawMs).getUTCHours();
                   const adjustedMs = hourUtc >= 21 ? rawMs + 4 * 3600000 : rawMs;
-                  openMs = Math.floor(adjustedMs / stepMs) * stepMs;
+                  openMs = PriceFormatter.snapToOpenUtcMs(adjustedMs, 'D1');
+                  if (rawMs + stepMs > nowMs || openMs + stepMs > nowMs) continue;
+                } else if (normTf === 'W1') {
+                  openMs = PriceFormatter.snapToOpenUtcMs(rawMs, 'W1');
                   if (rawMs + stepMs > nowMs || openMs + stepMs > nowMs) continue;
                 } else if (normTf === 'H4') {
-                  openMs = Math.floor(rawMs / stepMs) * stepMs;
+                  openMs = PriceFormatter.snapToOpenUtcMs(rawMs, 'H4');
                   if (rawMs + stepMs > nowMs || openMs + stepMs > nowMs) continue;
                 } else {
-                  openMs = Math.floor(rawMs / stepMs) * stepMs;
+                  openMs = PriceFormatter.snapToOpenUtcMs(rawMs, normTf);
                   if (openMs + stepMs > nowMs) continue;
                 }
                 const norm = normalizeCandle(
@@ -768,7 +820,8 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
                     volume: v[5] || 0,
                   },
                   normTf,
-                  nowMs
+                  nowMs,
+                  symbolCode
                 );
                 if (norm) out.push(norm);
               }
@@ -823,44 +876,59 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
       ? Number(exactCached[exactCached.length - 1].open_time_utc_ms || 0)
       : 0;
 
-  const prefs = state.chartPreferences || {};
+  const byok = getLocalByokKeys();
   let userApiKey = '';
-  if (provider === 'twelve_data' && prefs.twelveDataApiKey) {
-    userApiKey = String(prefs.twelveDataApiKey).trim();
-  } else if (provider === 'stooq' && prefs.stooqApiKey) {
-    userApiKey = String(prefs.stooqApiKey).trim();
+  if (provider === 'twelve_data' && byok.twelveDataApiKey) {
+    userApiKey = String(byok.twelveDataApiKey).trim();
+  } else if (provider === 'stooq' && byok.stooqApiKey) {
+    userApiKey = String(byok.stooqApiKey).trim();
   }
-  const apiKeyParam = userApiKey ? `&api_key=${encodeURIComponent(userApiKey)}` : '';
   const sinceParam = !forceBackfill && lastLocalOpenMs > 0 ? `&since_ms=${lastLocalOpenMs}` : '';
   const backfillParam = forceBackfill || lastLocalOpenMs === 0 ? '&backfill=1' : '';
   const url = `./api/v1/candles_sync.php?symbol=${encodeURIComponent(
     symbolCode
   )}&provider=${encodeURIComponent(provider)}&timeframe=${encodeURIComponent(
     normTf
-  )}&limit=${safeLimit}${sinceParam}${backfillParam}${apiKeyParam}&_t=${nowMs}`;
+  )}&limit=${safeLimit}${sinceParam}${backfillParam}&_t=${nowMs}`;
 
   let candles = existingCached ? [...existingCached] : [];
+  let syncOk = false;
+  let errorMessage = '';
   let syncMeta = {
-    sync_mode: lastLocalOpenMs > 0 ? 'DB_CACHE_HIT' : 'INITIAL_BACKFILL',
+    sync_mode: 'NONE',
     fetched_new_bars: 0,
     stored_total_bars: candles.length,
-    provider_status: 'READY',
+    provider_status: 'UNKNOWN',
     price_basis: resolvePriceBasis(symbolCode, provider),
+    instrument_spec: getInstrumentSpec(symbolCode, provider),
   };
 
   try {
-    const res = await fetch(url, { cache: 'no-store' });
+    const reqHeaders = {};
+    if (userApiKey) {
+      reqHeaders['X-Provider-Api-Key'] = userApiKey;
+    }
+    const res = await fetch(url, { cache: 'no-store', headers: reqHeaders });
     const json = await res.json();
-    if (json && json.ok && json.data) {
+    if (res.ok && json && json.ok && json.data) {
+      syncOk = true;
       if (json.data.sync_meta) {
         syncMeta = { ...syncMeta, ...json.data.sync_meta };
       }
       if (Array.isArray(json.data.candles) && json.data.candles.length > 0) {
-        candles = mergeCandlesIdempotent(candles, json.data.candles, normTf, nowMs);
+        candles = mergeCandlesIdempotent(candles, json.data.candles, normTf, nowMs, symbolCode);
       }
+      if (syncMeta.provider_status === 'API_KEY_REQUIRED' || syncMeta.provider_status === 'DEGRADED') {
+        syncOk = false;
+        errorMessage = syncMeta.error_message || syncMeta.provider_status;
+      }
+    } else {
+      errorMessage = (json && (json.error || json.message)) || `HTTP ${res.status}`;
+      syncMeta.provider_status = (json && json.error_code) || 'ERROR';
     }
-  } catch {
-    // Keep existingCached on network error
+  } catch (err) {
+    errorMessage = (err && err.message) || 'Network unavailable';
+    syncMeta.provider_status = 'NETWORK_ERROR';
   }
 
   if (candles.length === 0 && provider === 'tvdatafeed') {
@@ -870,8 +938,11 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
         { cache: 'no-store' }
       );
       const staticJson = await staticRes.json();
-      if (staticJson && Array.isArray(staticJson.candles)) {
-        candles = mergeCandlesIdempotent([], staticJson.candles, normTf, nowMs).slice(-safeLimit);
+      if (staticJson && Array.isArray(staticJson.candles) && staticJson.candles.length > 0) {
+        candles = mergeCandlesIdempotent([], staticJson.candles, normTf, nowMs, symbolCode).slice(-safeLimit);
+        if (!syncOk && candles.length > 0 && !errorMessage) {
+          syncMeta.sync_mode = 'STATIC_SEED';
+        }
       }
     } catch {
       // Ignore static fallback error
@@ -879,10 +950,9 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
   }
 
   const lastStoredOpenMs = candles.length > 0 ? Number(candles[candles.length - 1].open_time_utc_ms) : 0;
-  const expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMs);
+  const expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMs, symbolCode);
   const hasShallowHistory = forceBackfill || candles.length < minBarsForDelta;
 
-  // Connect to TradingView WebSocket if history is shallow OR latest closed bar is behind expectedLastClosedOpenMs
   if (
     provider === 'tvdatafeed' &&
     (candles.length === 0 || hasShallowHistory || lastStoredOpenMs < expectedLastClosedOpenMs)
@@ -895,14 +965,17 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
 
     const liveWsBars = await fetchDirectFromTradingViewBrowserWs(symbolCode, normTf, gapBars, nowMs);
     if (liveWsBars.length > 0) {
+      syncOk = true;
+      errorMessage = '';
       const prevCount = candles.length;
-      candles = mergeCandlesIdempotent(candles, liveWsBars, normTf, nowMs);
+      candles = mergeCandlesIdempotent(candles, liveWsBars, normTf, nowMs, symbolCode);
       const addedCount = Math.max(
         0,
         candles.length - prevCount,
         liveWsBars.filter((b) => Number(b.open_time_utc_ms || 0) > lastStoredOpenMs).length
       );
       syncMeta.sync_mode = !hasShallowHistory && lastStoredOpenMs > 0 ? 'DELTA_SYNC' : 'INITIAL_BACKFILL';
+      syncMeta.provider_status = 'LIVE';
       syncMeta.fetched_new_bars = Number(syncMeta.fetched_new_bars || 0) + addedCount;
     }
     if (normTf === 'H4') {
@@ -913,15 +986,15 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
         nowMs
       );
       if (liveH1Bars.length > 0) {
-        const aggH4 = TimeframeAggregator.aggregateCandles(liveH1Bars, 'H4', nowMs);
-        candles = mergeCandlesIdempotent(candles, aggH4, 'H4', nowMs);
+        const aggH4 = TimeframeAggregator.aggregateCandles(liveH1Bars, 'H4', nowMs, symbolCode);
+        candles = mergeCandlesIdempotent(candles, aggH4, 'H4', nowMs, symbolCode);
       }
     }
   }
 
   const finalCandles = candles.slice(-safeLimit);
   syncMeta.stored_total_bars = Math.max(Number(syncMeta.stored_total_bars || 0), finalCandles.length);
-  return { candles: finalCandles, syncMeta };
+  return { candles: finalCandles, syncMeta, syncOk, errorMessage };
 }
 
 export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, forceBackfill = false) {
@@ -930,6 +1003,7 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
 
   sym.isSyncing = true;
   sym.syncError = false;
+  sym.syncErrorMessage = '';
   if (typeof renderCallback === 'function') renderCallback();
 
   const rawRequestedTf = String(requestedTf || sym.timeframe || 'M15').toUpperCase();
@@ -952,54 +1026,63 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
     const results = await Promise.all(
       timeframesToSync.map(async (tf) => {
         const res = await fetchFromBackend(symbolCode, sym.activeProvider, tf, fetchLimit, forceBackfill);
-        return [tf, res.candles, res.syncMeta];
+        return [tf, res.candles, res.syncMeta, res.syncOk, res.errorMessage];
       })
     );
 
     const syncedByTf = {};
     let activeMeta = null;
-    for (const [tf, incoming, meta] of results) {
-      if (tf === effectiveTf) activeMeta = meta;
+    let activeSyncOk = false;
+    let activeErrMsg = '';
+    for (const [tf, incoming, meta, syncOk, errMsg] of results) {
+      if (tf === effectiveTf) {
+        activeMeta = meta;
+        activeSyncOk = syncOk;
+        activeErrMsg = errMsg || '';
+      }
       const cacheKey = `${symbolCode}_${sym.activeProvider}_${tf}`;
       const existing = state.candleCache[cacheKey] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
       const merged =
         incoming && incoming.length > 0
-          ? mergeCandlesIdempotent(existing, incoming, tf).slice(-fetchLimit)
+          ? mergeCandlesIdempotent(existing, incoming, tf, Date.now(), symbolCode).slice(-fetchLimit)
           : existing;
       syncedByTf[tf] = merged;
     }
 
     const m15Bars = syncedByTf.M15 || [];
     if (m15Bars.length > 0) {
-      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_M15`, m15Bars, fetchLimit);
-      const aggH1 = TimeframeAggregator.aggregateCandles(m15Bars, 'H1');
-      syncedByTf.H1 = mergeCandlesIdempotent(syncedByTf.H1 || [], aggH1, 'H1').slice(-fetchLimit);
+      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_M15`, m15Bars, fetchLimit, symbolCode);
+      const aggH1 = TimeframeAggregator.aggregateCandles(m15Bars, 'H1', Date.now(), symbolCode);
+      syncedByTf.H1 = mergeCandlesIdempotent(syncedByTf.H1 || [], aggH1, 'H1', Date.now(), symbolCode).slice(-fetchLimit);
     }
 
     const h1Bars = syncedByTf.H1 || [];
     if (h1Bars.length > 0) {
-      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_H1`, h1Bars, fetchLimit);
-      const aggH4 = TimeframeAggregator.aggregateCandles(h1Bars, 'H4');
-      syncedByTf.H4 = mergeCandlesIdempotent(syncedByTf.H4 || [], aggH4, 'H4').slice(-fetchLimit);
+      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_H1`, h1Bars, fetchLimit, symbolCode);
+      const aggH4 = TimeframeAggregator.aggregateCandles(h1Bars, 'H4', Date.now(), symbolCode);
+      syncedByTf.H4 = mergeCandlesIdempotent(syncedByTf.H4 || [], aggH4, 'H4', Date.now(), symbolCode).slice(-fetchLimit);
     }
 
     for (const tf of Object.keys(syncedByTf)) {
       const bars = syncedByTf[tf] || [];
       if (bars.length > 0) {
-        saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_${tf}`, bars, fetchLimit);
+        saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_${tf}`, bars, fetchLimit, symbolCode);
       }
     }
 
     const activeCandles =
       syncedByTf[effectiveTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, effectiveTf);
 
+    const nowMs = Date.now();
     sym.timeframe = effectiveTf;
     sym.candles = activeCandles;
-    sym.providerStatus = (activeMeta && activeMeta.provider_status) || 'READY';
+    sym.providerStatus = (activeMeta && activeMeta.provider_status) || (activeSyncOk ? 'READY' : 'ERROR');
     sym.priceBasis =
       (activeMeta && activeMeta.price_basis) || resolvePriceBasis(symbolCode, sym.activeProvider);
+    sym.instrumentSpec =
+      (activeMeta && activeMeta.instrument_spec) || getInstrumentSpec(symbolCode, sym.activeProvider);
     if (activeMeta) {
-      sym.lastSyncMode = activeMeta.sync_mode || 'DB_CACHE_HIT';
+      sym.lastSyncMode = activeMeta.sync_mode || 'NONE';
       sym.fetchedNewBars = Number(activeMeta.fetched_new_bars || 0);
     }
     const latestQuoteBar =
@@ -1009,13 +1092,21 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
 
     if (latestQuoteBar) {
       sym.lastClose = Number(latestQuoteBar.close);
-      sym.lastCandleUtc =
-        (activeCandles[activeCandles.length - 1] &&
-          activeCandles[activeCandles.length - 1].open_time_utc_iso) ||
-        latestQuoteBar.open_time_utc_iso;
+      const activeLastBar = activeCandles[activeCandles.length - 1] || latestQuoteBar;
+      sym.lastCandleUtc = activeLastBar.open_time_utc_iso || latestQuoteBar.open_time_utc_iso;
+      sym.lastCandleCloseMs =
+        Number(activeLastBar.open_time_utc_ms || 0) + PriceFormatter.stepMilliseconds(effectiveTf);
+    }
+
+    if (activeSyncOk) {
+      sym.lastSuccessfulFetchMs = nowMs;
       sym.syncError = false;
+      sym.syncErrorMessage = '';
+      sym.connectionStatus = PriceFormatter.isMarketOpen(nowMs, symbolCode) ? 'LIVE' : 'CLOSED';
     } else {
       sym.syncError = true;
+      sym.syncErrorMessage = activeErrMsg || sym.providerStatus || 'Sync failed';
+      sym.connectionStatus = activeCandles.length > 0 ? 'STALE' : 'ERROR';
     }
 
     for (const tab of state.openTabs) {
@@ -1028,6 +1119,10 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
               : tab.timeframe;
         tab.provider = sym.activeProvider;
         tab.providerStatus = sym.providerStatus;
+        tab.connectionStatus = sym.connectionStatus;
+        tab.lastSuccessfulFetchMs = sym.lastSuccessfulFetchMs;
+        tab.lastCandleCloseMs = sym.lastCandleCloseMs;
+        tab.syncErrorMessage = sym.syncErrorMessage;
         tab.timeframe = tabTf;
         tab.candles =
           syncedByTf[tabTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tabTf);
@@ -1035,8 +1130,10 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
     }
 
     saveSymbolsToStorage();
-  } catch {
+  } catch (err) {
     sym.syncError = true;
+    sym.syncErrorMessage = (err && err.message) || 'Sync failed';
+    sym.connectionStatus = sym.candles && sym.candles.length > 0 ? 'STALE' : 'ERROR';
   } finally {
     sym.isSyncing = false;
     if (typeof renderCallback === 'function') renderCallback();

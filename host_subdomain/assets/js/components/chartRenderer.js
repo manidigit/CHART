@@ -1,37 +1,28 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.38.0';
 import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.38.0';
-import { state } from '../core/store.js?v=1.38.0';
+import { state, getInstrumentSpec } from '../core/store.js?v=1.38.0';
 
-function getTimeframeDurationSeconds(tf) {
-  if (tf === 'M15') return 15 * 60;
-  if (tf === 'M30') return 30 * 60;
-  if (tf === 'H1') return 60 * 60;
-  if (tf === 'H4') return 4 * 3600;
-  if (tf === 'D1') return 24 * 3600;
-  if (tf === 'W1') return 7 * 24 * 3600;
-  return 15 * 60;
-}
-
-function computeCandleCountdownLabel(lastOpenEpochSec, tf) {
+function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
-  const normTf = String(tf || 'M15').toUpperCase();
-  if (normTf === 'D1' || normTf === 'W1') {
-    return '';
-  }
-  const tfSec = getTimeframeDurationSeconds(normTf);
-  const nowSec = Math.floor(Date.now() / 1000);
-  const currentBucketStart = Math.floor(nowSec / tfSec) * tfSec;
-  const nextCloseSec = currentBucketStart + tfSec;
-  const remain = Math.max(0, nextCloseSec - nowSec);
-  const ageSec = nowSec - Number(lastOpenEpochSec);
-  if (ageSec > tfSec * 8) {
+  const nowMs = Date.now();
+  if (!PriceFormatter.isMarketOpen(nowMs, symbolCode)) {
     return 'Closed';
   }
-  const hrs = Math.floor(remain / 3600);
-  const mins = Math.floor((remain % 3600) / 60);
-  const secs = remain % 60;
+  const normTf = String(tf || 'M15').toUpperCase();
+  const stepMs = PriceFormatter.stepMilliseconds(normTf);
+  const currentBucketStartMs = PriceFormatter.snapToOpenUtcMs(nowMs, normTf);
+  const nextCloseMs = currentBucketStartMs + stepMs;
+  const remainSec = Math.max(0, Math.floor((nextCloseMs - nowMs) / 1000));
+  const hrs = Math.floor(remainSec / 3600);
+  const mins = Math.floor((remainSec % 3600) / 60);
+  const secs = remainSec % 60;
   const pad = (n) => String(n).padStart(2, '0');
+  if (hrs >= 24) {
+    const days = Math.floor(hrs / 24);
+    const remHrs = hrs % 24;
+    return `${days}d ${pad(remHrs)}h`;
+  }
   if (hrs > 0) {
     return `${pad(hrs)}:${pad(mins)}:${pad(secs)}`;
   }
@@ -69,7 +60,10 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
   const firstMs = firstBar ? Number(firstBar.open_time_utc_ms || firstBar.openTimeSec || 0) : 0;
   const lastMs = lastBar ? Number(lastBar.open_time_utc_ms || lastBar.openTimeSec || 0) : 0;
   const lastClose = lastBar ? Number(lastBar.close || 0) : 0;
-  const cacheKey = `${n}_${firstMs}_${lastMs}_${lastClose}_${bbPeriod}_${bbStdDev}`;
+  const tf = String(tab.timeframe || 'M15').toUpperCase();
+  const symCode = String(tab.symbolCode || 'XAUUSD').toUpperCase();
+  const prov = String(tab.provider || 'tvdatafeed');
+  const cacheKey = `${n}_${firstMs}_${lastMs}_${lastClose}_${bbPeriod}_${bbStdDev}_${tf}_${symCode}_${prov}`;
 
   if (!tab._indCache || tab._indCache.key !== cacheKey) {
     tab._indCache = {
@@ -98,8 +92,7 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
     getSma50: () => (cache.sma50 || (cache.sma50 = TechnicalIndicators.computeSma(candles, 50))),
     getSma200: () => {
       if (!cache.sma200) {
-        const p200 = Math.min(200, candles.length);
-        cache.sma200 = TechnicalIndicators.computeSma(candles, p200);
+        cache.sma200 = candles.length >= 200 ? TechnicalIndicators.computeSma(candles, 200) : [];
       }
       return cache.sma200;
     },
@@ -108,7 +101,9 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
     getBollinger: () =>
       cache.bollinger ||
       (cache.bollinger = TechnicalIndicators.computeBollingerBands(candles, bbPeriod, bbStdDev)),
-    getVwap: () => (cache.vwap || (cache.vwap = TechnicalIndicators.computeVwap(candles))),
+    getVwap: () =>
+      cache.vwap ||
+      (cache.vwap = TechnicalIndicators.computeVwap(candles, tf, symCode)),
     getSupertrend: () =>
       cache.supertrend || (cache.supertrend = TechnicalIndicators.computeSupertrend(candles, 10, 3.0)),
     getMacd: () => {
@@ -124,10 +119,11 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
     getSmc: () =>
       cache.smc || (cache.smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3)),
     getVolumeProfile: (visible, startIdx, endIdx) => {
-      const vKey = `${startIdx}_${endIdx}`;
+      const spec = getInstrumentSpec(symCode, prov);
+      const vKey = `${startIdx}_${endIdx}_${spec.volumeType}`;
       if (cache.vpKey !== vKey || !cache.vp) {
         cache.vpKey = vKey;
-        cache.vp = TechnicalIndicators.computeVolumeProfile(visible, 24, 0.70);
+        cache.vp = TechnicalIndicators.computeVolumeProfile(visible, 24, 0.70, spec.volumeType);
       }
       return cache.vp;
     },
@@ -441,6 +437,26 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
       ctx.fillStyle = '#F59E0B';
       ctx.fillText(`POC ${PriceFormatter.formatPrice(vp.pocPrice, tab.decimals)}`, chartW - maxProfileW - 34, pocY - 4);
+
+      if (vp.isEstimated) {
+        const estLabel =
+          (i18n && typeof i18n.t === 'function' && i18n.t('chart_est_vol_profile')) ||
+          'Est. Vol Profile';
+        ctx.font = '600 9.5px "JetBrains Mono", sans-serif';
+        const estW = ctx.measureText(estLabel).width + 12;
+        const estX = Math.max(8, chartW - estW - 8);
+        const estY = topPad + 6;
+        ctx.fillStyle = isDark ? 'rgba(245, 158, 11, 0.16)' : 'rgba(245, 158, 11, 0.2)';
+        ctx.strokeStyle = 'rgba(245, 158, 11, 0.55)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(estX, estY, estW, 17, 4);
+        else ctx.rect(estX, estY, estW, 17);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = '#F59E0B';
+        ctx.fillText(estLabel, estX + 6, estY + 11.5);
+      }
     }
   }
 
@@ -540,20 +556,47 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // Dashed Previous Close Reference Line
+  // Dashed Previous Session Close Reference Line
   if (prefs.showPrevCloseLine !== false && candles.length >= 2) {
-    const prevClose = Number(candles[candles.length - 2].close);
-    const prevY = priceToY(prevClose);
-    if (prevY >= topPad && prevY <= topPad + chartH) {
-      ctx.save();
-      ctx.setLineDash([3, 5]);
-      ctx.strokeStyle = isDark ? 'rgba(149, 152, 161, 0.45)' : 'rgba(100, 116, 139, 0.45)';
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      ctx.moveTo(0, prevY);
-      ctx.lineTo(chartW, prevY);
-      ctx.stroke();
-      ctx.restore();
+    const latestMs = Number(
+      candles[candles.length - 1].open_time_utc_ms ||
+        (candles[candles.length - 1].openTimeSec ? candles[candles.length - 1].openTimeSec * 1000 : 0)
+    );
+    const latestDayKey = PriceFormatter.getSessionDayKey(latestMs, tab.symbolCode);
+    let prevClose = null;
+    for (let i = candles.length - 2; i >= 0; i--) {
+      const ms = Number(candles[i].open_time_utc_ms || (candles[i].openTimeSec ? candles[i].openTimeSec * 1000 : 0));
+      if (ms > 0 && PriceFormatter.getSessionDayKey(ms, tab.symbolCode) !== latestDayKey) {
+        prevClose = Number(candles[i].close);
+        break;
+      }
+    }
+    if (prevClose === null) {
+      const d1Key = `${tab.symbolCode}_${tab.provider || 'tvdatafeed'}_D1`;
+      const d1 = (state.candleCache && state.candleCache[d1Key]) || [];
+      if (d1.length >= 2) {
+        for (let i = d1.length - 1; i >= 0; i--) {
+          const ms = Number(d1[i].open_time_utc_ms || (d1[i].openTimeSec ? d1[i].openTimeSec * 1000 : 0));
+          if (ms > 0 && PriceFormatter.getSessionDayKey(ms, tab.symbolCode) !== latestDayKey) {
+            prevClose = Number(d1[i].close);
+            break;
+          }
+        }
+      }
+    }
+    if (prevClose !== null && Number.isFinite(prevClose)) {
+      const prevY = priceToY(prevClose);
+      if (prevY >= topPad && prevY <= topPad + chartH) {
+        ctx.save();
+        ctx.setLineDash([3, 5]);
+        ctx.strokeStyle = isDark ? 'rgba(149, 152, 161, 0.45)' : 'rgba(100, 116, 139, 0.45)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(0, prevY);
+        ctx.lineTo(chartW, prevY);
+        ctx.stroke();
+        ctx.restore();
+      }
     }
   }
 
@@ -687,8 +730,31 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   if (tab.showSma50 && candles.length >= 50) {
     drawSeriesLine(ctx, indCache.getSma50(), startIdx, visible.length, idxToX, priceToY, '#38BDF8', 1.6);
   }
-  if (tab.showSma200 && candles.length >= 30) {
-    drawSeriesLine(ctx, indCache.getSma200(), startIdx, visible.length, idxToX, priceToY, '#EC4899', 1.8);
+  if (tab.showSma200) {
+    if (candles.length >= 200) {
+      drawSeriesLine(ctx, indCache.getSma200(), startIdx, visible.length, idxToX, priceToY, '#EC4899', 1.8);
+    } else {
+      const warnTpl =
+        (i18n && typeof i18n.t === 'function' && i18n.t('chart_sma200_insufficient')) ||
+        'SMA200: Insufficient Data ({n}/200)';
+      const warnText = String(warnTpl).replace('{n}', String(candles.length));
+      ctx.save();
+      ctx.font = '600 10px "JetBrains Mono", sans-serif';
+      const wBoxW = ctx.measureText(warnText).width + 14;
+      const wBoxX = 8;
+      const wBoxY = topPad + 36;
+      ctx.fillStyle = isDark ? 'rgba(236, 72, 153, 0.14)' : 'rgba(236, 72, 153, 0.16)';
+      ctx.strokeStyle = 'rgba(236, 72, 153, 0.55)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(wBoxX, wBoxY, wBoxW, 18, 4);
+      else ctx.rect(wBoxX, wBoxY, wBoxW, 18);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = '#EC4899';
+      ctx.fillText(warnText, wBoxX + 7, wBoxY + 12.5);
+      ctx.restore();
+    }
   }
   if (tab.showEma20 && candles.length >= 20) {
     drawSeriesLine(ctx, indCache.getEma20(), startIdx, visible.length, idxToX, priceToY, '#10B981', 1.5);
@@ -1029,7 +1095,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
     const countdownStr =
       prefs.showCountdownToBarClose !== false
-        ? computeCandleCountdownLabel(lastCandle.openTimeSec, tab.timeframe)
+        ? computeCandleCountdownLabel(lastCandle.openTimeSec, tab.timeframe, tab.symbolCode)
         : '';
     const pillH = countdownStr ? 30 : 20;
     const pillTop = Math.max(topPad, Math.min(topPad + chartH - pillH, lastY - 10));

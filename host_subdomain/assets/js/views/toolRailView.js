@@ -150,3 +150,118 @@ export function renderLeftToolRail(activeTab, i18n, activeRailPopup = null) {
     </aside>
   `;
 }
+
+export function renderMobileBottomSheet(activeTab, mobileSheet, i18n) {
+  if (!activeTab || !mobileSheet) return '';
+  const isFa = i18n.getCurrentLanguage() === 'fa';
+  const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
+  const curColor = activeTab.activeDrawingColorHex || activeTab.activeDrawingColor || '#2962FF';
+  const curWidth = Number(activeTab.activeDrawingWidthPx || 2.0);
+  const isMagnet = Boolean(activeTab.isMagnetMode);
+  const colors = ['#2962FF', '#26A69A', '#F59E0B', '#EF5350', '#A855F7', '#D1D4DC'];
+  const widths = [1.0, 2.0, 3.0, 4.0];
+
+  if (mobileSheet === 'tools') {
+    const toolsList = [
+      { id: 'cursor', label: i18n.t('draw_tool_cursor') },
+      { id: 'trend_line', label: i18n.t('draw_tool_trend') },
+      { id: 'fib_retracement', label: i18n.t('draw_tool_fib') },
+      { id: 'horizontal_line', label: i18n.t('draw_tool_hline') },
+      { id: 'vertical_line', label: i18n.t('draw_tool_vline') },
+      { id: 'long_position', label: i18n.t('draw_tool_long_pos') },
+      { id: 'short_position', label: i18n.t('draw_tool_short_pos') },
+    ];
+    return `
+      <div class="ci-mobile-sheet-backdrop" data-action="close-mobile-sheet">
+        <div class="ci-mobile-sheet" dir="${isFa ? 'rtl' : 'ltr'}">
+          <div class="row-between" style="margin-bottom: 10px;">
+            <strong style="font-size: 13.5px; color: var(--text-strong);">${i18n.t('mobile_sheet_tools') || i18n.t('draw_tools_toggle')}</strong>
+            <button type="button" class="btn btn-sm btn-icon" data-action="close-mobile-sheet">✕</button>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 12px;">
+            ${toolsList
+              .map(
+                (t) => `<button type="button" class="btn ${tool === t.id ? 'btn-primary' : ''}" data-action="set-tool" data-tool="${t.id}">${t.label}</button>`
+              )
+              .join('')}
+            <button type="button" class="btn ${isMagnet ? 'btn-primary' : ''}" data-action="toggle-magnet">${i18n.t('draw_tool_magnet')}</button>
+          </div>
+          <div class="row-between" style="margin-bottom: 10px; flex-wrap: wrap; gap: 8px;">
+            <span style="font-size: 12px; color: var(--text-muted);">${i18n.t('draw_color_label')}</span>
+            <div class="color-picker-row">
+              ${colors
+                .map(
+                  (c) => `<button type="button" class="color-dot ${curColor.toUpperCase() === c ? 'active' : ''}" style="background: ${c};" data-action="set-draw-color" data-color="${c}"></button>`
+                )
+                .join('')}
+            </div>
+          </div>
+          <div class="row-between" style="margin-bottom: 12px;">
+            <span style="font-size: 12px; color: var(--text-muted);">${i18n.t('draw_width_label')}</span>
+            <div class="chip-group ltr-num">
+              ${widths
+                .map(
+                  (w) => `<button type="button" class="chip ${Math.round(curWidth) === w ? 'active' : ''}" data-action="set-draw-width" data-width="${w}">${w}px</button>`
+                )
+                .join('')}
+            </div>
+          </div>
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <button type="button" class="btn" style="flex: 1;" data-action="zoom-in">+ ${i18n.t('chart_zoom_in')}</button>
+            <button type="button" class="btn" style="flex: 1;" data-action="zoom-out">- ${i18n.t('chart_zoom_out')}</button>
+            ${
+              activeTab.selectedDrawingId
+                ? `<button type="button" class="btn" style="color: var(--bear); border-color: var(--bear);" data-action="delete-drawing">${i18n.t('draw_delete_selected')}</button>`
+                : ''
+            }
+            ${
+              activeTab.drawings && activeTab.drawings.length > 0
+                ? `<button type="button" class="btn" data-action="clear-drawings">${i18n.t('draw_clear_all')}</button>`
+                : ''
+            }
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  if (mobileSheet === 'indicators') {
+    const items = [
+      { key: 'showSma20', action: 'toggle-sma20', label: 'SMA 20' },
+      { key: 'showSma50', action: 'toggle-sma50', label: 'SMA 50' },
+      { key: 'showSma200', action: 'toggle-sma200', label: 'SMA 200' },
+      { key: 'showEma20', action: 'toggle-ema20', label: 'EMA 20' },
+      { key: 'showEma50', action: 'toggle-ema50', label: 'EMA 50' },
+      { key: 'showSupertrend', action: 'toggle-supertrend', label: 'Supertrend' },
+      { key: 'showVwap', action: 'toggle-vwap', label: 'Session VWAP' },
+      { key: 'showBollinger', action: 'toggle-bollinger', label: 'Bollinger' },
+      { key: 'showVolumeProfile', action: 'toggle-volume-profile', label: 'Vol Profile' },
+      { key: 'showSmcStructure', action: 'toggle-smc-structure', label: 'SMC (BOS)' },
+      { key: 'showFvg', action: 'toggle-fvg', label: 'FVG' },
+      { key: 'showRsi14', action: 'toggle-rsi14', label: 'RSI 14' },
+      { key: 'showMacd', action: 'toggle-macd', label: 'MACD' },
+      { key: 'showAtr14', action: 'toggle-atr14', label: 'ATR 14' },
+    ];
+    return `
+      <div class="ci-mobile-sheet-backdrop" data-action="close-mobile-sheet">
+        <div class="ci-mobile-sheet" dir="${isFa ? 'rtl' : 'ltr'}">
+          <div class="row-between" style="margin-bottom: 10px;">
+            <strong style="font-size: 13.5px; color: var(--text-strong);">${i18n.t('mobile_sheet_indicators') || (isFa ? 'اندیکاتورها' : 'Indicators')}</strong>
+            <button type="button" class="btn btn-sm btn-icon" data-action="close-mobile-sheet">✕</button>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(2, 1fr); gap: 8px; margin-bottom: 10px;">
+            ${items
+              .map(
+                (it) => `<button type="button" class="btn ${activeTab[it.key] ? 'btn-primary' : ''}" data-action="${it.action}">${it.label}</button>`
+              )
+              .join('')}
+          </div>
+          <button type="button" class="btn" style="width: 100%;" data-action="open-modal" data-modal="indicators">
+            ${isFa ? 'تنظیمات کامل اندیکاتورها...' : 'All Indicator Parameters...'}
+          </button>
+        </div>
+      </div>
+    `;
+  }
+  return '';
+}

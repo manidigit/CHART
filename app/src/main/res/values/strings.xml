@@ -328,9 +328,9 @@
     <string name="settings_section_theme_title">Theme, Language &amp; Candle Colors</string>
     <string name="provider_stooq">Stooq EOD (Multi-Decade Historical D1/W1)</string>
     <string name="settings_byok_title">Personal Data Provider API Keys (BYOK)</string>
-    <string name="settings_byok_subtitle">Optionally configure your personal API keys to raise rate limits; synced across Web and Android.</string>
-    <string name="settings_byok_save">Save &amp; Sync API Keys</string>
-    <string name="settings_byok_saved">Personal API keys saved and synced successfully.</string>
+    <string name="settings_byok_subtitle">Optionally configure your personal API keys to raise rate limits; stored locally on this device only (never synced to cloud).</string>
+    <string name="settings_byok_save">Save API Keys Locally</string>
+    <string name="settings_byok_saved">Personal API keys saved locally on this device.</string>
     <string name="chart_data_boundary">Start of history</string>
     <string name="settings_timezone_label">Chart Clock Timezone</string>
     <string name="settings_timezone_utc">UTC (Greenwich)</string>
@@ -348,4 +348,12 @@
     <string name="overview_fx_metrics">FX Pair &amp; Session Profile</string>
     <string name="overview_stock_metrics">Corporate &amp; Valuation Profile</string>
     <string name="overview_no_candles">Open this symbol chart to load closed candles and compute real technical indicators and pivots.</string>
+    <string name="chart_countdown_closed">Closed</string>
+    <string name="chart_sma200_insufficient">SMA200: Insufficient Data (%1$d/200)</string>
+    <string name="chart_vp_estimated">Est. Vol Profile</string>
+    <string name="chart_status_offline_cached">Offline Cache</string>
+    <string name="chart_status_sync_error">Sync Error</string>
+    <string name="chart_snapshot_share_title">Share Chart Snapshot</string>
+    <string name="chart_snapshot_error">Could not capture chart snapshot</string>
+    <string name="action_back">Back</string>
 </resources>

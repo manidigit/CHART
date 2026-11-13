@@ -22,6 +22,8 @@ use ChartIntelligence\Algorithms\UtcTimeAnchor;
  */
 final class TvDatafeedAdapter
 {
+    public static string $lastError = '';
+
     public static function fetchClosedCandles(
         string $symbol,
         string $timeframe,
@@ -30,6 +32,7 @@ final class TvDatafeedAdapter
         bool $tryLiveCli = true,
         int $sinceOpenMs = 0
     ): array {
+        self::$lastError = '';
         $cleanSymbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $symbol));
         $normTf = strtoupper($timeframe);
         if (!in_array($normTf, ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'], true)) {
@@ -86,7 +89,7 @@ final class TvDatafeedAdapter
             default => 240,
         };
         $hasShallowHistory = $sinceOpenMs <= 0 && count($existing) < $minBarsForFullHistory;
-        $expectedLastClosedOpenMs = self::computeExpectedLastClosedOpenMs($normTf, $nowMs);
+        $expectedLastClosedOpenMs = self::computeExpectedLastClosedOpenMs($normTf, $nowMs, $cleanSymbol);
         $needsIncrementalSync = $lastStoredOpenMs < $expectedLastClosedOpenMs;
 
         if ($needsIncrementalSync || ($hasShallowHistory && $tryLiveCli)) {
@@ -104,7 +107,7 @@ final class TvDatafeedAdapter
             if ($normTf === 'H4') {
                 $liveH1 = self::fetchLiveFromTradingViewWs($tvSymbol, $exchange, 'H1', min(1500, $barsToFetch * 4), $nowMs);
                 if (!empty($liveH1)) {
-                    $aggH4 = TimeframeAggregator::aggregateCandles($liveH1, 'H4', $nowMs);
+                    $aggH4 = TimeframeAggregator::aggregateCandles($liveH1, 'H4', $nowMs, $cleanSymbol);
                     $liveCandles = self::mergeCandlesByOpenMs($liveCandles, $aggH4, 'H4', $nowMs);
                 }
             }
@@ -128,10 +131,13 @@ final class TvDatafeedAdapter
 
             // Strict Provider Isolation: Never substitute Yahoo Finance bars into tvdatafeed series.
             if (!empty($liveCandles)) {
+                self::$lastError = '';
                 $existing = self::mergeCandlesByOpenMs($existing, $liveCandles, $normTf, $nowMs);
                 if ($sinceOpenMs <= 0) {
                     self::persistNormalizedJson($dataDir, $cleanSymbol, $exchange, $normTf, $existing, $nowMs);
                 }
+            } elseif (self::$lastError === '') {
+                self::$lastError = 'tvdatafeed WebSocket returned no new bars';
             }
         }
 
@@ -140,7 +146,7 @@ final class TvDatafeedAdapter
             $m15 = self::readFromNormalizedJson($dataDir, $cleanSymbol, 'M15', 1500, $nowMs);
             if (!empty($m15)) {
                 $cleanM15 = CandleValidator::filterSyntheticWeekendAndCombCandles($m15, $cleanSymbol, 'M15');
-                $aggregated = TimeframeAggregator::aggregateCandles($cleanM15, $normTf, $nowMs);
+                $aggregated = TimeframeAggregator::aggregateCandles($cleanM15, $normTf, $nowMs, $cleanSymbol);
                 if (!empty($aggregated)) {
                     $existing = self::mergeCandlesByOpenMs($existing, $aggregated, $normTf, $nowMs);
                 }
@@ -163,21 +169,29 @@ final class TvDatafeedAdapter
 
     /**
      * Computes the open timestamp (UTC ms) of the most recent candle that SHOULD be closed at `$nowMs`,
-     * accounting for weekend market closure (Saturday all day, Sunday before 22:00 UTC).
+     * accounting for the asset's session calendar (`CRYPTO_24_7`, `OTC_FX_METALS`, `US_EQUITIES`).
      */
-    public static function computeExpectedLastClosedOpenMs(string $timeframe, int $nowMs): int
+    public static function computeExpectedLastClosedOpenMs(string $timeframe, int $nowMs, string $symbolCode = 'XAUUSD'): int
     {
-        $stepMs = UtcTimeAnchor::stepMilliseconds($timeframe);
-        $currentBucketOpenMs = UtcTimeAnchor::snapToOpenUtcMs($nowMs, $timeframe);
+        $normTf = strtoupper($timeframe);
+        $stepMs = UtcTimeAnchor::stepMilliseconds($normTf);
+        $currentBucketOpenMs = UtcTimeAnchor::snapToOpenUtcMs($nowMs, $normTf);
         $candidateOpenMs = $currentBucketOpenMs - $stepMs;
+
+        if ($normTf === 'W1') {
+            return $candidateOpenMs;
+        }
+
+        $calendar = UtcTimeAnchor::getSessionCalendar($symbolCode);
+        if ($calendar === UtcTimeAnchor::CALENDAR_CRYPTO_24_7) {
+            return $candidateOpenMs;
+        }
 
         $nowSec = (int) floor($nowMs / 1000);
         $dow = (int) gmdate('w', $nowSec); // 0 = Sun, 1 = Mon, ..., 6 = Sat
         $hour = (int) gmdate('G', $nowSec);
 
-        if ($timeframe === 'D1') {
-            // Daily candle for Monday does not close until Tuesday 00:00 UTC.
-            // On Saturday (6), Sunday (0), and Monday (1), the last closed daily bar is Friday 00:00 UTC.
+        if ($normTf === 'D1') {
             $todayMidnightMs = UtcTimeAnchor::snapToOpenUtcMs($nowMs, 'D1');
             if ($dow === 1) {
                 return $todayMidnightMs - (3 * 86400000);
@@ -185,17 +199,25 @@ final class TvDatafeedAdapter
             if ($dow === 0) {
                 return $todayMidnightMs - (2 * 86400000);
             }
-            if ($dow === 6) {
-                return $todayMidnightMs - 86400000;
-            }
             return $todayMidnightMs - 86400000;
         }
 
-        // Intraday (M15, H1, H4): during weekend closure, last closed candle is Friday 21:45 / 21:00 / 20:00 UTC
+        if ($calendar === UtcTimeAnchor::CALENDAR_US_EQUITIES && ($dow === 6 || $dow === 0)) {
+            $daysBackToFriday = $dow === 6 ? 1 : 2;
+            $fridayMidnightMs = UtcTimeAnchor::snapToOpenUtcMs($nowMs, 'D1') - ($daysBackToFriday * 86400000);
+            return match ($normTf) {
+                'H4' => $fridayMidnightMs + (16 * 3600000),
+                'H1' => $fridayMidnightMs + (20 * 3600000),
+                'M30' => $fridayMidnightMs + (20 * 3600000) + (30 * 60000),
+                default => $fridayMidnightMs + (20 * 3600000) + (45 * 60000),
+            };
+        }
+
+        // Intraday OTC (M15, H1, H4): during weekend closure, last closed candle is Friday 21:45 / 21:00 / 20:00 UTC
         if ($dow === 6 || ($dow === 0 && $hour < 23)) {
             $daysBackToFriday = $dow === 6 ? 1 : 2;
             $fridayMidnightMs = UtcTimeAnchor::snapToOpenUtcMs($nowMs, 'D1') - ($daysBackToFriday * 86400000);
-            return match ($timeframe) {
+            return match ($normTf) {
                 'H4' => $fridayMidnightMs + (20 * 3600000),
                 'H1' => $fridayMidnightMs + (21 * 3600000),
                 'M30' => $fridayMidnightMs + (21 * 3600000) + (30 * 60000),
@@ -534,12 +556,13 @@ final class TvDatafeedAdapter
         }
 
         $result = [];
+        $isCrypto = UtcTimeAnchor::getSessionCalendar($symbol) === UtcTimeAnchor::CALENDAR_CRYPTO_24_7;
         foreach ($decoded['candles'] as $item) {
             $openMs = (int) ($item['open_time_utc_ms'] ?? 0);
             if ($openMs <= 0 || !UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
                 continue;
             }
-            if ($timeframe === 'D1') {
+            if ($timeframe === 'D1' && !$isCrypto) {
                 $dow = (int) gmdate('w', (int) floor($openMs / 1000));
                 if ($dow === 0 || $dow === 6) {
                     continue;

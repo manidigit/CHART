@@ -1,4 +1,11 @@
-import { state, PROVIDER_METHODS_CATALOG, getCachedOrAggregatedCandles } from '../core/store.js?v=1.38.0';
+import {
+  state,
+  PROVIDER_METHODS_CATALOG,
+  getCachedOrAggregatedCandles,
+  escapeHtml,
+  getLocalByokKeys,
+  getInstrumentSpec,
+} from '../core/store.js?v=1.38.0';
 import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.38.1';
 
 export function renderLanguageThemeBar(i18n) {
@@ -120,6 +127,9 @@ export function renderSettingsModal(i18n) {
             Boolean(existingSym && existingSym.inWatchlist && existingSym.activeProvider === activeMethod.providerId);
           const isInWatchlistOtherSource =
             Boolean(existingSym && existingSym.inWatchlist && existingSym.activeProvider !== activeMethod.providerId);
+          const spec = getInstrumentSpec(item.symbolCode, activeMethod.providerId);
+          const safeCode = escapeHtml(item.symbolCode);
+          const safeItemTitle = escapeHtml(isFa ? item.titleFa : item.titleEn);
 
           return `
             <div class="tv-settings-symbol-row" style="padding: 8px 10px; margin-bottom: 6px;">
@@ -127,11 +137,11 @@ export function renderSettingsModal(i18n) {
                 ${renderSymbolBadge(item.symbolCode, 28)}
                 <div style="min-width: 0;">
                   <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                    <strong style="font-size: 12.5px; color: var(--text-strong);">${isFa ? item.titleFa : item.titleEn}</strong>
-                    <span class="ltr-num" style="font-size: 10px; font-weight: 700; color: var(--primary); padding: 1px 5px; border-radius: 4px; background: var(--primary-soft);">${item.symbolCode}</span>
+                    <strong style="font-size: 12.5px; color: var(--text-strong);">${safeItemTitle}</strong>
+                    <span class="ltr-num" style="font-size: 10px; font-weight: 700; color: var(--primary); padding: 1px 5px; border-radius: 4px; background: var(--primary-soft);">${safeCode}</span>
                   </div>
                   <div class="ltr-num" style="font-size: 10.5px; color: var(--text-muted); margin-top: 1px;">
-                    ${barCount > 0 ? `${barCount} bars cached` : (isFa ? 'آماده همگام‌سازی' : 'Ready to sync')} · ${item.providerTicker}
+                    ${barCount > 0 ? `${barCount} bars cached` : (isFa ? 'آماده همگام‌سازی' : 'Ready to sync')} · ${escapeHtml(spec.providerTicker)} · ${escapeHtml(spec.priceBasis)} · ${escapeHtml(spec.sessionCalendar)} · ${escapeHtml(spec.volumeType)}
                   </div>
                 </div>
               </div>
@@ -147,7 +157,7 @@ export function renderSettingsModal(i18n) {
                         type="button"
                         class="btn btn-sm"
                         data-action="delta-sync-symbol"
-                        data-symbol="${item.symbolCode}"
+                        data-symbol="${safeCode}"
                         title="${isFa ? 'دریافت کندل‌های جدید' : 'Delta Sync'}"
                       >
                         ↻
@@ -158,12 +168,12 @@ export function renderSettingsModal(i18n) {
                         type="button"
                         class="btn btn-sm btn-primary"
                         data-action="activate-source-symbol"
-                        data-provider="${activeMethod.providerId}"
-                        data-symbol="${item.symbolCode}"
+                        data-provider="${escapeHtml(activeMethod.providerId)}"
+                        data-symbol="${safeCode}"
                       >
                         ${
                           isInWatchlistOtherSource
-                            ? (isFa ? `انتخاب ${activeMethod.badgeLabel}` : `Use ${activeMethod.badgeLabel}`)
+                            ? (isFa ? `انتخاب ${escapeHtml(activeMethod.badgeLabel)}` : `Use ${escapeHtml(activeMethod.badgeLabel)}`)
                             : (isFa ? '+ افزودن' : '+ Add')
                         }
                       </button>
@@ -189,17 +199,20 @@ export function renderSettingsModal(i18n) {
       const shortCategory = getShortCategoryLabel(s.symbolCode, i18n);
       const rawTitle = s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode;
       const cleanTitle = rawTitle.replace(/\s*\([A-Z0-9_]+\)\s*/g, '').trim() || rawTitle;
+      const safeCode = escapeHtml(s.symbolCode);
+      const safeTitle = escapeHtml(cleanTitle);
+      const spec = getInstrumentSpec(s.symbolCode, s.activeProvider);
       return `
         <div class="tv-settings-symbol-row" style="padding: 8px 10px; margin-bottom: 6px;">
           <div class="tv-settings-symbol-left">
             ${renderSymbolBadge(s.symbolCode, 28)}
             <div style="min-width: 0;">
               <div style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap;">
-                <strong style="font-size: 12.5px; color: var(--text-strong);">${cleanTitle}</strong>
-                <span class="ltr-num" style="font-size: 10px; font-weight: 700; color: var(--primary); padding: 1px 5px; border-radius: 4px; background: var(--primary-soft);">${s.symbolCode}</span>
+                <strong style="font-size: 12.5px; color: var(--text-strong);">${safeTitle}</strong>
+                <span class="ltr-num" style="font-size: 10px; font-weight: 700; color: var(--primary); padding: 1px 5px; border-radius: 4px; background: var(--primary-soft);">${safeCode}</span>
               </div>
               <div class="ltr-num" style="font-size: 10.5px; color: var(--text-muted); margin-top: 1px;">
-                ${shortCategory} · ${(s.candles || []).length} bars
+                ${escapeHtml(shortCategory)} · ${(s.candles || []).length} bars · ${escapeHtml(spec.providerTicker)} · ${escapeHtml(spec.timezone)} · ${escapeHtml(spec.volumeType)}
               </div>
             </div>
           </div>
@@ -209,13 +222,13 @@ export function renderSettingsModal(i18n) {
               class="input-field ltr-num"
               style="width: 175px; min-height: 28px; padding: 2px 6px; font-size: 11px;"
               data-action="select-provider-dropdown"
-              data-symbol="${s.symbolCode}"
+              data-symbol="${safeCode}"
             >
               ${s.allowedProviders
                 .map(
                   (prov) => `
-                  <option value="${prov}" ${s.activeProvider === prov ? 'selected' : ''}>
-                    ${i18n.t('provider_' + prov) || prov}
+                  <option value="${escapeHtml(prov)}" ${s.activeProvider === prov ? 'selected' : ''}>
+                    ${escapeHtml(i18n.t('provider_' + prov) || prov)}
                   </option>
                 `
                 )
@@ -226,7 +239,7 @@ export function renderSettingsModal(i18n) {
               type="button"
               class="btn btn-sm"
               data-action="delta-sync-symbol"
-              data-symbol="${s.symbolCode}"
+              data-symbol="${safeCode}"
               title="${isFa ? 'دریافت کندل‌های جدید (Delta)' : 'Delta Sync'}"
             >
               ↻
@@ -237,7 +250,7 @@ export function renderSettingsModal(i18n) {
                 type="checkbox"
                 class="tv-toggle-input"
                 data-action="toggle-watchlist"
-                data-symbol="${s.symbolCode}"
+                data-symbol="${safeCode}"
                 ${s.inWatchlist ? 'checked' : ''}
               />
               <span class="tv-toggle-slider"></span>
@@ -245,7 +258,7 @@ export function renderSettingsModal(i18n) {
 
             ${
               s.isCustom
-                ? `<button type="button" class="btn btn-sm" style="color: var(--bear); padding: 2px 7px;" data-action="delete-symbol" data-symbol="${s.symbolCode}" title="Delete">✕</button>`
+                ? `<button type="button" class="btn btn-sm" style="color: var(--bear); padding: 2px 7px;" data-action="delete-symbol" data-symbol="${safeCode}" title="Delete">✕</button>`
                 : ''
             }
           </div>
@@ -351,6 +364,7 @@ export function renderSettingsModal(i18n) {
     </details>
   `;
 
+  const localByok = getLocalByokKeys();
   const byokCard = `
     <details class="tv-accordion">
       <summary>
@@ -361,19 +375,19 @@ export function renderSettingsModal(i18n) {
         <form id="settings-byok-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px;">
           <div>
             <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Twelve Data API Key (XAUUSD / Global)</label>
-            <input id="byok-twelve-data" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="e.g. 9f8a7b6c5d4e..." value="${p.twelveDataApiKey || ''}" autocomplete="off" />
+            <input id="byok-twelve-data" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="e.g. 9f8a7b6c5d4e..." value="${escapeHtml(localByok.twelveDataApiKey || '')}" autocomplete="off" />
           </div>
           <div>
             <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Stooq API Key (Optional EOD D1/W1)</label>
-            <input id="byok-stooq" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Stooq Key..." value="${p.stooqApiKey || ''}" autocomplete="off" />
+            <input id="byok-stooq" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Stooq Key..." value="${escapeHtml(localByok.stooqApiKey || '')}" autocomplete="off" />
           </div>
           <div>
             <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Alpha Vantage API Key (Backup)</label>
-            <input id="byok-alphavantage" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Alpha Vantage Key..." value="${p.alphaVantageApiKey || ''}" autocomplete="off" />
+            <input id="byok-alphavantage" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Alpha Vantage Key..." value="${escapeHtml(localByok.alphaVantageApiKey || '')}" autocomplete="off" />
           </div>
           <div>
             <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Finnhub API Key (Backup)</label>
-            <input id="byok-finnhub" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Finnhub Key..." value="${p.finnhubApiKey || ''}" autocomplete="off" />
+            <input id="byok-finnhub" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Finnhub Key..." value="${escapeHtml(localByok.finnhubApiKey || '')}" autocomplete="off" />
           </div>
           <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 2px;">
             <button type="submit" class="btn btn-sm btn-primary">${i18n.t('settings_byok_save')}</button>
@@ -454,7 +468,7 @@ export function renderSettingsModal(i18n) {
                       class="input-field"
                       style="flex: 1; min-width: 120px; min-height: 34px; font-size: 12px;"
                       placeholder="${isFa ? 'جستجوی کد یا نام نماد...' : 'Search symbol code or name...'}"
-                      value="${state.symbolExplorerSearchQuery || ''}"
+                      value="${escapeHtml(state.symbolExplorerSearchQuery || '')}"
                       data-action="search-explorer-symbol"
                     />
                     <button type="button" class="btn btn-primary" style="min-height: 34px;" data-action="open-add-symbol-modal">
@@ -750,7 +764,7 @@ export function renderSettingsModal(i18n) {
         <div class="row-between" style="margin-bottom: 12px;">
           <div>
             <h5 style="margin: 0; color: var(--text-strong);">${i18n.t('settings_group_account')}</h5>
-            <div class="ltr-num" style="font-size: 11.5px; color: var(--primary); margin-top: 2px;">${state.ownerUsername || 'Owner'}</div>
+            <div class="ltr-num" style="font-size: 11.5px; color: var(--primary); margin-top: 2px;">${escapeHtml(state.ownerUsername || 'Owner')}</div>
           </div>
           <button type="button" class="btn btn-sm" style="color: var(--bear); border-color: var(--bear);" data-action="sign-out">
             ${i18n.t('action_sign_out')}
@@ -760,7 +774,7 @@ export function renderSettingsModal(i18n) {
         <form id="settings-email-form" style="margin-bottom: 12px;">
           <label class="tv-input-label">${i18n.t('label_recovery_email')}</label>
           <div style="display: flex; gap: 8px;">
-            <input class="input-field ltr-num" type="email" name="recovery_email" placeholder="${i18n.t('label_recovery_email')}" value="${state.ownerEmail || ''}" required />
+            <input class="input-field ltr-num" type="email" name="recovery_email" placeholder="${i18n.t('label_recovery_email')}" value="${escapeHtml(state.ownerEmail || '')}" required />
             <button type="submit" class="btn btn-sm btn-primary" style="flex-shrink: 0;">
               ${i18n.t('action_save_email')}
             </button>

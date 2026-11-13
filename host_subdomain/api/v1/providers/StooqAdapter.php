@@ -40,6 +40,8 @@ final class StooqAdapter
         };
     }
 
+    public static string $lastError = '';
+
     public static function fetchClosedCandles(
         string $symbol,
         string $timeframe,
@@ -48,6 +50,7 @@ final class StooqAdapter
         int $sinceOpenMs = 0,
         string $customApiKey = ''
     ): array {
+        self::$lastError = '';
         $normTf = strtoupper($timeframe);
         if (!in_array($normTf, ['D1', 'W1'], true)) {
             $normTf = 'D1';
@@ -73,11 +76,13 @@ final class StooqAdapter
         ]);
         $raw = @file_get_contents($url, false, $ctx);
         if ($raw === false || stripos($raw, 'Date,Open,High,Low,Close') === false) {
+            self::$lastError = $raw === false ? 'Stooq request failed' : 'Stooq returned invalid CSV';
             return [];
         }
 
         $allLines = array_filter(explode("\n", trim($raw)));
         if (count($allLines) <= 1) {
+            self::$lastError = 'Stooq returned empty series';
             return [];
         }
         // Skip CSV header

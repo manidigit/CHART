@@ -1,6 +1,7 @@
 package es.manico.chartintelligence.providers
 
 import es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm
+import es.manico.chartintelligence.algorithms.SessionCalendar
 import es.manico.chartintelligence.algorithms.TimeframeAggregatorAlgorithm
 import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
 import es.manico.chartintelligence.config.AppConfig
@@ -34,8 +35,7 @@ import java.util.concurrent.TimeUnit
  *    (`wss://data.tradingview.com/socket.io/websocket`) via OkHttp to fetch all newly closed candles
  *    from the last stored candle right up to `nowMillis` (with Yahoo Finance gap-fill fallback if
  *    WebSocket is blocked), and merges them idempotently.
- * 4. Keeps `D1` strictly for completed daily sessions (Monday's session opening Sunday 22:00-23:00 UTC
- *    is not closed until Tuesday 00:00 UTC).
+ * 4. Keeps `D1` strictly for completed daily sessions while preserving Saturday/Sunday D1 bars for 24/7 Crypto.
  */
 class TvDatafeedAdapter(
     private val httpClient: OkHttpClient = OkHttpClient.Builder()
@@ -60,23 +60,28 @@ class TvDatafeedAdapter(
         // 1. Fetch persisted historical / delta series from DB-First backend engine
         var syncMode = if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL"
         var fetchedNewBars = 0
+        var backendSucceeded = false
+        var errorMsg: String? = null
         val backendCandles = runCatching {
             val sinceParam = if (sinceOpenTimeMs > 0L) "&since_ms=$sinceOpenTimeMs" else ""
             val url = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$cleanSymbol&provider=tvdatafeed&timeframe=$normTf&limit=$safeLimit&refresh=1$sinceParam&_t=$nowMillis"
             val request = Request.Builder().url(url).get().build()
             httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) emptyList()
-                else {
-                    val bodyStr = response.body?.string().orEmpty()
-                    val root = runCatching { JSONObject(bodyStr) }.getOrNull()
-                    val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
-                    if (meta != null) {
-                        syncMode = meta.optString("mode", syncMode)
-                        fetchedNewBars = meta.optInt("fetched_new_bars", 0)
-                    }
-                    parseBackendResponse(bodyStr, cleanSymbol, normTf, nowMillis)
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Backend HTTP ${response.code}")
                 }
+                backendSucceeded = true
+                val bodyStr = response.body?.string().orEmpty()
+                val root = runCatching { JSONObject(bodyStr) }.getOrNull()
+                val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
+                if (meta != null) {
+                    syncMode = meta.optString("mode", syncMode)
+                    fetchedNewBars = meta.optInt("fetched_new_bars", 0)
+                }
+                parseBackendResponse(bodyStr, cleanSymbol, normTf, nowMillis)
             }
+        }.onFailure { err ->
+            errorMsg = err.message ?: "Backend unreachable"
         }.getOrNull().orEmpty()
 
         val minBarsForFullHistory = when (normTf) {
@@ -92,11 +97,12 @@ class TvDatafeedAdapter(
             sinceOpenTimeMs,
             backendCandles.lastOrNull()?.openTimeUtcMillis ?: 0L
         )
-        val expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMillis)
+        val expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMillis, cleanSymbol)
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(normTf)
 
         // 2. If backend candles are shallow or behind the latest closed UTC bucket, fetch from TradingView WebSocket
         var mergedCandles = backendCandles
+        var wsSucceeded = false
         if (hasShallowHistory || lastStoredOpenMs < expectedLastClosedOpenMs) {
             val gapBars = if (lastStoredOpenMs > 0L && !hasShallowHistory) {
                 (((nowMillis - lastStoredOpenMs) / stepMs).toInt() + 16).coerceIn(24, 1500)
@@ -106,11 +112,15 @@ class TvDatafeedAdapter(
 
             val directTvCandles = runCatching {
                 fetchDirectFromTradingViewWs(cleanSymbol, normTf, gapBars, nowMillis)
+            }.onFailure { err ->
+                if (errorMsg == null) errorMsg = err.message ?: "TradingView WebSocket failed"
             }.getOrNull().orEmpty().filter {
                 hasShallowHistory || sinceOpenTimeMs <= 0L || it.openTimeUtcMillis >= sinceOpenTimeMs
             }
 
             if (directTvCandles.isNotEmpty()) {
+                wsSucceeded = true
+                errorMsg = null
                 if (lastStoredOpenMs > 0L && !hasShallowHistory) {
                     syncMode = "DELTA_SYNC"
                     fetchedNewBars = maxOf(fetchedNewBars, directTvCandles.count { it.openTimeUtcMillis > lastStoredOpenMs })
@@ -132,8 +142,14 @@ class TvDatafeedAdapter(
                     fetchDirectFromTradingViewWs(cleanSymbol, "H1", (gapBars * 4).coerceIn(120, 1500), nowMillis)
                 }.getOrNull().orEmpty()
                 if (directH1.isNotEmpty()) {
-                    val aggregatedH4 = TimeframeAggregatorAlgorithm.aggregateCandles(directH1, "H4", nowMillis)
-                        .filter { hasShallowHistory || sinceOpenTimeMs <= 0L || it.openTimeUtcMillis >= sinceOpenTimeMs }
+                    wsSucceeded = true
+                    val aggregatedH4 = TimeframeAggregatorAlgorithm.aggregateCandles(
+                        sourceCandles = directH1,
+                        targetTimeframe = "H4",
+                        nowUtcMillis = nowMillis,
+                        sourceTimeframe = "H1",
+                        symbolCode = cleanSymbol
+                    ).filter { hasShallowHistory || sinceOpenTimeMs <= 0L || it.openTimeUtcMillis >= sinceOpenTimeMs }
                     if (aggregatedH4.isNotEmpty()) {
                         mergedCandles = CandleValidatorAlgorithm.mergeIdempotent(
                             existing = mergedCandles,
@@ -144,6 +160,11 @@ class TvDatafeedAdapter(
                     }
                 }
             }
+        }
+
+        val fetchSucceeded = backendSucceeded || wsSucceeded
+        if (!fetchSucceeded) {
+            syncMode = "OFFLINE_CACHE"
         }
 
         val finalCandles = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
@@ -159,19 +180,35 @@ class TvDatafeedAdapter(
             candles = finalCandles,
             syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
             syncMode = syncMode,
-            fetchedNewBars = fetchedNewBars
+            fetchedNewBars = fetchedNewBars,
+            fetchSucceeded = fetchSucceeded,
+            errorMessage = if (fetchSucceeded) null else errorMsg
         )
     }
 
     /**
      * Computes the open timestamp (UTC ms) of the most recent candle that SHOULD be closed at `nowMillis`,
-     * accounting for weekend market closure (Saturday all day, Sunday before 23:00 UTC) and Monday D1.
+     * accounting for the instrument's session calendar (CRYPTO_24_7 vs OTC_FX_METALS vs US_EQUITIES)
+     * and Monday-anchored W1 weeks.
      */
-    fun computeExpectedLastClosedOpenMs(timeframe: String, nowMillis: Long): Long {
+    fun computeExpectedLastClosedOpenMs(
+        timeframe: String,
+        nowMillis: Long,
+        symbolCode: String = "XAUUSD"
+    ): Long {
         val normTf = timeframe.uppercase()
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(normTf)
         val currentBucketOpenMs = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(nowMillis, normTf)
         val candidateOpenMs = currentBucketOpenMs - stepMs
+
+        if (normTf == "W1") {
+            return currentBucketOpenMs - (7L * 86_400_000L)
+        }
+
+        val cal = UtcTimeAnchorAlgorithm.getSessionCalendar(symbolCode)
+        if (cal == SessionCalendar.CRYPTO_24_7) {
+            return candidateOpenMs
+        }
 
         val zdt = Instant.ofEpochMilli(nowMillis).atZone(ZoneOffset.UTC)
         val dow = zdt.dayOfWeek
@@ -187,11 +224,12 @@ class TvDatafeedAdapter(
             }
         }
 
-        if (normTf == "W1") {
-            val todayMidnightMs = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(nowMillis, "D1")
-            val daysSinceSunday = (dow.value % 7).toLong()
-            val currentWeekSundayMs = todayMidnightMs - (daysSinceSunday * 86_400_000L)
-            return currentWeekSundayMs - (7L * 86_400_000L)
+        if (cal == SessionCalendar.US_EQUITIES && UtcTimeAnchorAlgorithm.isOtcWeekendClosed(nowMillis, symbolCode)) {
+            if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) {
+                val daysBackToFriday = if (dow == DayOfWeek.SATURDAY) 1L else 2L
+                val fridayMidnightMs = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(nowMillis, "D1") - (daysBackToFriday * 86_400_000L)
+                return fridayMidnightMs + (20L * 3_600_000L)
+            }
         }
 
         if (dow == DayOfWeek.SATURDAY || (dow == DayOfWeek.SUNDAY && hour < 23)) {
@@ -389,7 +427,7 @@ class TvDatafeedAdapter(
             val c = arr.getJSONObject(i)
             val ts = c.optLong("open_time_utc_ms", 0L)
             if (ts <= 0L || !UtcTimeAnchorAlgorithm.isCandleClosed(ts, timeframe, nowMillis)) continue
-            if (timeframe == "D1") {
+            if (timeframe == "D1" && UtcTimeAnchorAlgorithm.getSessionCalendar(symbolCode) != SessionCalendar.CRYPTO_24_7) {
                 val dow = Instant.ofEpochMilli(ts).atZone(ZoneOffset.UTC).dayOfWeek
                 if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) continue
             }

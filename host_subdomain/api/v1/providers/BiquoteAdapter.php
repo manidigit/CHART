@@ -16,6 +16,8 @@ use ChartIntelligence\Algorithms\UtcTimeAnchor;
  */
 final class BiquoteAdapter
 {
+    public static string $lastError = '';
+
     public static function fetchClosedCandles(
         string $symbol,
         string $timeframe,
@@ -23,6 +25,7 @@ final class BiquoteAdapter
         int $nowMs,
         int $sinceOpenMs = 0
     ): array {
+        self::$lastError = '';
         $cleanSymbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $symbol));
         $normTf = strtoupper($timeframe);
         if (!in_array($normTf, ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'], true)) {
@@ -125,6 +128,11 @@ final class BiquoteAdapter
                 if ($openMs > 0 && ($sinceOpenMs <= 0 || $openMs > $sinceOpenMs)) {
                     $candles[$openMs] = $bar;
                 }
+            }
+            if (empty($candles)) {
+                self::$lastError = YahooFinanceAdapter::$lastError !== ''
+                    ? YahooFinanceAdapter::$lastError
+                    : 'No candles returned from biquote or fallback feed.';
             }
         }
 

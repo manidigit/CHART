@@ -209,6 +209,7 @@
   "chart_status_delayed": "Delayed",
   "chart_status_syncing": "Syncing…",
   "chart_status_cached": "Cached",
+  "chart_status_stale": "Stale Cache",
   "chart_status_error": "Feed Error",
   "draw_color_label": "Color:",
   "draw_width_label": "Width:",
@@ -271,10 +272,10 @@
   "settings_cat_theme": "Theme",
   "settings_section_notifications_title": "Notifications, Haptics & Watchlist Behavior",
   "settings_section_notifications_hint": "Configure tactile chart feedback, picker vibrations, and watchlist symbol display alerts.",
-  "settings_byok_title": "Personal Data Provider API Keys (BYOK — Bring Your Own Key)",
-  "settings_byok_subtitle": "Optionally configure your personal API keys to raise rate limits; keys are synced across Web and Android.",
-  "settings_byok_save": "Save & Sync API Keys",
-  "settings_byok_saved": "Personal API keys saved and synced successfully.",
+  "settings_byok_title": "Personal Data Provider API Keys (BYOK — Device Local Only)",
+  "settings_byok_subtitle": "Optionally configure your personal API keys to raise rate limits; keys are stored ONLY locally on this device and never synced to the cloud.",
+  "settings_byok_save": "Save Local API Keys",
+  "settings_byok_saved": "Personal API keys saved locally on this device.",
   "settings_timezone_label": "Chart Clock & X-Axis Timezone",
   "settings_timezone_utc": "UTC (Greenwich)",
   "settings_timezone_local": "Local (System)",
@@ -285,5 +286,9 @@
   "overview_specs_title": "Asset Class Specifications",
   "overview_real_tech_title": "Live Candle Technicals",
   "overview_sentiment_title": "Session Bar Sentiment",
-  "overview_pivots_title": "Classic Floor Pivots"
+  "overview_pivots_title": "Classic Floor Pivots",
+  "chart_sma200_insufficient": "SMA200: Insufficient Data ({n}/200)",
+  "chart_est_vol_profile": "Est. Vol Profile",
+  "mobile_sheet_tools": "Drawing Tools & Controls",
+  "mobile_sheet_indicators": "Indicators & Overlays"
 }

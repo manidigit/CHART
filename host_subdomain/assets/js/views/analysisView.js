@@ -1,5 +1,5 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
-import { state } from '../core/store.js?v=1.38.0';
+import { state, escapeHtml } from '../core/store.js?v=1.38.0';
 import { renderSymbolBadge } from './watchlistView.js?v=1.38.1';
 
 export function computeTechnicalAnalytics(candles) {
@@ -71,7 +71,7 @@ export function renderPredictionModal(activeTab, i18n) {
   const symbolOptions = watchlist
     .map(
       (s) =>
-        `<option value="${s.symbolCode}" ${activeCode === s.symbolCode ? 'selected' : ''}>${s.symbolCode} — ${s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode}</option>`
+        `<option value="${escapeHtml(s.symbolCode)}" ${activeCode === s.symbolCode ? 'selected' : ''}>${escapeHtml(s.symbolCode)} — ${escapeHtml(s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode)}</option>`
     )
     .join('');
 

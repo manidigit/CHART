@@ -45,12 +45,18 @@ class TwelveDataAdapter(
         val nowMillis = System.currentTimeMillis()
         var syncMode = if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL"
         var fetchedNewBars = 0
+        var fetchSucceeded = true
+        var errorMsg: String? = null
 
         val primaryCandles = runCatching {
             val (raw, metaMode, metaFetched) = fetchFromBackendOrTwelveData(symbolCode, timeframe, limit, sinceOpenTimeMs, nowMillis)
             syncMode = metaMode
             fetchedNewBars = metaFetched
             CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(raw, symbolCode, timeframe)
+        }.onFailure { err ->
+            fetchSucceeded = false
+            syncMode = "OFFLINE_CACHE"
+            errorMsg = err.message ?: "Twelve Data fetch failed"
         }.getOrNull().orEmpty()
 
         ProviderSyncResult(
@@ -60,7 +66,9 @@ class TwelveDataAdapter(
             candles = primaryCandles,
             syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
             syncMode = syncMode,
-            fetchedNewBars = fetchedNewBars
+            fetchedNewBars = fetchedNewBars,
+            fetchSucceeded = fetchSucceeded,
+            errorMessage = errorMsg
         )
     }
 
@@ -95,32 +103,40 @@ class TwelveDataAdapter(
         }
 
         val userKey = customApiKeyProvider().trim()
-        val keyParam = if (userKey.isNotEmpty()) "&api_key=${java.net.URLEncoder.encode(userKey, "UTF-8")}" else ""
         val sinceParam = if (sinceOpenTimeMs > 0L) "&since_ms=$sinceOpenTimeMs" else ""
-        val proxyUrl = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=twelve_data&timeframe=$timeframe&limit=$limit&refresh=1$sinceParam$keyParam"
-        val proxyRequest = Request.Builder().url(proxyUrl).get().build()
+        val proxyUrl = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=twelve_data&timeframe=$timeframe&limit=$limit&refresh=1$sinceParam"
+        val proxyRequestBuilder = Request.Builder().url(proxyUrl).get()
+        if (userKey.isNotEmpty()) {
+            proxyRequestBuilder.header("X-Provider-Api-Key", userKey)
+        }
+        val proxyRequest = proxyRequestBuilder.build()
+        var proxyError: Throwable? = null
         runCatching {
             httpClient.newCall(proxyRequest).execute().use { response ->
-                if (response.isSuccessful) {
-                    val body = response.body?.string().orEmpty()
-                    val root = runCatching { JSONObject(body) }.getOrNull()
-                    val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
-                    val mode = meta?.optString("mode", if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL") ?: "DB_CACHE_HIT"
-                    val fetched = meta?.optInt("fetched_new_bars", 0) ?: 0
-                    val parsed = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
-                        parseProxyCandles(body, timeframe, nowMillis),
-                        symbolCode,
-                        timeframe
-                    )
-                    if (parsed.isNotEmpty() || sinceOpenTimeMs > 0L) {
-                        return Triple(parsed, mode, fetched)
-                    }
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Backend HTTP ${response.code}")
+                }
+                val body = response.body?.string().orEmpty()
+                val root = runCatching { JSONObject(body) }.getOrNull()
+                val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
+                val mode = meta?.optString("mode", if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL") ?: "DB_CACHE_HIT"
+                val fetched = meta?.optInt("fetched_new_bars", 0) ?: 0
+                val parsed = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
+                    parseProxyCandles(body, timeframe, nowMillis),
+                    symbolCode,
+                    timeframe
+                )
+                if (parsed.isNotEmpty() || sinceOpenTimeMs > 0L) {
+                    return Triple(parsed, mode, fetched)
                 }
             }
-        }
+        }.onFailure { proxyError = it }
 
         val apiKey = userKey.ifBlank { BuildConfig.TWELVE_DATA_API_KEY }
-        if (apiKey.isBlank()) return Triple(emptyList(), "DB_CACHE_HIT", 0)
+        if (apiKey.isBlank()) {
+            if (proxyError != null) throw proxyError!!
+            return Triple(emptyList(), "DB_CACHE_HIT", 0)
+        }
 
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(timeframe)
         val effectiveLimit = if (sinceOpenTimeMs > 0L) {
@@ -134,7 +150,7 @@ class TwelveDataAdapter(
         val directUrl = "https://api.twelvedata.com/time_series?symbol=$apiSymbol&interval=$interval&outputsize=$effectiveLimit&timezone=UTC&apikey=$apiKey"
         val directRequest = Request.Builder().url(directUrl).get().build()
         httpClient.newCall(directRequest).execute().use { response ->
-            if (!response.isSuccessful) return Triple(emptyList(), "DB_CACHE_HIT", 0)
+            if (!response.isSuccessful) throw IllegalStateException("Twelve Data HTTP ${response.code}")
             val root = JSONObject(response.body?.string().orEmpty())
             val values = root.optJSONArray("values") ?: return Triple(emptyList(), "DB_CACHE_HIT", 0)
             val result = ArrayList<CandleBar>()

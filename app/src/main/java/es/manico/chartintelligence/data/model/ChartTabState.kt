@@ -1,6 +1,8 @@
 package es.manico.chartintelligence.data.model
 
+import es.manico.chartintelligence.algorithms.ConnectionStatus
 import es.manico.chartintelligence.config.AppConfig
+import java.math.BigDecimal
 import java.time.Instant
 import java.time.ZoneOffset
 import kotlin.math.max
@@ -49,7 +51,12 @@ data class ChartTabState(
     val pendingTrendPoint: TrendAnchorPoint? = null,
     val isLoading: Boolean = false,
     val hasError: Boolean = false,
-    val providerStatus: String = "READY"
+    val providerStatus: String = "READY",
+    val syncErrorText: String? = null,
+    val lastSuccessfulFetchMs: Long = 0L,
+    val lastCandleCloseMs: Long = 0L,
+    val connectionStatus: ConnectionStatus = ConnectionStatus.CONNECTED_LIVE,
+    val sessionPrevClose: BigDecimal? = null
 ) {
     val tabTitle: String
         get() = "$symbolCode · ${provider.badgeLabel}"

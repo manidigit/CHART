@@ -8,29 +8,40 @@ namespace ChartIntelligence\Algorithms;
  */
 final class TimeframeAggregator
 {
-    public static function aggregate(array $sourceCandles, string $targetTimeframe, int $nowMs): array
-    {
-        return self::aggregateCandles($sourceCandles, $targetTimeframe, $nowMs);
+    public static function aggregate(
+        array $sourceCandles,
+        string $targetTimeframe,
+        int $nowMs,
+        string $symbolCode = 'XAUUSD'
+    ): array {
+        return self::aggregateCandles($sourceCandles, $targetTimeframe, $nowMs, $symbolCode);
     }
 
-    public static function aggregateCandles(array $sourceCandles, string $targetTimeframe, int $nowMs): array
-    {
+    public static function aggregateCandles(
+        array $sourceCandles,
+        string $targetTimeframe,
+        int $nowMs,
+        string $symbolCode = 'XAUUSD'
+    ): array {
         if (empty($sourceCandles)) {
             return [];
         }
 
         usort($sourceCandles, static fn(array $a, array $b): int => ($a['open_time_utc_ms'] ?? 0) <=> ($b['open_time_utc_ms'] ?? 0));
 
-        $targetStep = UtcTimeAnchor::stepMilliseconds($targetTimeframe);
-        $buckets = [];
+        $normTf = strtoupper($targetTimeframe);
+        $sourceStepMs = self::inferSourceStepMs($sourceCandles);
+        $targetStepMs = UtcTimeAnchor::stepMilliseconds($normTf);
+        $minExpectedChildren = self::minExpectedChildren($sourceStepMs, $targetStepMs, $normTf, $symbolCode);
 
+        $buckets = [];
         foreach ($sourceCandles as $bar) {
             $openMs = (int) ($bar['open_time_utc_ms'] ?? 0);
             if ($openMs <= 0) {
                 continue;
             }
-            $bucketOpen = intdiv($openMs, $targetStep) * $targetStep;
-            if (!UtcTimeAnchor::isCandleClosed($bucketOpen, $targetTimeframe, $nowMs)) {
+            $bucketOpen = UtcTimeAnchor::snapToOpenUtcMs($openMs, $normTf);
+            if (!UtcTimeAnchor::isCandleClosed($bucketOpen, $normTf, $nowMs)) {
                 continue;
             }
             $buckets[$bucketOpen][$openMs] = $bar;
@@ -38,11 +49,19 @@ final class TimeframeAggregator
 
         ksort($buckets);
         $aggregated = [];
+        $bucketKeys = array_keys($buckets);
+        $lastKeyIdx = count($bucketKeys) - 1;
 
-        foreach ($buckets as $bucketOpen => $barsMap) {
+        foreach ($bucketKeys as $idx => $bucketOpen) {
+            $barsMap = $buckets[$bucketOpen];
             if (empty($barsMap)) {
                 continue;
             }
+            // Prevent boundary-truncated leading/trailing partial buckets from being treated as complete bars
+            if (($idx === 0 || $idx === $lastKeyIdx) && count($barsMap) < $minExpectedChildren) {
+                continue;
+            }
+
             ksort($barsMap);
             $bars = array_values($barsMap);
             $first = $bars[0];
@@ -68,7 +87,7 @@ final class TimeframeAggregator
 
             $sanitized = CandleValidator::sanitizeCandle(
                 (int) $bucketOpen,
-                $targetTimeframe,
+                $normTf,
                 $open,
                 $high,
                 $low,
@@ -81,5 +100,48 @@ final class TimeframeAggregator
         }
 
         return $aggregated;
+    }
+
+    private static function inferSourceStepMs(array $sortedCandles): int
+    {
+        $minDiff = PHP_INT_MAX;
+        $prev = null;
+        $limit = min(40, count($sortedCandles));
+        for ($i = 0; $i < $limit; $i++) {
+            $ms = (int) ($sortedCandles[$i]['open_time_utc_ms'] ?? 0);
+            if ($prev !== null && $ms > $prev) {
+                $diff = $ms - $prev;
+                if ($diff < $minDiff) {
+                    $minDiff = $diff;
+                }
+            }
+            $prev = $ms;
+        }
+        return $minDiff === PHP_INT_MAX ? UtcTimeAnchor::stepMilliseconds('M15') : $minDiff;
+    }
+
+    private static function minExpectedChildren(
+        int $sourceStepMs,
+        int $targetStepMs,
+        string $targetTf,
+        string $symbolCode
+    ): int {
+        if ($sourceStepMs <= 0 || $sourceStepMs >= $targetStepMs) {
+            return 1;
+        }
+        $calendar = UtcTimeAnchor::getSessionCalendar($symbolCode);
+        if ($targetTf === 'W1' && $sourceStepMs >= 86400000) {
+            return $calendar === UtcTimeAnchor::CALENDAR_CRYPTO_24_7 ? 5 : 3;
+        }
+        if ($targetTf === 'D1' && $sourceStepMs < 86400000) {
+            $fullCount = (int) floor($targetStepMs / $sourceStepMs);
+            return $calendar === UtcTimeAnchor::CALENDAR_US_EQUITIES
+                ? max(1, (int) floor($fullCount * 0.2))
+                : max(2, (int) floor($fullCount * 0.5));
+        }
+        $ratio = (int) floor($targetStepMs / $sourceStepMs);
+        return $calendar === UtcTimeAnchor::CALENDAR_US_EQUITIES
+            ? max(1, (int) floor($ratio * 0.25))
+            : max(2, (int) ceil($ratio * 0.5));
     }
 }

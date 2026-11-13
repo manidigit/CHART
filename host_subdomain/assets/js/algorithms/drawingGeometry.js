@@ -70,7 +70,7 @@ export const DrawingGeometry = {
     return padLeft;
   },
 
-  xToTimeUtc(x, visibleTimestamps, stepMs, padLeft, plotW) {
+  xToTimeUtc(x, visibleTimestamps, stepMs, padLeft, plotW, timeframe = null) {
     if (!visibleTimestamps.length || plotW <= 0) return 0;
     const slotW = Math.max(1, plotW / visibleTimestamps.length);
     const idx = Math.max(
@@ -78,6 +78,11 @@ export const DrawingGeometry = {
       Math.min(visibleTimestamps.length - 1, Math.floor((x - padLeft) / slotW))
     );
     const raw = visibleTimestamps[idx];
+    const w1Step = 7 * 86400000;
+    if (stepMs === w1Step || String(timeframe || '').toUpperCase() === 'W1') {
+      const mondayOffsetMs = 259200000;
+      return Math.floor((raw + mondayOffsetMs) / w1Step) * w1Step - mondayOffsetMs;
+    }
     return Math.floor(raw / stepMs) * stepMs;
   },
 

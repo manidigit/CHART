@@ -204,9 +204,9 @@ fun CandlestickCanvas(
         else fullSupertrend.subList(startIndex, endIndexExclusive.coerceAtMost(fullSupertrend.size))
     }
 
-    val fullVwap = remember(candles, tab.showVwap) {
+    val fullVwap = remember(candles, tab.showVwap, tab.timeframe, tab.symbolCode) {
         if (!tab.showVwap || candles.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeVwapValues(candles)
+        else PriceFormatterAlgorithm.computeVwapValues(candles, tab.timeframe, tab.symbolCode)
     }
     val visibleVwap = remember(fullVwap, startIndex, endIndexExclusive) {
         if (fullVwap.isEmpty()) emptyList()
@@ -245,9 +245,12 @@ fun CandlestickCanvas(
         else PriceFormatterAlgorithm.detectSmcMarketStructures(candles, 3)
     }
 
-    val visibleVolumeProfile = remember(visibleSlice, tab.showVolumeProfile) {
+    val instrumentVolumeType = remember(tab.symbolCode, tab.provider) {
+        UtcTimeAnchorAlgorithm.getInstrumentSpec(tab.symbolCode, tab.provider).volumeType
+    }
+    val visibleVolumeProfile = remember(visibleSlice, tab.showVolumeProfile, instrumentVolumeType) {
         if (!tab.showVolumeProfile || visibleSlice.isEmpty()) null
-        else PriceFormatterAlgorithm.computeVolumeProfile(visibleSlice, 24, 0.70)
+        else PriceFormatterAlgorithm.computeVolumeProfile(visibleSlice, 24, 0.70, instrumentVolumeType)
     }
 
     val inspectedIdx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
@@ -1005,10 +1008,10 @@ fun CandlestickCanvas(
                             }
                         }
 
-                        // 6a. Previous Close Horizontal Dashed Line across Main Price Pane
-                        if (preferences.showPrevCloseLine && candles.size >= 2) {
-                            val prevCloseCandle = candles[candles.size - 2]
-                            val prevY = priceToY(prevCloseCandle.close.toDouble())
+                        // 6a. Previous Session Close Horizontal Dashed Line across Main Price Pane
+                        val prevCloseRef = tab.sessionPrevClose ?: candles.getOrNull(candles.size - 2)?.close
+                        if (preferences.showPrevCloseLine && prevCloseRef != null) {
+                            val prevY = priceToY(prevCloseRef.toDouble())
                             drawLine(
                                 color = Color(0xFF787B86).copy(alpha = 0.65f),
                                 start = Offset(0f, prevY),
@@ -1583,15 +1586,27 @@ fun CandlestickCanvas(
                                 color = Color(0xFF10B981)
                             )
                         }
-                        if (tab.showSma200 && inspectedSma200 != null) {
-                            Text(
-                                text = "SMA200 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma200), tab.decimals)}",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF43F5E)
-                            )
+                        if (tab.showSma200) {
+                            if (inspectedSma200 != null) {
+                                Text(
+                                    text = "SMA200 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma200), tab.decimals)}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFF43F5E)
+                                )
+                            } else if (fullCloses.size < 200) {
+                                Text(
+                                    text = stringResource(R.string.chart_sma200_insufficient, fullCloses.size),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFF59E0B),
+                                    modifier = Modifier.testTag("chart_sma200_insufficient_pill")
+                                )
+                            }
                         }
                         if (tab.showEma20 && inspectedEma20 != null) {
                             Text(
@@ -1684,6 +1699,21 @@ fun CandlestickCanvas(
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFFF97316)
                             )
+                            if (visibleVolumeProfile.isEstimated) {
+                                Text(
+                                    text = stringResource(R.string.chart_vp_estimated),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.5.sp,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color(0xFFF59E0B),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(3.dp))
+                                        .background(Color(0xFFF59E0B).copy(alpha = 0.14f))
+                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                        .testTag("chart_vp_estimated_badge")
+                                )
+                            }
                         }
                         if (tab.showSmcStructure && fullSmcResult != null) {
                             val latestBrk = fullSmcResult.structures.lastOrNull { it.breakIndex < endIndexExclusive }
@@ -1852,7 +1882,7 @@ fun CandlestickCanvas(
                                 color = Color.White
                             )
                             if (preferences.showCountdownToBarClose && isIntradayTf) {
-                                BarCloseCountdownText(stepMillis = stepMillis)
+                                BarCloseCountdownText(symbolCode = tab.symbolCode, timeframe = tab.timeframe)
                             }
                         }
                     }
@@ -2066,21 +2096,22 @@ fun CandlestickCanvas(
 }
 
 @Composable
-private fun BarCloseCountdownText(stepMillis: Long) {
+private fun BarCloseCountdownText(symbolCode: String, timeframe: String) {
     var nowEpochMillis by remember { mutableLongStateOf(System.currentTimeMillis()) }
-    LaunchedEffect(stepMillis) {
+    LaunchedEffect(symbolCode, timeframe) {
         while (true) {
             nowEpochMillis = System.currentTimeMillis()
             delay(1000L)
         }
     }
-    val remSec = max(0L, ((stepMillis - (nowEpochMillis % stepMillis)) % stepMillis) / 1000L)
-    val countdownText = remember(remSec, stepMillis) {
-        val hrs = remSec / 3600L
-        val mins = (remSec % 3600L) / 60L
-        val secs = remSec % 60L
-        if (hrs > 0L) String.format(java.util.Locale.US, "%02d:%02d:%02d", hrs, mins, secs)
-        else String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
+    val closedLabel = stringResource(R.string.chart_countdown_closed)
+    val countdownText = remember(nowEpochMillis, symbolCode, timeframe, closedLabel) {
+        UtcTimeAnchorAlgorithm.formatCountdownToBarClose(
+            symbolCode = symbolCode,
+            timeframe = timeframe,
+            nowUtcMillis = nowEpochMillis,
+            closedLabel = closedLabel
+        )
     }
     Text(
         text = countdownText,

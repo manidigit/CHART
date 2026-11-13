@@ -98,6 +98,23 @@ if ($username === null || $username === '') {
 
 $method = strtoupper($_SERVER['REQUEST_METHOD']);
 
+function ci_strip_secret_keys($workspaceData): array
+{
+    if (!is_array($workspaceData)) {
+        return [];
+    }
+    $secretKeys = ['twelveDataApiKey', 'stooqApiKey', 'alphaVantageApiKey', 'finnhubApiKey'];
+    if (isset($workspaceData['preferences']) && is_array($workspaceData['preferences'])) {
+        foreach ($secretKeys as $k) {
+            unset($workspaceData['preferences'][$k]);
+        }
+    }
+    foreach ($secretKeys as $k) {
+        unset($workspaceData[$k]);
+    }
+    return $workspaceData;
+}
+
 if ($method === 'GET') {
     $workspace = null;
     $updatedAt = null;
@@ -122,6 +139,10 @@ if ($method === 'GET') {
         }
     }
 
+    if (is_array($workspace)) {
+        $workspace = ci_strip_secret_keys($workspace);
+    }
+
     ApiEnvelope::sendSuccess([
         'username' => $username,
         'has_saved_workspace' => ($workspace !== null),
@@ -136,6 +157,7 @@ if ($method === 'POST') {
         ApiEnvelope::sendError('EMPTY_WORKSPACE', 'error_invalid_parameters', 400);
     }
 
+    $workspaceData = ci_strip_secret_keys($workspaceData);
     $workspaceJson = json_encode($workspaceData, JSON_UNESCAPED_UNICODE);
     $nowIso = gmdate('Y-m-d\TH:i:s\Z');
     $savedInDb = false;

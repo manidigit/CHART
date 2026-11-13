@@ -761,9 +761,22 @@ fun WatchlistScreen(
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
                                 )
+                                val sessionDayVolume = overviewSymbol.dayVolume
+                                val volumeDisplay = if (sessionDayVolume != null && sessionDayVolume > BigDecimal.ZERO) {
+                                    "${PriceFormatterAlgorithm.formatCompactVolume(sessionDayVolume)} (${loadedCandles.size.coerceAtLeast(overviewSymbol.storedCandleCount)} bars)"
+                                } else {
+                                    "${loadedCandles.size.coerceAtLeast(overviewSymbol.storedCandleCount)} bars"
+                                }
+                                val displayDayLow = overviewSymbol.dayLow ?: metrics.rangeLow
+                                val displayDayHigh = overviewSymbol.dayHigh ?: metrics.rangeHigh
+                                val displayRangeRatio = if (displayDayHigh > displayDayLow) {
+                                    ((lastClose - displayDayLow).toFloat() / (displayDayHigh - displayDayLow).toFloat()).coerceIn(0.06f, 0.94f)
+                                } else {
+                                    metrics.rangePositionRatio
+                                }
                                 OverviewDataRow(
                                     label = stringResource(R.string.symbol_overview_volume),
-                                    value = "${loadedCandles.size.coerceAtLeast(overviewSymbol.storedCandleCount)} bars"
+                                    value = volumeDisplay
                                 )
                                 OverviewDataRow(
                                     label = stringResource(R.string.symbol_overview_prev_close),
@@ -771,7 +784,7 @@ fun WatchlistScreen(
                                 )
                                 OverviewDataRow(
                                     label = stringResource(R.string.symbol_overview_days_range),
-                                    value = "${PriceFormatterAlgorithm.formatPrice(metrics.rangeLow, overviewSymbol.decimals)} — ${PriceFormatterAlgorithm.formatPrice(metrics.rangeHigh, overviewSymbol.decimals)} USD"
+                                    value = "${PriceFormatterAlgorithm.formatPrice(displayDayLow, overviewSymbol.decimals)} — ${PriceFormatterAlgorithm.formatPrice(displayDayHigh, overviewSymbol.decimals)} USD"
                                 )
 
                                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -785,7 +798,7 @@ fun WatchlistScreen(
                                         ) {
                                             Box(
                                                 modifier = Modifier
-                                                    .fillMaxWidth(fraction = metrics.rangePositionRatio)
+                                                    .fillMaxWidth(fraction = displayRangeRatio)
                                                     .height(6.dp)
                                                     .clip(RoundedCornerShape(3.dp))
                                                     .background(accentColor)
@@ -796,13 +809,13 @@ fun WatchlistScreen(
                                             horizontalArrangement = Arrangement.SpaceBetween
                                         ) {
                                             Text(
-                                                text = "L: ${PriceFormatterAlgorithm.formatPrice(metrics.rangeLow, overviewSymbol.decimals)}",
+                                                text = "L: ${PriceFormatterAlgorithm.formatPrice(displayDayLow, overviewSymbol.decimals)}",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontFamily = JetBrainsMonoFontFamily,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
                                             Text(
-                                                text = "H: ${PriceFormatterAlgorithm.formatPrice(metrics.rangeHigh, overviewSymbol.decimals)}",
+                                                text = "H: ${PriceFormatterAlgorithm.formatPrice(displayDayHigh, overviewSymbol.decimals)}",
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontFamily = JetBrainsMonoFontFamily,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -905,10 +918,34 @@ fun WatchlistScreen(
                                 modifier = Modifier.padding(14.dp),
                                 verticalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
+                                val instrumentSpec = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.getInstrumentSpec(
+                                    overviewSymbol.symbolCode,
+                                    overviewSymbol.activeProvider
+                                )
                                 Text(
                                     text = stringResource(specsTitleRes),
                                     style = MaterialTheme.typography.titleSmall,
                                     fontWeight = FontWeight.Bold
+                                )
+                                OverviewDataRow(
+                                    label = "Provider Ticker",
+                                    value = instrumentSpec.providerTicker
+                                )
+                                OverviewDataRow(
+                                    label = "Price Basis",
+                                    value = instrumentSpec.priceBasis
+                                )
+                                OverviewDataRow(
+                                    label = "Session Calendar",
+                                    value = instrumentSpec.sessionCalendar.name
+                                )
+                                OverviewDataRow(
+                                    label = "Timezone",
+                                    value = instrumentSpec.timezone
+                                )
+                                OverviewDataRow(
+                                    label = "Volume Type",
+                                    value = instrumentSpec.volumeType.name
                                 )
                                 OverviewDataRow(
                                     label = stringResource(R.string.symbol_overview_about_sector),

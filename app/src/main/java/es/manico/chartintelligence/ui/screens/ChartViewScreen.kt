@@ -1,5 +1,7 @@
 package es.manico.chartintelligence.ui.screens
 
+import android.content.Intent
+import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
@@ -24,6 +26,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.ArrowBack
 import androidx.compose.material.icons.outlined.AdsClick
 import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.CandlestickChart
@@ -59,12 +62,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.graphics.layer.drawLayer
+import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
@@ -78,7 +86,9 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.core.content.FileProvider
 import es.manico.chartintelligence.R
+import es.manico.chartintelligence.algorithms.ConnectionStatus
 import es.manico.chartintelligence.algorithms.MarketStatus
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
 import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
@@ -92,7 +102,12 @@ import es.manico.chartintelligence.ui.components.CandlestickCanvas
 import es.manico.chartintelligence.ui.components.DrawingToolbar
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
+import java.io.FileOutputStream
 import java.math.BigDecimal
 import kotlin.math.roundToInt
 
@@ -181,7 +196,10 @@ fun ChartViewScreen(
     val haptic = LocalHapticFeedback.current
     val clipboardManager = LocalClipboardManager.current
     val context = LocalContext.current
-    val snapshotCopiedMsg = stringResource(R.string.snapshot_copied_success)
+    val coroutineScope = rememberCoroutineScope()
+    val chartGraphicsLayer = rememberGraphicsLayer()
+    val snapshotShareTitle = stringResource(R.string.chart_snapshot_share_title)
+    val snapshotErrorMsg = stringResource(R.string.chart_snapshot_error)
     var activeSheet by rememberSaveable { mutableStateOf(ChartControlSheet.NONE) }
     val indicatorsScrollState = rememberScrollState()
     val symbolPickerScrollState = rememberScrollState()
@@ -255,34 +273,52 @@ fun ChartViewScreen(
                 )
             }
 
-            val statusDotColor = if (activeTab.isLoading) {
-                MaterialTheme.colorScheme.primary
-            } else {
-                when (marketStatus) {
-                    MarketStatus.LIVE -> preferences.bullCandleColor
-                    MarketStatus.MARKET_CLOSED, MarketStatus.DELAYED -> Color(0xFFF59E0B)
-                    MarketStatus.CACHED -> MaterialTheme.colorScheme.onSurfaceVariant
-                    MarketStatus.ERROR -> preferences.bearCandleColor
-                }
+            val statusDotColor = when {
+                activeTab.isLoading || activeTab.connectionStatus == ConnectionStatus.SYNCING ->
+                    MaterialTheme.colorScheme.primary
+                activeTab.connectionStatus == ConnectionStatus.SYNC_ERROR ->
+                    preferences.bearCandleColor
+                activeTab.connectionStatus == ConnectionStatus.CACHED_OFFLINE ->
+                    Color(0xFFF59E0B)
+                activeTab.connectionStatus == ConnectionStatus.MARKET_CLOSED ||
+                    marketStatus == MarketStatus.MARKET_CLOSED ->
+                    Color(0xFFF59E0B)
+                marketStatus == MarketStatus.LIVE -> preferences.bullCandleColor
+                marketStatus == MarketStatus.DELAYED -> Color(0xFFF59E0B)
+                marketStatus == MarketStatus.CACHED -> MaterialTheme.colorScheme.onSurfaceVariant
+                else -> preferences.bearCandleColor
             }
 
-            // [2] Compact Header (48.dp): Left = Rich Asset Icon Badge + Symbol + Live Price + Change | Right = Read-Only Data Source Label
+            // [2] Compact Header (48.dp): Left = Back Button + Asset Icon Badge + Symbol + Price | Right = Snapshot + Honest Status Pill
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(48.dp)
                         .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 12.dp),
+                        .padding(start = 4.dp, end = 12.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    // Left: Rich Asset Icon Badge + Symbol Name + Live Price & Signed Change
+                    // Left: Back Button + Rich Asset Icon Badge + Symbol Name + Live Price & Signed Change
                     Row(
                         modifier = Modifier.weight(1f),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        IconButton(
+                            onClick = onBackToWatchlist,
+                            modifier = Modifier
+                                .size(48.dp)
+                                .testTag("chart_back_button")
+                        ) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Outlined.ArrowBack,
+                                contentDescription = stringResource(R.string.action_back),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+
                         AssetSymbolBadge(
                             symbolCode = activeTab.symbolCode,
                             sizeDp = 28.dp
@@ -330,22 +366,49 @@ fun ChartViewScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        // TradingView-style Snapshot Camera / Copy Button
+                        // TradingView-style Real Chart PNG Snapshot & Share Button
                         IconButton(
                             onClick = {
-                                val details = buildString {
-                                    append("${activeTab.symbolCode} • ${activeTab.timeframe} • ${activeTab.provider.badgeLabel}\n")
-                                    if (latestClose != null) {
-                                        append("Price: ${PriceFormatterAlgorithm.formatPrice(latestClose, activeTab.decimals)}\n")
+                                coroutineScope.launch {
+                                    runCatching {
+                                        val imageBitmap = chartGraphicsLayer.toImageBitmap()
+                                        val androidBitmap = imageBitmap.asAndroidBitmap()
+                                        val shareUri = withContext(Dispatchers.IO) {
+                                            val dir = File(context.cacheDir, "snapshots").apply { mkdirs() }
+                                            dir.listFiles()
+                                                ?.sortedByDescending { it.lastModified() }
+                                                ?.drop(10)
+                                                ?.forEach { it.delete() }
+                                            val file = File(
+                                                dir,
+                                                "chart_${activeTab.symbolCode}_${activeTab.timeframe}_${System.currentTimeMillis()}.png"
+                                            )
+                                            FileOutputStream(file).use { out ->
+                                                androidBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)
+                                            }
+                                            FileProvider.getUriForFile(
+                                                context,
+                                                "${context.packageName}.fileprovider",
+                                                file
+                                            )
+                                        }
+                                        val shareIntent = Intent(Intent.ACTION_SEND).apply {
+                                            type = "image/png"
+                                            putExtra(Intent.EXTRA_STREAM, shareUri)
+                                            putExtra(
+                                                Intent.EXTRA_SUBJECT,
+                                                "${activeTab.symbolCode} ${activeTab.timeframe} Chart"
+                                            )
+                                            addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                                        }
+                                        context.startActivity(Intent.createChooser(shareIntent, snapshotShareTitle))
+                                    }.onFailure {
+                                        Toast.makeText(context, snapshotErrorMsg, Toast.LENGTH_SHORT).show()
                                     }
-                                    append("Bars: ${activeTab.candles.size}\n")
-                                    append("Chart Intelligence")
                                 }
-                                clipboardManager.setText(AnnotatedString(details))
-                                Toast.makeText(context, snapshotCopiedMsg, Toast.LENGTH_SHORT).show()
                             },
                             modifier = Modifier
-                                .size(32.dp)
+                                .size(48.dp)
                                 .testTag("chart_snapshot_button")
                         ) {
                             Icon(
@@ -358,9 +421,16 @@ fun ChartViewScreen(
 
                         // Compact Market Status Indicator + Clickable UTC/Local Clock
                         val statusLabel = when {
-                            activeTab.isLoading -> stringResource(R.string.chart_status_syncing)
+                            activeTab.isLoading || activeTab.connectionStatus == ConnectionStatus.SYNCING ->
+                                stringResource(R.string.chart_status_syncing)
+                            activeTab.connectionStatus == ConnectionStatus.SYNC_ERROR ->
+                                stringResource(R.string.chart_status_sync_error)
+                            activeTab.connectionStatus == ConnectionStatus.CACHED_OFFLINE ->
+                                stringResource(R.string.chart_status_offline_cached)
+                            activeTab.connectionStatus == ConnectionStatus.MARKET_CLOSED ||
+                                marketStatus == MarketStatus.MARKET_CLOSED ->
+                                stringResource(R.string.chart_status_market_closed)
                             marketStatus == MarketStatus.LIVE -> stringResource(R.string.chart_status_live)
-                            marketStatus == MarketStatus.MARKET_CLOSED -> stringResource(R.string.chart_status_market_closed)
                             marketStatus == MarketStatus.DELAYED -> stringResource(R.string.chart_status_delayed)
                             marketStatus == MarketStatus.CACHED -> stringResource(R.string.chart_status_cached)
                             else -> stringResource(R.string.chart_status_error)
@@ -421,11 +491,56 @@ fun ChartViewScreen(
                 HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
             }
 
-            // [3] Main Full-Viewport Chart Canvas (>= 85% usable height)
+            // Honest Offline / Sync Error Banner when showing cached candles or degraded connectivity
+            if (!activeTab.syncErrorText.isNullOrBlank() &&
+                (activeTab.connectionStatus == ConnectionStatus.SYNC_ERROR ||
+                    activeTab.connectionStatus == ConnectionStatus.CACHED_OFFLINE)
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(Color(0xFFF59E0B).copy(alpha = 0.14f))
+                        .padding(horizontal = 12.dp, vertical = 4.dp)
+                        .testTag("chart_sync_error_banner"),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = activeTab.syncErrorText,
+                        style = MaterialTheme.typography.labelSmall,
+                        color = if (activeTab.connectionStatus == ConnectionStatus.SYNC_ERROR) {
+                            preferences.bearCandleColor
+                        } else {
+                            Color(0xFFF59E0B)
+                        },
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f)
+                    )
+                    Text(
+                        text = stringResource(R.string.chart_action_retry),
+                        style = MaterialTheme.typography.labelSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .clickable { onSyncActiveSymbolNow(activeTab.symbolCode) }
+                            .padding(start = 8.dp, top = 2.dp, bottom = 2.dp)
+                    )
+                }
+                HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
+            }
+
+            // [3] Main Full-Viewport Chart Canvas (>= 85% usable height) recorded into GraphicsLayer for real PNG Snapshot
             Box(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
+                    .drawWithContent {
+                        chartGraphicsLayer.record {
+                            this@drawWithContent.drawContent()
+                        }
+                        drawLayer(chartGraphicsLayer)
+                    }
             ) {
                 CandlestickCanvas(
                     tab = activeTab,

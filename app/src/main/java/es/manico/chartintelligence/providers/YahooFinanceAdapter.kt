@@ -34,8 +34,13 @@ class YahooFinanceAdapter(
         sinceOpenTimeMs: Long
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
+        var fetchSucceeded = true
+        var errorMsg: String? = null
         val candles = runCatching {
             fetchYahooChartCandles(symbolCode, timeframe, limit, nowMillis, sinceOpenTimeMs)
+        }.onFailure { err ->
+            fetchSucceeded = false
+            errorMsg = err.message ?: "Yahoo Finance fetch failed"
         }.getOrNull().orEmpty()
 
         ProviderSyncResult(
@@ -44,8 +49,10 @@ class YahooFinanceAdapter(
             timeframe = timeframe,
             candles = candles,
             syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
-            syncMode = if (sinceOpenTimeMs > 0L) "DELTA_SYNC" else "INITIAL_BACKFILL",
-            fetchedNewBars = candles.size
+            syncMode = if (!fetchSucceeded) "OFFLINE_CACHE" else if (sinceOpenTimeMs > 0L) "DELTA_SYNC" else "INITIAL_BACKFILL",
+            fetchedNewBars = candles.size,
+            fetchSucceeded = fetchSucceeded,
+            errorMessage = errorMsg
         )
     }
 
@@ -94,7 +101,7 @@ class YahooFinanceAdapter(
             .build()
 
         httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return emptyList()
+            if (!response.isSuccessful) throw IllegalStateException("Yahoo HTTP ${response.code}")
             val root = JSONObject(response.body?.string().orEmpty())
             val resultArr = root.optJSONObject("chart")?.optJSONArray("result") ?: return emptyList()
             if (resultArr.length() == 0) return emptyList()
@@ -133,7 +140,13 @@ class YahooFinanceAdapter(
 
             val ordered = parsed.sortedBy { it.openTimeUtcMillis }
             val finalCandles = if (normalizedTf == "H4") {
-                TimeframeAggregatorAlgorithm.aggregateCandles(ordered, "H4", nowMillis)
+                TimeframeAggregatorAlgorithm.aggregateCandles(
+                    sourceCandles = ordered,
+                    targetTimeframe = "H4",
+                    nowUtcMillis = nowMillis,
+                    sourceTimeframe = "H1",
+                    symbolCode = symbolCode
+                )
             } else {
                 ordered
             }

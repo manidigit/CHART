@@ -8,7 +8,10 @@ import {
   saveLastOpenedSymbol,
   saveOpenTabs,
   saveOpenTabsToStorage,
+  saveActiveTabId,
+  saveLocalByokKeys,
   savePanelLayout,
+  escapeHtml,
   getCachedOrAggregatedCandles,
   resetColorsToDefault,
   resetAlgoParamsToDefault,
@@ -40,7 +43,7 @@ import {
   renderBottomChartBar,
   renderIndicatorsModal,
 } from './views/headerView.js?v=1.38.1';
-import { renderLeftToolRail } from './views/toolRailView.js?v=1.38.0';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.38.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
@@ -116,6 +119,7 @@ function ensureInitialTabs() {
     if (!state.activeTabId || !state.openTabs.some((t) => t.tabId === state.activeTabId)) {
       const preferred = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
       state.activeTabId = preferred ? preferred.tabId : state.openTabs[0].tabId;
+      saveActiveTabId(state.activeTabId);
     }
     return;
   }
@@ -165,6 +169,7 @@ function ensureInitialTabs() {
   if (state.openTabs.length > 0) {
     const preferred = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
     state.activeTabId = preferred ? preferred.tabId : state.openTabs[0].tabId;
+    saveActiveTabId(state.activeTabId);
   }
   saveOpenTabs(true);
 }
@@ -196,6 +201,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       existing[k] = Boolean(curActive ? curActive[k] : state.chartPreferences[k]);
     }
     state.activeTabId = existing.tabId;
+    saveActiveTabId(state.activeTabId);
     syncIndicatorsAcrossTabsAndPrefs(existing, true);
   } else {
     const tabId = `tab_${symbolCode}_${Date.now()}`;
@@ -238,6 +244,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     }
     state.openTabs.push(newTab);
     state.activeTabId = tabId;
+    saveActiveTabId(state.activeTabId);
     syncIndicatorsAcrossTabsAndPrefs(newTab, true);
   }
 
@@ -358,8 +365,8 @@ function renderOhlcvOverlay(activeTab) {
       <div class="tv-ohlc-main-line">
         <span class="tv-ohlc-symbol-title">
           <span style="width: 8px; height: 8px; border-radius: 50%; background: var(--bull); display: inline-block;"></span>
-          <span>${title}</span>
-          <span style="color: var(--text-muted); font-weight: 600;">· ${PriceFormatter.displayTimeframeLabel(activeTab.timeframe)}</span>
+          <span>${escapeHtml(title)}</span>
+          <span style="color: var(--text-muted); font-weight: 600;">· ${escapeHtml(PriceFormatter.displayTimeframeLabel(activeTab.timeframe))}</span>
         </span>
         <span>O<strong style="color: ${col}; margin-left: 2px;">${PriceFormatter.formatPrice(c.open, dec)}</strong></span>
         <span>H<strong style="color: var(--bull); margin-left: 2px;">${PriceFormatter.formatPrice(c.high, dec)}</strong></span>
@@ -383,13 +390,15 @@ function renderAddSymbolModal() {
     .map((s) => {
       const rawTitle = s.customTitle || i18n.t('symbol_' + s.symbolCode) || s.symbolCode;
       const cleanTitle = rawTitle.replace(/\s*\([A-Z0-9_]+\)\s*/g, '').trim() || rawTitle;
+      const safeCode = escapeHtml(s.symbolCode);
+      const safeCleanTitle = escapeHtml(cleanTitle);
       return `
         <div class="tv-settings-symbol-row" style="padding: 8px 10px; margin-bottom: 6px;">
           <div class="tv-settings-symbol-left">
             ${renderSymbolBadge(s.symbolCode, 28)}
             <div>
-              <div style="font-size: 12.5px; font-weight: 700; color: var(--text-strong);">${s.symbolCode}</div>
-              <div style="font-size: 11px; color: var(--text-muted);">${cleanTitle}</div>
+              <div style="font-size: 12.5px; font-weight: 700; color: var(--text-strong);">${safeCode}</div>
+              <div style="font-size: 11px; color: var(--text-muted);">${safeCleanTitle}</div>
             </div>
           </div>
           <label class="tv-toggle-label">
@@ -397,7 +406,7 @@ function renderAddSymbolModal() {
               type="checkbox"
               class="tv-toggle-input"
               data-action="toggle-watchlist"
-              data-symbol="${s.symbolCode}"
+              data-symbol="${safeCode}"
               ${s.inWatchlist ? 'checked' : ''}
             />
             <span class="tv-toggle-slider"></span>
@@ -473,7 +482,7 @@ function renderFallbackErrorBoundary(err) {
           یک خطای غیرمنتظره در رندرینگ شناسایی شد، اما تنظیمات و داده‌های شما در حافظه امن مرورگر حفظ شده‌اند.
         </div>
         <div style="margin: 14px 0; background: var(--bg); border: 1px solid var(--border); padding: 10px; border-radius: 8px; font-family: monospace; font-size: 11px; color: var(--text-muted); text-align: left; direction: ltr; overflow-x: auto;">
-          ${msg}
+          ${escapeHtml(msg)}
         </div>
         <div style="display: flex; gap: 8px; justify-content: center; margin-top: 16px;">
           <button class="tv-auth-submit" style="margin: 0; width: auto; padding: 0 20px;" onclick="location.reload(true);">
@@ -555,6 +564,7 @@ export function renderApp() {
         ${renderIndicatorsModal(activeTab, i18n)}
         ${renderSymbolOverviewModal(i18n)}
         ${renderAddSymbolModal()}
+        ${renderMobileBottomSheet(activeTab, state.mobileSheet, i18n)}
       </div>
     `;
 
@@ -951,7 +961,117 @@ function bindCanvasEvents(activeTab) {
     { passive: false }
   );
 
-  // Mobile/Tablet Touch Support: 1-finger pan, 2-finger pinch-zoom, and long-press crosshair inspection
+  // Shared drawing placement helper for both desktop mouse and mobile 1-finger touch
+  const placeDrawingAtPoint = (x, y, meta) => {
+    const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
+    if (!tool || tool === 'cursor' || !meta || !meta.visible || meta.visible.length === 0) return false;
+    const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
+    const candle = meta.visible[idx];
+    if (!candle) return false;
+    const rawPrice = meta.yToPrice(y);
+    const price = activeTab.isMagnetMode
+      ? DrawingGeometry.snapToCandleOhlc(candle.open, candle.high, candle.low, candle.close, rawPrice)
+      : rawPrice;
+    const openSec = Number(
+      candle.openTimeSec || Math.floor(Number(candle.open_time_utc_ms || 0) / 1000)
+    );
+    const openMs = openSec * 1000;
+    const drawKey = `${activeTab.symbolCode}_${activeTab.timeframe}`;
+
+    if (tool === 'hline' || tool === 'horizontal_line') {
+      activeTab.drawings.push({
+        id: 'd_' + Date.now(),
+        type: 'horizontal_line',
+        price: price,
+        price1: price,
+        colorHex: activeTab.activeDrawingColorHex,
+        strokeWidthPx: activeTab.activeDrawingWidthPx,
+        lineWidthPx: activeTab.activeDrawingWidthPx,
+      });
+      activeTab.activeTool = 'cursor';
+      activeTab.activeDrawingTool = 'cursor';
+      saveDrawings(drawKey, activeTab.drawings);
+      renderApp();
+      return true;
+    }
+    if (tool === 'vline' || tool === 'vertical_line') {
+      activeTab.drawings.push({
+        id: 'd_' + Date.now(),
+        type: 'vertical_line',
+        timeUtcMillis: openMs,
+        time1EpochSec: openSec,
+        colorHex: activeTab.activeDrawingColorHex,
+        strokeWidthPx: activeTab.activeDrawingWidthPx,
+        lineWidthPx: activeTab.activeDrawingWidthPx,
+      });
+      activeTab.activeTool = 'cursor';
+      activeTab.activeDrawingTool = 'cursor';
+      saveDrawings(drawKey, activeTab.drawings);
+      renderApp();
+      return true;
+    }
+    if (tool === 'trend' || tool === 'trend_line' || tool === 'fib' || tool === 'fib_retracement') {
+      const canonicalType = tool === 'fib' || tool === 'fib_retracement' ? 'fib_retracement' : 'trend_line';
+      if (!activeTab.pendingTrendStart) {
+        activeTab.pendingTrendStart = { timeUtcMillis: openMs, time1EpochSec: openSec, price1: price };
+        showFloatingToast(
+          i18n.getCurrentLanguage() === 'fa'
+            ? 'نقطه دوم را روی نمودار لمس یا کلیک کنید'
+            : 'Tap or click second point on chart'
+        );
+      } else {
+        activeTab.drawings.push({
+          id: 'd_' + Date.now(),
+          type: canonicalType,
+          startTimeUtcMillis: activeTab.pendingTrendStart.timeUtcMillis,
+          endTimeUtcMillis: openMs,
+          startPrice: activeTab.pendingTrendStart.price1,
+          endPrice: price,
+          time1EpochSec: activeTab.pendingTrendStart.time1EpochSec,
+          price1: activeTab.pendingTrendStart.price1,
+          time2EpochSec: openSec,
+          price2: price,
+          colorHex: activeTab.activeDrawingColorHex,
+          strokeWidthPx: activeTab.activeDrawingWidthPx,
+          lineWidthPx: activeTab.activeDrawingWidthPx,
+        });
+        activeTab.pendingTrendStart = null;
+        activeTab.activeTool = 'cursor';
+        activeTab.activeDrawingTool = 'cursor';
+        saveDrawings(drawKey, activeTab.drawings);
+        renderApp();
+      }
+      return true;
+    }
+    if (tool === 'long_position' || tool === 'short_position') {
+      const stepMs = PriceFormatter.stepMilliseconds(activeTab.timeframe);
+      const endMs = openMs + stepMs * 8;
+      const span = Math.max((meta.maxP - meta.minP) * 0.14, price * 0.004);
+      const isLong = tool === 'long_position';
+      const targetPrice = isLong ? price + span * 1.8 : Math.max(0.0001, price - span * 1.8);
+      const stopPrice = isLong ? Math.max(0.0001, price - span * 0.9) : price + span * 0.9;
+      activeTab.drawings.push({
+        id: 'd_' + Date.now(),
+        type: tool,
+        startTimeUtcMillis: openMs,
+        endTimeUtcMillis: endMs,
+        entryPrice: price,
+        targetPrice,
+        stopPrice,
+        colorHex: isLong ? '#26A69A' : '#EF5350',
+        strokeWidthPx: activeTab.activeDrawingWidthPx,
+        lineWidthPx: activeTab.activeDrawingWidthPx,
+      });
+      activeTab.activeTool = 'cursor';
+      activeTab.activeDrawingTool = 'cursor';
+      saveDrawings(drawKey, activeTab.drawings);
+      renderApp();
+      return true;
+    }
+    return false;
+  };
+
+  // Mobile/Tablet Touch Support: 1-finger tap drawing, selected-drawing drag-to-translate, pan, 2-finger pinch-zoom, and long-press crosshair inspection
   let touchStartX = 0;
   let touchStartY = 0;
   let touchStartOffset = 0;
@@ -960,6 +1080,7 @@ function bindCanvasEvents(activeTab) {
   let touchLongPressTimer = null;
   let pinchStartDist = 0;
   let pinchStartVisibleCount = 48;
+  let touchDraggingDrawing = null;
 
   const cancelTouchLongPress = () => {
     if (touchLongPressTimer) {
@@ -987,6 +1108,7 @@ function bindCanvasEvents(activeTab) {
     (e) => {
       cancelTouchLongPress();
       touchMoved = false;
+      touchDraggingDrawing = null;
       if (e.touches.length === 1) {
         const rect = canvas.getBoundingClientRect();
         const t = e.touches[0];
@@ -995,14 +1117,48 @@ function bindCanvasEvents(activeTab) {
         touchStartOffset = Number(activeTab.scrollOffset || 0);
         pinchStartDist = 0;
         isTouchInspecting = false;
-        touchLongPressTimer = setTimeout(() => {
-          if (!touchMoved) {
-            isTouchInspecting = true;
-            updateTouchCrosshair(t.clientX, t.clientY);
+
+        const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
+        const meta = canvas._chartMeta;
+        if (
+          tool === 'cursor' &&
+          activeTab.selectedDrawingId &&
+          canvas._chartLayout &&
+          meta &&
+          touchStartX <= meta.chartW &&
+          Array.isArray(activeTab.drawings)
+        ) {
+          const tol = Math.max(24, Number(state.chartPreferences.drawingHitTolerancePx || 28));
+          const hit = DrawingGeometry.hitTestDrawing(
+            activeTab.drawings,
+            touchStartX,
+            touchStartY,
+            canvas._chartLayout.timeToX,
+            canvas._chartLayout.priceToY,
+            tol
+          );
+          if (hit && hit.id === activeTab.selectedDrawingId) {
+            touchDraggingDrawing = {
+              id: hit.id,
+              orig: { ...hit },
+              startPrice: meta.yToPrice(touchStartY),
+              stepMs: PriceFormatter.stepMilliseconds(activeTab.timeframe),
+            };
+            return;
           }
-        }, 320);
+        }
+
+        if (tool === 'cursor') {
+          touchLongPressTimer = setTimeout(() => {
+            if (!touchMoved && !touchDraggingDrawing) {
+              isTouchInspecting = true;
+              updateTouchCrosshair(t.clientX, t.clientY);
+            }
+          }, 320);
+        }
       } else if (e.touches.length === 2) {
         isTouchInspecting = false;
+        touchDraggingDrawing = null;
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
         pinchStartDist = Math.hypot(dx, dy);
@@ -1020,6 +1176,7 @@ function bindCanvasEvents(activeTab) {
       if (e.touches.length === 2 && pinchStartDist > 10) {
         cancelTouchLongPress();
         touchMoved = true;
+        touchDraggingDrawing = null;
         e.preventDefault();
         const dx = e.touches[0].clientX - e.touches[1].clientX;
         const dy = e.touches[0].clientY - e.touches[1].clientY;
@@ -1046,6 +1203,23 @@ function bindCanvasEvents(activeTab) {
           touchMoved = true;
           cancelTouchLongPress();
         }
+        if (touchDraggingDrawing) {
+          e.preventDefault();
+          const curPrice = meta.yToPrice(y);
+          const deltaPrice = curPrice - touchDraggingDrawing.startPrice;
+          const deltaBars = Math.round((x - touchStartX) / Math.max(0.5, meta.slotW));
+          const deltaTimeMs = deltaBars * touchDraggingDrawing.stepMs;
+          const translated = DrawingGeometry.translateDrawing(
+            touchDraggingDrawing.orig,
+            deltaTimeMs,
+            deltaPrice
+          );
+          activeTab.drawings = (activeTab.drawings || []).map((d) =>
+            d.id === touchDraggingDrawing.id ? translated : d
+          );
+          scheduleCanvasRedraw();
+          return;
+        }
         e.preventDefault();
         const dx = x - touchStartX;
         const deltaBars = Math.round(dx / Math.max(0.5, meta.slotW));
@@ -1062,18 +1236,57 @@ function bindCanvasEvents(activeTab) {
 
   canvas.addEventListener(
     'touchend',
-    () => {
+    (e) => {
       cancelTouchLongPress();
-      if (!touchMoved && !isTouchInspecting && activeTab.hoverIndex !== null) {
-        activeTab.hoverIndex = null;
-        activeTab.hoverY = null;
-        scheduleCanvasRedraw();
+      const meta = canvas._chartMeta;
+      if (touchDraggingDrawing) {
+        const drawKey = `${activeTab.symbolCode}_${activeTab.timeframe}`;
+        saveDrawings(drawKey, activeTab.drawings);
+        touchDraggingDrawing = null;
+        renderApp();
+        return;
+      }
+      if (!touchMoved && !isTouchInspecting && meta) {
+        const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
+        if (tool && tool !== 'cursor' && touchStartX <= meta.chartW) {
+          if (e.cancelable) e.preventDefault();
+          placeDrawingAtPoint(touchStartX, touchStartY, meta);
+          isTouchInspecting = false;
+          pinchStartDist = 0;
+          return;
+        }
+        if (
+          tool === 'cursor' &&
+          touchStartX <= meta.chartW &&
+          canvas._chartLayout &&
+          Array.isArray(activeTab.drawings) &&
+          activeTab.drawings.length > 0
+        ) {
+          const tol = Math.max(24, Number(state.chartPreferences.drawingHitTolerancePx || 28));
+          const hit = DrawingGeometry.hitTestDrawing(
+            activeTab.drawings,
+            touchStartX,
+            touchStartY,
+            canvas._chartLayout.timeToX,
+            canvas._chartLayout.priceToY,
+            tol
+          );
+          const nextSelId = hit ? hit.id : null;
+          if (activeTab.selectedDrawingId !== nextSelId) {
+            activeTab.selectedDrawingId = nextSelId;
+            renderApp();
+          }
+        } else if (activeTab.hoverIndex !== null) {
+          activeTab.hoverIndex = null;
+          activeTab.hoverY = null;
+          scheduleCanvasRedraw();
+        }
       }
       isTouchInspecting = false;
       pinchStartDist = 0;
       saveOpenTabsToStorage();
     },
-    { passive: true }
+    { passive: false }
   );
 }
 
@@ -1206,11 +1419,12 @@ function bindSettingsForms() {
       const stqEl = document.getElementById('byok-stooq');
       const avEl = document.getElementById('byok-alphavantage');
       const fhEl = document.getElementById('byok-finnhub');
-      state.chartPreferences.twelveDataApiKey = tdEl ? String(tdEl.value || '').trim() : '';
-      state.chartPreferences.stooqApiKey = stqEl ? String(stqEl.value || '').trim() : '';
-      state.chartPreferences.alphaVantageApiKey = avEl ? String(avEl.value || '').trim() : '';
-      state.chartPreferences.finnhubApiKey = fhEl ? String(fhEl.value || '').trim() : '';
-      savePreferences();
+      saveLocalByokKeys({
+        twelveDataApiKey: tdEl ? String(tdEl.value || '').trim() : '',
+        stooqApiKey: stqEl ? String(stqEl.value || '').trim() : '',
+        alphaVantageApiKey: avEl ? String(avEl.value || '').trim() : '',
+        finnhubApiKey: fhEl ? String(fhEl.value || '').trim() : '',
+      });
       state.statusBannerKey = 'settings_byok_saved';
       showFloatingToast(i18n.t('settings_byok_saved'));
       renderApp();
@@ -1319,10 +1533,19 @@ document.addEventListener('click', async (e) => {
     await fetchSystemStatus();
     state.statusBannerKey = ok ? 'status_workspace_synced' : '';
     renderApp();
+  } else if (action === 'open-mobile-sheet') {
+    const sheet = el.getAttribute('data-sheet') || null;
+    state.mobileSheet = state.mobileSheet === sheet ? null : sheet;
+    renderApp();
+  } else if (action === 'close-mobile-sheet') {
+    if (e.target !== el && !el.classList.contains('btn-icon')) return;
+    state.mobileSheet = null;
+    renderApp();
   } else if (action === 'select-tab') {
     const prevTab = activeTab;
     const nextTabId = el.getAttribute('data-tab-id');
     state.activeTabId = nextTabId;
+    saveActiveTabId(state.activeTabId);
     const selTab = state.openTabs.find((t) => t.tabId === nextTabId);
     if (selTab) {
       if (prevTab) {
@@ -1350,6 +1573,7 @@ document.addEventListener('click', async (e) => {
       state.openTabs = state.openTabs.filter((t) => t.tabId !== id);
       if (state.activeTabId === id) {
         state.activeTabId = state.openTabs[0].tabId;
+        saveActiveTabId(state.activeTabId);
       }
       saveOpenTabs();
       renderApp();
@@ -1653,6 +1877,7 @@ document.addEventListener('click', async (e) => {
     activeTab.activeDrawingTool = t;
     activeTab.pendingTrendStart = null;
     activeTab.pendingTrendPoint = null;
+    state.mobileSheet = null;
     renderApp();
   } else if (action === 'toggle-magnet' && activeTab) {
     activeTab.isMagnetMode = !activeTab.isMagnetMode;
@@ -2174,6 +2399,24 @@ async function bootstrap() {
           clockEl.textContent = PriceFormatter.formatLiveClock(state.chartPreferences.timezoneMode);
         }
         redrawActiveCanvas();
+
+        const tab = getActiveTab();
+        if (tab && !state.isSyncing && PriceFormatter.isMarketOpen(Date.now(), tab.symbolCode)) {
+          const nowMs = Date.now();
+          const sym = state.symbols.find((s) => s.symbolCode === tab.symbolCode);
+          const lastAuto = Number(tab._lastAutoSyncMs || 0);
+          const lastFetch = Number((sym && sym.lastSuccessfulFetchMs) || 0);
+          const stepMs = PriceFormatter.stepMilliseconds(tab.timeframe || 'M15');
+          const snapOpen = PriceFormatter.snapToOpenUtcMs(nowMs, tab.timeframe || 'M15');
+          const elapsedInBar = nowMs - snapOpen;
+          const isIntraday = ['M15', 'M30', 'H1', 'H4'].includes(String(tab.timeframe || 'M15').toUpperCase());
+          const nearBarClose = elapsedInBar >= 1500 && elapsedInBar <= 12000 && nowMs - lastAuto >= 15000;
+          const periodicRefresh = isIntraday && nowMs - Math.max(lastAuto, lastFetch) >= 60000;
+          if (nearBarClose || periodicRefresh) {
+            tab._lastAutoSyncMs = nowMs;
+            syncSymbolNow(tab.symbolCode, tab.timeframe, renderApp).catch(() => {});
+          }
+        }
       }
     }, 1000);
   }

@@ -4,10 +4,13 @@ import es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm
 import es.manico.chartintelligence.algorithms.DrawingGeometryAlgorithm
 import es.manico.chartintelligence.algorithms.PasswordHashAlgorithm
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
+import es.manico.chartintelligence.algorithms.SessionCalendar
 import es.manico.chartintelligence.algorithms.TimeframeAggregatorAlgorithm
 import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
+import es.manico.chartintelligence.algorithms.VolumeType
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartDrawing
+import es.manico.chartintelligence.data.model.ProviderId
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -15,6 +18,9 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.math.BigDecimal
+import java.time.DayOfWeek
+import java.time.Instant
+import java.time.ZoneOffset
 
 class Phase1AlgorithmsTest {
 
@@ -24,7 +30,12 @@ class Phase1AlgorithmsTest {
         for (tf in listOf("M15", "H1", "H4", "D1", "W1")) {
             val step = UtcTimeAnchorAlgorithm.timeframeStepMillis(tf)
             val snapped = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(rawMillis, tf)
-            assertEquals(0L, snapped % step)
+            if (tf == "W1") {
+                assertEquals(0L, (snapped + 259_200_000L) % step)
+                assertEquals(DayOfWeek.MONDAY, Instant.ofEpochMilli(snapped).atZone(ZoneOffset.UTC).dayOfWeek)
+            } else {
+                assertEquals(0L, snapped % step)
+            }
             assertFalse(UtcTimeAnchorAlgorithm.isCandleClosed(snapped, tf, rawMillis))
             assertTrue(UtcTimeAnchorAlgorithm.isCandleClosed(snapped - step, tf, rawMillis))
         }
@@ -550,5 +561,100 @@ class Phase1AlgorithmsTest {
 
         // Session token key must be configured cleanly
         assertEquals("pref_session_token", es.manico.chartintelligence.config.AppConfig.KEY_SESSION_TOKEN)
+    }
+
+    @Test
+    fun codeReviewFixes_sessionCalendarsVwapSma200VolumeProfileAndCanonicalKeys() {
+        // 1. Session calendars & DST-aware session keys + countdown Closed state
+        assertEquals(SessionCalendar.CRYPTO_24_7, UtcTimeAnchorAlgorithm.getSessionCalendar("BTCUSD"))
+        assertEquals(SessionCalendar.US_EQUITIES, UtcTimeAnchorAlgorithm.getSessionCalendar("AAPL"))
+        assertEquals(SessionCalendar.OTC_FX_METALS, UtcTimeAnchorAlgorithm.getSessionCalendar("XAUUSD"))
+
+        // Sunday 2026-11-08 12:00 UTC -> OTC/US closed ("Closed"), BTCUSD open (timer string)
+        val sundayNoonMs = 1794139200000L
+        assertEquals("Closed", UtcTimeAnchorAlgorithm.formatCountdownToBarClose("XAUUSD", "M15", sundayNoonMs))
+        assertEquals("Closed", UtcTimeAnchorAlgorithm.formatCountdownToBarClose("AAPL", "M15", sundayNoonMs))
+        val btcCountdown = UtcTimeAnchorAlgorithm.formatCountdownToBarClose("BTCUSD", "M15", sundayNoonMs)
+        assertFalse(btcCountdown == "Closed")
+
+        // Crypto D1 Sat/Sun bars are preserved by CandleValidatorAlgorithm
+        val satMs = Instant.parse("2026-11-07T00:00:00Z").toEpochMilli()
+        val satBtcD1 = CandleValidatorAlgorithm.sanitizeAndValidate(
+            rawOpenTimeMillis = satMs,
+            timeframe = "D1",
+            open = BigDecimal("90000"),
+            high = BigDecimal("91000"),
+            low = BigDecimal("89500"),
+            close = BigDecimal("90500"),
+            volume = BigDecimal("1234")
+        )!!
+        val filteredCryptoD1 = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
+            listOf(satBtcD1),
+            "BTCUSD",
+            "D1"
+        )
+        assertEquals(1, filteredCryptoD1.size)
+
+        // 2. Incomplete boundary bucket skipped when aggregating H1 -> H4 (minExpectedChildren = 3)
+        val h1Step = 60L * 60_000L
+        val dayStartMs = Instant.parse("2026-11-05T00:00:00Z").toEpochMilli()
+        val completeH4Bars = (0 until 4).map { h ->
+            CandleValidatorAlgorithm.sanitizeAndValidate(
+                rawOpenTimeMillis = dayStartMs + h * h1Step,
+                timeframe = "H1",
+                open = BigDecimal("100"),
+                high = BigDecimal("105"),
+                low = BigDecimal("99"),
+                close = BigDecimal("102"),
+                volume = BigDecimal("50")
+            )!!
+        }
+        val incompleteBoundaryH1 = listOf(
+            CandleValidatorAlgorithm.sanitizeAndValidate(
+                rawOpenTimeMillis = dayStartMs + 4 * h1Step,
+                timeframe = "H1",
+                open = BigDecimal("102"),
+                high = BigDecimal("104"),
+                low = BigDecimal("101"),
+                close = BigDecimal("103"),
+                volume = BigDecimal("25")
+            )!!
+        )
+        val aggregatedH4 = TimeframeAggregatorAlgorithm.aggregateCandles(
+            sourceCandles = completeH4Bars + incompleteBoundaryH1,
+            targetTimeframe = "H4",
+            nowUtcMillis = dayStartMs + 10 * h1Step,
+            sourceTimeframe = "H1",
+            symbolCode = "BTCUSD"
+        )
+        assertEquals(1, aggregatedH4.size)
+
+        // 3. Strict SMA 200 requires >= 200 bars
+        val shortCloses = List(199) { 100.0 + it }
+        assertTrue(PriceFormatterAlgorithm.computeSmaValues(shortCloses, 200).all { it == null })
+        val fullCloses = List(200) { 100.0 }
+        val sma200 = PriceFormatterAlgorithm.computeSmaValues(fullCloses, 200)
+        assertNull(sma200[198])
+        assertEquals(100.0, sma200[199]!!, 1e-6)
+
+        // 4. Unified VWAP: intraday resets at session day key; D1/W1 rolls over 20 bars
+        val m15Step = 15L * 60_000L
+        val day1End = Instant.parse("2026-11-05T23:45:00Z").toEpochMilli()
+        val day2Start = Instant.parse("2026-11-06T00:00:00Z").toEpochMilli()
+        val vwapBars = listOf(
+            CandleValidatorAlgorithm.sanitizeAndValidate(day1End, "M15", BigDecimal("100"), BigDecimal("100"), BigDecimal("100"), BigDecimal("100"), BigDecimal("100"))!!,
+            CandleValidatorAlgorithm.sanitizeAndValidate(day2Start, "M15", BigDecimal("200"), BigDecimal("200"), BigDecimal("200"), BigDecimal("200"), BigDecimal("50"))!!
+        )
+        val intradayVwap = PriceFormatterAlgorithm.computeVwapValues(vwapBars, "M15", "BTCUSD")
+        assertEquals(100.0, intradayVwap[0]!!, 1e-6)
+        assertEquals(200.0, intradayVwap[1]!!, 1e-6) // strictly reset on new UTC day
+
+        // 5. VolumeProfile & InstrumentSpec metadata
+        val eiaSpec = UtcTimeAnchorAlgorithm.getInstrumentSpec("SPOTBRENT", ProviderId.EIA_BRENT_SPOT)
+        assertEquals(VolumeType.NONE, eiaSpec.volumeType)
+        val vpEia = PriceFormatterAlgorithm.computeVolumeProfile(vwapBars, 10, 0.70, VolumeType.NONE)
+        assertNotNull(vpEia)
+        assertTrue(vpEia!!.isEstimated)
+        assertEquals("BTCUSD_H4", UtcTimeAnchorAlgorithm.canonicalChartKey("btcusd", "h4"))
     }
 }

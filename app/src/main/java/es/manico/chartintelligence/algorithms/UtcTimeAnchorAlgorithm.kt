@@ -1,7 +1,9 @@
 package es.manico.chartintelligence.algorithms
 
+import es.manico.chartintelligence.data.model.ProviderId
 import java.time.DayOfWeek
 import java.time.Instant
+import java.time.ZoneId
 import java.time.ZoneOffset
 import java.time.ZonedDateTime
 import java.time.format.DateTimeFormatter
@@ -14,23 +16,121 @@ enum class MarketStatus {
     ERROR
 }
 
+enum class SessionCalendar {
+    CRYPTO_24_7,
+    OTC_FX_METALS,
+    US_EQUITIES
+}
+
+enum class VolumeType {
+    REAL_EXCHANGE,
+    TICK_ESTIMATED,
+    NONE
+}
+
+enum class ConnectionStatus {
+    CONNECTED_LIVE,
+    SYNCING,
+    MARKET_CLOSED,
+    CACHED_OFFLINE,
+    SYNC_ERROR
+}
+
+data class InstrumentSpec(
+    val symbolCode: String,
+    val providerId: String,
+    val providerTicker: String,
+    val priceBasis: String,
+    val timezone: String,
+    val sessionCalendar: SessionCalendar,
+    val volumeType: VolumeType
+)
+
 /**
  * Independent Algorithm Library Module:
- * Anchors all candle timestamps to 00:00:00 UTC, filters out incomplete (still-open) candles,
- * and evaluates OTC weekend closure / semantic feed freshness.
+ * Anchors all candle timestamps to 00:00:00 UTC (with Monday-anchored W1 weeks),
+ * filters out incomplete (still-open) candles, computes DST-aware session day keys,
+ * and evaluates session-calendar-aware market status & countdowns.
  */
 object UtcTimeAnchorAlgorithm {
 
+    private const val EPOCH_MONDAY_OFFSET_MS = 259_200_000L // 3 days * 86400s * 1000ms (1970-01-01 was Thursday)
+
+    private val nyZone: ZoneId = ZoneId.of("America/New_York")
+
     private val isoUtcFormatter: DateTimeFormatter =
         DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm 'UTC'").withZone(ZoneOffset.UTC)
+
+    private val dayKeyFormatter: DateTimeFormatter =
+        DateTimeFormatter.ofPattern("yyyy-MM-dd")
 
     private val otcWeekendSymbols = setOf(
         "XAUUSD",
         "XAGUSD",
         "EURUSD",
+        "GBPUSD",
+        "USDJPY",
         "SPOTBRENT",
-        "BRENT_FUTURES"
+        "BRENT_FUTURES",
+        "USOIL"
     )
+
+    private val usEquitiesSymbols = setOf(
+        "SPX500USD",
+        "NDQ",
+        "NVDA",
+        "AMZN",
+        "TSLA",
+        "AAPL",
+        "GOOGL",
+        "MSFT",
+        "META",
+        "NFLX",
+        "AMD",
+        "UBER",
+        "NKE",
+        "IBM",
+        "SAN"
+    )
+
+    private val legacyChartIdMap = mapOf(
+        "SPOTBRENT" to "chart_spotbrent_main",
+        "XAUUSD" to "chart_xauusd_main",
+        "BRENT_FUTURES" to "chart_brent_futures",
+        "SPX500USD" to "chart_spx500usd_index",
+        "NDQ" to "chart_ndq_index",
+        "ETHUSD" to "chart_ethusd_spot",
+        "BTCUSD" to "chart_btcusd_spot",
+        "XAGUSD" to "chart_xagusd_spot",
+        "EURUSD" to "chart_eurusd_spot",
+        "USOIL" to "chart_usoil_spot",
+        "GBPUSD" to "chart_gbpusd_spot",
+        "USDJPY" to "chart_usdjpy_spot",
+        "NVDA" to "chart_nvda_stock",
+        "AMZN" to "chart_amzn_stock",
+        "TSLA" to "chart_tsla_stock",
+        "AAPL" to "chart_aapl_stock",
+        "GOOGL" to "chart_googl_stock",
+        "MSFT" to "chart_msft_stock",
+        "META" to "chart_meta_stock",
+        "NFLX" to "chart_nflx_stock",
+        "AMD" to "chart_amd_stock",
+        "UBER" to "chart_uber_stock",
+        "NKE" to "chart_nke_stock",
+        "IBM" to "chart_ibm_stock",
+        "SAN" to "chart_san_stock"
+    )
+
+    fun canonicalChartKey(symbolCode: String, timeframe: String): String {
+        val sym = symbolCode.trim().uppercase()
+        val tf = timeframe.trim().uppercase().ifBlank { "M15" }
+        return "${sym}_${tf}"
+    }
+
+    fun legacyChartId(symbolCode: String): String {
+        val clean = symbolCode.trim().uppercase().replace(Regex("[^A-Z0-9_]"), "")
+        return legacyChartIdMap[clean] ?: "chart_${clean.lowercase()}_custom"
+    }
 
     fun timeframeStepMillis(timeframe: String): Long {
         return when (timeframe.uppercase()) {
@@ -46,11 +146,16 @@ object UtcTimeAnchorAlgorithm {
 
     /**
      * Floors any epoch millisecond timestamp to its canonical candle open boundary
-     * anchored at 00:00:00 UTC.
+     * anchored at 00:00:00 UTC (with W1 anchored to Monday 00:00:00 UTC).
      */
     fun snapToCandleOpenUtc(epochMillis: Long, timeframe: String): Long {
-        val step = timeframeStepMillis(timeframe)
-        return (epochMillis / step) * step
+        val normTf = timeframe.uppercase()
+        val step = timeframeStepMillis(normTf)
+        return if (normTf == "W1" || normTf == "1W" || normTf == "W") {
+            Math.floorDiv(epochMillis + EPOCH_MONDAY_OFFSET_MS, step) * step - EPOCH_MONDAY_OFFSET_MS
+        } else {
+            Math.floorDiv(epochMillis, step) * step
+        }
     }
 
     /**
@@ -66,21 +171,234 @@ object UtcTimeAnchorAlgorithm {
         return (openTimeUtcMillis + step) <= nowUtcMillis
     }
 
+    fun getSessionCalendar(symbolCode: String = "XAUUSD"): SessionCalendar {
+        val code = symbolCode.trim().uppercase()
+        if (code in setOf("BTCUSD", "ETHUSD") || code.endsWith("USDT") ||
+            (code.endsWith("USD") && (code.startsWith("BTC") || code.startsWith("ETH") || code.startsWith("SOL") || code.startsWith("XRP")))
+        ) {
+            return SessionCalendar.CRYPTO_24_7
+        }
+        if (code in usEquitiesSymbols ||
+            code.contains("SPX") || code.contains("NDQ") || code.contains("NDX") || code.contains("US100") || code.contains("US500")
+        ) {
+            return SessionCalendar.US_EQUITIES
+        }
+        return SessionCalendar.OTC_FX_METALS
+    }
+
+    fun getInstrumentTimezone(symbolCode: String = "XAUUSD"): String {
+        return when (getSessionCalendar(symbolCode)) {
+            SessionCalendar.CRYPTO_24_7 -> "UTC"
+            SessionCalendar.US_EQUITIES -> "America/New_York"
+            SessionCalendar.OTC_FX_METALS -> "Etc/GMT+0 (NY 17:00 Rollover)"
+        }
+    }
+
+    fun getVolumeType(symbolCode: String, provider: ProviderId): VolumeType {
+        if (provider == ProviderId.EIA_BRENT_SPOT) return VolumeType.NONE
+        val cal = getSessionCalendar(symbolCode)
+        if (cal == SessionCalendar.CRYPTO_24_7 || cal == SessionCalendar.US_EQUITIES) {
+            return when (provider) {
+                ProviderId.YAHOO_FINANCE,
+                ProviderId.TWELVE_DATA,
+                ProviderId.STOOQ,
+                ProviderId.TVDATAFEED,
+                ProviderId.BIQUOTE -> VolumeType.REAL_EXCHANGE
+                else -> VolumeType.TICK_ESTIMATED
+            }
+        }
+        return VolumeType.TICK_ESTIMATED
+    }
+
+    fun resolvePriceBasis(symbolCode: String, provider: ProviderId): String {
+        val sym = symbolCode.trim().uppercase()
+        return when (provider) {
+            ProviderId.EIA_BRENT_SPOT -> "Official FOB Spot"
+            ProviderId.DUKASCOPY -> "Interbank Spot"
+            ProviderId.BIQUOTE -> "CFD / MT5 Feed"
+            ProviderId.STOOQ -> "EOD Historical"
+            ProviderId.TWELVE_DATA -> if (sym in usEquitiesSymbols && sym != "SPX500USD" && sym != "NDQ") {
+                "Official Exchange"
+            } else {
+                "Spot REST"
+            }
+            ProviderId.YAHOO_FINANCE -> when (sym) {
+                "SPOTBRENT", "USOIL", "XAUUSD", "XAGUSD", "BRENT_FUTURES" -> "Futures Ref"
+                "BTCUSD", "ETHUSD", "EURUSD", "GBPUSD", "USDJPY" -> "Spot FX/Crypto"
+                else -> "Official Exchange"
+            }
+            ProviderId.TVDATAFEED -> when (sym) {
+                "SPOTBRENT", "USOIL", "SPX500USD" -> "CFD Feed"
+                "XAUUSD", "XAGUSD", "EURUSD", "BTCUSD", "ETHUSD", "GBPUSD", "USDJPY" -> "Spot Feed"
+                else -> "Official Exchange"
+            }
+        }
+    }
+
+    fun resolveProviderTicker(symbolCode: String, provider: ProviderId): String {
+        val sym = symbolCode.trim().uppercase()
+        return when (provider) {
+            ProviderId.TVDATAFEED -> when (sym) {
+                "SPOTBRENT" -> "PEPPERSTONE:SPOTBRENT"
+                "BRENT_FUTURES" -> "NYMEX:BZ1!"
+                "USOIL" -> "TVC:USOIL"
+                "XAUUSD" -> "OANDA:XAUUSD"
+                "XAGUSD" -> "OANDA:XAGUSD"
+                "EURUSD" -> "OANDA:EURUSD"
+                "GBPUSD" -> "OANDA:GBPUSD"
+                "USDJPY" -> "OANDA:USDJPY"
+                "BTCUSD" -> "BITSTAMP:BTCUSD"
+                "ETHUSD" -> "BITSTAMP:ETHUSD"
+                "SPX500USD" -> "OANDA:SPX500USD"
+                "NDQ" -> "NASDAQ:NDX"
+                "UBER", "NKE", "IBM", "SAN" -> "NYSE:$sym"
+                else -> "NASDAQ:$sym"
+            }
+            ProviderId.BIQUOTE -> if (sym == "SPOTBRENT") "BIQUOTE:UKOIL" else "BIQUOTE:$sym"
+            ProviderId.TWELVE_DATA -> when (sym) {
+                "XAUUSD" -> "XAU/USD"
+                "SPOTBRENT", "BRENT_FUTURES" -> "XBR/USD"
+                "USOIL" -> "WTI/USD"
+                "XAGUSD" -> "XAG/USD"
+                "EURUSD" -> "EUR/USD"
+                "GBPUSD" -> "GBP/USD"
+                "USDJPY" -> "USD/JPY"
+                "BTCUSD" -> "BTC/USD"
+                "ETHUSD" -> "ETH/USD"
+                "SPX500USD" -> "SPX"
+                "NDQ" -> "NDX"
+                else -> sym
+            }
+            ProviderId.DUKASCOPY -> when (sym) {
+                "SPOTBRENT" -> "BRENT.CMD/USD"
+                "XAUUSD" -> "XAU/USD"
+                "XAGUSD" -> "XAG/USD"
+                "EURUSD" -> "EUR/USD"
+                else -> sym
+            }
+            ProviderId.YAHOO_FINANCE -> when (sym) {
+                "SPOTBRENT", "BRENT_FUTURES" -> "BZ=F"
+                "USOIL" -> "CL=F"
+                "XAUUSD" -> "GC=F"
+                "XAGUSD" -> "SI=F"
+                "EURUSD" -> "EURUSD=X"
+                "GBPUSD" -> "GBPUSD=X"
+                "USDJPY" -> "JPY=X"
+                "BTCUSD" -> "BTC-USD"
+                "ETHUSD" -> "ETH-USD"
+                "SPX500USD" -> "^GSPC"
+                "NDQ" -> "^NDX"
+                else -> sym
+            }
+            ProviderId.STOOQ -> when (sym) {
+                "SPOTBRENT", "BRENT_FUTURES" -> "CB.F"
+                "USOIL" -> "CL.F"
+                "SPX500USD" -> "^SPX"
+                "NDQ" -> "^NDX"
+                "XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "ETHUSD" -> sym
+                else -> "$sym.US"
+            }
+            ProviderId.EIA_BRENT_SPOT -> "EIA:RBRTE"
+        }
+    }
+
+    fun getInstrumentSpec(symbolCode: String, provider: ProviderId): InstrumentSpec {
+        val sym = symbolCode.trim().uppercase()
+        return InstrumentSpec(
+            symbolCode = sym,
+            providerId = provider.id,
+            providerTicker = resolveProviderTicker(sym, provider),
+            priceBasis = resolvePriceBasis(sym, provider),
+            timezone = getInstrumentTimezone(sym),
+            sessionCalendar = getSessionCalendar(sym),
+            volumeType = getVolumeType(sym, provider)
+        )
+    }
+
     /**
-     * Returns true if [epochMillis] falls within the global OTC weekend market closure window
-     * (Friday >= 22:00 UTC, all day Saturday, or Sunday < 22:00 UTC) for FX/Metals/Commodities.
+     * DST-aware session trading day key (`YYYY-MM-DD`).
+     * - Crypto: UTC calendar day
+     * - US Equities / Indices: America/New_York calendar day
+     * - OTC FX/Metals/Energy: NY 17:00 rollover shifted (+7h from America/New_York)
+     */
+    fun getSessionDayKey(epochMillis: Long, symbolCode: String = "XAUUSD"): String {
+        val instant = Instant.ofEpochMilli(epochMillis)
+        return when (getSessionCalendar(symbolCode)) {
+            SessionCalendar.CRYPTO_24_7 -> {
+                dayKeyFormatter.format(instant.atZone(ZoneOffset.UTC).toLocalDate())
+            }
+            SessionCalendar.US_EQUITIES -> {
+                dayKeyFormatter.format(instant.atZone(nyZone).toLocalDate())
+            }
+            SessionCalendar.OTC_FX_METALS -> {
+                dayKeyFormatter.format(instant.atZone(nyZone).plusHours(7).toLocalDate())
+            }
+        }
+    }
+
+    private fun isUsEquitySessionOpen(epochMillis: Long): Boolean {
+        val nyZdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), nyZone)
+        val dow = nyZdt.dayOfWeek
+        if (dow == DayOfWeek.SATURDAY || dow == DayOfWeek.SUNDAY) return false
+        val mins = nyZdt.hour * 60 + nyZdt.minute
+        return mins in (9 * 60 + 30) until (16 * 60)
+    }
+
+    fun isMarketOpen(epochMillis: Long = System.currentTimeMillis(), symbolCode: String = "XAUUSD"): Boolean {
+        return !isOtcWeekendClosed(epochMillis, symbolCode)
+    }
+
+    /**
+     * Returns true if [epochMillis] falls outside active trading hours for [symbolCode]:
+     * - CRYPTO_24_7: always open (false)
+     * - US_EQUITIES: closed outside Mon–Fri 09:30–16:00 America/New_York
+     * - OTC_FX_METALS: closed Friday >= 22:00 UTC, Saturday all day, Sunday < 22:00 UTC
      */
     fun isOtcWeekendClosed(epochMillis: Long, symbolCode: String = "XAUUSD"): Boolean {
-        val code = symbolCode.trim().uppercase()
-        if (code !in otcWeekendSymbols && !code.startsWith("XAU") && !code.startsWith("EUR")) {
-            return false
+        return when (getSessionCalendar(symbolCode)) {
+            SessionCalendar.CRYPTO_24_7 -> false
+            SessionCalendar.US_EQUITIES -> !isUsEquitySessionOpen(epochMillis)
+            SessionCalendar.OTC_FX_METALS -> {
+                val code = symbolCode.trim().uppercase()
+                if (code !in otcWeekendSymbols && !code.startsWith("XAU") && !code.startsWith("XAG") && !code.startsWith("EUR") && !code.contains("BRENT") && !code.contains("OIL")) {
+                    // Fallback weekend closure check for custom non-crypto instruments
+                    val zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneOffset.UTC)
+                    return when (zdt.dayOfWeek) {
+                        DayOfWeek.SATURDAY -> true
+                        DayOfWeek.SUNDAY -> zdt.hour < 22
+                        DayOfWeek.FRIDAY -> zdt.hour >= 22
+                        else -> false
+                    }
+                }
+                val zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneOffset.UTC)
+                when (zdt.dayOfWeek) {
+                    DayOfWeek.SATURDAY -> true
+                    DayOfWeek.SUNDAY -> zdt.hour < 22
+                    DayOfWeek.FRIDAY -> zdt.hour >= 22
+                    else -> false
+                }
+            }
         }
-        val zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneOffset.UTC)
-        return when (zdt.dayOfWeek) {
-            DayOfWeek.SATURDAY -> true
-            DayOfWeek.SUNDAY -> zdt.hour < 22
-            DayOfWeek.FRIDAY -> zdt.hour >= 22
-            else -> false
+    }
+
+    fun formatCountdownToBarClose(
+        symbolCode: String,
+        timeframe: String,
+        nowUtcMillis: Long = System.currentTimeMillis(),
+        closedLabel: String = "Closed"
+    ): String {
+        if (!isMarketOpen(nowUtcMillis, symbolCode)) return closedLabel
+        val step = timeframeStepMillis(timeframe)
+        val openMs = snapToCandleOpenUtc(nowUtcMillis, timeframe)
+        val remainingSec = (((openMs + step) - nowUtcMillis) / 1000L).coerceAtLeast(0L)
+        val days = remainingSec / 86400L
+        val hours = (remainingSec % 86400L) / 3600L
+        val mins = (remainingSec % 3600L) / 60L
+        val secs = remainingSec % 60L
+        return when {
+            days > 0L -> String.format(java.util.Locale.US, "%dd %02d:%02d", days, hours, mins)
+            hours > 0L -> String.format(java.util.Locale.US, "%02d:%02d:%02d", hours, mins, secs)
+            else -> String.format(java.util.Locale.US, "%02d:%02d", mins, secs)
         }
     }
 

@@ -55,6 +55,10 @@ final class CandleValidator
         }
         $normTf = strtoupper($timeframe);
         $isIntraday = !in_array($normTf, ['D1', 'W1'], true);
+        $calendar = UtcTimeAnchor::getSessionCalendar($symbolCode);
+        if ($calendar === UtcTimeAnchor::CALENDAR_CRYPTO_24_7) {
+            return array_values($candles);
+        }
 
         $step1 = [];
         foreach ($candles as $bar) {
@@ -65,9 +69,15 @@ final class CandleValidator
             $v = (float) ($bar['volume'] ?? 0.0);
             $range = $h - $l;
             $isMicroRange = $o > 0.0 && ($range / $o) < 0.00018;
-            $isWeekend = $isIntraday && UtcTimeAnchor::isOtcWeekendClosed($openMs, $symbolCode);
-            if ($isWeekend && ($v <= 0.0 || $isMicroRange)) {
+            $isWeekendClosed = $isIntraday && $calendar === UtcTimeAnchor::CALENDAR_OTC_FX_METALS && UtcTimeAnchor::isOtcWeekendClosed($openMs, $symbolCode);
+            if ($isWeekendClosed && ($v <= 0.0 || $isMicroRange)) {
                 continue;
+            }
+            if (!$isIntraday && $normTf === 'D1') {
+                $dow = (int) gmdate('w', intdiv($openMs, 1000));
+                if ($dow === 0 || $dow === 6) {
+                    continue;
+                }
             }
             $step1[] = $bar;
         }

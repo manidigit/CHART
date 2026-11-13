@@ -1,6 +1,6 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.38.0';
-import { state, getAssetClass } from '../core/store.js?v=1.38.0';
+import { state, getAssetClass, escapeHtml, getInstrumentSpec } from '../core/store.js?v=1.38.0';
 
 const STOCK_SYMBOLS = new Set([
   'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
@@ -278,6 +278,16 @@ export function renderSymbolBadge(symbolCode, sizePx = 22) {
   return `<span class="tv-wl-icon-badge" style="width: ${sizePx}px; height: ${sizePx}px; min-width: ${sizePx}px; background: ${badge.bgGradient};" title="${badge.category}">${badge.svgIcon}</span>`;
 }
 
+function getCandleMs(c) {
+  if (!c) return 0;
+  return (
+    Number(c.open_time_utc_ms) ||
+    Number(c.openTimeSec || 0) * 1000 ||
+    Date.parse(c.open_time_utc || '') ||
+    0
+  );
+}
+
 export function computeDayStats(s, overrideCandles = null) {
   const candles =
     Array.isArray(overrideCandles) && overrideCandles.length > 0
@@ -298,9 +308,26 @@ export function computeDayStats(s, overrideCandles = null) {
 
   const latestCandle = candles[candles.length - 1];
   const lastClose = Number(latestCandle.close || s.lastClose || 0);
-  const daySlice = candles.slice(-24);
-  let dayLow = lastClose;
-  let dayHigh = lastClose;
+  const latestMs = getCandleMs(latestCandle);
+  const latestDayKey = latestMs > 0 ? PriceFormatter.getSessionDayKey(latestMs, s.symbolCode) : '';
+
+  const sessionBars = [];
+  let prevClose = null;
+  for (let i = candles.length - 1; i >= 0; i--) {
+    const c = candles[i];
+    const ms = getCandleMs(c);
+    const dk = ms > 0 ? PriceFormatter.getSessionDayKey(ms, s.symbolCode) : latestDayKey;
+    if (!latestDayKey || dk === latestDayKey) {
+      sessionBars.unshift(c);
+    } else {
+      prevClose = Number(c.close);
+      break;
+    }
+  }
+
+  const daySlice = sessionBars.length > 0 ? sessionBars : [latestCandle];
+  let dayLow = Infinity;
+  let dayHigh = -Infinity;
   let volSum = 0;
 
   for (const c of daySlice) {
@@ -310,25 +337,43 @@ export function computeDayStats(s, overrideCandles = null) {
     if (Number.isFinite(hi) && hi > 0) dayHigh = Math.max(dayHigh, hi);
     volSum += Number(c.volume || 0);
   }
+  if (!Number.isFinite(dayLow)) dayLow = lastClose;
+  if (!Number.isFinite(dayHigh)) dayHigh = lastClose;
 
-  const prevClose =
-    candles.length >= 2 ? Number(candles[candles.length - 2].close) : Number(daySlice[0].open);
-  const openPrice = Number(latestCandle.open || daySlice[0].open || lastClose);
-  const lastSec = Number(
-    latestCandle.openTimeSec ||
-      Math.floor(Number(latestCandle.open_time_utc_ms || 0) / 1000) ||
-      0
-  );
-  const nowSec = Math.floor(Date.now() / 1000);
-  const isLive = nowSec - lastSec < 86400 * 3;
+  if (prevClose === null) {
+    const d1Key = `${s.symbolCode}_${s.activeProvider || 'tvdatafeed'}_D1`;
+    const d1Candles = state.candleCache && state.candleCache[d1Key];
+    if (Array.isArray(d1Candles) && d1Candles.length > 0) {
+      for (let i = d1Candles.length - 1; i >= 0; i--) {
+        const ms = getCandleMs(d1Candles[i]);
+        const dk = ms > 0 ? PriceFormatter.getSessionDayKey(ms, s.symbolCode) : '';
+        if (dk && latestDayKey && dk < latestDayKey) {
+          prevClose = Number(d1Candles[i].close);
+          break;
+        }
+      }
+    }
+  }
+  if (prevClose === null || !Number.isFinite(prevClose) || prevClose <= 0) {
+    prevClose = Number(daySlice[0].open || lastClose);
+  }
+
+  const openPrice = Number(daySlice[0].open || latestCandle.open || lastClose);
+  const nowMs = Date.now();
+  const lastFetchMs = Number(s.lastSuccessfulFetchMs || 0);
+  const isLive =
+    s.connectionStatus === 'LIVE' &&
+    PriceFormatter.isMarketOpen(nowMs, s.symbolCode) &&
+    lastFetchMs > 0 &&
+    nowMs - lastFetchMs < 180000;
 
   return {
     lastClose,
     prevClose,
     openPrice,
-    dayLow: Number.isFinite(dayLow) ? dayLow : lastClose,
-    dayHigh: Number.isFinite(dayHigh) ? dayHigh : lastClose,
-    volume: Number(latestCandle.volume || volSum || 0),
+    dayLow,
+    dayHigh,
+    volume: volSum > 0 ? volSum : Number(latestCandle.volume || 0),
     isLive,
   };
 }
@@ -404,11 +449,12 @@ export function renderRightSplitPanel(activeTab, i18n) {
       const isBull = diff >= 0;
       const sign = isBull ? '+' : '';
 
+      const safeCode = escapeHtml(s.symbolCode);
       return `
         <div
           class="tv-wl-row ${isSelected ? 'active' : ''}"
           draggable="true"
-          data-symbol="${s.symbolCode}"
+          data-symbol="${safeCode}"
           data-index="${idx}"
           data-action="open-chart"
           dir="ltr"
@@ -416,7 +462,7 @@ export function renderRightSplitPanel(activeTab, i18n) {
           <div class="tv-wl-sym-cell">
             <span
               class="tv-wl-drag-handle"
-              title="${i18n.t('watchlist_reorder_hint') || 'Drag to reorder / جابجایی سهم'}"
+              title="${escapeHtml(i18n.t('watchlist_reorder_hint') || 'Drag to reorder / جابجایی سهم')}"
               data-action="drag-handle"
             >
               <svg width="7" height="12" viewBox="0 0 8 14" fill="currentColor">
@@ -430,7 +476,7 @@ export function renderRightSplitPanel(activeTab, i18n) {
                 ? `<span style="width: 7px; height: 7px; border-radius: 50%; background: ${d.isLive ? 'var(--bull)' : 'var(--text-muted)'}; flex-shrink: 0;"></span>`
                 : renderSymbolBadge(s.symbolCode, 22)
             }
-            <span class="tv-wl-ticker ltr-num">${s.symbolCode}</span>
+            <span class="tv-wl-ticker ltr-num">${safeCode}</span>
           </div>
           <div class="tv-wl-num ltr-num" style="color: var(--text-strong); font-weight: 600;">
             ${PriceFormatter.formatPrice(d.lastClose, s.decimals)}
@@ -447,16 +493,16 @@ export function renderRightSplitPanel(activeTab, i18n) {
               class="tv-wl-move-btn"
               data-action="move-watchlist-symbol"
               data-direction="up"
-              data-symbol="${s.symbolCode}"
-              title="${i18n.t('watchlist_move_up')}"
+              data-symbol="${safeCode}"
+              title="${escapeHtml(i18n.t('watchlist_move_up'))}"
             >▲</button>
             <button
               type="button"
               class="tv-wl-move-btn"
               data-action="move-watchlist-symbol"
               data-direction="down"
-              data-symbol="${s.symbolCode}"
-              title="${i18n.t('watchlist_move_down')}"
+              data-symbol="${safeCode}"
+              title="${escapeHtml(i18n.t('watchlist_move_down'))}"
             >▼</button>
           </div>
         </div>
@@ -490,14 +536,14 @@ export function renderRightSplitPanel(activeTab, i18n) {
         <div class="tv-detail-header-row">
           <div class="tv-detail-title-group">
             ${renderSymbolBadge(sym.symbolCode, 22)}
-            <strong class="tv-detail-sym-code ltr-num">${sym.symbolCode}</strong>
+            <strong class="tv-detail-sym-code ltr-num">${escapeHtml(sym.symbolCode)}</strong>
             ${
               hasDistinctName
-                ? `<span class="tv-detail-sym-name-inline" dir="auto" title="${cleanTitle}">· ${cleanTitle}</span>`
+                ? `<span class="tv-detail-sym-name-inline" dir="auto" title="${escapeHtml(cleanTitle)}">· ${escapeHtml(cleanTitle)}</span>`
                 : ''
             }
           </div>
-          <span class="tv-detail-cat-pill" dir="auto">${shortCategory}</span>
+          <span class="tv-detail-cat-pill" dir="auto">${escapeHtml(shortCategory)}</span>
         </div>
 
         <div class="tv-detail-price-row">
@@ -565,8 +611,8 @@ export function renderRightSplitPanel(activeTab, i18n) {
             id="tv-watchlist-search-input"
             type="text"
             class="tv-wl-header-search"
-            placeholder="${i18n.t('watchlist_search_placeholder')}"
-            value="${state.watchlistSearchQuery || ''}"
+            placeholder="${escapeHtml(i18n.t('watchlist_search_placeholder'))}"
+            value="${escapeHtml(state.watchlistSearchQuery || '')}"
             data-action="watchlist-search"
           />
           <button class="tv-tool-btn" style="flex-shrink: 0;" data-action="open-add-symbol-modal" title="${i18n.t('settings_add_custom_symbol')}">
@@ -747,6 +793,7 @@ export function renderSymbolOverviewModal(i18n) {
   const accentColor = isBull ? '#26A69A' : '#EF5350';
   const badge = getAssetBadge(sym.symbolCode);
   const profileMeta = getInstrumentProfileMeta(sym.symbolCode, badge.providerTag);
+  const instSpec = getInstrumentSpec(sym.symbolCode, sym.activeProvider);
   const realMetrics = computeRealOverviewMetrics(slicedCandles, sym.decimals, i18n);
   const rangeSpan = Math.max(0.00001, d.dayHigh - d.dayLow);
   const posPct = Math.max(4, Math.min(96, Math.round(((d.lastClose - d.dayLow) / rangeSpan) * 100)));
@@ -1071,26 +1118,38 @@ export function renderSymbolOverviewModal(i18n) {
         </div>
         <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
           <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_benchmark')}</span>
-          <strong>${profileMeta.benchmark}</strong>
+          <strong>${escapeHtml(profileMeta.benchmark)}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">Provider Ticker</span>
+          <strong>${escapeHtml(instSpec.provider)} · ${escapeHtml(instSpec.providerTicker)}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">Price Basis / Volume</span>
+          <strong>${escapeHtml(instSpec.priceBasis)} · ${escapeHtml(instSpec.volumeType)}</strong>
+        </div>
+        <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
+          <span style="color: var(--text-muted);">Session / Timezone</span>
+          <strong>${escapeHtml(instSpec.sessionCalendar)} (${escapeHtml(instSpec.timezone)})</strong>
         </div>
         <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
           <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_figi')}</span>
-          <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="${profileMeta.figi}">
-            <span>${profileMeta.figi}</span>
+          <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="${escapeHtml(profileMeta.figi)}">
+            <span>${escapeHtml(profileMeta.figi)}</span>
             <span>⧉</span>
           </button>
         </div>
         <div class="row-between ltr-num" style="font-size: 11.5px; margin-bottom: 5px;">
           <span style="color: var(--text-muted);">${i18n.t('symbol_overview_about_isin')}</span>
-          <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="${profileMeta.isin}">
-            <span>${profileMeta.isin}</span>
+          <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="${escapeHtml(profileMeta.isin)}">
+            <span>${escapeHtml(profileMeta.isin)}</span>
             <span>⧉</span>
           </button>
         </div>
         <div class="row-between ltr-num" style="font-size: 11.5px;">
           <span style="color: var(--text-muted);">Google Sheets Formula</span>
-          <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="=GOOGLEFINANCE(&quot;${sym.symbolCode}&quot;, &quot;price&quot;)">
-            <span>=GOOGLEFINANCE("${sym.symbolCode}", "price")</span>
+          <button type="button" class="btn btn-sm" style="padding: 1px 6px; min-height: 20px; font-size: 11px;" data-action="copy-identifier" data-copy="=GOOGLEFINANCE(&quot;${escapeHtml(sym.symbolCode)}&quot;, &quot;price&quot;)">
+            <span>=GOOGLEFINANCE("${escapeHtml(sym.symbolCode)}", "price")</span>
             <span>⧉</span>
           </button>
         </div>

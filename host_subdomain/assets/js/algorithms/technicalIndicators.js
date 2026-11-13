@@ -1,3 +1,5 @@
+import { PriceFormatter } from './priceFormatter.js?v=1.38.0';
+
 export const TechnicalIndicators = {
   computeSma(candles = [], period = 20) {
     if (!Array.isArray(candles) || candles.length === 0) return [];
@@ -67,22 +69,45 @@ export const TechnicalIndicators = {
   },
 
   /**
-   * Session-Anchored / Cumulative Volume-Weighted Average Price (VWAP).
-   * Resets at each UTC day boundary for intraday timeframes, or rolling 20-bar anchor on D1/W1.
-   * Falls back to equal-weighted typical price when tick volume is zero.
+   * Session-Anchored / Rolling Volume-Weighted Average Price (VWAP).
+   * Intraday resets strictly on instrument session-day change (PriceFormatter.getSessionDayKey);
+   * D1/W1 uses a 20-bar rolling VWAP. Falls back to weight 1 when tick volume is zero.
    */
-  computeVwap(candles = []) {
+  computeVwap(candles = [], timeframe = 'M15', symbolCode = 'XAUUSD') {
     if (!Array.isArray(candles) || candles.length === 0) return [];
-    const out = new Array(candles.length).fill(null);
+    const n = candles.length;
+    const out = new Array(n).fill(null);
+    const tf = String(timeframe || 'M15').toUpperCase();
+
+    if (tf === 'D1' || tf === 'W1') {
+      const window = 20;
+      for (let i = 0; i < n; i++) {
+        const start = Math.max(0, i - window + 1);
+        let sumPv = 0;
+        let sumV = 0;
+        for (let j = start; j <= i; j++) {
+          const c = candles[j];
+          const tp = (Number(c.high || 0) + Number(c.low || 0) + Number(c.close || 0)) / 3;
+          const w = Math.max(1, Number(c.volume || 0));
+          sumPv += tp * w;
+          sumV += w;
+        }
+        const curr = candles[i];
+        const fallbackTp = (Number(curr.high || 0) + Number(curr.low || 0) + Number(curr.close || 0)) / 3;
+        out[i] = sumV > 0 ? sumPv / sumV : fallbackTp;
+      }
+      return out;
+    }
+
     let cumPv = 0;
     let cumV = 0;
     let lastDayKey = null;
 
-    for (let i = 0; i < candles.length; i++) {
+    for (let i = 0; i < n; i++) {
       const c = candles[i];
       const ms = Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0));
-      const dayKey = ms > 0 ? Math.floor(ms / 86400000) : Math.floor(i / 24);
-      if (lastDayKey === null || (dayKey !== lastDayKey && i % 24 === 0)) {
+      const dayKey = ms > 0 ? PriceFormatter.getSessionDayKey(ms, symbolCode) : `idx_${Math.floor(i / 24)}`;
+      if (lastDayKey === null || dayKey !== lastDayKey) {
         cumPv = 0;
         cumV = 0;
         lastDayKey = dayKey;
@@ -438,8 +463,10 @@ export const TechnicalIndicators = {
   /**
    * Session / Visible Range Volume Profile (VRVP) with POC, VAH, and VAL (70% Value Area).
    */
-  computeVolumeProfile(candles = [], numBins = 24, valueAreaRatio = 0.7) {
+  computeVolumeProfile(candles = [], numBins = 24, valueAreaRatio = 0.7, volumeType = 'TICK_ESTIMATED') {
     if (!Array.isArray(candles) || candles.length === 0) return null;
+    const hasRealVolume = this.hasNonZeroVolume(candles);
+    const isEstimated = !hasRealVolume || String(volumeType || '').toUpperCase() !== 'REAL_EXCHANGE';
     let minP = Infinity;
     let maxP = -Infinity;
     for (const c of candles) {
@@ -533,6 +560,8 @@ export const TechnicalIndicators = {
       vahPrice: bins[highIdx].high,
       valPrice: bins[lowIdx].low,
       maxBinVol,
+      hasRealVolume,
+      isEstimated,
     };
   },
 

@@ -15,6 +15,8 @@ use ChartIntelligence\Algorithms\UtcTimeAnchor;
  */
 final class DukascopyAdapter
 {
+    public static string $lastError = '';
+
     public static function fetchClosedCandles(
         string $symbol,
         string $timeframe,
@@ -22,6 +24,7 @@ final class DukascopyAdapter
         int $nowMs,
         int $sinceOpenMs = 0
     ): array {
+        self::$lastError = '';
         $cleanSymbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $symbol));
         $normTf = strtoupper($timeframe);
         $baseDir = dirname(__DIR__, 3);
@@ -59,6 +62,9 @@ final class DukascopyAdapter
 
         // Fetch live interbank delta bars since $sinceOpenMs with strict weekend/comb filtering
         $liveBars = YahooFinanceAdapter::fetchClosedCandles($cleanSymbol, $normTf, $limit, $nowMs, $sinceOpenMs);
+        if (empty($liveBars) && empty($candles) && YahooFinanceAdapter::$lastError !== '') {
+            self::$lastError = YahooFinanceAdapter::$lastError;
+        }
         foreach ($liveBars as $bar) {
             $openMs = (int) ($bar['open_time_utc_ms'] ?? 0);
             if ($openMs > 0 && ($sinceOpenMs <= 0 || $openMs > $sinceOpenMs)) {

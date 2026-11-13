@@ -35,8 +35,13 @@ class EiaBenchmarkAdapter(
     ): ProviderSyncResult = withContext(Dispatchers.IO) {
         val nowMillis = System.currentTimeMillis()
         val effectiveTimeframe = "D1"
+        var fetchSucceeded = true
+        var errorMsg: String? = null
         val candles = runCatching {
             fetchDataHubBrentDailyCsv(limit, nowMillis, sinceOpenTimeMs)
+        }.onFailure { err ->
+            fetchSucceeded = false
+            errorMsg = err.message ?: "EIA benchmark fetch failed"
         }.getOrNull().orEmpty()
 
         ProviderSyncResult(
@@ -45,8 +50,10 @@ class EiaBenchmarkAdapter(
             timeframe = effectiveTimeframe,
             candles = candles,
             syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
-            syncMode = if (sinceOpenTimeMs > 0L) "DELTA_SYNC" else "INITIAL_BACKFILL",
-            fetchedNewBars = candles.size
+            syncMode = if (!fetchSucceeded) "OFFLINE_CACHE" else if (sinceOpenTimeMs > 0L) "DELTA_SYNC" else "INITIAL_BACKFILL",
+            fetchedNewBars = candles.size,
+            fetchSucceeded = fetchSucceeded,
+            errorMessage = errorMsg
         )
     }
 
@@ -54,7 +61,7 @@ class EiaBenchmarkAdapter(
         val csvUrl = "https://datahub.io/core/oil-prices/r/brent-daily.csv"
         val request = Request.Builder().url(csvUrl).get().build()
         httpClient.newCall(request).execute().use { response ->
-            if (!response.isSuccessful) return emptyList()
+            if (!response.isSuccessful) throw IllegalStateException("HTTP ${response.code}")
             val lines = response.body?.string()?.lineSequence()?.drop(1)?.toList().orEmpty()
             if (lines.isEmpty()) return emptyList()
             val tail = lines.takeLast(limit)
@@ -82,7 +89,7 @@ class EiaBenchmarkAdapter(
                     high = high,
                     low = low,
                     close = spotPrice,
-                    volume = BigDecimal("1000")
+                    volume = BigDecimal.ZERO
                 )?.let { result.add(it) }
                 prevClose = spotPrice
             }

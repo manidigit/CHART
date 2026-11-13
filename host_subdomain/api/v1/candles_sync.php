@@ -35,7 +35,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
 $symbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $_GET['symbol'] ?? 'XAUUSD'));
 $provider = strtolower(preg_replace('/[^a-z0-9_]/', '', $_GET['provider'] ?? 'twelve_data'));
 $timeframe = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['timeframe'] ?? 'M15'));
-$userApiKey = trim((string) ($_GET['api_key'] ?? $_SERVER['HTTP_X_PROVIDER_API_KEY'] ?? ''));
+$userApiKey = trim((string) ($_SERVER['HTTP_X_PROVIDER_API_KEY'] ?? ($_GET['api_key'] ?? '')));
 if (!in_array($timeframe, ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'], true)) {
     $timeframe = 'M15';
 }
@@ -111,13 +111,17 @@ if ($pdo !== null) {
     }
 }
 
-$expectedLastClosedOpenMs = TvDatafeedAdapter::computeExpectedLastClosedOpenMs($timeframe, $nowMs);
+$instrumentSpec = \ChartIntelligence\Providers\ProviderCatalog::getInstrumentSpec($symbol, $provider);
+$isCryptoAsset = UtcTimeAnchor::getSessionCalendar($symbol) === UtcTimeAnchor::CALENDAR_CRYPTO_24_7;
+$expectedLastClosedOpenMs = TvDatafeedAdapter::computeExpectedLastClosedOpenMs($timeframe, $nowMs, $symbol);
 $stepMs = UtcTimeAnchor::stepMilliseconds($timeframe);
 
 // 3. 3-STATE INCREMENTAL DECISION ENGINE (DB_CACHE_HIT | DELTA_SYNC | INITIAL_BACKFILL)
 $syncMode = 'INITIAL_BACKFILL';
 $incomingDeltaCandles = [];
 $fetchedNewBars = 0;
+$upstreamError = '';
+$upstreamSucceeded = false;
 
 $minRequiredBarsForCache = match ($timeframe) {
     'M15' => 300,
@@ -129,10 +133,24 @@ $minRequiredBarsForCache = match ($timeframe) {
     default => 240,
 };
 
+$resolveProviderError = static function (string $provId): string {
+    return match ($provId) {
+        'tvdatafeed' => TvDatafeedAdapter::$lastError,
+        'biquote' => BiquoteAdapter::$lastError,
+        'twelve_data' => TwelveDataAdapter::$lastError,
+        'dukascopy' => DukascopyAdapter::$lastError,
+        'stooq' => StooqAdapter::$lastError,
+        'eia_brent_spot' => EiaBenchmarkAdapter::$lastError,
+        'yahoo_finance' => YahooFinanceAdapter::$lastError,
+        default => 'Unsupported provider',
+    };
+};
+
 if ($pdo !== null && $storedCount >= $minRequiredBarsForCache && !$forceBackfill && $maxOpenMs >= $expectedLastClosedOpenMs) {
     // [STATE 1: DB_CACHE_HIT] Historical candles up to the latest closed UTC bucket are already stored in MariaDB.
     // ZERO external API / WebSocket calls are made!
     $syncMode = 'DB_CACHE_HIT';
+    $upstreamSucceeded = true;
 } elseif ($pdo !== null && $storedCount >= $minRequiredBarsForCache && !$forceBackfill && $maxOpenMs < $expectedLastClosedOpenMs) {
     // [STATE 2: DELTA_SYNC] Historical candles exist in MariaDB up to $maxOpenMs.
     // Fetch ONLY the missing newly closed candles since $maxOpenMs!
@@ -150,6 +168,8 @@ if ($pdo !== null && $storedCount >= $minRequiredBarsForCache && !$forceBackfill
         'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
         default => [],
     };
+    $upstreamError = $resolveProviderError($provider);
+    $upstreamSucceeded = ($upstreamError === '');
 
     $validatedDelta = CandleValidator::filterSyntheticWeekendAndCombCandles($rawDelta, $symbol, $timeframe);
     foreach ($validatedDelta as $bar) {
@@ -171,6 +191,8 @@ if ($pdo !== null && $storedCount >= $minRequiredBarsForCache && !$forceBackfill
         'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $limit, $nowMs, 0),
         default => [],
     };
+    $upstreamError = $resolveProviderError($provider);
+    $upstreamSucceeded = ($upstreamError === '' && !empty($rawInitial));
     $incomingDeltaCandles = CandleValidator::filterSyntheticWeekendAndCombCandles($rawInitial, $symbol, $timeframe);
     $fetchedNewBars = count($incomingDeltaCandles);
 }
@@ -262,7 +284,7 @@ if ($pdo !== null) {
                 if (!UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
                     continue;
                 }
-                if ($timeframe === 'D1') {
+                if ($timeframe === 'D1' && !$isCryptoAsset) {
                     $dow = (int) gmdate('w', (int) floor($openMs / 1000));
                     if ($dow === 0 || $dow === 6) {
                         continue;
@@ -297,10 +319,13 @@ if (!empty($candles)) {
     $minOpenMs = (int) ($candles[0]['open_time_utc_ms'] ?? $minOpenMs);
     $maxOpenMs = (int) ($candles[count($candles) - 1]['open_time_utc_ms'] ?? $maxOpenMs);
 }
+$lastCandleCloseMs = $maxOpenMs > 0 ? ($maxOpenMs + $stepMs) : 0;
 
 $providerStatus = 'READY';
 if ($provider === 'twelve_data' && !TwelveDataAdapter::hasConfiguredApiKey($userApiKey)) {
     $providerStatus = $totalStoredAfter > 0 ? 'DB_ARCHIVE_ONLY' : 'API_KEY_REQUIRED';
+} elseif (!$upstreamSucceeded && $upstreamError !== '') {
+    $providerStatus = !empty($candles) ? 'STALE_CACHE_UPSTREAM_ERROR' : 'UPSTREAM_ERROR';
 } elseif (empty($candles) && $totalStoredAfter === 0) {
     $providerStatus = 'NO_DATA';
 }
@@ -318,7 +343,11 @@ ApiEnvelope::sendSuccess([
         'max_open_time_utc_ms' => $maxOpenMs,
         'expected_last_closed_open_ms' => $expectedLastClosedOpenMs,
         'provider_status' => $providerStatus,
+        'upstream_error' => $upstreamError,
+        'last_fetch_utc_ms' => $upstreamSucceeded ? $nowMs : 0,
+        'last_candle_close_utc_ms' => $lastCandleCloseMs,
         'price_basis' => $priceBasis,
+        'instrument_spec' => $instrumentSpec,
     ],
     'candles' => $candles,
 ]);

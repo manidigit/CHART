@@ -1,6 +1,7 @@
 package es.manico.chartintelligence.data.model
 
 import androidx.annotation.StringRes
+import es.manico.chartintelligence.algorithms.ConnectionStatus
 import java.math.BigDecimal
 
 enum class AssetClass {
@@ -41,13 +42,20 @@ data class SymbolConfig(
     val timeframe: String = "M15",
     val lastClose: BigDecimal? = null,
     val prevClose: BigDecimal? = null,
+    val dayOpen: BigDecimal? = null,
+    val dayHigh: BigDecimal? = null,
+    val dayLow: BigDecimal? = null,
+    val dayVolume: BigDecimal? = null,
     val lastCandleUtc: String? = null,
     val storedCandleCount: Int = 0,
     val lastSyncMode: String = "DB_CACHE_HIT",
     val fetchedNewBars: Int = 0,
     val isSyncing: Boolean = false,
     val syncErrorText: String? = null,
-    val providerStatus: String = "READY"
+    val providerStatus: String = "READY",
+    val lastSuccessfulFetchMs: Long = 0L,
+    val lastCandleCloseMs: Long = 0L,
+    val connectionStatus: ConnectionStatus = ConnectionStatus.CONNECTED_LIVE
 ) {
     val compositeTabKey: String
         get() = "${symbolCode}_${activeProvider.id}_${timeframe}"

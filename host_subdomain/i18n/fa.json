@@ -209,6 +209,7 @@
   "chart_status_delayed": "با تأخیر",
   "chart_status_syncing": "در حال همگام‌سازی…",
   "chart_status_cached": "کش محلی",
+  "chart_status_stale": "داده قدیمی (Stale)",
   "chart_status_error": "خطای منبع",
   "draw_color_label": "رنگ خط:",
   "draw_width_label": "ضخامت:",
@@ -271,10 +272,10 @@
   "settings_cat_theme": "تم",
   "settings_section_notifications_title": "نوتیفیکیشن، بازخورد لمسی و رفتار واچ‌لیست",
   "settings_section_notifications_hint": "مدیریت بازخورد لرزشی چارت، هشدارهای انتخاب‌گر و نحوه نمایش نمادها در واچ‌لیست.",
-  "settings_byok_title": "مدیریت کلیدهای شخصی منابع داده (BYOK — Bring Your Own Key)",
-  "settings_byok_subtitle": "در صورت تمایل، کلیدهای API رایگان یا شخصی خود را برای افزایش سقف درخواست‌ها ثبت کنید؛ این کلیدها بین وب و اندروید همگام‌سازی می‌شوند.",
-  "settings_byok_save": "ذخیره و همگام‌سازی کلیدهای API",
-  "settings_byok_saved": "کلیدهای شخصی API با موفقیت ذخیره و همگام‌سازی شدند.",
+  "settings_byok_title": "مدیریت کلیدهای شخصی منابع داده (BYOK — ذخیره محلی در دستگاه)",
+  "settings_byok_subtitle": "در صورت تمایل، کلیدهای API شخصی خود را برای افزایش سقف درخواست‌ها وارد کنید؛ کلیدها صرفاً به‌صورت محلی در این دستگاه ذخیره شده و هرگز به سرور ابری همگام‌سازی نمی‌شوند.",
+  "settings_byok_save": "ذخیره محلی کلیدهای API",
+  "settings_byok_saved": "کلیدهای شخصی API به‌صورت محلی روی این دستگاه ذخیره شدند.",
   "settings_timezone_label": "ساعت نمودار و محور زمان",
   "settings_timezone_utc": "گرینویچ (UTC)",
   "settings_timezone_local": "ساعت محلی سیستم (Local)",
@@ -285,5 +286,9 @@
   "overview_specs_title": "مشخصات کلاس دارایی",
   "overview_real_tech_title": "اندیکاتورهای محاسبه‌شده از کندل",
   "overview_sentiment_title": "سنتیمنت کندل‌های بازه فعلی",
-  "overview_pivots_title": "سطوح پیوت کلاسیک (Floor Pivots)"
+  "overview_pivots_title": "سطوح پیوت کلاسیک (Floor Pivots)",
+  "chart_sma200_insufficient": "SMA200: داده ناکافی ({n}/200)",
+  "chart_est_vol_profile": "برآورد پروفایل حجم",
+  "mobile_sheet_tools": "ابزارهای ترسیم و کنترل",
+  "mobile_sheet_indicators": "اندیکاتورها و لایه‌ها"
 }

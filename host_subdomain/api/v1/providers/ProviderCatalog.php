@@ -3,6 +3,7 @@ declare(strict_types=1);
 
 namespace ChartIntelligence\Providers;
 
+use ChartIntelligence\Algorithms\UtcTimeAnchor;
 use ChartIntelligence\Core\Database;
 use PDO;
 use Throwable;
@@ -82,13 +83,38 @@ final class ProviderCatalog
         };
     }
 
+    public static function getInstrumentSpec(string $symbolCode, string $providerId = ''): array
+    {
+        $clean = strtoupper(trim($symbolCode));
+        $prov = strtolower(trim($providerId));
+        if ($prov === '') {
+            foreach (self::getCanonicalWatchlistDefinitions() as $def) {
+                if ($def['symbol_code'] === $clean) {
+                    $prov = $def['default_provider'];
+                    break;
+                }
+            }
+            if ($prov === '') {
+                $prov = 'tvdatafeed';
+            }
+        }
+        return [
+            'symbol_code' => $clean,
+            'provider' => $prov,
+            'price_basis' => self::resolvePriceBasis($clean, $prov),
+            'timezone' => UtcTimeAnchor::getInstrumentTimezone($clean),
+            'session_calendar' => UtcTimeAnchor::getSessionCalendar($clean),
+            'volume_type' => UtcTimeAnchor::getVolumeType($clean, $prov),
+        ];
+    }
+
     public static function getMethods(): array
     {
         $cfg = Database::getConfig();
         $hasTwelveKey = trim((string) ($cfg['TWELVE_DATA_API_KEY'] ?? '')) !== '';
         $defs = self::getCanonicalWatchlistDefinitions();
 
-        $buildSymbolList = static function (array $tickerMap) use ($defs): array {
+        $buildSymbolList = static function (array $tickerMap, string $providerId) use ($defs): array {
             $list = [];
             foreach ($defs as $d) {
                 $code = $d['symbol_code'];
@@ -100,6 +126,10 @@ final class ProviderCatalog
                         'title_en' => $d['title_en'],
                         'category' => $d['category'],
                         'decimals' => $d['decimals'],
+                        'price_basis' => self::resolvePriceBasis($code, $providerId),
+                        'timezone' => UtcTimeAnchor::getInstrumentTimezone($code),
+                        'session_calendar' => UtcTimeAnchor::getSessionCalendar($code),
+                        'volume_type' => UtcTimeAnchor::getVolumeType($code, $providerId),
                     ];
                 }
             }
@@ -143,7 +173,7 @@ final class ProviderCatalog
                     'NKE' => 'NYSE:NKE',
                     'IBM' => 'NYSE:IBM',
                     'SAN' => 'NYSE:SAN',
-                ]),
+                ], 'tvdatafeed'),
             ],
             [
                 'provider_id' => 'biquote',
@@ -166,7 +196,7 @@ final class ProviderCatalog
                     'XAUUSD' => 'BIQUOTE:XAUUSD',
                     'EURUSD' => 'BIQUOTE:EURUSD',
                     'USOIL' => 'BIQUOTE:USOIL',
-                ]),
+                ], 'biquote'),
             ],
             [
                 'provider_id' => 'twelve_data',
@@ -204,7 +234,7 @@ final class ProviderCatalog
                     'NKE' => 'NKE',
                     'IBM' => 'IBM',
                     'SAN' => 'SAN',
-                ]),
+                ], 'twelve_data'),
             ],
             [
                 'provider_id' => 'dukascopy',
@@ -224,7 +254,7 @@ final class ProviderCatalog
                     'XAGUSD' => 'XAG/USD',
                     'XAUUSD' => 'XAU/USD',
                     'EURUSD' => 'EUR/USD',
-                ]),
+                ], 'dukascopy'),
             ],
             [
                 'provider_id' => 'yahoo_finance',
@@ -262,7 +292,7 @@ final class ProviderCatalog
                     'NKE' => 'NKE',
                     'IBM' => 'IBM',
                     'SAN' => 'SAN',
-                ]),
+                ], 'yahoo_finance'),
             ],
             [
                 'provider_id' => 'stooq',
@@ -300,7 +330,7 @@ final class ProviderCatalog
                     'NKE' => 'NKE.US',
                     'IBM' => 'IBM.US',
                     'SAN' => 'SAN.US',
-                ]),
+                ], 'stooq'),
             ],
             [
                 'provider_id' => 'eia_brent_spot',
@@ -317,7 +347,7 @@ final class ProviderCatalog
                 'storage_key_rule' => 'UNIQUE(chart_id, "eia_brent_spot", "D1", open_time_utc)',
                 'symbols' => $buildSymbolList([
                     'SPOTBRENT' => 'EIA:RBRTE',
-                ]),
+                ], 'eia_brent_spot'),
             ],
         ];
     }
@@ -353,8 +383,11 @@ final class ProviderCatalog
                     'badge_label' => $m['badge_label'],
                     'provider_ticker' => $ticker,
                     'supported_timeframes' => $m['supported_timeframes'],
+                    'price_basis' => self::resolvePriceBasis($code, $provId),
+                    'volume_type' => UtcTimeAnchor::getVolumeType($code, $provId),
                 ];
             }
+            $defaultProv = $d['default_provider'];
             $directory[] = [
                 'rank' => $d['rank'],
                 'symbol_code' => $code,
@@ -362,7 +395,11 @@ final class ProviderCatalog
                 'title_en' => $d['title_en'],
                 'category' => $d['category'],
                 'decimals' => $d['decimals'],
-                'default_provider' => $d['default_provider'],
+                'default_provider' => $defaultProv,
+                'price_basis' => self::resolvePriceBasis($code, $defaultProv),
+                'timezone' => UtcTimeAnchor::getInstrumentTimezone($code),
+                'session_calendar' => UtcTimeAnchor::getSessionCalendar($code),
+                'volume_type' => UtcTimeAnchor::getVolumeType($code, $defaultProv),
                 'priority_chain' => $d['priority_chain'],
                 'providers' => $providersList,
             ];

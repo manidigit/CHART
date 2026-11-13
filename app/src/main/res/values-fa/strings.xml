@@ -328,9 +328,9 @@
     <string name="settings_section_theme_title">تم، زبان و رنگ‌بندی بصری چارت</string>
     <string name="provider_stooq">Stooq EOD (آرشیو تاریخی چنددهه‌ای D1/W1)</string>
     <string name="settings_byok_title">مدیریت کلیدهای شخصی منابع داده (BYOK)</string>
-    <string name="settings_byok_subtitle">در صورت تمایل، کلیدهای API شخصی خود را برای افزایش سقف درخواست‌ها ثبت کنید (همگام با وب و اندروید).</string>
-    <string name="settings_byok_save">ذخیره و همگام‌سازی کلیدهای API</string>
-    <string name="settings_byok_saved">کلیدهای شخصی API با موفقیت ذخیره و همگام‌سازی شدند.</string>
+    <string name="settings_byok_subtitle">در صورت تمایل، کلیدهای API شخصی خود را برای افزایش سقف درخواست‌ها ثبت کنید؛ این کلیدها صرفاً به‌صورت محلی روی همین دستگاه ذخیره می‌شوند (بدون ارسال به ابر).</string>
+    <string name="settings_byok_save">ذخیره محلی کلیدهای API</string>
+    <string name="settings_byok_saved">کلیدهای شخصی API به‌صورت محلی روی دستگاه ذخیره شدند.</string>
     <string name="chart_data_boundary">ابتدای تاریخچه موجود</string>
     <string name="settings_timezone_label">منطقه زمانی ساعت نمودار</string>
     <string name="settings_timezone_utc">ساعت گرینویچ (UTC)</string>
@@ -348,4 +348,12 @@
     <string name="overview_fx_metrics">پروفایل جفت‌ارز و سشن</string>
     <string name="overview_stock_metrics">اطلاعات شرکت و ارزش‌گذاری</string>
     <string name="overview_no_candles">برای محاسبه اندیکاتورها و پیوت‌های واقعی، ابتدا نمودار این نماد را باز کرده تا کندل‌ها بارگذاری شوند.</string>
+    <string name="chart_countdown_closed">بسته</string>
+    <string name="chart_sma200_insufficient">SMA200: داده ناکافی (%1$d/200)</string>
+    <string name="chart_vp_estimated">پروفایل حجم تخمینی</string>
+    <string name="chart_status_offline_cached">حافظه آفلاین</string>
+    <string name="chart_status_sync_error">خطای همگام‌سازی</string>
+    <string name="chart_snapshot_share_title">اشتراک‌گذاری تصویر نمودار</string>
+    <string name="chart_snapshot_error">ثبت تصویر نمودار ناموفق بود</string>
+    <string name="action_back">بازگشت</string>
 </resources>

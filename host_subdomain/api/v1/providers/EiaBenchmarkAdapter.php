@@ -13,16 +13,20 @@ use ChartIntelligence\Algorithms\UtcTimeAnchor;
  */
 final class EiaBenchmarkAdapter
 {
+    public static string $lastError = '';
+
     public static function fetchClosedCandles(
         string $symbol,
         int $limit,
         int $nowMs,
         int $sinceOpenMs = 0
     ): array {
+        self::$lastError = '';
         $url = 'https://datahub.io/core/oil-prices/r/brent-daily.csv';
         $ctx = stream_context_create(['http' => ['timeout' => 7]]);
         $raw = @file_get_contents($url, false, $ctx);
         if ($raw === false) {
+            self::$lastError = 'EIA Brent CSV request failed';
             return [];
         }
         $lines = array_slice(array_filter(explode("\n", trim($raw))), -($limit + 1));
@@ -49,7 +53,7 @@ final class EiaBenchmarkAdapter
             }
             $high = max($open, $close) + 0.35;
             $low = min($open, $close) - 0.35;
-            $c = CandleValidator::sanitizeCandle($openMs, 'D1', $open, $high, $low, $close, 1000.0);
+            $c = CandleValidator::sanitizeCandle($openMs, 'D1', $open, $high, $low, $close, 0.0);
             if ($c !== null) {
                 $candles[$c['open_time_utc_ms']] = $c;
             }

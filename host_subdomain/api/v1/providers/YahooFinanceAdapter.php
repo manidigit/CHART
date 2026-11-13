@@ -16,6 +16,8 @@ use ChartIntelligence\Algorithms\UtcTimeAnchor;
  */
 final class YahooFinanceAdapter
 {
+    public static string $lastError = '';
+
     public static function fetchClosedCandles(
         string $symbol,
         string $timeframe,
@@ -23,6 +25,7 @@ final class YahooFinanceAdapter
         int $nowMs,
         int $sinceOpenMs = 0
     ): array {
+        self::$lastError = '';
         $ticker = match (strtoupper($symbol)) {
             'SPOTBRENT', 'BRENT_FUTURES' => 'BZ=F',
             'USOIL' => 'CL=F',
@@ -63,11 +66,13 @@ final class YahooFinanceAdapter
         ]);
         $raw = @file_get_contents($url, false, $ctx);
         if ($raw === false) {
+            self::$lastError = 'Yahoo Finance request failed';
             return [];
         }
         $json = json_decode($raw, true);
         $res = $json['chart']['result'][0] ?? null;
         if (!is_array($res) || empty($res['timestamp'])) {
+            self::$lastError = (string) ($json['chart']['error']['description'] ?? 'Yahoo Finance empty payload');
             return [];
         }
         $timestamps = $res['timestamp'];
@@ -97,7 +102,7 @@ final class YahooFinanceAdapter
         ksort($candles);
         $ordered = array_values($candles);
         if (in_array($normTf, ['H4', 'W1'], true)) {
-            $ordered = TimeframeAggregator::aggregateCandles($ordered, $normTf, $nowMs);
+            $ordered = TimeframeAggregator::aggregateCandles($ordered, $normTf, $nowMs, $symbol);
         }
         if ($sinceOpenMs > 0) {
             $ordered = array_values(array_filter(

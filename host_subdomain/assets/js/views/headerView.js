@@ -1,5 +1,5 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
-import { state } from '../core/store.js?v=1.38.0';
+import { state, escapeHtml } from '../core/store.js?v=1.38.0';
 import { renderSymbolBadge } from './watchlistView.js?v=1.38.1';
 
 export function renderTopHeaderBar(activeTab, i18n) {
@@ -38,30 +38,42 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showVolumeProfile ? 1 : 0)
     : 1;
 
-  let statusDotColor = 'var(--bull)';
-  let statusText = i18n.t('chart_status_live');
+  const isFa = i18n.getCurrentLanguage() === 'fa';
+  const connStatus = (sym && sym.connectionStatus) || 'OFFLINE';
+  const lastFetchMs = Number((sym && sym.lastSuccessfulFetchMs) || 0);
+  const lastCloseMs = Number((sym && sym.lastCandleCloseMs) || 0);
+  const fetchTimeStr = lastFetchMs > 0 ? new Date(lastFetchMs).toISOString().slice(11, 19) + 'Z' : '—';
+  const closeTimeStr = lastCloseMs > 0 ? new Date(lastCloseMs).toISOString().slice(5, 16).replace('T', ' ') + 'Z' : '—';
+  const errNote = sym && sym.syncErrorMessage ? ` · ${sym.syncErrorMessage}` : '';
+
+  let statusDotColor = 'var(--text-muted)';
+  let statusText = i18n.t('status_never_synced');
   if (sym && sym.isSyncing) {
     statusDotColor = 'var(--gold)';
     statusText = i18n.t('chart_status_syncing');
   } else if (sym && sym.providerStatus === 'API_KEY_REQUIRED') {
     statusDotColor = 'var(--gold)';
-    statusText = i18n.getCurrentLanguage() === 'fa' ? 'نیاز به کلید API' : 'API Key Needed';
-  } else if (sym && sym.syncError) {
+    statusText = isFa ? 'نیاز به کلید API' : 'API Key Needed';
+  } else if (connStatus === 'ERROR' || (sym && sym.syncError && connStatus !== 'STALE')) {
     statusDotColor = 'var(--bear)';
     statusText = i18n.t('chart_status_error');
-  } else if (sym && sym.candles && sym.candles.length > 0) {
-    const lastSec = Number(sym.candles[sym.candles.length - 1].openTimeSec || 0);
-    const nowSec = Math.floor(Date.now() / 1000);
-    if (nowSec - lastSec > 86400 * 2) {
-      statusDotColor = 'var(--text-muted)';
-      statusText = i18n.t('chart_status_market_closed');
-    } else if (nowSec - lastSec > 3600 * 2) {
-      statusDotColor = 'var(--gold)';
-      statusText = i18n.t('chart_status_cached');
-    }
+  } else if (connStatus === 'STALE') {
+    statusDotColor = 'var(--gold)';
+    statusText = i18n.t('chart_status_stale') || i18n.t('chart_status_cached');
+  } else if (connStatus === 'CLOSED' || (sym && !PriceFormatter.isMarketOpen(Date.now(), sym.symbolCode) && lastCloseMs > 0)) {
+    statusDotColor = 'var(--text-muted)';
+    statusText = i18n.t('chart_status_market_closed');
+  } else if (connStatus === 'CACHED') {
+    statusDotColor = 'var(--gold)';
+    statusText = i18n.t('chart_status_cached');
+  } else if (connStatus === 'LIVE' && PriceFormatter.isMarketOpen(Date.now(), sym ? sym.symbolCode : 'XAUUSD')) {
+    statusDotColor = 'var(--bull)';
+    statusText = i18n.t('chart_status_live');
   }
 
-  const isFa = i18n.getCurrentLanguage() === 'fa';
+  const statusTooltip = escapeHtml(
+    `${sym ? sym.activeProvider : ''} · ${connStatus} · Fetch: ${fetchTimeStr} · BarClose: ${closeTimeStr}${errNote}`
+  );
   const indicatorsLabel = isFa ? 'اندیکاتورها' : 'Indicators';
   const activeCode = sym ? sym.symbolCode : 'SPOTBRENT';
   const openTabsList =
@@ -81,19 +93,22 @@ export function renderTopHeaderBar(activeTab, i18n) {
       const isSelected = activeTab ? t.tabId === activeTab.tabId : t.tabId === state.activeTabId;
       const tfLabel = PriceFormatter.displayTimeframeLabel(t.timeframe || 'M15');
       const canClose = openTabsList.length > 1;
+      const safeTabId = escapeHtml(t.tabId);
+      const safeSym = escapeHtml(t.symbolCode);
+      const safeProv = escapeHtml(t.provider || 'tvdatafeed');
       return `
         <div
           class="tv-open-tab-chip ltr-num ${isSelected ? 'active' : ''}"
           data-action="select-tab"
-          data-tab-id="${t.tabId}"
-          title="${t.symbolCode} · ${tfLabel} (${t.provider || 'tvdatafeed'})"
+          data-tab-id="${safeTabId}"
+          title="${safeSym} · ${tfLabel} (${safeProv})"
         >
           ${renderSymbolBadge(t.symbolCode, 17)}
-          <span class="tv-open-tab-sym">${t.symbolCode}</span>
+          <span class="tv-open-tab-sym">${safeSym}</span>
           <span class="tv-open-tab-tf">${tfLabel}</span>
           ${
             canClose
-              ? `<button type="button" class="tv-open-tab-close" data-action="close-tab" data-tab-id="${t.tabId}" title="${i18n.t('chart_close_tab')}">✕</button>`
+              ? `<button type="button" class="tv-open-tab-close" data-action="close-tab" data-tab-id="${safeTabId}" title="${i18n.t('chart_close_tab')}">✕</button>`
               : ''
           }
         </div>
@@ -158,13 +173,33 @@ export function renderTopHeaderBar(activeTab, i18n) {
       </div>
 
       <div class="tv-topbar-right">
+        <button
+          type="button"
+          class="tv-tool-btn tv-mobile-only-btn ${state.mobileSheet === 'tools' ? 'active' : ''}"
+          data-action="open-mobile-sheet"
+          data-sheet="tools"
+          title="${i18n.t('draw_tools_toggle')}"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="4" y1="20" x2="20" y2="4"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="6" r="2"/></svg>
+        </button>
+
+        <button
+          type="button"
+          class="tv-tool-btn tv-mobile-only-btn ${state.mobileSheet === 'indicators' ? 'active' : ''}"
+          data-action="open-mobile-sheet"
+          data-sheet="indicators"
+          title="${indicatorsLabel}"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        </button>
+
         <span
           class="ltr-num"
-          title="${sym ? `${sym.activeProvider} · ${statusText}` : statusText}"
+          title="${statusTooltip}"
           style="display: inline-flex; align-items: center; gap: 5px; padding: 0 6px; font-size: 11px; color: ${statusDotColor}; font-weight: 600;"
         >
           <span style="width: 7px; height: 7px; border-radius: 50%; background: ${statusDotColor}; display: inline-block;"></span>
-          <span>${statusText}</span>
+          <span>${escapeHtml(statusText)}</span>
         </span>
 
         <button class="tv-tool-btn" data-action="take-chart-snapshot" title="${i18n.t('action_take_snapshot')}">

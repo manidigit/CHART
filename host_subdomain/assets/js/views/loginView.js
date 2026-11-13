@@ -1,4 +1,4 @@
-import { state } from '../core/store.js?v=1.38.0';
+import { state, escapeHtml } from '../core/store.js?v=1.38.0';
 
 export function renderLoginScreen(i18n) {
   const isReg = state.isOwnerRegistered;
@@ -31,7 +31,7 @@ export function renderLoginScreen(i18n) {
           <label class="tv-input-label">${i18n.t('label_recovery_email')}</label>
           <div class="tv-input-wrap">
             ${mailIconSvg}
-            <input class="tv-input ltr-num" type="email" name="email" placeholder="owner@manico.es" value="${state.ownerEmail || ''}" required autocomplete="email" />
+            <input class="tv-input ltr-num" type="email" name="email" placeholder="owner@manico.es" value="${escapeHtml(state.ownerEmail || '')}" required autocomplete="email" />
           </div>
         </div>
         <button type="submit" class="tv-auth-submit">
@@ -55,7 +55,7 @@ export function renderLoginScreen(i18n) {
           <label class="tv-input-label">${i18n.t('label_recovery_email')}</label>
           <div class="tv-input-wrap">
             ${mailIconSvg}
-            <input class="tv-input ltr-num" type="email" name="email" placeholder="${i18n.t('label_recovery_email')}" value="${state.ownerEmail || ''}" required autocomplete="email" />
+            <input class="tv-input ltr-num" type="email" name="email" placeholder="${i18n.t('label_recovery_email')}" value="${escapeHtml(state.ownerEmail || '')}" required autocomplete="email" />
           </div>
         </div>
         <div class="tv-input-group">
@@ -106,7 +106,7 @@ export function renderLoginScreen(i18n) {
           <label class="tv-input-label">${i18n.t('label_username')}</label>
           <div class="tv-input-wrap">
             ${userIconSvg}
-            <input class="tv-input ltr-num" type="text" name="username" placeholder="${i18n.t('label_username')}" value="${state.ownerUsername}" required autocomplete="username" />
+            <input class="tv-input ltr-num" type="text" name="username" placeholder="${i18n.t('label_username')}" value="${escapeHtml(state.ownerUsername)}" required autocomplete="username" />
           </div>
         </div>
 
@@ -117,7 +117,7 @@ export function renderLoginScreen(i18n) {
             <label class="tv-input-label">${i18n.t('label_email')}</label>
             <div class="tv-input-wrap">
               ${mailIconSvg}
-              <input class="tv-input ltr-num" type="email" name="email" placeholder="owner@manico.es" value="${state.ownerEmail || ''}" autocomplete="email" />
+              <input class="tv-input ltr-num" type="email" name="email" placeholder="owner@manico.es" value="${escapeHtml(state.ownerEmail || '')}" autocomplete="email" />
             </div>
           </div>
         `

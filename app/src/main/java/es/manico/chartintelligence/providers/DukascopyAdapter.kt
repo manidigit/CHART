@@ -36,24 +36,30 @@ class DukascopyAdapter(
         val nowMillis = System.currentTimeMillis()
         var syncMode = if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL"
         var fetchedNewBars = 0
+        var fetchSucceeded = false
+        var errorMsg: String? = null
 
         val proxyCandles = runCatching {
             val sinceParam = if (sinceOpenTimeMs > 0L) "&since_ms=$sinceOpenTimeMs" else ""
             val url = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$symbolCode&provider=dukascopy&timeframe=$timeframe&limit=$limit&refresh=1$sinceParam"
             val request = Request.Builder().url(url).get().build()
             httpClient.newCall(request).execute().use { response ->
-                if (!response.isSuccessful) emptyList()
-                else {
-                    val bodyStr = response.body?.string().orEmpty()
-                    val root = runCatching { JSONObject(bodyStr) }.getOrNull()
-                    val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
-                    if (meta != null) {
-                        syncMode = meta.optString("mode", syncMode)
-                        fetchedNewBars = meta.optInt("fetched_new_bars", 0)
-                    }
-                    parseBackendResponse(bodyStr, timeframe, nowMillis)
+                if (!response.isSuccessful) {
+                    throw IllegalStateException("Backend HTTP ${response.code}")
                 }
+                fetchSucceeded = true
+                val bodyStr = response.body?.string().orEmpty()
+                val root = runCatching { JSONObject(bodyStr) }.getOrNull()
+                val meta = root?.optJSONObject("data")?.optJSONObject("sync_meta")
+                if (meta != null) {
+                    syncMode = meta.optString("mode", syncMode)
+                    fetchedNewBars = meta.optInt("fetched_new_bars", 0)
+                }
+                parseBackendResponse(bodyStr, timeframe, nowMillis)
             }
+        }.onFailure { err ->
+            syncMode = "OFFLINE_CACHE"
+            errorMsg = err.message ?: "Dukascopy backend unreachable"
         }.getOrNull().orEmpty()
 
         ProviderSyncResult(
@@ -63,7 +69,9 @@ class DukascopyAdapter(
             candles = proxyCandles,
             syncedAtUtcIso = UtcTimeAnchorAlgorithm.formatUtcIso(nowMillis),
             syncMode = syncMode,
-            fetchedNewBars = fetchedNewBars
+            fetchedNewBars = fetchedNewBars,
+            fetchSucceeded = fetchSucceeded,
+            errorMessage = errorMsg
         )
     }
 
