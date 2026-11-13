@@ -51,21 +51,8 @@ jobs:
           mkdir -p app/src/main/res/font
           curl -fsSL "https://fonts.gstatic.com/s/vazirmatn/v16/Dxx78j6PP2D_kU2muijPEe1n2vVbfJRklWgzCRCT6w.ttf" -o app/src/main/res/font/vazirmatn.ttf
           curl -fsSL "https://fonts.gstatic.com/s/jetbrainsmono/v24/tDbY2o-flEEny0FZhsfKu5WU4zr3E_BX0PnT8RD8yKxTOlOQ.ttf" -o app/src/main/res/font/jetbrains_mono.ttf
-          python3 - << 'EOF'
-          import os, struct, zlib
-          def make_png(path, width, height):
-              os.makedirs(os.path.dirname(path), exist_ok=True)
-              raw = b"".join(b"\x00" + b"\x13\x17\x22\xff" * width for _ in range(height))
-              def chunk(tag, data):
-                  return struct.pack("!I", len(data)) + tag + data + struct.pack("!I", zlib.crc32(tag + data) & 0xffffffff)
-              ihdr = struct.pack("!IIBBBBB", width, height, 8, 6, 0, 0, 0)
-              png = b"\x89PNG\r\n\x1a\n" + chunk(b"IHDR", ihdr) + chunk(b"IDAT", zlib.compress(raw)) + chunk(b"IEND", b"")
-              with open(path, "wb") as f:
-                  f.write(png)
-          for folder, sz in [("mdpi", 48), ("hdpi", 72), ("xhdpi", 96), ("xxhdpi", 144), ("xxxhdpi", 192)]:
-              make_png(f"app/src/main/res/mipmap-{folder}/ic_launcher.png", sz, sz)
-              make_png(f"app/src/main/res/mipmap-{folder}/ic_launcher_round.png", sz, sz)
-          EOF
+          # Keep the checked-in launcher icon PNGs intact. Do not regenerate or overwrite mipmap resources during CI.
+
 
       - name: Prepare .env for Secrets Gradle Plugin
         env:
