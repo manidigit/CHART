@@ -1655,7 +1655,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // Last Closed Price Dashed Line + Right-Axis Current Price Pill + Live UTC Countdown Pill
+  // Last Closed Price Right-Axis Current Price Pill + Live UTC Countdown Pill
   const lastCandle = candles[candles.length - 1];
   const lastClose = Number(lastCandle.close);
   const lastY = priceToY(lastClose);
@@ -1663,16 +1663,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const pillBg = isLastBull ? bullColor : bearColor;
 
   if (lastY >= topPad && lastY <= topPad + chartH) {
-    ctx.save();
-    ctx.setLineDash([4, 4]);
-    ctx.strokeStyle = pillBg;
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(0, lastY);
-    ctx.lineTo(chartW, lastY);
-    ctx.stroke();
-    ctx.restore();
-
     const countdownStr =
       prefs.showCountdownToBarClose !== false
         ? computeCandleCountdownLabel(lastCandle.openTimeSec, tab.timeframe, tab.symbolCode)
@@ -1695,21 +1685,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // ENG-02: Read-only Live Quote Dashed Line & Pill (never written to closed candle array)
+  // ENG-02: Read-only Live Quote Pill (dashed line removed)
   if (tab.liveQuoteMode === 'LIVE_TICK' && Number.isFinite(Number(tab.liveQuotePrice))) {
     const liveP = Number(tab.liveQuotePrice);
     const liveY = priceToY(liveP);
     if (liveY >= topPad && liveY <= topPad + chartH && Math.abs(liveP - lastClose) > 1e-8) {
-      ctx.save();
-      ctx.setLineDash([2, 3]);
-      ctx.strokeStyle = '#38BDF8';
-      ctx.lineWidth = 1.1;
-      ctx.beginPath();
-      ctx.moveTo(0, liveY);
-      ctx.lineTo(chartW, liveY);
-      ctx.stroke();
-      ctx.restore();
-
       const livePillTop = Math.max(topPad, Math.min(topPad + chartH - 18, liveY - 9));
       ctx.fillStyle = '#0284C7';
       ctx.fillRect(chartW, livePillTop, rightAxisW, 18);
