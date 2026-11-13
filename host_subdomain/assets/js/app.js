@@ -373,56 +373,54 @@ function renderOhlcvOverlay(activeTab) {
   const diff = Number(c.close) - Number(c.open);
   const pct = Number(c.open) > 0 ? PriceFormatter.formatSignedPct(c.open, c.close) : '+0.00%';
 
+  const pal = getIndicatorColorPalette(state.chartPreferences);
   const indPills = [];
   const pushPill = (flag, color, label, action) => {
     if (flag) {
       indPills.push(
-        `<span class="tv-ind-pill" style="color: ${color};">${label} <span style="cursor:pointer; opacity:0.8;" data-action="${action}">✕</span></span>`
+        `<span class="tv-ind-pill" style="color: ${color}; border-color: ${color}55;">${label} <span style="cursor:pointer; opacity:0.8;" data-action="${action}">✕</span></span>`
       );
     }
   };
-  pushPill(activeTab.showSma20, '#F59E0B', 'SMA 20', 'toggle-sma20');
-  pushPill(activeTab.showSma50, '#38BDF8', 'SMA 50', 'toggle-sma50');
-  pushPill(activeTab.showSma200, '#EC4899', 'SMA 200', 'toggle-sma200');
-  pushPill(activeTab.showEma20, '#10B981', 'EMA 20', 'toggle-ema20');
-  pushPill(activeTab.showEma50, '#06B6D4', 'EMA 50', 'toggle-ema50');
-  pushPill(activeTab.showEma200, '#F472B6', 'EMA 200', 'toggle-ema200');
-  pushPill(activeTab.showSupertrend, '#26A69A', 'Supertrend (10,3)', 'toggle-supertrend');
-  pushPill(activeTab.showVwap, '#EAB308', 'VWAP', 'toggle-vwap');
-  pushPill(activeTab.showPsar, '#FB923C', 'PSAR', 'toggle-psar');
-  pushPill(activeTab.showIchimoku, '#14B8A6', 'Ichimoku', 'toggle-ichimoku');
-  pushPill(activeTab.showKeltner, '#0EA5E9', 'Keltner', 'toggle-keltner');
-  pushPill(activeTab.showDonchian, '#6366F1', 'Donchian', 'toggle-donchian');
-  pushPill(activeTab.showMtfEma, '#FACC15', 'MTF EMA 20', 'toggle-mtf-ema');
-  pushPill(activeTab.showKillzones, '#38BDF8', 'Killzones', 'toggle-killzones');
+  pushPill(activeTab.showSma20, pal.sma20, 'SMA 20', 'toggle-sma20');
+  pushPill(activeTab.showSma50, pal.sma50, 'SMA 50', 'toggle-sma50');
+  pushPill(activeTab.showSma200, pal.sma200, 'SMA 200', 'toggle-sma200');
+  pushPill(activeTab.showEma20, pal.ema20, 'EMA 20', 'toggle-ema20');
+  pushPill(activeTab.showEma50, pal.ema50, 'EMA 50', 'toggle-ema50');
+  pushPill(activeTab.showEma200, pal.ema200, 'EMA 200', 'toggle-ema200');
+  pushPill(activeTab.showMtfEma, pal.mtfEma, 'MTF EMA 20', 'toggle-mtf-ema');
   const bbP = Number(state.chartPreferences.bollingerPeriod || 20);
   const bbS = Number(state.chartPreferences.bollingerStdDev || 2.0);
-  pushPill(activeTab.showBollinger, '#A855F7', `BB (${bbP},${bbS})`, 'toggle-bollinger');
-  pushPill(activeTab.showOverlayMacd, '#2962FF', 'MACD Classic (Overlay)', 'toggle-overlay-macd');
-  pushPill(activeTab.showSmcStructure, '#26A69A', 'SMC (BOS/CHoCH)', 'toggle-smc-structure');
-  pushPill(activeTab.showFvg, '#10B981', 'FVG', 'toggle-fvg');
-  pushPill(activeTab.showVolumeProfile, '#F59E0B', 'VP (POC/VAH/VAL)', 'toggle-volume-profile');
-  pushPill(activeTab.showRsi14, '#A855F7', 'RSI 14', 'toggle-rsi14');
-  pushPill(activeTab.showMacd, '#2962FF', 'MACD', 'toggle-macd');
-  pushPill(activeTab.showAtr14, '#F43F5E', 'ATR 14', 'toggle-atr14');
-  pushPill(activeTab.showAdx14, '#F59E0B', 'ADX 14', 'toggle-adx14');
-  pushPill(activeTab.showStoch14, '#06B6D4', 'Stoch 14', 'toggle-stoch14');
-  pushPill(activeTab.showCci20, '#10B981', 'CCI 20', 'toggle-cci20');
-  pushPill(activeTab.showWillR14, '#EC4899', 'Will %R', 'toggle-willr14');
-  pushPill(activeTab.showObv, '#3B82F6', 'OBV', 'toggle-obv');
-  pushPill(activeTab.showCmf20, '#22C55E', 'CMF 20', 'toggle-cmf20');
-  pushPill(activeTab.showRoc12, '#EAB308', 'ROC 12', 'toggle-roc12');
+  pushPill(activeTab.showBollinger, pal.bollinger, `BB (${bbP},${bbS})`, 'toggle-bollinger');
+  pushPill(activeTab.showKeltner, pal.keltner, 'Keltner', 'toggle-keltner');
+  pushPill(activeTab.showDonchian, pal.donchian, 'Donchian', 'toggle-donchian');
+  pushPill(activeTab.showVwap, pal.vwap, 'VWAP', 'toggle-vwap');
+  pushPill(activeTab.showPivotPoints, pal.pivotP, 'Pivots', 'toggle-pivot-points');
+  pushPill(activeTab.showVolumeProfile, pal.vrvpPoc, 'VP (POC)', 'toggle-volume-profile');
+  pushPill(activeTab.showSupertrend, pal.supertrend, 'Supertrend', 'toggle-supertrend');
+  pushPill(activeTab.showPsar, pal.psar, 'PSAR', 'toggle-psar');
+  pushPill(activeTab.showIchimoku, pal.ichimoku, 'Ichimoku', 'toggle-ichimoku');
+  pushPill(activeTab.showOverlayMacd, pal.overlayMacd, 'MACD Overlay', 'toggle-overlay-macd');
+  pushPill(activeTab.showFutureProjection, pal.futureProjection, 'Future Proj (+30)', 'toggle-future-projection');
+  pushPill(activeTab.showSmcStructure, pal.smcStructure, 'SMC (BOS)', 'toggle-smc-structure');
+  pushPill(activeTab.showFvg, pal.fvg, 'FVG', 'toggle-fvg');
+  pushPill(activeTab.showKillzones, pal.killzones, 'Killzones', 'toggle-killzones');
+  pushPill(activeTab.showRsi14, pal.rsi14, 'RSI 14', 'toggle-rsi14');
+  pushPill(activeTab.showMacd, pal.macd, 'MACD', 'toggle-macd');
+  pushPill(activeTab.showAtr14, pal.atr14, 'ATR 14', 'toggle-atr14');
+  pushPill(activeTab.showAdx14, pal.adx14, 'ADX 14', 'toggle-adx14');
+  pushPill(activeTab.showStoch14, pal.stoch14, 'Stoch 14', 'toggle-stoch14');
+  pushPill(activeTab.showCci20, pal.cci20, 'CCI 20', 'toggle-cci20');
+  pushPill(activeTab.showWillR14, pal.willr14, 'Will %R', 'toggle-willr14');
+  pushPill(activeTab.showObv, pal.obv, 'OBV', 'toggle-obv');
+  pushPill(activeTab.showCmf20, pal.cmf20, 'CMF 20', 'toggle-cmf20');
+  pushPill(activeTab.showRoc12, pal.roc12, 'ROC 12', 'toggle-roc12');
 
   const gapInfo = activeTab.gapSummary || (sym && sym.gapSummary) || null;
   const gapCount = gapInfo ? Number(gapInfo.gaps_found ?? gapInfo.gap_count ?? 0) : 0;
   if (gapCount > 0) {
     indPills.push(
       `<span class="tv-ind-pill" style="color: #F59E0B; border-color: rgba(245,158,11,0.45);" title="Detected missing trading bars in feed history">⚠ Gaps: ${gapCount}</span>`
-    );
-  }
-  if (activeTab.liveQuoteMode === 'LIVE_TICK' && Number.isFinite(Number(activeTab.liveQuotePrice))) {
-    indPills.push(
-      `<span class="tv-ind-pill" style="color: #38BDF8; border-color: rgba(56,189,248,0.45);">LIVE ${PriceFormatter.formatPrice(activeTab.liveQuotePrice, dec)}</span>`
     );
   }
 
@@ -597,7 +595,9 @@ export function renderApp() {
       '.symbol-overview-modal',
       '.tv-symbol-overview-modal-body',
       '#tv-watchlist-top-pane',
-      '.tv-symbols-table-container'
+      '.tv-symbols-table-container',
+      '.ci-mobile-sheet',
+      '.modal-card'
     ];
     scrollSelectors.forEach((sel) => {
       const element = document.querySelector(sel);
@@ -1822,17 +1822,18 @@ document.addEventListener('click', async (e) => {
         redrawActiveCanvas();
       }, needsFullBackfill);
     }
-  } else if (action === 'set-ind-family-color') {
-    const family = String(el.getAttribute('data-family') || '').trim();
-    const colorHex = normalizeHexForWeb(el.getAttribute('data-color') || '#2962FF', '#2962FF');
-    if (family === 'ma') state.chartPreferences.indMaFamilyColorHex = colorHex;
-    else if (family === 'bands') state.chartPreferences.indBandsFamilyColorHex = colorHex;
-    else if (family === 'levels') state.chartPreferences.indLevelsFamilyColorHex = colorHex;
-    else if (family === 'trend') state.chartPreferences.indTrendFamilyColorHex = colorHex;
-    else if (family === 'smc') state.chartPreferences.indSmcFamilyColorHex = colorHex;
-    savePreferences();
-    renderApp();
-    redrawActiveCanvas();
+  } else if (action === 'set-indicator-color') {
+    const indKey = el.getAttribute('data-indicator');
+    const colorHex = el.value || el.getAttribute('data-color');
+    if (indKey && colorHex) {
+      if (!state.chartPreferences.indicatorCustomColors) {
+        state.chartPreferences.indicatorCustomColors = {};
+      }
+      state.chartPreferences.indicatorCustomColors[indKey] = colorHex.toUpperCase();
+      savePreferences();
+      renderApp();
+      redrawActiveCanvas();
+    }
   } else if (action === 'set-chart-type' && activeTab) {
     activeTab.chartType = el.getAttribute('data-type') || 'candles';
     saveOpenTabsToStorage();

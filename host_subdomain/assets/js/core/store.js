@@ -123,6 +123,52 @@ export const DEFAULT_PREFS = {
   showPivotPoints: false,
   showFutureProjection: false,
   pitchforkVariant: 'original',
+  indicatorCustomColors: {},
+};
+
+export const DEFAULT_INDICATOR_COLORS = {
+  // Moving Averages Family: Graduated Harmonious Blue/Cyan/Indigo Spectrum
+  sma20: '#38BDF8', // Light Sky Blue
+  sma50: '#2563EB', // Royal Blue
+  sma200: '#1D4ED8', // Deep Bold Blue
+  ema20: '#06B6D4', // Vibrant Cyan
+  ema50: '#3B82F6', // Electric Blue
+  ema200: '#6366F1', // Indigo Bold
+  mtfEma: '#818CF8', // Periwinkle Step
+
+  // Volatility Bands & Channels: Warm Gold / Amber / Orange
+  bollinger: '#F59E0B', // Amber / Gold
+  keltner: '#FB923C', // Vibrant Orange
+  donchian: '#F97316', // Deep Orange
+
+  // Institutional Levels & Anchors: Distinct accents
+  vwap: '#EAB308', // Yellow Gold
+  pivotPoints: '#EC4899', // Magenta / Pink
+  volumeProfile: '#14B8A6', // Teal
+
+  // Trend Systems & Cloud
+  supertrend: '#10B981', // Emerald Green
+  psar: '#A855F7', // Purple Dots
+  ichimoku: '#06B6D4', // Turquoise Cloud
+  overlayMacd: '#3B82F6', // Blue Overlay
+  futureProjection: '#8B5CF6', // Violet Projection
+
+  // Smart Money Concepts & Killzones
+  smcStructure: '#38BDF8', // Sky Blue
+  fvg: '#F43F5E', // Rose
+  killzones: '#6366F1', // Indigo
+
+  // Synchronized Sub-Pane Oscillators
+  rsi14: '#A855F7', // Purple
+  macd: '#2962FF', // Blue
+  atr14: '#F43F5E', // Coral / Red
+  adx14: '#F59E0B', // Amber
+  stoch14: '#06B6D4', // Cyan
+  cci20: '#10B981', // Emerald
+  willr14: '#EC4899', // Pink
+  obv: '#3B82F6', // Blue
+  cmf20: '#22C55E', // Green
+  roc12: '#EAB308', // Yellow
 };
 
 export const PROVIDER_METHODS_CATALOG = [
@@ -1066,53 +1112,81 @@ export function hexToRgba(rawHex, alpha = 1) {
 
 export function getIndicatorColorPalette(prefs = state.chartPreferences) {
   const p = prefs || DEFAULT_PREFS;
-  const maBase = normalizeHexForWeb(p.indMaFamilyColorHex, DEFAULT_PREFS.indMaFamilyColorHex);
-  const bandsBase = normalizeHexForWeb(p.indBandsFamilyColorHex, DEFAULT_PREFS.indBandsFamilyColorHex);
-  const levelsBase = normalizeHexForWeb(p.indLevelsFamilyColorHex, DEFAULT_PREFS.indLevelsFamilyColorHex);
-  const trendBase = normalizeHexForWeb(p.indTrendFamilyColorHex, DEFAULT_PREFS.indTrendFamilyColorHex);
-  const smcBase = normalizeHexForWeb(p.indSmcFamilyColorHex, DEFAULT_PREFS.indSmcFamilyColorHex);
+  const customs = p.indicatorCustomColors || {};
+
+  const getColor = (key) => {
+    const custom = customs[key];
+    if (custom && typeof custom === 'string' && /^#[0-9A-Fa-f]{6}$/.test(custom)) {
+      return custom.toUpperCase();
+    }
+    return DEFAULT_INDICATOR_COLORS[key] || '#2962FF';
+  };
+
+  const bollingerColor = getColor('bollinger');
+  const keltnerColor = getColor('keltner');
+  const donchianColor = getColor('donchian');
+  const pivotColor = getColor('pivotPoints');
+  const vrvpColor = getColor('volumeProfile');
+  const psarColor = getColor('psar');
+  const ichimokuColor = getColor('ichimoku');
+  const supertrendColor = getColor('supertrend');
+  const macdColor = getColor('macd');
 
   return {
-    maBase,
-    bandsBase,
-    levelsBase,
-    trendBase,
-    smcBase,
-    // Category 1: Moving Averages (Cohesive Graduated Spectrum: Light -> Medium -> Deep)
-    sma20: shiftHexShade(maBase, 0.42, 0.1),
-    sma50: shiftHexShade(maBase, 0.14, 0.05),
-    sma200: shiftHexShade(maBase, -0.22, 0.15),
-    ema20: shiftHexShade(maBase, 0.28, 0.12),
-    ema50: maBase,
-    ema200: shiftHexShade(maBase, -0.34, 0.18),
-    mtfEma: shiftHexShade(maBase, 0.52, 0.15),
+    getColor,
+    // Category 1: Moving Averages (Individual customizable colors, default graduated blues/cyans)
+    sma20: getColor('sma20'),
+    sma50: getColor('sma50'),
+    sma200: getColor('sma200'),
+    ema20: getColor('ema20'),
+    ema50: getColor('ema50'),
+    ema200: getColor('ema200'),
+    mtfEma: getColor('mtfEma'),
+
     // Category 2: Volatility Channels & Bands
-    bollinger: bandsBase,
-    bollingerFill: hexToRgba(bandsBase, 0.08),
-    bollingerStroke: hexToRgba(bandsBase, 0.72),
-    keltner: shiftHexShade(bandsBase, 0.24, 0.08),
-    keltnerFill: hexToRgba(shiftHexShade(bandsBase, 0.24, 0.08), 0.07),
-    keltnerStroke: hexToRgba(shiftHexShade(bandsBase, 0.24, 0.08), 0.72),
-    donchian: shiftHexShade(bandsBase, -0.18, 0.12),
-    donchianMid: hexToRgba(shiftHexShade(bandsBase, -0.18, 0.12), 0.7),
-    // Category 3: Institutional Benchmarks, Pivots & Volume Profile
-    vwap: shiftHexShade(levelsBase, 0.22, 0.1),
-    pivotP: levelsBase,
-    pivotR1: shiftHexShade(levelsBase, 0.30, 0.08),
-    pivotR2: shiftHexShade(levelsBase, 0.46, 0.12),
-    pivotS1: shiftHexShade(levelsBase, -0.14, 0.08),
-    pivotS2: shiftHexShade(levelsBase, -0.28, 0.12),
-    vrvpPoc: levelsBase,
-    vrvpVa: shiftHexShade(levelsBase, 0.34, 0.1),
+    bollinger: bollingerColor,
+    bollingerFill: hexToRgba(bollingerColor, 0.08),
+    bollingerStroke: hexToRgba(bollingerColor, 0.72),
+    keltner: keltnerColor,
+    keltnerFill: hexToRgba(keltnerColor, 0.07),
+    keltnerStroke: hexToRgba(keltnerColor, 0.72),
+    donchian: donchianColor,
+    donchianMid: hexToRgba(donchianColor, 0.7),
+
+    // Category 3: Institutional Levels, Pivots & Volume Profile
+    vwap: getColor('vwap'),
+    pivotP: pivotColor,
+    pivotR1: shiftHexShade(pivotColor, 0.18, 0.05),
+    pivotR2: shiftHexShade(pivotColor, 0.36, 0.10),
+    pivotS1: shiftHexShade(pivotColor, -0.15, 0.05),
+    pivotS2: shiftHexShade(pivotColor, -0.30, 0.10),
+    vrvpPoc: vrvpColor,
+    vrvpVa: shiftHexShade(vrvpColor, 0.25, 0.08),
+
     // Category 4: Trend Systems & Cloud
-    supertrend: trendBase,
-    psar: shiftHexShade(trendBase, 0.26, 0.1),
-    ichimoku: shiftHexShade(trendBase, -0.14, 0.1),
-    overlayMacd: shiftHexShade(trendBase, 0.38, 0.12),
+    supertrend: supertrendColor,
+    psar: psarColor,
+    ichimoku: ichimokuColor,
+    overlayMacd: getColor('overlayMacd'),
+    futureProjection: getColor('futureProjection'),
+
     // Category 5: Smart Money Concepts (SMC) & Session Killzones
-    smcStructure: smcBase,
-    fvg: shiftHexShade(smcBase, 0.22, 0.08),
-    killzones: shiftHexShade(smcBase, -0.16, 0.08),
+    smcStructure: getColor('smcStructure'),
+    fvg: getColor('fvg'),
+    killzones: getColor('killzones'),
+
+    // Category 6: Sub-Pane Oscillators
+    rsi14: getColor('rsi14'),
+    macd: macdColor,
+    macdSignal: '#F59E0B',
+    atr14: getColor('atr14'),
+    adx14: getColor('adx14'),
+    stoch14: getColor('stoch14'),
+    cci20: getColor('cci20'),
+    willr14: getColor('willr14'),
+    obv: getColor('obv'),
+    cmf20: getColor('cmf20'),
+    roc12: getColor('roc12'),
   };
 }
 
@@ -1124,11 +1198,7 @@ export function resetColorsToDefault() {
   state.chartPreferences.vLineColor = DEFAULT_PREFS.vLineColor;
   state.chartPreferences.defaultDrawingColorHex = DEFAULT_PREFS.defaultDrawingColorHex;
   state.chartPreferences.defaultDrawingWidthPx = DEFAULT_PREFS.defaultDrawingWidthPx;
-  state.chartPreferences.indMaFamilyColorHex = DEFAULT_PREFS.indMaFamilyColorHex;
-  state.chartPreferences.indBandsFamilyColorHex = DEFAULT_PREFS.indBandsFamilyColorHex;
-  state.chartPreferences.indLevelsFamilyColorHex = DEFAULT_PREFS.indLevelsFamilyColorHex;
-  state.chartPreferences.indTrendFamilyColorHex = DEFAULT_PREFS.indTrendFamilyColorHex;
-  state.chartPreferences.indSmcFamilyColorHex = DEFAULT_PREFS.indSmcFamilyColorHex;
+  state.chartPreferences.indicatorCustomColors = {};
   for (const tab of state.openTabs) {
     tab.activeDrawingColor = DEFAULT_PREFS.defaultDrawingColorHex;
     tab.activeDrawingColorHex = DEFAULT_PREFS.defaultDrawingColorHex;

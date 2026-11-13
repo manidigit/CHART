@@ -1352,11 +1352,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
       ctx.restore();
 
-      drawSeriesLine(ctx, rsiArr, startIdx, visible.length, idxToX, rsiToY, '#A855F7', 1.6);
+      drawSeriesLine(ctx, rsiArr, startIdx, visible.length, idxToX, rsiToY, indPal.rsi14, 1.6);
 
       const curRsi = rsiArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#A855F7';
+      ctx.fillStyle = indPal.rsi14;
       ctx.fillText(
         `RSI (14): ${curRsi !== null && curRsi !== undefined ? curRsi.toFixed(2) : '—'}`,
         10,
@@ -1400,12 +1400,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         ctx.fillRect(x - bodyW / 2, topBar, bodyW, barH);
       }
 
-      drawSeriesLine(ctx, macdLine, startIdx, visible.length, idxToX, macdToY, '#2962FF', 1.5);
-      drawSeriesLine(ctx, sigLine, startIdx, visible.length, idxToX, macdToY, '#F59E0B', 1.4);
+      drawSeriesLine(ctx, macdLine, startIdx, visible.length, idxToX, macdToY, indPal.macd, 1.5);
+      drawSeriesLine(ctx, sigLine, startIdx, visible.length, idxToX, macdToY, indPal.macdSignal || '#F59E0B', 1.4);
 
       const curM = macdArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#2962FF';
+      ctx.fillStyle = indPal.macd;
       const mStr = curM && curM.macd !== null ? curM.macd.toFixed(tab.decimals) : '—';
       const sStr = curM && curM.signal !== null ? curM.signal.toFixed(tab.decimals) : '—';
       const hStr = curM && curM.histogram !== null ? curM.histogram.toFixed(tab.decimals) : '—';
@@ -1433,11 +1433,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       const spanA = Math.max(1e-8, maxA - minA);
       const atrToY = (val) => paneTop + 8 + (paneH - 16) * (1 - (val - minA) / spanA);
 
-      drawSeriesLine(ctx, atrArr, startIdx, visible.length, idxToX, atrToY, '#F43F5E', 1.6);
+      drawSeriesLine(ctx, atrArr, startIdx, visible.length, idxToX, atrToY, indPal.atr14, 1.6);
 
       const curAtr = atrArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#F43F5E';
+      ctx.fillStyle = indPal.atr14;
       ctx.fillText(
         `ATR (14): ${curAtr !== null && curAtr !== undefined ? PriceFormatter.formatPrice(curAtr, tab.decimals) : '—'}`,
         10,
@@ -1467,11 +1467,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       const mDiLine = adxArr.map((x) => (x ? x.minusDi : null));
       drawSeriesLine(ctx, pDiLine, startIdx, visible.length, idxToX, adxToY, '#26A69A', 1.2);
       drawSeriesLine(ctx, mDiLine, startIdx, visible.length, idxToX, adxToY, '#EF5350', 1.2);
-      drawSeriesLine(ctx, adxLine, startIdx, visible.length, idxToX, adxToY, '#F59E0B', 1.7);
+      drawSeriesLine(ctx, adxLine, startIdx, visible.length, idxToX, adxToY, indPal.adx14, 1.7);
 
       const cur = adxArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#F59E0B';
+      ctx.fillStyle = indPal.adx14;
       ctx.fillText(
         `ADX(14): ${cur ? cur.adx.toFixed(1) : '—'} +DI:${cur ? cur.plusDi.toFixed(1) : '—'} -DI:${cur ? cur.minusDi.toFixed(1) : '—'}`,
         10,
@@ -1499,12 +1499,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
       const kLine = stArr.map((x) => (x ? x.k : null));
       const dLine = stArr.map((x) => (x ? x.d : null));
-      drawSeriesLine(ctx, kLine, startIdx, visible.length, idxToX, stToY, '#06B6D4', 1.5);
+      drawSeriesLine(ctx, kLine, startIdx, visible.length, idxToX, stToY, indPal.stoch14, 1.5);
       drawSeriesLine(ctx, dLine, startIdx, visible.length, idxToX, stToY, '#F59E0B', 1.3);
 
       const cur = stArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#06B6D4';
+      ctx.fillStyle = indPal.stoch14;
       ctx.fillText(
         `Stoch(14,3,3): %K ${cur ? cur.k.toFixed(1) : '—'} %D ${cur && cur.d !== null ? cur.d.toFixed(1) : '—'}`,
         10,
@@ -1536,10 +1536,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
       ctx.restore();
 
-      drawSeriesLine(ctx, cciArr, startIdx, visible.length, idxToX, cciToY, '#10B981', 1.5);
+      drawSeriesLine(ctx, cciArr, startIdx, visible.length, idxToX, cciToY, indPal.cci20, 1.5);
       const cur = cciArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#10B981';
+      ctx.fillStyle = indPal.cci20;
       ctx.fillText(`CCI(20): ${cur !== null && cur !== undefined ? cur.toFixed(1) : '—'}`, 10, paneTop + 13);
       ctx.restore();
       ctx.font = '9.5px "JetBrains Mono", monospace';
@@ -1562,10 +1562,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
       ctx.restore();
 
-      drawSeriesLine(ctx, wrArr, startIdx, visible.length, idxToX, wrToY, '#EC4899', 1.5);
+      drawSeriesLine(ctx, wrArr, startIdx, visible.length, idxToX, wrToY, indPal.willr14, 1.5);
       const cur = wrArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#EC4899';
+      ctx.fillStyle = indPal.willr14;
       ctx.fillText(`Will%R(14): ${cur !== null && cur !== undefined ? cur.toFixed(1) : '—'}`, 10, paneTop + 13);
       ctx.restore();
       ctx.font = '9.5px "JetBrains Mono", monospace';
@@ -1589,10 +1589,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       }
       const spanO = Math.max(1e-6, maxO - minO);
       const obvToY = (val) => paneTop + 8 + (paneH - 16) * (1 - (val - minO) / spanO);
-      drawSeriesLine(ctx, obvArr, startIdx, visible.length, idxToX, obvToY, '#3B82F6', 1.6);
+      drawSeriesLine(ctx, obvArr, startIdx, visible.length, idxToX, obvToY, indPal.obv, 1.6);
       const cur = obvArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#3B82F6';
+      ctx.fillStyle = indPal.obv;
       ctx.fillText(`OBV: ${cur !== null && cur !== undefined ? PriceFormatter.formatVolume(cur) : '—'}`, 10, paneTop + 13);
       ctx.restore();
       ctx.font = '9.5px "JetBrains Mono", monospace';
@@ -1617,10 +1617,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         ctx.fillStyle = v >= 0 ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)';
         ctx.fillRect(x - bodyW / 2, Math.min(zeroY, y), bodyW, Math.max(1.5, Math.abs(y - zeroY)));
       }
-      drawSeriesLine(ctx, cmfArr, startIdx, visible.length, idxToX, cmfToY, '#22C55E', 1.4);
+      drawSeriesLine(ctx, cmfArr, startIdx, visible.length, idxToX, cmfToY, indPal.cmf20, 1.4);
       const cur = cmfArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#22C55E';
+      ctx.fillStyle = indPal.cmf20;
       ctx.fillText(`CMF(20): ${cur !== null && cur !== undefined ? cur.toFixed(3) : '—'}`, 10, paneTop + 13);
       ctx.restore();
       ctx.font = '9.5px "JetBrains Mono", monospace';
@@ -1641,10 +1641,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.lineTo(chartW, zeroY);
       ctx.stroke();
 
-      drawSeriesLine(ctx, rocArr, startIdx, visible.length, idxToX, rocToY, '#EAB308', 1.5);
+      drawSeriesLine(ctx, rocArr, startIdx, visible.length, idxToX, rocToY, indPal.roc12, 1.5);
       const cur = rocArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#EAB308';
+      ctx.fillStyle = indPal.roc12;
       ctx.fillText(`ROC(12): ${cur !== null && cur !== undefined ? cur.toFixed(2) + '%' : '—'}`, 10, paneTop + 13);
       ctx.restore();
       ctx.font = '9.5px "JetBrains Mono", monospace';
