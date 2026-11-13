@@ -645,7 +645,8 @@ object PriceFormatterAlgorithm {
         valueAreaRatio: Double = 0.70,
         volumeType: VolumeType = VolumeType.REAL_EXCHANGE
     ): VolumeProfileResult? {
-        if (candles.size < 2 || numBins < 4) return null
+        if (candles.size < 2) return null
+        val binCount = numBins.coerceIn(4, 48)
         val minLow = candles.minOfOrNull { it.low.toDouble() } ?: return null
         val maxHigh = candles.maxOfOrNull { it.high.toDouble() } ?: return null
         val span = maxHigh - minLow
@@ -654,10 +655,10 @@ object PriceFormatterAlgorithm {
         val hasRealVolume = candles.any { it.volume.toDouble() > 0.0 }
         val isEstimated = !hasRealVolume || volumeType != VolumeType.REAL_EXCHANGE
 
-        val binStep = span / numBins.toDouble()
-        val bullArr = DoubleArray(numBins)
-        val bearArr = DoubleArray(numBins)
-        val totalArr = DoubleArray(numBins)
+        val binStep = span / binCount.toDouble()
+        val bullArr = DoubleArray(binCount)
+        val bearArr = DoubleArray(binCount)
+        val totalArr = DoubleArray(binCount)
 
         for (c in candles) {
             val cLow = c.low.toDouble()
@@ -665,8 +666,8 @@ object PriceFormatterAlgorithm {
             val rawVol = c.volume.toDouble().let { if (hasRealVolume) it.coerceAtLeast(0.0) else 1.0 }
             if (rawVol <= 0.0) continue
 
-            val lowIdx = ((cLow - minLow) / binStep).toInt().coerceIn(0, numBins - 1)
-            val highIdx = ((cHigh - minLow) / binStep).toInt().coerceIn(0, numBins - 1)
+            val lowIdx = ((cLow - minLow) / binStep).toInt().coerceIn(0, binCount - 1)
+            val highIdx = ((cHigh - minLow) / binStep).toInt().coerceIn(0, binCount - 1)
             val loBin = minOf(lowIdx, highIdx)
             val hiBin = maxOf(lowIdx, highIdx)
             val barRange = cHigh - cLow
@@ -700,7 +701,7 @@ object PriceFormatterAlgorithm {
         var pocIdx = 0
         var maxBinVol = 0.0
         var totalSumVol = 0.0
-        for (i in 0 until numBins) {
+        for (i in 0 until binCount) {
             totalSumVol += totalArr[i]
             if (totalArr[i] > maxBinVol) {
                 maxBinVol = totalArr[i]
@@ -714,8 +715,8 @@ object PriceFormatterAlgorithm {
         var vaLowIdx = pocIdx
         var vaHighIdx = pocIdx
 
-        while (accumVol < targetVaVol && (vaLowIdx > 0 || vaHighIdx < numBins - 1)) {
-            val nextUpVol = if (vaHighIdx < numBins - 1) totalArr[vaHighIdx + 1] else -1.0
+        while (accumVol < targetVaVol && (vaLowIdx > 0 || vaHighIdx < binCount - 1)) {
+            val nextUpVol = if (vaHighIdx < binCount - 1) totalArr[vaHighIdx + 1] else -1.0
             val nextDownVol = if (vaLowIdx > 0) totalArr[vaLowIdx - 1] else -1.0
             if (nextUpVol >= nextDownVol) {
                 vaHighIdx++
@@ -726,7 +727,7 @@ object PriceFormatterAlgorithm {
             }
         }
 
-        val bins = (0 until numBins).map { i ->
+        val bins = (0 until binCount).map { i ->
             val bLow = minLow + i * binStep
             val bHigh = bLow + binStep
             VolumeProfileBin(

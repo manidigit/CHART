@@ -136,7 +136,9 @@ export function renderTopHeaderBar(activeTab, i18n) {
     <header class="tv-topbar" dir="ltr">
       <div class="tv-topbar-left">
         <div class="tv-brand">
-          <div class="tv-logo">CI</div>
+          <div class="tv-logo">
+            <img src="./assets/img/app_icon_32.png" alt="CI" class="tv-brand-logo-img" />
+          </div>
         </div>
 
         <!-- Multi-Tab Chart Bar (1-click switching between open chart tabs + Add/Search button) -->

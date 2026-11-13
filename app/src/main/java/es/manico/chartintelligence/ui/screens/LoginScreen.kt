@@ -1,6 +1,7 @@
 package es.manico.chartintelligence.ui.screens
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -55,8 +56,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -142,25 +145,15 @@ fun LoginScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Box(
+                        Image(
+                            painter = painterResource(R.drawable.ic_app_logo),
+                            contentDescription = stringResource(R.string.app_name),
+                            contentScale = ContentScale.Crop,
                             modifier = Modifier
                                 .size(30.dp)
                                 .clip(RoundedCornerShape(7.dp))
-                                .background(
-                                    Brush.linearGradient(
-                                        listOf(Color(0xFF2962FF), Color(0xFF1E40AF))
-                                    )
-                                ),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = "CI",
-                                color = Color.White,
-                                fontSize = 12.sp,
-                                fontWeight = FontWeight.ExtraBold,
-                                fontFamily = FontFamily.Monospace
-                            )
-                        }
+                                .border(1.dp, Color(0xFF2962FF).copy(alpha = 0.4f), RoundedCornerShape(7.dp))
+                        )
                         Text(
                             text = "CHART INTELLIGENCE",
                             style = MaterialTheme.typography.labelMedium,
@@ -271,25 +264,15 @@ fun LoginScreen(
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Brand Emblem + Server Sync Badge
-                    Box(
+                    Image(
+                        painter = painterResource(R.drawable.ic_app_logo),
+                        contentDescription = stringResource(R.string.app_name),
+                        contentScale = ContentScale.Crop,
                         modifier = Modifier
-                            .size(50.dp)
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(
-                                Brush.linearGradient(
-                                    listOf(Color(0xFF2962FF), Color(0xFF1E40AF))
-                                )
-                            ),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "CI",
-                            color = Color.White,
-                            fontSize = 20.sp,
-                            fontWeight = FontWeight.ExtraBold,
-                            fontFamily = FontFamily.Monospace
-                        )
-                    }
+                            .size(64.dp)
+                            .clip(RoundedCornerShape(14.dp))
+                            .border(1.dp, Color(0xFF2962FF).copy(alpha = 0.5f), RoundedCornerShape(14.dp))
+                    )
 
                     Text(
                         text = stringResource(R.string.app_name),

@@ -5,8 +5,8 @@ import { PriceFormatter } from './priceFormatter.js?v=1.39.0';
  * Deterministic 00:00:00 UTC OHLCV candle aggregation across M15, H1, H4, and D1.
  */
 export const TimeframeAggregator = {
-  aggregate(sourceCandles, targetTimeframe, nowMs = Date.now(), symbolCode = 'XAUUSD') {
-    return this.aggregateCandles(sourceCandles, targetTimeframe, nowMs, symbolCode);
+  aggregate(sourceCandles, targetTimeframe, nowMs = Date.now(), symbolCode = 'XAUUSD', sourceTimeframe = null) {
+    return this.aggregateCandles(sourceCandles, targetTimeframe, nowMs, symbolCode, sourceTimeframe);
   },
 
   inferSourceStepMs(sortedCandles) {
@@ -27,19 +27,47 @@ export const TimeframeAggregator = {
     return Number.isFinite(minDiff) ? minDiff : PriceFormatter.stepMilliseconds('M15');
   },
 
-  minExpectedChildren(sourceStepMs, targetStepMs, targetTf, symbolCode) {
-    if (sourceStepMs <= 0 || sourceStepMs >= targetStepMs) return 1;
+  minExpectedChildren(sourceStepMs, targetStepMs, targetTf, symbolCode, sourceTf = null) {
+    const dst = String(targetTf || 'M15').toUpperCase();
     const cal = PriceFormatter.getSessionCalendar(symbolCode);
-    if (targetTf === 'W1' && sourceStepMs >= 86400000) {
-      return cal === 'CRYPTO_24_7' ? 5 : 3;
+    const isUsEq = cal === 'US_EQUITIES';
+    const isCrypto = cal === 'CRYPTO_24_7';
+
+    let src = sourceTf ? String(sourceTf).toUpperCase() : null;
+    if (!src) {
+      if (sourceStepMs === 900000) src = 'M15';
+      else if (sourceStepMs === 1800000) src = 'M30';
+      else if (sourceStepMs === 3600000) src = 'H1';
+      else if (sourceStepMs === 14400000) src = 'H4';
+      else if (sourceStepMs === 86400000) src = 'D1';
+    }
+
+    if (src) {
+      switch (`${src}->${dst}`) {
+        case 'M15->M30': return 2;
+        case 'M15->H1': return isUsEq ? 2 : 3;
+        case 'M15->H4': return isUsEq ? 6 : 8;
+        case 'M30->H1': return 2;
+        case 'M30->H4': return isUsEq ? 3 : 4;
+        case 'H1->H4': return 2;
+        case 'H1->D1': return isUsEq ? 5 : 12;
+        case 'H4->D1': return isUsEq ? 2 : 3;
+        case 'D1->W1': return isCrypto ? 5 : 3;
+        default: return 1;
+      }
+    }
+
+    if (sourceStepMs <= 0 || sourceStepMs >= targetStepMs) return 1;
+    if (dst === 'W1' && sourceStepMs >= 86400000) {
+      return isCrypto ? 5 : 3;
     }
     const ratio = Math.floor(targetStepMs / sourceStepMs);
-    if (targetTf === 'D1' && sourceStepMs < 86400000) {
-      return cal === 'US_EQUITIES'
+    if (dst === 'D1' && sourceStepMs < 86400000) {
+      return isUsEq
         ? Math.max(1, Math.floor(ratio * 0.2))
         : Math.max(2, Math.floor(ratio * 0.5));
     }
-    return cal === 'US_EQUITIES'
+    return isUsEq
       ? Math.max(1, Math.floor(ratio * 0.25))
       : Math.max(2, Math.ceil(ratio * 0.5));
   },
@@ -73,7 +101,7 @@ export const TimeframeAggregator = {
     return true;
   },
 
-  aggregateCandles(sourceCandles, targetTimeframe, nowMs = Date.now(), symbolCode = 'XAUUSD') {
+  aggregateCandles(sourceCandles, targetTimeframe, nowMs = Date.now(), symbolCode = 'XAUUSD', sourceTimeframe = null) {
     if (!Array.isArray(sourceCandles) || sourceCandles.length === 0) return [];
     const normTf = String(targetTimeframe || 'M15').toUpperCase();
     const targetStep = PriceFormatter.stepMilliseconds(normTf);
@@ -83,8 +111,10 @@ export const TimeframeAggregator = {
         Number(b.open_time_utc_ms || b.openTimeSec * 1000 || 0)
     );
 
-    const sourceStepMs = this.inferSourceStepMs(sorted);
-    const minChildren = this.minExpectedChildren(sourceStepMs, targetStep, normTf, symbolCode);
+    const sourceStepMs = sourceTimeframe
+      ? PriceFormatter.stepMilliseconds(sourceTimeframe)
+      : this.inferSourceStepMs(sorted);
+    const minChildren = this.minExpectedChildren(sourceStepMs, targetStep, normTf, symbolCode, sourceTimeframe);
 
     const buckets = new Map();
     for (const bar of sorted) {
@@ -109,14 +139,14 @@ export const TimeframeAggregator = {
     }
 
     const bucketKeys = Array.from(buckets.keys()).sort((a, b) => a - b);
-    const lastIdx = bucketKeys.length - 1;
     const result = [];
 
     for (let idx = 0; idx < bucketKeys.length; idx++) {
       const bucketOpen = bucketKeys[idx];
       const bars = buckets.get(bucketOpen);
       if (!bars || bars.length === 0) continue;
-      if ((idx === 0 || idx === lastIdx) && bars.length < minChildren) {
+      // Reject ANY bucket with fewer than minChildren bars to prevent emitting incomplete candles
+      if (bars.length < minChildren) {
         continue;
       }
       if (!this.hasContiguousChildren(bars, sourceStepMs, normTf, symbolCode)) {

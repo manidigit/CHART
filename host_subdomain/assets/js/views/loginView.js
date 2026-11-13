@@ -178,7 +178,9 @@ export function renderLoginScreen(i18n) {
     <div class="tv-auth-screen">
       <div class="tv-auth-topbar" dir="ltr">
         <div class="tv-brand">
-          <div class="tv-logo">CI</div>
+          <div class="tv-logo">
+            <img src="./assets/img/app_icon_32.png" alt="CI" class="tv-brand-logo-img" />
+          </div>
           <span class="ltr-num" style="font-size: 13px; font-weight: 800; letter-spacing: 0.5px; color: var(--text);">CHART INTELLIGENCE</span>
         </div>
 
@@ -197,7 +199,9 @@ export function renderLoginScreen(i18n) {
 
       <div class="tv-auth-card">
         <div class="tv-auth-brand">
-          <div class="tv-auth-emblem">CI</div>
+          <div class="tv-auth-emblem">
+            <img src="./assets/img/app_icon_64.png" alt="Chart Intelligence" class="tv-auth-emblem-img" />
+          </div>
           <h1 class="tv-auth-title">${i18n.t('app_name')}</h1>
           <div class="tv-auth-sub">${i18n.t('app_subtitle')}</div>
           <div class="tv-auth-server-badge ltr-num">

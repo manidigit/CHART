@@ -1,19 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
-<vector xmlns:android="http://schemas.com/apk/res/android"
-    android:width="108dp"
-    android:height="108dp"
-    android:viewportWidth="108"
-    android:viewportHeight="108">
-    <!-- Candlestick 1 (Bearish) -->
-    <path
-        android:fillColor="#F43F5E"
-        android:pathData="M34,34h3v40h-3zM31,44h9v18h-9z" />
-    <!-- Candlestick 2 (Bullish) -->
-    <path
-        android:fillColor="#10B981"
-        android:pathData="M52,28h3v46h-3zM49,38h9v24h-9z" />
-    <!-- Candlestick 3 (Bullish Breakout) -->
-    <path
-        android:fillColor="#38BDF8"
-        android:pathData="M70,22h3v44h-3zM67,29h9v26h-9z" />
-</vector>
+<layer-list xmlns:android="http://schemas.android.com/apk/res/android">
+    <item
+        android:width="66dp"
+        android:height="66dp"
+        android:drawable="@drawable/ic_app_logo"
+        android:gravity="center" />
+</layer-list>

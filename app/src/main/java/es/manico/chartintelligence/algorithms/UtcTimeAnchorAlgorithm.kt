@@ -185,7 +185,12 @@ object UtcTimeAnchorAlgorithm {
             val rthOpen = date.atTime(9, 30).atZone(nyZone).toInstant().toEpochMilli()
             val rthClose = date.atTime(16, 0).atZone(nyZone).toInstant().toEpochMilli()
             if (normTf == "D1" || normTf == "1D" || normTf == "D") {
-                return BucketBounds(openMs = rthOpen, closeMs = rthClose, sessionAnchored = true)
+                val utcDayOpenMs = snapToCandleOpenUtc(epochMillis, "D1")
+                return BucketBounds(
+                    openMs = utcDayOpenMs,
+                    closeMs = maxOf(utcDayOpenMs + 1, rthClose),
+                    sessionAnchored = true
+                )
             }
             if (epochMillis in rthOpen until rthClose) {
                 val idx = (epochMillis - rthOpen) / step
@@ -201,10 +206,10 @@ object UtcTimeAnchorAlgorithm {
         if (cal == SessionCalendar.OTC_FX_METALS && (normTf == "D1" || normTf == "1D" || normTf == "D")) {
             val shifted = Instant.ofEpochMilli(epochMillis).atZone(nyZone).plusHours(7)
             val tradeDate = shifted.toLocalDate()
-            val openZdt = tradeDate.minusDays(1).atTime(17, 0).atZone(nyZone)
             val closeZdt = tradeDate.atTime(17, 0).atZone(nyZone)
+            val utcDayOpenMs = tradeDate.atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
             return BucketBounds(
-                openMs = openZdt.toInstant().toEpochMilli(),
+                openMs = utcDayOpenMs,
                 closeMs = closeZdt.toInstant().toEpochMilli(),
                 sessionAnchored = true
             )

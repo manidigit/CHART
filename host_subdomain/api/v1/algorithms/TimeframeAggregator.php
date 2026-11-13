@@ -12,16 +12,18 @@ final class TimeframeAggregator
         array $sourceCandles,
         string $targetTimeframe,
         int $nowMs,
-        string $symbolCode = 'XAUUSD'
+        string $symbolCode = 'XAUUSD',
+        ?string $sourceTimeframe = null
     ): array {
-        return self::aggregateCandles($sourceCandles, $targetTimeframe, $nowMs, $symbolCode);
+        return self::aggregateCandles($sourceCandles, $targetTimeframe, $nowMs, $symbolCode, $sourceTimeframe);
     }
 
     public static function aggregateCandles(
         array $sourceCandles,
         string $targetTimeframe,
         int $nowMs,
-        string $symbolCode = 'XAUUSD'
+        string $symbolCode = 'XAUUSD',
+        ?string $sourceTimeframe = null
     ): array {
         if (empty($sourceCandles)) {
             return [];
@@ -30,9 +32,11 @@ final class TimeframeAggregator
         usort($sourceCandles, static fn(array $a, array $b): int => ($a['open_time_utc_ms'] ?? 0) <=> ($b['open_time_utc_ms'] ?? 0));
 
         $normTf = strtoupper($targetTimeframe);
-        $sourceStepMs = self::inferSourceStepMs($sourceCandles);
+        $sourceStepMs = $sourceTimeframe !== null
+            ? UtcTimeAnchor::stepMilliseconds($sourceTimeframe)
+            : self::inferSourceStepMs($sourceCandles);
         $targetStepMs = UtcTimeAnchor::stepMilliseconds($normTf);
-        $minExpectedChildren = self::minExpectedChildren($sourceStepMs, $targetStepMs, $normTf, $symbolCode);
+        $minExpectedChildren = self::minExpectedChildren($sourceStepMs, $targetStepMs, $normTf, $symbolCode, $sourceTimeframe);
 
         $buckets = [];
         $bucketCloseMap = [];
@@ -58,15 +62,14 @@ final class TimeframeAggregator
         ksort($buckets);
         $aggregated = [];
         $bucketKeys = array_keys($buckets);
-        $lastKeyIdx = count($bucketKeys) - 1;
 
-        foreach ($bucketKeys as $idx => $bucketOpen) {
+        foreach ($bucketKeys as $bucketOpen) {
             $barsMap = $buckets[$bucketOpen];
             if (empty($barsMap)) {
                 continue;
             }
-            // Prevent boundary-truncated leading/trailing partial buckets from being treated as complete bars
-            if (($idx === 0 || $idx === $lastKeyIdx) && count($barsMap) < $minExpectedChildren) {
+            // Reject ANY bucket that has fewer than minExpectedChildren to prevent emitting incomplete candles
+            if (count($barsMap) < $minExpectedChildren) {
                 continue;
             }
 
@@ -137,25 +140,49 @@ final class TimeframeAggregator
         int $sourceStepMs,
         int $targetStepMs,
         string $targetTf,
-        string $symbolCode
+        string $symbolCode,
+        ?string $sourceTf = null
     ): int {
+        $dst = strtoupper($targetTf);
+        $calendar = UtcTimeAnchor::getSessionCalendar($symbolCode);
+        $isUsEq = ($calendar === UtcTimeAnchor::CALENDAR_US_EQUITIES);
+        $isCrypto = ($calendar === UtcTimeAnchor::CALENDAR_CRYPTO_24_7);
+
+        $src = $sourceTf !== null ? strtoupper($sourceTf) : match ($sourceStepMs) {
+            900000 => 'M15',
+            1800000 => 'M30',
+            3600000 => 'H1',
+            14400000 => 'H4',
+            86400000 => 'D1',
+            default => null,
+        };
+
+        if ($src !== null) {
+            return match ("$src->$dst") {
+                'M15->M30' => 2,
+                'M15->H1'  => $isUsEq ? 2 : 3,
+                'M15->H4'  => $isUsEq ? 6 : 8,
+                'M30->H1'  => 2,
+                'M30->H4'  => $isUsEq ? 3 : 4,
+                'H1->H4'   => 2,
+                'H1->D1'   => $isUsEq ? 5 : 12,
+                'H4->D1'   => $isUsEq ? 2 : 3,
+                'D1->W1'   => $isCrypto ? 5 : 3,
+                default    => 1,
+            };
+        }
+
         if ($sourceStepMs <= 0 || $sourceStepMs >= $targetStepMs) {
             return 1;
         }
-        $calendar = UtcTimeAnchor::getSessionCalendar($symbolCode);
-        if ($targetTf === 'W1' && $sourceStepMs >= 86400000) {
-            return $calendar === UtcTimeAnchor::CALENDAR_CRYPTO_24_7 ? 5 : 3;
-        }
-        if ($targetTf === 'D1' && $sourceStepMs < 86400000) {
-            $fullCount = (int) floor($targetStepMs / $sourceStepMs);
-            return $calendar === UtcTimeAnchor::CALENDAR_US_EQUITIES
-                ? max(1, (int) floor($fullCount * 0.2))
-                : max(2, (int) floor($fullCount * 0.5));
+        if ($dst === 'W1' && $sourceStepMs >= 86400000) {
+            return $isCrypto ? 5 : 3;
         }
         $ratio = (int) floor($targetStepMs / $sourceStepMs);
-        return $calendar === UtcTimeAnchor::CALENDAR_US_EQUITIES
-            ? max(1, (int) floor($ratio * 0.25))
-            : max(2, (int) ceil($ratio * 0.5));
+        if ($dst === 'D1' && $sourceStepMs < 86400000) {
+            return $isUsEq ? max(1, (int) floor($ratio * 0.2)) : max(2, (int) floor($ratio * 0.5));
+        }
+        return $isUsEq ? max(1, (int) floor($ratio * 0.25)) : max(2, (int) ceil($ratio * 0.5));
     }
 
     private static function hasContiguousChildren(

@@ -60,14 +60,14 @@ class Phase2AlgorithmsTest {
         val winterMs = Instant.parse("2026-01-15T15:00:00Z").toEpochMilli()
         val winterEqD1 = UtcTimeAnchorAlgorithm.getSessionBucketBounds(winterMs, "D1", "AAPL")
         assertTrue(winterEqD1.sessionAnchored)
-        assertEquals(Instant.parse("2026-01-15T14:30:00Z").toEpochMilli(), winterEqD1.openMs)
+        assertEquals(Instant.parse("2026-01-15T00:00:00Z").toEpochMilli(), winterEqD1.openMs)
         assertEquals(Instant.parse("2026-01-15T21:00:00Z").toEpochMilli(), winterEqD1.closeMs)
 
         // Summer (EDT, UTC-4): 2026-07-15 15:00 UTC = 11:00 AM NY
         val summerMs = Instant.parse("2026-07-15T15:00:00Z").toEpochMilli()
         val summerEqD1 = UtcTimeAnchorAlgorithm.getSessionBucketBounds(summerMs, "D1", "AAPL")
         assertTrue(summerEqD1.sessionAnchored)
-        assertEquals(Instant.parse("2026-07-15T13:30:00Z").toEpochMilli(), summerEqD1.openMs)
+        assertEquals(Instant.parse("2026-07-15T00:00:00Z").toEpochMilli(), summerEqD1.openMs)
         assertEquals(Instant.parse("2026-07-15T20:00:00Z").toEpochMilli(), summerEqD1.closeMs)
 
         // US Equities H4 splits RTH at 13:30 NY
@@ -77,10 +77,10 @@ class Phase2AlgorithmsTest {
         assertNotEquals(eqH4Morning.openMs, eqH4Afternoon.openMs)
         assertEquals(eqH4Morning.closeMs, eqH4Afternoon.openMs)
 
-        // OTC FX/Metals D1 rollover at 17:00 NY
+        // OTC FX/Metals D1 rollover at 17:00 NY (tradeDate 2026-01-15 starts 00:00 UTC)
         val fxWinterRollover = UtcTimeAnchorAlgorithm.getSessionBucketBounds(winterMs, "D1", "XAUUSD")
         assertTrue(fxWinterRollover.sessionAnchored)
-        assertEquals(Instant.parse("2026-01-14T22:00:00Z").toEpochMilli(), fxWinterRollover.openMs)
+        assertEquals(Instant.parse("2026-01-15T00:00:00Z").toEpochMilli(), fxWinterRollover.openMs)
         assertEquals(Instant.parse("2026-01-15T22:00:00Z").toEpochMilli(), fxWinterRollover.closeMs)
 
         // Crypto 24/7 stays strictly UTC 00:00
