@@ -1,7 +1,7 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.39.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.39.0';
 import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.39.0';
-import { state, getInstrumentSpec } from '../core/store.js?v=1.39.0';
+import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.39.0';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
