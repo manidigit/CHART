@@ -388,6 +388,7 @@ export async function uploadWorkspaceSync() {
       defaultDrawingColorHex: normalizeHexForAndroid(p.defaultDrawingColorHex || p.trendColor, 'FF2962FF'),
       defaultDrawingWidthDp: Number(p.defaultDrawingWidthPx || 2.0),
       timezoneMode: p.timezoneMode === 'LOCAL' ? 'LOCAL' : 'UTC',
+      volumePaneRatio: Math.max(0.12, Math.min(0.35, Number(p.volumePaneRatio || 0.22))),
       bollingerPeriod: Number(p.bollingerPeriod || 20),
       bollingerStdDev: Number(p.bollingerStdDev || 2.0),
       logarithmicScaleDefault: Boolean(p.isLogScale),
@@ -428,6 +429,10 @@ export async function uploadWorkspaceSync() {
           visibleCount: t.visibleCount,
           scrollOffset: t.scrollOffset,
           showVolume: t.showVolume !== false,
+          volumePaneRatio: Math.max(
+            0.12,
+            Math.min(0.35, Number(t.volumePaneRatio || p.volumePaneRatio || 0.22))
+          ),
           showSma20: Boolean(t.showSma20),
           showSma50: Boolean(t.showSma50),
           showSma200: Boolean(t.showSma200),
@@ -457,6 +462,8 @@ export async function uploadWorkspaceSync() {
           showSmcStructure: Boolean(t.showSmcStructure),
           showFvg: Boolean(t.showFvg),
           showVolumeProfile: Boolean(t.showVolumeProfile),
+          showPivotPoints: Boolean(t.showPivotPoints),
+          showFutureProjection: Boolean(t.showFutureProjection),
           pitchforkVariant: t.pitchforkVariant || p.pitchforkVariant || 'original',
           isLogScale: Boolean(t.isLogScale),
           isMagnetMode: Boolean(t.isMagnetMode),
@@ -539,6 +546,9 @@ export async function downloadWorkspaceSync() {
         if (p.verticalLineColorHex && !p.vLineColor) mappedPrefs.vLineColor = normalizeHexForWeb(p.verticalLineColorHex, '#A855F7');
         if (p.defaultDrawingColorHex) mappedPrefs.defaultDrawingColorHex = normalizeHexForWeb(p.defaultDrawingColorHex, '#2962FF');
         if (p.defaultDrawingWidthDp !== undefined) mappedPrefs.defaultDrawingWidthPx = Number(p.defaultDrawingWidthDp || 2.0);
+        if (p.volumePaneRatio !== undefined) {
+          mappedPrefs.volumePaneRatio = Math.max(0.12, Math.min(0.35, Number(p.volumePaneRatio || 0.22)));
+        }
         if (p.bollingerPeriod !== undefined) mappedPrefs.bollingerPeriod = Math.max(5, Math.min(200, Number(p.bollingerPeriod || 20)));
         if (p.bollingerStdDev !== undefined) mappedPrefs.bollingerStdDev = Math.max(0.5, Math.min(5.0, Number(p.bollingerStdDev || 2.0)));
         if (p.logarithmicScaleDefault !== undefined && p.isLogScale === undefined) mappedPrefs.isLogScale = Boolean(p.logarithmicScaleDefault);
@@ -590,31 +600,50 @@ export async function downloadWorkspaceSync() {
           : [];
       if (ws.open_tabs && typeof ws.open_tabs === 'object' && ws.open_tabs.lastOpenedSymbolCode) {
         state.lastOpenedSymbolCode = String(ws.open_tabs.lastOpenedSymbolCode).trim().toUpperCase();
-        localStorage.setItem('ci_last_opened_symbol_v2', state.lastOpenedSymbolCode);
+        localStorage.setItem('ci_last_opened_symbol', state.lastOpenedSymbolCode);
       }
-      if (!state.activeTabId && ws.open_tabs && typeof ws.open_tabs === 'object' && ws.open_tabs.activeTabId) {
-        saveActiveTabId(String(ws.open_tabs.activeTabId));
-      }
-      if (incomingOpenTabs.length > 0 && (!state.openTabs || state.openTabs.length === 0)) {
+      if (incomingOpenTabs.length > 0) {
+        const existingBySym = new Map((state.openTabs || []).map((et) => [et.symbolCode, et]));
         state.openTabs = incomingOpenTabs.map((t, idx) => {
           const code = String(t.symbolCode || 'SPOTBRENT').toUpperCase();
           const tf = String(t.timeframe || 'M15').toUpperCase();
           const sym = state.symbols.find((s) => s.symbolCode === code);
           const prov = t.provider || (sym ? sym.activeProvider : 'tvdatafeed');
+          const prevLocal = existingBySym.get(code);
           const resolvedColor = normalizeHexForWeb(
             t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex,
             '#2962FF'
           );
+          const resolvedVolRatio = Math.max(
+            0.12,
+            Math.min(
+              0.35,
+              Number(
+                t.volumePaneRatio !== undefined
+                  ? t.volumePaneRatio
+                  : state.chartPreferences.volumePaneRatio !== undefined
+                    ? state.chartPreferences.volumePaneRatio
+                    : prevLocal?.volumePaneRatio || 0.22
+              )
+            )
+          );
+          const cachedCandles = getCachedOrAggregatedCandles(code, prov, tf);
           return {
             tabId: t.tabId || `tab_${code}_${tf}_${idx}`,
+            chartId: `${code}_${tf}`,
             symbolCode: code,
             provider: prov,
             timeframe: tf,
-            decimals: sym ? sym.decimals : 2,
-            candles: getCachedOrAggregatedCandles(code, prov, tf),
+            decimals: sym ? sym.decimals : Number(t.decimals || 2),
+            candles:
+              cachedCandles.length > 0
+                ? cachedCandles
+                : prevLocal && prevLocal.timeframe === tf && Array.isArray(prevLocal.candles)
+                  ? prevLocal.candles
+                  : [],
             chartType: String(t.chartType || '').toLowerCase() === 'line' ? 'line' : 'candles',
             showVolume: t.showVolume !== false,
-            volumePaneRatio: 0.22,
+            volumePaneRatio: resolvedVolRatio,
             showSma20: Boolean(t.showSma20),
             showSma50: Boolean(t.showSma50),
             showSma200: Boolean(t.showSma200),
@@ -644,6 +673,8 @@ export async function downloadWorkspaceSync() {
             showSmcStructure: Boolean(t.showSmcStructure),
             showFvg: Boolean(t.showFvg),
             showVolumeProfile: Boolean(t.showVolumeProfile),
+            showPivotPoints: Boolean(t.showPivotPoints),
+            showFutureProjection: Boolean(t.showFutureProjection),
             pitchforkVariant: t.pitchforkVariant || 'original',
             isMagnetMode: Boolean(t.isMagnetMode),
             isLogScale: t.isLogScale !== undefined ? Boolean(t.isLogScale) : Boolean(state.chartPreferences.isLogScale),
@@ -665,6 +696,57 @@ export async function downloadWorkspaceSync() {
             drawings: state.drawingsByChartId[`${code}_${tf}`] || [],
           };
         });
+        const cloudActiveId =
+          ws.open_tabs && typeof ws.open_tabs === 'object' && ws.open_tabs.activeTabId
+            ? String(ws.open_tabs.activeTabId)
+            : '';
+        if (cloudActiveId && state.openTabs.some((t) => t.tabId === cloudActiveId)) {
+          saveActiveTabId(cloudActiveId);
+        } else if (state.lastOpenedSymbolCode) {
+          const matchBySym = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
+          if (matchBySym) saveActiveTabId(matchBySym.tabId);
+        }
+        const sourceTab =
+          state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0];
+        if (sourceTab) {
+          for (const k of [
+            'showSma20',
+            'showSma50',
+            'showSma200',
+            'showEma20',
+            'showEma50',
+            'showEma200',
+            'showSupertrend',
+            'showVwap',
+            'showPsar',
+            'showIchimoku',
+            'showKeltner',
+            'showDonchian',
+            'showMtfEma',
+            'showKillzones',
+            'showBollinger',
+            'showOverlayMacd',
+            'showRsi14',
+            'showMacd',
+            'showAtr14',
+            'showAdx14',
+            'showStoch14',
+            'showCci20',
+            'showWillR14',
+            'showObv',
+            'showCmf20',
+            'showRoc12',
+            'showSmcStructure',
+            'showFvg',
+            'showVolumeProfile',
+            'showPivotPoints',
+            'showFutureProjection',
+          ]) {
+            state.chartPreferences[k] = Boolean(sourceTab[k]);
+          }
+          state.chartPreferences.volumePaneRatio = sourceTab.volumePaneRatio;
+          savePreferences(true);
+        }
         saveOpenTabsToStorage(true);
       }
 

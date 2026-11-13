@@ -282,20 +282,167 @@ function saveFallbackOwner(
     ], JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
+function loadMailEnvConfig(): array
+{
+    $envFile = dirname(__DIR__, 2) . '/config/env.local.php';
+    $cfg = is_file($envFile) ? (include $envFile) : [];
+    return is_array($cfg) ? $cfg : [];
+}
+
+function sendViaSmtpSocket(
+    string $host,
+    int $port,
+    string $user,
+    string $pass,
+    string $from,
+    string $to,
+    string $subject,
+    string $body
+): bool {
+    $transport = ($port === 465) ? "ssl://{$host}:{$port}" : "tcp://{$host}:{$port}";
+    $fp = @stream_socket_client($transport, $errno, $errstr, 8);
+    if (!is_resource($fp)) {
+        return false;
+    }
+    stream_set_timeout($fp, 8);
+    $read = static function () use ($fp): string {
+        $out = '';
+        while (($line = fgets($fp, 515)) !== false) {
+            $out .= $line;
+            if (isset($line[3]) && $line[3] === ' ') {
+                break;
+            }
+        }
+        return $out;
+    };
+    $write = static function (string $cmd) use ($fp): void {
+        fwrite($fp, $cmd . "\r\n");
+    };
+    if (!str_starts_with($read(), '220')) {
+        fclose($fp);
+        return false;
+    }
+    $write('EHLO chart.manico.es');
+    $ehlo = $read();
+    if ($port === 587 && stripos($ehlo, 'STARTTLS') !== false) {
+        $write('STARTTLS');
+        if (!str_starts_with($read(), '220')) {
+            fclose($fp);
+            return false;
+        }
+        if (!@stream_socket_enable_crypto($fp, true, STREAM_CRYPTO_METHOD_TLS_CLIENT)) {
+            fclose($fp);
+            return false;
+        }
+        $write('EHLO chart.manico.es');
+        $read();
+    }
+    if ($user !== '' && $pass !== '') {
+        $write('AUTH LOGIN');
+        if (!str_starts_with($read(), '334')) {
+            fclose($fp);
+            return false;
+        }
+        $write(base64_encode($user));
+        if (!str_starts_with($read(), '334')) {
+            fclose($fp);
+            return false;
+        }
+        $write(base64_encode($pass));
+        if (!str_starts_with($read(), '235')) {
+            fclose($fp);
+            return false;
+        }
+    }
+    $write("MAIL FROM:<{$from}>");
+    if (!str_starts_with($read(), '250')) {
+        fclose($fp);
+        return false;
+    }
+    $write("RCPT TO:<{$to}>");
+    $rcptResp = $read();
+    if (!str_starts_with($rcptResp, '250') && !str_starts_with($rcptResp, '251')) {
+        fclose($fp);
+        return false;
+    }
+    $write('DATA');
+    if (!str_starts_with($read(), '354')) {
+        fclose($fp);
+        return false;
+    }
+    $msg = "From: Chart Intelligence <{$from}>\r\n"
+        . "To: <{$to}>\r\n"
+        . "Subject: {$subject}\r\n"
+        . "MIME-Version: 1.0\r\n"
+        . "Content-Type: text/plain; charset=UTF-8\r\n\r\n"
+        . $body . "\r\n.";
+    $write($msg);
+    $ok = str_starts_with($read(), '250');
+    $write('QUIT');
+    fclose($fp);
+    return $ok;
+}
+
 function sendRecoveryEmailMessage(string $email, string $username, string $code): bool
 {
+    $cfg = loadMailEnvConfig();
+    $fromEmail = (string) ($cfg['MAIL_FROM'] ?? (getenv('MAIL_FROM') ?: 'noreply@manico.es'));
     $subject = "Chart Intelligence - Password Recovery Code: {$code}";
     $body = "Hello {$username},\r\n\r\n"
         . "Your 6-digit password recovery code for Chart Intelligence (chart.manico.es) is:\r\n\r\n"
         . "    {$code}\r\n\r\n"
         . "This code expires in 15 minutes (UTC).\r\n"
         . "If you did not request a password reset, you can safely ignore this email.\r\n";
-    $headers = "From: noreply@manico.es\r\n"
-        . "Reply-To: noreply@manico.es\r\n"
+
+    // 1. HTTPS Transactional Email API (Resend) if configured
+    $resendKey = trim((string) ($cfg['RESEND_API_KEY'] ?? (getenv('RESEND_API_KEY') ?: '')));
+    if ($resendKey !== '' && function_exists('curl_init')) {
+        $ch = curl_init('https://api.resend.com/emails');
+        curl_setopt_array($ch, [
+            CURLOPT_POST => true,
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT => 8,
+            CURLOPT_HTTPHEADER => [
+                'Authorization: Bearer ' . $resendKey,
+                'Content-Type: application/json',
+            ],
+            CURLOPT_POSTFIELDS => json_encode([
+                'from' => "Chart Intelligence <{$fromEmail}>",
+                'to' => [$email],
+                'subject' => $subject,
+                'text' => $body,
+            ], JSON_UNESCAPED_UNICODE),
+        ]);
+        $resp = curl_exec($ch);
+        $httpCode = (int) curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($resp !== false && $httpCode >= 200 && $httpCode < 300) {
+            return true;
+        }
+    }
+
+    // 2. Authenticated TLS/SSL SMTP Socket if configured in env.local.php
+    $smtpHost = trim((string) ($cfg['SMTP_HOST'] ?? (getenv('SMTP_HOST') ?: '')));
+    $smtpPort = (int) ($cfg['SMTP_PORT'] ?? (getenv('SMTP_PORT') ?: 465));
+    $smtpUser = trim((string) ($cfg['SMTP_USER'] ?? (getenv('SMTP_USER') ?: '')));
+    $smtpPass = (string) ($cfg['SMTP_PASS'] ?? (getenv('SMTP_PASS') ?: ''));
+    if ($smtpHost !== '') {
+        if (sendViaSmtpSocket($smtpHost, $smtpPort, $smtpUser, $smtpPass, $fromEmail, $email, $subject, $body)) {
+            return true;
+        }
+    }
+
+    // 3. Fallback to local MTA mail() with explicit envelope sender
+    $headers = "From: Chart Intelligence <{$fromEmail}>\r\n"
+        . "Reply-To: {$fromEmail}\r\n"
+        . "MIME-Version: 1.0\r\n"
         . "Content-Type: text/plain; charset=UTF-8\r\n";
-    $sent = (bool) @mail($email, $subject, $body, $headers);
+    $sent = (bool) @mail($email, $subject, $body, $headers, "-f {$fromEmail}");
     if (!$sent) {
-        error_log('[ChartIntelligence auth] Failed to dispatch recovery email via mail()');
+        $sent = (bool) @mail($email, $subject, $body, $headers);
+    }
+    if (!$sent) {
+        error_log('[ChartIntelligence auth] Failed to dispatch recovery email via Resend/SMTP/mail()');
     }
     return $sent;
 }

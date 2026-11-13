@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import es.manico.chartintelligence.R
+import es.manico.chartintelligence.algorithms.Phase2IndicatorsAlgorithm
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartTabState
@@ -82,6 +83,7 @@ fun PredictionScreen(
     onSelectSymbol: (SymbolConfig) -> Unit,
     onSelectTimeframe: (String) -> Unit = {},
     onProjectLevelsToChart: (BigDecimal, BigDecimal, BigDecimal, BigDecimal, BigDecimal) -> Unit = { _, _, _, _, _ -> },
+    onToggleFutureCandlesOnChart: () -> Unit = {},
     onBackToWatchlist: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
@@ -94,9 +96,15 @@ fun PredictionScreen(
 
     val candles = activeTab?.candles.orEmpty()
     val decimals = activeTab?.decimals ?: 2
+    val timeframe = activeTab?.timeframe ?: "M15"
 
     val metrics = remember(candles, decimals) {
         if (candles.isEmpty()) null else computePredictionMetrics(candles, decimals)
+    }
+
+    val futureProjection = remember(candles, timeframe) {
+        if (candles.size < 10) emptyList()
+        else Phase2IndicatorsAlgorithm.computeFutureCandlestickProjection(candles, timeframe, 30)
     }
 
     Column(
@@ -300,6 +308,65 @@ fun PredictionScreen(
                             text = stringResource(R.string.prediction_project_to_chart),
                             fontWeight = FontWeight.Bold
                         )
+                    }
+
+                    // Prediction Card 1b: 30-Period AI Future Candlestick Projection (PRED-09 & PRED-10, h=30 >= 10)
+                    if (futureProjection.isNotEmpty()) {
+                        Card(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("prediction_card_future_candles"),
+                            shape = RoundedCornerShape(8.dp),
+                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                            border = BorderStroke(1.dp, Color(0xFFA796D4).copy(alpha = 0.65f))
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(14.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Text(
+                                    text = stringResource(R.string.prediction_future_candles_title),
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color(0xFFF59E0B)
+                                )
+                                Text(
+                                    text = stringResource(R.string.prediction_future_candles_desc),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                    for (step in listOf(5, 10, 15, 20, 25, 30)) {
+                                        val fc = futureProjection.firstOrNull { it.stepAhead == step } ?: continue
+                                        val sign = if (fc.pctChangeFromLast >= 0.0) "+" else ""
+                                        val pctFormatted = String.format(java.util.Locale.US, "%s%.2f%%", sign, fc.pctChangeFromLast)
+                                        val priceFormatted = PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(fc.close), decimals)
+                                        val stepColor = if (fc.pctChangeFromLast >= 0.0) palette.bullCandle else palette.bearCandle
+                                        LevelRow(
+                                            label = "+$step Bars (${PriceFormatterAlgorithm.displayTimeframeLabel(activeTab.timeframe)})",
+                                            value = "$priceFormatted ($pctFormatted)",
+                                            valueColor = stepColor
+                                        )
+                                    }
+                                }
+                                Button(
+                                    onClick = onToggleFutureCandlesOnChart,
+                                    shape = RoundedCornerShape(8.dp),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .testTag("prediction_toggle_future_candles_button")
+                                ) {
+                                    Text(
+                                        text = if (activeTab.showFutureProjection) {
+                                            stringResource(R.string.prediction_future_candles_active_btn)
+                                        } else {
+                                            stringResource(R.string.prediction_render_future_candles_btn)
+                                        },
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                            }
+                        }
                     }
 
                     // Prediction Card 2: Bullish Breakout Scenario (Tap for details)

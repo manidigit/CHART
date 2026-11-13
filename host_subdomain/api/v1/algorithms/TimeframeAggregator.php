@@ -36,6 +36,7 @@ final class TimeframeAggregator
 
         $buckets = [];
         $bucketCloseMap = [];
+        $sessionAnchoredMap = [];
         foreach ($sourceCandles as $bar) {
             $openMs = (int) ($bar['open_time_utc_ms'] ?? 0);
             if ($openMs <= 0) {
@@ -49,6 +50,9 @@ final class TimeframeAggregator
             }
             $buckets[$bucketOpen][$openMs] = $bar;
             $bucketCloseMap[$bucketOpen] = max($bucketCloseMap[$bucketOpen] ?? 0, $bucketClose);
+            if (!empty($bounds['session_anchored'])) {
+                $sessionAnchoredMap[$bucketOpen] = true;
+            }
         }
 
         ksort($buckets);
@@ -68,6 +72,10 @@ final class TimeframeAggregator
 
             ksort($barsMap);
             $bars = array_values($barsMap);
+            if (!self::hasContiguousChildren($bars, $sourceStepMs, $normTf, $symbolCode)) {
+                continue;
+            }
+
             $first = $bars[0];
             $last = $bars[count($bars) - 1];
 
@@ -96,7 +104,8 @@ final class TimeframeAggregator
                 $high,
                 $low,
                 $close,
-                $vol
+                $vol,
+                !empty($sessionAnchoredMap[$bucketOpen])
             );
             if ($sanitized !== null) {
                 $aggregated[] = $sanitized;
@@ -147,5 +156,44 @@ final class TimeframeAggregator
         return $calendar === UtcTimeAnchor::CALENDAR_US_EQUITIES
             ? max(1, (int) floor($ratio * 0.25))
             : max(2, (int) ceil($ratio * 0.5));
+    }
+
+    private static function hasContiguousChildren(
+        array $bars,
+        int $sourceStepMs,
+        string $targetTf,
+        string $symbolCode
+    ): bool {
+        if (count($bars) <= 1 || $sourceStepMs <= 0) {
+            return true;
+        }
+        $calendar = UtcTimeAnchor::getSessionCalendar($symbolCode);
+        $maxOpenGapSteps = ($targetTf === 'D1' || $targetTf === 'W1') ? 4 : 2;
+
+        for ($i = 1, $n = count($bars); $i < $n; $i++) {
+            $prevMs = (int) ($bars[$i - 1]['open_time_utc_ms'] ?? 0);
+            $curMs = (int) ($bars[$i]['open_time_utc_ms'] ?? 0);
+            $diffMs = $curMs - $prevMs;
+            if ($diffMs <= $sourceStepMs * $maxOpenGapSteps) {
+                continue;
+            }
+            if ($calendar === UtcTimeAnchor::CALENDAR_CRYPTO_24_7) {
+                return false;
+            }
+            $openMissingSteps = 0;
+            $probeMs = $prevMs + $sourceStepMs;
+            $guard = 0;
+            while ($probeMs < $curMs && $guard < 96) {
+                if (UtcTimeAnchor::isMarketOpen($probeMs, $symbolCode)) {
+                    $openMissingSteps++;
+                    if ($openMissingSteps >= $maxOpenGapSteps) {
+                        return false;
+                    }
+                }
+                $probeMs += $sourceStepMs;
+                $guard++;
+            }
+        }
+        return true;
     }
 }

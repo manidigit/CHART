@@ -49,7 +49,9 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showRoc12 ? 1 : 0) +
       (activeTab.showSmcStructure ? 1 : 0) +
       (activeTab.showFvg ? 1 : 0) +
-      (activeTab.showVolumeProfile ? 1 : 0)
+      (activeTab.showVolumeProfile ? 1 : 0) +
+      (activeTab.showPivotPoints ? 1 : 0) +
+      (activeTab.showFutureProjection ? 1 : 0)
     : 1;
 
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -371,6 +373,8 @@ export function renderIndicatorsModal(activeTab, i18n) {
             </div>
           </div>
           ${renderToggleRow('#2962FF', isFa ? 'MACD Classic (روی چارت اصلی — Overlay)' : 'MACD Classic (Main Chart Overlay)', isFa ? 'نمایش مکدی کلاسیک (۱۲، ۲۶، ۹) مستقیماً روی خود چارت قیمت بدون ایجاد پنل جداگانه در پایین' : 'Render Classic MACD (12, 26, 9) directly overlaid on the main price canvas', activeTab.showOverlayMacd, 'toggle-overlay-macd')}
+          ${renderToggleRow('#F59E0B', isFa ? 'Pivot Points (P, R1, R2, S1, S2)' : 'Pivot Points (P, R1, R2, S1, S2)', isFa ? 'سطوح پیوت استاندارد و مقاومت/حمایت (P, R1, R2, S1, S2) روی چارت اصلی' : 'Standard floor pivot levels (P, R1, R2, S1, S2) overlaid on the main chart', activeTab.showPivotPoints, 'toggle-pivot-points')}
+          ${renderToggleRow('#A796D4', isFa ? 'Future Candlesticks (پیش‌بینی ۳۰ کندل آینده روی چارت)' : 'Future Candlesticks (30-Period AI Projection)', isFa ? 'ترسیم ۳۰ کندل آینده (حداقل ۱۰ کندل روی هر تایم‌فریم) همراه با خط جداکننده PAST | Future Projection و درصد تغییرات (+5 تا +30)' : 'Render 30 ghosted future candlesticks with Present Bar Divider & +5..+30 % labels on any timeframe', activeTab.showFutureProjection, 'toggle-future-projection')}
 
           <div style="font-size: 11px; font-weight: 800; color: var(--gold); text-transform: uppercase; letter-spacing: 0.4px; margin-top: 8px;">
             ${isFa ? '۲. ساختار بازار هوشمند (SMC) و پروفایل حجم (Volume Profile)' : '2. Smart Money Concepts (SMC) & Volume Profile'}

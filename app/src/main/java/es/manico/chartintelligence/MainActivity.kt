@@ -275,6 +275,8 @@ fun ChartIntelligenceApp(
                             onToggleSmcStructure = mainViewModel::toggleSmcStructureOnActiveTab,
                             onToggleFvg = mainViewModel::toggleFvgOnActiveTab,
                             onToggleVolumeProfile = mainViewModel::toggleVolumeProfileOnActiveTab,
+                            onTogglePivotPoints = mainViewModel::togglePivotPointsOnActiveTab,
+                            onToggleFutureProjection = mainViewModel::toggleFutureProjectionOnActiveTab,
                             onToggleEma200 = mainViewModel::toggleEma200OnActiveTab,
                             onTogglePsar = mainViewModel::togglePsarOnActiveTab,
                             onToggleIchimoku = mainViewModel::toggleIchimokuOnActiveTab,
@@ -319,6 +321,7 @@ fun ChartIntelligenceApp(
                             onSelectSymbol = mainViewModel::selectSymbolInPrediction,
                             onSelectTimeframe = mainViewModel::selectTimeframeForActiveTab,
                             onProjectLevelsToChart = mainViewModel::projectScenarioLevelsToChart,
+                            onToggleFutureCandlesOnChart = mainViewModel::enableFutureProjectionAndOpenChart,
                             onBackToWatchlist = mainViewModel::navigateBack
                         )
 

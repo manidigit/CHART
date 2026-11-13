@@ -369,4 +369,8 @@
     <string name="draw_tool_abcd_pattern">ABCD Pattern</string>
     <string name="draw_tool_xabcd_pattern">XABCD Harmonic</string>
     <string name="draw_tool_head_shoulders">Head &amp; Shoulders</string>
+    <string name="prediction_future_candles_title">30-Period AI Future Candlestick Projection (h=30 ≥ 10)</string>
+    <string name="prediction_future_candles_desc">Projects 30 forward OHLC candlesticks (+5, +10, +15, +20, +25, +30) on the right side of the Present Bar Divider across every timeframe.</string>
+    <string name="prediction_render_future_candles_btn">Render 30 Future Candlesticks on Chart</string>
+    <string name="prediction_future_candles_active_btn">Future Candlesticks Active on Chart (Tap to Hide)</string>
 </resources>

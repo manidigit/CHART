@@ -25,10 +25,15 @@ object CandleValidatorAlgorithm {
         high: BigDecimal,
         low: BigDecimal,
         close: BigDecimal,
-        volume: BigDecimal
+        volume: BigDecimal,
+        preserveOpenTime: Boolean = false
     ): CandleBar? {
         if (open <= BigDecimal.ZERO || close <= BigDecimal.ZERO) return null
-        val anchoredOpenMillis = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(rawOpenTimeMillis, timeframe)
+        val anchoredOpenMillis = if (preserveOpenTime) {
+            rawOpenTimeMillis
+        } else {
+            UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(rawOpenTimeMillis, timeframe)
+        }
         val normalizedOpen = normalizeDecimal(open)
         val normalizedClose = normalizeDecimal(close)
         val trueHigh = maxOf(normalizeDecimal(high), normalizedOpen, normalizedClose)
@@ -50,7 +55,7 @@ object CandleValidatorAlgorithm {
     /**
      * Filters out synthetic weekend off-market ticks (e.g., Twelve Data weekend XAU/USD flat bars
      * with volume=0 and micro-spread high-low < 0.02% of open) that cause vertical "comb/barcode"
-     * chart distortion on M15/H1.
+     * chart distortion on M15/H1. 24/7 Crypto symbols are strictly exempt from weekend and comb removal.
      */
     fun filterSyntheticWeekendAndCombCandles(
         candles: List<CandleBar>,
@@ -60,10 +65,11 @@ object CandleValidatorAlgorithm {
         if (candles.isEmpty()) return emptyList()
         val normTf = timeframe.uppercase()
         val isCrypto247 = UtcTimeAnchorAlgorithm.getSessionCalendar(symbolCode) == SessionCalendar.CRYPTO_24_7
+        if (isCrypto247) return candles
         val isIntraday = normTf != "D1" && normTf != "W1"
 
-        // Step 1: Remove intraday bars during OTC/market weekend closure that have zero volume or micro-range (skip for 24/7 crypto)
-        val step1 = if (isCrypto247) candles else candles.filter { bar ->
+        // Step 1: Remove intraday bars during OTC/market weekend closure that have zero volume or micro-range
+        val step1 = candles.filter { bar ->
             val openD = bar.open.toDouble()
             val rangeD = (bar.high - bar.low).toDouble()
             val volD = bar.volume.toDouble()
@@ -113,16 +119,17 @@ object CandleValidatorAlgorithm {
         existing: List<CandleBar>,
         incoming: List<CandleBar>,
         timeframe: String,
-        nowUtcMillis: Long = System.currentTimeMillis()
+        nowUtcMillis: Long = System.currentTimeMillis(),
+        symbolCode: String? = null
     ): List<CandleBar> {
         val byTimestamp = LinkedHashMap<Long, CandleBar>()
         for (candle in existing) {
-            if (UtcTimeAnchorAlgorithm.isCandleClosed(candle.openTimeUtcMillis, timeframe, nowUtcMillis)) {
+            if (UtcTimeAnchorAlgorithm.isCandleClosed(candle.openTimeUtcMillis, timeframe, nowUtcMillis, symbolCode)) {
                 byTimestamp[candle.openTimeUtcMillis] = candle
             }
         }
         for (candle in incoming) {
-            if (UtcTimeAnchorAlgorithm.isCandleClosed(candle.openTimeUtcMillis, timeframe, nowUtcMillis)) {
+            if (UtcTimeAnchorAlgorithm.isCandleClosed(candle.openTimeUtcMillis, timeframe, nowUtcMillis, symbolCode)) {
                 byTimestamp[candle.openTimeUtcMillis] = candle
             }
         }

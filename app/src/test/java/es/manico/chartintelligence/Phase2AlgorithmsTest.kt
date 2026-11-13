@@ -365,4 +365,123 @@ class Phase2AlgorithmsTest {
         assertEquals(t0 + stepMs, moved.anchors[0].timeUtcMillis)
         assertEquals(105.0, moved.anchors[0].price.toDouble(), 1e-4)
     }
+
+    @Test
+    fun qa01_par01_sync01_eng01b_eng03b_ind01_pred09_pred10_crossPlatformParity() {
+        // 1. PAR-01: Price Basis for SPOTBRENT on TVDATAFEED is strictly "CFD Feed"
+        assertEquals(
+            "CFD Feed",
+            UtcTimeAnchorAlgorithm.resolvePriceBasis(
+                "SPOTBRENT",
+                es.manico.chartintelligence.data.model.ProviderId.TVDATAFEED
+            )
+        )
+
+        // 2. ENG-01b: Custom symbol calendar detection, US Equities H1 (:30 ET), DST-aware OTC weekend, and Contiguity
+        assertEquals(
+            es.manico.chartintelligence.algorithms.SessionCalendar.CRYPTO_24_7,
+            UtcTimeAnchorAlgorithm.getSessionCalendar("DOGEUSD")
+        )
+        assertEquals(
+            es.manico.chartintelligence.algorithms.SessionCalendar.US_EQUITIES,
+            UtcTimeAnchorAlgorithm.getSessionCalendar("NAS100")
+        )
+        val eqH1Summer = UtcTimeAnchorAlgorithm.getSessionBucketBounds(
+            Instant.parse("2026-07-15T14:10:00Z").toEpochMilli(), // 10:10 EDT
+            "H1",
+            "AAPL"
+        )
+        assertTrue(eqH1Summer.sessionAnchored)
+        assertEquals(Instant.parse("2026-07-15T13:30:00Z").toEpochMilli(), eqH1Summer.openMs)
+        assertEquals(Instant.parse("2026-07-15T14:30:00Z").toEpochMilli(), eqH1Summer.closeMs)
+
+        // DST-aware OTC weekend: Friday 17:15 EDT (21:15 UTC in summer) is closed
+        val friSummer2115Utc = Instant.parse("2026-07-17T21:15:00Z").toEpochMilli()
+        assertTrue(UtcTimeAnchorAlgorithm.isOtcWeekendClosed(friSummer2115Utc))
+
+        // TimeframeAggregator preserves session-anchored open time & skips non-contiguous middle bucket
+        val m15Step = 15L * 60_000L
+        val mon1330Edt = Instant.parse("2026-07-13T13:30:00Z").toEpochMilli()
+        val contiguousM15 = (0 until 8).map { i ->
+            makeBar(mon1330Edt + i * m15Step, "M15", 200.0 + i, 202.0 + i, 199.0 + i, 201.0 + i, 1000.0)
+        }
+        val aggH1 = es.manico.chartintelligence.algorithms.TimeframeAggregatorAlgorithm.aggregateCandles(
+            sourceCandles = contiguousM15,
+            targetTimeframe = "H1",
+            sourceTimeframe = "M15",
+            symbolCode = "AAPL"
+        )
+        assertEquals(2, aggH1.size)
+        assertEquals(mon1330Edt, aggH1[0].openTimeUtcMillis)
+
+        // 3. ENG-03b: Comb filter exempts CRYPTO_24_7 and removes flat 0-vol spikes on OTC
+        val cryptoFlatBars = (0 until 6).map { i ->
+            makeBar(mon1330Edt + i * m15Step, "M15", 90000.0, 90000.01, 90000.0, 90000.0, 0.0)
+        }
+        val filteredCrypto = CandleValidatorAlgorithm.filterSyntheticWeekendAndCombCandles(
+            cryptoFlatBars,
+            "BTCUSD",
+            "M15"
+        )
+        assertEquals(6, filteredCrypto.size)
+
+        // 4. IND-01 & PRED-09/PRED-10: Pivot Points and 30-Period Future Candlestick Projection across all timeframes
+        val sampleBars = (0 until 60).map { i ->
+            val o = 2700.0 + i * 1.5
+            makeBar(mon1330Edt + i * m15Step, "M15", o, o + 4.0, o - 3.0, o + 1.2, 500.0 + i * 10.0)
+        }
+        val pivots = Phase2IndicatorsAlgorithm.computePivotPoints(sampleBars, "M15", "XAUUSD")
+        assertNotNull(pivots)
+        assertTrue(pivots!!.r2 > pivots.r1 && pivots.r1 > pivots.p && pivots.p > pivots.s1 && pivots.s1 > pivots.s2)
+
+        for (tf in listOf("M15", "M30", "H1", "H4", "D1", "W1")) {
+            val projected = Phase2IndicatorsAlgorithm.computeFutureCandlestickProjection(sampleBars, tf, 30)
+            assertEquals("Expected 30 projected bars (>= 10) for $tf", 30, projected.size)
+            assertTrue(projected.size >= 10)
+            assertEquals(1, projected.first().stepAhead)
+            assertEquals(30, projected.last().stepAhead)
+            assertTrue(projected.all { it.high >= maxOf(it.open, it.close) && it.low <= minOf(it.open, it.close) })
+        }
+
+        // 5. SYNC-01: WorkspaceRepository round-trip persistence of volumePaneRatio=0.16f, timezoneMode=LOCAL, and indicators
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo = WorkspaceRepository(context)
+        val prefs = repo.loadChartPreferences().copy(
+            timezoneMode = "LOCAL",
+            bollingerPeriod = 30,
+            bollingerStdDev = 2.5f
+        )
+        repo.saveChartPreferences(prefs)
+        val tab = es.manico.chartintelligence.data.model.ChartTabState(
+            tabId = "XAUUSD_twelve_data",
+            chartId = "XAUUSD_H1",
+            symbolCode = "XAUUSD",
+            decimals = 2,
+            provider = es.manico.chartintelligence.data.model.ProviderId.TWELVE_DATA,
+            timeframe = "H1",
+            volumePaneRatio = 0.16f,
+            showRsi14 = true,
+            showMacd = true,
+            showOverlayMacd = true,
+            showPivotPoints = true,
+            showFutureProjection = true
+        )
+        val wsJson = repo.buildWorkspaceJson(repo.loadSymbolCatalog(), prefs, emptyMap(), listOf(tab))
+        // Simulate resetting local state and applying cloud workspace JSON
+        repo.saveChartPreferences(repo.loadChartPreferences().copy(timezoneMode = "UTC"))
+        assertTrue(repo.applyCloudWorkspaceToLocal(wsJson))
+        val hydratedPrefs = repo.loadChartPreferences()
+        assertEquals("LOCAL", hydratedPrefs.timezoneMode)
+        assertEquals(30, hydratedPrefs.bollingerPeriod)
+        assertEquals(2.5f, hydratedPrefs.bollingerStdDev, 1e-3f)
+        val hydratedTabs = repo.loadSavedOpenTabs()
+        assertEquals(1, hydratedTabs.size)
+        val hydratedTab = hydratedTabs.first()
+        assertEquals(0.16f, hydratedTab.volumePaneRatio, 1e-3f)
+        assertTrue(hydratedTab.showRsi14)
+        assertTrue(hydratedTab.showMacd)
+        assertTrue(hydratedTab.showOverlayMacd)
+        assertTrue(hydratedTab.showPivotPoints)
+        assertTrue(hydratedTab.showFutureProjection)
+    }
 }

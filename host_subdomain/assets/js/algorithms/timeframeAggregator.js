@@ -44,6 +44,35 @@ export const TimeframeAggregator = {
       : Math.max(2, Math.ceil(ratio * 0.5));
   },
 
+  hasContiguousChildren(bars, sourceStepMs, targetTf, symbolCode) {
+    if (!Array.isArray(bars) || bars.length <= 1 || sourceStepMs <= 0) return true;
+    const cal = PriceFormatter.getSessionCalendar(symbolCode);
+    const maxOpenGapSteps = targetTf === 'D1' || targetTf === 'W1' ? 4 : 2;
+    for (let i = 1; i < bars.length; i++) {
+      const prevMs = Number(
+        bars[i - 1].open_time_utc_ms || (bars[i - 1].openTimeSec ? bars[i - 1].openTimeSec * 1000 : 0)
+      );
+      const curMs = Number(
+        bars[i].open_time_utc_ms || (bars[i].openTimeSec ? bars[i].openTimeSec * 1000 : 0)
+      );
+      const diffMs = curMs - prevMs;
+      if (diffMs <= sourceStepMs * maxOpenGapSteps) continue;
+      if (cal === 'CRYPTO_24_7') return false;
+      let openMissingSteps = 0;
+      let probeMs = prevMs + sourceStepMs;
+      let guard = 0;
+      while (probeMs < curMs && guard < 96) {
+        if (PriceFormatter.isMarketOpen(probeMs, symbolCode)) {
+          openMissingSteps++;
+          if (openMissingSteps >= maxOpenGapSteps) return false;
+        }
+        probeMs += sourceStepMs;
+        guard++;
+      }
+    }
+    return true;
+  },
+
   aggregateCandles(sourceCandles, targetTimeframe, nowMs = Date.now(), symbolCode = 'XAUUSD') {
     if (!Array.isArray(sourceCandles) || sourceCandles.length === 0) return [];
     const normTf = String(targetTimeframe || 'M15').toUpperCase();
@@ -88,6 +117,9 @@ export const TimeframeAggregator = {
       const bars = buckets.get(bucketOpen);
       if (!bars || bars.length === 0) continue;
       if ((idx === 0 || idx === lastIdx) && bars.length < minChildren) {
+        continue;
+      }
+      if (!this.hasContiguousChildren(bars, sourceStepMs, normTf, symbolCode)) {
         continue;
       }
       const open = Number(bars[0].open);

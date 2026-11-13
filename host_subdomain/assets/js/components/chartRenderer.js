@@ -95,6 +95,8 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       cmf20: null,
       roc12: null,
       smc: null,
+      pivots: null,
+      futureProjection: null,
       vpKey: null,
       vp: null,
     };
@@ -154,6 +156,11 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
     getRoc12: () => (cache.roc12 || (cache.roc12 = TechnicalIndicators.computeRoc(candles, 12))),
     getSmc: () =>
       cache.smc || (cache.smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3)),
+    getPivotPoints: () =>
+      cache.pivots || (cache.pivots = TechnicalIndicators.computePivotPoints(candles, tf, symCode)),
+    getFutureProjection: () =>
+      cache.futureProjection ||
+      (cache.futureProjection = TechnicalIndicators.computeFutureCandlestickProjection(candles, tf, 30)),
     getVolumeProfile: (visible, startIdx, endIdx) => {
       const spec = getInstrumentSpec(symCode, prov);
       const vKey = `${startIdx}_${endIdx}_${spec.volumeType}`;
@@ -267,6 +274,14 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const visible = candles.slice(startIdx, endIdx);
   if (visible.length === 0) return;
 
+  const bbPeriod = Math.max(5, Math.min(200, Number(prefs.bollingerPeriod || 20)));
+  const bbStdDev = Math.max(0.5, Math.min(5.0, Number(prefs.bollingerStdDev || 2.0)));
+  const indCache = getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev);
+  const futureProj =
+    tab.showFutureProjection && offset === 0 && candles.length >= 10
+      ? indCache.getFutureProjection() || []
+      : [];
+
   let rawMin = Infinity;
   let rawMax = -Infinity;
   let highCandleIdx = 0;
@@ -284,6 +299,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       rawMax = hi;
       highCandleIdx = i;
     }
+  }
+  for (let k = 0; k < futureProj.length; k++) {
+    const fp = futureProj[k];
+    rawMin = Math.min(rawMin, Number(fp.low));
+    rawMax = Math.max(rawMax, Number(fp.high));
   }
   if (!Number.isFinite(rawMin) || !Number.isFinite(rawMax)) return;
 
@@ -352,16 +372,20 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     );
   }
 
-  const effectiveSlots = Math.max(
-    visible.length,
-    Math.min(visibleCount, candles.length + Math.min(12, Math.round(visible.length * 0.08)))
-  );
+  const effectiveSlots =
+    futureProj.length > 0
+      ? visible.length + futureProj.length
+      : Math.max(
+          visible.length,
+          Math.min(visibleCount, candles.length + Math.min(12, Math.round(visible.length * 0.08)))
+        );
   const slotW = chartW / Math.max(1, effectiveSlots);
   const bodyW = Math.max(1.0, Math.min(20, slotW * 0.68));
   const idxToX = (idx) => (idx + 0.5) * slotW;
+  const pastRightLimitX = futureProj.length > 0 ? visible.length * slotW : chartW;
 
   // Vertical Time Grid + Smart Calendar-Aligned X-Axis Labels
-  const smartTicks = PriceFormatter.computeSmartTimeAxisTicks(visible, chartW, tab.timeframe, tzMode);
+  const smartTicks = PriceFormatter.computeSmartTimeAxisTicks(visible, pastRightLimitX, tab.timeframe, tzMode);
   for (const tick of smartTicks) {
     const x = idxToX(tick.index);
     ctx.strokeStyle = gridColor;
@@ -374,9 +398,42 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ? 'bold 11px "JetBrains Mono", monospace'
       : '11px "JetBrains Mono", monospace';
     const lblW = ctx.measureText(tick.text).width;
-    const lblX = Math.max(6, Math.min(chartW - lblW - 6, x - lblW / 2));
+    const lblX = Math.max(6, Math.min(pastRightLimitX - lblW - 4, x - lblW / 2));
     ctx.fillStyle = tick.isMajor ? majorTickColor : textColor;
     ctx.fillText(tick.text, lblX, topPad + totalChartH + 17);
+  }
+
+  // Future Projection X-Axis Milestone Labels (+5, +10, +15, +20, +25, +30 with signed % change)
+  if (futureProj.length > 0) {
+    const milestones = [5, 10, 15, 20, 25, 30];
+    for (const stepNum of milestones) {
+      const fp = futureProj[stepNum - 1];
+      if (!fp) continue;
+      const fx = idxToX(visible.length + stepNum - 1);
+      if (fx > chartW - 8) continue;
+
+      ctx.save();
+      ctx.strokeStyle = gridColor;
+      ctx.beginPath();
+      ctx.moveTo(fx, topPad);
+      ctx.lineTo(fx, topPad + totalChartH);
+      ctx.stroke();
+
+      const stepLbl = `+${stepNum}`;
+      const pctVal = Number(fp.pctChangeFromLast || 0);
+      const pctLbl = stepNum === 5 ? '(Future)' : `${pctVal >= 0 ? '+' : ''}${pctVal.toFixed(0)}%`;
+
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#F59E0B';
+      const sw = ctx.measureText(stepLbl).width;
+      ctx.fillText(stepLbl, fx - sw / 2, topPad + totalChartH + 11);
+
+      ctx.font = '9px "JetBrains Mono", monospace';
+      ctx.fillStyle = stepNum === 5 ? textColor : pctVal >= 0 ? '#D1D4DC' : bearColor;
+      const pw = ctx.measureText(pctLbl).width;
+      ctx.fillText(pctLbl, fx - pw / 2, topPad + totalChartH + 22);
+      ctx.restore();
+    }
   }
 
   // Data Boundary Marker when scrolled to beginning of loaded history (placed at bottom-left of price pane to avoid OHLC overlay collision)
@@ -416,10 +473,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   ctx.beginPath();
   ctx.rect(0, topPad, chartW, chartH);
   ctx.clip();
-
-  const bbPeriod = Math.max(5, Math.min(200, Number(prefs.bollingerPeriod || 20)));
-  const bbStdDev = Math.max(0.5, Math.min(5.0, Number(prefs.bollingerStdDev || 2.0)));
-  const indCache = getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev);
 
   // 0. Session Killzones Background Highlight (Intraday TFs only)
   const tfUpper = String(tab.timeframe || 'M15').toUpperCase();
@@ -1019,6 +1072,151 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       if (startedS) ctx.stroke();
       ctx.restore();
     }
+  }
+
+  // IND-01: Standard Floor Pivot Points (P, R1, R2, S1, S2) Overlay
+  if (tab.showPivotPoints && candles.length >= 2) {
+    const piv = indCache.getPivotPoints();
+    if (piv) {
+      const levels = [
+        { key: 'R2', val: piv.r2, col: '#EF5350' },
+        { key: 'R1', val: piv.r1, col: '#F87171' },
+        { key: 'P', val: piv.p, col: '#F59E0B' },
+        { key: 'S1', val: piv.s1, col: '#34D399' },
+        { key: 'S2', val: piv.s2, col: '#26A69A' },
+      ];
+      ctx.save();
+      ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+      for (const lv of levels) {
+        const py = priceToY(lv.val);
+        if (py < topPad + 6 || py > topPad + chartH - 6) continue;
+        ctx.strokeStyle = lv.col;
+        ctx.lineWidth = lv.key === 'P' ? 1.5 : 1.1;
+        ctx.setLineDash(lv.key === 'P' ? [5, 3] : [3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(0, py);
+        ctx.lineTo(chartW, py);
+        ctx.stroke();
+
+        const lbl = `${lv.key} ${PriceFormatter.formatPrice(lv.val, tab.decimals)}`;
+        const tw = ctx.measureText(lbl).width;
+        ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.85)' : 'rgba(255, 255, 255, 0.88)';
+        ctx.fillRect(chartW - tw - 10, py - 11, tw + 6, 11);
+        ctx.fillStyle = lv.col;
+        ctx.fillText(lbl, chartW - tw - 7, py - 2.5);
+      }
+      ctx.restore();
+    }
+  }
+
+  // PRED-09 & PRED-10: AI-Generated Future Candlesticks Projection (30 periods)
+  if (futureProj.length > 0) {
+    const dividerX = visible.length * slotW;
+    ctx.save();
+
+    // Subtle right-side future zone tint
+    ctx.fillStyle = isDark ? 'rgba(148, 130, 190, 0.04)' : 'rgba(148, 130, 190, 0.06)';
+    ctx.fillRect(dividerX, topPad, chartW - dividerX, chartH);
+
+    // Ghosted future candlesticks (purple-slate palette matching reference design)
+    const ghostWickCol = isDark ? 'rgba(167, 150, 212, 0.58)' : 'rgba(124, 105, 172, 0.58)';
+    const ghostBullBody = isDark ? 'rgba(167, 150, 212, 0.62)' : 'rgba(124, 105, 172, 0.62)';
+    const ghostBearBody = isDark ? 'rgba(122, 108, 162, 0.46)' : 'rgba(100, 86, 145, 0.46)';
+
+    futureProj.forEach((fp, kIdx) => {
+      const x = idxToX(visible.length + kIdx);
+      const highY = priceToY(fp.high);
+      const lowY = priceToY(fp.low);
+      const openY = priceToY(fp.open);
+      const closeY = priceToY(fp.close);
+      const isBull = fp.close >= fp.open;
+
+      ctx.strokeStyle = ghostWickCol;
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(x, highY);
+      ctx.lineTo(x, lowY);
+      ctx.stroke();
+
+      const topY = Math.min(openY, closeY);
+      const bodyH = Math.max(2, Math.abs(closeY - openY));
+      ctx.fillStyle = isBull ? ghostBullBody : ghostBearBody;
+      ctx.fillRect(x - bodyW / 2, topY, bodyW, bodyH);
+    });
+
+    // Vertical dashed Present Bar Divider
+    ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.85)' : 'rgba(15, 23, 42, 0.80)';
+    ctx.lineWidth = 1.6;
+    ctx.setLineDash([5, 4]);
+    ctx.beginPath();
+    ctx.moveTo(dividerX, topPad + 4);
+    ctx.lineTo(dividerX, topPad + chartH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    // Top Header Banner: PAST (Actual Data) <- | -> Future Projection (30 periods) (AI-Generated)
+    const headerY = topPad + 22;
+    const arrowY = topPad + 30;
+    const subY = topPad + 43;
+
+    // Left (PAST)
+    const leftSpan = Math.max(60, dividerX - 16);
+    const pastCenterX = dividerX / 2;
+    ctx.fillStyle = isDark ? '#FFFFFF' : '#0F172A';
+    ctx.font = 'bold 12px "Inter", system-ui, sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('PAST', pastCenterX, headerY);
+
+    ctx.strokeStyle = '#38BDF8';
+    ctx.lineWidth = 1.8;
+    ctx.beginPath();
+    ctx.moveTo(dividerX - 6, arrowY);
+    ctx.lineTo(Math.max(12, dividerX - leftSpan), arrowY);
+    ctx.stroke();
+    // Left arrowhead
+    const leftTipX = Math.max(12, dividerX - leftSpan);
+    ctx.fillStyle = '#38BDF8';
+    ctx.beginPath();
+    ctx.moveTo(leftTipX, arrowY);
+    ctx.lineTo(leftTipX + 7, arrowY - 4);
+    ctx.lineTo(leftTipX + 7, arrowY + 4);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = textColor;
+    ctx.font = '10.5px "Inter", system-ui, sans-serif';
+    ctx.fillText('(Actual Data)', pastCenterX, subY);
+
+    // Right (Future Projection)
+    const rightSpan = Math.max(60, chartW - dividerX - 16);
+    const futCenterX = dividerX + (chartW - dividerX) / 2;
+    ctx.fillStyle = '#F59E0B';
+    ctx.font = 'bold 11.5px "Inter", system-ui, sans-serif';
+    ctx.fillText(`Future Projection (${futureProj.length} periods)`, futCenterX, headerY);
+
+    ctx.strokeStyle = '#F59E0B';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(dividerX + 6, arrowY);
+    ctx.lineTo(Math.min(chartW - 12, dividerX + rightSpan), arrowY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    // Right arrowhead
+    const rightTipX = Math.min(chartW - 12, dividerX + rightSpan);
+    ctx.fillStyle = '#F59E0B';
+    ctx.beginPath();
+    ctx.moveTo(rightTipX, arrowY);
+    ctx.lineTo(rightTipX - 7, arrowY - 4);
+    ctx.lineTo(rightTipX - 7, arrowY + 4);
+    ctx.closePath();
+    ctx.fill();
+
+    ctx.fillStyle = textColor;
+    ctx.font = '10.5px "Inter", system-ui, sans-serif';
+    ctx.fillText('(AI-Generated)', futCenterX, subY);
+
+    ctx.restore();
   }
 
   ctx.restore(); // End Price Pane clip

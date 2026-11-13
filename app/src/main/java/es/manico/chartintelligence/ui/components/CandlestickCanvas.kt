@@ -367,6 +367,16 @@ fun CandlestickCanvas(
         else fullRoc12.subList(startIndex, endIndexExclusive.coerceAtMost(fullRoc12.size))
     }
 
+    val pivotPoints = remember(candles, tab.timeframe, tab.symbolCode, tab.showPivotPoints) {
+        if (!tab.showPivotPoints || candles.size < 2) null
+        else Phase2IndicatorsAlgorithm.computePivotPoints(candles, tab.timeframe, tab.symbolCode)
+    }
+
+    val futureProjectedCandles = remember(candles, tab.timeframe, tab.showFutureProjection, effectiveScrollOffset) {
+        if (!tab.showFutureProjection || effectiveScrollOffset > 0 || candles.size < 10) emptyList()
+        else Phase2IndicatorsAlgorithm.computeFutureCandlestickProjection(candles, tab.timeframe, 30)
+    }
+
     val inspectedIdx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
     val inspectedCandle = remember(tab.selectedCandleIndex, visibleSlice) {
         val idx = tab.selectedCandleIndex
@@ -400,8 +410,14 @@ fun CandlestickCanvas(
     var panCarryPx by remember(tab.tabId, tab.timeframe) { mutableFloatStateOf(0f) }
 
     // Compute Price Y-Axis Bounds with Minimum Price Range Floor (prevents micro-spread barcode distortion)
-    val rawMinPrice = visibleSlice.minOfOrNull { it.low.toDouble() } ?: 0.0
-    val rawMaxPrice = visibleSlice.maxOfOrNull { it.high.toDouble() } ?: 1.0
+    val sliceMinPrice = visibleSlice.minOfOrNull { it.low.toDouble() } ?: 0.0
+    val sliceMaxPrice = visibleSlice.maxOfOrNull { it.high.toDouble() } ?: 1.0
+    val rawMinPrice = if (futureProjectedCandles.isNotEmpty()) {
+        min(sliceMinPrice, futureProjectedCandles.minOf { it.low })
+    } else sliceMinPrice
+    val rawMaxPrice = if (futureProjectedCandles.isNotEmpty()) {
+        max(sliceMaxPrice, futureProjectedCandles.maxOf { it.high })
+    } else sliceMaxPrice
     val midPrice = (rawMinPrice + rawMaxPrice) / 2.0
     val rawHalfSpan = (rawMaxPrice - rawMinPrice) / 2.0
     val minHalfSpanFloor = max(1e-4, abs(midPrice) * 0.0008) // Minimum 0.16% full span floor
@@ -736,10 +752,14 @@ fun CandlestickCanvas(
                     }
 
                     // 2. Vertical time grid lines across both panes aligned with smart time ticks
-                    val effectiveSlots = max(
-                        visibleSlice.size,
-                        min(visibleCount, max(visibleSlice.size, (candles.size * 1.4f).roundToInt()))
-                    )
+                    val effectiveSlots = if (futureProjectedCandles.isNotEmpty()) {
+                        visibleSlice.size + futureProjectedCandles.size
+                    } else {
+                        max(
+                            visibleSlice.size,
+                            min(visibleCount, max(visibleSlice.size, (candles.size * 1.4f).roundToInt()))
+                        )
+                    }
                     val slotW = canvasW / max(1, effectiveSlots).toFloat()
                     for (tick in smartTimeTicks) {
                         val x = (tick.index + 0.5f) * slotW
@@ -1192,6 +1212,75 @@ fun CandlestickCanvas(
                             }
                             if (sStarted) {
                                 drawPath(path = ovSigPath, color = Color(0xFFFF6D00), style = Stroke(width = 1.8f))
+                            }
+                        }
+
+                        // 5e. IND-01: Classic Floor Pivot Points (P, R1, R2, S1, S2) Horizontal Dashed Lines
+                        if (tab.showPivotPoints && pivotPoints != null) {
+                            val ppLevels = listOf(
+                                pivotPoints.r2 to Color(0xFFEF4444),
+                                pivotPoints.r1 to Color(0xFFF97316),
+                                pivotPoints.p to Color(0xFFEAB308),
+                                pivotPoints.s1 to Color(0xFF22C55E),
+                                pivotPoints.s2 to Color(0xFF10B981)
+                            )
+                            for ((ppVal, ppColor) in ppLevels) {
+                                val py = priceToY(ppVal)
+                                if (py in 2f..(pricePaneH - 2f)) {
+                                    drawLine(
+                                        color = ppColor.copy(alpha = 0.78f),
+                                        start = Offset(0f, py),
+                                        end = Offset(canvasW, py),
+                                        strokeWidth = 1.2f,
+                                        pathEffect = dashEffect
+                                    )
+                                }
+                            }
+                        }
+
+                        // 5f. PRED-09 & PRED-10: 30-Period AI Future Candlesticks Projection (Right of Present Bar Divider)
+                        if (futureProjectedCandles.isNotEmpty()) {
+                            val dividerX = visibleSlice.size * slotW
+                            val futureDashEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
+                            drawRect(
+                                color = Color(0xFF7A6CA2).copy(alpha = 0.08f),
+                                topLeft = Offset(dividerX, 0f),
+                                size = Size((canvasW - dividerX).coerceAtLeast(0f), pricePaneH)
+                            )
+                            drawLine(
+                                color = Color(0xFFF8FAFC).copy(alpha = 0.90f),
+                                start = Offset(dividerX, 0f),
+                                end = Offset(dividerX, pricePaneH),
+                                strokeWidth = 1.8f,
+                                pathEffect = futureDashEffect
+                            )
+                            futureProjectedCandles.forEachIndexed { fIdx, fc ->
+                                val fCenterX = (visibleSlice.size + fIdx + 0.5f) * slotW
+                                val fHighY = priceToY(fc.high)
+                                val fLowY = priceToY(fc.low)
+                                val fOpenY = priceToY(fc.open)
+                                val fCloseY = priceToY(fc.close)
+                                val isFutureBull = fc.close >= fc.open
+                                val wickCol = Color(0xFF9F8FD4).copy(alpha = 0.62f)
+                                val bodyCol = if (isFutureBull) {
+                                    Color(0xFFA796D4).copy(alpha = 0.60f)
+                                } else {
+                                    Color(0xFF726498).copy(alpha = 0.48f)
+                                }
+                                drawLine(
+                                    color = wickCol,
+                                    start = Offset(fCenterX, fHighY),
+                                    end = Offset(fCenterX, fLowY),
+                                    strokeWidth = 1.2f
+                                )
+                                val topY = min(fOpenY, fCloseY)
+                                val botY = max(fOpenY, fCloseY)
+                                val bH = (botY - topY).coerceAtLeast(2.0f)
+                                drawRect(
+                                    color = bodyCol,
+                                    topLeft = Offset(fCenterX - bodyW / 2f, topY),
+                                    size = Size(bodyW, bH)
+                                )
                             }
                         }
 
@@ -2424,31 +2513,103 @@ fun CandlestickCanvas(
                     }
                 }
 
-                // Bottom X-Axis Smart Span-Aware UTC Time Labels + Crosshair Time Callout Pill
+                // PRED-09 Callout Header when Future Projection (30 periods) is active
+                if (futureProjectedCandles.isNotEmpty()) {
+                    Row(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .padding(top = plotTopPadDp + 4.dp, start = 10.dp, end = plotRightPadDp + 6.dp)
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(Color(0xFF0F172A).copy(alpha = 0.86f))
+                            .border(1.dp, Color(0xFFA796D4).copy(alpha = 0.55f), RoundedCornerShape(6.dp))
+                            .padding(horizontal = 10.dp, vertical = 3.dp)
+                            .testTag("chart_future_projection_banner"),
+                        horizontalArrangement = Arrangement.spacedBy(10.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "← PAST (Actual Data)",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 9.sp,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFF38BDF8)
+                        )
+                        Text(
+                            text = "┆",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            color = Color(0xFFF8FAFC)
+                        )
+                        Text(
+                            text = "Future Projection (30 periods) (AI-Generated) →",
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 9.sp,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = Color(0xFFF59E0B)
+                        )
+                    }
+                }
+
+                // Bottom X-Axis Smart Span-Aware UTC Time Labels + Future Milestone Labels (+5..+30) + Crosshair Pill
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                         .padding(start = 8.dp, end = plotRightPadDp, bottom = 3.dp)
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        for (tick in smartTimeTicks) {
-                            Text(
-                                text = tick.label,
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = if (tick.isMajor) FontWeight.Bold else FontWeight.Normal,
-                                color = if (tick.isMajor) {
-                                    MaterialTheme.colorScheme.onSurface
-                                } else {
-                                    MaterialTheme.colorScheme.onSurfaceVariant
+                    if (futureProjectedCandles.isNotEmpty()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            for (tick in smartTimeTicks.take(2)) {
+                                Text(
+                                    text = tick.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            for (stepMark in listOf(5, 10, 15, 25, 30)) {
+                                val fc = futureProjectedCandles.firstOrNull { it.stepAhead == stepMark }
+                                if (fc != null) {
+                                    val sign = if (fc.pctChangeFromLast >= 0.0) "+" else ""
+                                    val pctStr = String.format(java.util.Locale.US, "%s%.1f%%", sign, fc.pctChangeFromLast)
+                                    Text(
+                                        text = if (stepMark == 5) "+5 (Future)" else "+$stepMark ($pctStr)",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 8.5.sp,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFFF59E0B)
+                                    )
                                 }
-                            )
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            for (tick in smartTimeTicks) {
+                                Text(
+                                    text = tick.label,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = if (tick.isMajor) FontWeight.Bold else FontWeight.Normal,
+                                    color = if (tick.isMajor) {
+                                        MaterialTheme.colorScheme.onSurface
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                )
+                            }
                         }
                     }
 

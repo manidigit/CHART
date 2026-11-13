@@ -822,6 +822,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 val updatedTabs = if (curActive != null) {
                     state.openTabs.map { tab ->
                         tab.copy(
+                            showVolume = curActive.showVolume,
+                            volumePaneRatio = curActive.volumePaneRatio,
                             showSma20 = curActive.showSma20,
                             showSma50 = curActive.showSma50,
                             showSma200 = curActive.showSma200,
@@ -851,6 +853,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             showSmcStructure = curActive.showSmcStructure,
                             showFvg = curActive.showFvg,
                             showVolumeProfile = curActive.showVolumeProfile,
+                            showPivotPoints = curActive.showPivotPoints,
+                            showFutureProjection = curActive.showFutureProjection,
                             pitchforkVariant = curActive.pitchforkVariant
                         )
                     }
@@ -921,6 +925,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 showSmcStructure = curActive?.showSmcStructure ?: false,
                 showFvg = curActive?.showFvg ?: false,
                 showVolumeProfile = curActive?.showVolumeProfile ?: false,
+                showPivotPoints = curActive?.showPivotPoints ?: false,
+                showFutureProjection = curActive?.showFutureProjection ?: false,
                 pitchforkVariant = curActive?.pitchforkVariant ?: "original",
                 isMagnetMode = curActive?.isMagnetMode ?: false,
                 activeDrawingColorHex = curActive?.activeDrawingColorHex ?: curPrefs.defaultDrawingColorHex,
@@ -959,6 +965,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun selectChartTab(tabId: String) {
         _uiState.update { it.copy(activeTabId = tabId) }
         repository.saveActiveTabId(tabId)
+        scheduleDebouncedCloudSync()
     }
 
     fun closeChartTab(tabId: String) {
@@ -978,6 +985,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         repository.saveActiveTabId(nextActiveId)
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
     }
 
     /**
@@ -1041,6 +1049,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         repository.saveSymbolCatalog(_uiState.value.symbols)
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
 
         val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode } ?: return
         val minRequiredBars = minBarsForTimeframe(normalizedTf)
@@ -1609,27 +1618,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun cycleVolumePaneHeightOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+        val curRatio = _uiState.value.activeTab?.volumePaneRatio ?: return
+        val nextRatio = when {
+            curRatio < 0.19f -> 0.22f
+            curRatio < 0.26f -> 0.30f
+            else -> 0.16f
+        }
         _uiState.update { state ->
             state.copy(
                 openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) {
-                        val nextRatio = when {
-                            tab.volumePaneRatio < 0.19f -> 0.22f
-                            tab.volumePaneRatio < 0.26f -> 0.30f
-                            else -> 0.16f
-                        }
-                        tab.copy(
-                            showVolume = true,
-                            volumePaneRatio = nextRatio
-                        )
-                    } else {
-                        tab
-                    }
+                    tab.copy(
+                        showVolume = true,
+                        volumePaneRatio = nextRatio
+                    )
                 }
             )
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
     }
 
     fun toggleSma20OnActiveTab() {
@@ -1762,6 +1768,54 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val nextVal = !(_uiState.value.activeTab?.showVolumeProfile ?: return)
         _uiState.update { state ->
             state.copy(openTabs = state.openTabs.map { it.copy(showVolumeProfile = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun togglePivotPointsOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showPivotPoints ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showPivotPoints = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleFutureProjectionOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showFutureProjection ?: return)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    tab.copy(
+                        showFutureProjection = nextVal,
+                        scrollOffsetFromRight = if (nextVal) 0 else tab.scrollOffsetFromRight
+                    )
+                }
+            )
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun enableFutureProjectionAndOpenChart() {
+        val nextVal = !(_uiState.value.activeTab?.showFutureProjection ?: false)
+        _uiState.update { state ->
+            val nextStack = if (state.currentScreen != WorkspaceScreen.CHART_VIEW && nextVal) {
+                (state.screenBackStack + state.currentScreen).takeLast(6)
+            } else {
+                state.screenBackStack
+            }
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    tab.copy(
+                        showFutureProjection = nextVal,
+                        scrollOffsetFromRight = if (nextVal) 0 else tab.scrollOffsetFromRight
+                    )
+                },
+                currentScreen = if (nextVal) WorkspaceScreen.CHART_VIEW else state.currentScreen,
+                screenBackStack = nextStack
+            )
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
@@ -2005,6 +2059,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         repository.saveActiveTabId(nextActiveId)
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
     }
 
     fun toggleLogScaleOnActiveTab() {
@@ -2245,7 +2300,30 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             val savedActiveId = repository.loadActiveTabId()
             val nowTimeStr = java.time.LocalTime.now().toString().take(5)
             _uiState.update { state ->
-                val tabsToUse = if (state.openTabs.isNotEmpty()) {
+                val existingBySym = state.openTabs.associateBy { it.symbolCode }
+                val tabsToUse = if (savedTabs.isNotEmpty()) {
+                    savedTabs.map { cloudTab ->
+                        val localTab = existingBySym[cloudTab.symbolCode]
+                        val mergedCandles = if (cloudTab.candles.isNotEmpty()) {
+                            cloudTab.candles
+                        } else if (localTab != null && localTab.timeframe == cloudTab.timeframe && localTab.candles.isNotEmpty()) {
+                            localTab.candles
+                        } else {
+                            emptyList()
+                        }
+                        cloudTab.copy(
+                            candles = mergedCandles,
+                            drawings = repository.loadDrawingsForChart(
+                                cloudTab.chartId,
+                                UtcTimeAnchorAlgorithm.legacyChartId(cloudTab.symbolCode)
+                            ),
+                            liveQuotePrice = localTab?.liveQuotePrice ?: cloudTab.liveQuotePrice,
+                            liveQuoteMode = localTab?.liveQuoteMode ?: cloudTab.liveQuoteMode,
+                            formingBar = localTab?.formingBar ?: cloudTab.formingBar,
+                            gapSummary = localTab?.gapSummary ?: cloudTab.gapSummary
+                        )
+                    }
+                } else if (state.openTabs.isNotEmpty()) {
                     state.openTabs.map { tab ->
                         tab.copy(
                             drawings = repository.loadDrawingsForChart(
@@ -2254,14 +2332,12 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             )
                         )
                     }
-                } else if (savedTabs.isNotEmpty()) {
-                    savedTabs
                 } else {
                     emptyList()
                 }
                 val activeId = when {
-                    tabsToUse.any { it.tabId == state.activeTabId } -> state.activeTabId
                     savedActiveId != null && tabsToUse.any { it.tabId == savedActiveId } -> savedActiveId
+                    tabsToUse.any { it.tabId == state.activeTabId } -> state.activeTabId
                     else -> tabsToUse.firstOrNull()?.tabId
                 }
                 state.copy(

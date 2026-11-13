@@ -508,4 +508,215 @@ object Phase2IndicatorsAlgorithm {
         }
         return out
     }
+
+    data class PivotPointsResult(
+        val p: Double,
+        val r1: Double,
+        val r2: Double,
+        val s1: Double,
+        val s2: Double
+    )
+
+    data class FutureProjectedCandle(
+        val step: Int,
+        val openTimeUtcMillis: Long,
+        val open: Double,
+        val high: Double,
+        val low: Double,
+        val close: Double,
+        val pctChangeFromAnchor: Double,
+        val upperBand: Double,
+        val lowerBand: Double
+    ) {
+        val isBullish: Boolean get() = close >= open
+        val stepAhead: Int get() = step
+        val pctChangeFromLast: Double get() = pctChangeFromAnchor
+    }
+
+    /**
+     * Standard Floor Pivot Points (P, R1, R2, S1, S2) computed from the prior session/period HLC (IND-01).
+     */
+    fun computePivotPoints(
+        candles: List<CandleBar>,
+        timeframe: String = "M15",
+        symbolCode: String = "XAUUSD"
+    ): PivotPointsResult? {
+        if (candles.size < 2) return null
+        val tf = timeframe.uppercase()
+        var high = Double.NEGATIVE_INFINITY
+        var low = Double.POSITIVE_INFINITY
+        var close = candles.last().close.toDouble()
+
+        if (tf == "D1" || tf == "W1") {
+            val prevBar = candles[candles.size - 2]
+            high = prevBar.high.toDouble()
+            low = prevBar.low.toDouble()
+            close = prevBar.close.toDouble()
+        } else {
+            val lastDayKey = UtcTimeAnchorAlgorithm.getSessionDayKey(candles.last().openTimeUtcMillis, symbolCode)
+            var prevDayKey: String? = null
+            for (i in candles.lastIndex downTo 0) {
+                val dk = UtcTimeAnchorAlgorithm.getSessionDayKey(candles[i].openTimeUtcMillis, symbolCode)
+                if (dk != lastDayKey) {
+                    if (prevDayKey == null) {
+                        prevDayKey = dk
+                        close = candles[i].close.toDouble()
+                    }
+                    if (dk == prevDayKey) {
+                        high = max(high, candles[i].high.toDouble())
+                        low = min(low, candles[i].low.toDouble())
+                    } else {
+                        break
+                    }
+                }
+            }
+            if (!high.isFinite() || !low.isFinite() || high <= 0.0) {
+                val winStart = max(0, candles.size - 25)
+                val winEnd = max(1, candles.size - 1)
+                for (i in winStart until winEnd) {
+                    high = max(high, candles[i].high.toDouble())
+                    low = min(low, candles[i].low.toDouble())
+                    close = candles[i].close.toDouble()
+                }
+            }
+        }
+
+        if (!high.isFinite() || !low.isFinite() || high < low) return null
+        val p = (high + low + close) / 3.0
+        val range = high - low
+        return PivotPointsResult(
+            p = p,
+            r1 = 2.0 * p - low,
+            s1 = 2.0 * p - high,
+            r2 = p + range,
+            s2 = p - range
+        )
+    }
+
+    /**
+     * Deterministic Multi-Step OHLC Candlestick Extrapolation Engine (PRED-09 & PRED-10):
+     * Generates at least 10 (default 30) future ghosted OHLC candles combining damped Holt linear trend,
+     * 2-harmonic Fourier cycle decomposition, and ATR-scaled candlestick bodies/wicks.
+     */
+    fun computeFutureCandlestickProjection(
+        candles: List<CandleBar>,
+        timeframe: String = "M15",
+        horizon: Int = 30
+    ): List<FutureProjectedCandle> {
+        if (candles.size < 4) return emptyList()
+        val effectiveHorizon = max(10, min(60, horizon))
+        val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(timeframe)
+        val win = candles.takeLast(min(60, candles.size))
+        val n = win.size
+        val baseBar = win.last()
+        val baseClose = baseBar.close.toDouble()
+        if (baseClose <= 0.0) return emptyList()
+
+        // 1. Compute local ATR(14) & body scale
+        var trSum = 0.0
+        var trCount = 0
+        val atrStart = max(1, n - 14)
+        for (i in atrStart until n) {
+            val h = win[i].high.toDouble()
+            val l = win[i].low.toDouble()
+            val pc = win[i - 1].close.toDouble()
+            val tr = max(h - l, max(abs(h - pc), abs(l - pc)))
+            trSum += tr
+            trCount++
+        }
+        val fallbackRange = (baseBar.high.toDouble() - baseBar.low.toDouble()).coerceAtLeast(baseClose * 0.0015)
+        val atr = (if (trCount > 0) trSum / trCount else fallbackRange).coerceAtLeast(baseClose * 0.0008)
+
+        // 2. Fit Holt Double Exponential Smoothing (alpha = 0.36, beta = 0.18)
+        val alpha = 0.36
+        val beta = 0.18
+        var level = win[0].close.toDouble()
+        var trend = (win[min(1, n - 1)].close.toDouble() - win[0].close.toDouble())
+        val detrended = DoubleArray(n)
+        for (i in 1 until n) {
+            val c = win[i].close.toDouble()
+            val prevLevel = level
+            level = alpha * c + (1.0 - alpha) * (level + trend)
+            trend = beta * (level - prevLevel) + (1.0 - beta) * trend
+            detrended[i] = c - level
+        }
+        val clampedSlope = trend.coerceIn(-atr * 0.32, atr * 0.32)
+
+        // 3. Extract 2-harmonic Fourier cycle coefficients (periods P1 = 9.5, P2 = 19.0)
+        val p1 = 9.5
+        val p2 = 19.0
+        var a1 = 0.0
+        var b1 = 0.0
+        var a2 = 0.0
+        var b2 = 0.0
+        for (i in 0 until n) {
+            val r = detrended[i]
+            val ang1 = (2.0 * Math.PI * i) / p1
+            val ang2 = (2.0 * Math.PI * i) / p2
+            a1 += r * kotlin.math.cos(ang1)
+            b1 += r * kotlin.math.sin(ang1)
+            a2 += r * kotlin.math.cos(ang2)
+            b2 += r * kotlin.math.sin(ang2)
+        }
+        a1 = (2.0 / n) * a1
+        b1 = (2.0 / n) * b1
+        a2 = (2.0 / n) * a2
+        b2 = (2.0 / n) * b2
+
+        fun evalWave(idx: Double): Double {
+            val ang1 = (2.0 * Math.PI * idx) / p1
+            val ang2 = (2.0 * Math.PI * idx) / p2
+            val rawWave = a1 * kotlin.math.cos(ang1) + b1 * kotlin.math.sin(ang1) +
+                0.65 * (a2 * kotlin.math.cos(ang2) + b2 * kotlin.math.sin(ang2))
+            return rawWave.coerceIn(-atr * 1.8, atr * 1.8)
+        }
+
+        val out = ArrayList<FutureProjectedCandle>(effectiveHorizon)
+        var prevClose = baseClose
+        var cumTrend = 0.0
+        val baseWave = evalWave((n - 1).toDouble())
+        val phaseSeed = (baseBar.openTimeUtcMillis % 997L).toDouble() * 0.013
+
+        for (step in 1..effectiveHorizon) {
+            val damp = Math.pow(0.95, step.toDouble())
+            cumTrend += clampedSlope * damp
+            val waveNow = evalWave((n - 1 + step).toDouble()) - baseWave
+            val harmonicSwing = kotlin.math.sin(step * 0.68 + phaseSeed) * atr * 0.42
+            val targetClose = (baseClose + cumTrend + waveNow * 0.55 + harmonicSwing).coerceAtLeast(baseClose * 0.25)
+
+            val rawDelta = targetClose - prevClose
+            val minBody = atr * 0.22
+            val adjClose = if (abs(rawDelta) < minBody) {
+                val dir = if (kotlin.math.sin(step * 1.15 + phaseSeed) >= 0.0) 1.0 else -1.0
+                (prevClose + dir * minBody).coerceAtLeast(baseClose * 0.25)
+            } else {
+                targetClose
+            }
+
+            val open = prevClose
+            val close = adjClose
+            val upperWick = atr * (0.28 + 0.24 * abs(kotlin.math.sin(step * 1.7 + phaseSeed)))
+            val lowerWick = atr * (0.28 + 0.24 * abs(kotlin.math.cos(step * 1.3 + phaseSeed)))
+            val high = max(open, close) + upperWick
+            val low = max(baseClose * 0.1, min(open, close) - lowerWick)
+            val pct = ((close - baseClose) / baseClose) * 100.0
+            val bandHalf = atr * kotlin.math.sqrt(step.toDouble()) * 0.85
+
+            out.add(
+                FutureProjectedCandle(
+                    step = step,
+                    openTimeUtcMillis = baseBar.openTimeUtcMillis + step.toLong() * stepMs,
+                    open = open,
+                    high = high,
+                    low = low,
+                    close = close,
+                    pctChangeFromAnchor = pct,
+                    upperBand = close + bandHalf,
+                    lowerBand = max(baseClose * 0.1, close - bandHalf)
+                )
+            )
+            prevClose = close
+        }
+        return out
+    }
 }

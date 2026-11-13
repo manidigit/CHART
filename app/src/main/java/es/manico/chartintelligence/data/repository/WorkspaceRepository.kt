@@ -1933,6 +1933,7 @@ class WorkspaceRepository(context: Context) {
                         visibleCandleCount = obj.optInt("visibleCount", AppConfig.DEFAULT_VISIBLE_CANDLES).coerceIn(AppConfig.MIN_VISIBLE_CANDLES, AppConfig.MAX_VISIBLE_CANDLES),
                         scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
                         showVolume = obj.optBoolean("showVolume", true),
+                        volumePaneRatio = obj.optDouble("volumePaneRatio", 0.22).toFloat().coerceIn(0.12f, 0.35f),
                         showSma20 = obj.optBoolean("showSma20", false),
                         showSma50 = obj.optBoolean("showSma50", false),
                         showSma200 = obj.optBoolean("showSma200", false),
@@ -1962,6 +1963,8 @@ class WorkspaceRepository(context: Context) {
                         showSmcStructure = obj.optBoolean("showSmcStructure", false),
                         showFvg = obj.optBoolean("showFvg", false),
                         showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
+                        showPivotPoints = obj.optBoolean("showPivotPoints", false),
+                        showFutureProjection = obj.optBoolean("showFutureProjection", false),
                         pitchforkVariant = obj.optString("pitchforkVariant", "original"),
                         isLogScale = obj.optBoolean("isLogScale", false),
                         activeDrawingColorHex = normalizeAndroidHex(
@@ -1996,6 +1999,7 @@ class WorkspaceRepository(context: Context) {
                 .put("visibleCount", t.visibleCandleCount)
                 .put("scrollOffset", t.scrollOffsetFromRight)
                 .put("showVolume", t.showVolume)
+                .put("volumePaneRatio", t.volumePaneRatio.toDouble())
                 .put("showSma20", t.showSma20)
                 .put("showSma50", t.showSma50)
                 .put("showSma200", t.showSma200)
@@ -2025,6 +2029,8 @@ class WorkspaceRepository(context: Context) {
                 .put("showSmcStructure", t.showSmcStructure)
                 .put("showFvg", t.showFvg)
                 .put("showVolumeProfile", t.showVolumeProfile)
+                .put("showPivotPoints", t.showPivotPoints)
+                .put("showFutureProjection", t.showFutureProjection)
                 .put("pitchforkVariant", t.pitchforkVariant)
                 .put("isLogScale", t.isLogScale)
                 .put("activeDrawingColorHex", t.activeDrawingColorHex)
@@ -2099,6 +2105,45 @@ class WorkspaceRepository(context: Context) {
             .put("showHighLowLabels", preferences.showHighLowLabels)
             .put("timezoneMode", preferences.timezoneMode)
 
+        val refTab = openTabs.firstOrNull { it.tabId == loadActiveTabId() } ?: openTabs.firstOrNull()
+        if (refTab != null) {
+            prefsObj
+                .put("showVolume", refTab.showVolume)
+                .put("volumePaneRatio", refTab.volumePaneRatio.toDouble())
+                .put("showSma20", refTab.showSma20)
+                .put("showSma50", refTab.showSma50)
+                .put("showSma200", refTab.showSma200)
+                .put("showEma20", refTab.showEma20)
+                .put("showEma50", refTab.showEma50)
+                .put("showEma200", refTab.showEma200)
+                .put("showBollinger", refTab.showBollinger)
+                .put("showSupertrend", refTab.showSupertrend)
+                .put("showVwap", refTab.showVwap)
+                .put("showPsar", refTab.showPsar)
+                .put("showIchimoku", refTab.showIchimoku)
+                .put("showKeltner", refTab.showKeltner)
+                .put("showDonchian", refTab.showDonchian)
+                .put("showMtfEma", refTab.showMtfEma)
+                .put("showKillzones", refTab.showKillzones)
+                .put("showRsi14", refTab.showRsi14)
+                .put("showMacd", refTab.showMacd)
+                .put("showOverlayMacd", refTab.showOverlayMacd)
+                .put("showAtr14", refTab.showAtr14)
+                .put("showAdx14", refTab.showAdx14)
+                .put("showStoch14", refTab.showStoch14)
+                .put("showCci20", refTab.showCci20)
+                .put("showWillR14", refTab.showWillR14)
+                .put("showObv", refTab.showObv)
+                .put("showCmf20", refTab.showCmf20)
+                .put("showRoc12", refTab.showRoc12)
+                .put("showSmcStructure", refTab.showSmcStructure)
+                .put("showFvg", refTab.showFvg)
+                .put("showVolumeProfile", refTab.showVolumeProfile)
+                .put("showPivotPoints", refTab.showPivotPoints)
+                .put("showFutureProjection", refTab.showFutureProjection)
+                .put("pitchforkVariant", refTab.pitchforkVariant)
+        }
+
         val tabsArr = JSONArray()
         for (t in openTabs) {
             val tObj = JSONObject()
@@ -2111,6 +2156,7 @@ class WorkspaceRepository(context: Context) {
                 .put("visibleCount", t.visibleCandleCount)
                 .put("scrollOffset", t.scrollOffsetFromRight)
                 .put("showVolume", t.showVolume)
+                .put("volumePaneRatio", t.volumePaneRatio.toDouble())
                 .put("showSma20", t.showSma20)
                 .put("showSma50", t.showSma50)
                 .put("showSma200", t.showSma200)
@@ -2140,6 +2186,8 @@ class WorkspaceRepository(context: Context) {
                 .put("showSmcStructure", t.showSmcStructure)
                 .put("showFvg", t.showFvg)
                 .put("showVolumeProfile", t.showVolumeProfile)
+                .put("showPivotPoints", t.showPivotPoints)
+                .put("showFutureProjection", t.showFutureProjection)
                 .put("pitchforkVariant", t.pitchforkVariant)
                 .put("isLogScale", t.isLogScale)
                 .put("activeDrawingColorHex", t.activeDrawingColorHex)
@@ -2151,6 +2199,7 @@ class WorkspaceRepository(context: Context) {
 
         val openTabsObj = JSONObject()
             .put("lastOpenedSymbolCode", loadLastOpenedSymbolCode() ?: "SPOTBRENT")
+            .put("activeTabId", loadActiveTabId() ?: openTabs.firstOrNull()?.tabId.orEmpty())
             .put("tabs", tabsArr)
 
         return JSONObject()
@@ -2354,37 +2403,43 @@ class WorkspaceRepository(context: Context) {
                             candles = hydratedCandles,
                             visibleCandleCount = obj.optInt("visibleCount", AppConfig.DEFAULT_VISIBLE_CANDLES).coerceIn(AppConfig.MIN_VISIBLE_CANDLES, AppConfig.MAX_VISIBLE_CANDLES),
                             scrollOffsetFromRight = obj.optInt("scrollOffset", 0),
-                            showVolume = obj.optBoolean("showVolume", true),
-                            showSma20 = obj.optBoolean("showSma20", false),
-                            showSma50 = obj.optBoolean("showSma50", false),
-                            showSma200 = obj.optBoolean("showSma200", false),
-                            showEma20 = obj.optBoolean("showEma20", false),
-                            showEma50 = obj.optBoolean("showEma50", false),
-                            showEma200 = obj.optBoolean("showEma200", false),
-                            showBollinger = obj.optBoolean("showBollinger", false),
-                            showSupertrend = obj.optBoolean("showSupertrend", false),
-                            showVwap = obj.optBoolean("showVwap", false),
-                            showPsar = obj.optBoolean("showPsar", false),
-                            showIchimoku = obj.optBoolean("showIchimoku", false),
-                            showKeltner = obj.optBoolean("showKeltner", false),
-                            showDonchian = obj.optBoolean("showDonchian", false),
-                            showMtfEma = obj.optBoolean("showMtfEma", false),
-                            showKillzones = obj.optBoolean("showKillzones", false),
-                            showRsi14 = obj.optBoolean("showRsi14", false),
-                            showMacd = obj.optBoolean("showMacd", false),
-                            showOverlayMacd = obj.optBoolean("showOverlayMacd", false),
-                            showAtr14 = obj.optBoolean("showAtr14", false),
-                            showAdx14 = obj.optBoolean("showAdx14", false),
-                            showStoch14 = obj.optBoolean("showStoch14", false),
-                            showCci20 = obj.optBoolean("showCci20", false),
-                            showWillR14 = obj.optBoolean("showWillR14", false),
-                            showObv = obj.optBoolean("showObv", false),
-                            showCmf20 = obj.optBoolean("showCmf20", false),
-                            showRoc12 = obj.optBoolean("showRoc12", false),
-                            showSmcStructure = obj.optBoolean("showSmcStructure", false),
-                            showFvg = obj.optBoolean("showFvg", false),
-                            showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
-                            pitchforkVariant = obj.optString("pitchforkVariant", "original"),
+                            showVolume = obj.optBoolean("showVolume", prefsJson?.optBoolean("showVolume", true) ?: true),
+                            volumePaneRatio = obj.optDouble(
+                                "volumePaneRatio",
+                                prefsJson?.optDouble("volumePaneRatio", 0.22) ?: 0.22
+                            ).toFloat().coerceIn(0.12f, 0.35f),
+                            showSma20 = obj.optBoolean("showSma20", prefsJson?.optBoolean("showSma20", false) ?: false),
+                            showSma50 = obj.optBoolean("showSma50", prefsJson?.optBoolean("showSma50", false) ?: false),
+                            showSma200 = obj.optBoolean("showSma200", prefsJson?.optBoolean("showSma200", false) ?: false),
+                            showEma20 = obj.optBoolean("showEma20", prefsJson?.optBoolean("showEma20", false) ?: false),
+                            showEma50 = obj.optBoolean("showEma50", prefsJson?.optBoolean("showEma50", false) ?: false),
+                            showEma200 = obj.optBoolean("showEma200", prefsJson?.optBoolean("showEma200", false) ?: false),
+                            showBollinger = obj.optBoolean("showBollinger", prefsJson?.optBoolean("showBollinger", false) ?: false),
+                            showSupertrend = obj.optBoolean("showSupertrend", prefsJson?.optBoolean("showSupertrend", false) ?: false),
+                            showVwap = obj.optBoolean("showVwap", prefsJson?.optBoolean("showVwap", false) ?: false),
+                            showPsar = obj.optBoolean("showPsar", prefsJson?.optBoolean("showPsar", false) ?: false),
+                            showIchimoku = obj.optBoolean("showIchimoku", prefsJson?.optBoolean("showIchimoku", false) ?: false),
+                            showKeltner = obj.optBoolean("showKeltner", prefsJson?.optBoolean("showKeltner", false) ?: false),
+                            showDonchian = obj.optBoolean("showDonchian", prefsJson?.optBoolean("showDonchian", false) ?: false),
+                            showMtfEma = obj.optBoolean("showMtfEma", prefsJson?.optBoolean("showMtfEma", false) ?: false),
+                            showKillzones = obj.optBoolean("showKillzones", prefsJson?.optBoolean("showKillzones", false) ?: false),
+                            showRsi14 = obj.optBoolean("showRsi14", prefsJson?.optBoolean("showRsi14", false) ?: false),
+                            showMacd = obj.optBoolean("showMacd", prefsJson?.optBoolean("showMacd", false) ?: false),
+                            showOverlayMacd = obj.optBoolean("showOverlayMacd", prefsJson?.optBoolean("showOverlayMacd", false) ?: false),
+                            showAtr14 = obj.optBoolean("showAtr14", prefsJson?.optBoolean("showAtr14", false) ?: false),
+                            showAdx14 = obj.optBoolean("showAdx14", prefsJson?.optBoolean("showAdx14", false) ?: false),
+                            showStoch14 = obj.optBoolean("showStoch14", prefsJson?.optBoolean("showStoch14", false) ?: false),
+                            showCci20 = obj.optBoolean("showCci20", prefsJson?.optBoolean("showCci20", false) ?: false),
+                            showWillR14 = obj.optBoolean("showWillR14", prefsJson?.optBoolean("showWillR14", false) ?: false),
+                            showObv = obj.optBoolean("showObv", prefsJson?.optBoolean("showObv", false) ?: false),
+                            showCmf20 = obj.optBoolean("showCmf20", prefsJson?.optBoolean("showCmf20", false) ?: false),
+                            showRoc12 = obj.optBoolean("showRoc12", prefsJson?.optBoolean("showRoc12", false) ?: false),
+                            showSmcStructure = obj.optBoolean("showSmcStructure", prefsJson?.optBoolean("showSmcStructure", false) ?: false),
+                            showFvg = obj.optBoolean("showFvg", prefsJson?.optBoolean("showFvg", false) ?: false),
+                            showVolumeProfile = obj.optBoolean("showVolumeProfile", prefsJson?.optBoolean("showVolumeProfile", false) ?: false),
+                            showPivotPoints = obj.optBoolean("showPivotPoints", prefsJson?.optBoolean("showPivotPoints", false) ?: false),
+                            showFutureProjection = obj.optBoolean("showFutureProjection", prefsJson?.optBoolean("showFutureProjection", false) ?: false),
+                            pitchforkVariant = obj.optString("pitchforkVariant", prefsJson?.optString("pitchforkVariant", "original") ?: "original"),
                             isLogScale = obj.optBoolean("isLogScale", false),
                             activeDrawingColorHex = normalizeAndroidHex(
                                 obj.optString("activeDrawingColorHex", curPrefs.defaultDrawingColorHex),

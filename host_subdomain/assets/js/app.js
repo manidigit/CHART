@@ -111,6 +111,13 @@ function ensureInitialTabs() {
       for (const k of INDICATOR_FLAG_KEYS) {
         tab[k] = effectiveIndicators[k];
       }
+      tab.volumePaneRatio = Math.max(
+        0.12,
+        Math.min(
+          0.35,
+          Number(tab.volumePaneRatio || state.chartPreferences.volumePaneRatio || 0.22)
+        )
+      );
       const fallbackColor =
         tab.activeDrawingColorHex ||
         tab.activeDrawingColor ||
@@ -150,7 +157,10 @@ function ensureInitialTabs() {
       candles: cached.length > 0 ? cached : sym.candles || [],
       chartType: 'candles',
       showVolume: true,
-      volumePaneRatio: 0.22,
+      volumePaneRatio: Math.max(
+        0.12,
+        Math.min(0.35, Number(state.chartPreferences.volumePaneRatio || 0.22))
+      ),
       isLogScale: Boolean(state.chartPreferences.isLogScale),
       selectedRangePreset: null,
       visibleCount: 48,
@@ -221,7 +231,17 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       candles: cached.length > 0 ? cached : sym.candles || [],
       chartType: curActive ? curActive.chartType || 'candles' : 'candles',
       showVolume: curActive ? curActive.showVolume !== false : true,
-      volumePaneRatio: curActive ? curActive.volumePaneRatio || 0.22 : 0.22,
+      volumePaneRatio: Math.max(
+        0.12,
+        Math.min(
+          0.35,
+          Number(
+            (curActive && curActive.volumePaneRatio) ||
+              state.chartPreferences.volumePaneRatio ||
+              0.22
+          )
+        )
+      ),
       isMagnetMode: curActive ? Boolean(curActive.isMagnetMode) : false,
       isLogScale: Boolean(state.chartPreferences.isLogScale),
       selectedRangePreset: null,
@@ -1800,12 +1820,24 @@ document.addEventListener('click', async (e) => {
     saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'cycle-volume-height' && activeTab) {
-    const cur = Number(activeTab.volumePaneRatio || 0.22);
-    activeTab.volumePaneRatio = cur < 0.19 ? 0.22 : cur < 0.26 ? 0.3 : 0.16;
+    const cur = Number(activeTab.volumePaneRatio || state.chartPreferences.volumePaneRatio || 0.22);
+    const nextRatio = cur < 0.19 ? 0.22 : cur < 0.26 ? 0.3 : 0.16;
+    activeTab.volumePaneRatio = nextRatio;
+    state.chartPreferences.volumePaneRatio = nextRatio;
+    for (const t of state.openTabs) {
+      t.volumePaneRatio = nextRatio;
+    }
+    savePreferences();
     saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'set-volume-height' && activeTab) {
-    activeTab.volumePaneRatio = Math.max(0.12, Math.min(0.35, Number(el.getAttribute('data-ratio') || 0.22)));
+    const nextRatio = Math.max(0.12, Math.min(0.35, Number(el.getAttribute('data-ratio') || 0.22)));
+    activeTab.volumePaneRatio = nextRatio;
+    state.chartPreferences.volumePaneRatio = nextRatio;
+    for (const t of state.openTabs) {
+      t.volumePaneRatio = nextRatio;
+    }
+    savePreferences();
     saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'toggle-sma20' && activeTab) {
@@ -1934,6 +1966,26 @@ document.addEventListener('click', async (e) => {
     activeTab.showVolumeProfile = !activeTab.showVolumeProfile;
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
+  } else if (action === 'toggle-pivot-points' && activeTab) {
+    activeTab.showPivotPoints = !activeTab.showPivotPoints;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-future-projection' && activeTab) {
+    activeTab.showFutureProjection = !activeTab.showFutureProjection;
+    if (activeTab.showFutureProjection) {
+      activeTab.scrollOffset = 0;
+    }
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-future-projection-from-modal' && activeTab) {
+    activeTab.showFutureProjection = !activeTab.showFutureProjection;
+    if (activeTab.showFutureProjection) {
+      activeTab.scrollOffset = 0;
+      state.activeModal = null;
+    }
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'toggle-timezone-mode') {
     const nextTz = state.chartPreferences.timezoneMode === 'LOCAL' ? 'UTC' : 'LOCAL';
     state.chartPreferences.timezoneMode = nextTz;

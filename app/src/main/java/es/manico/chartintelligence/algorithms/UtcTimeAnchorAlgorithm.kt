@@ -179,7 +179,7 @@ object UtcTimeAnchorAlgorithm {
         val step = timeframeStepMillis(normTf)
         val cal = getSessionCalendar(symbolCode)
 
-        if (cal == SessionCalendar.US_EQUITIES && (normTf == "H4" || normTf == "D1" || normTf == "1D" || normTf == "D")) {
+        if (cal == SessionCalendar.US_EQUITIES && (normTf == "H1" || normTf == "H4" || normTf == "D1" || normTf == "1D" || normTf == "D")) {
             val nyZdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), nyZone)
             val date = nyZdt.toLocalDate()
             val rthOpen = date.atTime(9, 30).atZone(nyZone).toInstant().toEpochMilli()
@@ -187,12 +187,15 @@ object UtcTimeAnchorAlgorithm {
             if (normTf == "D1" || normTf == "1D" || normTf == "D") {
                 return BucketBounds(openMs = rthOpen, closeMs = rthClose, sessionAnchored = true)
             }
-            val midSplit = date.atTime(13, 30).atZone(nyZone).toInstant().toEpochMilli()
-            return if (epochMillis < midSplit) {
-                BucketBounds(openMs = rthOpen, closeMs = midSplit, sessionAnchored = true)
-            } else {
-                BucketBounds(openMs = midSplit, closeMs = rthClose, sessionAnchored = true)
+            if (epochMillis in rthOpen until rthClose) {
+                val idx = (epochMillis - rthOpen) / step
+                val openMs = rthOpen + idx * step
+                val closeMs = minOf(rthClose, openMs + step)
+                return BucketBounds(openMs = openMs, closeMs = closeMs, sessionAnchored = true)
             }
+            val idx = Math.floorDiv(epochMillis - rthOpen, step)
+            val openMs = rthOpen + idx * step
+            return BucketBounds(openMs = openMs, closeMs = openMs + step, sessionAnchored = true)
         }
 
         if (cal == SessionCalendar.OTC_FX_METALS && (normTf == "D1" || normTf == "1D" || normTf == "D")) {
@@ -220,27 +223,41 @@ object UtcTimeAnchorAlgorithm {
     }
 
     /**
-     * Returns true only if the candle's [openTimeUtcMillis + step] is <= [nowUtcMillis],
+     * Returns true only if the candle's session or canonical bucket close is <= [nowUtcMillis],
      * guaranteeing no incomplete/unclosed candle contaminates storage or indicators.
      */
     fun isCandleClosed(
         openTimeUtcMillis: Long,
         timeframe: String,
-        nowUtcMillis: Long = System.currentTimeMillis()
+        nowUtcMillis: Long = System.currentTimeMillis(),
+        symbolCode: String? = null
     ): Boolean {
+        if (!symbolCode.isNullOrBlank()) {
+            val bounds = getSessionBucketBounds(openTimeUtcMillis, timeframe, symbolCode)
+            if (bounds.sessionAnchored) {
+                return bounds.closeMs <= nowUtcMillis
+            }
+        }
         val step = timeframeStepMillis(timeframe)
         return (openTimeUtcMillis + step) <= nowUtcMillis
     }
 
     fun getSessionCalendar(symbolCode: String = "XAUUSD"): SessionCalendar {
         val code = symbolCode.trim().uppercase()
-        if (code in setOf("BTCUSD", "ETHUSD") || code.endsWith("USDT") ||
-            (code.endsWith("USD") && (code.startsWith("BTC") || code.startsWith("ETH") || code.startsWith("SOL") || code.startsWith("XRP")))
+        val cryptoPrefixes = listOf(
+            "BTC", "ETH", "SOL", "XRP", "DOGE", "ADA", "BNB", "AVAX",
+            "DOT", "LINK", "LTC", "MATIC", "SHIB", "TON", "TRX", "UNI"
+        )
+        if (code in setOf("BTCUSD", "ETHUSD", "SOLUSD", "XRPUSD", "DOGEUSD", "ADAUSD", "BNBUSD") ||
+            code.endsWith("USDT") ||
+            (cryptoPrefixes.any { code.startsWith(it) } && (code.endsWith("USD") || code.endsWith("USDT") || code.endsWith("EUR")))
         ) {
             return SessionCalendar.CRYPTO_24_7
         }
         if (code in usEquitiesSymbols ||
-            code.contains("SPX") || code.contains("NDQ") || code.contains("NDX") || code.contains("US100") || code.contains("US500")
+            code.contains("SPX") || code.contains("NAS") || code.contains("NDQ") ||
+            code.contains("NDX") || code.contains("US100") || code.contains("US500") ||
+            code.contains("US30") || code.contains("DJ30")
         ) {
             return SessionCalendar.US_EQUITIES
         }
@@ -413,29 +430,18 @@ object UtcTimeAnchorAlgorithm {
      * Returns true if [epochMillis] falls outside active trading hours for [symbolCode]:
      * - CRYPTO_24_7: always open (false)
      * - US_EQUITIES: closed outside Mon–Fri 09:30–16:00 America/New_York
-     * - OTC_FX_METALS: closed Friday >= 22:00 UTC, Saturday all day, Sunday < 22:00 UTC
+     * - OTC_FX_METALS: closed Friday >= 17:00 America/New_York, Saturday all day, Sunday < 17:00 America/New_York (DST-aware)
      */
     fun isOtcWeekendClosed(epochMillis: Long, symbolCode: String = "XAUUSD"): Boolean {
         return when (getSessionCalendar(symbolCode)) {
             SessionCalendar.CRYPTO_24_7 -> false
             SessionCalendar.US_EQUITIES -> !isUsEquitySessionOpen(epochMillis)
             SessionCalendar.OTC_FX_METALS -> {
-                val code = symbolCode.trim().uppercase()
-                if (code !in otcWeekendSymbols && !code.startsWith("XAU") && !code.startsWith("XAG") && !code.startsWith("EUR") && !code.contains("BRENT") && !code.contains("OIL")) {
-                    // Fallback weekend closure check for custom non-crypto instruments
-                    val zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneOffset.UTC)
-                    return when (zdt.dayOfWeek) {
-                        DayOfWeek.SATURDAY -> true
-                        DayOfWeek.SUNDAY -> zdt.hour < 22
-                        DayOfWeek.FRIDAY -> zdt.hour >= 22
-                        else -> false
-                    }
-                }
-                val zdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneOffset.UTC)
-                when (zdt.dayOfWeek) {
+                val nyZdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), nyZone)
+                when (nyZdt.dayOfWeek) {
                     DayOfWeek.SATURDAY -> true
-                    DayOfWeek.SUNDAY -> zdt.hour < 22
-                    DayOfWeek.FRIDAY -> zdt.hour >= 22
+                    DayOfWeek.SUNDAY -> nyZdt.hour < 17
+                    DayOfWeek.FRIDAY -> nyZdt.hour >= 17
                     else -> false
                 }
             }

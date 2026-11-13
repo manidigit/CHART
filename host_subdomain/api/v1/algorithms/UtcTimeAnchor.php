@@ -170,9 +170,17 @@ final class UtcTimeAnchor
         return self::snapToOpenUtcMs($epochMs, $timeframe);
     }
 
-    public static function isCandleClosed(int $openTimeUtcMs, string $timeframe, ?int $nowUtcMs = null): bool
-    {
+    public static function isCandleClosed(
+        int $openTimeUtcMs,
+        string $timeframe,
+        ?int $nowUtcMs = null,
+        string $symbolCode = 'XAUUSD'
+    ): bool {
         $now = $nowUtcMs ?? (int) round(microtime(true) * 1000);
+        $bounds = self::getSessionBucketBounds($openTimeUtcMs, $timeframe, $symbolCode);
+        if ($bounds['session_anchored']) {
+            return $bounds['close_ms'] <= $now;
+        }
         $step = self::stepMilliseconds($timeframe);
         return ($openTimeUtcMs + $step) <= $now;
     }
@@ -180,10 +188,35 @@ final class UtcTimeAnchor
     public static function getSessionCalendar(string $symbolCode = 'XAUUSD'): string
     {
         $code = strtoupper(trim($symbolCode));
-        if (in_array($code, ['BTCUSD', 'ETHUSD'], true) || str_ends_with($code, 'USDT')) {
+        $cryptoPrefixes = [
+            'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'BNB', 'AVAX',
+            'DOT', 'LINK', 'LTC', 'MATIC', 'SHIB', 'TON', 'TRX', 'UNI',
+        ];
+        $hasCryptoPrefix = false;
+        foreach ($cryptoPrefixes as $prefix) {
+            if (str_starts_with($code, $prefix)) {
+                $hasCryptoPrefix = true;
+                break;
+            }
+        }
+        if (
+            in_array($code, ['BTCUSD', 'ETHUSD', 'SOLUSD', 'XRPUSD', 'DOGEUSD', 'ADAUSD', 'BNBUSD'], true)
+            || str_ends_with($code, 'USDT')
+            || ($hasCryptoPrefix && (str_ends_with($code, 'USD') || str_ends_with($code, 'USDT') || str_ends_with($code, 'EUR')))
+        ) {
             return self::CALENDAR_CRYPTO_24_7;
         }
-        if (in_array($code, self::US_EQUITIES_SYMBOLS, true)) {
+        if (
+            in_array($code, self::US_EQUITIES_SYMBOLS, true)
+            || str_contains($code, 'SPX')
+            || str_contains($code, 'NAS')
+            || str_contains($code, 'NDQ')
+            || str_contains($code, 'NDX')
+            || str_contains($code, 'US100')
+            || str_contains($code, 'US500')
+            || str_contains($code, 'US30')
+            || str_contains($code, 'DJ30')
+        ) {
             return self::CALENDAR_US_EQUITIES;
         }
         return self::CALENDAR_OTC_FX_METALS;
@@ -236,18 +269,35 @@ final class UtcTimeAnchor
         if ($cal === self::CALENDAR_US_EQUITIES) {
             return !self::isUsEquitySessionOpen($sec);
         }
-        $dow = (int) gmdate('N', $sec); // 1 (Mon) .. 5 (Fri), 6 (Sat), 7 (Sun)
-        $hour = (int) gmdate('G', $sec); // 0 .. 23 UTC
-        if ($dow === 6) {
-            return true;
+        try {
+            $nyTz = new \DateTimeZone('America/New_York');
+            $dtNy = (new \DateTimeImmutable('@' . $sec))->setTimezone($nyTz);
+            $dowNy = (int) $dtNy->format('N'); // 1 (Mon) .. 5 (Fri), 6 (Sat), 7 (Sun)
+            $hourNy = (int) $dtNy->format('G'); // 0 .. 23 NY
+            if ($dowNy === 6) {
+                return true;
+            }
+            if ($dowNy === 7) {
+                return $hourNy < 17;
+            }
+            if ($dowNy === 5) {
+                return $hourNy >= 17;
+            }
+            return false;
+        } catch (\Throwable) {
+            $dow = (int) gmdate('N', $sec);
+            $hour = (int) gmdate('G', $sec);
+            if ($dow === 6) {
+                return true;
+            }
+            if ($dow === 7) {
+                return $hour < 22;
+            }
+            if ($dow === 5) {
+                return $hour >= 22;
+            }
+            return false;
         }
-        if ($dow === 7) {
-            return $hour < 22;
-        }
-        if ($dow === 5) {
-            return $hour >= 22;
-        }
-        return false;
     }
 
     public static function isMarketOpen(int $epochMs, string $symbolCode = 'XAUUSD'): bool

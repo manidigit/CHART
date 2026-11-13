@@ -86,16 +86,18 @@ export const TechnicalIndicators = {
         const start = Math.max(0, i - window + 1);
         let sumPv = 0;
         let sumV = 0;
+        let sumT = 0;
+        let count = 0;
         for (let j = start; j <= i; j++) {
           const c = candles[j];
           const tp = (Number(c.high || 0) + Number(c.low || 0) + Number(c.close || 0)) / 3;
-          const w = Math.max(1, Number(c.volume || 0));
-          sumPv += tp * w;
-          sumV += w;
+          const v = Math.max(0, Number(c.volume || 0));
+          sumPv += tp * v;
+          sumV += v;
+          sumT += tp;
+          count++;
         }
-        const curr = candles[i];
-        const fallbackTp = (Number(curr.high || 0) + Number(curr.low || 0) + Number(curr.close || 0)) / 3;
-        out[i] = sumV > 0 ? sumPv / sumV : fallbackTp;
+        out[i] = sumV > 0 ? sumPv / sumV : sumT / Math.max(1, count);
       }
       return out;
     }
@@ -114,9 +116,9 @@ export const TechnicalIndicators = {
         lastDayKey = dayKey;
       }
       const tp = (Number(c.high || 0) + Number(c.low || 0) + Number(c.close || 0)) / 3;
-      const weight = Math.max(1, Number(c.volume || 0));
-      cumPv += tp * weight;
-      cumV += weight;
+      const vol = Math.max(0, Number(c.volume || 0));
+      cumPv += tp * vol;
+      cumV += vol;
       out[i] = cumV > 0 ? cumPv / cumV : tp;
     }
     return out;
@@ -465,7 +467,7 @@ export const TechnicalIndicators = {
    * Session / Visible Range Volume Profile (VRVP) with POC, VAH, and VAL (70% Value Area).
    */
   computeVolumeProfile(candles = [], numBins = 24, valueAreaRatio = 0.7, volumeType = 'TICK_ESTIMATED') {
-    if (!Array.isArray(candles) || candles.length === 0) return null;
+    if (!Array.isArray(candles) || candles.length < 2) return null;
     const hasRealVolume = this.hasNonZeroVolume(candles);
     const isEstimated = !hasRealVolume || String(volumeType || '').toUpperCase() !== 'REAL_EXCHANGE';
     let minP = Infinity;
@@ -478,7 +480,7 @@ export const TechnicalIndicators = {
     }
     if (!isFinite(minP) || !isFinite(maxP) || maxP <= minP) return null;
 
-    const binCount = Math.max(8, Math.min(48, Math.floor(Number(numBins) || 24)));
+    const binCount = Math.max(4, Math.min(48, Math.floor(Number(numBins) || 24)));
     const binSize = (maxP - minP) / binCount;
     const bins = Array.from({ length: binCount }, (_, idx) => ({
       index: idx,
@@ -499,18 +501,40 @@ export const TechnicalIndicators = {
       const h = Number(c.high || 0);
       const l = Number(c.low || 0);
       const isBull = cl >= o;
-      // If volume is 0 (e.g., some FX feeds), use candle range/activity weight
-      const vol = Math.max(1, Number(c.volume || 0));
+      const rawVol = hasRealVolume ? Math.max(0, Number(c.volume || 0)) : 1.0;
+      if (rawVol <= 0) continue;
 
-      const startBin = Math.max(0, Math.min(binCount - 1, Math.floor((l - minP) / binSize)));
-      const endBin = Math.max(0, Math.min(binCount - 1, Math.floor((h - minP) / binSize)));
-      const spanBins = Math.max(1, endBin - startBin + 1);
-      const share = vol / spanBins;
+      const lowIdx = Math.max(0, Math.min(binCount - 1, Math.floor((l - minP) / binSize)));
+      const highIdx = Math.max(0, Math.min(binCount - 1, Math.floor((h - minP) / binSize)));
+      const loBin = Math.min(lowIdx, highIdx);
+      const hiBin = Math.max(lowIdx, highIdx);
+      const barRange = h - l;
 
-      for (let b = startBin; b <= endBin; b++) {
-        if (isBull) bins[b].bullVol += share;
-        else bins[b].bearVol += share;
-        bins[b].totalVol += share;
+      if (barRange <= 0 || loBin === hiBin) {
+        const share = rawVol / (hiBin - loBin + 1);
+        for (let b = loBin; b <= hiBin; b++) {
+          if (isBull) bins[b].bullVol += share;
+          else bins[b].bearVol += share;
+          bins[b].totalVol += share;
+        }
+      } else {
+        let weightSum = 0;
+        const weights = new Array(hiBin - loBin + 1).fill(0);
+        for (let b = loBin; b <= hiBin; b++) {
+          const bLow = minP + b * binSize;
+          const bHigh = bLow + binSize;
+          const overlap = Math.max(0, Math.min(h, bHigh) - Math.max(l, bLow));
+          weights[b - loBin] = overlap;
+          weightSum += overlap;
+        }
+        const denom = weightSum > 0 ? weightSum : hiBin - loBin + 1;
+        for (let b = loBin; b <= hiBin; b++) {
+          const w = weightSum > 0 ? weights[b - loBin] : 1;
+          const share = rawVol * (w / denom);
+          if (isBull) bins[b].bullVol += share;
+          else bins[b].bearVol += share;
+          bins[b].totalVol += share;
+        }
       }
     }
 
@@ -524,12 +548,11 @@ export const TechnicalIndicators = {
         pocIdx = i;
       }
     }
-    if (maxBinVol <= 0) return null;
+    if (maxBinVol <= 0 || totalVolSum <= 0) return null;
 
     bins[pocIdx].isPoc = true;
     bins[pocIdx].inValueArea = true;
 
-    // Expand outward from POC until 70% of total volume is captured
     const targetVol = totalVolSum * valueAreaRatio;
     let accVol = bins[pocIdx].totalVol;
     let lowIdx = pocIdx;
@@ -973,6 +996,219 @@ export const TechnicalIndicators = {
       const prev = Number(candles[i - period].close || 0);
       out[i] = Math.abs(prev) > 1e-12 ? ((cur - prev) / prev) * 100 : 0;
     }
+    return out;
+  },
+
+  /**
+   * Standard Floor Pivot Points (P, R1, R2, S1, S2) computed from the prior session/period HLC.
+   */
+  computePivotPoints(candles = [], timeframe = 'M15', symbolCode = 'XAUUSD') {
+    if (!Array.isArray(candles) || candles.length < 2) return null;
+    const tf = String(timeframe || 'M15').toUpperCase();
+    let high = -Infinity;
+    let low = Infinity;
+    let close = Number(candles[candles.length - 1].close || 0);
+
+    if (tf === 'D1' || tf === 'W1') {
+      const prevBar = candles[candles.length - 2];
+      high = Number(prevBar.high || 0);
+      low = Number(prevBar.low || 0);
+      close = Number(prevBar.close || 0);
+    } else {
+      const getMs = (c) => Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0));
+      const lastDayKey = PriceFormatter.getSessionDayKey(getMs(candles[candles.length - 1]), symbolCode);
+      let prevDayKey = null;
+      for (let i = candles.length - 1; i >= 0; i--) {
+        const dk = PriceFormatter.getSessionDayKey(getMs(candles[i]), symbolCode);
+        if (dk !== lastDayKey) {
+          if (prevDayKey === null) {
+            prevDayKey = dk;
+            close = Number(candles[i].close || 0);
+          }
+          if (dk === prevDayKey) {
+            high = Math.max(high, Number(candles[i].high || 0));
+            low = Math.min(low, Number(candles[i].low || 0));
+          } else {
+            break;
+          }
+        }
+      }
+      if (!isFinite(high) || !isFinite(low) || high <= 0) {
+        const winStart = Math.max(0, candles.length - 25);
+        const winEnd = Math.max(1, candles.length - 1);
+        for (let i = winStart; i < winEnd; i++) {
+          high = Math.max(high, Number(candles[i].high || 0));
+          low = Math.min(low, Number(candles[i].low || 0));
+          close = Number(candles[i].close || 0);
+        }
+      }
+    }
+
+    if (!isFinite(high) || !isFinite(low) || high < low) return null;
+    const p = (high + low + close) / 3;
+    const range = high - low;
+    return {
+      p,
+      r1: 2 * p - low,
+      s1: 2 * p - high,
+      r2: p + range,
+      s2: p - range,
+    };
+  },
+
+  /**
+   * PRED-09 & PRED-10: Multi-Step Future Candlestick Projection (horizon >= 10, default 30 bars)
+   * across any timeframe (M15, M30, H1, H4, D1, W1).
+   * Combines Holt-Linear trend + damped AR(2) mean-reversion + Fourier dominant harmonic cycle
+   * + deterministic synthetic OHLC body/wick synthesis and sqrt(h)*ATR confidence bands.
+   */
+  computeFutureCandlestickProjection(candles = [], timeframe = 'M15', horizon = 30) {
+    if (!Array.isArray(candles) || candles.length < 10) return [];
+    const hCount = Math.max(10, Math.min(60, Math.round(horizon || 30)));
+    const lookback = Math.min(candles.length, 96);
+    const window = candles.slice(candles.length - lookback);
+    const n = window.length;
+    const closes = window.map((c) => Number(c.close || 0));
+    const lastCandle = window[n - 1];
+    const lastClose = closes[n - 1];
+    if (!isFinite(lastClose) || lastClose <= 0) return [];
+
+    // 1. ATR(14) & average body/wick ratios
+    let trSum = 0;
+    let bodyRatioSum = 0;
+    let upperWickSum = 0;
+    let lowerWickSum = 0;
+    const atrCount = Math.min(24, n - 1);
+    for (let i = n - atrCount; i < n; i++) {
+      const cur = window[i];
+      const prevC = Number(window[i - 1].close || 0);
+      const hi = Number(cur.high || 0);
+      const lo = Number(cur.low || 0);
+      const op = Number(cur.open || 0);
+      const cl = Number(cur.close || 0);
+      const tr = Math.max(hi - lo, Math.abs(hi - prevC), Math.abs(lo - prevC));
+      trSum += tr;
+      const rng = Math.max(hi - lo, lastClose * 0.0005);
+      bodyRatioSum += Math.abs(cl - op) / rng;
+      upperWickSum += (hi - Math.max(op, cl)) / rng;
+      lowerWickSum += (Math.min(op, cl) - lo) / rng;
+    }
+    const atr = Math.max(trSum / Math.max(1, atrCount), lastClose * 0.0012);
+    const avgBodyRatio = Math.max(0.32, Math.min(0.72, bodyRatioSum / Math.max(1, atrCount)));
+    const avgUpperWickRatio = Math.max(0.12, Math.min(0.45, upperWickSum / Math.max(1, atrCount)));
+    const avgLowerWickRatio = Math.max(0.12, Math.min(0.45, lowerWickSum / Math.max(1, atrCount)));
+
+    // 2. Holt Damped Linear Trend on closes
+    const alpha = 0.36;
+    const beta = 0.18;
+    const phi = 0.92;
+    let level = closes[0];
+    let trend = closes.length >= 2 ? closes[1] - closes[0] : 0;
+    for (let i = 1; i < n; i++) {
+      const prevLevel = level;
+      level = alpha * closes[i] + (1 - alpha) * (level + phi * trend);
+      trend = beta * (level - prevLevel) + (1 - beta) * phi * trend;
+    }
+    const clampedTrend = Math.max(-atr * 0.45, Math.min(atr * 0.45, trend));
+
+    // 3. Extract 2 dominant Fourier harmonic components from detrended residuals
+    const residuals = new Array(n);
+    const slopeTotal = (closes[n - 1] - closes[0]) / Math.max(1, n - 1);
+    for (let i = 0; i < n; i++) {
+      residuals[i] = closes[i] - (closes[0] + slopeTotal * i);
+    }
+    const candidatePeriods = [8, 12, 16, 20, 24, 32];
+    let bestP1 = 14;
+    let bestAmp1 = 0;
+    let bestPhase1 = 0;
+    let bestP2 = 24;
+    let bestAmp2 = 0;
+    let bestPhase2 = 0;
+
+    for (const p of candidatePeriods) {
+      if (p >= n) continue;
+      let re = 0;
+      let im = 0;
+      const omega = (2 * Math.PI) / p;
+      for (let t = 0; t < n; t++) {
+        re += residuals[t] * Math.cos(omega * t);
+        im -= residuals[t] * Math.sin(omega * t);
+      }
+      re *= 2 / n;
+      im *= 2 / n;
+      const amp = Math.hypot(re, im);
+      const phase = Math.atan2(-im, re);
+      if (amp > bestAmp1) {
+        bestP2 = bestP1;
+        bestAmp2 = bestAmp1;
+        bestPhase2 = bestPhase1;
+        bestP1 = p;
+        bestAmp1 = amp;
+        bestPhase1 = phase;
+      } else if (amp > bestAmp2) {
+        bestP2 = p;
+        bestAmp2 = amp;
+        bestPhase2 = phase;
+      }
+    }
+    const capAmp1 = Math.min(bestAmp1, atr * 1.35);
+    const capAmp2 = Math.min(bestAmp2, atr * 0.85);
+    const omega1 = (2 * Math.PI) / bestP1;
+    const omega2 = (2 * Math.PI) / bestP2;
+    const baseOsc =
+      capAmp1 * Math.cos(omega1 * (n - 1) + bestPhase1) +
+      capAmp2 * Math.cos(omega2 * (n - 1) + bestPhase2);
+
+    const stepMs = PriceFormatter.stepMilliseconds(timeframe);
+    const lastOpenMs = Number(
+      lastCandle.open_time_utc_ms || (lastCandle.openTimeSec ? lastCandle.openTimeSec * 1000 : Date.now())
+    );
+    const out = [];
+    let prevProjectedClose = lastClose;
+    let phiSum = 0;
+    let phiPower = 1;
+
+    for (let k = 1; k <= hCount; k++) {
+      phiPower *= phi;
+      phiSum += phiPower;
+      const trendOffset = clampedTrend * phiSum;
+      const tFuture = n - 1 + k;
+      const oscRaw =
+        capAmp1 * Math.cos(omega1 * tFuture + bestPhase1) +
+        capAmp2 * Math.cos(omega2 * tFuture + bestPhase2) -
+        baseOsc;
+      const microWave = atr * 0.28 * Math.sin(k * 1.15 + (n % 7));
+      const targetClose = Math.max(lastClose * 0.05, lastClose + trendOffset + oscRaw * 0.65 + microWave);
+      const openP = prevProjectedClose;
+      const closeP = targetClose;
+      const rawBody = Math.abs(closeP - openP);
+      const minBody = atr * 0.22 * avgBodyRatio;
+      const adjClose =
+        rawBody < minBody ? (closeP >= openP ? openP + minBody : openP - minBody) : closeP;
+      const effRange = Math.max(Math.abs(adjClose - openP) / avgBodyRatio, atr * 0.65);
+      const upperWick = effRange * avgUpperWickRatio * (0.85 + 0.3 * Math.abs(Math.cos(k * 0.9)));
+      const lowerWick = effRange * avgLowerWickRatio * (0.85 + 0.3 * Math.abs(Math.sin(k * 1.1)));
+      const highP = Math.max(openP, adjClose) + upperWick;
+      const lowP = Math.max(lastClose * 0.02, Math.min(openP, adjClose) - lowerWick);
+      const bandHalf = atr * 0.85 * Math.sqrt(k);
+      const pctChange = ((adjClose - lastClose) / lastClose) * 100;
+
+      out.push({
+        step: k,
+        stepAhead: k,
+        stepIndex: k,
+        openTimeUtcMs: lastOpenMs + k * stepMs,
+        open: openP,
+        high: highP,
+        low: lowP,
+        close: adjClose,
+        pctChangeFromLast: pctChange,
+        upperBand: adjClose + bandHalf,
+        lowerBand: Math.max(lastClose * 0.02, adjClose - bandHalf),
+      });
+      prevProjectedClose = adjClose;
+    }
+
     return out;
   },
 };

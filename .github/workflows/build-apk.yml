@@ -237,7 +237,7 @@ jobs:
                               }}
                           }}
                       }}
-                      @$pdo->exec("DELETE FROM candles WHERE timeframe != 'D1' AND volume = 0 AND (high_price - low_price) < (open_price * 0.00018)");
+                      @$pdo->exec("DELETE FROM candles WHERE timeframe NOT IN ('D1', 'W1') AND chart_id NOT IN ('chart_btcusd_spot', 'chart_ethusd_spot') AND volume = 0 AND (high_price - low_price) < (open_price * 0.00018) AND (FLOOR(open_time_utc / 1000) MOD 604800) BETWEEN 165600 AND 338399");
                       $sql = "INSERT INTO candles
                           (chart_id, provider_id, timeframe, open_time_utc,
                            open_price, high_price, low_price, close_price, volume, is_closed)

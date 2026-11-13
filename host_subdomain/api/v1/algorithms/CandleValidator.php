@@ -17,7 +17,8 @@ final class CandleValidator
         float|string $high,
         float|string $low,
         float|string $close,
-        float|string $volume = 0.0
+        float|string $volume = 0.0,
+        bool $preserveOpenTime = false
     ): ?array {
         $o = (float) $open;
         $c = (float) $close;
@@ -27,7 +28,7 @@ final class CandleValidator
         $h = max((float) $high, $o, $c);
         $l = min((float) $low, $o, $c);
         $v = max(0.0, (float) $volume);
-        $snappedMs = UtcTimeAnchor::snapToOpenUtcMs($rawOpenMs, $timeframe);
+        $snappedMs = $preserveOpenTime ? $rawOpenMs : UtcTimeAnchor::snapToOpenUtcMs($rawOpenMs, $timeframe);
 
         return [
             'open_time_utc_ms' => $snappedMs,

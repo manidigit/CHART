@@ -276,17 +276,39 @@ export const PriceFormatter = {
 
   isCrypto24x7(symbolCode = '') {
     const code = String(symbolCode || '').trim().toUpperCase();
-    return code === 'BTCUSD' || code === 'ETHUSD' || code.endsWith('USDT');
+    const cryptoPrefixes = [
+      'BTC', 'ETH', 'SOL', 'XRP', 'DOGE', 'ADA', 'BNB', 'AVAX',
+      'DOT', 'LINK', 'LTC', 'MATIC', 'SHIB', 'TON', 'TRX', 'UNI',
+    ];
+    return (
+      ['BTCUSD', 'ETHUSD', 'SOLUSD', 'XRPUSD', 'DOGEUSD', 'ADAUSD', 'BNBUSD'].includes(code) ||
+      code.endsWith('USDT') ||
+      (cryptoPrefixes.some((p) => code.startsWith(p)) &&
+        (code.endsWith('USD') || code.endsWith('USDT') || code.endsWith('EUR')))
+    );
   },
 
   getSessionCalendar(symbolCode = 'XAUUSD') {
     const code = String(symbolCode || '').trim().toUpperCase();
     if (this.isCrypto24x7(code)) return 'CRYPTO_24_7';
     const usEquities = [
-      'SPX500USD', 'NDQ', 'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT',
+      'SPX500USD', 'NAS100', 'NAS100USD', 'US30', 'US500', 'US100',
+      'NDQ', 'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT',
       'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
     ];
-    if (usEquities.includes(code)) return 'US_EQUITIES';
+    if (
+      usEquities.includes(code) ||
+      code.includes('SPX') ||
+      code.includes('NAS') ||
+      code.includes('NDQ') ||
+      code.includes('NDX') ||
+      code.includes('US100') ||
+      code.includes('US500') ||
+      code.includes('US30') ||
+      code.includes('DJ30')
+    ) {
+      return 'US_EQUITIES';
+    }
     return 'OTC_FX_METALS';
   },
 
@@ -428,6 +450,17 @@ export const PriceFormatter = {
     return this.getSessionBucketBounds(epochMs, timeframe, symbolCode).openMs;
   },
 
+  isCandleClosed(openTimeUtcMs, timeframe = 'M15', nowUtcMs = Date.now(), symbolCode = 'XAUUSD') {
+    const openMs = Number(openTimeUtcMs || 0);
+    const nowMs = Number(nowUtcMs || Date.now());
+    const bounds = this.getSessionBucketBounds(openMs, timeframe, symbolCode);
+    if (bounds.sessionAnchored) {
+      return bounds.closeMs <= nowMs;
+    }
+    const step = this.stepMilliseconds(timeframe);
+    return openMs + step <= nowMs;
+  },
+
   getSessionDayKey(epochMs, symbolCode = 'XAUUSD') {
     const ms = Number(epochMs || 0);
     const cal = this.getSessionCalendar(symbolCode);
@@ -442,21 +475,22 @@ export const PriceFormatter = {
     return `${ny.year}-${pad(ny.month)}-${pad(ny.day)}`;
   },
 
+  isOtcWeekendClosed(epochMs = Date.now(), symbolCode = 'XAUUSD') {
+    return !this.isMarketOpen(epochMs, symbolCode);
+  },
+
   isMarketOpen(epochMs = Date.now(), symbolCode = 'XAUUSD') {
     const cal = this.getSessionCalendar(symbolCode);
     if (cal === 'CRYPTO_24_7') return true;
+    const ny = this._getNewYorkParts(epochMs);
     if (cal === 'US_EQUITIES') {
-      const ny = this._getNewYorkParts(epochMs);
       if (ny.weekday === 'Sat' || ny.weekday === 'Sun') return false;
       const mins = ny.hour * 60 + ny.minute;
       return mins >= 9 * 60 + 30 && mins < 16 * 60;
     }
-    const d = new Date(Number(epochMs));
-    const dow = d.getUTCDay(); // 0=Sun..6=Sat
-    const hr = d.getUTCHours();
-    if (dow === 6) return false;
-    if (dow === 0) return hr >= 22;
-    if (dow === 5) return hr < 22;
+    if (ny.weekday === 'Sat') return false;
+    if (ny.weekday === 'Sun') return ny.hour >= 17;
+    if (ny.weekday === 'Fri') return ny.hour < 17;
     return true;
   },
 

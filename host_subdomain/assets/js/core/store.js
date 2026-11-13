@@ -88,6 +88,7 @@ export const DEFAULT_PREFS = {
   defaultDrawingColorHex: '#2962FF',
   defaultDrawingWidthPx: 2.0,
   timezoneMode: 'UTC',
+  volumePaneRatio: 0.22,
   bollingerPeriod: 20,
   bollingerStdDev: 2.0,
   showSma20: false,
@@ -119,6 +120,8 @@ export const DEFAULT_PREFS = {
   showSmcStructure: false,
   showFvg: false,
   showVolumeProfile: false,
+  showPivotPoints: false,
+  showFutureProjection: false,
   pitchforkVariant: 'original',
 };
 
@@ -399,9 +402,73 @@ const DEFAULT_SYMBOLS = [
   createDefaultSymbolEntry('SAN', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
 ];
 
+export function filterSyntheticWeekendAndCombCandles(
+  candles = [],
+  symbolCode = 'XAUUSD',
+  timeframe = 'M15'
+) {
+  if (!Array.isArray(candles) || candles.length === 0) return [];
+  const normTf = String(timeframe || 'M15').toUpperCase();
+  const isIntraday = normTf !== 'D1' && normTf !== 'W1';
+  const calendar = PriceFormatter.getSessionCalendar(symbolCode);
+  if (calendar === 'CRYPTO_24_7') return candles;
+
+  const step1 = candles.filter((bar) => {
+    const openMs = Number(bar.open_time_utc_ms || 0);
+    const o = Number(bar.open || 0);
+    const h = Number(bar.high || 0);
+    const l = Number(bar.low || 0);
+    const v = Number(bar.volume || 0);
+    const range = h - l;
+    const isMicroRange = o > 0 && range / o < 0.00018;
+    const isWeekendClosed =
+      isIntraday &&
+      calendar === 'OTC_FX_METALS' &&
+      PriceFormatter.isOtcWeekendClosed(openMs, symbolCode);
+    if (isWeekendClosed && (v <= 0 || isMicroRange)) {
+      return false;
+    }
+    if (!isIntraday && normTf === 'D1') {
+      const dow = new Date(openMs).getUTCDay();
+      if (dow === 0 || dow === 6) return false;
+    }
+    return true;
+  });
+
+  if (step1.length < 4) return step1;
+
+  const result = [];
+  let i = 0;
+  while (i < step1.length) {
+    const anchor = step1[i];
+    const anchorOpen = Number(anchor.open || 0);
+    let runEnd = i;
+    while (runEnd < step1.length) {
+      const cur = step1[runEnd];
+      const curOpen = Number(cur.open || 0);
+      const curRange = Number(cur.high || 0) - Number(cur.low || 0);
+      const curVol = Number(cur.volume || 0);
+      const sameOpen = anchorOpen > 0 && Math.abs(curOpen - anchorOpen) / anchorOpen < 0.00005;
+      const microSpread = anchorOpen > 0 && curRange / anchorOpen < 0.00018;
+      if (sameOpen && microSpread && curVol <= 0) {
+        runEnd++;
+      } else {
+        break;
+      }
+    }
+    if (runEnd - i >= 3) {
+      i = runEnd;
+    } else {
+      result.push(anchor);
+      i++;
+    }
+  }
+  return result;
+}
+
 export function normalizeCandle(raw, timeframe = 'M15', nowMs = Date.now(), symbolCode = '') {
   if (!raw) return null;
-  const stepMs = PriceFormatter.stepMilliseconds(timeframe);
+  const symUpper = String(symbolCode || raw.symbol || raw.symbol_code || raw.symbolCode || 'XAUUSD').toUpperCase();
   let openMs = Number(
     raw.open_time_utc_ms ||
       (raw.openTimeSec ? Number(raw.openTimeSec) * 1000 : 0) ||
@@ -413,10 +480,9 @@ export function normalizeCandle(raw, timeframe = 'M15', nowMs = Date.now(), symb
   }
   if (!openMs || openMs <= 0) return null;
   openMs = PriceFormatter.snapToOpenUtcMs(openMs, timeframe);
-  if (openMs + stepMs > nowMs) return null;
+  if (!PriceFormatter.isCandleClosed(openMs, timeframe, nowMs, symUpper)) return null;
 
   if (String(timeframe).toUpperCase() === 'D1') {
-    const symUpper = String(symbolCode || raw.symbol || raw.symbol_code || raw.symbolCode || '').toUpperCase();
     const isCrypto24x7 = PriceFormatter.isCrypto24x7(symUpper);
     if (!isCrypto24x7) {
       const dow = new Date(openMs).getUTCDay();
@@ -466,27 +532,43 @@ export function mergeCandlesIdempotent(
     const norm = normalizeCandle(item, timeframe, nowMs, symbolCode);
     if (norm) map.set(norm.open_time_utc_ms, norm);
   }
-  return Array.from(map.values()).sort((a, b) => a.open_time_utc_ms - b.open_time_utc_ms);
+  const sorted = Array.from(map.values()).sort((a, b) => a.open_time_utc_ms - b.open_time_utc_ms);
+  return filterSyntheticWeekendAndCombCandles(sorted, symbolCode || 'XAUUSD', timeframe);
 }
 
 export function resolvePriceBasis(symbolCode = '', providerId = '') {
   const prov = String(providerId || '').toLowerCase();
+  const sym = String(symbolCode || '').toUpperCase();
   if (prov === 'eia_brent_spot') return 'Official FOB Spot';
   if (prov === 'dukascopy') return 'Interbank Spot';
   if (prov === 'biquote') return 'CFD / MT5 Feed';
   if (prov === 'stooq') return 'EOD Historical';
   if (prov === 'yahoo_finance') {
-    const sym = String(symbolCode || '').toUpperCase();
-    if (['NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN', 'SPX500USD', 'NDQ'].includes(sym)) {
+    if (['SPOTBRENT', 'USOIL', 'XAUUSD', 'XAGUSD', 'BRENT_FUTURES'].includes(sym)) {
+      return 'Futures Ref';
+    }
+    if (['BTCUSD', 'ETHUSD', 'EURUSD', 'GBPUSD', 'USDJPY'].includes(sym)) {
+      return 'Spot FX/Crypto';
+    }
+    return 'Official Exchange';
+  }
+  if (prov === 'twelve_data') {
+    if (
+      PriceFormatter.getSessionCalendar(sym) === 'US_EQUITIES' &&
+      sym !== 'SPX500USD' &&
+      sym !== 'NDQ'
+    ) {
       return 'Official Exchange';
     }
     return 'Spot REST';
   }
-  if (prov === 'twelve_data') return 'Spot REST';
   if (prov === 'tvdatafeed') {
-    const sym = String(symbolCode || '').toUpperCase();
-    if (sym === 'SPOTBRENT' || sym === 'BRENT_FUTURES') return 'Futures Ref';
-    return 'CFD Feed';
+    if (sym === 'BRENT_FUTURES') return 'Futures Ref';
+    if (['SPOTBRENT', 'USOIL', 'SPX500USD'].includes(sym)) return 'CFD Feed';
+    if (['XAUUSD', 'XAGUSD', 'EURUSD', 'BTCUSD', 'ETHUSD', 'GBPUSD', 'USDJPY'].includes(sym)) {
+      return 'Spot Feed';
+    }
+    return 'Official Exchange';
   }
   return 'Spot Feed';
 }
@@ -909,6 +991,8 @@ export const INDICATOR_FLAG_KEYS = [
   'showSmcStructure',
   'showFvg',
   'showVolumeProfile',
+  'showPivotPoints',
+  'showFutureProjection',
 ];
 
 export function syncIndicatorsAcrossTabsAndPrefs(sourceTab, skipSave = false) {
@@ -932,6 +1016,13 @@ export function syncIndicatorsAcrossTabsAndPrefs(sourceTab, skipSave = false) {
     state.chartPreferences.bollingerStdDev = bsd;
     for (const tab of state.openTabs) {
       tab.bollingerStdDev = bsd;
+    }
+  }
+  if (sourceTab.volumePaneRatio !== undefined) {
+    const vr = Math.max(0.12, Math.min(0.35, Number(sourceTab.volumePaneRatio) || 0.22));
+    state.chartPreferences.volumePaneRatio = vr;
+    for (const tab of state.openTabs) {
+      tab.volumePaneRatio = vr;
     }
   }
   if (!skipSave) {
@@ -972,6 +1063,7 @@ export function resetAllPreferencesToDefault() {
     tab.activeDrawingColor = DEFAULT_PREFS.defaultDrawingColorHex;
     tab.activeDrawingColorHex = DEFAULT_PREFS.defaultDrawingColorHex;
     tab.activeDrawingWidthPx = DEFAULT_PREFS.defaultDrawingWidthPx;
+    tab.volumePaneRatio = DEFAULT_PREFS.volumePaneRatio || 0.22;
   }
   savePreferences();
   saveOpenTabsToStorage();
@@ -1036,6 +1128,11 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showBollinger: Boolean(t.showBollinger),
     showOverlayMacd: Boolean(t.showOverlayMacd),
     showVolume: t.showVolume !== false,
+    volumePaneRatio: Math.max(
+      0.12,
+      Math.min(0.35, Number(t.volumePaneRatio || state.chartPreferences.volumePaneRatio || 0.22))
+    ),
+    pitchforkVariant: t.pitchforkVariant || 'original',
     showRsi14: Boolean(t.showRsi14),
     showMacd: Boolean(t.showMacd),
     showAtr14: Boolean(t.showAtr14),
@@ -1049,6 +1146,8 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showSmcStructure: Boolean(t.showSmcStructure),
     showFvg: Boolean(t.showFvg),
     showVolumeProfile: Boolean(t.showVolumeProfile),
+    showPivotPoints: Boolean(t.showPivotPoints),
+    showFutureProjection: Boolean(t.showFutureProjection),
     isMagnetMode: Boolean(t.isMagnetMode),
     activeDrawingColor:
       t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',

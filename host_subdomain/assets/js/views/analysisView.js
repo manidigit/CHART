@@ -1,4 +1,5 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.39.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.39.0';
 import { state, escapeHtml } from '../core/store.js?v=1.39.0';
 import { renderSymbolBadge } from './watchlistView.js?v=1.39.0';
 
@@ -204,6 +205,74 @@ export function renderPredictionModal(activeTab, i18n) {
           </div>
         </div>
       </div>
+
+      <!-- 30-Period Multi-Step Future Candlestick Projection (PRED-09 & PRED-10: >= 10 candles on every TF) -->
+      ${(() => {
+        const isFa = i18n.getCurrentLanguage() === 'fa';
+        const tfStr = PriceFormatter.displayTimeframeLabel(activeTab.timeframe || 'M15');
+        const futCandles = TechnicalIndicators.computeFutureCandlestickProjection(
+          activeTab.candles || [],
+          activeTab.timeframe || 'M15',
+          30
+        );
+        const steps = [5, 10, 15, 20, 25, 30]
+          .map((s) => futCandles[s - 1])
+          .filter(Boolean);
+        const isProjActive = Boolean(activeTab.showFutureProjection);
+        return `
+          <div class="card-subtle" style="margin-bottom: 12px; border-color: rgba(245, 158, 11, 0.45);">
+            <div class="row-between" style="margin-bottom: 8px; flex-wrap: wrap; gap: 8px;">
+              <div>
+                <div style="font-size: 12.5px; font-weight: 800; color: var(--gold);">
+                  ${
+                    isFa
+                      ? `پیش‌بینی ۳۰ کندل آینده روی چارت (${tfStr} — حداقل ۱۰ کندل)`
+                      : `Future Projection (30 Periods on ${tfStr} — AI-Generated)`
+                  }
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  ${
+                    isFa
+                      ? 'ترکیب Holt-Linear + AR(2) + هارمونیک فوریه همراه با خط جداکننده PAST | Future Projection روی چارت'
+                      : 'Holt-Linear + Damped AR(2) + Fourier Harmonic OHLC synthesis with Present Bar Divider'
+                  }
+                </div>
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm ${isProjActive ? 'btn-primary' : ''}"
+                data-action="toggle-future-projection-from-modal"
+              >
+                ${
+                  isProjActive
+                    ? isFa
+                      ? 'نمایش ۳۰ کندل آینده روی چارت: فعال ✓'
+                      : 'Future Candlesticks Active ✓'
+                    : isFa
+                      ? 'ترسیم ۳۰ کندل آینده روی چارت'
+                      : 'Render 30 Future Candles on Chart'
+                }
+              </button>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; text-align: center;" class="ltr-num">
+              ${steps
+                .map((fp) => {
+                  const pct = Number(fp.pctChangeFromLast || 0);
+                  const pctStr = `${pct >= 0 ? '+' : ''}${pct.toFixed(1)}%`;
+                  const col = pct >= 0 ? 'var(--bull)' : 'var(--bear)';
+                  return `
+                    <div style="padding: 6px 4px; background: var(--bg); border-radius: 4px; border: 1px solid var(--border);">
+                      <div style="font-size: 10px; font-weight: 700; color: var(--gold);">+${fp.stepIndex}</div>
+                      <strong style="font-size: 11.5px; display: block; margin: 2px 0;">${PriceFormatter.formatPrice(fp.close, dec)}</strong>
+                      <span style="font-size: 10px; color: ${col}; font-weight: 600;">${pctStr}</span>
+                    </div>
+                  `;
+                })
+                .join('')}
+            </div>
+          </div>
+        `;
+      })()}
 
       <!-- 24-Bar Key Volatility & Sentiment -->
       <div class="card-subtle">

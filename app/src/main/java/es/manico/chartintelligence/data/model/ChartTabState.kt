@@ -55,6 +55,8 @@ data class ChartTabState(
     val showSmcStructure: Boolean = false,
     val showFvg: Boolean = false,
     val showVolumeProfile: Boolean = false,
+    val showPivotPoints: Boolean = false,
+    val showFutureProjection: Boolean = false,
     val pitchforkVariant: String = "original",
     val activeDrawingTool: DrawingTool = DrawingTool.CURSOR,
     val activeDrawingColorHex: String = "FF2962FF",

@@ -168,6 +168,8 @@ fun ChartViewScreen(
     onToggleSmcStructure: () -> Unit = {},
     onToggleFvg: () -> Unit = {},
     onToggleVolumeProfile: () -> Unit = {},
+    onTogglePivotPoints: () -> Unit = {},
+    onToggleFutureProjection: () -> Unit = {},
     onToggleEma200: () -> Unit = {},
     onTogglePsar: () -> Unit = {},
     onToggleIchimoku: () -> Unit = {},
@@ -705,7 +707,8 @@ fun ChartViewScreen(
                         activeTab.showAtr14 || activeTab.showAdx14 || activeTab.showStoch14 ||
                         activeTab.showCci20 || activeTab.showWillR14 || activeTab.showObv ||
                         activeTab.showCmf20 || activeTab.showRoc12 ||
-                        activeTab.showSmcStructure || activeTab.showFvg || activeTab.showVolumeProfile
+                        activeTab.showSmcStructure || activeTab.showFvg || activeTab.showVolumeProfile ||
+                        activeTab.showPivotPoints || activeTab.showFutureProjection
                     val hasActiveIndicator = hasOverlayIndicator || activeTab.showVolume
                     Box(
                         modifier = Modifier
@@ -971,7 +974,9 @@ fun ChartViewScreen(
                                         StudyRowSpec("MTF EMA (20)", "Higher-TF Closed Bar Step (Non-Lookahead)", Color(0xFFFACC15), activeTab.showMtfEma, onToggleMtfEma, "chart_mtf_ema_toggle_button"),
                                         StudyRowSpec("Session Killzones (UTC)", "Asia / London / NY & Overlap Highlights", Color(0xFF38BDF8), activeTab.showKillzones, onToggleKillzones, "chart_killzones_toggle_button"),
                                         StudyRowSpec("Bollinger Bands ($bbPeriod, $bbStdDev)", "Volatility Channel ±${bbStdDev}σ", Color(0xFFA855F7), activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button"),
-                                        StudyRowSpec("MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", Color(0xFF2962FF), activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button")
+                                        StudyRowSpec("MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", Color(0xFF2962FF), activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button"),
+                                        StudyRowSpec("Pivot Points (P, R1, R2, S1, S2)", "Classic Prior-Session Floor Pivots", Color(0xFFEAB308), activeTab.showPivotPoints, onTogglePivotPoints, "chart_pivot_points_toggle_button"),
+                                        StudyRowSpec("Future Candlesticks (30 Bars)", "AI-Generated 30-Period Future Projection (h≥10)", Color(0xFFA796D4), activeTab.showFutureProjection, onToggleFutureProjection, "chart_future_projection_toggle_button")
                                     )
 
                                     for (spec in overlaySpecs) {
