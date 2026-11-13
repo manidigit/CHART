@@ -138,7 +138,7 @@
   "settings_group_sources": "Data Sources & Symbols",
   "settings_group_params": "Scales & Chart Options",
   "settings_group_about": "Server Health & About",
-  "settings_about_version": "CHART Intelligence · v1.39.0 (Phase 2 Pro Tools, Indicators, Killzones, Live Intel, Gap Audit & Backup)",
+  "settings_about_version": "CHART Intelligence · v1.40.1 (Phase 2 Pro Tools, Indicators, Killzones, Live Intel, Gap Audit & Backup)",
   "settings_about_desc": "Real-time bi-directional Central Core synchronization of candles, drawings, tabs, and preferences across Web & Android.",
   "settings_sources_subtitle": "Select active data provider (TradingView, biquote, Twelve Data, Dukascopy, Yahoo, Stooq, EIA) and watchlist visibility.",
   "settings_group_colors": "Candlestick & Drawing Line Colors",

@@ -15,9 +15,9 @@ import {
   normalizeHexForWeb,
   normalizeHexForAndroid,
   resolvePriceBasis,
-} from '../core/store.js?v=1.39.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.39.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.39.0';
+} from '../core/store.js?v=1.40.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.40.1';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.40.1';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';

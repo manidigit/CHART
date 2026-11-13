@@ -49,7 +49,7 @@ object TimeframeAggregatorAlgorithm {
             val src = sourceTf.uppercase()
             return when ("$src->$dst") {
                 "M15->M30" -> 2
-                "M15->H1" -> 4
+                "M15->H1" -> if (isUsEq) 2 else 3
                 "M15->H4" -> if (isUsEq) 6 else 8
                 "M30->H1" -> 2
                 "M30->H4" -> if (isUsEq) 3 else 4
