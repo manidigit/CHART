@@ -1031,6 +1031,91 @@ export function syncIndicatorsAcrossTabsAndPrefs(sourceTab, skipSave = false) {
   }
 }
 
+function shiftHexShade(rawHex, lumDelta = 0, satBoost = 0) {
+  const hex = normalizeHexForWeb(rawHex, '#2962FF').slice(1);
+  let r = parseInt(hex.slice(0, 2), 16);
+  let g = parseInt(hex.slice(2, 4), 16);
+  let b = parseInt(hex.slice(4, 6), 16);
+  if (lumDelta > 0) {
+    r = Math.round(r + (255 - r) * lumDelta);
+    g = Math.round(g + (255 - g) * lumDelta);
+    b = Math.round(b + (255 - b) * lumDelta);
+  } else if (lumDelta < 0) {
+    const f = 1 + lumDelta;
+    r = Math.round(r * f);
+    g = Math.round(g * f);
+    b = Math.round(b * f);
+  }
+  if (satBoost !== 0) {
+    const avg = (r + g + b) / 3;
+    r = Math.round(avg + (r - avg) * (1 + satBoost));
+    g = Math.round(avg + (g - avg) * (1 + satBoost));
+    b = Math.round(avg + (b - avg) * (1 + satBoost));
+  }
+  const clamp = (v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, '0').toUpperCase();
+  return `#${clamp(r)}${clamp(g)}${clamp(b)}`;
+}
+
+export function hexToRgba(rawHex, alpha = 1) {
+  const hex = normalizeHexForWeb(rawHex, '#2962FF').slice(1);
+  const r = parseInt(hex.slice(0, 2), 16);
+  const g = parseInt(hex.slice(2, 4), 16);
+  const b = parseInt(hex.slice(4, 6), 16);
+  return `rgba(${r}, ${g}, ${b}, ${alpha})`;
+}
+
+export function getIndicatorColorPalette(prefs = state.chartPreferences) {
+  const p = prefs || DEFAULT_PREFS;
+  const maBase = normalizeHexForWeb(p.indMaFamilyColorHex, DEFAULT_PREFS.indMaFamilyColorHex);
+  const bandsBase = normalizeHexForWeb(p.indBandsFamilyColorHex, DEFAULT_PREFS.indBandsFamilyColorHex);
+  const levelsBase = normalizeHexForWeb(p.indLevelsFamilyColorHex, DEFAULT_PREFS.indLevelsFamilyColorHex);
+  const trendBase = normalizeHexForWeb(p.indTrendFamilyColorHex, DEFAULT_PREFS.indTrendFamilyColorHex);
+  const smcBase = normalizeHexForWeb(p.indSmcFamilyColorHex, DEFAULT_PREFS.indSmcFamilyColorHex);
+
+  return {
+    maBase,
+    bandsBase,
+    levelsBase,
+    trendBase,
+    smcBase,
+    // Category 1: Moving Averages (Cohesive Graduated Spectrum: Light -> Medium -> Deep)
+    sma20: shiftHexShade(maBase, 0.42, 0.1),
+    sma50: shiftHexShade(maBase, 0.14, 0.05),
+    sma200: shiftHexShade(maBase, -0.22, 0.15),
+    ema20: shiftHexShade(maBase, 0.28, 0.12),
+    ema50: maBase,
+    ema200: shiftHexShade(maBase, -0.34, 0.18),
+    mtfEma: shiftHexShade(maBase, 0.52, 0.15),
+    // Category 2: Volatility Channels & Bands
+    bollinger: bandsBase,
+    bollingerFill: hexToRgba(bandsBase, 0.08),
+    bollingerStroke: hexToRgba(bandsBase, 0.72),
+    keltner: shiftHexShade(bandsBase, 0.24, 0.08),
+    keltnerFill: hexToRgba(shiftHexShade(bandsBase, 0.24, 0.08), 0.07),
+    keltnerStroke: hexToRgba(shiftHexShade(bandsBase, 0.24, 0.08), 0.72),
+    donchian: shiftHexShade(bandsBase, -0.18, 0.12),
+    donchianMid: hexToRgba(shiftHexShade(bandsBase, -0.18, 0.12), 0.7),
+    // Category 3: Institutional Benchmarks, Pivots & Volume Profile
+    vwap: shiftHexShade(levelsBase, 0.22, 0.1),
+    pivotP: levelsBase,
+    pivotR1: shiftHexShade(levelsBase, 0.30, 0.08),
+    pivotR2: shiftHexShade(levelsBase, 0.46, 0.12),
+    pivotS1: shiftHexShade(levelsBase, -0.14, 0.08),
+    pivotS2: shiftHexShade(levelsBase, -0.28, 0.12),
+    vrvpPoc: levelsBase,
+    vrvpVa: shiftHexShade(levelsBase, 0.34, 0.1),
+    // Category 4: Trend Systems & Cloud
+    supertrend: trendBase,
+    psar: shiftHexShade(trendBase, 0.26, 0.1),
+    ichimoku: shiftHexShade(trendBase, -0.14, 0.1),
+    overlayMacd: shiftHexShade(trendBase, 0.38, 0.12),
+    // Category 5: Smart Money Concepts (SMC) & Session Killzones
+    smcStructure: smcBase,
+    fvg: shiftHexShade(smcBase, 0.22, 0.08),
+    killzones: shiftHexShade(smcBase, -0.16, 0.08),
+  };
+}
+
 export function resetColorsToDefault() {
   state.chartPreferences.bullColor = DEFAULT_PREFS.bullColor;
   state.chartPreferences.bearColor = DEFAULT_PREFS.bearColor;
@@ -1039,6 +1124,11 @@ export function resetColorsToDefault() {
   state.chartPreferences.vLineColor = DEFAULT_PREFS.vLineColor;
   state.chartPreferences.defaultDrawingColorHex = DEFAULT_PREFS.defaultDrawingColorHex;
   state.chartPreferences.defaultDrawingWidthPx = DEFAULT_PREFS.defaultDrawingWidthPx;
+  state.chartPreferences.indMaFamilyColorHex = DEFAULT_PREFS.indMaFamilyColorHex;
+  state.chartPreferences.indBandsFamilyColorHex = DEFAULT_PREFS.indBandsFamilyColorHex;
+  state.chartPreferences.indLevelsFamilyColorHex = DEFAULT_PREFS.indLevelsFamilyColorHex;
+  state.chartPreferences.indTrendFamilyColorHex = DEFAULT_PREFS.indTrendFamilyColorHex;
+  state.chartPreferences.indSmcFamilyColorHex = DEFAULT_PREFS.indSmcFamilyColorHex;
   for (const tab of state.openTabs) {
     tab.activeDrawingColor = DEFAULT_PREFS.defaultDrawingColorHex;
     tab.activeDrawingColorHex = DEFAULT_PREFS.defaultDrawingColorHex;

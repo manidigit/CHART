@@ -58,13 +58,19 @@ class TvDatafeedAdapter(
         val cleanSymbol = symbolCode.trim().uppercase()
 
         // 1. Fetch persisted historical / delta series from DB-First backend engine
+        val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(normTf)
+        val reqLimit = if (sinceOpenTimeMs > 0L) {
+            (((nowMillis - sinceOpenTimeMs) / stepMs).toInt() + 16).coerceIn(24, safeLimit)
+        } else {
+            safeLimit
+        }
         var syncMode = if (sinceOpenTimeMs > 0L) "DB_CACHE_HIT" else "INITIAL_BACKFILL"
         var fetchedNewBars = 0
         var backendSucceeded = false
         var errorMsg: String? = null
         val backendCandles = runCatching {
             val sinceParam = if (sinceOpenTimeMs > 0L) "&since_ms=$sinceOpenTimeMs" else ""
-            val url = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$cleanSymbol&provider=tvdatafeed&timeframe=$normTf&limit=$safeLimit&refresh=1$sinceParam&_t=$nowMillis"
+            val url = "${AppConfig.API_BASE_URL}candles_sync.php?symbol=$cleanSymbol&provider=tvdatafeed&timeframe=$normTf&limit=$reqLimit&refresh=1$sinceParam&_t=$nowMillis"
             val request = Request.Builder().url(url).get().build()
             httpClient.newCall(request).execute().use { response ->
                 if (!response.isSuccessful) {
@@ -98,7 +104,6 @@ class TvDatafeedAdapter(
             backendCandles.lastOrNull()?.openTimeUtcMillis ?: 0L
         )
         val expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMillis, cleanSymbol)
-        val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(normTf)
 
         // 2. If backend candles are shallow or behind the latest closed UTC bucket, fetch from TradingView WebSocket
         var mergedCandles = backendCandles

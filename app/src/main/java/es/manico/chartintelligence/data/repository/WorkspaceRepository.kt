@@ -524,6 +524,11 @@ class WorkspaceRepository(context: Context) {
                     "FF2962FF"
                 ),
                 defaultDrawingWidthDp = obj.optDouble("defaultDrawingWidthDp", 2.0).toFloat().coerceIn(1.0f, 8.0f),
+                indMaFamilyColorHex = normalizeAndroidHex(obj.optString("indMaFamilyColorHex", "FF2962FF"), "FF2962FF"),
+                indBandsFamilyColorHex = normalizeAndroidHex(obj.optString("indBandsFamilyColorHex", "FFA855F7"), "FFA855F7"),
+                indLevelsFamilyColorHex = normalizeAndroidHex(obj.optString("indLevelsFamilyColorHex", "FFF59E0B"), "FFF59E0B"),
+                indTrendFamilyColorHex = normalizeAndroidHex(obj.optString("indTrendFamilyColorHex", "FF14B8A6"), "FF14B8A6"),
+                indSmcFamilyColorHex = normalizeAndroidHex(obj.optString("indSmcFamilyColorHex", "FFEC4899"), "FFEC4899"),
                 candleFetchLimit = obj.optInt("candleFetchLimit", AppConfig.DEFAULT_CANDLE_FETCH_LIMIT).coerceIn(40, 5000),
                 minVisibleCandles = obj.optInt("minVisibleCandles", 12),
                 maxVisibleCandles = obj.optInt("maxVisibleCandles", AppConfig.MAX_VISIBLE_CANDLES).coerceAtLeast(5000),
@@ -598,6 +603,11 @@ class WorkspaceRepository(context: Context) {
         obj.put("chartGridColorHex", prefsObj.chartGridColorHex)
         obj.put("defaultDrawingColorHex", prefsObj.defaultDrawingColorHex)
         obj.put("defaultDrawingWidthDp", prefsObj.defaultDrawingWidthDp.toDouble())
+        obj.put("indMaFamilyColorHex", prefsObj.indMaFamilyColorHex)
+        obj.put("indBandsFamilyColorHex", prefsObj.indBandsFamilyColorHex)
+        obj.put("indLevelsFamilyColorHex", prefsObj.indLevelsFamilyColorHex)
+        obj.put("indTrendFamilyColorHex", prefsObj.indTrendFamilyColorHex)
+        obj.put("indSmcFamilyColorHex", prefsObj.indSmcFamilyColorHex)
         obj.put("candleFetchLimit", prefsObj.candleFetchLimit.coerceIn(40, 5000))
         obj.put("minVisibleCandles", prefsObj.minVisibleCandles)
         obj.put("maxVisibleCandles", prefsObj.maxVisibleCandles.coerceAtLeast(5000))
@@ -2087,6 +2097,11 @@ class WorkspaceRepository(context: Context) {
             .put("defaultDrawingColorHex", preferences.defaultDrawingColorHex)
             .put("defaultDrawingWidthDp", preferences.defaultDrawingWidthDp.toDouble())
             .put("defaultDrawingWidthPx", preferences.defaultDrawingWidthDp.toDouble())
+            .put("indMaFamilyColorHex", preferences.indMaFamilyColorHex)
+            .put("indBandsFamilyColorHex", preferences.indBandsFamilyColorHex)
+            .put("indLevelsFamilyColorHex", preferences.indLevelsFamilyColorHex)
+            .put("indTrendFamilyColorHex", preferences.indTrendFamilyColorHex)
+            .put("indSmcFamilyColorHex", preferences.indSmcFamilyColorHex)
             .put("candleFetchLimit", preferences.candleFetchLimit)
             .put("zoomStepCandles", preferences.zoomStepCandles)
             .put("drawingHitTolerancePx", preferences.drawingHitTolerancePx.toDouble())
@@ -2305,6 +2320,26 @@ class WorkspaceRepository(context: Context) {
                         "defaultDrawingWidthDp",
                         prefsJson.optDouble("defaultDrawingWidthPx", cur.defaultDrawingWidthDp.toDouble())
                     ).toFloat().coerceIn(1.0f, 8.0f),
+                    indMaFamilyColorHex = normalizeAndroidHex(
+                        prefsJson.optString("indMaFamilyColorHex", ""),
+                        cur.indMaFamilyColorHex
+                    ),
+                    indBandsFamilyColorHex = normalizeAndroidHex(
+                        prefsJson.optString("indBandsFamilyColorHex", ""),
+                        cur.indBandsFamilyColorHex
+                    ),
+                    indLevelsFamilyColorHex = normalizeAndroidHex(
+                        prefsJson.optString("indLevelsFamilyColorHex", ""),
+                        cur.indLevelsFamilyColorHex
+                    ),
+                    indTrendFamilyColorHex = normalizeAndroidHex(
+                        prefsJson.optString("indTrendFamilyColorHex", ""),
+                        cur.indTrendFamilyColorHex
+                    ),
+                    indSmcFamilyColorHex = normalizeAndroidHex(
+                        prefsJson.optString("indSmcFamilyColorHex", ""),
+                        cur.indSmcFamilyColorHex
+                    ),
                     candleFetchLimit = prefsJson.optInt("candleFetchLimit", cur.candleFetchLimit).coerceIn(40, 5000),
                     zoomStepCandles = prefsJson.optInt("zoomStepCandles", cur.zoomStepCandles).coerceIn(2, 30),
                     drawingHitTolerancePx = prefsJson.optDouble("drawingHitTolerancePx", cur.drawingHitTolerancePx.toDouble()).toFloat().coerceIn(12f, 60f),

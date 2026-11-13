@@ -292,6 +292,7 @@ fun ChartIntelligenceApp(
                             onToggleCmf20 = mainViewModel::toggleCmf20OnActiveTab,
                             onToggleRoc12 = mainViewModel::toggleRoc12OnActiveTab,
                             onUpdateBollingerParams = mainViewModel::updateBollingerParams,
+                            onUpdateIndicatorFamilyColor = mainViewModel::updateIndicatorFamilyColor,
                             onZoom = mainViewModel::zoomActiveTab,
                             onPinchZoom = mainViewModel::pinchZoomActiveTab,
                             onFitContent = mainViewModel::fitContentOnActiveTab,

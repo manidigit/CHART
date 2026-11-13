@@ -57,9 +57,8 @@ $pdo = Database::getPdo();
 $chartId = \ChartIntelligence\Providers\ProviderCatalog::resolveChartId($symbol);
 $priceBasis = \ChartIntelligence\Providers\ProviderCatalog::resolvePriceBasis($symbol, $provider);
 
-// 1. Purge only synthetic OTC weekend micro-spread rows (Fri 22:00 UTC .. Sun 21:59 UTC),
-// preserving legitimate quiet weekday Asian-session candles and 24/7 crypto bars.
-if ($pdo !== null && $timeframe !== 'D1' && $timeframe !== 'W1' && UtcTimeAnchor::isOtcWeekendSymbol($symbol)) {
+// 1. Purge synthetic OTC weekend micro-spread rows only during explicit backfill requests
+if ($pdo !== null && $forceBackfill && $timeframe !== 'D1' && $timeframe !== 'W1' && UtcTimeAnchor::isOtcWeekendSymbol($symbol)) {
     try {
         $purgeStmt = $pdo->prepare(
             "DELETE FROM candles
@@ -125,15 +124,17 @@ $fetchedNewBars = 0;
 $upstreamError = '';
 $upstreamSucceeded = false;
 
-$minRequiredBarsForCache = match ($timeframe) {
-    'M15' => 300,
-    'M30' => 240,
-    'H1' => 240,
-    'H4' => 180,
-    'D1' => 250,
-    'W1' => 140,
-    default => 240,
+$minRequiredBarsForCache = $clientSinceMs > 0 ? 30 : match ($timeframe) {
+    'M15' => 180,
+    'M30' => 120,
+    'H1' => 120,
+    'H4' => 90,
+    'D1' => 120,
+    'W1' => 60,
+    default => 120,
 };
+$effectiveSinceMs = max($maxOpenMs, $clientSinceMs);
+$hasSufficientBase = ($pdo !== null && $storedCount >= $minRequiredBarsForCache) || ($clientSinceMs > 0);
 
 $resolveProviderError = static function (string $provId): string {
     return match ($provId) {
@@ -148,26 +149,26 @@ $resolveProviderError = static function (string $provId): string {
     };
 };
 
-if ($pdo !== null && $storedCount >= $minRequiredBarsForCache && !$forceBackfill && $maxOpenMs >= $expectedLastClosedOpenMs) {
-    // [STATE 1: DB_CACHE_HIT] Historical candles up to the latest closed UTC bucket are already stored in MariaDB.
+if ($hasSufficientBase && !$forceBackfill && $effectiveSinceMs >= $expectedLastClosedOpenMs) {
+    // [STATE 1: DB_CACHE_HIT] Historical candles up to the latest closed UTC bucket are already stored.
     // ZERO external API / WebSocket calls are made!
     $syncMode = 'DB_CACHE_HIT';
     $upstreamSucceeded = true;
-} elseif ($pdo !== null && $storedCount >= $minRequiredBarsForCache && !$forceBackfill && $maxOpenMs < $expectedLastClosedOpenMs) {
-    // [STATE 2: DELTA_SYNC] Historical candles exist in MariaDB up to $maxOpenMs.
-    // Fetch ONLY the missing newly closed candles since $maxOpenMs!
+} elseif ($hasSufficientBase && !$forceBackfill && $effectiveSinceMs > 0 && $effectiveSinceMs < $expectedLastClosedOpenMs) {
+    // [STATE 2: DELTA_SYNC] Historical candles exist up to $effectiveSinceMs.
+    // Fetch ONLY the missing newly closed candles since $effectiveSinceMs!
     $syncMode = 'DELTA_SYNC';
-    $missingBars = (int) ceil(max(0, $expectedLastClosedOpenMs - $maxOpenMs) / max(1, $stepMs)) + 6;
+    $missingBars = (int) ceil(max(0, $expectedLastClosedOpenMs - $effectiveSinceMs) / max(1, $stepMs)) + 6;
     $deltaFetchLimit = max(12, min($limit, $missingBars));
 
     $rawDelta = match ($provider) {
-        'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, true, $maxOpenMs),
-        'biquote' => BiquoteAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
-        'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs, $userApiKey),
-        'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
-        'stooq' => StooqAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs, $userApiKey),
-        'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $deltaFetchLimit, $nowMs, $maxOpenMs),
-        'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $maxOpenMs),
+        'tvdatafeed' => TvDatafeedAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, true, $effectiveSinceMs),
+        'biquote' => BiquoteAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $effectiveSinceMs),
+        'twelve_data' => TwelveDataAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $effectiveSinceMs, $userApiKey),
+        'dukascopy' => DukascopyAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $effectiveSinceMs),
+        'stooq' => StooqAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $effectiveSinceMs, $userApiKey),
+        'eia_brent_spot' => EiaBenchmarkAdapter::fetchClosedCandles($symbol, $deltaFetchLimit, $nowMs, $effectiveSinceMs),
+        'yahoo_finance' => YahooFinanceAdapter::fetchClosedCandles($symbol, $timeframe, $deltaFetchLimit, $nowMs, $effectiveSinceMs),
         default => [],
     };
     $upstreamError = $resolveProviderError($provider);

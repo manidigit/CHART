@@ -185,6 +185,7 @@ fun ChartViewScreen(
     onToggleCmf20: () -> Unit = {},
     onToggleRoc12: () -> Unit = {},
     onUpdateBollingerParams: (Int, Float) -> Unit = { _, _ -> },
+    onUpdateIndicatorFamilyColor: (String, String) -> Unit = { _, _ -> },
     onZoom: (Boolean) -> Unit,
     onPinchZoom: (Float) -> Unit,
     onPanCandles: (Int) -> Unit,
@@ -933,91 +934,216 @@ fun ChartViewScreen(
                                         val color: Color,
                                         val checked: Boolean,
                                         val onToggle: () -> Unit,
-                                        val testTag: String
+                                        val testTag: String,
+                                        val badge: String = "──"
                                     )
 
-                                    // Section 1: Main Chart Overlays (Package 2)
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "اندیکاتورهای روی چارت",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "Main Chart Overlays",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                    data class IndicatorFamilySection(
+                                        val key: String,
+                                        val titleFa: String,
+                                        val titleEn: String,
+                                        val activeHex: String,
+                                        val activeColor: Color,
+                                        val paletteOpts: List<String>,
+                                        val specs: List<StudyRowSpec>
+                                    )
 
                                     val bbPeriod = preferences.bollingerPeriod.coerceIn(5, 200)
                                     val bbStdDev = preferences.bollingerStdDev.coerceIn(0.5f, 5.0f)
-                                    val overlaySpecs = listOf(
-                                        StudyRowSpec("EMA 20", "Exponential Moving Average (20)", Color(0xFF38BDF8), activeTab.showEma20, onToggleEma20, "chart_ema20_toggle_button"),
-                                        StudyRowSpec("EMA 50", "Exponential Moving Average (50)", Color(0xFF06B6D4), activeTab.showEma50, onToggleEma50, "chart_ema50_toggle_button"),
-                                        StudyRowSpec("EMA 200", "Institutional EMA Baseline (200)", Color(0xFFF472B6), activeTab.showEma200, onToggleEma200, "chart_ema200_toggle_button"),
-                                        StudyRowSpec("SMA 20", "Simple Moving Average (20)", Color(0xFFF59E0B), activeTab.showSma20, onToggleSma20, "chart_sma20_toggle_button"),
-                                        StudyRowSpec("SMA 50", "Simple Moving Average (50)", Color(0xFF10B981), activeTab.showSma50, onToggleSma50, "chart_sma50_toggle_button"),
-                                        StudyRowSpec("SMA 200", "Institutional Trend Baseline (200)", Color(0xFFF43F5E), activeTab.showSma200, onToggleSma200, "chart_sma200_toggle_button"),
-                                        StudyRowSpec("Supertrend (10, 3)", "ATR Dynamic Trend Ribbon", Color(0xFF22C55E), activeTab.showSupertrend, onToggleSupertrend, "chart_supertrend_toggle_button"),
-                                        StudyRowSpec("Session VWAP", "Volume Weighted Average Price", Color(0xFFEAB308), activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button"),
-                                        StudyRowSpec("Parabolic SAR (0.02, 0.20)", "Trailing Acceleration Stop & Reverse Dots", Color(0xFFFB923C), activeTab.showPsar, onTogglePsar, "chart_psar_toggle_button"),
-                                        StudyRowSpec("Ichimoku Cloud (9,26,52)", "Tenkan, Kijun, Kumo Cloud & Chikou", Color(0xFF14B8A6), activeTab.showIchimoku, onToggleIchimoku, "chart_ichimoku_toggle_button"),
-                                        StudyRowSpec("Keltner Channels (20,10,2)", "EMA 20 ± 2.0× Wilder ATR 10 Channel", Color(0xFF0EA5E9), activeTab.showKeltner, onToggleKeltner, "chart_keltner_toggle_button"),
-                                        StudyRowSpec("Donchian Channels (20)", "20-Bar High/Low Breakout Channel", Color(0xFF6366F1), activeTab.showDonchian, onToggleDonchian, "chart_donchian_toggle_button"),
-                                        StudyRowSpec("MTF EMA (20)", "Higher-TF Closed Bar Step (Non-Lookahead)", Color(0xFFFACC15), activeTab.showMtfEma, onToggleMtfEma, "chart_mtf_ema_toggle_button"),
-                                        StudyRowSpec("Session Killzones (UTC)", "Asia / London / NY & Overlap Highlights", Color(0xFF38BDF8), activeTab.showKillzones, onToggleKillzones, "chart_killzones_toggle_button"),
-                                        StudyRowSpec("Bollinger Bands ($bbPeriod, $bbStdDev)", "Volatility Channel ±${bbStdDev}σ", Color(0xFFA855F7), activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button"),
-                                        StudyRowSpec("MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", Color(0xFF2962FF), activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button"),
-                                        StudyRowSpec("Pivot Points (P, R1, R2, S1, S2)", "Classic Prior-Session Floor Pivots", Color(0xFFEAB308), activeTab.showPivotPoints, onTogglePivotPoints, "chart_pivot_points_toggle_button"),
-                                        StudyRowSpec("Future Candlesticks (30 Bars)", "AI-Generated 30-Period Future Projection (h≥10)", Color(0xFFA796D4), activeTab.showFutureProjection, onToggleFutureProjection, "chart_future_projection_toggle_button")
+
+                                    val familySections = listOf(
+                                        IndicatorFamilySection(
+                                            key = "ma",
+                                            titleFa = "۱. خانواده میانگین‌های متحرک",
+                                            titleEn = "Moving Averages Spectrum",
+                                            activeHex = preferences.indMaFamilyColorHex,
+                                            activeColor = preferences.ema50Color,
+                                            paletteOpts = listOf("#2962FF", "#0EA5E9", "#06B6D4", "#6366F1", "#10B981", "#F59E0B", "#EC4899", "#F43F5E"),
+                                            specs = listOf(
+                                                StudyRowSpec("EMA 20", "Exponential Moving Average (20) — خط پیوسته روشن", preferences.ema20Color, activeTab.showEma20, onToggleEma20, "chart_ema20_toggle_button", "──"),
+                                                StudyRowSpec("EMA 50", "Exponential Moving Average (50) — خط پیوسته اصلی", preferences.ema50Color, activeTab.showEma50, onToggleEma50, "chart_ema50_toggle_button", "━━"),
+                                                StudyRowSpec("EMA 200", "Institutional EMA Baseline (200) — خط ضخیم تیره", preferences.ema200Color, activeTab.showEma200, onToggleEma200, "chart_ema200_toggle_button", "━━"),
+                                                StudyRowSpec("SMA 20", "Simple Moving Average (20) — خط‌چین روشن", preferences.sma20Color, activeTab.showSma20, onToggleSma20, "chart_sma20_toggle_button", "╌╌"),
+                                                StudyRowSpec("SMA 50", "Simple Moving Average (50) — خط‌چین میانی", preferences.sma50Color, activeTab.showSma50, onToggleSma50, "chart_sma50_toggle_button", "╌╌"),
+                                                StudyRowSpec("SMA 200", "Institutional Trend Baseline (200) — خط‌چین ضخیم", preferences.sma200Color, activeTab.showSma200, onToggleSma200, "chart_sma200_toggle_button", "━╌"),
+                                                StudyRowSpec("MTF EMA (20)", "Higher-TF Closed Bar Step (Non-Lookahead)", preferences.mtfEmaColor, activeTab.showMtfEma, onToggleMtfEma, "chart_mtf_ema_toggle_button", "⎍⎍")
+                                            )
+                                        ),
+                                        IndicatorFamilySection(
+                                            key = "bands",
+                                            titleFa = "۲. کانال‌ها و باندهای نوسان",
+                                            titleEn = "Volatility Channels Spectrum",
+                                            activeHex = preferences.indBandsFamilyColorHex,
+                                            activeColor = preferences.bollingerColor,
+                                            paletteOpts = listOf("#A855F7", "#8B5CF6", "#D946EF", "#6366F1", "#3B82F6", "#14B8A6", "#F59E0B", "#EC4899"),
+                                            specs = listOf(
+                                                StudyRowSpec("Bollinger Bands ($bbPeriod, $bbStdDev)", "Volatility Channel ±${bbStdDev}σ", preferences.bollingerColor, activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button", "≈≈"),
+                                                StudyRowSpec("Keltner Channels (20,10,2)", "EMA 20 ± 2.0× Wilder ATR 10 Channel", preferences.keltnerColor, activeTab.showKeltner, onToggleKeltner, "chart_keltner_toggle_button", "≈≈"),
+                                                StudyRowSpec("Donchian Channels (20)", "20-Bar High/Low Breakout Channel", preferences.donchianColor, activeTab.showDonchian, onToggleDonchian, "chart_donchian_toggle_button", "╌╌")
+                                            )
+                                        ),
+                                        IndicatorFamilySection(
+                                            key = "levels",
+                                            titleFa = "۳. سطوح کلیدی، پیوت و پروفایل حجم",
+                                            titleEn = "Levels, Pivots & VRVP Spectrum",
+                                            activeHex = preferences.indLevelsFamilyColorHex,
+                                            activeColor = preferences.vwapColor,
+                                            paletteOpts = listOf("#F59E0B", "#EAB308", "#F97316", "#FB923C", "#10B981", "#06B6D4", "#38BDF8", "#A855F7"),
+                                            specs = listOf(
+                                                StudyRowSpec("Session VWAP", "Volume Weighted Average Price", preferences.vwapColor, activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button", "╌╌"),
+                                                StudyRowSpec("Pivot Points (P, R1, R2, S1, S2)", "Classic Prior-Session Floor Pivots (برچسب تراز بدون تداخل)", preferences.pivotPColor, activeTab.showPivotPoints, onTogglePivotPoints, "chart_pivot_points_toggle_button", "P/R/S"),
+                                                StudyRowSpec("Session Volume Profile (VRVP)", "POC, VAH & VAL (70% Value Area)", preferences.vrvpPocColor, activeTab.showVolumeProfile, onToggleVolumeProfile, "chart_vp_toggle_button", "▋POC")
+                                            )
+                                        ),
+                                        IndicatorFamilySection(
+                                            key = "trend",
+                                            titleFa = "۴. سیستم‌های روند، ایچیموکو و پیش‌بینی",
+                                            titleEn = "Trend Systems & Cloud Spectrum",
+                                            activeHex = preferences.indTrendFamilyColorHex,
+                                            activeColor = preferences.ichimokuColor,
+                                            paletteOpts = listOf("#14B8A6", "#10B981", "#22C55E", "#06B6D4", "#3B82F6", "#8B5CF6", "#F97316", "#F43F5E"),
+                                            specs = listOf(
+                                                StudyRowSpec("Supertrend (10, 3)", "ATR Dynamic Trend Ribbon", preferences.supertrendColor, activeTab.showSupertrend, onToggleSupertrend, "chart_supertrend_toggle_button", "▲▼"),
+                                                StudyRowSpec("Parabolic SAR (0.02, 0.20)", "Trailing Acceleration Stop & Reverse Dots", preferences.psarColor, activeTab.showPsar, onTogglePsar, "chart_psar_toggle_button", "•••"),
+                                                StudyRowSpec("Ichimoku Cloud (9,26,52)", "Tenkan, Kijun, Kumo Cloud & Chikou", preferences.ichimokuColor, activeTab.showIchimoku, onToggleIchimoku, "chart_ichimoku_toggle_button", "☁"),
+                                                StudyRowSpec("MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", preferences.overlayMacdColor, activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button", "ılı"),
+                                                StudyRowSpec("Future Candlesticks (30 Bars)", "AI-Generated 30-Period Future Projection (h≥10)", Color(0xFFA796D4), activeTab.showFutureProjection, onToggleFutureProjection, "chart_future_projection_toggle_button", "🔮")
+                                            )
+                                        ),
+                                        IndicatorFamilySection(
+                                            key = "smc",
+                                            titleFa = "۵. ساختار بازار هوشمند و کیل‌زون‌ها",
+                                            titleEn = "SMC & Session Killzones Spectrum",
+                                            activeHex = preferences.indSmcFamilyColorHex,
+                                            activeColor = preferences.smcStructureColor,
+                                            paletteOpts = listOf("#EC4899", "#F43F5E", "#D946EF", "#A855F7", "#14B8A6", "#38BDF8", "#F59E0B", "#22C55E"),
+                                            specs = listOf(
+                                                StudyRowSpec("BOS / CHoCH & EQH / EQL", "Break of Structure, Change of Character & Equal Highs/Lows", preferences.smcStructureColor, activeTab.showSmcStructure, onToggleSmcStructure, "chart_smc_toggle_button", "BOS"),
+                                                StudyRowSpec("FVG / Imbalance Zones", "3-Candle Bullish & Bearish Fair Value Gaps", preferences.fvgColor, activeTab.showFvg, onToggleFvg, "chart_fvg_toggle_button", "▭"),
+                                                StudyRowSpec("Session Killzones (UTC)", "Asia / London / NY & Overlap Highlights", preferences.killzonesColor, activeTab.showKillzones, onToggleKillzones, "chart_killzones_toggle_button", "🕒")
+                                            )
+                                        )
                                     )
 
-                                    for (spec in overlaySpecs) {
-                                        Row(
+                                    for (section in familySections) {
+                                        Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .heightIn(min = 48.dp)
-                                                .clickable(onClick = spec.onToggle)
-                                                .padding(vertical = 2.dp)
-                                                .testTag(spec.testTag),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.55f))
+                                                .border(1.dp, section.activeColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
+                                                .padding(10.dp),
+                                            verticalArrangement = Arrangement.spacedBy(6.dp)
                                         ) {
                                             Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(10.dp)
-                                                        .clip(CircleShape)
-                                                        .background(spec.color)
+                                                Text(
+                                                    text = section.titleFa,
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    color = section.activeColor,
+                                                    fontWeight = FontWeight.Bold
                                                 )
-                                                Column {
-                                                    Text(
-                                                        text = spec.title,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        fontFamily = JetBrainsMonoFontFamily,
-                                                        fontWeight = FontWeight.SemiBold
-                                                    )
-                                                    Text(
-                                                        text = spec.subtitle,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                Text(
+                                                    text = section.titleEn,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+
+                                            // Inline Family Color Spectrum Picker
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "طیف رنگ دسته:",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                for (hexOpt in section.paletteOpts) {
+                                                    val isSel = section.activeHex.equals(hexOpt, ignoreCase = true)
+                                                    val swatchColor = try {
+                                                        Color(android.graphics.Color.parseColor(hexOpt))
+                                                    } catch (_: Exception) {
+                                                        section.activeColor
+                                                    }
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(if (isSel) 24.dp else 20.dp)
+                                                            .clip(CircleShape)
+                                                            .background(swatchColor)
+                                                            .border(
+                                                                width = if (isSel) 2.dp else 1.dp,
+                                                                color = if (isSel) Color.White else palette.cardBorder,
+                                                                shape = CircleShape
+                                                            )
+                                                            .clickable { onUpdateIndicatorFamilyColor(section.key, hexOpt) }
+                                                            .testTag("ind_family_${section.key}_color_${hexOpt.removePrefix("#").lowercase()}")
                                                     )
                                                 }
                                             }
-                                            Switch(
-                                                checked = spec.checked,
-                                                onCheckedChange = { spec.onToggle() }
-                                            )
+
+                                            for (spec in section.specs) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .heightIn(min = 48.dp)
+                                                        .clickable(onClick = spec.onToggle)
+                                                        .padding(vertical = 2.dp)
+                                                        .testTag(spec.testTag),
+                                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier.weight(1f),
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(4.dp))
+                                                                .background(spec.color.copy(alpha = 0.16f))
+                                                                .border(1.dp, spec.color.copy(alpha = 0.65f), RoundedCornerShape(4.dp))
+                                                                .padding(horizontal = 5.dp, vertical = 2.dp),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                text = spec.badge,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontSize = 9.sp,
+                                                                fontFamily = JetBrainsMonoFontFamily,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = spec.color
+                                                            )
+                                                        }
+                                                        Column {
+                                                            Text(
+                                                                text = spec.title,
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                fontFamily = JetBrainsMonoFontFamily,
+                                                                fontWeight = FontWeight.SemiBold,
+                                                                color = if (spec.checked) spec.color else MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                            Text(
+                                                                text = spec.subtitle,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
+                                                    Switch(
+                                                        checked = spec.checked,
+                                                        onCheckedChange = { spec.onToggle() }
+                                                    )
+                                                }
+                                            }
                                         }
                                     }
 
@@ -1035,7 +1161,7 @@ fun ChartViewScreen(
                                             text = "تنظیمات باندهای بولینگر (Bollinger Period & StdDev):",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = Color(0xFFA855F7)
+                                            color = preferences.bollingerColor
                                         )
                                         Row(
                                             modifier = Modifier
@@ -1055,8 +1181,8 @@ fun ChartViewScreen(
                                                 Box(
                                                     modifier = Modifier
                                                         .clip(RoundedCornerShape(6.dp))
-                                                        .background(if (sel) Color(0xFFA855F7).copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
-                                                        .border(1.dp, if (sel) Color(0xFFA855F7) else palette.cardBorder, RoundedCornerShape(6.dp))
+                                                        .background(if (sel) preferences.bollingerColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
+                                                        .border(1.dp, if (sel) preferences.bollingerColor else palette.cardBorder, RoundedCornerShape(6.dp))
                                                         .clickable { onUpdateBollingerParams(pOpt, bbStdDev) }
                                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                                         .testTag("bb_period_chip_$pOpt")
@@ -1066,7 +1192,7 @@ fun ChartViewScreen(
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontFamily = JetBrainsMonoFontFamily,
                                                         fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (sel) Color(0xFFA855F7) else MaterialTheme.colorScheme.onSurface
+                                                        color = if (sel) preferences.bollingerColor else MaterialTheme.colorScheme.onSurface
                                                     )
                                                 }
                                             }
@@ -1089,8 +1215,8 @@ fun ChartViewScreen(
                                                 Box(
                                                     modifier = Modifier
                                                         .clip(RoundedCornerShape(6.dp))
-                                                        .background(if (sel) Color(0xFFA855F7).copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
-                                                        .border(1.dp, if (sel) Color(0xFFA855F7) else palette.cardBorder, RoundedCornerShape(6.dp))
+                                                        .background(if (sel) preferences.bollingerColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
+                                                        .border(1.dp, if (sel) preferences.bollingerColor else palette.cardBorder, RoundedCornerShape(6.dp))
                                                         .clickable { onUpdateBollingerParams(bbPeriod, sdOpt) }
                                                         .padding(horizontal = 8.dp, vertical = 4.dp)
                                                         .testTag("bb_stddev_chip_${(sdOpt * 10).toInt()}")
@@ -1100,80 +1226,10 @@ fun ChartViewScreen(
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontFamily = JetBrainsMonoFontFamily,
                                                         fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (sel) Color(0xFFA855F7) else MaterialTheme.colorScheme.onSurface
+                                                        color = if (sel) preferences.bollingerColor else MaterialTheme.colorScheme.onSurface
                                                     )
                                                 }
                                             }
-                                        }
-                                    }
-
-                                    HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
-
-                                    // Section 2: Smart Money Concepts (SMC) & Volume Profile (Package 3)
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "ساختار بازار و پروفایل حجم",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "SMC & VRVP",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    val smcSpecs = listOf(
-                                        StudyRowSpec("BOS / CHoCH & EQH / EQL", "Break of Structure, Change of Character & Equal Highs/Lows", Color(0xFF14B8A6), activeTab.showSmcStructure, onToggleSmcStructure, "chart_smc_toggle_button"),
-                                        StudyRowSpec("FVG / Imbalance Zones", "3-Candle Bullish & Bearish Fair Value Gaps", Color(0xFF6366F1), activeTab.showFvg, onToggleFvg, "chart_fvg_toggle_button"),
-                                        StudyRowSpec("Session Volume Profile (VRVP)", "POC, VAH & VAL (70% Value Area)", Color(0xFFF97316), activeTab.showVolumeProfile, onToggleVolumeProfile, "chart_vp_toggle_button")
-                                    )
-
-                                    for (spec in smcSpecs) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(min = 48.dp)
-                                                .clickable(onClick = spec.onToggle)
-                                                .padding(vertical = 2.dp)
-                                                .testTag(spec.testTag),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(10.dp)
-                                                        .clip(CircleShape)
-                                                        .background(spec.color)
-                                                )
-                                                Column {
-                                                    Text(
-                                                        text = spec.title,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        fontFamily = JetBrainsMonoFontFamily,
-                                                        fontWeight = FontWeight.SemiBold
-                                                    )
-                                                    Text(
-                                                        text = spec.subtitle,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                    )
-                                                }
-                                            }
-                                            Switch(
-                                                checked = spec.checked,
-                                                onCheckedChange = { spec.onToggle() }
-                                            )
                                         }
                                     }
 

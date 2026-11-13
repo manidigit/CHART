@@ -835,7 +835,7 @@ fun CandlestickCanvas(
                             }
                             val pocY = priceToY(visibleVolumeProfile.pocPrice)
                             drawLine(
-                                color = Color(0xFFF97316).copy(alpha = 0.88f),
+                                color = preferences.vrvpPocColor.copy(alpha = 0.88f),
                                 start = Offset(canvasW * 0.40f, pocY),
                                 end = Offset(canvasW, pocY),
                                 strokeWidth = 1.6f
@@ -843,14 +843,14 @@ fun CandlestickCanvas(
                             val vahY = priceToY(visibleVolumeProfile.vahPrice)
                             val valY = priceToY(visibleVolumeProfile.valPrice)
                             drawLine(
-                                color = Color(0xFF38BDF8).copy(alpha = 0.65f),
+                                color = preferences.vrvpVaColor.copy(alpha = 0.65f),
                                 start = Offset(canvasW * 0.55f, vahY),
                                 end = Offset(canvasW, vahY),
                                 strokeWidth = 1.1f,
                                 pathEffect = dashEffect
                             )
                             drawLine(
-                                color = Color(0xFF38BDF8).copy(alpha = 0.65f),
+                                color = preferences.vrvpVaColor.copy(alpha = 0.65f),
                                 start = Offset(canvasW * 0.55f, valY),
                                 end = Offset(canvasW, valY),
                                 strokeWidth = 1.1f,
@@ -926,19 +926,19 @@ fun CandlestickCanvas(
                                     bbFillPath.lineTo(x, priceToY(bb.lower))
                                 }
                                 bbFillPath.close()
-                                val bbColor = Color(0xFFA855F7)
+                                val bbColor = preferences.bollingerColor
                                 drawPath(
                                     path = bbFillPath,
                                     color = bbColor.copy(alpha = 0.09f)
                                 )
                                 drawPath(
                                     path = bbUpperPath,
-                                    color = bbColor.copy(alpha = 0.80f),
+                                    color = bbColor.copy(alpha = 0.82f),
                                     style = Stroke(width = 1.5f)
                                 )
                                 drawPath(
                                     path = bbLowerPath,
-                                    color = bbColor.copy(alpha = 0.80f),
+                                    color = bbColor.copy(alpha = 0.82f),
                                     style = Stroke(width = 1.5f)
                                 )
                             }
@@ -1037,21 +1037,21 @@ fun CandlestickCanvas(
                         }
 
                         // 5a. SMA 20 / 50 / 200 & EMA 20 / 50 / 200 & MTF EMA & Channels & Session VWAP
-                        if (tab.showSma20) drawSeriesLine(visibleSma20, Color(0xFFF59E0B), 2.0f)
-                        if (tab.showSma50) drawSeriesLine(visibleSma50, Color(0xFF10B981), 2.0f)
-                        if (tab.showSma200) drawSeriesLine(visibleSma200, Color(0xFFF43F5E), 2.3f)
-                        if (tab.showEma20) drawSeriesLine(visibleEma20, Color(0xFF38BDF8), 1.9f)
-                        if (tab.showEma50) drawSeriesLine(visibleEma50, Color(0xFF06B6D4), 2.0f)
-                        if (tab.showEma200) drawSeriesLine(visibleEma200, Color(0xFFF472B6), 2.2f)
-                        if (tab.showMtfEma) drawSeriesLine(visibleMtfEma, Color(0xFFFACC15), 2.1f)
-                        if (tab.showVwap) drawSeriesLine(visibleVwap, Color(0xFFEAB308), 1.9f, dashed = true)
+                        if (tab.showSma20) drawSeriesLine(visibleSma20, preferences.sma20Color, 1.8f, dashed = true)
+                        if (tab.showSma50) drawSeriesLine(visibleSma50, preferences.sma50Color, 2.0f, dashed = true)
+                        if (tab.showSma200) drawSeriesLine(visibleSma200, preferences.sma200Color, 2.5f, dashed = true)
+                        if (tab.showEma20) drawSeriesLine(visibleEma20, preferences.ema20Color, 1.8f)
+                        if (tab.showEma50) drawSeriesLine(visibleEma50, preferences.ema50Color, 2.1f)
+                        if (tab.showEma200) drawSeriesLine(visibleEma200, preferences.ema200Color, 2.6f)
+                        if (tab.showMtfEma) drawSeriesLine(visibleMtfEma, preferences.mtfEmaColor, 2.1f, dashed = true)
+                        if (tab.showVwap) drawSeriesLine(visibleVwap, preferences.vwapColor, 1.9f, dashed = true)
                         if (tab.showKeltner) {
                             Phase2IndicatorRenderer.drawBandOverlay(
                                 scope = this,
                                 visibleBands = visibleKeltner,
                                 slotW = slotW,
                                 priceToY = ::priceToY,
-                                lineColor = Color(0xFF0EA5E9),
+                                lineColor = preferences.keltnerColor,
                                 fillAlpha = 0.08f,
                                 dashEffect = dashEffect
                             )
@@ -1062,7 +1062,7 @@ fun CandlestickCanvas(
                                 visibleBands = visibleDonchian,
                                 slotW = slotW,
                                 priceToY = ::priceToY,
-                                lineColor = Color(0xFF6366F1),
+                                lineColor = preferences.donchianColor,
                                 fillAlpha = 0.0f,
                                 dashEffect = dashEffect
                             )
@@ -1096,7 +1096,7 @@ fun CandlestickCanvas(
                                 val y1 = priceToY(prev.value)
                                 val x2 = (i + 0.5f) * slotW
                                 val y2 = priceToY(cur.value)
-                                val stColor = if (cur.direction == 1) Color(0xFF22C55E) else Color(0xFFEF4444)
+                                val stColor = if (cur.direction == 1) preferences.supertrendColor else bearColor
                                 drawLine(
                                     color = stColor,
                                     start = Offset(x1, y1),
@@ -1115,7 +1115,7 @@ fun CandlestickCanvas(
                                 val x1 = (localStart + 0.5f) * slotW
                                 val x2 = (localBreak + 0.5f) * slotW
                                 val y = priceToY(st.price)
-                                val stColor = if (st.direction == 1) Color(0xFF22C55E) else Color(0xFFEF4444)
+                                val stColor = if (st.direction == 1) preferences.smcStructureColor else preferences.fvgColor
                                 drawLine(
                                     color = stColor,
                                     start = Offset(x1, y),
@@ -1136,7 +1136,7 @@ fun CandlestickCanvas(
                                 val x1 = (localStart + 0.5f) * slotW
                                 val x2 = (localEnd + 0.5f) * slotW
                                 val y = priceToY(eq.price)
-                                val eqColor = if (eq.type == "EQH") Color(0xFFF59E0B) else Color(0xFF38BDF8)
+                                val eqColor = if (eq.type == "EQH") preferences.smcStructureColor else preferences.killzonesColor
                                 drawLine(
                                     color = eqColor,
                                     start = Offset(x1, y),
@@ -1208,21 +1208,21 @@ fun CandlestickCanvas(
                                 }
                             }
                             if (mStarted) {
-                                drawPath(path = ovMacdPath, color = Color(0xFF2962FF), style = Stroke(width = 2.0f))
+                                drawPath(path = ovMacdPath, color = preferences.overlayMacdColor, style = Stroke(width = 2.0f))
                             }
                             if (sStarted) {
-                                drawPath(path = ovSigPath, color = Color(0xFFFF6D00), style = Stroke(width = 1.8f))
+                                drawPath(path = ovSigPath, color = preferences.psarColor, style = Stroke(width = 1.8f))
                             }
                         }
 
                         // 5e. IND-01: Classic Floor Pivot Points (P, R1, R2, S1, S2) Horizontal Dashed Lines
                         if (tab.showPivotPoints && pivotPoints != null) {
                             val ppLevels = listOf(
-                                pivotPoints.r2 to Color(0xFFEF4444),
-                                pivotPoints.r1 to Color(0xFFF97316),
-                                pivotPoints.p to Color(0xFFEAB308),
-                                pivotPoints.s1 to Color(0xFF22C55E),
-                                pivotPoints.s2 to Color(0xFF10B981)
+                                pivotPoints.r2 to preferences.pivotR2Color,
+                                pivotPoints.r1 to preferences.pivotR1Color,
+                                pivotPoints.p to preferences.pivotPColor,
+                                pivotPoints.s1 to preferences.pivotS1Color,
+                                pivotPoints.s2 to preferences.pivotS2Color
                             )
                             for ((ppVal, ppColor) in ppLevels) {
                                 val py = priceToY(ppVal)
@@ -1904,33 +1904,33 @@ fun CandlestickCanvas(
                         }
                         if (tab.showSma20 && inspectedSma20 != null) {
                             Text(
-                                text = "SMA20 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma20), tab.decimals)}",
+                                text = "╌ SMA20 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma20), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF59E0B)
+                                color = preferences.sma20Color
                             )
                         }
                         if (tab.showSma50 && inspectedSma50 != null) {
                             Text(
-                                text = "SMA50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma50), tab.decimals)}",
+                                text = "╌ SMA50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma50), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF10B981)
+                                color = preferences.sma50Color
                             )
                         }
                         if (tab.showSma200) {
                             if (inspectedSma200 != null) {
                                 Text(
-                                    text = "SMA200 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma200), tab.decimals)}",
+                                    text = "━ SMA200 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedSma200), tab.decimals)}",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
                                     fontFamily = JetBrainsMonoFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFF43F5E)
+                                    color = preferences.sma200Color
                                 )
                             } else if (fullCloses.size < 200) {
                                 Text(
@@ -1939,29 +1939,29 @@ fun CandlestickCanvas(
                                     fontSize = 10.sp,
                                     fontFamily = JetBrainsMonoFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    color = Color(0xFFF59E0B),
+                                    color = preferences.sma200Color,
                                     modifier = Modifier.testTag("chart_sma200_insufficient_pill")
                                 )
                             }
                         }
                         if (tab.showEma20 && inspectedEma20 != null) {
                             Text(
-                                text = "EMA20 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma20), tab.decimals)}",
+                                text = "── EMA20 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma20), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF38BDF8)
+                                color = preferences.ema20Color
                             )
                         }
                         if (tab.showEma50 && inspectedEma50 != null) {
                             Text(
-                                text = "EMA50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma50), tab.decimals)}",
+                                text = "── EMA50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma50), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF06B6D4)
+                                color = preferences.ema50Color
                             )
                         }
                         if (tab.showSupertrend && inspectedSupertrend != null) {
@@ -1972,27 +1972,47 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = if (inspectedSupertrend.direction == 1) Color(0xFF22C55E) else Color(0xFFEF4444)
+                                color = if (inspectedSupertrend.direction == 1) preferences.supertrendColor else bearColor
                             )
                         }
                         if (tab.showVwap && inspectedVwap != null) {
                             Text(
-                                text = "VWAP ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedVwap), tab.decimals)}",
+                                text = "╌ VWAP ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedVwap), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFEAB308)
+                                color = preferences.vwapColor
                             )
                         }
                         if (tab.showBollinger && inspectedBollinger != null) {
                             Text(
-                                text = "BB($bbPeriod,${String.format(java.util.Locale.US, "%.1f", bbStdDev)}) ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.lower), tab.decimals)}–${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.upper), tab.decimals)}",
+                                text = "≈ BB($bbPeriod,${String.format(java.util.Locale.US, "%.1f", bbStdDev)}) ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.lower), tab.decimals)}–${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedBollinger.upper), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFA855F7)
+                                color = preferences.bollingerColor
+                            )
+                        }
+                        if (tab.showKeltner) {
+                            Text(
+                                text = "≈ KC(20,2)",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = preferences.keltnerColor
+                            )
+                        }
+                        if (tab.showDonchian) {
+                            Text(
+                                text = "╌ DC(20)",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = preferences.donchianColor
                             )
                         }
                         if (tab.showRsi14 && inspectedRsi14 != null) {
@@ -2013,7 +2033,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF3B82F6)
+                                color = preferences.overlayMacdColor
                             )
                         }
                         if (tab.showAtr14 && inspectedAtr14 != null) {
@@ -2028,22 +2048,62 @@ fun CandlestickCanvas(
                         }
                         if (tab.showEma200 && inspectedEma200 != null) {
                             Text(
-                                text = "EMA200 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma200), tab.decimals)}",
+                                text = "━━ EMA200 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma200), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF472B6)
+                                color = preferences.ema200Color
                             )
                         }
                         if (tab.showMtfEma && inspectedMtfEma != null) {
                             Text(
-                                text = "MTF ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedMtfEma), tab.decimals)}",
+                                text = " staircase MTF ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedMtfEma), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFFACC15)
+                                color = preferences.mtfEmaColor
+                            )
+                        }
+                        if (tab.showIchimoku) {
+                            Text(
+                                text = "☁ Ichimoku",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = preferences.ichimokuColor
+                            )
+                        }
+                        if (tab.showPsar) {
+                            Text(
+                                text = "••• PSAR",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = preferences.psarColor
+                            )
+                        }
+                        if (tab.showPivotPoints && pivotPoints != null) {
+                            Text(
+                                text = "P ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(pivotPoints.p), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = preferences.pivotPColor
+                            )
+                        }
+                        if (tab.showFutureProjection && futureProjectedCandles.isNotEmpty()) {
+                            Text(
+                                text = "🔮 +${futureProjectedCandles.size} Bars",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFA796D4)
                             )
                         }
                         if (tab.showKillzones) {
@@ -2053,7 +2113,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF38BDF8)
+                                color = preferences.killzonesColor
                             )
                         }
                         if (tab.showAdx14 && inspectedAdx14 != null) {
@@ -2128,12 +2188,12 @@ fun CandlestickCanvas(
                         }
                         if (tab.showVolumeProfile && visibleVolumeProfile != null) {
                             Text(
-                                text = "POC ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(visibleVolumeProfile.pocPrice), tab.decimals)}",
+                                text = "▋POC ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(visibleVolumeProfile.pocPrice), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF97316)
+                                color = preferences.vrvpPocColor
                             )
                             if (visibleVolumeProfile.isEstimated) {
                                 Text(
@@ -2142,10 +2202,10 @@ fun CandlestickCanvas(
                                     fontSize = 9.5.sp,
                                     fontFamily = JetBrainsMonoFontFamily,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFFF59E0B),
+                                    color = preferences.vrvpPocColor,
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(3.dp))
-                                        .background(Color(0xFFF59E0B).copy(alpha = 0.14f))
+                                        .background(preferences.vrvpPocColor.copy(alpha = 0.14f))
                                         .padding(horizontal = 4.dp, vertical = 1.dp)
                                         .testTag("chart_vp_estimated_badge")
                                 )
@@ -2159,7 +2219,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF14B8A6)
+                                color = preferences.smcStructureColor
                             )
                         }
                         if (tab.showFvg && fullSmcResult != null) {
@@ -2170,7 +2230,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF6366F1)
+                                color = preferences.fvgColor
                             )
                         }
                         if ((tab.gapSummary?.gapCount ?: 0) > 0) {
@@ -2451,41 +2511,120 @@ fun CandlestickCanvas(
                     }
                 }
 
-                // Visible High / Low Callout Labels in Main Price Pane
-                if (preferences.showHighLowLabels && visibleSlice.size >= 3) {
-                    val highestBar = remember(visibleSlice) { visibleSlice.maxByOrNull { it.high } }
-                    val lowestBar = remember(visibleSlice) { visibleSlice.minByOrNull { it.low } }
-                    if (highestBar != null && lowestBar != null) {
-                        val highRatio = mapPriceToNormRatio(highestBar.high.toDouble())
-                        val lowRatio = mapPriceToNormRatio(lowestBar.low.toDouble())
-                        val highOffsetY = plotTopPadDp + (pricePaneHeightDp * highRatio).coerceIn(4.dp, pricePaneHeightDp - 16.dp)
-                        val lowOffsetY = plotTopPadDp + (pricePaneHeightDp * lowRatio).coerceIn(4.dp, pricePaneHeightDp - 16.dp)
-                        Text(
-                            text = "High ${PriceFormatterAlgorithm.formatPrice(highestBar.high, tab.decimals)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 8.5.sp,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            color = bullColor.copy(alpha = 0.9f),
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(end = plotRightPadDp + 6.dp)
-                                .offset(y = highOffsetY)
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), RoundedCornerShape(3.dp))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                // De-conflicted Right-Docked Horizontal Level Pills (POC, VAH, VAL, P, R1, R2, S1, S2 & High/Low)
+                run {
+                    data class DockedLevelBadge(
+                        val id: String,
+                        val text: String,
+                        val rawRatio: Float,
+                        val color: Color
+                    )
+                    val rawBadges = mutableListOf<DockedLevelBadge>()
+                    if (preferences.showHighLowLabels && visibleSlice.size >= 3) {
+                        val highestBar = remember(visibleSlice) { visibleSlice.maxByOrNull { it.high } }
+                        val lowestBar = remember(visibleSlice) { visibleSlice.minByOrNull { it.low } }
+                        if (highestBar != null && lowestBar != null) {
+                            rawBadges.add(
+                                DockedLevelBadge(
+                                    id = "high",
+                                    text = "High ${PriceFormatterAlgorithm.formatPrice(highestBar.high, tab.decimals)}",
+                                    rawRatio = mapPriceToNormRatio(highestBar.high.toDouble()),
+                                    color = bullColor
+                                )
+                            )
+                            rawBadges.add(
+                                DockedLevelBadge(
+                                    id = "low",
+                                    text = "Low ${PriceFormatterAlgorithm.formatPrice(lowestBar.low, tab.decimals)}",
+                                    rawRatio = mapPriceToNormRatio(lowestBar.low.toDouble()),
+                                    color = bearColor
+                                )
+                            )
+                        }
+                    }
+                    if (tab.showVolumeProfile && visibleVolumeProfile != null) {
+                        rawBadges.add(
+                            DockedLevelBadge(
+                                id = "poc",
+                                text = "POC ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(visibleVolumeProfile.pocPrice), tab.decimals)}",
+                                rawRatio = mapPriceToNormRatio(visibleVolumeProfile.pocPrice),
+                                color = preferences.vrvpPocColor
+                            )
                         )
-                        Text(
-                            text = "Low ${PriceFormatterAlgorithm.formatPrice(lowestBar.low, tab.decimals)}",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 8.5.sp,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            color = bearColor.copy(alpha = 0.9f),
-                            modifier = Modifier
-                                .align(Alignment.TopEnd)
-                                .padding(end = plotRightPadDp + 6.dp)
-                                .offset(y = lowOffsetY)
-                                .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.78f), RoundedCornerShape(3.dp))
-                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                        rawBadges.add(
+                            DockedLevelBadge(
+                                id = "vah",
+                                text = "VAH",
+                                rawRatio = mapPriceToNormRatio(visibleVolumeProfile.vahPrice),
+                                color = preferences.vrvpVaColor
+                            )
                         )
+                        rawBadges.add(
+                            DockedLevelBadge(
+                                id = "val",
+                                text = "VAL",
+                                rawRatio = mapPriceToNormRatio(visibleVolumeProfile.valPrice),
+                                color = preferences.vrvpVaColor
+                            )
+                        )
+                    }
+                    if (tab.showPivotPoints && pivotPoints != null) {
+                        val pList = listOf(
+                            Triple("R2", pivotPoints.r2, preferences.pivotR2Color),
+                            Triple("R1", pivotPoints.r1, preferences.pivotR1Color),
+                            Triple("P", pivotPoints.p, preferences.pivotPColor),
+                            Triple("S1", pivotPoints.s1, preferences.pivotS1Color),
+                            Triple("S2", pivotPoints.s2, preferences.pivotS2Color)
+                        )
+                        for ((tag, priceVal, col) in pList) {
+                            val r = mapPriceToNormRatio(priceVal)
+                            if (r in 0.02f..0.98f) {
+                                rawBadges.add(
+                                    DockedLevelBadge(
+                                        id = "pp_$tag",
+                                        text = "$tag ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(priceVal), tab.decimals)}",
+                                        rawRatio = r,
+                                        color = col
+                                    )
+                                )
+                            }
+                        }
+                    }
+
+                    if (rawBadges.isNotEmpty()) {
+                        val sorted = rawBadges.sortedBy { it.rawRatio }
+                        val minGapDp = 15.dp
+                        val maxTopDp = (pricePaneHeightDp - 16.dp).coerceAtLeast(4.dp)
+                        val placedOffsets = ArrayList<androidx.compose.ui.unit.Dp>(sorted.size)
+                        for (b in sorted) {
+                            var targetDp = (pricePaneHeightDp * b.rawRatio).coerceIn(4.dp, maxTopDp)
+                            if (placedOffsets.isNotEmpty()) {
+                                val prevDp = placedOffsets.last()
+                                if (targetDp - prevDp < minGapDp) {
+                                    targetDp = (prevDp + minGapDp).coerceAtMost(maxTopDp)
+                                }
+                            }
+                            placedOffsets.add(targetDp)
+                        }
+                        for (i in sorted.indices) {
+                            val b = sorted[i]
+                            val yDp = plotTopPadDp + placedOffsets[i]
+                            Text(
+                                text = b.text,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 8.5.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = b.color,
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(end = plotRightPadDp + 4.dp)
+                                    .offset(y = yDp)
+                                    .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.88f), RoundedCornerShape(3.dp))
+                                    .border(0.8.dp, b.color.copy(alpha = 0.45f), RoundedCornerShape(3.dp))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
                     }
                 }
 

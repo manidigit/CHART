@@ -1554,16 +1554,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
 
-        // If local cache has fewer candles than requested by the range preset or timeframe threshold, trigger background backfill
-        val minRequired = max(preset.targetBars + 20, minBarsForTimeframe(active.timeframe))
-        if (active.candles.size < minRequired) {
+        // If local cache has fewer candles than requested by the range preset, trigger background sync
+        if (active.candles.size < preset.targetBars || active.candles.size < 30) {
             val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode }
             if (targetSymbol != null) {
+                val forceBackfill = active.candles.size < 30
                 viewModelScope.launch {
                     val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(
                         symbol = targetSymbol,
                         requestedTimeframe = active.timeframe,
-                        forceBackfill = true
+                        forceBackfill = forceBackfill
                     )
                     _uiState.update { state ->
                         state.copy(
@@ -1602,6 +1602,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
         }
+    }
+
+    fun updateIndicatorFamilyColor(family: String, colorHex: String) {
+        val cleanHex = colorHex.trim().removePrefix("#").uppercase().let {
+            if (it.length == 6) "FF$it" else it
+        }
+        val cur = _uiState.value.chartPreferences
+        val nextPrefs = when (family.lowercase()) {
+            "ma" -> cur.copy(indMaFamilyColorHex = cleanHex)
+            "bands" -> cur.copy(indBandsFamilyColorHex = cleanHex)
+            "levels" -> cur.copy(indLevelsFamilyColorHex = cleanHex)
+            "trend" -> cur.copy(indTrendFamilyColorHex = cleanHex)
+            "smc" -> cur.copy(indSmcFamilyColorHex = cleanHex)
+            else -> cur
+        }
+        repository.saveChartPreferences(nextPrefs)
+        _uiState.update { it.copy(chartPreferences = nextPrefs) }
+        scheduleDebouncedCloudSync()
     }
 
     fun toggleVolumeOnActiveTab() {

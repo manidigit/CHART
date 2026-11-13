@@ -20,6 +20,8 @@ import {
   registerAutoSyncCallback,
   INDICATOR_FLAG_KEYS,
   syncIndicatorsAcrossTabsAndPrefs,
+  getIndicatorColorPalette,
+  normalizeHexForWeb,
 } from './core/store.js?v=1.39.0';
 import {
   syncServerAuthStatus,
@@ -1767,8 +1769,7 @@ document.addEventListener('click', async (e) => {
     saveOpenTabsToStorage();
     renderApp();
     redrawActiveCanvas();
-    const minReqTf = minBarsForTimeframe(newTf);
-    const needsFullBackfill = !activeTab.candles || activeTab.candles.length < minReqTf;
+    const needsFullBackfill = !activeTab.candles || activeTab.candles.length < 30;
     await syncSymbolNow(activeTab.symbolCode, newTf, () => {
       activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
       renderApp();
@@ -1807,8 +1808,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
     redrawActiveCanvas();
 
-    const minRequiredBars = minBarsForTimeframe(targetTf);
-    const needsFullBackfill = !activeTab.candles || activeTab.candles.length < minRequiredBars;
+    const needsFullBackfill = !activeTab.candles || activeTab.candles.length < 30;
     if (tfChanged || needsFullBackfill) {
       await syncSymbolNow(activeTab.symbolCode, targetTf, () => {
         activeTab.candles = getCachedOrAggregatedCandles(
@@ -1822,6 +1822,17 @@ document.addEventListener('click', async (e) => {
         redrawActiveCanvas();
       }, needsFullBackfill);
     }
+  } else if (action === 'set-ind-family-color') {
+    const family = String(el.getAttribute('data-family') || '').trim();
+    const colorHex = normalizeHexForWeb(el.getAttribute('data-color') || '#2962FF', '#2962FF');
+    if (family === 'ma') state.chartPreferences.indMaFamilyColorHex = colorHex;
+    else if (family === 'bands') state.chartPreferences.indBandsFamilyColorHex = colorHex;
+    else if (family === 'levels') state.chartPreferences.indLevelsFamilyColorHex = colorHex;
+    else if (family === 'trend') state.chartPreferences.indTrendFamilyColorHex = colorHex;
+    else if (family === 'smc') state.chartPreferences.indSmcFamilyColorHex = colorHex;
+    savePreferences();
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'set-chart-type' && activeTab) {
     activeTab.chartType = el.getAttribute('data-type') || 'candles';
     saveOpenTabsToStorage();

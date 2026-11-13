@@ -968,25 +968,21 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
       : provider === 'stooq' && rawTf !== 'W1'
         ? 'D1'
         : rawTf;
-  const safeLimit = Math.max(500, Math.min(5000, Number(limit) || 2500));
+  const safeLimit = Math.max(40, Math.min(5000, Number(limit) || 2500));
   const nowMs = Date.now();
   const cacheKey = `${symbolCode}_${provider}_${normTf}`;
   const exactCached = state.candleCache[cacheKey];
-  const existingCached = exactCached || getCachedOrAggregatedCandles(symbolCode, provider, normTf);
-  const minBarsForDelta =
-    normTf === 'M15'
-      ? 1200
-      : normTf === 'M30' || normTf === 'H1'
-        ? 1000
-        : normTf === 'H4'
-          ? 500
-          : normTf === 'D1'
-            ? 1000
-            : 250;
+  const existingCached =
+    exactCached && exactCached.length >= 30
+      ? exactCached
+      : getCachedOrAggregatedCandles(symbolCode, provider, normTf);
+  const minBarsForDelta = 30;
   const lastLocalOpenMs =
-    !forceBackfill && exactCached && exactCached.length >= minBarsForDelta
-      ? Number(exactCached[exactCached.length - 1].open_time_utc_ms || 0)
+    !forceBackfill && existingCached && existingCached.length >= minBarsForDelta
+      ? Number(existingCached[existingCached.length - 1].open_time_utc_ms || 0)
       : 0;
+  const stepMs = PriceFormatter.stepMilliseconds(normTf);
+  const expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMs, symbolCode);
 
   const byok = getLocalByokKeys();
   let userApiKey = '';
@@ -995,13 +991,17 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
   } else if (provider === 'stooq' && byok.stooqApiKey) {
     userApiKey = String(byok.stooqApiKey).trim();
   }
+  const reqLimit =
+    !forceBackfill && lastLocalOpenMs > 0
+      ? Math.min(safeLimit, Math.max(32, Math.ceil(Math.max(0, nowMs - lastLocalOpenMs) / Math.max(1, stepMs)) + 16))
+      : safeLimit;
   const sinceParam = !forceBackfill && lastLocalOpenMs > 0 ? `&since_ms=${lastLocalOpenMs}` : '';
-  const backfillParam = forceBackfill || lastLocalOpenMs === 0 ? '&backfill=1' : '';
+  const backfillParam = forceBackfill ? '&backfill=1' : '';
   const url = `./api/v1/candles_sync.php?symbol=${encodeURIComponent(
     symbolCode
   )}&provider=${encodeURIComponent(provider)}&timeframe=${encodeURIComponent(
     normTf
-  )}&limit=${safeLimit}${sinceParam}${backfillParam}&_t=${nowMs}`;
+  )}&limit=${reqLimit}${sinceParam}${backfillParam}&_t=${nowMs}`;
 
   let candles = existingCached ? [...existingCached] : [];
   let syncOk = false;
@@ -1062,18 +1062,16 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
   }
 
   const lastStoredOpenMs = candles.length > 0 ? Number(candles[candles.length - 1].open_time_utc_ms) : 0;
-  const expectedLastClosedOpenMs = computeExpectedLastClosedOpenMs(normTf, nowMs, symbolCode);
-  const hasShallowHistory = forceBackfill || candles.length < minBarsForDelta;
+  const hasShallowHistory = (forceBackfill && candles.length < 200) || candles.length < minBarsForDelta;
 
   if (
     provider === 'tvdatafeed' &&
     (candles.length === 0 || hasShallowHistory || lastStoredOpenMs < expectedLastClosedOpenMs)
   ) {
-    const stepMs = PriceFormatter.stepMilliseconds(normTf);
     const gapBars =
       hasShallowHistory || lastStoredOpenMs <= 0
         ? Math.min(1500, Math.max(500, safeLimit))
-        : Math.min(1500, Math.max(20, Math.ceil((nowMs - lastStoredOpenMs) / stepMs) + 12));
+        : Math.min(400, Math.max(16, Math.ceil((nowMs - lastStoredOpenMs) / Math.max(1, stepMs)) + 8));
 
     const liveWsBars = await fetchDirectFromTradingViewBrowserWs(symbolCode, normTf, gapBars, nowMs);
     if (liveWsBars.length > 0) {
@@ -1089,18 +1087,6 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
       syncMeta.sync_mode = !hasShallowHistory && lastStoredOpenMs > 0 ? 'DELTA_SYNC' : 'INITIAL_BACKFILL';
       syncMeta.provider_status = 'LIVE';
       syncMeta.fetched_new_bars = Number(syncMeta.fetched_new_bars || 0) + addedCount;
-    }
-    if (normTf === 'H4') {
-      const liveH1Bars = await fetchDirectFromTradingViewBrowserWs(
-        symbolCode,
-        'H1',
-        Math.min(1500, Math.max(500, gapBars * 4)),
-        nowMs
-      );
-      if (liveH1Bars.length > 0) {
-        const aggH4 = TimeframeAggregator.aggregateCandles(liveH1Bars, 'H4', nowMs, symbolCode);
-        candles = mergeCandlesIdempotent(candles, aggH4, 'H4', nowMs, symbolCode);
-      }
     }
   }
 
@@ -1128,14 +1114,13 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
   const baseLimit = Math.max(500, Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 2500));
   const fetchLimit = backgroundOnly ? Math.min(baseLimit, 600) : baseLimit;
 
+  // Sync only the requested timeframe for instant switching; only include D1 for stooq when needed
   const timeframesToSync =
-    backgroundOnly
-      ? [effectiveTf]
-      : sym.activeProvider === 'eia_brent_spot'
-        ? ['D1']
-        : sym.activeProvider === 'stooq'
-          ? Array.from(new Set(['D1', effectiveTf]))
-          : Array.from(new Set(['M15', 'H1', 'H4', 'D1', effectiveTf]));
+    sym.activeProvider === 'eia_brent_spot'
+      ? ['D1']
+      : sym.activeProvider === 'stooq'
+        ? [effectiveTf]
+        : [effectiveTf];
 
   try {
     const results = await Promise.all(
@@ -1162,24 +1147,6 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
           ? mergeCandlesIdempotent(existing, incoming, tf, Date.now(), symbolCode).slice(-baseLimit)
           : existing;
       syncedByTf[tf] = merged;
-    }
-
-    const m15Bars = syncedByTf.M15 || [];
-    if (m15Bars.length > 0) {
-      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_M15`, m15Bars, baseLimit, symbolCode);
-      if (!backgroundOnly || effectiveTf === 'H1' || effectiveTf === 'H4') {
-        const aggH1 = TimeframeAggregator.aggregateCandles(m15Bars, 'H1', Date.now(), symbolCode);
-        syncedByTf.H1 = mergeCandlesIdempotent(syncedByTf.H1 || [], aggH1, 'H1', Date.now(), symbolCode).slice(-baseLimit);
-      }
-    }
-
-    const h1Bars = syncedByTf.H1 || [];
-    if (h1Bars.length > 0) {
-      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_H1`, h1Bars, baseLimit, symbolCode);
-      if (!backgroundOnly || effectiveTf === 'H4') {
-        const aggH4 = TimeframeAggregator.aggregateCandles(h1Bars, 'H4', Date.now(), symbolCode);
-        syncedByTf.H4 = mergeCandlesIdempotent(syncedByTf.H4 || [], aggH4, 'H4', Date.now(), symbolCode).slice(-baseLimit);
-      }
     }
 
     for (const tf of Object.keys(syncedByTf)) {
