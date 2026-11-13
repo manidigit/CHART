@@ -155,20 +155,43 @@ export const DEFAULT_INDICATOR_COLORS = {
 
   // Smart Money Concepts & Killzones
   smcStructure: '#38BDF8', // Sky Blue
+  smcBullBos: '#26A69A',   // Bullish BOS (Teal Green)
+  smcBearBos: '#EF5350',   // Bearish BOS (Red)
+  smcBullChoch: '#38BDF8', // Bullish CHoCH (Sky Blue)
+  smcBearChoch: '#F43F5E', // Bearish CHoCH (Rose)
+  smcEqh: '#F59E0B',       // Equal Highs (Amber)
+  smcEql: '#10B981',       // Equal Lows (Emerald)
   fvg: '#F43F5E', // Rose
+  fvgBull: '#26A69A', // Bullish FVG (Teal Green)
+  fvgBear: '#EF5350', // Bearish FVG (Red)
   killzones: '#6366F1', // Indigo
 
-  // Synchronized Sub-Pane Oscillators
+  // Synchronized Sub-Pane Oscillators & Multi-Element Components
   rsi14: '#A855F7', // Purple
   macd: '#2962FF', // Blue
+  macdLine: '#2962FF',
+  macdSignal: '#F59E0B',
+  macdHistBull: '#26A69A',
+  macdHistBear: '#EF5350',
   atr14: '#F43F5E', // Coral / Red
   adx14: '#F59E0B', // Amber
+  adxLine: '#F59E0B',
+  plusDi: '#26A69A',
+  minusDi: '#EF5350',
   stoch14: '#06B6D4', // Cyan
+  stochK: '#06B6D4',
+  stochD: '#F59E0B',
   cci20: '#10B981', // Emerald
   willr14: '#EC4899', // Pink
   obv: '#3B82F6', // Blue
   cmf20: '#22C55E', // Green
   roc12: '#EAB308', // Yellow
+
+  // Ichimoku Components
+  ichimokuTenkan: '#2962FF',
+  ichimokuKijun: '#EF5350',
+  ichimokuCloud: '#06B6D4',
+  ichimokuChikou: '#10B981',
 };
 
 export const PROVIDER_METHODS_CATALOG = [
@@ -1167,21 +1190,41 @@ export function getIndicatorColorPalette(prefs = state.chartPreferences) {
     supertrend: supertrendColor,
     psar: psarColor,
     ichimoku: ichimokuColor,
+    ichimokuTenkan: getColor('ichimokuTenkan'),
+    ichimokuKijun: getColor('ichimokuKijun'),
+    ichimokuCloud: getColor('ichimokuCloud'),
+    ichimokuChikou: getColor('ichimokuChikou'),
     overlayMacd: getColor('overlayMacd'),
     futureProjection: getColor('futureProjection'),
 
     // Category 5: Smart Money Concepts (SMC) & Session Killzones
     smcStructure: getColor('smcStructure'),
+    smcBullBos: getColor('smcBullBos'),
+    smcBearBos: getColor('smcBearBos'),
+    smcBullChoch: getColor('smcBullChoch'),
+    smcBearChoch: getColor('smcBearChoch'),
+    smcEqh: getColor('smcEqh'),
+    smcEql: getColor('smcEql'),
     fvg: getColor('fvg'),
+    fvgBull: getColor('fvgBull'),
+    fvgBear: getColor('fvgBear'),
     killzones: getColor('killzones'),
 
     // Category 6: Sub-Pane Oscillators
     rsi14: getColor('rsi14'),
     macd: macdColor,
-    macdSignal: '#F59E0B',
+    macdLine: getColor('macdLine'),
+    macdSignal: getColor('macdSignal'),
+    macdHistBull: getColor('macdHistBull'),
+    macdHistBear: getColor('macdHistBear'),
     atr14: getColor('atr14'),
     adx14: getColor('adx14'),
+    adxLine: getColor('adxLine'),
+    plusDi: getColor('plusDi'),
+    minusDi: getColor('minusDi'),
     stoch14: getColor('stoch14'),
+    stochK: getColor('stochK'),
+    stochD: getColor('stochD'),
     cci20: getColor('cci20'),
     willr14: getColor('willr14'),
     obv: getColor('obv'),

@@ -345,6 +345,27 @@ export function renderIndicatorsModal(activeTab, i18n) {
     </div>
   `;
 
+  const renderColorRow = (indicatorKey, color, title, styleBadge = '──') => `
+    <div class="card-subtle row-between" style="padding: 5px 9px; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
+        <label class="tv-ind-color-picker-label" title="${isFa ? 'انتخاب رنگ سفارشی برای ' + title : 'Pick custom color for ' + title}">
+          <input
+            type="color"
+            class="tv-ind-color-input"
+            data-action="set-indicator-color"
+            data-indicator="${indicatorKey}"
+            value="${color}"
+          />
+          <span class="tv-ind-color-dot" style="background-color: ${color};"></span>
+        </label>
+        <div style="min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px;">
+          <span class="ltr-num" style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 14px; padding: 0 3px; border-radius: 3px; background: rgba(15,23,42,0.45); border: 1px solid ${color}; color: ${color}; font-size: 9px; font-weight: 800;">${styleBadge}</span>
+          <span style="font-weight: 700; color: var(--text-strong); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</span>
+        </div>
+      </div>
+    </div>
+  `;
+
   return `
     <div class="modal-backdrop" data-action="close-modal-backdrop">
       <div class="modal-card" style="max-width: 580px; max-height: 86vh; display: flex; flex-direction: column;" dir="${isFa ? 'rtl' : 'ltr'}">
@@ -416,6 +437,15 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('supertrend', pal.supertrend, 'Supertrend (10, 3)', isFa ? 'خط روند هوشمند سوپرترند (سبز زمردی)' : 'Dynamic ATR Supertrend trailing stop (Emerald Green)', activeTab.showSupertrend, 'toggle-supertrend', '━━')}
           ${renderToggleRow('psar', pal.psar, 'Parabolic SAR (0.02, 0.20)', isFa ? 'نقاط چرخش و تعقیب روند پارابولیک سار (بنفش)' : 'Wilder Parabolic Stop and Reverse dots (Purple)', activeTab.showPsar, 'toggle-psar', '•••')}
           ${renderToggleRow('ichimoku', pal.ichimoku, 'Ichimoku Cloud (9, 26, 52, 26)', isFa ? 'ابر ایچیموکو با تنکانسن، کیجونسن و ابر سنکو' : 'Tenkan, Kijun, Senkou Span A/B cloud & Chikou Span', activeTab.showIchimoku, 'toggle-ichimoku', '☁')}
+          <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
+            <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای اجزای ایچیموکو:' : 'Ichimoku Component Colors:'}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+              ${renderColorRow('ichimokuTenkan', pal.ichimokuTenkan, 'Tenkan-sen (تنکان‌سن)', 'TEN')}
+              ${renderColorRow('ichimokuKijun', pal.ichimokuKijun, 'Kijun-sen (کیجون‌سن)', 'KIJ')}
+              ${renderColorRow('ichimokuCloud', pal.ichimokuCloud, 'Cloud Span A/B (ابر)', 'CLOUD')}
+              ${renderColorRow('ichimokuChikou', pal.ichimokuChikou, 'Chikou Span (چیکو)', 'CHK')}
+            </div>
+          </div>
           ${renderToggleRow('overlayMacd', pal.overlayMacd, isFa ? 'MACD Classic (روی چارت اصلی — Overlay)' : 'MACD Classic (Main Chart Overlay)', isFa ? 'مکدی کلاسیک (۱۲، ۲۶، ۹) مستقیماً روی چارت قیمت' : 'Render Classic MACD directly overlaid on the main price canvas', activeTab.showOverlayMacd, 'toggle-overlay-macd', '∿')}
           ${renderToggleRow('futureProjection', pal.futureProjection, isFa ? 'Future Candlesticks (پیش‌بینی ۳۰ کندل آینده روی چارت)' : 'Future Candlesticks (30-Period AI Projection)', isFa ? 'ترسیم ۳۰ کندل آینده با برچسب‌های تفکیک‌شده' : 'Render 30 ghosted future candlesticks with Present Bar Divider', activeTab.showFutureProjection, 'toggle-future-projection', '+30')}
 
@@ -424,7 +454,25 @@ export function renderIndicatorsModal(activeTab, i18n) {
             isFa ? 'تشخیص شکست ساختار BOS، گپ نقدینگی FVG و سشن‌های لندن/نیویورک' : 'Market Structure Breaks, Fair Value Gaps & UTC Session Killzones'
           )}
           ${renderToggleRow('smcStructure', pal.smcStructure, 'BOS / CHoCH & EQH / EQL', isFa ? 'تشخیص خودکار شکست ساختار و نقدینگی سقف/کف برابر' : 'Auto Market Structure Breaks (BOS/CHoCH) & Equal Highs/Lows liquidity pools', activeTab.showSmcStructure, 'toggle-smc-structure', 'BOS')}
+          <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
+            <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای مؤلفه‌های BOS / CHoCH / EQH / EQL:' : 'Distinct SMC Component Colors:'}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+              ${renderColorRow('smcBullBos', pal.smcBullBos, isFa ? 'شکست صعودی (Bullish BOS)' : 'Bullish BOS', 'BOS↑')}
+              ${renderColorRow('smcBearBos', pal.smcBearBos, isFa ? 'شکست نزولی (Bearish BOS)' : 'Bearish BOS', 'BOS↓')}
+              ${renderColorRow('smcBullChoch', pal.smcBullChoch, isFa ? 'تغییر کاراکتر صعودی' : 'Bullish CHoCH', 'CHO↑')}
+              ${renderColorRow('smcBearChoch', pal.smcBearChoch, isFa ? 'تغییر کاراکتر نزولی' : 'Bearish CHoCH', 'CHO↓')}
+              ${renderColorRow('smcEqh', pal.smcEqh, 'Equal Highs (EQH)', 'EQH')}
+              ${renderColorRow('smcEql', pal.smcEql, 'Equal Lows (EQL)', 'EQL')}
+            </div>
+          </div>
           ${renderToggleRow('fvg', pal.fvg, 'Fair Value Gaps (FVG / Imbalance)', isFa ? 'باکس گپ‌های ارزش منصفانه صعودی و نزولی تسویه‌نشده' : 'Highlight unmitigated 3-candle Bullish & Bearish Fair Value Gaps', activeTab.showFvg, 'toggle-fvg', '▭FVG')}
+          <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
+            <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای باکس‌های FVG صعودی و نزولی:' : 'FVG Component Colors:'}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+              ${renderColorRow('fvgBull', pal.fvgBull, isFa ? 'FVG صعودی (Bullish)' : 'Bullish FVG', 'FVG↑')}
+              ${renderColorRow('fvgBear', pal.fvgBear, isFa ? 'FVG نزولی (Bearish)' : 'Bearish FVG', 'FVG↓')}
+            </div>
+          </div>
           ${renderToggleRow('killzones', pal.killzones, isFa ? 'Trading Killzones (Asia / London / NY)' : 'Session Killzones (Asia / London / NY Overlap)', isFa ? 'نوارهای زمانی سشن‌های آسیا، لندن، نیویورک و همپوشانی (UTC)' : 'UTC session background bands (Asia 00-09, London 07-16, NY 13-22)', activeTab.showKillzones, 'toggle-killzones', '▒▒')}
 
           ${renderSectionHeader(
@@ -433,9 +481,33 @@ export function renderIndicatorsModal(activeTab, i18n) {
           )}
           ${renderToggleRow('rsi14', pal.rsi14, 'RSI (14)', isFa ? 'شاخص قدرت نسبی ۱۴ دوره‌ای با سطوح اشباع ۳۰ و ۷۰' : '14-Period Wilder Relative Strength Index with 30/70 levels', activeTab.showRsi14, 'toggle-rsi14', 'RSI')}
           ${renderToggleRow('macd', pal.macd, 'MACD (12, 26, 9)', isFa ? 'خطوط مکدی، سیگنال و هیستوگرام مومنتوم در پنل پایین' : 'MACD Line, Signal Line, and Momentum Histogram sub-pane', activeTab.showMacd, 'toggle-macd', 'MACD')}
+          <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
+            <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای اجزای MACD:' : 'MACD Component Colors:'}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+              ${renderColorRow('macdLine', pal.macdLine, 'MACD Line', 'MACD')}
+              ${renderColorRow('macdSignal', pal.macdSignal, 'Signal Line', 'SIG')}
+              ${renderColorRow('macdHistBull', pal.macdHistBull, 'Histogram Bull (+)', 'HIST+')}
+              ${renderColorRow('macdHistBear', pal.macdHistBear, 'Histogram Bear (-)', 'HIST-')}
+            </div>
+          </div>
           ${renderToggleRow('atr14', pal.atr14, 'ATR (14)', isFa ? 'میانگین دامنه نوسان واقعی ۱۴ دوره‌ای در پنل مجزای پایین' : '14-Period Wilder Average True Range volatility sub-pane', activeTab.showAtr14, 'toggle-atr14', 'ATR')}
           ${renderToggleRow('adx14', pal.adx14, 'ADX / DMI (14)', isFa ? 'شاخص قدرت روند و جهت حرکتی (+DI / -DI / ADX) با خط مرجع ۲۵' : 'Directional Movement Index (+DI / -DI) & ADX trend strength (Ref 25)', activeTab.showAdx14, 'toggle-adx14', 'ADX')}
+          <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
+            <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای اجزای ADX / DMI:' : 'ADX / DMI Component Colors:'}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+              ${renderColorRow('adxLine', pal.adxLine, 'ADX Line', 'ADX')}
+              ${renderColorRow('plusDi', pal.plusDi, '+DI Line', '+DI')}
+              ${renderColorRow('minusDi', pal.minusDi, '-DI Line', '-DI')}
+            </div>
+          </div>
           ${renderToggleRow('stoch14', pal.stoch14, 'Stochastic (14, 3, 3)', isFa ? 'اسیلاتور استوکاستیک کند (%K / %D) با سطوح اشباع ۲۰ و ۸۰' : 'Slow Stochastic Oscillator (%K / %D) with 20/80 thresholds', activeTab.showStoch14, 'toggle-stoch14', '%K%D')}
+          <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
+            <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای اجزای Stochastic:' : 'Stochastic Component Colors:'}</div>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+              ${renderColorRow('stochK', pal.stochK, '%K Line', '%K')}
+              ${renderColorRow('stochD', pal.stochD, '%D Line', '%D')}
+            </div>
+          </div>
           ${renderToggleRow('cci20', pal.cci20, 'CCI (20)', isFa ? 'شاخص کانال کالا ۲۰ دوره‌ای با سطوح -۱۰۰ و +۱۰۰' : 'Commodity Channel Index (20) with ±100 bands', activeTab.showCci20, 'toggle-cci20', 'CCI')}
           ${renderToggleRow('willr14', pal.willr14, 'Williams %R (14)', isFa ? 'شاخص ویلیامز درصد آر (-۱۰۰ تا ۰) با سطوح -۲۰ و -۸۰' : 'Williams Percent Range (-100 to 0) with -20 / -80 bands', activeTab.showWillR14, 'toggle-willr14', '%R')}
           ${renderToggleRow('obv', pal.obv, 'OBV', isFa ? 'حجم تعادلی تجمعی (On-Balance Volume)' : 'On-Balance Volume cumulative flow', activeTab.showObv, 'toggle-obv', 'OBV')}

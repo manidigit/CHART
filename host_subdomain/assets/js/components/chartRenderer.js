@@ -600,17 +600,17 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         const topY = Math.min(yTop, yBot);
         const boxH = Math.max(3, Math.abs(yBot - yTop));
 
-        ctx.fillStyle =
-          fvg.direction === 1 ? hexToRgba(indPal.fvg, 0.14) : hexToRgba(indPal.smcStructure, 0.14);
+        const fvgColor = fvg.direction === 1 ? indPal.fvgBull : indPal.fvgBear;
+
+        ctx.fillStyle = hexToRgba(fvgColor, 0.14);
         ctx.fillRect(x1, topY, x2 - x1, boxH);
 
-        ctx.strokeStyle =
-          fvg.direction === 1 ? hexToRgba(indPal.fvg, 0.52) : hexToRgba(indPal.smcStructure, 0.52);
+        ctx.strokeStyle = hexToRgba(fvgColor, 0.52);
         ctx.lineWidth = 1;
         ctx.strokeRect(x1, topY, x2 - x1, boxH);
 
         if (x2 - x1 >= 26 && boxH >= 10) {
-          ctx.fillStyle = fvg.direction === 1 ? indPal.fvg : indPal.smcStructure;
+          ctx.fillStyle = fvgColor;
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
           ctx.fillText('FVG', x1 + 4, topY + Math.min(boxH - 2, 10));
         }
@@ -627,7 +627,9 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           const x1 = idxToX(visStart);
           const x2 = idxToX(visBreak);
           const y = priceToY(st.price);
-          const col = st.direction === 1 ? indPal.smcStructure : indPal.fvg;
+          const col = st.direction === 1
+            ? (st.type === 'CHoCH' ? indPal.smcBullChoch : indPal.smcBullBos)
+            : (st.type === 'CHoCH' ? indPal.smcBearChoch : indPal.smcBearBos);
 
           ctx.save();
           ctx.strokeStyle = col;
@@ -660,7 +662,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           const x1 = idxToX(visStart);
           const x2 = idxToX(visEnd);
           const y = priceToY(eq.price);
-          const col = eq.type === 'EQH' ? indPal.smcStructure : indPal.fvg;
+          const col = eq.type === 'EQH' ? indPal.smcEqh : indPal.smcEql;
 
           ctx.save();
           ctx.strokeStyle = col;
@@ -937,7 +939,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       if (a0 === null || b0 === null || a1 === null || b1 === null) continue;
       const x0 = idxToX(idx - 1);
       const x1 = idxToX(idx);
-      ctx.fillStyle = a1 >= b1 ? hexToRgba(indPal.ichimoku, 0.14) : 'rgba(239, 83, 80, 0.14)';
+      ctx.fillStyle = a1 >= b1 ? hexToRgba(indPal.ichimokuCloud, 0.14) : 'rgba(239, 83, 80, 0.14)';
       ctx.beginPath();
       ctx.moveTo(x0, priceToY(a0));
       ctx.lineTo(x1, priceToY(a1));
@@ -947,11 +949,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fill();
     }
     ctx.restore();
-    drawSeriesLine(ctx, ich.tenkan, startIdx, visible.length, idxToX, priceToY, indPal.supertrend, 1.3);
-    drawSeriesLine(ctx, ich.kijun, startIdx, visible.length, idxToX, priceToY, '#EF5350', 1.4);
-    drawSeriesLine(ctx, ich.senkouA, startIdx, visible.length, idxToX, priceToY, hexToRgba(indPal.ichimoku, 0.85), 1.1);
+    drawSeriesLine(ctx, ich.tenkan, startIdx, visible.length, idxToX, priceToY, indPal.ichimokuTenkan, 1.3);
+    drawSeriesLine(ctx, ich.kijun, startIdx, visible.length, idxToX, priceToY, indPal.ichimokuKijun, 1.4);
+    drawSeriesLine(ctx, ich.senkouA, startIdx, visible.length, idxToX, priceToY, hexToRgba(indPal.ichimokuCloud, 0.85), 1.1);
     drawSeriesLine(ctx, ich.senkouB, startIdx, visible.length, idxToX, priceToY, 'rgba(239,83,80,0.8)', 1.1);
-    drawSeriesLine(ctx, ich.chikou, startIdx, visible.length, idxToX, priceToY, hexToRgba(indPal.psar, 0.78), 1.1, true);
+    drawSeriesLine(ctx, ich.chikou, startIdx, visible.length, idxToX, priceToY, hexToRgba(indPal.ichimokuChikou, 0.78), 1.1, true);
   }
   if (tab.showPsar && candles.length >= 3) {
     const psarArr = indCache.getPsar();
@@ -1396,16 +1398,16 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         const hy = macdToY(item.histogram);
         const topBar = Math.min(zeroY, hy);
         const barH = Math.max(1.5, Math.abs(hy - zeroY));
-        ctx.fillStyle = item.histogram >= 0 ? 'rgba(38, 166, 154, 0.55)' : 'rgba(239, 83, 80, 0.55)';
+        ctx.fillStyle = item.histogram >= 0 ? hexToRgba(indPal.macdHistBull, 0.55) : hexToRgba(indPal.macdHistBear, 0.55);
         ctx.fillRect(x - bodyW / 2, topBar, bodyW, barH);
       }
 
-      drawSeriesLine(ctx, macdLine, startIdx, visible.length, idxToX, macdToY, indPal.macd, 1.5);
-      drawSeriesLine(ctx, sigLine, startIdx, visible.length, idxToX, macdToY, indPal.macdSignal || '#F59E0B', 1.4);
+      drawSeriesLine(ctx, macdLine, startIdx, visible.length, idxToX, macdToY, indPal.macdLine, 1.5);
+      drawSeriesLine(ctx, sigLine, startIdx, visible.length, idxToX, macdToY, indPal.macdSignal, 1.4);
 
       const curM = macdArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = indPal.macd;
+      ctx.fillStyle = indPal.macdLine;
       const mStr = curM && curM.macd !== null ? curM.macd.toFixed(tab.decimals) : '—';
       const sStr = curM && curM.signal !== null ? curM.signal.toFixed(tab.decimals) : '—';
       const hStr = curM && curM.histogram !== null ? curM.histogram.toFixed(tab.decimals) : '—';
@@ -1465,13 +1467,13 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       const adxLine = adxArr.map((x) => (x ? x.adx : null));
       const pDiLine = adxArr.map((x) => (x ? x.plusDi : null));
       const mDiLine = adxArr.map((x) => (x ? x.minusDi : null));
-      drawSeriesLine(ctx, pDiLine, startIdx, visible.length, idxToX, adxToY, '#26A69A', 1.2);
-      drawSeriesLine(ctx, mDiLine, startIdx, visible.length, idxToX, adxToY, '#EF5350', 1.2);
-      drawSeriesLine(ctx, adxLine, startIdx, visible.length, idxToX, adxToY, indPal.adx14, 1.7);
+      drawSeriesLine(ctx, pDiLine, startIdx, visible.length, idxToX, adxToY, indPal.plusDi, 1.2);
+      drawSeriesLine(ctx, mDiLine, startIdx, visible.length, idxToX, adxToY, indPal.minusDi, 1.2);
+      drawSeriesLine(ctx, adxLine, startIdx, visible.length, idxToX, adxToY, indPal.adxLine, 1.7);
 
       const cur = adxArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = indPal.adx14;
+      ctx.fillStyle = indPal.adxLine;
       ctx.fillText(
         `ADX(14): ${cur ? cur.adx.toFixed(1) : '—'} +DI:${cur ? cur.plusDi.toFixed(1) : '—'} -DI:${cur ? cur.minusDi.toFixed(1) : '—'}`,
         10,
@@ -1499,12 +1501,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
       const kLine = stArr.map((x) => (x ? x.k : null));
       const dLine = stArr.map((x) => (x ? x.d : null));
-      drawSeriesLine(ctx, kLine, startIdx, visible.length, idxToX, stToY, indPal.stoch14, 1.5);
-      drawSeriesLine(ctx, dLine, startIdx, visible.length, idxToX, stToY, '#F59E0B', 1.3);
+      drawSeriesLine(ctx, kLine, startIdx, visible.length, idxToX, stToY, indPal.stochK, 1.5);
+      drawSeriesLine(ctx, dLine, startIdx, visible.length, idxToX, stToY, indPal.stochD, 1.3);
 
       const cur = stArr[activeIdxGlobal];
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = indPal.stoch14;
+      ctx.fillStyle = indPal.stochK;
       ctx.fillText(
         `Stoch(14,3,3): %K ${cur ? cur.k.toFixed(1) : '—'} %D ${cur && cur.d !== null ? cur.d.toFixed(1) : '—'}`,
         10,

@@ -1822,18 +1822,6 @@ document.addEventListener('click', async (e) => {
         redrawActiveCanvas();
       }, needsFullBackfill);
     }
-  } else if (action === 'set-indicator-color') {
-    const indKey = el.getAttribute('data-indicator');
-    const colorHex = el.value || el.getAttribute('data-color');
-    if (indKey && colorHex) {
-      if (!state.chartPreferences.indicatorCustomColors) {
-        state.chartPreferences.indicatorCustomColors = {};
-      }
-      state.chartPreferences.indicatorCustomColors[indKey] = colorHex.toUpperCase();
-      savePreferences();
-      renderApp();
-      redrawActiveCanvas();
-    }
   } else if (action === 'set-chart-type' && activeTab) {
     activeTab.chartType = el.getAttribute('data-type') || 'candles';
     saveOpenTabsToStorage();
@@ -2357,6 +2345,18 @@ document.addEventListener('input', (e) => {
     savePreferences();
     const lbl = document.getElementById('hit-tolerance-value-label');
     if (lbl) lbl.textContent = `${val} px`;
+  } else if (action === 'set-indicator-color') {
+    const indKey = el.getAttribute('data-indicator');
+    const colorHex = el.value || el.getAttribute('data-color');
+    if (indKey && colorHex) {
+      if (!state.chartPreferences.indicatorCustomColors) {
+        state.chartPreferences.indicatorCustomColors = {};
+      }
+      state.chartPreferences.indicatorCustomColors[indKey] = colorHex.toUpperCase();
+      const dot = el.parentElement ? el.parentElement.querySelector('.tv-ind-color-dot') : null;
+      if (dot) dot.style.backgroundColor = colorHex;
+      redrawActiveCanvas();
+    }
   }
 });
 
@@ -2411,6 +2411,18 @@ document.addEventListener('change', async (e) => {
   } else if (action === 'select-explorer-provider-select') {
     state.selectedExplorerProvider = el.value || 'tvdatafeed';
     renderApp();
+  } else if (action === 'set-indicator-color') {
+    const indKey = el.getAttribute('data-indicator');
+    const colorHex = el.value || el.getAttribute('data-color');
+    if (indKey && colorHex) {
+      if (!state.chartPreferences.indicatorCustomColors) {
+        state.chartPreferences.indicatorCustomColors = {};
+      }
+      state.chartPreferences.indicatorCustomColors[indKey] = colorHex.toUpperCase();
+      savePreferences();
+      renderApp();
+      redrawActiveCanvas();
+    }
   }
 });
 
@@ -2505,31 +2517,130 @@ async function handleChartSnapshot() {
 
   try {
     const dpr = window.devicePixelRatio || 1;
+    const headerH = Math.round(56 * dpr);
     const snapCanvas = document.createElement('canvas');
     snapCanvas.width = canvas.width;
-    snapCanvas.height = canvas.height;
+    snapCanvas.height = canvas.height + headerH;
     const ctx = snapCanvas.getContext('2d');
 
     // Fill background
     ctx.fillStyle = state.isDarkTheme ? '#131722' : '#FFFFFF';
     ctx.fillRect(0, 0, snapCanvas.width, snapCanvas.height);
 
-    // Draw main chart canvas
-    ctx.drawImage(canvas, 0, 0);
+    // Draw main chart canvas below header
+    ctx.drawImage(canvas, 0, headerH);
 
-    // Draw brand watermark
+    // Draw top header background banner
+    ctx.fillStyle = state.isDarkTheme ? '#1E222D' : '#F8F9FA';
+    ctx.fillRect(0, 0, snapCanvas.width, headerH);
+
+    // Bottom border of header
+    ctx.strokeStyle = state.isDarkTheme ? '#2A2E39' : '#E0E3EB';
+    ctx.lineWidth = 1 * dpr;
+    ctx.beginPath();
+    ctx.moveTo(0, headerH);
+    ctx.lineTo(snapCanvas.width, headerH);
+    ctx.stroke();
+
+    // Render Brand & OHLCV details on header
     ctx.save();
-    ctx.font = `bold ${Math.round(14 * dpr)}px sans-serif`;
+    ctx.font = `bold ${Math.round(13 * dpr)}px sans-serif`;
     ctx.fillStyle = '#2962FF';
-    ctx.fillText('CHART INTELLIGENCE', 16 * dpr, 28 * dpr);
+    ctx.fillText('CHART INTELLIGENCE', 16 * dpr, 22 * dpr);
 
     if (activeTab) {
-      ctx.font = `${Math.round(11 * dpr)}px monospace`;
-      ctx.fillStyle = state.isDarkTheme ? '#D1D4DC' : '#333333';
-      const lastCandle = (activeTab.candles || []).slice(-1)[0];
-      const priceStr = lastCandle ? ` • ${lastCandle.close}` : '';
-      const text = `${activeTab.symbolCode} • ${activeTab.timeframe || 'M15'}${priceStr} • ${new Date().toISOString().slice(0, 16).replace('T', ' ')} UTC`;
-      ctx.fillText(text, 16 * dpr, 46 * dpr);
+      const sym = state.symbols.find((s) => s.symbolCode === activeTab.symbolCode);
+      const title = sym ? sym.customTitle || i18n.t('symbol_' + sym.symbolCode) || sym.symbolCode : activeTab.symbolCode;
+      const dec = activeTab.decimals;
+      const visibleCount = Math.max(15, Math.min(5000, Math.round(activeTab.visibleCount || 48)));
+      const maxOffset = Math.max(0, activeTab.candles.length - 5);
+      const offset = Math.max(0, Math.min(maxOffset, Math.round(activeTab.scrollOffset || 0)));
+      const endIdx = Math.max(1, activeTab.candles.length - offset);
+      const startIdx = Math.max(0, endIdx - visibleCount);
+      const visible = activeTab.candles.slice(startIdx, endIdx);
+      const c =
+        activeTab.hoverIndex !== null && visible[activeTab.hoverIndex]
+          ? visible[activeTab.hoverIndex]
+          : activeTab.candles[activeTab.candles.length - 1];
+
+      if (c) {
+        const isBull = Number(c.close) >= Number(c.open);
+        const col = isBull ? '#26A69A' : '#EF5350';
+        const diff = Number(c.close) - Number(c.open);
+        const pct = Number(c.open) > 0 ? PriceFormatter.formatSignedPct(c.open, c.close) : '+0.00%';
+
+        ctx.font = `bold ${Math.round(11 * dpr)}px monospace`;
+        ctx.fillStyle = state.isDarkTheme ? '#D1D4DC' : '#131722';
+        let cursorX = 175 * dpr;
+        ctx.fillText(`${title} · ${PriceFormatter.displayTimeframeLabel(activeTab.timeframe)}`, cursorX, 22 * dpr);
+
+        ctx.font = `${Math.round(10.5 * dpr)}px monospace`;
+        cursorX += ctx.measureText(`${title} · ${PriceFormatter.displayTimeframeLabel(activeTab.timeframe)}`).width + 20 * dpr;
+        
+        ctx.fillStyle = state.isDarkTheme ? '#787B86' : '#59606B';
+        ctx.fillText(`O `, cursorX, 22 * dpr); cursorX += ctx.measureText(`O `).width;
+        ctx.fillStyle = col;
+        ctx.fillText(`${PriceFormatter.formatPrice(c.open, dec)} `, cursorX, 22 * dpr); cursorX += ctx.measureText(`${PriceFormatter.formatPrice(c.open, dec)} `).width;
+
+        ctx.fillStyle = state.isDarkTheme ? '#787B86' : '#59606B';
+        ctx.fillText(`H `, cursorX, 22 * dpr); cursorX += ctx.measureText(`H `).width;
+        ctx.fillStyle = '#26A69A';
+        ctx.fillText(`${PriceFormatter.formatPrice(c.high, dec)} `, cursorX, 22 * dpr); cursorX += ctx.measureText(`${PriceFormatter.formatPrice(c.high, dec)} `).width;
+
+        ctx.fillStyle = state.isDarkTheme ? '#787B86' : '#59606B';
+        ctx.fillText(`L `, cursorX, 22 * dpr); cursorX += ctx.measureText(`L `).width;
+        ctx.fillStyle = '#EF5350';
+        ctx.fillText(`${PriceFormatter.formatPrice(c.low, dec)} `, cursorX, 22 * dpr); cursorX += ctx.measureText(`${PriceFormatter.formatPrice(c.low, dec)} `).width;
+
+        ctx.fillStyle = state.isDarkTheme ? '#787B86' : '#59606B';
+        ctx.fillText(`C `, cursorX, 22 * dpr); cursorX += ctx.measureText(`C `).width;
+        ctx.fillStyle = col;
+        ctx.fillText(`${PriceFormatter.formatPrice(c.close, dec)} `, cursorX, 22 * dpr); cursorX += ctx.measureText(`${PriceFormatter.formatPrice(c.close, dec)} `).width;
+
+        ctx.fillStyle = col;
+        ctx.fillText(`${diff >= 0 ? '+' : ''}${PriceFormatter.formatPrice(diff, dec)} (${pct}) `, cursorX, 22 * dpr); cursorX += ctx.measureText(`${diff >= 0 ? '+' : ''}${PriceFormatter.formatPrice(diff, dec)} (${pct}) `).width;
+
+        ctx.fillStyle = state.isDarkTheme ? '#787B86' : '#59606B';
+        ctx.fillText(`Vol `, cursorX, 22 * dpr); cursorX += ctx.measureText(`Vol `).width;
+        ctx.fillStyle = state.isDarkTheme ? '#D1D4DC' : '#131722';
+        ctx.fillText(`${PriceFormatter.formatVolume(c.volume)}`, cursorX, 22 * dpr);
+      }
+
+      // Render active indicator pills on second line of header
+      const pal = getIndicatorColorPalette(state.chartPreferences);
+      const activePills = [];
+      if (activeTab.showSma20) activePills.push({ label: 'SMA 20', color: pal.sma20 });
+      if (activeTab.showSma50) activePills.push({ label: 'SMA 50', color: pal.sma50 });
+      if (activeTab.showSma200) activePills.push({ label: 'SMA 200', color: pal.sma200 });
+      if (activeTab.showEma20) activePills.push({ label: 'EMA 20', color: pal.ema20 });
+      if (activeTab.showEma50) activePills.push({ label: 'EMA 50', color: pal.ema50 });
+      if (activeTab.showEma200) activePills.push({ label: 'EMA 200', color: pal.ema200 });
+      if (activeTab.showBollinger) activePills.push({ label: 'BB', color: pal.bollinger });
+      if (activeTab.showVwap) activePills.push({ label: 'VWAP', color: pal.vwap });
+      if (activeTab.showSupertrend) activePills.push({ label: 'Supertrend', color: pal.supertrend });
+      if (activeTab.showSmcStructure) activePills.push({ label: 'SMC (BOS)', color: pal.smcStructure });
+      if (activeTab.showFvg) activePills.push({ label: 'FVG', color: pal.fvg });
+      if (activeTab.showRsi14) activePills.push({ label: 'RSI', color: pal.rsi14 });
+      if (activeTab.showMacd) activePills.push({ label: 'MACD', color: pal.macd });
+
+      if (activePills.length > 0) {
+        let pillX = 16 * dpr;
+        const pillY = 35 * dpr;
+        ctx.font = `bold ${Math.round(9.5 * dpr)}px monospace`;
+        for (const pill of activePills) {
+          const m = ctx.measureText(pill.label);
+          const pW = m.width + 12 * dpr;
+          const pH = 15 * dpr;
+          ctx.fillStyle = state.isDarkTheme ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.04)';
+          ctx.fillRect(pillX, pillY, pW, pH);
+          ctx.strokeStyle = pill.color;
+          ctx.lineWidth = 1 * dpr;
+          ctx.strokeRect(pillX, pillY, pW, pH);
+          ctx.fillStyle = pill.color;
+          ctx.fillText(pill.label, pillX + 6 * dpr, pillY + 11 * dpr);
+          pillX += pW + 6 * dpr;
+        }
+      }
     }
     ctx.restore();
 
