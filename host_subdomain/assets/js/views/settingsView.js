@@ -112,26 +112,32 @@ export function renderSettingsModal(i18n) {
     </details>
   `;
 
-  const sourceSymbolsRowsHtml = filteredMethodSymbols.length === 0
-    ? `<div style="padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;">${isFa ? 'هیچ نمادی از این بازار در منبع انتخاب‌شده وجود ندارد.' : 'No symbols from this market category are available in this provider.'}</div>`
-    : filteredMethodSymbols
-        .map((item) => {
-          const existingSym = state.symbols.find((s) => s.symbolCode === item.symbolCode);
-          const tf = activeMethod.providerId === 'eia_brent_spot' ? 'D1' : (existingSym ? existingSym.timeframe : 'M15');
-          const cachedBars = getCachedOrAggregatedCandles(item.symbolCode, activeMethod.providerId, tf);
-          const barCount =
-            existingSym && existingSym.activeProvider === activeMethod.providerId && existingSym.candles?.length
-              ? existingSym.candles.length
-              : cachedBars.length;
-          const isInWatchlistWithThisSource =
-            Boolean(existingSym && existingSym.inWatchlist && existingSym.activeProvider === activeMethod.providerId);
-          const isInWatchlistOtherSource =
-            Boolean(existingSym && existingSym.inWatchlist && existingSym.activeProvider !== activeMethod.providerId);
-          const spec = getInstrumentSpec(item.symbolCode, activeMethod.providerId);
-          const safeCode = escapeHtml(item.symbolCode);
-          const safeItemTitle = escapeHtml(isFa ? item.titleFa : item.titleEn);
+  const sourceSymbolsRowsHtml =
+    tab !== 'sync'
+      ? ''
+      : filteredMethodSymbols.length === 0
+        ? `<div style="padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;">${isFa ? 'هیچ نمادی از این بازار در منبع انتخاب‌شده وجود ندارد.' : 'No symbols from this market category are available in this provider.'}</div>`
+        : filteredMethodSymbols
+            .map((item) => {
+              const existingSym = state.symbols.find((s) => s.symbolCode === item.symbolCode);
+              const tf = activeMethod.providerId === 'eia_brent_spot' ? 'D1' : (existingSym ? existingSym.timeframe : 'M15');
+              const directCacheKey = `${item.symbolCode}_${activeMethod.providerId}_${tf}`;
+              const directCached = state.candleCache && state.candleCache[directCacheKey];
+              const barCount =
+                existingSym && existingSym.activeProvider === activeMethod.providerId && existingSym.candles?.length
+                  ? existingSym.candles.length
+                  : Array.isArray(directCached)
+                    ? directCached.length
+                    : 0;
+              const isInWatchlistWithThisSource =
+                Boolean(existingSym && existingSym.inWatchlist && existingSym.activeProvider === activeMethod.providerId);
+              const isInWatchlistOtherSource =
+                Boolean(existingSym && existingSym.inWatchlist && existingSym.activeProvider !== activeMethod.providerId);
+              const spec = getInstrumentSpec(item.symbolCode, activeMethod.providerId);
+              const safeCode = escapeHtml(item.symbolCode);
+              const safeItemTitle = escapeHtml(isFa ? item.titleFa : item.titleEn);
 
-          return `
+              return `
             <div class="tv-settings-symbol-row" style="padding: 8px 10px; margin-bottom: 6px;">
               <div class="tv-settings-symbol-left">
                 ${renderSymbolBadge(item.symbolCode, 28)}
@@ -182,17 +188,20 @@ export function renderSettingsModal(i18n) {
               </div>
             </div>
           `;
-        })
-        .join('');
+            })
+            .join('');
 
   // Mode 2: Search / Filter by Symbol (Filtered by Market Category + Query)
-  const filteredSymbols = state.symbols.filter((s) => {
-    const matchesCat = marketCat === 'ALL' || getSymbolCategoryKey(s.symbolCode) === marketCat;
-    if (!matchesCat) return false;
-    if (!searchQuery) return true;
-    const rawTitle = (s.customTitle || i18n.t('symbol_' + s.symbolCode) || '').toUpperCase();
-    return s.symbolCode.toUpperCase().includes(searchQuery) || rawTitle.includes(searchQuery);
-  });
+  const filteredSymbols =
+    tab !== 'sync'
+      ? []
+      : state.symbols.filter((s) => {
+          const matchesCat = marketCat === 'ALL' || getSymbolCategoryKey(s.symbolCode) === marketCat;
+          if (!matchesCat) return false;
+          if (!searchQuery) return true;
+          const rawTitle = (s.customTitle || i18n.t('symbol_' + s.symbolCode) || '').toUpperCase();
+          return s.symbolCode.toUpperCase().includes(searchQuery) || rawTitle.includes(searchQuery);
+        });
 
   const symbolsList = filteredSymbols
     .map((s) => {

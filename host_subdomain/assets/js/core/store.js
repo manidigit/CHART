@@ -1166,13 +1166,24 @@ function inferSymbolCodeFromCacheKey(key) {
   return parts[0] || '';
 }
 
+const _resolvedCandlesMemo = new Map();
+let _candleCacheRev = 1;
+
 function loadCandlesFromLocalStorage(key, timeframe, symbolCode = '') {
   try {
     const raw = localStorage.getItem(STORAGE_CANDLES_PREFIX + key);
     if (!raw) return [];
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
+    if (!Array.isArray(parsed) || parsed.length === 0) return [];
     const sym = symbolCode || inferSymbolCodeFromCacheKey(key);
+    const last = parsed[parsed.length - 1];
+    // Fast-path: if bars were already normalized by saveCandlesToCache, avoid O(N) re-normalization
+    if (last && typeof last.open_time_utc_ms === 'number' && last.open_time_utc_ms > 0 && last.is_closed === true) {
+      if (PriceFormatter.isCandleClosed(last.open_time_utc_ms, timeframe, Date.now(), sym)) {
+        return parsed;
+      }
+      return parsed.slice(0, -1);
+    }
     return mergeCandlesIdempotent([], parsed, timeframe, Date.now(), sym);
   } catch {
     return [];
@@ -1187,6 +1198,8 @@ export function saveCandlesToCache(key, candles, maxLimit = 5000, symbolCode = '
     -Math.max(40, Math.min(5000, maxLimit))
   );
   state.candleCache[key] = normalized;
+  _candleCacheRev++;
+  _resolvedCandlesMemo.clear();
   try {
     localStorage.setItem(STORAGE_CANDLES_PREFIX + key, JSON.stringify(normalized.slice(-1500)));
   } catch {
@@ -1198,6 +1211,12 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
   const rawTf = String(timeframe || 'M15').toUpperCase();
   const normTf = provider === 'eia_brent_spot' ? 'D1' : provider === 'stooq' && rawTf !== 'W1' ? 'D1' : rawTf;
   const exactKey = `${symbolCode}_${provider}_${normTf}`;
+  const memoKey = `${exactKey}@${_candleCacheRev}`;
+  const memoHit = _resolvedCandlesMemo.get(memoKey);
+  if (memoHit) {
+    return memoHit;
+  }
+
   let current = state.candleCache[exactKey];
   if (!current || current.length === 0) {
     current = loadCandlesFromLocalStorage(exactKey, normTf, symbolCode);
@@ -1218,51 +1237,70 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
             : 140;
   const hasFullNativeCache = Array.isArray(current) && current.length >= minNativeBars;
 
-  if (normTf === 'M30' || normTf === 'H1' || normTf === 'H4') {
+  if (!hasFullNativeCache && (normTf === 'M30' || normTf === 'H1' || normTf === 'H4')) {
     const m15Key = `${symbolCode}_${provider}_M15`;
-    const m15 = state.candleCache[m15Key] || loadCandlesFromLocalStorage(m15Key, 'M15', symbolCode);
+    let m15 = state.candleCache[m15Key];
+    if (!m15) {
+      m15 = loadCandlesFromLocalStorage(m15Key, 'M15', symbolCode);
+      if (m15.length > 0) state.candleCache[m15Key] = m15;
+    }
     if (m15 && m15.length > 0) {
       const aggFromM15 = TimeframeAggregator.aggregateCandles(m15, normTf, Date.now(), symbolCode);
       if (aggFromM15.length > 0) {
         current = mergeCandlesIdempotent(current || [], aggFromM15, normTf, Date.now(), symbolCode);
-        if (hasFullNativeCache) {
-          state.candleCache[exactKey] = current;
-        }
       }
     }
     if (normTf === 'H4') {
       const h1Key = `${symbolCode}_${provider}_H1`;
-      const h1 = state.candleCache[h1Key] || loadCandlesFromLocalStorage(h1Key, 'H1', symbolCode);
+      let h1 = state.candleCache[h1Key];
+      if (!h1) {
+        h1 = loadCandlesFromLocalStorage(h1Key, 'H1', symbolCode);
+        if (h1.length > 0) state.candleCache[h1Key] = h1;
+      }
       if (h1 && h1.length > 0) {
         const aggFromH1 = TimeframeAggregator.aggregateCandles(h1, 'H4', Date.now(), symbolCode);
         if (aggFromH1.length > 0) {
           current = mergeCandlesIdempotent(current || [], aggFromH1, 'H4', Date.now(), symbolCode);
-          if (hasFullNativeCache) {
-            state.candleCache[exactKey] = current;
-          }
         }
       }
     }
   } else if (normTf === 'D1' && (!current || current.length === 0)) {
     const h4Key = `${symbolCode}_${provider}_H4`;
-    const h4 = state.candleCache[h4Key] || loadCandlesFromLocalStorage(h4Key, 'H4', symbolCode);
+    let h4 = state.candleCache[h4Key];
+    if (!h4) {
+      h4 = loadCandlesFromLocalStorage(h4Key, 'H4', symbolCode);
+      if (h4.length > 0) state.candleCache[h4Key] = h4;
+    }
     if (h4 && h4.length >= 360) {
       const agg = TimeframeAggregator.aggregateCandles(h4, 'D1', Date.now(), symbolCode);
       if (agg.length >= 60) current = agg;
     }
   } else if (normTf === 'W1' && (!current || current.length === 0)) {
     const d1Key = `${symbolCode}_${provider}_D1`;
-    const d1 = state.candleCache[d1Key] || loadCandlesFromLocalStorage(d1Key, 'D1', symbolCode);
+    let d1 = state.candleCache[d1Key];
+    if (!d1) {
+      d1 = loadCandlesFromLocalStorage(d1Key, 'D1', symbolCode);
+      if (d1.length > 0) state.candleCache[d1Key] = d1;
+    }
     if (d1 && d1.length > 0) {
       current = TimeframeAggregator.aggregateCandles(d1, 'W1', Date.now(), symbolCode);
     } else {
       const h4Key = `${symbolCode}_${provider}_H4`;
-      const h4 = state.candleCache[h4Key] || loadCandlesFromLocalStorage(h4Key, 'H4', symbolCode);
+      let h4 = state.candleCache[h4Key];
+      if (!h4) {
+        h4 = loadCandlesFromLocalStorage(h4Key, 'H4', symbolCode);
+        if (h4.length > 0) state.candleCache[h4Key] = h4;
+      }
       if (h4 && h4.length > 0) {
         current = TimeframeAggregator.aggregateCandles(h4, 'W1', Date.now(), symbolCode);
       }
     }
   }
 
-  return current || [];
+  const result = current || [];
+  if (result.length > 0) {
+    state.candleCache[exactKey] = result;
+  }
+  _resolvedCandlesMemo.set(memoKey, result);
+  return result;
 }

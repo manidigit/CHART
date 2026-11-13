@@ -289,10 +289,8 @@ function getCandleMs(c) {
 }
 
 export function computeDayStats(s, overrideCandles = null) {
-  const candles =
-    Array.isArray(overrideCandles) && overrideCandles.length > 0
-      ? overrideCandles
-      : s.candles || [];
+  const hasOverride = Array.isArray(overrideCandles) && overrideCandles.length > 0;
+  const candles = hasOverride ? overrideCandles : s.candles || [];
   if (candles.length === 0) {
     const fallback = Number(s.lastClose || 0);
     return {
@@ -309,6 +307,12 @@ export function computeDayStats(s, overrideCandles = null) {
   const latestCandle = candles[candles.length - 1];
   const lastClose = Number(latestCandle.close || s.lastClose || 0);
   const latestMs = getCandleMs(latestCandle);
+  const nowMinuteBucket = Math.floor(Date.now() / 30000);
+  const cacheSig = `${candles.length}_${latestMs}_${lastClose}_${s.connectionStatus}_${s.lastSuccessfulFetchMs || 0}_${nowMinuteBucket}`;
+  if (!hasOverride && s._dayStatsCache && s._dayStatsCache.sig === cacheSig) {
+    return s._dayStatsCache.val;
+  }
+
   const latestDayKey = latestMs > 0 ? PriceFormatter.getSessionDayKey(latestMs, s.symbolCode) : '';
 
   const sessionBars = [];
@@ -367,7 +371,7 @@ export function computeDayStats(s, overrideCandles = null) {
     lastFetchMs > 0 &&
     nowMs - lastFetchMs < 180000;
 
-  return {
+  const result = {
     lastClose,
     prevClose,
     openPrice,
@@ -376,6 +380,10 @@ export function computeDayStats(s, overrideCandles = null) {
     volume: volSum > 0 ? volSum : Number(latestCandle.volume || 0),
     isLive,
   };
+  if (!hasOverride) {
+    s._dayStatsCache = { sig: cacheSig, val: result };
+  }
+  return result;
 }
 
 function renderSpeedometerSvg(needleRatio, accentColor) {
@@ -660,15 +668,17 @@ function computeRealOverviewMetrics(candles = [], decimals = 2, i18n) {
   }
   const latest = candles[n - 1];
   const lastClose = Number(latest.close || 0);
-  const rsiArr = TechnicalIndicators.computeRsi(candles, 14);
-  const sma20Arr = TechnicalIndicators.computeSma(candles, 20);
-  const sma50Arr = TechnicalIndicators.computeSma(candles, 50);
-  const atrArr = TechnicalIndicators.computeAtr(candles, 14);
+  const tailWindow = n > 200 ? candles.slice(-200) : candles;
+  const tn = tailWindow.length;
+  const rsiArr = TechnicalIndicators.computeRsi(tailWindow, 14);
+  const sma20Arr = TechnicalIndicators.computeSma(tailWindow, 20);
+  const sma50Arr = TechnicalIndicators.computeSma(tailWindow, 50);
+  const atrArr = TechnicalIndicators.computeAtr(tailWindow, 14);
 
-  const rsi14 = rsiArr[n - 1];
-  const sma20 = sma20Arr[n - 1];
-  const sma50 = sma50Arr[n - 1];
-  const atr14 = atrArr[n - 1];
+  const rsi14 = rsiArr[tn - 1];
+  const sma20 = sma20Arr[tn - 1];
+  const sma50 = sma50Arr[tn - 1];
+  const atr14 = atrArr[tn - 1];
 
   let bullCount = 0;
   let bearCount = 0;

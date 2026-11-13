@@ -1,7 +1,10 @@
 package es.manico.chartintelligence.i18n
 
 import android.content.Context
+import android.content.ContextWrapper
+import android.content.res.AssetManager
 import android.content.res.Configuration
+import android.content.res.Resources
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
@@ -34,7 +37,11 @@ fun Context.createLocalizedContext(language: AppLanguage): Context {
     val config = Configuration(resources.configuration)
     config.setLocale(locale)
     config.setLayoutDirection(locale)
-    return createConfigurationContext(config)
+    val configContext = createConfigurationContext(config)
+    return object : ContextWrapper(this) {
+        override fun getResources(): Resources = configContext.resources
+        override fun getAssets(): AssetManager = configContext.assets
+    }
 }
 
 @Composable

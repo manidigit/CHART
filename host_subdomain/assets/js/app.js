@@ -83,8 +83,16 @@ function getActiveTab() {
   return state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0] || null;
 }
 
-function ensureInitialTabs() {
+function ensureInitialTabs(forceHydrate = false) {
   if (state.openTabs && state.openTabs.length > 0) {
+    if (state._tabsHydrated && !forceHydrate) {
+      if (!state.activeTabId || !state.openTabs.some((t) => t.tabId === state.activeTabId)) {
+        const preferred = state.openTabs.find((t) => t.symbolCode === state.lastOpenedSymbolCode);
+        state.activeTabId = preferred ? preferred.tabId : state.openTabs[0].tabId;
+        saveActiveTabId(state.activeTabId);
+      }
+      return;
+    }
     // Determine active indicator state from chartPreferences or any tab that has indicators enabled
     const effectiveIndicators = {};
     for (const k of INDICATOR_FLAG_KEYS) {
@@ -105,8 +113,10 @@ function ensureInitialTabs() {
             : tab.timeframe || 'M15';
       tab.timeframe = tf;
       tab.chartId = `${tab.symbolCode}_${tf}`;
-      const cached = getCachedOrAggregatedCandles(tab.symbolCode, prov, tf);
-      tab.candles = cached.length > 0 ? cached : (sym && sym.candles) || [];
+      if (!Array.isArray(tab.candles) || tab.candles.length === 0 || forceHydrate) {
+        const cached = getCachedOrAggregatedCandles(tab.symbolCode, prov, tf);
+        tab.candles = cached.length > 0 ? cached : (sym && sym.candles) || [];
+      }
       tab.drawings = state.drawingsByChartId[tab.chartId] || tab.drawings || [];
       for (const k of INDICATOR_FLAG_KEYS) {
         tab[k] = effectiveIndicators[k];
@@ -134,6 +144,7 @@ function ensureInitialTabs() {
       state.activeTabId = preferred ? preferred.tabId : state.openTabs[0].tabId;
       saveActiveTabId(state.activeTabId);
     }
+    state._tabsHydrated = true;
     return;
   }
   const watchlist = state.symbols.filter((s) => s.inWatchlist);
@@ -2655,7 +2666,7 @@ async function bootstrap() {
     await fetchSystemStatus();
     if (state.isAuthenticated) {
       await downloadWorkspaceSync();
-      ensureInitialTabs();
+      ensureInitialTabs(true);
     }
     renderApp();
   } catch {
@@ -2664,8 +2675,32 @@ async function bootstrap() {
 
   window.__CI_APP_MOUNTED__ = true;
 
+  const requestBackgroundRender = () => {
+    // Never replace root.innerHTML while a user has any modal, mobile sheet, or form control open/focused
+    if (
+      state.activeModal ||
+      state.symbolOverviewCode ||
+      state.isAddSymbolModalOpen ||
+      state.mobileSheet
+    ) {
+      redrawActiveCanvas();
+      return;
+    }
+    const activeEl = document.activeElement;
+    if (
+      activeEl &&
+      (activeEl.tagName === 'INPUT' ||
+        activeEl.tagName === 'SELECT' ||
+        activeEl.tagName === 'TEXTAREA')
+    ) {
+      redrawActiveCanvas();
+      return;
+    }
+    renderApp();
+  };
+
   if (state.isAuthenticated) {
-    syncAllWatchlistSymbols(renderApp).catch(() => {});
+    syncAllWatchlistSymbols(requestBackgroundRender).catch(() => {});
   }
 
   if (!countdownIntervalId) {
@@ -2692,7 +2727,7 @@ async function bootstrap() {
           const periodicRefresh = isIntraday && nowMs - Math.max(lastAuto, lastFetch) >= 60000;
           if (nearBarClose || periodicRefresh) {
             tab._lastAutoSyncMs = nowMs;
-            syncSymbolNow(tab.symbolCode, tab.timeframe, renderApp).catch(() => {});
+            syncSymbolNow(tab.symbolCode, tab.timeframe, requestBackgroundRender, false, true).catch(() => {});
           }
 
           // ENG-02: Non-intrusive 15s read-only forming quote tick polling

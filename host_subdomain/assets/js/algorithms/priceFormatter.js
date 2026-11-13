@@ -343,52 +343,56 @@ export const PriceFormatter = {
     return Math.floor(ms / step) * step;
   },
 
+  _nyDstCache: new Map(),
+
+  _getNewYorkDstBoundsUtcMs(year) {
+    let cached = this._nyDstCache.get(year);
+    if (cached) return cached;
+    // US Daylight Saving Time (since 2007):
+    // Starts 2nd Sunday in March at 02:00 EST (07:00 UTC)
+    // Ends 1st Sunday in November at 02:00 EDT (06:00 UTC)
+    const mar1Dow = new Date(Date.UTC(year, 2, 1)).getUTCDay();
+    const secondSunMarDay = 8 + ((7 - mar1Dow) % 7);
+    const dstStartUtcMs = Date.UTC(year, 2, secondSunMarDay, 7, 0, 0, 0);
+
+    const nov1Dow = new Date(Date.UTC(year, 10, 1)).getUTCDay();
+    const firstSunNovDay = 1 + ((7 - nov1Dow) % 7);
+    const dstEndUtcMs = Date.UTC(year, 10, firstSunNovDay, 6, 0, 0, 0);
+
+    cached = { dstStartUtcMs, dstEndUtcMs };
+    this._nyDstCache.set(year, cached);
+    return cached;
+  },
+
+  _isNewYorkDst(utcEpochMs) {
+    const approxYear = new Date(utcEpochMs).getUTCFullYear();
+    const { dstStartUtcMs, dstEndUtcMs } = this._getNewYorkDstBoundsUtcMs(approxYear);
+    return utcEpochMs >= dstStartUtcMs && utcEpochMs < dstEndUtcMs;
+  },
+
   _getNewYorkParts(epochMs) {
-    try {
-      const fmt = new Intl.DateTimeFormat('en-US', {
-        timeZone: 'America/New_York',
-        year: 'numeric',
-        month: '2-digit',
-        day: '2-digit',
-        weekday: 'short',
-        hour: '2-digit',
-        minute: '2-digit',
-        hourCycle: 'h23',
-      });
-      const parts = fmt.formatToParts(new Date(Number(epochMs)));
-      const map = {};
-      for (const p of parts) map[p.type] = p.value;
-      return {
-        year: Number(map.year),
-        month: Number(map.month),
-        day: Number(map.day),
-        hour: Number(map.hour) % 24,
-        minute: Number(map.minute),
-        weekday: String(map.weekday || ''),
-      };
-    } catch {
-      const d = new Date(Number(epochMs));
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
-      return {
-        year: d.getUTCFullYear(),
-        month: d.getUTCMonth() + 1,
-        day: d.getUTCDate(),
-        hour: d.getUTCHours(),
-        minute: d.getUTCMinutes(),
-        weekday: days[d.getUTCDay()],
-      };
-    }
+    const ms = Number(epochMs || 0);
+    const offsetHours = this._isNewYorkDst(ms) ? -4 : -5;
+    const nyShiftedMs = ms + offsetHours * 3600000;
+    const d = new Date(nyShiftedMs);
+    const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    return {
+      year: d.getUTCFullYear(),
+      month: d.getUTCMonth() + 1,
+      day: d.getUTCDate(),
+      hour: d.getUTCHours(),
+      minute: d.getUTCMinutes(),
+      weekday: days[d.getUTCDay()],
+    };
   },
 
   _nyWallClockToUtcMs(year, month, day, hour, minute) {
-    // Iterative 2-pass Intl inverse for America/New_York DST correctness (EDT -4h vs EST -5h)
-    const approxUtc = Date.UTC(year, month - 1, day, hour + 5, minute, 0, 0);
-    const p1 = this._getNewYorkParts(approxUtc);
-    const diff1 = Date.UTC(year, month - 1, day, hour, minute, 0, 0) - Date.UTC(p1.year, p1.month - 1, p1.day, p1.hour, p1.minute, 0, 0);
-    const pass2 = approxUtc + diff1;
-    const p2 = this._getNewYorkParts(pass2);
-    const diff2 = Date.UTC(year, month - 1, day, hour, minute, 0, 0) - Date.UTC(p2.year, p2.month - 1, p2.day, p2.hour, p2.minute, 0, 0);
-    return pass2 + diff2;
+    // Try EST (-5h -> +5h UTC) first, then check if that instant falls in EDT (-4h -> +4h UTC)
+    const estGuessUtcMs = Date.UTC(year, month - 1, day, hour + 5, minute, 0, 0);
+    if (this._isNewYorkDst(estGuessUtcMs)) {
+      return Date.UTC(year, month - 1, day, hour + 4, minute, 0, 0);
+    }
+    return estGuessUtcMs;
   },
 
   getSessionBucketBounds(epochMs, timeframe = 'M15', symbolCode = 'XAUUSD') {
@@ -465,14 +469,17 @@ export const PriceFormatter = {
     const ms = Number(epochMs || 0);
     const cal = this.getSessionCalendar(symbolCode);
     if (cal === 'CRYPTO_24_7') {
-      return new Date(ms).toISOString().slice(0, 10);
+      const d = new Date(ms);
+      const y = d.getUTCFullYear();
+      const m = d.getUTCMonth() + 1;
+      const day = d.getUTCDate();
+      return `${y}-${m < 10 ? '0' + m : m}-${day < 10 ? '0' + day : day}`;
     }
     // For OTC_FX_METALS (NY 17:00 rollover) add 7h to NY time so 17:00 NY flips to next day
     // For US_EQUITIES use exact America/New_York calendar date
     const shiftedMs = cal === 'OTC_FX_METALS' ? ms + 7 * 3600000 : ms;
     const ny = this._getNewYorkParts(shiftedMs);
-    const pad = (n) => String(n).padStart(2, '0');
-    return `${ny.year}-${pad(ny.month)}-${pad(ny.day)}`;
+    return `${ny.year}-${ny.month < 10 ? '0' + ny.month : ny.month}-${ny.day < 10 ? '0' + ny.day : ny.day}`;
   },
 
   isOtcWeekendClosed(epochMs = Date.now(), symbolCode = 'XAUUSD') {

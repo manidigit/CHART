@@ -1109,14 +1109,14 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
   return { candles: finalCandles, syncMeta, syncOk, errorMessage };
 }
 
-export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, forceBackfill = false) {
+export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, forceBackfill = false, backgroundOnly = false) {
   const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
   if (!sym) return;
 
   sym.isSyncing = true;
   sym.syncError = false;
   sym.syncErrorMessage = '';
-  if (typeof renderCallback === 'function') renderCallback();
+  if (!backgroundOnly && typeof renderCallback === 'function') renderCallback();
 
   const rawRequestedTf = String(requestedTf || sym.timeframe || 'M15').toUpperCase();
   const effectiveTf =
@@ -1125,14 +1125,17 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
       : sym.activeProvider === 'stooq' && rawRequestedTf !== 'W1'
         ? 'D1'
         : rawRequestedTf;
-  const fetchLimit = Math.max(500, Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 2500));
+  const baseLimit = Math.max(500, Math.min(5000, Number(state.chartPreferences.candleFetchLimit) || 2500));
+  const fetchLimit = backgroundOnly ? Math.min(baseLimit, 600) : baseLimit;
 
   const timeframesToSync =
-    sym.activeProvider === 'eia_brent_spot'
-      ? ['D1']
-      : sym.activeProvider === 'stooq'
-        ? Array.from(new Set(['D1', effectiveTf]))
-        : Array.from(new Set(['M15', 'H1', 'H4', 'D1', effectiveTf]));
+    backgroundOnly
+      ? [effectiveTf]
+      : sym.activeProvider === 'eia_brent_spot'
+        ? ['D1']
+        : sym.activeProvider === 'stooq'
+          ? Array.from(new Set(['D1', effectiveTf]))
+          : Array.from(new Set(['M15', 'H1', 'H4', 'D1', effectiveTf]));
 
   try {
     const results = await Promise.all(
@@ -1156,29 +1159,33 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
       const existing = state.candleCache[cacheKey] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
       const merged =
         incoming && incoming.length > 0
-          ? mergeCandlesIdempotent(existing, incoming, tf, Date.now(), symbolCode).slice(-fetchLimit)
+          ? mergeCandlesIdempotent(existing, incoming, tf, Date.now(), symbolCode).slice(-baseLimit)
           : existing;
       syncedByTf[tf] = merged;
     }
 
     const m15Bars = syncedByTf.M15 || [];
     if (m15Bars.length > 0) {
-      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_M15`, m15Bars, fetchLimit, symbolCode);
-      const aggH1 = TimeframeAggregator.aggregateCandles(m15Bars, 'H1', Date.now(), symbolCode);
-      syncedByTf.H1 = mergeCandlesIdempotent(syncedByTf.H1 || [], aggH1, 'H1', Date.now(), symbolCode).slice(-fetchLimit);
+      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_M15`, m15Bars, baseLimit, symbolCode);
+      if (!backgroundOnly || effectiveTf === 'H1' || effectiveTf === 'H4') {
+        const aggH1 = TimeframeAggregator.aggregateCandles(m15Bars, 'H1', Date.now(), symbolCode);
+        syncedByTf.H1 = mergeCandlesIdempotent(syncedByTf.H1 || [], aggH1, 'H1', Date.now(), symbolCode).slice(-baseLimit);
+      }
     }
 
     const h1Bars = syncedByTf.H1 || [];
     if (h1Bars.length > 0) {
-      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_H1`, h1Bars, fetchLimit, symbolCode);
-      const aggH4 = TimeframeAggregator.aggregateCandles(h1Bars, 'H4', Date.now(), symbolCode);
-      syncedByTf.H4 = mergeCandlesIdempotent(syncedByTf.H4 || [], aggH4, 'H4', Date.now(), symbolCode).slice(-fetchLimit);
+      saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_H1`, h1Bars, baseLimit, symbolCode);
+      if (!backgroundOnly || effectiveTf === 'H4') {
+        const aggH4 = TimeframeAggregator.aggregateCandles(h1Bars, 'H4', Date.now(), symbolCode);
+        syncedByTf.H4 = mergeCandlesIdempotent(syncedByTf.H4 || [], aggH4, 'H4', Date.now(), symbolCode).slice(-baseLimit);
+      }
     }
 
     for (const tf of Object.keys(syncedByTf)) {
       const bars = syncedByTf[tf] || [];
       if (bars.length > 0) {
-        saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_${tf}`, bars, fetchLimit, symbolCode);
+        saveCandlesToCache(`${symbolCode}_${sym.activeProvider}_${tf}`, bars, baseLimit, symbolCode);
       }
     }
 
@@ -1245,31 +1252,48 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
       }
     }
 
-    saveSymbolsToStorage();
+    if (!backgroundOnly) {
+      saveSymbolsToStorage();
+    }
   } catch (err) {
     sym.syncError = true;
     sym.syncErrorMessage = (err && err.message) || 'Sync failed';
     sym.connectionStatus = sym.candles && sym.candles.length > 0 ? 'STALE' : 'ERROR';
   } finally {
     sym.isSyncing = false;
-    if (typeof renderCallback === 'function') renderCallback();
+    if (!backgroundOnly && typeof renderCallback === 'function') renderCallback();
   }
 }
 
 export async function syncAllWatchlistSymbols(renderCallback) {
   const watchlist = state.symbols.filter((s) => s.inWatchlist);
+  if (watchlist.length === 0) return;
+
+  // Sync the active tab's symbol first so the primary chart updates immediately
+  const activeTab =
+    state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0] || null;
+  if (activeTab) {
+    const activeSym = watchlist.find((s) => s.symbolCode === activeTab.symbolCode);
+    if (activeSym) {
+      await syncSymbolNow(activeSym.symbolCode, activeTab.timeframe || activeSym.timeframe || 'M15', renderCallback, false, false);
+    }
+  }
+
+  // Sync remaining watchlist symbols quietly in the background without hammering the DOM on every symbol
+  const remaining = watchlist.filter((s) => !activeTab || s.symbolCode !== activeTab.symbolCode);
   const BATCH_SIZE = 4;
-  for (let i = 0; i < watchlist.length; i += BATCH_SIZE) {
-    const chunk = watchlist.slice(i, i + BATCH_SIZE);
+  for (let i = 0; i < remaining.length; i += BATCH_SIZE) {
+    const chunk = remaining.slice(i, i + BATCH_SIZE);
     await Promise.all(
       chunk.map((sym) => {
-        const activeTab = state.openTabs.find(
-          (t) => t.tabId === state.activeTabId && t.symbolCode === sym.symbolCode
-        );
-        const tf = activeTab ? activeTab.timeframe : sym.timeframe || 'M15';
-        return syncSymbolNow(sym.symbolCode, tf, renderCallback, false);
+        const tf = sym.timeframe || 'M15';
+        return syncSymbolNow(sym.symbolCode, tf, null, false, true);
       })
     );
+    saveSymbolsToStorage();
+    if (typeof renderCallback === 'function') {
+      renderCallback();
+    }
   }
 }
 

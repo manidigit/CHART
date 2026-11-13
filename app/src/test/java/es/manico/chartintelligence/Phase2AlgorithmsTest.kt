@@ -1,6 +1,7 @@
 package es.manico.chartintelligence
 
 import android.content.Context
+import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import es.manico.chartintelligence.algorithms.CandleExportAlgorithm
 import es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm
@@ -483,5 +484,57 @@ class Phase2AlgorithmsTest {
         assertTrue(hydratedTab.showOverlayMacd)
         assertTrue(hydratedTab.showPivotPoints)
         assertTrue(hydratedTab.showFutureProjection)
+    }
+
+    @get:org.junit.Rule
+    val composeTestRule = androidx.compose.ui.test.junit4.createComposeRule()
+
+    @Test
+    fun settingsScreen_rendersAndNavigatesTabsWithoutCrash() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        val repo = WorkspaceRepository(context)
+        val symbols = repo.loadSymbolCatalog()
+        val prefs = repo.loadChartPreferences()
+
+        composeTestRule.setContent {
+            es.manico.chartintelligence.ui.theme.ChartIntelligenceTheme(
+                darkTheme = true,
+                language = es.manico.chartintelligence.i18n.AppLanguage.FA
+            ) {
+                es.manico.chartintelligence.ui.screens.SettingsScreen(
+                    currentLanguage = es.manico.chartintelligence.i18n.AppLanguage.FA,
+                    isDarkTheme = true,
+                    symbols = symbols,
+                    ownerUsername = "mani",
+                    ownerEmail = "mani@example.com",
+                    statusBannerResId = null,
+                    chartPreferences = prefs,
+                    onLanguageSelected = {},
+                    onThemeSelected = {},
+                    onToggleSymbolInWatchlist = { _, _ -> },
+                    onSelectProviderForSymbol = { _, _ -> },
+                    onUpdatePassword = {},
+                    onSignOut = {},
+                    onBackToWatchlist = {},
+                    onUpdateBullColor = {},
+                    onUpdateBearColor = {},
+                    onUpdateTrendColor = {},
+                    onUpdateHLineColor = {},
+                    onUpdateVLineColor = {},
+                    onResetColors = {},
+                    onUpdateAlgoParams = { _, _, _ -> },
+                    onResetAlgoParams = {},
+                    onAddCustomSymbol = { _, _, _, _ -> },
+                    onDeleteSymbol = {}
+                )
+            }
+        }
+        composeTestRule.waitForIdle()
+        for (tabKey in listOf("chart", "notifications", "theme", "account", "sync")) {
+            composeTestRule.onNode(androidx.compose.ui.test.hasTestTag("settings_tab_$tabKey")).performClick()
+            composeTestRule.waitForIdle()
+        }
+        composeTestRule.onNode(androidx.compose.ui.test.hasTestTag("explorer_mode_by_symbol")).performClick()
+        composeTestRule.waitForIdle()
     }
 }

@@ -1396,6 +1396,7 @@ body.theme-light .tv-ind-pill {
   width: 100%;
   max-width: 620px;
   max-height: 88vh;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   background: var(--surface);
@@ -1408,6 +1409,7 @@ body.theme-light .tv-ind-pill {
 .tv-modal-header {
   height: 48px;
   min-height: 48px;
+  flex-shrink: 0;
   padding: 0 16px;
   border-bottom: 1px solid var(--border);
   display: flex;
@@ -1431,6 +1433,7 @@ body.theme-light .tv-ind-pill {
 .tv-modal-tabs {
   display: flex;
   align-items: center;
+  flex-shrink: 0;
   gap: 6px;
   padding: 8px 14px;
   border-bottom: 1px solid var(--border);
@@ -1473,9 +1476,13 @@ body.theme-light .tv-ind-pill {
 }
 
 .tv-modal-body {
-  flex: 1;
+  flex: 1 1 auto;
+  min-height: 0;
   overflow-y: auto;
   overflow-x: hidden;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
   padding: 16px;
 }
 
