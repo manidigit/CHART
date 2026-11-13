@@ -11,7 +11,8 @@
 
 - **احراز هویت، نشست و همگام‌سازی یکپارچه:**
   - `[x]` ورود شخصی (`auth.php`) با هش امن SHA-256 همراه با Salt، گزینه `Remember Me`، ایمیل بازیابی و بازیابی رمز با کد ۶ رقمی OTP.
-  - `[x]` همگام‌سازی دوطرفه محیط کاری (`workspace_sync.php`) شامل `open_tabs`، ترسیمات، نمادهای سفارشی و تنظیمات ۵ تب (`Sync`, `Chart`, `Notifications`, `Theme`, `Account`) + دکمه `Reset All`.
+  - `[x]` همگام‌سازی دوطرفه محیط کاری (`workspace_sync.php`) شامل `open_tabs`، ترسیمات، نمادهای سفارشی و تنظیمات ۵ تب (`Sync`, `Chart`, `Notifications`, `Theme`, `Account`) — *باگ‌های بحرانی پاریتی، عدم ذخیره ابری تغییرات اندیکاتور/ساعت، و پرش نسبت ارتفاع حجم در `SYNC-01` پیگیری می‌شود*.
+
   - `[x]` جداسازی کامل کلیدهای شخصی `BYOK` (`Twelve Data`, `Stooq`, `Alpha Vantage`, `Finnhub`) با ارسال هدر `X-Provider-Api-Key` (هرگز در فضای ابری یا فایل بکاپ ذخیره نمی‌شوند).
 - **موتور داده، سشن، تشخیص Gap و خروجی (`DB-First Delta Sync`):**
   - `[x]` ۷ آداپتور مستقل (`tvdatafeed`, `biquote`, `twelve_data`, `dukascopy`, `yahoo_finance`, `stooq`, `eia_brent_spot`) با کلید یکتای `UNIQUE(chart_id, provider_id, timeframe, open_time_utc)` و ممنوعیت Fallback پنهان.
@@ -89,36 +90,72 @@
 2. `[ ]` **ورود فایل‌های تاریخی (`Historical Import` & `LocalCsvAdapter`):** آپلود مستقیم آرشیو `EIA Europe Brent Spot FOB` (`RBRTEd.xls` از ۱۹۸۷ تا امروز)، فایل‌های CSV/XLS/JSON و پشتیبان `DataHub (brent-daily.csv)`؛ پشتیبانی از ورود دستی/استخراج عددی بدون ذخیره هیچ تصویر نمودار (`Strict No-Image-Storage Policy`).
 3. `[x]` **Backup & Restore رمزنگاری‌شده در سطح برنامه (`PBKDF2 + AES-256-GCM`):** در `v1.39.0` در PHP/Web/Android پیاده‌سازی شد (`INF-01`؛ تست نهایی بازیابی روی cPanel زنده باقی مانده است).
 
-### فاز ۴ — موتور تحلیل ساختار و پیش‌بینی نسخه اول (`Prediction Engine v1`)
-- [ ] **مدل پایه‌ای و پایپ‌لاین ۳ مرحله‌ای مستقل برای هر `chart_id`:**
-  - `DataReadinessMonitor` + `TechnicalStructureAnalyzer`
-  - `Uncertainty & Volatility Specialist` (`q10..q90` بر مبنای `ATR 14` و مدل `Kronos`/Baseline)
-  - `Immutable Prediction Generator` منطبق بر `forecast-contract/v1` برای افق‌های `15m`, `1h`, `4h`, `1d` با زنجیره هش سروری `SHA-256` و **بدون هرگونه فیلد معامله‌گری (`Buy/Sell/Entry/SL/TP`)**.
+### فاز ۴ — موتور تحلیل ساختار و پیش‌بینی آینده قیمت (`Future Price Projection Engine v1`)
 
-- [ ] **روش‌شناسی ریاضی، برونیابی (Extrapolation) و مدل‌های پیش‌بینی سری زمانی:**
-  - **برونیابی‌های ساده هندسی و رگرسیونی (`Extrapolations`):**
-    - برونیابی خطی (`Linear Trendline Extrapolation`)
-    - برازش چندجمله‌ای (`Polynomial Trend Forecaster` درجه ۲ و بالاتر)
-    - مدل‌های نمایی و لگاریتمی (`Exponential / Logarithmic Curves`)
-  - **مدل‌های آماری و اقتصادسنجی کلاسیک (`Classical Statistical Models`):**
-    - سری‌های خودهمبسته و میانگین متحرک (`AR`, `MA`, `ARMA`, `ARIMA`, `SARIMA`)
-    - هموارسازی نمایی (`Exponential Smoothing`: Holt-Winters و انواع `ETS`)
-    - مدل‌های فضای حالت و فیلتر کالمن (`State-Space Models` & `Kalman Filter`)
-    - برونیابی فوریه و تبدیل موج سینوسی (`Fourier Extrapolation` / `Sequential Regression Extrapolation - SRE`)
-  - **ابزارها و کتابخانه‌های مرجع سری زمانی (Ecosystem & Repos):**
-    - `sktime` (شامل `PolynomialTrendForecaster` و انواع برونیاب‌های رگرسیونی)
-    - `statsmodels` (`ARIMA`, `SARIMAX`, `StateSpace`)
-    - `Prophet` (متا — تفکیک روند، فصلی‌بودن و نقاط عطف)
-    - `PyTorch Forecasting` و `GluonTS` (مدل‌های عمیق `LSTM`, `DeepAR`, `Temporal Fusion Transformer - TFT`)
-    - مدل‌های پایه نوین ترنسفورمر (`Google TimesFM`, `Kronos K-Line Foundation Model`)
-  - **تمایز هسته Chart Intelligence در پیش‌بینی:**
-    - برونیابی در این پروژه صرفاً یک ترسیم ساده ریاضی نیست؛ تمایز اساسی در **تحلیل هم‌زمان ساختار بازار (`BOS / FVG / Fib / VRVP`)**، **ترکیب چند روش (Ensemble)**، **بازخورد قطعی از نتیجه واقعی (`Outcome Loop`)** و **آموزش/تنظیم مستقل برای هر `chart_id`** بدون دخالت انسانی و بدون صدور سیگنال معامله است.
+> **مستندات مرجع تفصیلی:** کلیه جزئیات فنی، فرمول‌ها، پایپ‌لاین و ماتریس تصمیم‌گیری در سند اختصاصی [**`FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md`**](../01-product/FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md) و بخش ۱۰ سند [**`CHART_INTELLIGENCE_MASTER_SPEC.md`**](../01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) تدوین شده است.
+
+- [ ] **تمایز بنیادین معماری و استقلال داده:**
+  - تفکیک «ترسیم ادامه نمودار» از «پیش‌بینی جهت و عدم‌قطعیت آماری»؛ عدم تکیه بر تک‌خط فریبنده یا درون‌یابی‌های هندسی صرف (نظیر Spline).
+  - استقلال ۱۰۰٪ موتور پیش‌بینی از Data Provider (Twelve Data تأمین‌کننده اولیه است اما موتور روی قرارداد استاندارد داده OHLCV کار می‌کند).
+
+- [ ] **فرمول‌بندی ورودی و بازسازی قیمت آینده:**
+  - آموزش و استنباط مدل‌ها بر مبنای بازده لگاریتمی: $r_t = \ln(C_t / C_{t-1})$.
+  - بازسازی قیمت آینده از آخرین کندل بسته قطعی: $\hat{C}_{t+h} = C_t \times \exp(\sum_{i=1}^h \hat{r}_{t+i})$.
+  - استخراج دامنه‌های High/Low بر مبنای مدل‌های نوسان شرطی (GARCH و ATR) و تفکیک Real Volume از Tick Volume.
+
+- [ ] **خانواده متدهای ریاضی، آماری و فیلترهای حالت:**
+  - **Kalman Filter (P1):** تخمین وضعیت پنهان بازار (سطح قیمت و شتاب تغییرات/کاهش تکانه).
+  - **GARCH (1,1) (P1):** مدل‌سازی تغییرات نوسان و دامنه‌های ریسک آینده.
+  - **ARIMA / ETS (P1):** خط مبنای قطعی اقتصادسنجی برای مقایسه.
+  - **Gaussian Process (P2):** برآورد توزیع احتمالاتی پیوسته روی پنجره‌های کوتاه‌مدت.
+
+- [ ] **مدل‌های هوش مصنوعی، یادگیری عمیق و مدل‌های پایه سری زمانی:**
+  - **Chronos-2 (Amazon Science) — اولویت اول MVP (P1):** مدل پایه احتمالاتی چندمرحله‌ای با کانتکست ۸۱۹۲ کندل و **مجوز آزاد Apache 2.0**.
+  - **TimesFM 2.5 (Google Research) — اولویت دوم مقایسه‌ای (P1):** مدل پایه ترنسفورمر ۲۰۰M پارامتری با Quantile Head. *(توجه: TimesFM 3.0 به دلیل لایسنس غیرتجاری در این پروژه استفاده نمی‌شود).*
+  - **N-HiTS / N-BEATS (Nixtla) — مدل اختصاصی (P1):** معماری پیش‌خور و چندمقیاسی برای فاین‌تیون روی K-Line دارایی‌های هدف.
+
+- [ ] **مخازن مرجع متن‌باز GitHub:**
+  1. `amazon-science/chronos-forecasting` (Chronos-2 با مجوز Apache 2.0).
+  2. `google-research/timesfm` (مدل پایه TimesFM 2.5).
+  3. `Nixtla/neuralforecast` (بیش از ۳۰ مدل عصبی شامل N-BEATS و N-HiTS).
+  4. `NolanCassidy/timesfm-stock-chart-forecasting` (ترسیم مستقیم کندل‌های آینده و اندیکاتورها روی چارت).
+  5. `thuml/Time-Series-Library` (بنچمارک ترنسفورمرهای PatchTST, iTransformer, TimesNet).
+  6. `sktime/sktime` (فریم‌ورک پایتون برای ARIMA، Prophet، Polynomial Trends و ارزیابی Walk-forward).
+  7. `forge-veil/forecast-web` (اجرای کلاینتی TimesFM و Chronos با WebGPU/WASM).
+  8. `puffinsoft/benchstreet` (بنچمارک مقایسه‌ای مدل‌های مالی).
+
+- [ ] **خروجی ۴ مؤلفه‌ای و رندر چارت (Lightweight Charts & Compose Canvas):**
+  1. مسیر محتمل مرکزی (میانه / `Quantile 50%`) به‌صورت خط‌چین متمایز.
+  2. بازه اطمینان ۸۰٪ (`Quantile 10% .. 90%`) به‌صورت ابر شفاف نیمه‌رنگ (`Fan Chart`).
+  3. سناریوهای مسیر نمونه‌برداری‌شده (صعودی، نزولی، پایه) با حفظ همبستگی زمانی گام‌ها.
+  4. شاخص اعتبار پیش‌بینی (`Forecast Validity`) بر پایه خطای تاریخی در همان نماد و افق.
+
+- [ ] **رندر کندل‌های هوش مصنوعی آینده روی بوم چارت (`AI-Generated Future Candlesticks Overlay` — مطابق اسکرین‌شات مرجع):**
+  - خط تفکیک عمودی زمان حال (`Present Bar Boundary Divider`) با سربرگ متمایز `PAST (Actual Data)` (فلش آبی) و `Future Projection (N periods) (AI-Generated)` (فلش خط‌چین نارنجی).
+  - ترسیم کندل‌های OHLC آینده با استایل شبه‌شفاف هولوگرافیک / بنفش-خاکستری (`Ghost Candlesticks`) بدون امکان اشتباه با کندل‌های قطعی سبز/قرمز واقعی.
+  - محور افقی هوشمند با گام‌های نسبی آینده (`+5 (Future)`, `+10`, `+15`, `+20`, `+25`, `+30`) و برچسب درصد تغییر انباشته نسبت به آخرین کلوز (`+X%` / `-X%`).
+  - کلید سوئیچ دوحالته بین نمایش کندل‌های شبحی آینده (`Ghost Mode`) و ابرهای بازه اطمینان (`Fan Chart Mode`).
+  - **کف پیش‌بینی حداقل ۱۰ کندل در تمام تایم‌فریم‌ها ($h \ge 10$):** الزام موتور و رابط چارت به توانایی تولید و رسم حداقل ۱۰ کندل متوالی آینده روی هر تایم‌فریم فعال (`M15`, `M30`, `H1`, `H4`, `D1`, `W1`) با رعایت تقویم معاملاتی سشن دارایی.
+
+
+
+- [ ] **پذیرش نقادانه و شرط سخت‌گیرانه ورود به پروداکشن (`Strict Acceptance Gate`):**
+  - استناد به پژوهش نوامبر ۲۰۲۶ (arXiv) روی قراردادهای آتی Nasdaq و S&P (در ۱۶۰ ترکیب، هیچ مدلی از Naive Persistence بهتر نشد).
+  - **گیت ارزیابی:** هیچ مدلی بدون برتری آماری اثبات‌شده بر خط مبنای ساده «بدون تغییر قیمت» (`Persistence Baseline`) در تست Walk-forward خارج از نمونه وارد پروداکشن نخواهد شد.
+
+- [ ] **برنامه اجرایی ۴ فازی توسعه موتور پیش‌بینی:**
+  - **فاز اول (Research & MVP):** دیتای واقعی XAUUSD و SPOTBRENT، پیاده‌سازی سرویس مستقل، آزمون Chronos-2 و TimesFM 2.5، مقایسه با ARIMA و Persistence، رسم مسیر و بازه اطمینان روی بوم، و ثبت آرشیو هش پیش‌بینی‌ها.
+  - **فاز دوم (Prediction Intelligence):** افزودن N-HiTS، مدل‌سازی نوسان با GARCH، ترکیب مدل‌ها (Ensemble)، کالیبراسیون بازه‌های احتمالاتی، و تفکیک افق کوتاه‌مدت (۸ تا ۲۴ کندل) از بلندمدت (۴۸ تا ۱۹۲ کندل).
+  - **فاز سوم (Adaptive Forecasting):** تشخیص تغییر رژیم بازار، تنظیم پویای وزن مدل‌ها، فاین‌تیون روی داده‌های مالی، و اعلام هشدار افت اعتبار پیش‌بینی در شرایط نامتعارف.
+  - **فاز چهارم (Integration with CHART Intelligence):** تلفیق پیش‌بینی با ساختار بازار SMC، همگرایی با خطوط حمایت/مقاومت آینده، و ارزیابی زنده عملکرد تحلیلی.
+
 
 ### فاز ۵ — حلقه بازخورد زنده، Walk-Forward و حاکمیت مدل
-- [ ] **ارزیابی خودکار Outcome و یادگیری شناختی (`Outcome & Learning Evaluator`)**
-- [ ] **ارزیابی تاریخی (`Purged + Embargoed Walk-Forward`)**
-- [ ] **مدیریت `Champion / Challenger & Rollback` با `Promotion Gate`**
+- [ ] **ارزیابی خودکار Outcome و یادگیری شناختی (`Outcome & Learning Evaluator`):** مقایسه بلادرنگ کندل‌های بسته‌شده جدید با خروجی ثبت‌شده تغییرناپذیر پیش‌بینی در پایگاه داده؛ محاسبه خطای جهت، MAE، RMSE، Quantile Loss، و امتیاز کالیبراسیون بر اساس `forecast-contract/v1`.
+- [ ] **ارزیابی تاریخی (`Purged + Embargoed Walk-Forward`):** تقسیم زمانی بدون نشت آینده، Purge کردن افق‌های هم‌پوشان و اعمال دوره Embargo مطابق تقویم معاملاتی.
+- [ ] **مدیریت `Champion / Challenger & Rollback` با `Promotion Gate`:** ارتقای مدل آزمایشی به پروداکشن صرفاً در صورت برتری معنادار آماری بر مدل جاری و خط مبنا، همراه با سقف بودجه تغییر (`Change Budget`) و قابلیت برگشت آنی (`Rollback`).
 
 ### فاز ۶ — شبیه‌ساز مستقل استراتژی و پنل چندکاربره
 - [ ] **شبیه‌ساز استراتژی معاملاتی ([`TRADING_STRATEGY_SPEC.md`](../01-product/TRADING_STRATEGY_SPEC.md))** — آفلاین (`EUR 1,000`, `1%` ریسک، `Spread/Commission/Slippage/Swap`) بدون اتصال کارگزاری واقعی.
 - [ ] **مدیریت چندکاربره (`Multi-User Admin UI`)**
+
