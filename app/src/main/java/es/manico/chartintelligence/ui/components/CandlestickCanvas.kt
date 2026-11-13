@@ -59,6 +59,7 @@ import androidx.compose.ui.unit.sp
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm
 import es.manico.chartintelligence.algorithms.DrawingGeometryAlgorithm
+import es.manico.chartintelligence.algorithms.Phase2IndicatorsAlgorithm
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
 import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
 import es.manico.chartintelligence.data.model.ChartDrawing
@@ -253,6 +254,119 @@ fun CandlestickCanvas(
         else PriceFormatterAlgorithm.computeVolumeProfile(visibleSlice, 24, 0.70, instrumentVolumeType)
     }
 
+    val fullEma200 = remember(fullCloses, tab.showEma200) {
+        if (!tab.showEma200 || fullCloses.size < 200) emptyList()
+        else PriceFormatterAlgorithm.computeEmaValues(fullCloses, 200)
+    }
+    val visibleEma200 = remember(fullEma200, startIndex, endIndexExclusive) {
+        if (fullEma200.isEmpty()) emptyList()
+        else fullEma200.subList(startIndex, endIndexExclusive.coerceAtMost(fullEma200.size))
+    }
+
+    val fullPsar = remember(candles, tab.showPsar) {
+        if (!tab.showPsar || candles.size < 2) emptyList()
+        else Phase2IndicatorsAlgorithm.computeParabolicSar(candles, 0.02, 0.20)
+    }
+    val visiblePsar = remember(fullPsar, startIndex, endIndexExclusive) {
+        if (fullPsar.isEmpty()) emptyList()
+        else fullPsar.subList(startIndex, endIndexExclusive.coerceAtMost(fullPsar.size))
+    }
+
+    val fullIchimoku = remember(candles, tab.showIchimoku) {
+        if (!tab.showIchimoku || candles.isEmpty()) null
+        else Phase2IndicatorsAlgorithm.computeIchimoku(candles, 9, 26, 52, 26)
+    }
+
+    val fullKeltner = remember(candles, tab.showKeltner) {
+        if (!tab.showKeltner || candles.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeKeltnerChannels(candles, 20, 10, 2.0)
+    }
+    val visibleKeltner = remember(fullKeltner, startIndex, endIndexExclusive) {
+        if (fullKeltner.isEmpty()) emptyList()
+        else fullKeltner.subList(startIndex, endIndexExclusive.coerceAtMost(fullKeltner.size))
+    }
+
+    val fullDonchian = remember(candles, tab.showDonchian) {
+        if (!tab.showDonchian || candles.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeDonchianChannels(candles, 20)
+    }
+    val visibleDonchian = remember(fullDonchian, startIndex, endIndexExclusive) {
+        if (fullDonchian.isEmpty()) emptyList()
+        else fullDonchian.subList(startIndex, endIndexExclusive.coerceAtMost(fullDonchian.size))
+    }
+
+    val fullMtfEma = remember(candles, tab.showMtfEma, tab.timeframe, tab.symbolCode) {
+        if (!tab.showMtfEma || candles.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeMtfEma(candles, tab.timeframe, 20, tab.symbolCode)
+    }
+    val visibleMtfEma = remember(fullMtfEma, startIndex, endIndexExclusive) {
+        if (fullMtfEma.isEmpty()) emptyList()
+        else fullMtfEma.subList(startIndex, endIndexExclusive.coerceAtMost(fullMtfEma.size))
+    }
+
+    val fullAdx14 = remember(candles, tab.showAdx14) {
+        if (!tab.showAdx14 || candles.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeAdxDmi(candles, 14)
+    }
+    val visibleAdx14 = remember(fullAdx14, startIndex, endIndexExclusive) {
+        if (fullAdx14.isEmpty()) emptyList()
+        else fullAdx14.subList(startIndex, endIndexExclusive.coerceAtMost(fullAdx14.size))
+    }
+
+    val fullStoch14 = remember(candles, tab.showStoch14) {
+        if (!tab.showStoch14 || candles.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeStochastic(candles, 14, 3, 3)
+    }
+    val visibleStoch14 = remember(fullStoch14, startIndex, endIndexExclusive) {
+        if (fullStoch14.isEmpty()) emptyList()
+        else fullStoch14.subList(startIndex, endIndexExclusive.coerceAtMost(fullStoch14.size))
+    }
+
+    val fullCci20 = remember(candles, tab.showCci20) {
+        if (!tab.showCci20 || candles.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeCci(candles, 20)
+    }
+    val visibleCci20 = remember(fullCci20, startIndex, endIndexExclusive) {
+        if (fullCci20.isEmpty()) emptyList()
+        else fullCci20.subList(startIndex, endIndexExclusive.coerceAtMost(fullCci20.size))
+    }
+
+    val fullWillR14 = remember(candles, tab.showWillR14) {
+        if (!tab.showWillR14 || candles.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeWilliamsR(candles, 14)
+    }
+    val visibleWillR14 = remember(fullWillR14, startIndex, endIndexExclusive) {
+        if (fullWillR14.isEmpty()) emptyList()
+        else fullWillR14.subList(startIndex, endIndexExclusive.coerceAtMost(fullWillR14.size))
+    }
+
+    val fullObv = remember(candles, tab.showObv) {
+        if (!tab.showObv || candles.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeObv(candles)
+    }
+    val visibleObv = remember(fullObv, startIndex, endIndexExclusive) {
+        if (fullObv.isEmpty()) emptyList()
+        else fullObv.subList(startIndex, endIndexExclusive.coerceAtMost(fullObv.size))
+    }
+
+    val fullCmf20 = remember(candles, tab.showCmf20) {
+        if (!tab.showCmf20 || candles.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeCmf(candles, 20)
+    }
+    val visibleCmf20 = remember(fullCmf20, startIndex, endIndexExclusive) {
+        if (fullCmf20.isEmpty()) emptyList()
+        else fullCmf20.subList(startIndex, endIndexExclusive.coerceAtMost(fullCmf20.size))
+    }
+
+    val fullRoc12 = remember(fullCloses, tab.showRoc12) {
+        if (!tab.showRoc12 || fullCloses.isEmpty()) emptyList()
+        else Phase2IndicatorsAlgorithm.computeRoc(fullCloses, 12)
+    }
+    val visibleRoc12 = remember(fullRoc12, startIndex, endIndexExclusive) {
+        if (fullRoc12.isEmpty()) emptyList()
+        else fullRoc12.subList(startIndex, endIndexExclusive.coerceAtMost(fullRoc12.size))
+    }
+
     val inspectedIdx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
     val inspectedCandle = remember(tab.selectedCandleIndex, visibleSlice) {
         val idx = tab.selectedCandleIndex
@@ -267,12 +381,21 @@ fun CandlestickCanvas(
     val inspectedSma200 = fullSma200.getOrNull(inspectedIdx)
     val inspectedEma20 = fullEma20.getOrNull(inspectedIdx)
     val inspectedEma50 = fullEma50.getOrNull(inspectedIdx)
+    val inspectedEma200 = fullEma200.getOrNull(inspectedIdx)
     val inspectedBollinger = fullBollinger.getOrNull(inspectedIdx)
     val inspectedSupertrend = fullSupertrend.getOrNull(inspectedIdx)
     val inspectedVwap = fullVwap.getOrNull(inspectedIdx)
+    val inspectedMtfEma = fullMtfEma.getOrNull(inspectedIdx)
     val inspectedRsi14 = fullRsi14.getOrNull(inspectedIdx)
     val inspectedMacd = fullMacd.getOrNull(inspectedIdx)
     val inspectedAtr14 = fullAtr14.getOrNull(inspectedIdx)
+    val inspectedAdx14 = fullAdx14.getOrNull(inspectedIdx)
+    val inspectedStoch14 = fullStoch14.getOrNull(inspectedIdx)
+    val inspectedCci20 = fullCci20.getOrNull(inspectedIdx)
+    val inspectedWillR14 = fullWillR14.getOrNull(inspectedIdx)
+    val inspectedObv = fullObv.getOrNull(inspectedIdx)
+    val inspectedCmf20 = fullCmf20.getOrNull(inspectedIdx)
+    val inspectedRoc12 = fullRoc12.getOrNull(inspectedIdx)
 
     var panCarryPx by remember(tab.tabId, tab.timeframe) { mutableFloatStateOf(0f) }
 
@@ -321,21 +444,33 @@ fun CandlestickCanvas(
     val maxRawVolume = visibleSlice.maxOfOrNull { it.volume.toDouble() } ?: 0.0
     val hasRealVolume = maxRawVolume > 0.0
     val maxVolume = maxRawVolume.coerceAtLeast(1.0)
-    val activeOscCount = (if (tab.showRsi14) 1 else 0) + (if (tab.showMacd) 1 else 0) + (if (tab.showAtr14) 1 else 0)
-    val eachOscRatio = when {
+    val activeOscCount = (if (tab.showRsi14) 1 else 0) +
+        (if (tab.showMacd) 1 else 0) +
+        (if (tab.showAtr14) 1 else 0) +
+        (if (tab.showAdx14) 1 else 0) +
+        (if (tab.showStoch14) 1 else 0) +
+        (if (tab.showCci20) 1 else 0) +
+        (if (tab.showWillR14) 1 else 0) +
+        (if (tab.showObv) 1 else 0) +
+        (if (tab.showCmf20) 1 else 0) +
+        (if (tab.showRoc12) 1 else 0)
+    val idealOscRatio = when {
         activeOscCount == 0 -> 0f
         activeOscCount == 1 -> 0.14f
         activeOscCount == 2 -> 0.12f
-        else -> 0.10f
+        activeOscCount == 3 -> 0.10f
+        else -> 0.09f
     }
-    val totalOscRatio = eachOscRatio * activeOscCount
     val baseVolRatio = if (tab.showVolume) tab.volumePaneRatio.coerceIn(0.14f, 0.30f) else 0f
-    val volRatio = if (baseVolRatio + totalOscRatio > 0.48f) {
-        (0.48f - totalOscRatio).coerceAtLeast(0.10f)
+    val volRatio = if (baseVolRatio + idealOscRatio * activeOscCount > 0.54f) {
+        (0.54f - idealOscRatio * activeOscCount).coerceAtLeast(if (tab.showVolume) 0.08f else 0f)
     } else {
         baseVolRatio
     }
-    val priceRatio = (1f - volRatio - totalOscRatio).coerceAtLeast(0.48f)
+    val maxOscTotal = (0.54f - volRatio).coerceAtLeast(0f)
+    val eachOscRatio = if (activeOscCount > 0) min(idealOscRatio, maxOscTotal / activeOscCount) else 0f
+    val totalOscRatio = eachOscRatio * activeOscCount
+    val priceRatio = (1f - volRatio - totalOscRatio).coerceAtLeast(0.46f)
 
     val volumeUnavailableLabel = stringResource(R.string.chart_volume_unavailable)
     val loadingStateLabel = stringResource(R.string.chart_state_loading)
@@ -643,6 +778,15 @@ fun CandlestickCanvas(
 
                     // 4. Main Price Pane Rendering (Clipped strictly to Main Price Pane)
                     clipRect(left = 0f, top = 0f, right = canvasW, bottom = pricePaneH) {
+                        if (tab.showKillzones) {
+                            Phase2IndicatorRenderer.drawKillzonesOverlay(
+                                scope = this,
+                                visibleSlice = visibleSlice,
+                                timeframe = tab.timeframe,
+                                slotW = slotW,
+                                pricePaneH = pricePaneH
+                            )
+                        }
                         // 4.0a Package 3: Session / Visible Range Volume Profile (VRVP — POC / VAH / VAL)
                         if (tab.showVolumeProfile && visibleVolumeProfile != null) {
                             val maxBarW = canvasW * 0.24f
@@ -872,13 +1016,56 @@ fun CandlestickCanvas(
                             }
                         }
 
-                        // 5a. SMA 20 / 50 / 200 & EMA 20 / 50 & Session VWAP
+                        // 5a. SMA 20 / 50 / 200 & EMA 20 / 50 / 200 & MTF EMA & Channels & Session VWAP
                         if (tab.showSma20) drawSeriesLine(visibleSma20, Color(0xFFF59E0B), 2.0f)
                         if (tab.showSma50) drawSeriesLine(visibleSma50, Color(0xFF10B981), 2.0f)
                         if (tab.showSma200) drawSeriesLine(visibleSma200, Color(0xFFF43F5E), 2.3f)
                         if (tab.showEma20) drawSeriesLine(visibleEma20, Color(0xFF38BDF8), 1.9f)
                         if (tab.showEma50) drawSeriesLine(visibleEma50, Color(0xFF06B6D4), 2.0f)
+                        if (tab.showEma200) drawSeriesLine(visibleEma200, Color(0xFFF472B6), 2.2f)
+                        if (tab.showMtfEma) drawSeriesLine(visibleMtfEma, Color(0xFFFACC15), 2.1f)
                         if (tab.showVwap) drawSeriesLine(visibleVwap, Color(0xFFEAB308), 1.9f, dashed = true)
+                        if (tab.showKeltner) {
+                            Phase2IndicatorRenderer.drawBandOverlay(
+                                scope = this,
+                                visibleBands = visibleKeltner,
+                                slotW = slotW,
+                                priceToY = ::priceToY,
+                                lineColor = Color(0xFF0EA5E9),
+                                fillAlpha = 0.08f,
+                                dashEffect = dashEffect
+                            )
+                        }
+                        if (tab.showDonchian) {
+                            Phase2IndicatorRenderer.drawBandOverlay(
+                                scope = this,
+                                visibleBands = visibleDonchian,
+                                slotW = slotW,
+                                priceToY = ::priceToY,
+                                lineColor = Color(0xFF6366F1),
+                                fillAlpha = 0.0f,
+                                dashEffect = dashEffect
+                            )
+                        }
+                        if (tab.showIchimoku && fullIchimoku != null) {
+                            Phase2IndicatorRenderer.drawIchimokuOverlay(
+                                scope = this,
+                                ichimoku = fullIchimoku,
+                                startIndex = startIndex,
+                                visibleCount = visibleSlice.size,
+                                slotW = slotW,
+                                priceToY = ::priceToY,
+                                dashEffect = dashEffect
+                            )
+                        }
+                        if (tab.showPsar) {
+                            Phase2IndicatorRenderer.drawPsarDots(
+                                scope = this,
+                                visiblePsar = visiblePsar,
+                                slotW = slotW,
+                                priceToY = ::priceToY
+                            )
+                        }
 
                         // 5b. Supertrend (10, 3) Directional Segments
                         if (tab.showSupertrend && visibleSupertrend.isNotEmpty()) {
@@ -1032,6 +1219,19 @@ fun CandlestickCanvas(
                                 end = Offset(canvasW, curY),
                                 strokeWidth = 1.2f,
                                 pathEffect = currentPriceDashEffect
+                            )
+                        }
+
+                        // 6c. ENG-02 Live Forming Quote Horizontal Dashed Line (non-intrusive overlay)
+                        val liveQ = tab.liveQuotePrice
+                        if (tab.liveQuoteMode == "LIVE_TICK" && liveQ != null) {
+                            val liveY = priceToY(liveQ.toDouble())
+                            drawLine(
+                                color = Color(0xFF38BDF8),
+                                start = Offset(0f, liveY),
+                                end = Offset(canvasW, liveY),
+                                strokeWidth = 1.2f,
+                                pathEffect = dashEffect
                             )
                         }
 
@@ -1277,17 +1477,41 @@ fun CandlestickCanvas(
                                         drawCircle(color = Color(0xFFEF5350), radius = 5.5f, center = Offset(rightX, stopY))
                                     }
                                 }
+                                is ChartDrawing.MultiAnchor -> {
+                                    Phase2DrawingRenderer.drawMultiAnchorDrawing(
+                                        scope = this,
+                                        drawing = drawing,
+                                        isSelected = isSelected,
+                                        candles = candles,
+                                        instrumentVolumeType = instrumentVolumeType,
+                                        stepMillis = stepMillis,
+                                        canvasW = canvasW,
+                                        pricePaneH = pricePaneH,
+                                        baseStrokeWidth = baseWidthPx,
+                                        fallbackColor = trendColor,
+                                        selectedDashEffect = selectedDashEffect,
+                                        timeToX = ::timeToX,
+                                        priceToY = ::priceToY
+                                    )
+                                }
                             }
                         }
 
-                        // Render Pending 1st Anchor Point for Trend Line
-                        tab.pendingTrendPoint?.let { pt ->
-                            val px = timeToX(pt.timeUtcMillis)
-                            val py = priceToY(pt.price.toDouble())
-                            drawCircle(
+                        // Render Pending Anchor Points for multi-point tools (Trend / Fib / Phase 2 Pro Tools)
+                        val pendingPts = if (tab.pendingAnchors.isNotEmpty()) {
+                            tab.pendingAnchors
+                        } else {
+                            tab.pendingTrendPoint?.let {
+                                listOf(es.manico.chartintelligence.data.model.DrawingAnchor(it.timeUtcMillis, it.price))
+                            } ?: emptyList()
+                        }
+                        if (pendingPts.isNotEmpty()) {
+                            Phase2DrawingRenderer.drawPendingAnchorsPreview(
+                                scope = this,
+                                pendingAnchors = pendingPts,
                                 color = parseDrawingColor(tab.activeDrawingColorHex, Color(0xFF2962FF)),
-                                radius = 6.5f,
-                                center = Offset(px, py)
+                                timeToX = ::timeToX,
+                                priceToY = ::priceToY
                             )
                         }
                     }
@@ -1481,6 +1705,29 @@ fun CandlestickCanvas(
                             }
                         }
                     }
+
+                    // 8e. Phase 2 Synchronized Sub-Pane Oscillators (ADX, Stoch, CCI, Will%R, OBV, CMF, ROC)
+                    Phase2IndicatorRenderer.drawPhase2OscillatorPanes(
+                        scope = this,
+                        tab = tab,
+                        startSubPaneTop = nextSubPaneTop,
+                        oscPaneH = oscPaneH,
+                        canvasW = canvasW,
+                        slotW = slotW,
+                        bodyW = bodyW,
+                        borderColor = financialPalette.cardBorder,
+                        gridColor = financialPalette.chartGrid,
+                        dashEffect = dashEffect,
+                        bullColor = bullColor,
+                        bearColor = bearColor,
+                        visibleAdx = visibleAdx14,
+                        visibleStoch = visibleStoch14,
+                        visibleCci = visibleCci20,
+                        visibleWillR = visibleWillR14,
+                        visibleObv = visibleObv,
+                        visibleCmf = visibleCmf20,
+                        visibleRoc = visibleRoc12
+                    )
 
                     // 9. Crosshair Lines across Price & Volume Panes when a candle is selected
                     val selIdx = tab.selectedCandleIndex
@@ -1690,6 +1937,106 @@ fun CandlestickCanvas(
                                 color = Color(0xFFF97316)
                             )
                         }
+                        if (tab.showEma200 && inspectedEma200 != null) {
+                            Text(
+                                text = "EMA200 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedEma200), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF472B6)
+                            )
+                        }
+                        if (tab.showMtfEma && inspectedMtfEma != null) {
+                            Text(
+                                text = "MTF ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(inspectedMtfEma), tab.decimals)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFFACC15)
+                            )
+                        }
+                        if (tab.showKillzones) {
+                            Text(
+                                text = "Killzones",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF38BDF8)
+                            )
+                        }
+                        if (tab.showAdx14 && inspectedAdx14 != null) {
+                            Text(
+                                text = "ADX ${String.format(java.util.Locale.US, "%.1f", inspectedAdx14.adx)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF59E0B)
+                            )
+                        }
+                        if (tab.showStoch14 && inspectedStoch14 != null) {
+                            Text(
+                                text = "Stoch ${String.format(java.util.Locale.US, "%.0f", inspectedStoch14.k)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF06B6D4)
+                            )
+                        }
+                        if (tab.showCci20 && inspectedCci20 != null) {
+                            Text(
+                                text = "CCI ${String.format(java.util.Locale.US, "%.0f", inspectedCci20)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF10B981)
+                            )
+                        }
+                        if (tab.showWillR14 && inspectedWillR14 != null) {
+                            Text(
+                                text = "%R ${String.format(java.util.Locale.US, "%.0f", inspectedWillR14)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEC4899)
+                            )
+                        }
+                        if (tab.showObv && inspectedObv != null) {
+                            Text(
+                                text = "OBV ${PriceFormatterAlgorithm.formatCompactVolume(BigDecimal.valueOf(inspectedObv))}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF3B82F6)
+                            )
+                        }
+                        if (tab.showCmf20 && inspectedCmf20 != null) {
+                            Text(
+                                text = "CMF ${String.format(java.util.Locale.US, "%.2f", inspectedCmf20)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF22C55E)
+                            )
+                        }
+                        if (tab.showRoc12 && inspectedRoc12 != null) {
+                            Text(
+                                text = "ROC ${String.format(java.util.Locale.US, "%.2f%%", inspectedRoc12)}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFEAB308)
+                            )
+                        }
                         if (tab.showVolumeProfile && visibleVolumeProfile != null) {
                             Text(
                                 text = "POC ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(visibleVolumeProfile.pocPrice), tab.decimals)}",
@@ -1735,6 +2082,21 @@ fun CandlestickCanvas(
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 color = Color(0xFF6366F1)
+                            )
+                        }
+                        if ((tab.gapSummary?.gapCount ?: 0) > 0) {
+                            Text(
+                                text = "⚠ Gaps ${tab.gapSummary?.gapCount}",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.5.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF59E0B),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Color(0xFFF59E0B).copy(alpha = 0.14f))
+                                    .padding(horizontal = 4.dp, vertical = 1.dp)
+                                    .testTag("chart_gap_warning_pill")
                             )
                         }
                     }
@@ -1884,6 +2246,33 @@ fun CandlestickCanvas(
                             if (preferences.showCountdownToBarClose && isIntradayTf) {
                                 BarCloseCountdownText(symbolCode = tab.symbolCode, timeframe = tab.timeframe)
                             }
+                        }
+                    }
+
+                    // ENG-02 Live Forming Quote Right-Axis Pill (distinct from closed-bar pill)
+                    val liveQuoteVal = tab.liveQuotePrice
+                    if (tab.liveQuoteMode == "LIVE_TICK" && liveQuoteVal != null &&
+                        (latestCandle == null || kotlin.math.abs(liveQuoteVal.toDouble() - latestCandle.close.toDouble()) > 1e-8)
+                    ) {
+                        val liveRatio = mapPriceToNormRatio(liveQuoteVal.toDouble())
+                        val liveOffsetPx = with(density) { (pricePaneHeightDp * liveRatio - 8.dp).roundToPx() }
+                        Box(
+                            modifier = Modifier
+                                .align(Alignment.TopEnd)
+                                .offset { IntOffset(0, liveOffsetPx) }
+                                .clip(RoundedCornerShape(4.dp))
+                                .background(Color(0xFF0284C7))
+                                .padding(horizontal = 4.dp, vertical = 1.dp)
+                                .testTag("chart_live_quote_axis_pill")
+                        ) {
+                            Text(
+                                text = PriceFormatterAlgorithm.formatPrice(liveQuoteVal, tab.decimals),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color.White
+                            )
                         }
                     }
 

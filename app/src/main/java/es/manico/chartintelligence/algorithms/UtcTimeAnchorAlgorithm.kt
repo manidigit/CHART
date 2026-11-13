@@ -46,6 +46,12 @@ data class InstrumentSpec(
     val volumeType: VolumeType
 )
 
+data class BucketBounds(
+    val openMs: Long,
+    val closeMs: Long,
+    val sessionAnchored: Boolean
+)
+
 /**
  * Independent Algorithm Library Module:
  * Anchors all candle timestamps to 00:00:00 UTC (with Monday-anchored W1 weeks),
@@ -156,6 +162,61 @@ object UtcTimeAnchorAlgorithm {
         } else {
             Math.floorDiv(epochMillis, step) * step
         }
+    }
+
+    /**
+     * DST-aware session-anchored bucket boundaries (ENG-01 parity with UtcTimeAnchor.php & priceFormatter.js).
+     * - US_EQUITIES (H4, D1): anchored to 09:30–16:00 America/New_York RTH session.
+     * - OTC_FX_METALS (D1): anchored to 17:00 America/New_York rollover.
+     * - All other timeframes/calendars: canonical 00:00 UTC / Mon 00:00 UTC.
+     */
+    fun getSessionBucketBounds(
+        epochMillis: Long,
+        timeframe: String,
+        symbolCode: String = "XAUUSD"
+    ): BucketBounds {
+        val normTf = timeframe.uppercase()
+        val step = timeframeStepMillis(normTf)
+        val cal = getSessionCalendar(symbolCode)
+
+        if (cal == SessionCalendar.US_EQUITIES && (normTf == "H4" || normTf == "D1" || normTf == "1D" || normTf == "D")) {
+            val nyZdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), nyZone)
+            val date = nyZdt.toLocalDate()
+            val rthOpen = date.atTime(9, 30).atZone(nyZone).toInstant().toEpochMilli()
+            val rthClose = date.atTime(16, 0).atZone(nyZone).toInstant().toEpochMilli()
+            if (normTf == "D1" || normTf == "1D" || normTf == "D") {
+                return BucketBounds(openMs = rthOpen, closeMs = rthClose, sessionAnchored = true)
+            }
+            val midSplit = date.atTime(13, 30).atZone(nyZone).toInstant().toEpochMilli()
+            return if (epochMillis < midSplit) {
+                BucketBounds(openMs = rthOpen, closeMs = midSplit, sessionAnchored = true)
+            } else {
+                BucketBounds(openMs = midSplit, closeMs = rthClose, sessionAnchored = true)
+            }
+        }
+
+        if (cal == SessionCalendar.OTC_FX_METALS && (normTf == "D1" || normTf == "1D" || normTf == "D")) {
+            val shifted = Instant.ofEpochMilli(epochMillis).atZone(nyZone).plusHours(7)
+            val tradeDate = shifted.toLocalDate()
+            val openZdt = tradeDate.minusDays(1).atTime(17, 0).atZone(nyZone)
+            val closeZdt = tradeDate.atTime(17, 0).atZone(nyZone)
+            return BucketBounds(
+                openMs = openZdt.toInstant().toEpochMilli(),
+                closeMs = closeZdt.toInstant().toEpochMilli(),
+                sessionAnchored = true
+            )
+        }
+
+        val canonicalOpen = snapToCandleOpenUtc(epochMillis, normTf)
+        return BucketBounds(openMs = canonicalOpen, closeMs = canonicalOpen + step, sessionAnchored = false)
+    }
+
+    fun snapToSessionOpenUtc(
+        epochMillis: Long,
+        timeframe: String,
+        symbolCode: String = "XAUUSD"
+    ): Long {
+        return getSessionBucketBounds(epochMillis, timeframe, symbolCode).openMs
     }
 
     /**
@@ -388,9 +449,8 @@ object UtcTimeAnchorAlgorithm {
         closedLabel: String = "Closed"
     ): String {
         if (!isMarketOpen(nowUtcMillis, symbolCode)) return closedLabel
-        val step = timeframeStepMillis(timeframe)
-        val openMs = snapToCandleOpenUtc(nowUtcMillis, timeframe)
-        val remainingSec = (((openMs + step) - nowUtcMillis) / 1000L).coerceAtLeast(0L)
+        val bounds = getSessionBucketBounds(nowUtcMillis, timeframe, symbolCode)
+        val remainingSec = ((bounds.closeMs - nowUtcMillis) / 1000L).coerceAtLeast(0L)
         val days = remainingSec / 86400L
         val hours = (remainingSec % 86400L) / 3600L
         val mins = (remainingSec % 3600L) / 60L

@@ -7,6 +7,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.39.0] - 2026-11-13
+
+### Added & Resolved (`OPEN_ISSUES` + `ROADMAP_BACKLOG §2.1–§2.3`)
+- **Session & DST Alignment (`ENG-01`):** Unified `SessionCalendar` (`CRYPTO_24_7`, `US_EQUITIES` `09:30–16:00 America/New_York`, `OTC_FX_METALS` `17:00 America/New_York` rollover) across PHP (`UtcTimeAnchor.php`, `TimeframeAggregator.php`), Web (`priceFormatter.js`, `timeframeAggregator.js`), and Android (`UtcTimeAnchorAlgorithm.kt`, `TimeframeAggregatorAlgorithm.kt`).
+- **Live Forming Quote Separation (`ENG-02`):** Added strictly read-only `api/v1/quote.php` (never mutates closed `candles` rows) and polling UI badges across Web & Android with strict `provider_id` isolation.
+- **Smart Gap Detection (`ENG-03`):** Added session-aware `GapDetector` (`GapDetector.php`, `api/v1/gap_report.php`, `data_quality_reports` table in `002_phase2_3_tables.sql`, Web `gapDetector.js`, Android `GapDetectorAlgorithm.kt` & Audit Card).
+- **Encrypted Backup, Restore & Rollback (`INF-01`, `INF-02`):** Added `PBKDF2-HMAC-SHA256` + `AES-256-GCM` workspace backup/restore (`api/v1/backup.php`, Web Settings, Android `BackupExportHelper.kt` via zero-permission SAF) stripping BYOK keys before sealing, plus pre-overwrite snapshots (`_ci_backups/`) and authenticated `api/v1/rollback_release.php` in `build-apk.yml`.
+- **Security Hardening & Live Symbol Intel (`SEC-01`, `UI-01`):** Enforced strict `sanitizeSymbolCode()` (`[A-Z0-9._:-]`) and full `escapeHtml()` coverage; added `api/v1/symbol_intel.php` (15m MariaDB cache, Yahoo Finance RSS, EIA Energy RSS, SEC EDGAR `10-K/10-Q/8-K` for US Equities, Macro Calendar, and Intermarket correlations) with explicit local-vs-external source labels.
+- **Phase 2 Multi-Anchor Drawing Tools (`§2.1`):** Implemented all 12 tool families (`AVWAP`, `Regression Channel`, `FRVP`, `Gann Fan`, `Gann Box`, `Pitchfork` with `Original / Schiff / Mod Schiff / Inside` variants, `Fib Time Zone`, `Cyclic Lines`, `Fib Speed Resistance Fan`, `ABCD`, `XABCD`, `Head & Shoulders`) with Magnet Mode, coordinate dragging, and cross-platform JSON sync.
+- **Phase 2 Indicators, Killzones, Seasonals & Data Export (`§2.2`, `§2.3`):** Implemented `Parabolic SAR`, `Ichimoku`, `Keltner Channels`, `Donchian Channels`, non-lookahead `MTF EMA`, `ADX/DMI`, `Stochastic`, `CCI`, `Williams %R`, `OBV`, `CMF`, `ROC`, and `Killzones` (`Asia / London / New York / Overlap`); added honest `>= 12`-month gated `Multi-Year Seasonals` and RFC-4180 CSV / Canonical JSON candle export; unified Web cache-busting to `?v=1.39.0` and updated EN/FA localization.
+- **Tests:** Added `Phase2AlgorithmsTest.kt` (Robolectric + JVM) covering `ENG-01`, `ENG-03`, `SEC-01`, `§2.1`, `§2.2`, and `§2.3`; all 24 unit/Robolectric tests in `Phase1AlgorithmsTest` and `Phase2AlgorithmsTest` pass cleanly.
+
+---
+
 ## [1.38.1] - 2026-11-12
 
 ### Changed & Refined

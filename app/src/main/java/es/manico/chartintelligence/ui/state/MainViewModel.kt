@@ -1,11 +1,15 @@
 package es.manico.chartintelligence.ui.state
 
 import android.app.Application
+import android.net.Uri
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import es.manico.chartintelligence.R
+import es.manico.chartintelligence.algorithms.CandleExportAlgorithm
 import es.manico.chartintelligence.algorithms.ConnectionStatus
+import es.manico.chartintelligence.algorithms.GapDetectorAlgorithm
+import es.manico.chartintelligence.algorithms.GapReport
 import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
 import es.manico.chartintelligence.config.AppConfig
 import es.manico.chartintelligence.data.model.CandleBar
@@ -15,11 +19,15 @@ import es.manico.chartintelligence.data.model.ChartType
 import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
+import es.manico.chartintelligence.data.repository.BackupExportHelper
+import es.manico.chartintelligence.data.repository.SymbolIntelBundle
+import es.manico.chartintelligence.data.repository.SymbolIntelRepository
 import es.manico.chartintelligence.data.repository.WorkspaceRepository
 import es.manico.chartintelligence.i18n.AppLanguage
 import es.manico.chartintelligence.ui.state.coordinators.ChartDrawingCoordinator
 import es.manico.chartintelligence.ui.state.coordinators.ChartPreferenceCoordinator
 import es.manico.chartintelligence.ui.state.coordinators.SymbolCatalogCoordinator
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.async
 import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.coroutineScope
@@ -29,6 +37,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.math.BigDecimal
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -67,6 +76,10 @@ data class Phase1UiState(
     val systemStatus: es.manico.chartintelligence.data.repository.SystemStatusDto? = null,
     val isWorkspaceSyncing: Boolean = false,
     val lastWorkspaceSyncedAt: String? = null,
+    val symbolIntelByCode: Map<String, SymbolIntelBundle> = emptyMap(),
+    val isIntelLoading: Boolean = false,
+    val backupStatusMessage: String? = null,
+    val activeGapAuditReport: GapReport? = null,
     @param:StringRes val statusBannerResId: Int? = null
 ) {
     val watchlistSymbols: List<SymbolConfig>
@@ -79,6 +92,8 @@ data class Phase1UiState(
 class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private val repository = WorkspaceRepository(application)
+    private val backupHelper = BackupExportHelper(application, repository.getHttpClient(), repository)
+    private val intelRepository = SymbolIntelRepository(repository.getHttpClient())
     private val drawingCoordinator = ChartDrawingCoordinator(repository)
     private val symbolCoordinator = SymbolCatalogCoordinator(repository)
     private val preferenceCoordinator = ChartPreferenceCoordinator(repository)
@@ -182,6 +197,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 if (nowAfterWait - prevAuto >= minIntervalMs) {
                     lastAutoSyncAtMs[syncKey] = nowAfterWait
                     performSingleSymbolSync(tabNow.symbolCode, quiet = true)
+                }
+            }
+        }
+
+        // ENG-02: Non-intrusive 15s read-only forming quote tick polling when chart is open
+        viewModelScope.launch {
+            while (true) {
+                delay(15_000L)
+                val snapshot = _uiState.value
+                val activeTab = snapshot.activeTab
+                if (!snapshot.isAuthenticated ||
+                    snapshot.currentScreen != WorkspaceScreen.CHART_VIEW ||
+                    activeTab == null ||
+                    activeTab.candles.isEmpty() ||
+                    !UtcTimeAnchorAlgorithm.isMarketOpen(System.currentTimeMillis(), activeTab.symbolCode)
+                ) {
+                    continue
+                }
+                val quote = repository.fetchLiveQuote(
+                    symbolCode = activeTab.symbolCode,
+                    provider = activeTab.provider,
+                    timeframe = activeTab.timeframe
+                ) ?: continue
+                _uiState.update { st ->
+                    st.copy(
+                        openTabs = st.openTabs.map { tab ->
+                            if (tab.tabId == activeTab.tabId) {
+                                tab.copy(
+                                    liveQuotePrice = quote.price,
+                                    liveQuoteMode = quote.mode,
+                                    formingBar = quote.formingBar
+                                )
+                            } else {
+                                tab
+                            }
+                        }
+                    )
                 }
             }
         }
@@ -529,6 +581,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         drawings = reloadedDrawings,
                         selectedDrawingId = null,
                         pendingTrendPoint = null,
+                        pendingAnchors = emptyList(),
                         scrollOffsetFromRight = 0,
                         selectedCandleIndex = null,
                         isLoading = candles.isEmpty(),
@@ -574,7 +627,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         syncErrorText: String? = null,
         lastSuccessfulFetchMs: Long = tab.lastSuccessfulFetchMs,
         lastCandleCloseMs: Long = tab.lastCandleCloseMs,
-        sessionPrevClose: BigDecimal? = tab.sessionPrevClose
+        sessionPrevClose: BigDecimal? = tab.sessionPrevClose,
+        gapSummary: es.manico.chartintelligence.algorithms.GapReport? = tab.gapSummary
     ): ChartTabState {
         val nextOffset = if (tab.timeframe == newTimeframe && tab.scrollOffsetFromRight > 0 && tab.candles.isNotEmpty()) {
             val addedRightCount = (newCandles.size - tab.candles.size).coerceAtLeast(0)
@@ -599,7 +653,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             syncErrorText = syncErrorText,
             lastSuccessfulFetchMs = lastSuccessfulFetchMs,
             lastCandleCloseMs = computedCloseMs,
-            sessionPrevClose = sessionPrevClose ?: tab.sessionPrevClose
+            sessionPrevClose = sessionPrevClose ?: tab.sessionPrevClose,
+            gapSummary = gapSummary
         )
     }
 
@@ -649,7 +704,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             syncErrorText = syncedSymbol.syncErrorText,
                             lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
                             lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
-                            sessionPrevClose = syncedSymbol.prevClose
+                            sessionPrevClose = syncedSymbol.prevClose,
+                            gapSummary = syncedSymbol.gapSummary
                         )
                     } else {
                         tab
@@ -713,7 +769,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             syncErrorText = syncedSym.syncErrorText,
                             lastSuccessfulFetchMs = syncedSym.lastSuccessfulFetchMs,
                             lastCandleCloseMs = syncedSym.lastCandleCloseMs,
-                            sessionPrevClose = syncedSym.prevClose
+                            sessionPrevClose = syncedSym.prevClose,
+                            gapSummary = syncedSym.gapSummary
                         )
                     } else {
                         tab
@@ -770,16 +827,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             showSma200 = curActive.showSma200,
                             showEma20 = curActive.showEma20,
                             showEma50 = curActive.showEma50,
+                            showEma200 = curActive.showEma200,
                             showSupertrend = curActive.showSupertrend,
                             showVwap = curActive.showVwap,
                             showBollinger = curActive.showBollinger,
+                            showPsar = curActive.showPsar,
+                            showIchimoku = curActive.showIchimoku,
+                            showKeltner = curActive.showKeltner,
+                            showDonchian = curActive.showDonchian,
+                            showMtfEma = curActive.showMtfEma,
+                            showKillzones = curActive.showKillzones,
                             showOverlayMacd = curActive.showOverlayMacd,
                             showRsi14 = curActive.showRsi14,
                             showMacd = curActive.showMacd,
                             showAtr14 = curActive.showAtr14,
+                            showAdx14 = curActive.showAdx14,
+                            showStoch14 = curActive.showStoch14,
+                            showCci20 = curActive.showCci20,
+                            showWillR14 = curActive.showWillR14,
+                            showObv = curActive.showObv,
+                            showCmf20 = curActive.showCmf20,
+                            showRoc12 = curActive.showRoc12,
                             showSmcStructure = curActive.showSmcStructure,
                             showFvg = curActive.showFvg,
-                            showVolumeProfile = curActive.showVolumeProfile
+                            showVolumeProfile = curActive.showVolumeProfile,
+                            pitchforkVariant = curActive.pitchforkVariant
                         )
                     }
                 } else {
@@ -825,16 +897,31 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 showSma200 = curActive?.showSma200 ?: false,
                 showEma20 = curActive?.showEma20 ?: false,
                 showEma50 = curActive?.showEma50 ?: false,
+                showEma200 = curActive?.showEma200 ?: false,
                 showSupertrend = curActive?.showSupertrend ?: false,
                 showVwap = curActive?.showVwap ?: false,
                 showBollinger = curActive?.showBollinger ?: false,
+                showPsar = curActive?.showPsar ?: false,
+                showIchimoku = curActive?.showIchimoku ?: false,
+                showKeltner = curActive?.showKeltner ?: false,
+                showDonchian = curActive?.showDonchian ?: false,
+                showMtfEma = curActive?.showMtfEma ?: false,
+                showKillzones = curActive?.showKillzones ?: false,
                 showOverlayMacd = curActive?.showOverlayMacd ?: false,
                 showRsi14 = curActive?.showRsi14 ?: false,
                 showMacd = curActive?.showMacd ?: false,
                 showAtr14 = curActive?.showAtr14 ?: false,
+                showAdx14 = curActive?.showAdx14 ?: false,
+                showStoch14 = curActive?.showStoch14 ?: false,
+                showCci20 = curActive?.showCci20 ?: false,
+                showWillR14 = curActive?.showWillR14 ?: false,
+                showObv = curActive?.showObv ?: false,
+                showCmf20 = curActive?.showCmf20 ?: false,
+                showRoc12 = curActive?.showRoc12 ?: false,
                 showSmcStructure = curActive?.showSmcStructure ?: false,
                 showFvg = curActive?.showFvg ?: false,
                 showVolumeProfile = curActive?.showVolumeProfile ?: false,
+                pitchforkVariant = curActive?.pitchforkVariant ?: "original",
                 isMagnetMode = curActive?.isMagnetMode ?: false,
                 activeDrawingColorHex = curActive?.activeDrawingColorHex ?: curPrefs.defaultDrawingColorHex,
                 activeDrawingWidthDp = curActive?.activeDrawingWidthDp ?: curPrefs.defaultDrawingWidthDp,
@@ -845,7 +932,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 lastSuccessfulFetchMs = symbol.lastSuccessfulFetchMs,
                 lastCandleCloseMs = lastCloseMs,
                 connectionStatus = symbol.connectionStatus,
-                sessionPrevClose = symbol.prevClose
+                sessionPrevClose = symbol.prevClose,
+                gapSummary = symbol.gapSummary
             )
             _uiState.update { state ->
                 val nextStack = if (state.currentScreen != targetScreen) {
@@ -935,6 +1023,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             drawings = tfDrawings,
                             selectedDrawingId = null,
                             pendingTrendPoint = null,
+                            pendingAnchors = emptyList(),
                             activeDateRange = null,
                             visibleCandleCount = nextVisible,
                             scrollOffsetFromRight = 0,
@@ -978,7 +1067,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 syncErrorText = syncedSymbol.syncErrorText,
                                 lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
                                 lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
-                                sessionPrevClose = syncedSymbol.prevClose
+                                sessionPrevClose = syncedSymbol.prevClose,
+                                gapSummary = syncedSymbol.gapSummary
                             )
                             val clampedVis = if (mergedCandles.isNotEmpty()) {
                                 updated.visibleCandleCount.coerceIn(
@@ -1037,7 +1127,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 syncErrorText = syncedSymbol.syncErrorText,
                                 lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
                                 lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
-                                sessionPrevClose = syncedSymbol.prevClose
+                                sessionPrevClose = syncedSymbol.prevClose,
+                                gapSummary = syncedSymbol.gapSummary
                             )
                         } else {
                             t
@@ -1370,6 +1461,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                 drawings = tfDrawings,
                                 selectedDrawingId = null,
                                 pendingTrendPoint = null,
+                                pendingAnchors = emptyList(),
                                 activeDateRange = preset?.id ?: rangeId,
                                 visibleCandleCount = targetBars,
                                 scrollOffsetFromRight = 0,
@@ -1409,7 +1501,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                     syncErrorText = syncedSymbol.syncErrorText,
                                     lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
                                     lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
-                                    sessionPrevClose = syncedSymbol.prevClose
+                                    sessionPrevClose = syncedSymbol.prevClose,
+                                    gapSummary = syncedSymbol.gapSummary
                                 )
                                 val refreshedPreset = updated.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) }
                                 updated.copy(
@@ -1479,7 +1572,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                                         syncErrorText = syncedSymbol.syncErrorText,
                                         lastSuccessfulFetchMs = syncedSymbol.lastSuccessfulFetchMs,
                                         lastCandleCloseMs = syncedSymbol.lastCandleCloseMs,
-                                        sessionPrevClose = syncedSymbol.prevClose
+                                        sessionPrevClose = syncedSymbol.prevClose,
+                                        gapSummary = syncedSymbol.gapSummary
                                     )
                                     val refreshedPreset = updated.computeDateRangePresets().firstOrNull { it.id.equals(rangeId, ignoreCase = true) }
                                     updated.copy(
@@ -1673,6 +1767,132 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleDebouncedCloudSync()
     }
 
+    fun toggleEma200OnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showEma200 ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showEma200 = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun togglePsarOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showPsar ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showPsar = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleIchimokuOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showIchimoku ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showIchimoku = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleKeltnerOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showKeltner ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showKeltner = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleDonchianOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showDonchian ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showDonchian = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleMtfEmaOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showMtfEma ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showMtfEma = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleKillzonesOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showKillzones ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showKillzones = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleAdx14OnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showAdx14 ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showAdx14 = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleStoch14OnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showStoch14 ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showStoch14 = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleCci20OnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showCci20 ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showCci20 = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleWillR14OnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showWillR14 ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showWillR14 = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleObvOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showObv ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showObv = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleCmf20OnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showCmf20 ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showCmf20 = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleRoc12OnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showRoc12 ?: return)
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(showRoc12 = nextVal) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
     fun setDrawingColorOnActiveTab(colorHex: String) {
         val active = _uiState.value.activeTab ?: return
         val updatedTab = drawingCoordinator.updateActiveDrawingColor(active, colorHex)
@@ -1735,10 +1955,24 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun setPitchforkVariantOnActiveTab(variant: String) {
+        val active = _uiState.value.activeTab ?: return
+        val updatedTab = drawingCoordinator.setPitchforkVariant(active, variant)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) updatedTab else tab
+                }
+            )
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
     // --- Dynamic Symbol & Preference Management (Anti-Hardcoding) ---
 
     fun addCustomSymbol(symbolCode: String, customTitle: String, decimals: Int, provider: ProviderId) {
-        val cleanCode = symbolCode.trim().uppercase()
+        val cleanCode = symbolCoordinator.sanitizeSymbolCode(symbolCode)
         val updated = symbolCoordinator.addCustomSymbol(
             _uiState.value.symbols,
             cleanCode,
@@ -2060,6 +2294,143 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     isWorkspaceSyncing = false,
                     lastWorkspaceSyncedAt = if (success) nowTimeStr else it.lastWorkspaceSyncedAt
                 )
+            }
+        }
+    }
+
+    // --- Batch 2: INF-01 Backup/Restore, ENG-03 Gap Audit, §2.3 Live Intel, Seasonals & Candle Export ---
+
+    fun exportEncryptedBackupToUri(uri: Uri, passphrase: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(backupStatusMessage = "Encrypting workspace (AES-256-GCM)...") }
+            val result = backupHelper.exportEncryptedBackupToUri(uri, passphrase)
+            _uiState.update {
+                it.copy(
+                    backupStatusMessage = result.fold(
+                        onSuccess = { cipher -> "Encrypted backup saved ($cipher)." },
+                        onFailure = { err -> "Backup export failed: ${err.message ?: "Error"}" }
+                    )
+                )
+            }
+        }
+    }
+
+    fun restoreEncryptedBackupFromUri(uri: Uri, passphrase: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(backupStatusMessage = "Decrypting and verifying backup...") }
+            val result = backupHelper.restoreEncryptedBackupFromUri(uri, passphrase)
+            if (result.isSuccess) {
+                val refreshedSymbols = repository.loadSymbolCatalog()
+                val refreshedPrefs = repository.loadChartPreferences()
+                val refreshedTabs = repository.loadSavedOpenTabs()
+                val refreshedActiveId = repository.loadActiveTabId()
+                    ?.takeIf { id -> refreshedTabs.any { it.tabId == id } }
+                    ?: refreshedTabs.firstOrNull()?.tabId
+                _uiState.update {
+                    it.copy(
+                        symbols = refreshedSymbols,
+                        chartPreferences = refreshedPrefs,
+                        openTabs = refreshedTabs,
+                        activeTabId = refreshedActiveId,
+                        backupStatusMessage = "Backup restored & verified (SHA-256 + GCM)."
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        backupStatusMessage = "Restore failed: ${result.exceptionOrNull()?.message ?: "Invalid passphrase or file"}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun loadSymbolIntel(symbolCode: String, forceRefresh: Boolean = false) {
+        val cleanCode = symbolCode.trim().uppercase()
+        if (cleanCode.isEmpty()) return
+        viewModelScope.launch {
+            _uiState.update { it.copy(isIntelLoading = true) }
+            val bundle = intelRepository.fetchSymbolIntel(cleanCode, forceRefresh = forceRefresh)
+            _uiState.update { state ->
+                val nextMap = if (bundle != null) {
+                    state.symbolIntelByCode + (cleanCode to bundle)
+                } else {
+                    state.symbolIntelByCode
+                }
+                state.copy(
+                    symbolIntelByCode = nextMap,
+                    isIntelLoading = false
+                )
+            }
+        }
+    }
+
+    fun auditGapReportForActiveTab() {
+        val activeTab = _uiState.value.activeTab
+        val targetSymbol = if (activeTab != null) {
+            _uiState.value.symbols.firstOrNull { it.symbolCode == activeTab.symbolCode }
+        } else {
+            _uiState.value.watchlistSymbols.firstOrNull() ?: _uiState.value.symbols.firstOrNull()
+        } ?: return
+
+        val tf = activeTab?.timeframe ?: targetSymbol.timeframe
+        val prov = activeTab?.provider ?: targetSymbol.activeProvider
+        val candles = activeTab?.candles?.takeIf { it.isNotEmpty() }
+            ?: repository.getCachedOrAggregatedCandles(targetSymbol.symbolCode, prov, tf)
+        val report = GapDetectorAlgorithm.detectGaps(candles, tf, targetSymbol.symbolCode)
+        _uiState.update { state ->
+            state.copy(
+                activeGapAuditReport = report,
+                symbols = state.symbols.map { s ->
+                    if (s.symbolCode == targetSymbol.symbolCode) s.copy(gapSummary = report) else s
+                },
+                openTabs = state.openTabs.map { t ->
+                    if (t.symbolCode == targetSymbol.symbolCode && t.timeframe == tf) t.copy(gapSummary = report) else t
+                }
+            )
+        }
+    }
+
+    fun getD1CandlesForSymbol(symbolCode: String): List<CandleBar> {
+        val sym = _uiState.value.symbols.firstOrNull { it.symbolCode == symbolCode } ?: return emptyList()
+        return repository.getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, "D1")
+    }
+
+    fun exportCandlesCsvToUri(uri: Uri, symbolCode: String? = null, timeframe: String? = null) {
+        exportCandlesInternal(uri, asCsv = true, symbolCode = symbolCode, timeframe = timeframe)
+    }
+
+    fun exportCandlesJsonToUri(uri: Uri, symbolCode: String? = null, timeframe: String? = null) {
+        exportCandlesInternal(uri, asCsv = false, symbolCode = symbolCode, timeframe = timeframe)
+    }
+
+    private fun exportCandlesInternal(
+        uri: Uri,
+        asCsv: Boolean,
+        symbolCode: String?,
+        timeframe: String?
+    ) {
+        val activeTab = _uiState.value.activeTab
+        val resolvedSym = symbolCode ?: activeTab?.symbolCode ?: return
+        val catalogSym = _uiState.value.symbols.firstOrNull { it.symbolCode == resolvedSym }
+        val resolvedProv = activeTab?.takeIf { it.symbolCode == resolvedSym }?.provider
+            ?: catalogSym?.activeProvider ?: ProviderId.TVDATAFEED
+        val resolvedTf = (timeframe ?: activeTab?.takeIf { it.symbolCode == resolvedSym }?.timeframe
+            ?: catalogSym?.timeframe ?: AppConfig.DEFAULT_TIMEFRAME).uppercase()
+        val candles = activeTab?.takeIf { it.symbolCode == resolvedSym && it.timeframe == resolvedTf }?.candles
+            ?.takeIf { it.isNotEmpty() }
+            ?: repository.getCachedOrAggregatedCandles(resolvedSym, resolvedProv, resolvedTf)
+
+        viewModelScope.launch {
+            withContext(Dispatchers.IO) {
+                val text = if (asCsv) {
+                    CandleExportAlgorithm.formatCandlesCsv(resolvedSym, resolvedProv.id, resolvedTf, candles)
+                } else {
+                    CandleExportAlgorithm.formatCandlesJson(resolvedSym, resolvedProv.id, resolvedTf, candles)
+                }
+                getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
+                    out.write(text.toByteArray(Charsets.UTF_8))
+                }
             }
         }
     }

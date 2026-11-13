@@ -60,18 +60,24 @@ final class Database
 
     private static function ensureSchemaInitialized(PDO $pdo): void
     {
-        $sqlFile = dirname(__DIR__, 3) . '/migrations/001_phase1_init.sql';
-        if (!is_file($sqlFile)) {
-            return;
-        }
-        $sql = file_get_contents($sqlFile);
-        if ($sql === false) {
-            return;
-        }
-        $statements = array_filter(array_map('trim', explode(';', $sql)));
-        foreach ($statements as $stmt) {
-            if ($stmt !== '') {
-                $pdo->exec($stmt);
+        $migrationsDir = dirname(__DIR__, 3) . '/migrations';
+        $files = [
+            $migrationsDir . '/001_phase1_init.sql',
+            $migrationsDir . '/002_phase2_3_tables.sql',
+        ];
+        foreach ($files as $sqlFile) {
+            if (!is_file($sqlFile)) {
+                continue;
+            }
+            $sql = file_get_contents($sqlFile);
+            if ($sql === false) {
+                continue;
+            }
+            $statements = array_filter(array_map('trim', explode(';', $sql)));
+            foreach ($statements as $stmt) {
+                if ($stmt !== '') {
+                    $pdo->exec($stmt);
+                }
             }
         }
     }

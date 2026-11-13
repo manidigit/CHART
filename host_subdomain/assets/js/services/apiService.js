@@ -15,9 +15,9 @@ import {
   normalizeHexForWeb,
   normalizeHexForAndroid,
   resolvePriceBasis,
-} from '../core/store.js?v=1.38.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.38.0';
+} from '../core/store.js?v=1.39.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.39.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.39.0';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
@@ -427,22 +427,37 @@ export async function uploadWorkspaceSync() {
           chartType: t.chartType === 'line' ? 'line' : 'candlestick',
           visibleCount: t.visibleCount,
           scrollOffset: t.scrollOffset,
+          showVolume: t.showVolume !== false,
           showSma20: Boolean(t.showSma20),
           showSma50: Boolean(t.showSma50),
           showSma200: Boolean(t.showSma200),
           showEma20: Boolean(t.showEma20),
           showEma50: Boolean(t.showEma50),
+          showEma200: Boolean(t.showEma200),
           showSupertrend: Boolean(t.showSupertrend),
           showVwap: Boolean(t.showVwap),
+          showPsar: Boolean(t.showPsar),
+          showIchimoku: Boolean(t.showIchimoku),
+          showKeltner: Boolean(t.showKeltner),
+          showDonchian: Boolean(t.showDonchian),
+          showMtfEma: Boolean(t.showMtfEma),
+          showKillzones: Boolean(t.showKillzones),
           showBollinger: Boolean(t.showBollinger),
           showOverlayMacd: Boolean(t.showOverlayMacd),
           showRsi14: Boolean(t.showRsi14),
           showMacd: Boolean(t.showMacd),
           showAtr14: Boolean(t.showAtr14),
+          showAdx14: Boolean(t.showAdx14),
+          showStoch14: Boolean(t.showStoch14),
+          showCci20: Boolean(t.showCci20),
+          showWillR14: Boolean(t.showWillR14),
+          showObv: Boolean(t.showObv),
+          showCmf20: Boolean(t.showCmf20),
+          showRoc12: Boolean(t.showRoc12),
           showSmcStructure: Boolean(t.showSmcStructure),
           showFvg: Boolean(t.showFvg),
           showVolumeProfile: Boolean(t.showVolumeProfile),
-          showVolume: t.showVolume !== false,
+          pitchforkVariant: t.pitchforkVariant || p.pitchforkVariant || 'original',
           isLogScale: Boolean(t.isLogScale),
           isMagnetMode: Boolean(t.isMagnetMode),
           activeDrawingColorHex: normalizeHexForAndroid(
@@ -605,16 +620,31 @@ export async function downloadWorkspaceSync() {
             showSma200: Boolean(t.showSma200),
             showEma20: Boolean(t.showEma20),
             showEma50: Boolean(t.showEma50),
+            showEma200: Boolean(t.showEma200),
             showSupertrend: Boolean(t.showSupertrend),
             showVwap: Boolean(t.showVwap),
+            showPsar: Boolean(t.showPsar),
+            showIchimoku: Boolean(t.showIchimoku),
+            showKeltner: Boolean(t.showKeltner),
+            showDonchian: Boolean(t.showDonchian),
+            showMtfEma: Boolean(t.showMtfEma),
+            showKillzones: Boolean(t.showKillzones),
             showBollinger: Boolean(t.showBollinger),
             showOverlayMacd: Boolean(t.showOverlayMacd),
             showRsi14: Boolean(t.showRsi14),
             showMacd: Boolean(t.showMacd),
             showAtr14: Boolean(t.showAtr14),
+            showAdx14: Boolean(t.showAdx14),
+            showStoch14: Boolean(t.showStoch14),
+            showCci20: Boolean(t.showCci20),
+            showWillR14: Boolean(t.showWillR14),
+            showObv: Boolean(t.showObv),
+            showCmf20: Boolean(t.showCmf20),
+            showRoc12: Boolean(t.showRoc12),
             showSmcStructure: Boolean(t.showSmcStructure),
             showFvg: Boolean(t.showFvg),
             showVolumeProfile: Boolean(t.showVolumeProfile),
+            pitchforkVariant: t.pitchforkVariant || 'original',
             isMagnetMode: Boolean(t.isMagnetMode),
             isLogScale: t.isLogScale !== undefined ? Boolean(t.isLogScale) : Boolean(state.chartPreferences.isLogScale),
             selectedRangePreset: null,
@@ -1084,6 +1114,9 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
     if (activeMeta) {
       sym.lastSyncMode = activeMeta.sync_mode || 'NONE';
       sym.fetchedNewBars = Number(activeMeta.fetched_new_bars || 0);
+      if (activeMeta.gap_summary) {
+        sym.gapSummary = activeMeta.gap_summary;
+      }
     }
     const latestQuoteBar =
       effectiveTf === 'D1' && m15Bars.length > 0
@@ -1123,6 +1156,7 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
         tab.lastSuccessfulFetchMs = sym.lastSuccessfulFetchMs;
         tab.lastCandleCloseMs = sym.lastCandleCloseMs;
         tab.syncErrorMessage = sym.syncErrorMessage;
+        tab.gapSummary = sym.gapSummary || null;
         tab.timeframe = tabTf;
         tab.candles =
           syncedByTf[tabTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tabTf);
@@ -1155,4 +1189,149 @@ export async function syncAllWatchlistSymbols(renderCallback) {
       })
     );
   }
+}
+
+/**
+ * ENG-02: Read-only live/forming quote poll. Never writes unclosed bars into closed `candles` cache.
+ */
+export async function fetchLiveQuote(symbolCode, provider, timeframe) {
+  const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
+  const activeProv = provider || (sym ? sym.activeProvider : 'tvdatafeed');
+  const activeTf = String(timeframe || (sym ? sym.timeframe : 'M15') || 'M15').toUpperCase();
+  const byok = getLocalByokKeys();
+  const headers = {};
+  if (activeProv === 'twelve_data' && byok.twelveDataApiKey) {
+    headers['X-Provider-Api-Key'] = String(byok.twelveDataApiKey).trim();
+  }
+  try {
+    const url = `./api/v1/quote.php?symbol=${encodeURIComponent(symbolCode)}&provider=${encodeURIComponent(
+      activeProv
+    )}&timeframe=${encodeURIComponent(activeTf)}&_t=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store', headers });
+    const json = await res.json();
+    if (res.ok && json && json.ok && json.data) {
+      const q = json.data;
+      const quotePrice = Number(q.live_price || q.close || 0);
+      const formingBar = q.forming_bar || null;
+      const quoteMode = q.quote_mode || 'LAST_CLOSED_FALLBACK';
+      if (sym && quotePrice > 0) {
+        sym.liveQuotePrice = quotePrice;
+        sym.formingBar = formingBar;
+        sym.liveQuoteMode = quoteMode;
+        sym.liveQuoteFetchedAtMs = Date.now();
+      }
+      for (const tab of state.openTabs) {
+        if (tab.symbolCode === symbolCode && tab.provider === activeProv) {
+          tab.liveQuotePrice = quotePrice > 0 ? quotePrice : null;
+          tab.formingBar = formingBar;
+          tab.liveQuoteMode = quoteMode;
+        }
+      }
+      return q;
+    }
+  } catch {
+    // Non-blocking quote failure
+  }
+  return null;
+}
+
+/**
+ * ENG-03: Fetches gap & completeness diagnostic summary for an isolated (symbol, provider, timeframe).
+ */
+export async function fetchGapReport(symbolCode, provider, timeframe) {
+  const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
+  const activeProv = provider || (sym ? sym.activeProvider : 'tvdatafeed');
+  const activeTf = String(timeframe || (sym ? sym.timeframe : 'M15') || 'M15').toUpperCase();
+  try {
+    const url = `./api/v1/gap_report.php?symbol=${encodeURIComponent(symbolCode)}&provider=${encodeURIComponent(
+      activeProv
+    )}&timeframe=${encodeURIComponent(activeTf)}&_t=${Date.now()}`;
+    const res = await fetch(url, { cache: 'no-store' });
+    const json = await res.json();
+    if (res.ok && json && json.ok && json.data) {
+      const report = json.data.report || json.data;
+      if (sym) sym.gapSummary = report;
+      for (const tab of state.openTabs) {
+        if (tab.symbolCode === symbolCode && tab.provider === activeProv && tab.timeframe === activeTf) {
+          tab.gapSummary = report;
+        }
+      }
+      return report;
+    }
+  } catch {
+    // Ignore non-fatal report fetch error
+  }
+  return null;
+}
+
+/**
+ * INF-01: Exports an encrypted AES-256-GCM workspace & account metadata backup (.cibak.json).
+ */
+export async function exportEncryptedBackup(passphrase) {
+  const token = localStorage.getItem('ci_session_token') || '';
+  const res = await fetch('./api/v1/backup.php?action=export', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ session_token: token, passphrase }),
+  });
+  if (res.status === 401) {
+    clearLocalAuthSession(false);
+    return { ok: false, errorKey: 'error_unauthorized' };
+  }
+  const json = await res.json();
+  if (res.ok && json && json.ok && json.data) {
+    return { ok: true, backup: json.data };
+  }
+  return { ok: false, error: (json && json.error) || 'Backup export failed' };
+}
+
+/**
+ * INF-01: Restores an encrypted .cibak.json backup archive with server-side checksum validation.
+ */
+export async function restoreEncryptedBackup(backupPayload, passphrase) {
+  const token = localStorage.getItem('ci_session_token') || '';
+  const res = await fetch('./api/v1/backup.php?action=restore', {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify({ session_token: token, backup: backupPayload, passphrase }),
+  });
+  if (res.status === 401) {
+    clearLocalAuthSession(false);
+    return { ok: false, errorKey: 'error_unauthorized' };
+  }
+  const json = await res.json();
+  if (res.ok && json && json.ok && json.data) {
+    return { ok: true, data: json.data };
+  }
+  return { ok: false, error: (json && json.error) || 'Backup restore failed' };
+}
+
+/**
+ * §2.3: Fetches real cached live News, SEC EDGAR filings, Macro schedule, and Intermarket quotes.
+ */
+export async function fetchSymbolIntel(symbolCode, forceRefresh = false) {
+  const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
+  try {
+    const refreshParam = forceRefresh ? '&refresh=1' : '';
+    const res = await fetch(
+      `./api/v1/symbol_intel.php?symbol=${encodeURIComponent(symbolCode)}${refreshParam}&_t=${Date.now()}`,
+      { cache: 'no-store' }
+    );
+    const json = await res.json();
+    if (res.ok && json && json.ok && json.data) {
+      if (!state.symbolIntelCache) state.symbolIntelCache = {};
+      state.symbolIntelCache[symbolCode] = { fetchedAtMs: Date.now(), data: json.data };
+      if (sym) sym.intel = json.data;
+      return json.data;
+    }
+  } catch {
+    // Non-blocking intel failure
+  }
+  return (state.symbolIntelCache && state.symbolIntelCache[symbolCode]?.data) || null;
 }

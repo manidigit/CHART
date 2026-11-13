@@ -18,15 +18,21 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.AdsClick
+import androidx.compose.material.icons.outlined.AutoGraph
+import androidx.compose.material.icons.outlined.BarChart
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.DeleteSweep
 import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.GridOn
 import androidx.compose.material.icons.outlined.HorizontalRule
+import androidx.compose.material.icons.outlined.ShowChart
 import androidx.compose.material.icons.outlined.Timeline
 import androidx.compose.material.icons.outlined.VerticalAlignCenter
+import androidx.compose.material.icons.outlined.ViewColumn
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -160,11 +166,16 @@ fun DrawingToolbar(
     hasSelectedDrawing: Boolean,
     totalDrawingsCount: Int,
     pendingTrendPoint: TrendAnchorPoint?,
+    pendingAnchorsCount: Int = 0,
+    requiredAnchorsCount: Int = 0,
+    pitchforkVariant: String = "original",
+    isPitchforkSelected: Boolean = false,
     activeDrawingColorHex: String = "FF2962FF",
     activeDrawingWidthDp: Float = 2.2f,
     isCollapsed: Boolean = true,
     isMagnetMode: Boolean = false,
     onSelectTool: (DrawingTool) -> Unit,
+    onSelectPitchforkVariant: (String) -> Unit = {},
     onToggleMagnetMode: () -> Unit = {},
     onSelectColorHex: (String) -> Unit = {},
     onSelectWidthDp: (Float) -> Unit = {},
@@ -315,6 +326,24 @@ fun DrawingToolbar(
                             testTag = "draw_clear_all_button"
                         )
                     }
+                    if (activeTool != DrawingTool.CURSOR && requiredAnchorsCount > 1) {
+                        Box(
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(10.dp))
+                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.22f))
+                                .padding(horizontal = 6.dp, vertical = 2.dp)
+                                .testTag("draw_anchor_progress_badge"),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "$pendingAnchorsCount/$requiredAnchorsCount",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -332,6 +361,7 @@ fun DrawingToolbar(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .navigationBarsPadding()
                     .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -520,6 +550,101 @@ fun DrawingToolbar(
                                 }
                                 repeat(4 - rowItems.size) {
                                     Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+
+                        // Phase 2 Pro Multi-Anchor Tools (12 Families)
+                        Text(
+                            text = stringResource(R.string.draw_pro_tools_section),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(top = 6.dp)
+                        )
+
+                        data class ProToolSpec(val tool: DrawingTool, val label: String, val icon: ImageVector)
+                        val proToolSpecs = listOf(
+                            ProToolSpec(DrawingTool.AVWAP, "AVWAP", Icons.Outlined.ShowChart),
+                            ProToolSpec(DrawingTool.REGRESSION_CHANNEL, "Reg Ch.", Icons.Outlined.AutoGraph),
+                            ProToolSpec(DrawingTool.FRVP, "FRVP", Icons.Outlined.BarChart),
+                            ProToolSpec(DrawingTool.GANN_FAN, "Gann Fan", Icons.Outlined.Timeline),
+                            ProToolSpec(DrawingTool.GANN_BOX, "Gann Box", Icons.Outlined.GridOn),
+                            ProToolSpec(DrawingTool.PITCHFORK, "Pitchfork", Icons.Outlined.Timeline),
+                            ProToolSpec(DrawingTool.FIB_TIME_ZONE, "Fib Time", Icons.Outlined.ViewColumn),
+                            ProToolSpec(DrawingTool.CYCLIC_LINES, "Cycles", Icons.Outlined.ViewColumn),
+                            ProToolSpec(DrawingTool.FIB_SPEED_FAN, "Speed Fn", Icons.Outlined.AutoGraph),
+                            ProToolSpec(DrawingTool.ABCD_PATTERN, "ABCD", Icons.Outlined.ShowChart),
+                            ProToolSpec(DrawingTool.XABCD_PATTERN, "XABCD", Icons.Outlined.AutoGraph),
+                            ProToolSpec(DrawingTool.HEAD_SHOULDERS, "H & S", Icons.Outlined.ShowChart)
+                        )
+
+                        proToolSpecs.chunked(4).forEach { rowSpecs ->
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                rowSpecs.forEach { spec ->
+                                    BottomSheetToolItem(
+                                        icon = spec.icon,
+                                        codeLabel = spec.label,
+                                        selected = activeTool == spec.tool,
+                                        onClick = { onSelectTool(spec.tool); onToggleCollapsed() },
+                                        testTag = "sheet_draw_tool_${spec.tool.id}",
+                                        modifier = Modifier.weight(1f)
+                                    )
+                                }
+                                repeat(4 - rowSpecs.size) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+
+                        if (activeTool == DrawingTool.PITCHFORK || isPitchforkSelected) {
+                            val variants = listOf(
+                                "original" to "Original",
+                                "schiff" to "Schiff",
+                                "mod_schiff" to "Mod",
+                                "inside" to "Inside"
+                            )
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 4.dp),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                for ((vId, vLabel) in variants) {
+                                    val isVarSel = pitchforkVariant.equals(vId, ignoreCase = true)
+                                    Box(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .clip(RoundedCornerShape(8.dp))
+                                            .background(
+                                                if (isVarSel) MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
+                                                else MaterialTheme.colorScheme.surfaceVariant
+                                            )
+                                            .border(
+                                                1.dp,
+                                                if (isVarSel) MaterialTheme.colorScheme.primary else palette.cardBorder,
+                                                RoundedCornerShape(8.dp)
+                                            )
+                                            .clickable { onSelectPitchforkVariant(vId) }
+                                            .padding(vertical = 8.dp)
+                                            .testTag("sheet_pitchfork_variant_$vId"),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = vLabel,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            color = if (isVarSel) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 1
+                                        )
+                                    }
                                 }
                             }
                         }

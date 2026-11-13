@@ -48,6 +48,12 @@ class SymbolCatalogCoordinator(private val repository: WorkspaceRepository) {
         return Pair(updated, targetTf)
     }
 
+    fun sanitizeSymbolCode(raw: String): String {
+        return raw.trim().uppercase()
+            .replace(Regex("[^A-Z0-9._:-]"), "")
+            .take(20)
+    }
+
     fun addCustomSymbol(
         currentSymbols: List<SymbolConfig>,
         symbolCode: String,
@@ -55,15 +61,16 @@ class SymbolCatalogCoordinator(private val repository: WorkspaceRepository) {
         decimals: Int,
         provider: ProviderId
     ): List<SymbolConfig> {
-        val cleanCode = symbolCode.trim().uppercase()
-        if (cleanCode.isBlank() || currentSymbols.any { it.symbolCode == cleanCode }) {
+        val cleanCode = sanitizeSymbolCode(symbolCode)
+        if (cleanCode.length < 2 || currentSymbols.any { it.symbolCode == cleanCode }) {
             return currentSymbols
         }
+        val cleanTitle = customTitle.trim().take(64).ifBlank { cleanCode }
         val newSymbol = SymbolConfig(
             chartId = "chart_${cleanCode.lowercase()}_custom",
             symbolCode = cleanCode,
             titleResId = null,
-            customTitle = customTitle.ifBlank { cleanCode },
+            customTitle = cleanTitle,
             decimals = decimals.coerceIn(0, 6),
             inWatchlist = true,
             activeProvider = provider,

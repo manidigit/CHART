@@ -12,6 +12,8 @@ import es.manico.chartintelligence.data.model.ChartDrawing
 import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.ChartType
+import es.manico.chartintelligence.data.model.DrawingAnchor
+import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.i18n.AppLanguage
@@ -44,12 +46,19 @@ data class ServerOwnerStatus(
 
 data class SystemStatusDto(
     val isHealthy: Boolean = false,
-    val version: String = "1.38.0",
+    val version: String = "1.39.0",
     val serverTimeUtc: String = "",
     val dbConnected: Boolean = false,
     val dbVersion: String = "MariaDB",
     val totalCandles: Long = 0L,
     val registeredOwner: Boolean = false
+)
+
+data class LiveQuoteResult(
+    val price: BigDecimal,
+    val mode: String, // "LIVE_TICK" | "LAST_CLOSED_FALLBACK"
+    val updatedAtUtc: String,
+    val formingBar: CandleBar? = null
 )
 
 /**
@@ -627,10 +636,12 @@ class WorkspaceRepository(context: Context) {
                 for (i in 0 until arr.length()) {
                     val obj = arr.getJSONObject(i)
                     val code = obj.optString("symbolCode").trim().uppercase()
+                        .replace(Regex("[^A-Z0-9._:-]"), "").take(20)
+                    if (code.length < 2) continue
                     val inWatchlist = obj.optBoolean("inWatchlist", false)
                     val provider = ProviderId.fromId(obj.optString("activeProvider"))
                     val tf = obj.optString("timeframe", "M15").ifBlank { "M15" }
-                    val customTitle = obj.optString("customTitle", "").takeIf { it.isNotBlank() }
+                    val customTitle = obj.optString("customTitle", "").take(64).takeIf { it.isNotBlank() }
                     val decimals = obj.optInt("decimals", 2)
                     val base = defaultMap[code]
 
@@ -1093,6 +1104,16 @@ class WorkspaceRepository(context: Context) {
         val stepMs = es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.timeframeStepMillis(effectiveTimeframe)
         val lastCandleCloseMs = merged.lastOrNull()?.let { it.openTimeUtcMillis + stepMs } ?: 0L
 
+        val gapReport = if (merged.size >= 2) {
+            es.manico.chartintelligence.algorithms.GapDetectorAlgorithm.detectGaps(
+                candles = merged,
+                timeframe = effectiveTimeframe,
+                symbolCode = symbol.symbolCode
+            )
+        } else {
+            symbol.gapSummary
+        }
+
         val updatedSymbol = symbol.copy(
             timeframe = effectiveTimeframe,
             lastClose = latestForQuote?.close,
@@ -1115,9 +1136,62 @@ class WorkspaceRepository(context: Context) {
             providerStatus = nextProviderStatus,
             lastSuccessfulFetchMs = if (effectiveFetchSucceeded) nowSyncMs else symbol.lastSuccessfulFetchMs,
             lastCandleCloseMs = lastCandleCloseMs,
-            connectionStatus = connectionStatus
+            connectionStatus = connectionStatus,
+            gapSummary = gapReport
         )
         updatedSymbol to merged
+    }
+
+    suspend fun fetchLiveQuote(
+        symbolCode: String,
+        provider: ProviderId,
+        timeframe: String
+    ): LiveQuoteResult? = withContext(Dispatchers.IO) {
+        runCatching {
+            val cleanSym = java.net.URLEncoder.encode(symbolCode.trim().uppercase(), "UTF-8")
+            val cleanProv = java.net.URLEncoder.encode(provider.id, "UTF-8")
+            val cleanTf = java.net.URLEncoder.encode(timeframe.uppercase(), "UTF-8")
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}quote.php?symbol=$cleanSym&provider=$cleanProv&timeframe=$cleanTf")
+                .withOptionalBearerAuth()
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use null
+                val root = JSONObject(resp.body?.string().orEmpty())
+                if (!root.optBoolean("ok", false)) return@use null
+                val data = root.optJSONObject("data") ?: return@use null
+                val priceNum = data.optDouble("price", Double.NaN)
+                if (!priceNum.isFinite() || priceNum <= 0.0) return@use null
+                val mode = data.optString("mode", "LAST_CLOSED_FALLBACK")
+                val updatedAt = data.optString("updated_at_utc", "")
+                val fObj = data.optJSONObject("forming_bar")
+                val formingBar = if (fObj != null) {
+                    val fOpen = fObj.optDouble("open", Double.NaN)
+                    val fHigh = fObj.optDouble("high", Double.NaN)
+                    val fLow = fObj.optDouble("low", Double.NaN)
+                    val fClose = fObj.optDouble("close", Double.NaN)
+                    val fTime = fObj.optLong("open_time_utc_ms", 0L)
+                    if (fOpen.isFinite() && fHigh.isFinite() && fLow.isFinite() && fClose.isFinite() && fTime > 0L) {
+                        CandleValidatorAlgorithm.sanitizeAndValidate(
+                            rawOpenTimeMillis = fTime,
+                            timeframe = timeframe,
+                            open = BigDecimal.valueOf(fOpen),
+                            high = BigDecimal.valueOf(fHigh),
+                            low = BigDecimal.valueOf(fLow),
+                            close = BigDecimal.valueOf(fClose),
+                            volume = BigDecimal.valueOf(fObj.optDouble("volume", 0.0).coerceAtLeast(0.0))
+                        )
+                    } else null
+                } else null
+                LiveQuoteResult(
+                    price = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal.valueOf(priceNum)),
+                    mode = mode,
+                    updatedAtUtc = updatedAt,
+                    formingBar = formingBar
+                )
+            }
+        }.getOrNull()
     }
 
     private fun normalizeAndroidHex(raw: String?, fallback: String): String {
@@ -1141,7 +1215,8 @@ class WorkspaceRepository(context: Context) {
                 obj.optDouble("width", 2.2)
             ).toFloat().coerceIn(1.0f, 6.0f)
 
-            when (obj.optString("type").lowercase()) {
+            val rawType = obj.optString("type").lowercase()
+            when (rawType) {
                 "horizontal_line", "hline" -> {
                     list.add(
                         ChartDrawing.HorizontalLine(
@@ -1224,6 +1299,38 @@ class WorkspaceRepository(context: Context) {
                         )
                     )
                 }
+                else -> {
+                    val toolType = DrawingTool.fromId(rawType)
+                    if (toolType.isPhase2MultiAnchor) {
+                        val anchorsArr = obj.optJSONArray("anchors")
+                        val parsedAnchors = ArrayList<DrawingAnchor>()
+                        if (anchorsArr != null) {
+                            for (ai in 0 until anchorsArr.length()) {
+                                val aObj = anchorsArr.optJSONObject(ai) ?: continue
+                                parsedAnchors.add(
+                                    DrawingAnchor(
+                                        timeUtcMillis = aObj.optLong("timeUtcMillis", aObj.optLong("t", 0L)),
+                                        price = CandleValidatorAlgorithm.normalizeDecimal(
+                                            BigDecimal(aObj.optString("price", aObj.optString("p", "0")))
+                                        )
+                                    )
+                                )
+                            }
+                        }
+                        if (parsedAnchors.isNotEmpty()) {
+                            list.add(
+                                ChartDrawing.MultiAnchor(
+                                    id = id,
+                                    toolType = toolType,
+                                    anchors = parsedAnchors,
+                                    variant = obj.optString("variant", "original"),
+                                    colorHex = colorHex,
+                                    strokeWidthDp = strokeWidthDp
+                                )
+                            )
+                        }
+                    }
+                }
             }
         }
         return list
@@ -1276,6 +1383,19 @@ class WorkspaceRepository(context: Context) {
                     obj.put("entryPrice", d.entryPrice.toPlainString())
                     obj.put("targetPrice", d.targetPrice.toPlainString())
                     obj.put("stopPrice", d.stopPrice.toPlainString())
+                }
+                is ChartDrawing.MultiAnchor -> {
+                    obj.put("type", d.toolType.id)
+                    obj.put("variant", d.variant)
+                    val aArr = JSONArray()
+                    for (a in d.anchors) {
+                        aArr.put(
+                            JSONObject()
+                                .put("timeUtcMillis", a.timeUtcMillis)
+                                .put("price", a.price.toPlainString())
+                        )
+                    }
+                    obj.put("anchors", aArr)
                 }
             }
             arr.put(obj)
@@ -1818,16 +1938,31 @@ class WorkspaceRepository(context: Context) {
                         showSma200 = obj.optBoolean("showSma200", false),
                         showEma20 = obj.optBoolean("showEma20", false),
                         showEma50 = obj.optBoolean("showEma50", false),
+                        showEma200 = obj.optBoolean("showEma200", false),
                         showBollinger = obj.optBoolean("showBollinger", false),
                         showSupertrend = obj.optBoolean("showSupertrend", false),
                         showVwap = obj.optBoolean("showVwap", false),
+                        showPsar = obj.optBoolean("showPsar", false),
+                        showIchimoku = obj.optBoolean("showIchimoku", false),
+                        showKeltner = obj.optBoolean("showKeltner", false),
+                        showDonchian = obj.optBoolean("showDonchian", false),
+                        showMtfEma = obj.optBoolean("showMtfEma", false),
+                        showKillzones = obj.optBoolean("showKillzones", false),
                         showRsi14 = obj.optBoolean("showRsi14", false),
                         showMacd = obj.optBoolean("showMacd", false),
                         showOverlayMacd = obj.optBoolean("showOverlayMacd", false),
                         showAtr14 = obj.optBoolean("showAtr14", false),
+                        showAdx14 = obj.optBoolean("showAdx14", false),
+                        showStoch14 = obj.optBoolean("showStoch14", false),
+                        showCci20 = obj.optBoolean("showCci20", false),
+                        showWillR14 = obj.optBoolean("showWillR14", false),
+                        showObv = obj.optBoolean("showObv", false),
+                        showCmf20 = obj.optBoolean("showCmf20", false),
+                        showRoc12 = obj.optBoolean("showRoc12", false),
                         showSmcStructure = obj.optBoolean("showSmcStructure", false),
                         showFvg = obj.optBoolean("showFvg", false),
                         showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
+                        pitchforkVariant = obj.optString("pitchforkVariant", "original"),
                         isLogScale = obj.optBoolean("isLogScale", false),
                         activeDrawingColorHex = normalizeAndroidHex(
                             obj.optString("activeDrawingColorHex", curPrefs.defaultDrawingColorHex),
@@ -1866,16 +2001,31 @@ class WorkspaceRepository(context: Context) {
                 .put("showSma200", t.showSma200)
                 .put("showEma20", t.showEma20)
                 .put("showEma50", t.showEma50)
+                .put("showEma200", t.showEma200)
                 .put("showBollinger", t.showBollinger)
                 .put("showSupertrend", t.showSupertrend)
                 .put("showVwap", t.showVwap)
+                .put("showPsar", t.showPsar)
+                .put("showIchimoku", t.showIchimoku)
+                .put("showKeltner", t.showKeltner)
+                .put("showDonchian", t.showDonchian)
+                .put("showMtfEma", t.showMtfEma)
+                .put("showKillzones", t.showKillzones)
                 .put("showRsi14", t.showRsi14)
                 .put("showMacd", t.showMacd)
                 .put("showOverlayMacd", t.showOverlayMacd)
                 .put("showAtr14", t.showAtr14)
+                .put("showAdx14", t.showAdx14)
+                .put("showStoch14", t.showStoch14)
+                .put("showCci20", t.showCci20)
+                .put("showWillR14", t.showWillR14)
+                .put("showObv", t.showObv)
+                .put("showCmf20", t.showCmf20)
+                .put("showRoc12", t.showRoc12)
                 .put("showSmcStructure", t.showSmcStructure)
                 .put("showFvg", t.showFvg)
                 .put("showVolumeProfile", t.showVolumeProfile)
+                .put("pitchforkVariant", t.pitchforkVariant)
                 .put("isLogScale", t.isLogScale)
                 .put("activeDrawingColorHex", t.activeDrawingColorHex)
                 .put("activeDrawingWidthDp", t.activeDrawingWidthDp.toDouble())
@@ -1885,6 +2035,131 @@ class WorkspaceRepository(context: Context) {
         prefs.edit().putString(AppConfig.KEY_OPEN_TABS_JSON, arr.toString()).apply()
     }
 
+    fun getHttpClient(): OkHttpClient = httpClient
+
+    fun buildWorkspaceJson(
+        symbols: List<SymbolConfig>,
+        preferences: ChartPreferences,
+        drawingsMap: Map<String, List<ChartDrawing>>,
+        openTabs: List<ChartTabState> = emptyList()
+    ): JSONObject {
+        val drawingsObj = JSONObject()
+        val symbolByChartId = symbols.associateBy { it.chartId }
+        for ((chartId, dList) in drawingsMap) {
+            val arr = serializeDrawingsArray(dList)
+            val sym = symbolByChartId[chartId]
+            if (sym != null) {
+                drawingsObj.put(
+                    es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.canonicalChartKey(sym.symbolCode, sym.timeframe),
+                    arr
+                )
+                drawingsObj.put(chartId, arr)
+            } else {
+                drawingsObj.put(chartId, arr)
+            }
+        }
+
+        val symbolsArr = JSONArray()
+        for (s in symbols) {
+            val sObj = JSONObject()
+                .put("symbolCode", s.symbolCode)
+                .put("inWatchlist", s.inWatchlist)
+                .put("activeProvider", s.activeProvider.id)
+                .put("timeframe", s.timeframe)
+                .put("decimals", s.decimals)
+            if (!s.customTitle.isNullOrBlank()) sObj.put("customTitle", s.customTitle)
+            symbolsArr.put(sObj)
+        }
+
+        val prefsObj = JSONObject()
+            .put("bullCandleColorHex", preferences.bullCandleColorHex)
+            .put("bearCandleColorHex", preferences.bearCandleColorHex)
+            .put("trendLineColorHex", preferences.trendLineColorHex)
+            .put("horizontalLineColorHex", preferences.horizontalLineColorHex)
+            .put("verticalLineColorHex", preferences.verticalLineColorHex)
+            .put("chartGridColorHex", preferences.chartGridColorHex)
+            .put("defaultDrawingColorHex", preferences.defaultDrawingColorHex)
+            .put("defaultDrawingWidthDp", preferences.defaultDrawingWidthDp.toDouble())
+            .put("defaultDrawingWidthPx", preferences.defaultDrawingWidthDp.toDouble())
+            .put("candleFetchLimit", preferences.candleFetchLimit)
+            .put("zoomStepCandles", preferences.zoomStepCandles)
+            .put("drawingHitTolerancePx", preferences.drawingHitTolerancePx.toDouble())
+            .put("bollingerPeriod", preferences.bollingerPeriod)
+            .put("bollingerStdDev", preferences.bollingerStdDev.toDouble())
+            .put("hideWatchlistLogos", preferences.hideWatchlistLogos)
+            .put("showSymbolScreen", preferences.showSymbolScreen)
+            .put("chartVibrations", preferences.chartVibrations)
+            .put("logarithmicScaleDefault", preferences.logarithmicScaleDefault)
+            .put("rememberLastChartOnDevice", preferences.rememberLastChartOnDevice)
+            .put("hideTabBarInLandscape", preferences.hideTabBarInLandscape)
+            .put("pickerVibrations", preferences.pickerVibrations)
+            .put("showPickerScrollMagnifiers", preferences.showPickerScrollMagnifiers)
+            .put("showCountdownToBarClose", preferences.showCountdownToBarClose)
+            .put("showPrevCloseLine", preferences.showPrevCloseLine)
+            .put("showHighLowLabels", preferences.showHighLowLabels)
+            .put("timezoneMode", preferences.timezoneMode)
+
+        val tabsArr = JSONArray()
+        for (t in openTabs) {
+            val tObj = JSONObject()
+                .put("tabId", t.tabId)
+                .put("symbolCode", t.symbolCode)
+                .put("provider", t.provider.id)
+                .put("timeframe", t.timeframe)
+                .put("decimals", t.decimals)
+                .put("chartType", t.chartType.name.lowercase())
+                .put("visibleCount", t.visibleCandleCount)
+                .put("scrollOffset", t.scrollOffsetFromRight)
+                .put("showVolume", t.showVolume)
+                .put("showSma20", t.showSma20)
+                .put("showSma50", t.showSma50)
+                .put("showSma200", t.showSma200)
+                .put("showEma20", t.showEma20)
+                .put("showEma50", t.showEma50)
+                .put("showEma200", t.showEma200)
+                .put("showBollinger", t.showBollinger)
+                .put("showSupertrend", t.showSupertrend)
+                .put("showVwap", t.showVwap)
+                .put("showPsar", t.showPsar)
+                .put("showIchimoku", t.showIchimoku)
+                .put("showKeltner", t.showKeltner)
+                .put("showDonchian", t.showDonchian)
+                .put("showMtfEma", t.showMtfEma)
+                .put("showKillzones", t.showKillzones)
+                .put("showRsi14", t.showRsi14)
+                .put("showMacd", t.showMacd)
+                .put("showOverlayMacd", t.showOverlayMacd)
+                .put("showAtr14", t.showAtr14)
+                .put("showAdx14", t.showAdx14)
+                .put("showStoch14", t.showStoch14)
+                .put("showCci20", t.showCci20)
+                .put("showWillR14", t.showWillR14)
+                .put("showObv", t.showObv)
+                .put("showCmf20", t.showCmf20)
+                .put("showRoc12", t.showRoc12)
+                .put("showSmcStructure", t.showSmcStructure)
+                .put("showFvg", t.showFvg)
+                .put("showVolumeProfile", t.showVolumeProfile)
+                .put("pitchforkVariant", t.pitchforkVariant)
+                .put("isLogScale", t.isLogScale)
+                .put("activeDrawingColorHex", t.activeDrawingColorHex)
+                .put("activeDrawingWidthDp", t.activeDrawingWidthDp.toDouble())
+                .put("activeDrawingWidthPx", t.activeDrawingWidthDp.toDouble())
+                .put("isMagnetMode", t.isMagnetMode)
+            tabsArr.put(tObj)
+        }
+
+        val openTabsObj = JSONObject()
+            .put("lastOpenedSymbolCode", loadLastOpenedSymbolCode() ?: "SPOTBRENT")
+            .put("tabs", tabsArr)
+
+        return JSONObject()
+            .put("drawings", drawingsObj)
+            .put("symbols", symbolsArr)
+            .put("preferences", prefsObj)
+            .put("open_tabs", openTabsObj)
+    }
+
     suspend fun syncWorkspaceToCloud(
         symbols: List<SymbolConfig>,
         preferences: ChartPreferences,
@@ -1892,113 +2167,10 @@ class WorkspaceRepository(context: Context) {
         openTabs: List<ChartTabState> = emptyList()
     ): Boolean = withContext(Dispatchers.IO) {
         runCatching {
-            val drawingsObj = JSONObject()
-            val symbolByChartId = symbols.associateBy { it.chartId }
-            for ((chartId, dList) in drawingsMap) {
-                val arr = serializeDrawingsArray(dList)
-                val sym = symbolByChartId[chartId]
-                if (sym != null) {
-                    // Migrate/write under canonical SYMBOL_TIMEFRAME while keeping legacy alias
-                    drawingsObj.put(
-                        es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm.canonicalChartKey(sym.symbolCode, sym.timeframe),
-                        arr
-                    )
-                    drawingsObj.put(chartId, arr)
-                } else {
-                    drawingsObj.put(chartId, arr)
-                }
-            }
-
-            val symbolsArr = JSONArray()
-            for (s in symbols) {
-                val sObj = JSONObject()
-                    .put("symbolCode", s.symbolCode)
-                    .put("inWatchlist", s.inWatchlist)
-                    .put("activeProvider", s.activeProvider.id)
-                    .put("timeframe", s.timeframe)
-                    .put("decimals", s.decimals)
-                if (!s.customTitle.isNullOrBlank()) sObj.put("customTitle", s.customTitle)
-                symbolsArr.put(sObj)
-            }
-
-            // Never include BYOK API keys in cloud workspace payload
-            val prefsObj = JSONObject()
-                .put("bullCandleColorHex", preferences.bullCandleColorHex)
-                .put("bearCandleColorHex", preferences.bearCandleColorHex)
-                .put("trendLineColorHex", preferences.trendLineColorHex)
-                .put("horizontalLineColorHex", preferences.horizontalLineColorHex)
-                .put("verticalLineColorHex", preferences.verticalLineColorHex)
-                .put("chartGridColorHex", preferences.chartGridColorHex)
-                .put("defaultDrawingColorHex", preferences.defaultDrawingColorHex)
-                .put("defaultDrawingWidthDp", preferences.defaultDrawingWidthDp.toDouble())
-                .put("defaultDrawingWidthPx", preferences.defaultDrawingWidthDp.toDouble())
-                .put("candleFetchLimit", preferences.candleFetchLimit)
-                .put("zoomStepCandles", preferences.zoomStepCandles)
-                .put("drawingHitTolerancePx", preferences.drawingHitTolerancePx.toDouble())
-                .put("bollingerPeriod", preferences.bollingerPeriod)
-                .put("bollingerStdDev", preferences.bollingerStdDev.toDouble())
-                .put("hideWatchlistLogos", preferences.hideWatchlistLogos)
-                .put("showSymbolScreen", preferences.showSymbolScreen)
-                .put("chartVibrations", preferences.chartVibrations)
-                .put("logarithmicScaleDefault", preferences.logarithmicScaleDefault)
-                .put("rememberLastChartOnDevice", preferences.rememberLastChartOnDevice)
-                .put("hideTabBarInLandscape", preferences.hideTabBarInLandscape)
-                .put("pickerVibrations", preferences.pickerVibrations)
-                .put("showPickerScrollMagnifiers", preferences.showPickerScrollMagnifiers)
-                .put("showCountdownToBarClose", preferences.showCountdownToBarClose)
-                .put("showPrevCloseLine", preferences.showPrevCloseLine)
-                .put("showHighLowLabels", preferences.showHighLowLabels)
-                .put("timezoneMode", preferences.timezoneMode)
-
-            val tabsArr = JSONArray()
-            for (t in openTabs) {
-                val tObj = JSONObject()
-                    .put("tabId", t.tabId)
-                    .put("symbolCode", t.symbolCode)
-                    .put("provider", t.provider.id)
-                    .put("timeframe", t.timeframe)
-                    .put("decimals", t.decimals)
-                    .put("chartType", t.chartType.name.lowercase())
-                    .put("visibleCount", t.visibleCandleCount)
-                    .put("scrollOffset", t.scrollOffsetFromRight)
-                    .put("showVolume", t.showVolume)
-                    .put("showSma20", t.showSma20)
-                    .put("showSma50", t.showSma50)
-                    .put("showSma200", t.showSma200)
-                    .put("showEma20", t.showEma20)
-                    .put("showEma50", t.showEma50)
-                    .put("showBollinger", t.showBollinger)
-                    .put("showSupertrend", t.showSupertrend)
-                    .put("showVwap", t.showVwap)
-                    .put("showRsi14", t.showRsi14)
-                    .put("showMacd", t.showMacd)
-                    .put("showOverlayMacd", t.showOverlayMacd)
-                    .put("showAtr14", t.showAtr14)
-                    .put("showSmcStructure", t.showSmcStructure)
-                    .put("showFvg", t.showFvg)
-                    .put("showVolumeProfile", t.showVolumeProfile)
-                    .put("isLogScale", t.isLogScale)
-                    .put("activeDrawingColorHex", t.activeDrawingColorHex)
-                    .put("activeDrawingWidthDp", t.activeDrawingWidthDp.toDouble())
-                    .put("activeDrawingWidthPx", t.activeDrawingWidthDp.toDouble())
-                    .put("isMagnetMode", t.isMagnetMode)
-                tabsArr.put(tObj)
-            }
-
-            val openTabsObj = JSONObject()
-                .put("lastOpenedSymbolCode", loadLastOpenedSymbolCode() ?: "SPOTBRENT")
-                .put("tabs", tabsArr)
-
             if (openTabs.isNotEmpty()) {
                 saveOpenTabsToPrefs(openTabs)
             }
-
-            val workspaceData = JSONObject()
-                .put("drawings", drawingsObj)
-                .put("symbols", symbolsArr)
-                .put("preferences", prefsObj)
-                .put("open_tabs", openTabsObj)
-
+            val workspaceData = buildWorkspaceJson(symbols, preferences, drawingsMap, openTabs)
             val token = getSessionToken()
             val payload = JSONObject().put("workspace", workspaceData)
             if (token.isNotEmpty()) payload.put("session_token", token)
@@ -2188,16 +2360,31 @@ class WorkspaceRepository(context: Context) {
                             showSma200 = obj.optBoolean("showSma200", false),
                             showEma20 = obj.optBoolean("showEma20", false),
                             showEma50 = obj.optBoolean("showEma50", false),
+                            showEma200 = obj.optBoolean("showEma200", false),
                             showBollinger = obj.optBoolean("showBollinger", false),
                             showSupertrend = obj.optBoolean("showSupertrend", false),
                             showVwap = obj.optBoolean("showVwap", false),
+                            showPsar = obj.optBoolean("showPsar", false),
+                            showIchimoku = obj.optBoolean("showIchimoku", false),
+                            showKeltner = obj.optBoolean("showKeltner", false),
+                            showDonchian = obj.optBoolean("showDonchian", false),
+                            showMtfEma = obj.optBoolean("showMtfEma", false),
+                            showKillzones = obj.optBoolean("showKillzones", false),
                             showRsi14 = obj.optBoolean("showRsi14", false),
                             showMacd = obj.optBoolean("showMacd", false),
                             showOverlayMacd = obj.optBoolean("showOverlayMacd", false),
                             showAtr14 = obj.optBoolean("showAtr14", false),
+                            showAdx14 = obj.optBoolean("showAdx14", false),
+                            showStoch14 = obj.optBoolean("showStoch14", false),
+                            showCci20 = obj.optBoolean("showCci20", false),
+                            showWillR14 = obj.optBoolean("showWillR14", false),
+                            showObv = obj.optBoolean("showObv", false),
+                            showCmf20 = obj.optBoolean("showCmf20", false),
+                            showRoc12 = obj.optBoolean("showRoc12", false),
                             showSmcStructure = obj.optBoolean("showSmcStructure", false),
                             showFvg = obj.optBoolean("showFvg", false),
                             showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
+                            pitchforkVariant = obj.optString("pitchforkVariant", "original"),
                             isLogScale = obj.optBoolean("isLogScale", false),
                             activeDrawingColorHex = normalizeAndroidHex(
                                 obj.optString("activeDrawingColorHex", curPrefs.defaultDrawingColorHex),

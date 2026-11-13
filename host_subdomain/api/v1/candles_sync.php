@@ -6,6 +6,7 @@ require_once __DIR__ . '/core/Database.php';
 require_once __DIR__ . '/algorithms/UtcTimeAnchor.php';
 require_once __DIR__ . '/algorithms/CandleValidator.php';
 require_once __DIR__ . '/algorithms/TimeframeAggregator.php';
+require_once __DIR__ . '/algorithms/GapDetector.php';
 require_once __DIR__ . '/providers/YahooFinanceAdapter.php';
 require_once __DIR__ . '/providers/TwelveDataAdapter.php';
 require_once __DIR__ . '/providers/DukascopyAdapter.php';
@@ -16,6 +17,7 @@ require_once __DIR__ . '/providers/StooqAdapter.php';
 require_once __DIR__ . '/providers/ProviderCatalog.php';
 
 use ChartIntelligence\Algorithms\CandleValidator;
+use ChartIntelligence\Algorithms\GapDetector;
 use ChartIntelligence\Algorithms\UtcTimeAnchor;
 use ChartIntelligence\Core\ApiEnvelope;
 use ChartIntelligence\Core\Database;
@@ -32,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
     exit;
 }
 
-$symbol = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $_GET['symbol'] ?? 'XAUUSD'));
+$symbol = strtoupper(preg_replace('/[^A-Za-z0-9._:-]/', '', $_GET['symbol'] ?? 'XAUUSD'));
 $provider = strtolower(preg_replace('/[^a-z0-9_]/', '', $_GET['provider'] ?? 'twelve_data'));
 $timeframe = strtoupper(preg_replace('/[^A-Za-z0-9]/', '', $_GET['timeframe'] ?? 'M15'));
 $userApiKey = trim((string) ($_SERVER['HTTP_X_PROVIDER_API_KEY'] ?? ($_GET['api_key'] ?? '')));
@@ -330,6 +332,11 @@ if ($provider === 'twelve_data' && !TwelveDataAdapter::hasConfiguredApiKey($user
     $providerStatus = 'NO_DATA';
 }
 
+$gapSummary = GapDetector::detectGaps($candles, $timeframe, $symbol, $nowMs);
+if ($pdo !== null) {
+    GapDetector::upsertQualityReport($pdo, $chartId, $provider, $timeframe, $gapSummary);
+}
+
 ApiEnvelope::sendSuccess([
     'symbol' => $symbol,
     'provider' => $provider,
@@ -348,6 +355,7 @@ ApiEnvelope::sendSuccess([
         'last_candle_close_utc_ms' => $lastCandleCloseMs,
         'price_basis' => $priceBasis,
         'instrument_spec' => $instrumentSpec,
+        'gap_summary' => $gapSummary,
     ],
     'candles' => $candles,
 ]);

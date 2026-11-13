@@ -168,6 +168,20 @@ fun ChartViewScreen(
     onToggleSmcStructure: () -> Unit = {},
     onToggleFvg: () -> Unit = {},
     onToggleVolumeProfile: () -> Unit = {},
+    onToggleEma200: () -> Unit = {},
+    onTogglePsar: () -> Unit = {},
+    onToggleIchimoku: () -> Unit = {},
+    onToggleKeltner: () -> Unit = {},
+    onToggleDonchian: () -> Unit = {},
+    onToggleMtfEma: () -> Unit = {},
+    onToggleKillzones: () -> Unit = {},
+    onToggleAdx14: () -> Unit = {},
+    onToggleStoch14: () -> Unit = {},
+    onToggleCci20: () -> Unit = {},
+    onToggleWillR14: () -> Unit = {},
+    onToggleObv: () -> Unit = {},
+    onToggleCmf20: () -> Unit = {},
+    onToggleRoc12: () -> Unit = {},
     onUpdateBollingerParams: (Int, Float) -> Unit = { _, _ -> },
     onZoom: (Boolean) -> Unit,
     onPinchZoom: (Float) -> Unit,
@@ -180,6 +194,7 @@ fun ChartViewScreen(
     onToggleTimezoneMode: () -> Unit = {},
     onSelectCandle: (Int?) -> Unit,
     onSelectDrawingTool: (DrawingTool) -> Unit,
+    onSelectPitchforkVariant: (String) -> Unit = {},
     onToggleMagnetMode: () -> Unit = {},
     onSelectDrawingColorHex: (String) -> Unit = {},
     onSelectDrawingWidthDp: (Float) -> Unit = {},
@@ -561,16 +576,24 @@ fun ChartViewScreen(
 
                 // Floating Quick Drawing Bar only when a drawing tool or line is actively selected on canvas
                 if (activeTab.activeDrawingTool != DrawingTool.CURSOR || activeTab.selectedDrawingId != null || !activeTab.isDrawingDockCollapsed) {
+                    val selectedMulti = activeTab.drawings
+                        .firstOrNull { it.id == activeTab.selectedDrawingId } as? es.manico.chartintelligence.data.model.ChartDrawing.MultiAnchor
+                    val isPitchforkSelected = selectedMulti?.toolType == DrawingTool.PITCHFORK
                     DrawingToolbar(
                         activeTool = activeTab.activeDrawingTool,
                         hasSelectedDrawing = activeTab.selectedDrawingId != null,
                         totalDrawingsCount = activeTab.drawings.size,
                         pendingTrendPoint = activeTab.pendingTrendPoint,
+                        pendingAnchorsCount = activeTab.pendingAnchors.size,
+                        requiredAnchorsCount = activeTab.activeDrawingTool.requiredAnchors,
+                        pitchforkVariant = selectedMulti?.variant ?: activeTab.pitchforkVariant,
+                        isPitchforkSelected = isPitchforkSelected,
                         activeDrawingColorHex = activeTab.activeDrawingColorHex,
                         activeDrawingWidthDp = activeTab.activeDrawingWidthDp,
                         isCollapsed = activeTab.isDrawingDockCollapsed,
                         isMagnetMode = activeTab.isMagnetMode,
                         onSelectTool = onSelectDrawingTool,
+                        onSelectPitchforkVariant = onSelectPitchforkVariant,
                         onToggleMagnetMode = onToggleMagnetMode,
                         onSelectColorHex = onSelectDrawingColorHex,
                         onSelectWidthDp = onSelectDrawingWidthDp,
@@ -674,9 +697,14 @@ fun ChartViewScreen(
 
                     // 4. Indicator Button (fx) -> Opens Unified Phase 2 Indicators, Oscillators & SMC BottomSheet
                     val hasOverlayIndicator = activeTab.showSma20 || activeTab.showSma50 || activeTab.showSma200 ||
-                        activeTab.showEma20 || activeTab.showEma50 || activeTab.showBollinger ||
-                        activeTab.showSupertrend || activeTab.showVwap || activeTab.showRsi14 ||
-                        activeTab.showMacd || activeTab.showOverlayMacd || activeTab.showAtr14 ||
+                        activeTab.showEma20 || activeTab.showEma50 || activeTab.showEma200 || activeTab.showBollinger ||
+                        activeTab.showSupertrend || activeTab.showVwap || activeTab.showPsar ||
+                        activeTab.showIchimoku || activeTab.showKeltner || activeTab.showDonchian ||
+                        activeTab.showMtfEma || activeTab.showKillzones ||
+                        activeTab.showRsi14 || activeTab.showMacd || activeTab.showOverlayMacd ||
+                        activeTab.showAtr14 || activeTab.showAdx14 || activeTab.showStoch14 ||
+                        activeTab.showCci20 || activeTab.showWillR14 || activeTab.showObv ||
+                        activeTab.showCmf20 || activeTab.showRoc12 ||
                         activeTab.showSmcStructure || activeTab.showFvg || activeTab.showVolumeProfile
                     val hasActiveIndicator = hasOverlayIndicator || activeTab.showVolume
                     Box(
@@ -930,11 +958,18 @@ fun ChartViewScreen(
                                     val overlaySpecs = listOf(
                                         StudyRowSpec("EMA 20", "Exponential Moving Average (20)", Color(0xFF38BDF8), activeTab.showEma20, onToggleEma20, "chart_ema20_toggle_button"),
                                         StudyRowSpec("EMA 50", "Exponential Moving Average (50)", Color(0xFF06B6D4), activeTab.showEma50, onToggleEma50, "chart_ema50_toggle_button"),
+                                        StudyRowSpec("EMA 200", "Institutional EMA Baseline (200)", Color(0xFFF472B6), activeTab.showEma200, onToggleEma200, "chart_ema200_toggle_button"),
                                         StudyRowSpec("SMA 20", "Simple Moving Average (20)", Color(0xFFF59E0B), activeTab.showSma20, onToggleSma20, "chart_sma20_toggle_button"),
                                         StudyRowSpec("SMA 50", "Simple Moving Average (50)", Color(0xFF10B981), activeTab.showSma50, onToggleSma50, "chart_sma50_toggle_button"),
                                         StudyRowSpec("SMA 200", "Institutional Trend Baseline (200)", Color(0xFFF43F5E), activeTab.showSma200, onToggleSma200, "chart_sma200_toggle_button"),
                                         StudyRowSpec("Supertrend (10, 3)", "ATR Dynamic Trend Ribbon", Color(0xFF22C55E), activeTab.showSupertrend, onToggleSupertrend, "chart_supertrend_toggle_button"),
                                         StudyRowSpec("Session VWAP", "Volume Weighted Average Price", Color(0xFFEAB308), activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button"),
+                                        StudyRowSpec("Parabolic SAR (0.02, 0.20)", "Trailing Acceleration Stop & Reverse Dots", Color(0xFFFB923C), activeTab.showPsar, onTogglePsar, "chart_psar_toggle_button"),
+                                        StudyRowSpec("Ichimoku Cloud (9,26,52)", "Tenkan, Kijun, Kumo Cloud & Chikou", Color(0xFF14B8A6), activeTab.showIchimoku, onToggleIchimoku, "chart_ichimoku_toggle_button"),
+                                        StudyRowSpec("Keltner Channels (20,10,2)", "EMA 20 ± 2.0× Wilder ATR 10 Channel", Color(0xFF0EA5E9), activeTab.showKeltner, onToggleKeltner, "chart_keltner_toggle_button"),
+                                        StudyRowSpec("Donchian Channels (20)", "20-Bar High/Low Breakout Channel", Color(0xFF6366F1), activeTab.showDonchian, onToggleDonchian, "chart_donchian_toggle_button"),
+                                        StudyRowSpec("MTF EMA (20)", "Higher-TF Closed Bar Step (Non-Lookahead)", Color(0xFFFACC15), activeTab.showMtfEma, onToggleMtfEma, "chart_mtf_ema_toggle_button"),
+                                        StudyRowSpec("Session Killzones (UTC)", "Asia / London / NY & Overlap Highlights", Color(0xFF38BDF8), activeTab.showKillzones, onToggleKillzones, "chart_killzones_toggle_button"),
                                         StudyRowSpec("Bollinger Bands ($bbPeriod, $bbStdDev)", "Volatility Channel ±${bbStdDev}σ", Color(0xFFA855F7), activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button"),
                                         StudyRowSpec("MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", Color(0xFF2962FF), activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button")
                                     )
@@ -1215,7 +1250,14 @@ fun ChartViewScreen(
                                     val oscSpecs = listOf(
                                         StudyRowSpec("RSI 14", "Relative Strength Index (30 / 70 Levels)", Color(0xFFEC4899), activeTab.showRsi14, onToggleRsi14, "chart_rsi14_toggle_button"),
                                         StudyRowSpec("MACD (12, 26, 9)", "Momentum Histogram + MACD / Signal", Color(0xFF3B82F6), activeTab.showMacd, onToggleMacd, "chart_macd_toggle_button"),
-                                        StudyRowSpec("ATR 14", "Wilder's Average True Range Volatility", Color(0xFFF97316), activeTab.showAtr14, onToggleAtr14, "chart_atr14_toggle_button")
+                                        StudyRowSpec("ATR 14", "Wilder's Average True Range Volatility", Color(0xFFF97316), activeTab.showAtr14, onToggleAtr14, "chart_atr14_toggle_button"),
+                                        StudyRowSpec("ADX / DMI (14)", "Trend Strength & Directional Index (Ref 25)", Color(0xFFF59E0B), activeTab.showAdx14, onToggleAdx14, "chart_adx14_toggle_button"),
+                                        StudyRowSpec("Stochastic (14, 3, 3)", "Slow %K / %D Oscillator (20 / 80)", Color(0xFF06B6D4), activeTab.showStoch14, onToggleStoch14, "chart_stoch14_toggle_button"),
+                                        StudyRowSpec("CCI (20)", "Commodity Channel Index (±100 Bands)", Color(0xFF10B981), activeTab.showCci20, onToggleCci20, "chart_cci20_toggle_button"),
+                                        StudyRowSpec("Williams %R (14)", "Momentum Oscillator (-20 / -80)", Color(0xFFEC4899), activeTab.showWillR14, onToggleWillR14, "chart_willr14_toggle_button"),
+                                        StudyRowSpec("OBV", "On-Balance Volume Cumulative Flow", Color(0xFF3B82F6), activeTab.showObv, onToggleObv, "chart_obv_toggle_button"),
+                                        StudyRowSpec("CMF (20)", "Chaikin Money Flow (-1 to +1)", Color(0xFF22C55E), activeTab.showCmf20, onToggleCmf20, "chart_cmf20_toggle_button"),
+                                        StudyRowSpec("ROC (12)", "Price Rate of Change (%)", Color(0xFFEAB308), activeTab.showRoc12, onToggleRoc12, "chart_roc12_toggle_button")
                                     )
 
                                     for (spec in oscSpecs) {

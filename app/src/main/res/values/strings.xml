@@ -208,7 +208,7 @@
     <string name="settings_group_sources">3. Data Sources &amp; Symbols</string>
     <string name="settings_group_params">4. Analysis &amp; TradingView Switches</string>
     <string name="settings_group_about">5. Server Health &amp; About</string>
-    <string name="settings_about_version">CHART Intelligence v1.38.0 · 22-Symbol Catalog, 7 Providers, Multi-Tab Bar &amp; BYOK</string>
+    <string name="settings_about_version">CHART Intelligence v1.39.0 · Pro Drawing Tools, Indicators, Killzones, Live Intel &amp; Encrypted Backup</string>
     <string name="settings_tab_account">Account</string>
     <string name="settings_tab_appearance">Appearance</string>
     <string name="settings_tab_sources">Symbols</string>
@@ -356,4 +356,17 @@
     <string name="chart_snapshot_share_title">Share Chart Snapshot</string>
     <string name="chart_snapshot_error">Could not capture chart snapshot</string>
     <string name="action_back">Back</string>
+    <string name="draw_pro_tools_section">Pro Pattern, Pitchfork &amp; Gann Tools (12)</string>
+    <string name="draw_tool_avwap">Anchored VWAP</string>
+    <string name="draw_tool_regression_channel">Regression Channel</string>
+    <string name="draw_tool_frvp">Fixed Range Volume Profile</string>
+    <string name="draw_tool_gann_fan">Gann Fan</string>
+    <string name="draw_tool_gann_box">Gann Box</string>
+    <string name="draw_tool_pitchfork">Andrew\'s Pitchfork</string>
+    <string name="draw_tool_fib_time_zone">Fib Time Zone</string>
+    <string name="draw_tool_cyclic_lines">Cyclic Lines</string>
+    <string name="draw_tool_fib_speed_fan">Fib Speed Resistance Fan</string>
+    <string name="draw_tool_abcd_pattern">ABCD Pattern</string>
+    <string name="draw_tool_xabcd_pattern">XABCD Harmonic</string>
+    <string name="draw_tool_head_shoulders">Head &amp; Shoulders</string>
 </resources>

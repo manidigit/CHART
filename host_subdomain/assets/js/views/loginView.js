@@ -1,4 +1,4 @@
-import { state, escapeHtml } from '../core/store.js?v=1.38.0';
+import { state, escapeHtml } from '../core/store.js?v=1.39.0';
 
 export function renderLoginScreen(i18n) {
   const isReg = state.isOwnerRegistered;

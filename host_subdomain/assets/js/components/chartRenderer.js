@@ -1,7 +1,7 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.38.0';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.38.0';
-import { state, getInstrumentSpec } from '../core/store.js?v=1.38.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.39.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.39.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.39.0';
+import { state, getInstrumentSpec } from '../core/store.js?v=1.39.0';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -10,9 +10,9 @@ function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD'
     return 'Closed';
   }
   const normTf = String(tf || 'M15').toUpperCase();
-  const stepMs = PriceFormatter.stepMilliseconds(normTf);
-  const currentBucketStartMs = PriceFormatter.snapToOpenUtcMs(nowMs, normTf);
-  const nextCloseMs = currentBucketStartMs + stepMs;
+  const nextCloseMs = PriceFormatter.getSessionBucketBounds
+    ? PriceFormatter.getSessionBucketBounds(nowMs, normTf, symbolCode).closeMs
+    : PriceFormatter.snapToOpenUtcMs(nowMs, normTf) + PriceFormatter.stepMilliseconds(normTf);
   const remainSec = Math.max(0, Math.floor((nextCloseMs - nowMs) / 1000));
   const hrs = Math.floor(remainSec / 3600);
   const mins = Math.floor((remainSec % 3600) / 60);
@@ -73,14 +73,27 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       sma200: null,
       ema20: null,
       ema50: null,
+      ema200: null,
       bollinger: null,
       vwap: null,
       supertrend: null,
+      psar: null,
+      ichimoku: null,
+      keltner: null,
+      donchian: null,
+      mtfEma: null,
       macd: null,
       macdLine: null,
       sigLine: null,
       rsi14: null,
       atr14: null,
+      adx14: null,
+      stoch14: null,
+      cci20: null,
+      willR14: null,
+      obv: null,
+      cmf20: null,
+      roc12: null,
       smc: null,
       vpKey: null,
       vp: null,
@@ -98,6 +111,12 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
     },
     getEma20: () => (cache.ema20 || (cache.ema20 = TechnicalIndicators.computeEma(candles, 20))),
     getEma50: () => (cache.ema50 || (cache.ema50 = TechnicalIndicators.computeEma(candles, 50))),
+    getEma200: () => {
+      if (!cache.ema200) {
+        cache.ema200 = candles.length >= 200 ? TechnicalIndicators.computeEma(candles, 200) : [];
+      }
+      return cache.ema200;
+    },
     getBollinger: () =>
       cache.bollinger ||
       (cache.bollinger = TechnicalIndicators.computeBollingerBands(candles, bbPeriod, bbStdDev)),
@@ -106,6 +125,16 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       (cache.vwap = TechnicalIndicators.computeVwap(candles, tf, symCode)),
     getSupertrend: () =>
       cache.supertrend || (cache.supertrend = TechnicalIndicators.computeSupertrend(candles, 10, 3.0)),
+    getPsar: () =>
+      cache.psar || (cache.psar = TechnicalIndicators.computeParabolicSar(candles, 0.02, 0.20)),
+    getIchimoku: () =>
+      cache.ichimoku || (cache.ichimoku = TechnicalIndicators.computeIchimoku(candles, 9, 26, 52, 26)),
+    getKeltner: () =>
+      cache.keltner || (cache.keltner = TechnicalIndicators.computeKeltnerChannels(candles, 20, 10, 2.0)),
+    getDonchian: () =>
+      cache.donchian || (cache.donchian = TechnicalIndicators.computeDonchianChannels(candles, 20)),
+    getMtfEma: () =>
+      cache.mtfEma || (cache.mtfEma = TechnicalIndicators.computeMtfEma(candles, tf, 20, symCode)),
     getMacd: () => {
       if (!cache.macd) {
         cache.macd = TechnicalIndicators.computeMacd(candles, 12, 26, 9);
@@ -116,6 +145,13 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
     },
     getRsi14: () => (cache.rsi14 || (cache.rsi14 = TechnicalIndicators.computeRsi(candles, 14))),
     getAtr14: () => (cache.atr14 || (cache.atr14 = TechnicalIndicators.computeAtr(candles, 14))),
+    getAdx14: () => (cache.adx14 || (cache.adx14 = TechnicalIndicators.computeAdxDmi(candles, 14))),
+    getStoch14: () => (cache.stoch14 || (cache.stoch14 = TechnicalIndicators.computeStochastic(candles, 14, 3, 3))),
+    getCci20: () => (cache.cci20 || (cache.cci20 = TechnicalIndicators.computeCci(candles, 20))),
+    getWillR14: () => (cache.willR14 || (cache.willR14 = TechnicalIndicators.computeWilliamsR(candles, 14))),
+    getObv: () => (cache.obv || (cache.obv = TechnicalIndicators.computeObv(candles))),
+    getCmf20: () => (cache.cmf20 || (cache.cmf20 = TechnicalIndicators.computeCmf(candles, 20))),
+    getRoc12: () => (cache.roc12 || (cache.roc12 = TechnicalIndicators.computeRoc(candles, 12))),
     getSmc: () =>
       cache.smc || (cache.smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3)),
     getVolumeProfile: (visible, startIdx, endIdx) => {
@@ -200,11 +236,20 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   if (tab.showRsi14) activeOscillators.push('RSI');
   if (tab.showMacd) activeOscillators.push('MACD');
   if (tab.showAtr14) activeOscillators.push('ATR');
+  if (tab.showAdx14) activeOscillators.push('ADX');
+  if (tab.showStoch14) activeOscillators.push('STOCH');
+  if (tab.showCci20) activeOscillators.push('CCI');
+  if (tab.showWillR14) activeOscillators.push('WILLR');
+  if (tab.showObv) activeOscillators.push('OBV');
+  if (tab.showCmf20) activeOscillators.push('CMF');
+  if (tab.showRoc12) activeOscillators.push('ROC');
 
   const oscCount = activeOscillators.length;
   const rawVolRatio = Math.max(0.10, Math.min(0.30, Number(tab.volumePaneRatio || 0.18)));
-  const volRatio = showVol ? (oscCount > 0 ? Math.min(0.14, rawVolRatio) : rawVolRatio) : 0;
-  const eachOscRatio = oscCount === 1 ? 0.18 : oscCount === 2 ? 0.15 : oscCount >= 3 ? 0.13 : 0;
+  const volRatio = showVol ? (oscCount > 0 ? Math.min(0.12, rawVolRatio) : rawVolRatio) : 0;
+  const maxOscTotalRatio = Math.max(0, 0.56 - volRatio);
+  const idealEachOscRatio = oscCount === 1 ? 0.18 : oscCount === 2 ? 0.15 : oscCount === 3 ? 0.13 : 0.11;
+  const eachOscRatio = oscCount > 0 ? Math.min(idealEachOscRatio, maxOscTotalRatio / oscCount) : 0;
   const totalOscH = totalChartH * (eachOscRatio * oscCount);
   const volPaneH = showVol ? totalChartH * volRatio : 0;
   const pricePaneH = Math.max(80, totalChartH - volPaneH - totalOscH);
@@ -375,6 +420,28 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const bbPeriod = Math.max(5, Math.min(200, Number(prefs.bollingerPeriod || 20)));
   const bbStdDev = Math.max(0.5, Math.min(5.0, Number(prefs.bollingerStdDev || 2.0)));
   const indCache = getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev);
+
+  // 0. Session Killzones Background Highlight (Intraday TFs only)
+  const tfUpper = String(tab.timeframe || 'M15').toUpperCase();
+  if (tab.showKillzones && !['D1', 'W1'].includes(tfUpper)) {
+    visible.forEach((c, idx) => {
+      const ms = Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0));
+      if (!ms) return;
+      const utcHour = new Date(ms).getUTCHours();
+      const kz = TechnicalIndicators.classifyKillzoneUtcHour(utcHour);
+      if (!kz) return;
+      const fill =
+        kz === 'OVERLAP'
+          ? 'rgba(168, 85, 247, 0.10)'
+          : kz === 'LONDON'
+            ? 'rgba(59, 130, 246, 0.065)'
+            : kz === 'NEW_YORK'
+              ? 'rgba(245, 158, 11, 0.065)'
+              : 'rgba(6, 182, 212, 0.055)';
+      ctx.fillStyle = fill;
+      ctx.fillRect(idx * slotW, topPad, slotW + 0.5, chartH);
+    });
+  }
 
   // 1. Session / Visible Range Volume Profile (VRVP — POC / VAH / VAL)
   if (tab.showVolumeProfile && visible.length >= 5) {
@@ -762,8 +829,96 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   if (tab.showEma50 && candles.length >= 50) {
     drawSeriesLine(ctx, indCache.getEma50(), startIdx, visible.length, idxToX, priceToY, '#06B6D4', 1.6);
   }
+  if (tab.showEma200 && candles.length >= 200) {
+    drawSeriesLine(ctx, indCache.getEma200(), startIdx, visible.length, idxToX, priceToY, '#F472B6', 1.8);
+  }
+  if (tab.showMtfEma && candles.length >= 20) {
+    drawSeriesLine(ctx, indCache.getMtfEma(), startIdx, visible.length, idxToX, priceToY, '#FACC15', 1.8);
+  }
   if (tab.showVwap && candles.length >= 2) {
     drawSeriesLine(ctx, indCache.getVwap(), startIdx, visible.length, idxToX, priceToY, '#EAB308', 1.6, true);
+  }
+  if (tab.showKeltner && candles.length >= 20) {
+    const kcArr = indCache.getKeltner();
+    const uPts = [];
+    const lPts = [];
+    const mArr = [];
+    visible.forEach((_, idx) => {
+      const k = kcArr[startIdx + idx];
+      mArr.push(k ? k.middle : null);
+      if (k) {
+        const x = idxToX(idx);
+        uPts.push({ x, y: priceToY(k.upper) });
+        lPts.push({ x, y: priceToY(k.lower) });
+      }
+    });
+    if (uPts.length > 1) {
+      ctx.save();
+      ctx.fillStyle = 'rgba(14, 165, 233, 0.08)';
+      ctx.beginPath();
+      uPts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      for (let i = lPts.length - 1; i >= 0; i--) ctx.lineTo(lPts[i].x, lPts[i].y);
+      ctx.closePath();
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(14, 165, 233, 0.72)';
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      uPts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.stroke();
+      ctx.beginPath();
+      lPts.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.stroke();
+      ctx.restore();
+      drawSeriesLine(ctx, mArr, 0, visible.length, idxToX, priceToY, '#0EA5E9', 1.1, true);
+    }
+  }
+  if (tab.showDonchian && candles.length >= 20) {
+    const dcArr = indCache.getDonchian();
+    const uArr = dcArr.map((d) => (d ? d.upper : null));
+    const lArr = dcArr.map((d) => (d ? d.lower : null));
+    const mArr = dcArr.map((d) => (d ? d.middle : null));
+    drawSeriesLine(ctx, uArr, startIdx, visible.length, idxToX, priceToY, '#6366F1', 1.3);
+    drawSeriesLine(ctx, lArr, startIdx, visible.length, idxToX, priceToY, '#6366F1', 1.3);
+    drawSeriesLine(ctx, mArr, startIdx, visible.length, idxToX, priceToY, 'rgba(99, 102, 241, 0.7)', 1.1, true);
+  }
+  if (tab.showIchimoku && candles.length >= 26) {
+    const ich = indCache.getIchimoku();
+    ctx.save();
+    for (let idx = 1; idx < visible.length; idx++) {
+      const a0 = ich.senkouA[startIdx + idx - 1];
+      const b0 = ich.senkouB[startIdx + idx - 1];
+      const a1 = ich.senkouA[startIdx + idx];
+      const b1 = ich.senkouB[startIdx + idx];
+      if (a0 === null || b0 === null || a1 === null || b1 === null) continue;
+      const x0 = idxToX(idx - 1);
+      const x1 = idxToX(idx);
+      ctx.fillStyle = a1 >= b1 ? 'rgba(38, 166, 154, 0.14)' : 'rgba(239, 83, 80, 0.14)';
+      ctx.beginPath();
+      ctx.moveTo(x0, priceToY(a0));
+      ctx.lineTo(x1, priceToY(a1));
+      ctx.lineTo(x1, priceToY(b1));
+      ctx.lineTo(x0, priceToY(b0));
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+    drawSeriesLine(ctx, ich.tenkan, startIdx, visible.length, idxToX, priceToY, '#2962FF', 1.3);
+    drawSeriesLine(ctx, ich.kijun, startIdx, visible.length, idxToX, priceToY, '#EF5350', 1.4);
+    drawSeriesLine(ctx, ich.senkouA, startIdx, visible.length, idxToX, priceToY, 'rgba(38,166,154,0.8)', 1.1);
+    drawSeriesLine(ctx, ich.senkouB, startIdx, visible.length, idxToX, priceToY, 'rgba(239,83,80,0.8)', 1.1);
+    drawSeriesLine(ctx, ich.chikou, startIdx, visible.length, idxToX, priceToY, 'rgba(20,184,166,0.75)', 1.1, true);
+  }
+  if (tab.showPsar && candles.length >= 3) {
+    const psarArr = indCache.getPsar();
+    const dotR = Math.max(1.8, Math.min(3.5, slotW * 0.22));
+    for (let idx = 0; idx < visible.length; idx++) {
+      const pt = psarArr[startIdx + idx];
+      if (!pt) continue;
+      ctx.fillStyle = pt.isUp ? '#26A69A' : '#EF5350';
+      ctx.beginPath();
+      ctx.arc(idxToX(idx), priceToY(pt.sar), dotR, 0, Math.PI * 2);
+      ctx.fill();
+    }
   }
   if (tab.showSupertrend && candles.length >= 10) {
     const stArr = indCache.getSupertrend();
@@ -1070,6 +1225,207 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fillStyle = textColor;
       ctx.fillText(PriceFormatter.formatPrice(maxA, tab.decimals), chartW + 6, paneTop + 12);
       ctx.fillText(PriceFormatter.formatPrice(minA, tab.decimals), chartW + 6, paneTop + paneH - 4);
+    } else if (oscType === 'ADX') {
+      const adxArr = indCache.getAdx14();
+      const adxToY = (val) => paneTop + 6 + (paneH - 12) * (1 - Math.max(0, Math.min(100, val)) / 100);
+      const y25 = adxToY(25);
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = gridColor;
+      ctx.beginPath();
+      ctx.moveTo(0, y25);
+      ctx.lineTo(chartW, y25);
+      ctx.stroke();
+      ctx.restore();
+
+      const adxLine = adxArr.map((x) => (x ? x.adx : null));
+      const pDiLine = adxArr.map((x) => (x ? x.plusDi : null));
+      const mDiLine = adxArr.map((x) => (x ? x.minusDi : null));
+      drawSeriesLine(ctx, pDiLine, startIdx, visible.length, idxToX, adxToY, '#26A69A', 1.2);
+      drawSeriesLine(ctx, mDiLine, startIdx, visible.length, idxToX, adxToY, '#EF5350', 1.2);
+      drawSeriesLine(ctx, adxLine, startIdx, visible.length, idxToX, adxToY, '#F59E0B', 1.7);
+
+      const cur = adxArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#F59E0B';
+      ctx.fillText(
+        `ADX(14): ${cur ? cur.adx.toFixed(1) : '—'} +DI:${cur ? cur.plusDi.toFixed(1) : '—'} -DI:${cur ? cur.minusDi.toFixed(1) : '—'}`,
+        10,
+        paneTop + 13
+      );
+      ctx.restore();
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText('25', chartW + 6, y25 + 3);
+    } else if (oscType === 'STOCH') {
+      const stArr = indCache.getStoch14();
+      const stToY = (val) => paneTop + 6 + (paneH - 12) * (1 - Math.max(0, Math.min(100, val)) / 100);
+      const y80 = stToY(80);
+      const y20 = stToY(20);
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = gridColor;
+      ctx.beginPath();
+      ctx.moveTo(0, y80);
+      ctx.lineTo(chartW, y80);
+      ctx.moveTo(0, y20);
+      ctx.lineTo(chartW, y20);
+      ctx.stroke();
+      ctx.restore();
+
+      const kLine = stArr.map((x) => (x ? x.k : null));
+      const dLine = stArr.map((x) => (x ? x.d : null));
+      drawSeriesLine(ctx, kLine, startIdx, visible.length, idxToX, stToY, '#06B6D4', 1.5);
+      drawSeriesLine(ctx, dLine, startIdx, visible.length, idxToX, stToY, '#F59E0B', 1.3);
+
+      const cur = stArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#06B6D4';
+      ctx.fillText(
+        `Stoch(14,3,3): %K ${cur ? cur.k.toFixed(1) : '—'} %D ${cur && cur.d !== null ? cur.d.toFixed(1) : '—'}`,
+        10,
+        paneTop + 13
+      );
+      ctx.restore();
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText('80', chartW + 6, y80 + 3);
+      ctx.fillText('20', chartW + 6, y20 + 3);
+    } else if (oscType === 'CCI') {
+      const cciArr = indCache.getCci20();
+      let maxAbs = 150;
+      for (let idx = 0; idx < visible.length; idx++) {
+        const v = cciArr[startIdx + idx];
+        if (v !== null && v !== undefined) maxAbs = Math.max(maxAbs, Math.abs(v));
+      }
+      const cciToY = (val) => paneTop + 6 + (paneH - 12) * (0.5 - Math.max(-maxAbs, Math.min(maxAbs, val)) / (2 * maxAbs));
+      const y100 = cciToY(100);
+      const yN100 = cciToY(-100);
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = gridColor;
+      ctx.beginPath();
+      ctx.moveTo(0, y100);
+      ctx.lineTo(chartW, y100);
+      ctx.moveTo(0, yN100);
+      ctx.lineTo(chartW, yN100);
+      ctx.stroke();
+      ctx.restore();
+
+      drawSeriesLine(ctx, cciArr, startIdx, visible.length, idxToX, cciToY, '#10B981', 1.5);
+      const cur = cciArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#10B981';
+      ctx.fillText(`CCI(20): ${cur !== null && cur !== undefined ? cur.toFixed(1) : '—'}`, 10, paneTop + 13);
+      ctx.restore();
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText('+100', chartW + 6, y100 + 3);
+      ctx.fillText('-100', chartW + 6, yN100 + 3);
+    } else if (oscType === 'WILLR') {
+      const wrArr = indCache.getWillR14();
+      const wrToY = (val) => paneTop + 6 + (paneH - 12) * (Math.abs(Math.max(-100, Math.min(0, val))) / 100);
+      const y20 = wrToY(-20);
+      const y80 = wrToY(-80);
+      ctx.save();
+      ctx.setLineDash([3, 3]);
+      ctx.strokeStyle = gridColor;
+      ctx.beginPath();
+      ctx.moveTo(0, y20);
+      ctx.lineTo(chartW, y20);
+      ctx.moveTo(0, y80);
+      ctx.lineTo(chartW, y80);
+      ctx.stroke();
+      ctx.restore();
+
+      drawSeriesLine(ctx, wrArr, startIdx, visible.length, idxToX, wrToY, '#EC4899', 1.5);
+      const cur = wrArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#EC4899';
+      ctx.fillText(`Will%R(14): ${cur !== null && cur !== undefined ? cur.toFixed(1) : '—'}`, 10, paneTop + 13);
+      ctx.restore();
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText('-20', chartW + 6, y20 + 3);
+      ctx.fillText('-80', chartW + 6, y80 + 3);
+    } else if (oscType === 'OBV') {
+      const obvArr = indCache.getObv();
+      let minO = Infinity;
+      let maxO = -Infinity;
+      for (let idx = 0; idx < visible.length; idx++) {
+        const v = obvArr[startIdx + idx];
+        if (v !== null && v !== undefined) {
+          minO = Math.min(minO, v);
+          maxO = Math.max(maxO, v);
+        }
+      }
+      if (!isFinite(minO) || !isFinite(maxO) || maxO <= minO) {
+        minO = 0;
+        maxO = 1;
+      }
+      const spanO = Math.max(1e-6, maxO - minO);
+      const obvToY = (val) => paneTop + 8 + (paneH - 16) * (1 - (val - minO) / spanO);
+      drawSeriesLine(ctx, obvArr, startIdx, visible.length, idxToX, obvToY, '#3B82F6', 1.6);
+      const cur = obvArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#3B82F6';
+      ctx.fillText(`OBV: ${cur !== null && cur !== undefined ? PriceFormatter.formatVolume(cur) : '—'}`, 10, paneTop + 13);
+      ctx.restore();
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText(PriceFormatter.formatVolume(maxO), chartW + 6, paneTop + 12);
+    } else if (oscType === 'CMF') {
+      const cmfArr = indCache.getCmf20();
+      const maxAbs = 0.5;
+      const cmfToY = (val) => paneTop + 6 + (paneH - 12) * (0.5 - Math.max(-maxAbs, Math.min(maxAbs, val)) / (2 * maxAbs));
+      const zeroY = cmfToY(0);
+      ctx.strokeStyle = gridColor;
+      ctx.beginPath();
+      ctx.moveTo(0, zeroY);
+      ctx.lineTo(chartW, zeroY);
+      ctx.stroke();
+
+      for (let idx = 0; idx < visible.length; idx++) {
+        const v = cmfArr[startIdx + idx];
+        if (v === null || v === undefined) continue;
+        const x = idxToX(idx);
+        const y = cmfToY(v);
+        ctx.fillStyle = v >= 0 ? 'rgba(34, 197, 94, 0.45)' : 'rgba(239, 68, 68, 0.45)';
+        ctx.fillRect(x - bodyW / 2, Math.min(zeroY, y), bodyW, Math.max(1.5, Math.abs(y - zeroY)));
+      }
+      drawSeriesLine(ctx, cmfArr, startIdx, visible.length, idxToX, cmfToY, '#22C55E', 1.4);
+      const cur = cmfArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#22C55E';
+      ctx.fillText(`CMF(20): ${cur !== null && cur !== undefined ? cur.toFixed(3) : '—'}`, 10, paneTop + 13);
+      ctx.restore();
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText('0.0', chartW + 6, zeroY + 3);
+    } else if (oscType === 'ROC') {
+      const rocArr = indCache.getRoc12();
+      let maxAbs = 1;
+      for (let idx = 0; idx < visible.length; idx++) {
+        const v = rocArr[startIdx + idx];
+        if (v !== null && v !== undefined) maxAbs = Math.max(maxAbs, Math.abs(v));
+      }
+      const rocToY = (val) => paneTop + 6 + (paneH - 12) * (0.5 - Math.max(-maxAbs, Math.min(maxAbs, val)) / (2 * maxAbs));
+      const zeroY = rocToY(0);
+      ctx.strokeStyle = gridColor;
+      ctx.beginPath();
+      ctx.moveTo(0, zeroY);
+      ctx.lineTo(chartW, zeroY);
+      ctx.stroke();
+
+      drawSeriesLine(ctx, rocArr, startIdx, visible.length, idxToX, rocToY, '#EAB308', 1.5);
+      const cur = rocArr[activeIdxGlobal];
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.fillStyle = '#EAB308';
+      ctx.fillText(`ROC(12): ${cur !== null && cur !== undefined ? cur.toFixed(2) + '%' : '—'}`, 10, paneTop + 13);
+      ctx.restore();
+      ctx.font = '9.5px "JetBrains Mono", monospace';
+      ctx.fillStyle = textColor;
+      ctx.fillText('0%', chartW + 6, zeroY + 3);
     } else {
       ctx.restore();
     }
@@ -1115,27 +1471,45 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
+  // ENG-02: Read-only Live Quote Dashed Line & Pill (never written to closed candle array)
+  if (tab.liveQuoteMode === 'LIVE_TICK' && Number.isFinite(Number(tab.liveQuotePrice))) {
+    const liveP = Number(tab.liveQuotePrice);
+    const liveY = priceToY(liveP);
+    if (liveY >= topPad && liveY <= topPad + chartH && Math.abs(liveP - lastClose) > 1e-8) {
+      ctx.save();
+      ctx.setLineDash([2, 3]);
+      ctx.strokeStyle = '#38BDF8';
+      ctx.lineWidth = 1.1;
+      ctx.beginPath();
+      ctx.moveTo(0, liveY);
+      ctx.lineTo(chartW, liveY);
+      ctx.stroke();
+      ctx.restore();
+
+      const livePillTop = Math.max(topPad, Math.min(topPad + chartH - 18, liveY - 9));
+      ctx.fillStyle = '#0284C7';
+      ctx.fillRect(chartW, livePillTop, rightAxisW, 18);
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      ctx.textAlign = 'left';
+      ctx.fillText(PriceFormatter.formatPrice(liveP, tab.decimals), chartW + 6, livePillTop + 12);
+    }
+  }
+
   // User Drawings
   const drawings = tab.drawings || [];
   const visibleTimestamps = visible.map((c) =>
     Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0))
   );
   const stepMs = PriceFormatter.stepMilliseconds(tab.timeframe);
-  const timeToX = (tMs) => {
-    const numMs = Number(tMs);
-    const idx = visibleTimestamps.findIndex((vt) => vt >= numMs);
-    if (idx !== -1) return idxToX(idx);
-    if (visibleTimestamps.length > 0 && numMs < visibleTimestamps[0]) return 0;
-    return chartW;
-  };
-  const xToTime = (xPx) => {
-    if (!visibleTimestamps.length) return 0;
-    const i = Math.max(
-      0,
-      Math.min(visibleTimestamps.length - 1, Math.floor(xPx / Math.max(1, slotW)))
-    );
-    return visibleTimestamps[i];
-  };
+  const timeToX = (tMs) => DrawingGeometry.timeUtcToX(Number(tMs), visibleTimestamps, stepMs, 0, chartW);
+  const xToTime = (xPx) => DrawingGeometry.xToTimeUtc(xPx, visibleTimestamps, stepMs, 0, chartW, tab.timeframe);
+  const spec = getInstrumentSpec(tab.symbolCode, tab.provider);
+
+  ctx.save();
+  ctx.beginPath();
+  ctx.rect(0, topPad, chartW, chartH);
+  ctx.clip();
 
   drawings.forEach((d) => {
     const isSel = tab.selectedDrawingId === d.id;
@@ -1149,7 +1523,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         : isVLine
           ? prefs.vLineColor || '#A855F7'
           : prefs.trendColor || '#2962FF');
-    const baseW = Number(d.lineWidthPx || d.strokeWidthPx || 2);
+    const baseW = Number(d.lineWidthPx || d.strokeWidthPx || d.strokeWidthDp || 2);
     ctx.strokeStyle = isSel ? '#FFFFFF' : strokeCol;
     ctx.lineWidth = isSel ? baseW + 1.2 : baseW;
 
@@ -1173,7 +1547,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       if (x >= 0 && x <= chartW) {
         ctx.beginPath();
         ctx.moveTo(x, topPad);
-        ctx.lineTo(x, topPad + totalChartH);
+        ctx.lineTo(x, topPad + chartH);
         ctx.stroke();
       }
     } else if (isTrend) {
@@ -1202,8 +1576,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       const maxX = Math.max(x1, x2, minX + 50);
 
       const levels = DrawingGeometry.computeFibLevels(p1, p2);
-
-      // Golden Pocket (0.5 to 0.618)
       const p05 = levels.find((l) => l.ratio === 0.5)?.price || p1;
       const p0618 = levels.find((l) => l.ratio === 0.618)?.price || p2;
       const y05 = priceToY(p05);
@@ -1242,7 +1614,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         ctx.font = '600 9px "JetBrains Mono", monospace';
         ctx.fillText(lvl.label, minX + 4, ly - 3);
       });
-    } else if (d.type === 'long_position') {
+    } else if (d.type === 'long_position' || d.type === 'short_position') {
+      const isLong = d.type === 'long_position';
       const x1 = timeToX(d.startTimeUtcMillis);
       const x2 = timeToX(d.endTimeUtcMillis);
       const leftX = Math.min(x1, x2);
@@ -1252,7 +1625,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       const yTarget = priceToY(d.targetPrice);
       const yStop = priceToY(d.stopPrice);
 
-      const targetTop = Math.min(yTarget, yEntry);
+      const targetTop = isLong ? Math.min(yTarget, yEntry) : Math.min(yEntry, yTarget);
       const targetH = Math.max(2, Math.abs(yEntry - yTarget));
       ctx.fillStyle = 'rgba(38, 166, 154, 0.22)';
       ctx.fillRect(leftX, targetTop, boxW, targetH);
@@ -1263,7 +1636,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.lineTo(rightX, yTarget);
       ctx.stroke();
 
-      const stopTop = Math.min(yEntry, yStop);
+      const stopTop = isLong ? Math.min(yEntry, yStop) : Math.min(yStop, yEntry);
       const stopH = Math.max(2, Math.abs(yStop - yEntry));
       ctx.fillStyle = 'rgba(239, 83, 80, 0.22)';
       ctx.fillRect(leftX, stopTop, boxW, stopH);
@@ -1281,59 +1654,430 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.lineTo(rightX, yEntry);
       ctx.stroke();
 
-      const risk = Math.abs(d.entryPrice - d.stopPrice);
+      const risk = Math.abs(d.stopPrice - d.entryPrice);
       const reward = Math.abs(d.targetPrice - d.entryPrice);
       const rr = risk > 1e-8 ? (reward / risk).toFixed(2) : '1.00';
       ctx.fillStyle = '#FFFFFF';
       ctx.font = 'bold 9px "JetBrains Mono", monospace';
-      ctx.fillText(`Long · R/R: ${rr}`, leftX + 4, yEntry - 4);
-    } else if (d.type === 'short_position') {
-      const x1 = timeToX(d.startTimeUtcMillis);
-      const x2 = timeToX(d.endTimeUtcMillis);
-      const leftX = Math.min(x1, x2);
-      const rightX = Math.max(x1, x2, leftX + 50);
-      const boxW = rightX - leftX;
-      const yEntry = priceToY(d.entryPrice);
-      const yTarget = priceToY(d.targetPrice);
-      const yStop = priceToY(d.stopPrice);
+      ctx.fillText(`${isLong ? 'Long' : 'Short'} · R/R: ${rr}`, leftX + 4, yEntry - 4);
+    } else {
+      const anchors = DrawingGeometry.extractAnchors(d);
+      if (anchors.length > 0) {
+        const lineCol = isSel ? '#FFFFFF' : strokeCol;
+        if (d.type === 'avwap') {
+          const pts = DrawingGeometry.computeAnchoredVwap(candles, anchors[0].timeUtcMillis);
+          if (pts.length > 0) {
+            ctx.strokeStyle = lineCol;
+            ctx.lineWidth = baseW + 0.3;
+            ctx.beginPath();
+            pts.forEach((pt, idx) => {
+              const px = timeToX(pt.timeUtcMillis);
+              const py = priceToY(pt.price);
+              if (idx === 0) ctx.moveTo(px, py);
+              else ctx.lineTo(px, py);
+            });
+            ctx.stroke();
+            const firstPt = pts[0];
+            ctx.fillStyle = lineCol;
+            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+            ctx.fillText('AVWAP', timeToX(firstPt.timeUtcMillis) + 4, priceToY(firstPt.price) - 6);
+          }
+        } else if (d.type === 'regression_channel' && anchors.length >= 2) {
+          const reg = DrawingGeometry.computeRegressionChannel(
+            candles,
+            anchors[0].timeUtcMillis,
+            anchors[1].timeUtcMillis,
+            anchors[0].price,
+            anchors[1].price
+          );
+          const x1 = timeToX(reg.startTimeMs);
+          const x2 = timeToX(reg.endTimeMs);
+          const yMid1 = priceToY(reg.midStart);
+          const yMid2 = priceToY(reg.midEnd);
+          const yUp1 = priceToY(reg.midStart + 2 * reg.stdDev);
+          const yUp2 = priceToY(reg.midEnd + 2 * reg.stdDev);
+          const yDn1 = priceToY(reg.midStart - 2 * reg.stdDev);
+          const yDn2 = priceToY(reg.midEnd - 2 * reg.stdDev);
 
-      const targetTop = Math.min(yEntry, yTarget);
-      const targetH = Math.max(2, Math.abs(yTarget - yEntry));
-      ctx.fillStyle = 'rgba(38, 166, 154, 0.22)';
-      ctx.fillRect(leftX, targetTop, boxW, targetH);
-      ctx.strokeStyle = '#26A69A';
-      ctx.lineWidth = baseW + 0.5;
-      ctx.beginPath();
-      ctx.moveTo(leftX, yTarget);
-      ctx.lineTo(rightX, yTarget);
-      ctx.stroke();
+          ctx.fillStyle = 'rgba(41, 98, 255, 0.12)';
+          ctx.beginPath();
+          ctx.moveTo(x1, yUp1);
+          ctx.lineTo(x2, yUp2);
+          ctx.lineTo(x2, yDn2);
+          ctx.lineTo(x1, yDn1);
+          ctx.closePath();
+          ctx.fill();
 
-      const stopTop = Math.min(yStop, yEntry);
-      const stopH = Math.max(2, Math.abs(yEntry - yStop));
-      ctx.fillStyle = 'rgba(239, 83, 80, 0.22)';
-      ctx.fillRect(leftX, stopTop, boxW, stopH);
-      ctx.strokeStyle = '#EF5350';
-      ctx.lineWidth = baseW + 0.5;
-      ctx.beginPath();
-      ctx.moveTo(leftX, yStop);
-      ctx.lineTo(rightX, yStop);
-      ctx.stroke();
+          ctx.strokeStyle = lineCol;
+          ctx.lineWidth = baseW;
+          ctx.beginPath();
+          ctx.moveTo(x1, yUp1);
+          ctx.lineTo(x2, yUp2);
+          ctx.moveTo(x1, yDn1);
+          ctx.lineTo(x2, yDn2);
+          ctx.stroke();
 
-      ctx.strokeStyle = '#FFFFFF';
-      ctx.lineWidth = baseW;
-      ctx.beginPath();
-      ctx.moveTo(leftX, yEntry);
-      ctx.lineTo(rightX, yEntry);
-      ctx.stroke();
+          ctx.save();
+          ctx.setLineDash([5, 4]);
+          ctx.strokeStyle = '#F59E0B';
+          ctx.beginPath();
+          ctx.moveTo(x1, yMid1);
+          ctx.lineTo(x2, yMid2);
+          ctx.stroke();
+          ctx.restore();
+        } else if (d.type === 'frvp' && anchors.length >= 2) {
+          const loT = Math.min(anchors[0].timeUtcMillis, anchors[1].timeUtcMillis);
+          const hiT = Math.max(anchors[0].timeUtcMillis, anchors[1].timeUtcMillis);
+          const rangeCandles = candles.filter((c) => {
+            const t = Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0));
+            return t >= loT && t <= hiT;
+          });
+          const x1 = timeToX(loT);
+          const x2 = Math.max(x1 + 36, timeToX(hiT));
+          const vp = TechnicalIndicators.computeVolumeProfile(rangeCandles, 24, 0.7, spec.volumeType);
+          ctx.fillStyle = 'rgba(41, 98, 255, 0.06)';
+          ctx.fillRect(x1, topPad, x2 - x1, chartH);
+          ctx.strokeStyle = lineCol;
+          ctx.strokeRect(x1, topPad, x2 - x1, chartH);
+          if (vp && Array.isArray(vp.bins)) {
+            const maxBarW = Math.max(24, (x2 - x1) * 0.55);
+            vp.bins.forEach((b) => {
+              const yT = priceToY(b.high);
+              const yB = priceToY(b.low);
+              const bh = Math.max(1.5, Math.abs(yB - yT) - 0.8);
+              const bw = Math.max(2, b.normWidth * maxBarW);
+              ctx.fillStyle = b.isPoc
+                ? 'rgba(245, 158, 11, 0.78)'
+                : b.inValueArea
+                  ? 'rgba(56, 189, 248, 0.45)'
+                  : 'rgba(148, 163, 184, 0.25)';
+              ctx.fillRect(x1, Math.min(yT, yB), bw, bh);
+            });
+            const pocY = priceToY(vp.pocPrice);
+            ctx.strokeStyle = '#F59E0B';
+            ctx.lineWidth = 1.6;
+            ctx.beginPath();
+            ctx.moveTo(x1, pocY);
+            ctx.lineTo(x2, pocY);
+            ctx.stroke();
+            ctx.fillStyle = '#F59E0B';
+            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+            ctx.fillText('FRVP POC', x1 + 4, pocY - 3);
+          }
+        } else if (d.type === 'gann_fan' && anchors.length >= 2) {
+          const x1 = timeToX(anchors[0].timeUtcMillis);
+          const y1 = priceToY(anchors[0].price);
+          const x2 = timeToX(anchors[1].timeUtcMillis);
+          const y2 = priceToY(anchors[1].price);
+          const dx = Math.abs(x2 - x1) < 2 ? 40 : x2 - x1;
+          const dy = y2 - y1;
+          const dirSign = dx >= 0 ? 1 : -1;
+          const targetEdgeX = dirSign >= 0 ? chartW + 40 : -40;
+          const scaleT = (targetEdgeX - x1) / dx;
+          DrawingGeometry.gannAngleSpecs().forEach((g) => {
+            const endY = y1 + g.mult * dy * scaleT;
+            ctx.strokeStyle = g.label === '1x1' ? '#F59E0B' : lineCol;
+            ctx.lineWidth = g.label === '1x1' ? baseW + 0.5 : Math.max(1, baseW - 0.4);
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(targetEdgeX, endY);
+            ctx.stroke();
+            const lblX = Math.max(8, Math.min(chartW - 28, x1 + (x2 - x1) * 0.9));
+            const lblY = Math.max(topPad + 12, Math.min(topPad + chartH - 6, y1 + g.mult * dy * 0.9));
+            ctx.fillStyle = g.label === '1x1' ? '#F59E0B' : lineCol;
+            ctx.font = '600 8.5px "JetBrains Mono", monospace';
+            ctx.fillText(g.label, lblX, lblY);
+          });
+        } else if (d.type === 'gann_box' && anchors.length >= 2) {
+          const x1 = timeToX(anchors[0].timeUtcMillis);
+          const y1 = priceToY(anchors[0].price);
+          const x2 = timeToX(anchors[1].timeUtcMillis);
+          const y2 = priceToY(anchors[1].price);
+          const minX = Math.min(x1, x2);
+          const maxX = Math.max(x1, x2);
+          const minY = Math.min(y1, y2);
+          const maxY = Math.max(y1, y2);
+          const wBox = maxX - minX;
+          const hBox = maxY - minY;
+          ctx.fillStyle = 'rgba(168, 85, 247, 0.06)';
+          ctx.fillRect(minX, minY, wBox, hBox);
+          const ratios = [0, 0.25, 0.382, 0.5, 0.618, 0.75, 1.0];
+          ratios.forEach((r) => {
+            const isMid = r === 0.5 || r === 0 || r === 1;
+            ctx.strokeStyle = r === 0.5 ? '#F59E0B' : lineCol;
+            ctx.lineWidth = isMid ? baseW : 1;
+            const gy = minY + r * hBox;
+            const gx = minX + r * wBox;
+            ctx.beginPath();
+            ctx.moveTo(minX, gy);
+            ctx.lineTo(maxX, gy);
+            ctx.moveTo(gx, minY);
+            ctx.lineTo(gx, maxY);
+            ctx.stroke();
+          });
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = lineCol;
+          ctx.beginPath();
+          ctx.moveTo(minX, minY);
+          ctx.lineTo(maxX, maxY);
+          ctx.moveTo(minX, maxY);
+          ctx.lineTo(maxX, minY);
+          ctx.stroke();
+          ctx.restore();
+        } else if (d.type === 'pitchfork' && anchors.length >= 3) {
+          const pf = DrawingGeometry.computePitchforkGeometry(anchors, d.variant || 'original');
+          if (pf) {
+            const hx = timeToX(pf.handle.timeUtcMillis);
+            const hy = priceToY(pf.handle.price);
+            const tx = timeToX(pf.target.timeUtcMillis);
+            const ty = priceToY(pf.target.price);
+            const bx = timeToX(pf.b.timeUtcMillis);
+            const by = priceToY(pf.b.price);
+            const cx = timeToX(pf.c.timeUtcMillis);
+            const cy = priceToY(pf.c.price);
+            const dx = Math.abs(tx - hx) < 1 ? 1 : tx - hx;
+            const dy = ty - hy;
+            const extFactor = (chartW - hx) / dx;
+            const extLen = Math.max(1.5, extFactor);
 
-      const risk = Math.abs(d.stopPrice - d.entryPrice);
-      const reward = Math.abs(d.entryPrice - d.targetPrice);
-      const rr = risk > 1e-8 ? (reward / risk).toFixed(2) : '1.00';
-      ctx.fillStyle = '#FFFFFF';
-      ctx.font = 'bold 9px "JetBrains Mono", monospace';
-      ctx.fillText(`Short · R/R: ${rr}`, leftX + 4, yEntry - 4);
+            // Channel fill between B and C rays
+            ctx.fillStyle = 'rgba(41, 98, 255, 0.10)';
+            ctx.beginPath();
+            ctx.moveTo(bx, by);
+            ctx.lineTo(bx + dx * extLen, by + dy * extLen);
+            ctx.lineTo(cx + dx * extLen, cy + dy * extLen);
+            ctx.lineTo(cx, cy);
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = lineCol;
+            ctx.lineWidth = baseW;
+            ctx.beginPath();
+            ctx.moveTo(hx, hy);
+            ctx.lineTo(hx + dx * extLen, hy + dy * extLen);
+            ctx.moveTo(bx, by);
+            ctx.lineTo(bx + dx * extLen, by + dy * extLen);
+            ctx.moveTo(cx, cy);
+            ctx.lineTo(cx + dx * extLen, cy + dy * extLen);
+            ctx.moveTo(bx, by);
+            ctx.lineTo(cx, cy);
+            ctx.stroke();
+            ctx.fillStyle = lineCol;
+            ctx.font = 'bold 9px "JetBrains Mono", monospace';
+            ctx.fillText(`PF (${pf.variant})`, hx + 4, hy - 5);
+          }
+        } else if (d.type === 'fib_time_zone' && anchors.length >= 2) {
+          const zones = DrawingGeometry.computeFibTimeZones(
+            anchors[0].timeUtcMillis,
+            anchors[1].timeUtcMillis,
+            stepMs
+          );
+          zones.forEach((z) => {
+            const x = timeToX(z.timeUtcMillis);
+            if (x >= 0 && x <= chartW) {
+              ctx.strokeStyle = z.fib === 1 || z.fib === 8 ? '#F59E0B' : lineCol;
+              ctx.lineWidth = baseW;
+              ctx.beginPath();
+              ctx.moveTo(x, topPad);
+              ctx.lineTo(x, topPad + chartH);
+              ctx.stroke();
+              ctx.fillStyle = '#F59E0B';
+              ctx.font = 'bold 9px "JetBrains Mono", monospace';
+              ctx.fillText(String(z.fib), x + 3, topPad + 14);
+            }
+          });
+        } else if (d.type === 'cyclic_lines' && anchors.length >= 2) {
+          const t0 = Number(anchors[0].timeUtcMillis);
+          const dt = Math.max(stepMs, Math.abs(Number(anchors[1].timeUtcMillis) - t0));
+          for (let k = -20; k <= 40; k++) {
+            const x = timeToX(t0 + k * dt);
+            if (x >= 0 && x <= chartW) {
+              ctx.strokeStyle = lineCol;
+              ctx.lineWidth = baseW;
+              ctx.beginPath();
+              ctx.moveTo(x, topPad);
+              ctx.lineTo(x, topPad + chartH);
+              ctx.stroke();
+            }
+          }
+        } else if (d.type === 'fib_speed_fan' && anchors.length >= 2) {
+          const x1 = timeToX(anchors[0].timeUtcMillis);
+          const y1 = priceToY(anchors[0].price);
+          const x2 = timeToX(anchors[1].timeUtcMillis);
+          const y2 = priceToY(anchors[1].price);
+          const dx = x2 - x1;
+          const dy = y2 - y1;
+          const ext = Math.max(1.8, Math.abs(dx) > 4 ? (chartW - x1) / dx : 2);
+          ctx.save();
+          ctx.setLineDash([3, 3]);
+          ctx.strokeStyle = 'rgba(148, 163, 184, 0.5)';
+          ctx.strokeRect(Math.min(x1, x2), Math.min(y1, y2), Math.abs(dx), Math.abs(dy));
+          ctx.restore();
+          [0.236, 0.382, 0.5, 0.618, 0.786, 1.0].forEach((r) => {
+            const isGold = r === 0.5 || r === 0.618;
+            ctx.strokeStyle = isGold ? '#F59E0B' : lineCol;
+            ctx.lineWidth = isGold ? baseW + 0.3 : Math.max(1, baseW - 0.3);
+            const ryY = y1 + r * dy;
+            ctx.beginPath();
+            ctx.moveTo(x1, y1);
+            ctx.lineTo(x1 + dx * ext, y1 + (ryY - y1) * ext);
+            ctx.stroke();
+            if (r < 1.0) {
+              const rxX = x1 + r * dx;
+              ctx.beginPath();
+              ctx.moveTo(x1, y1);
+              ctx.lineTo(x1 + (rxX - x1) * ext, y1 + dy * ext);
+              ctx.stroke();
+            }
+          });
+        } else if ((d.type === 'abcd_pattern' && anchors.length >= 4) || (d.type === 'xabcd_pattern' && anchors.length >= 5)) {
+          const pts = anchors.map((a) => ({ x: timeToX(a.timeUtcMillis), y: priceToY(a.price) }));
+          const labels = d.type === 'abcd_pattern' ? ['A', 'B', 'C', 'D'] : ['X', 'A', 'B', 'C', 'D'];
+          ctx.fillStyle = 'rgba(41, 98, 255, 0.14)';
+          if (pts.length === 4) {
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            ctx.lineTo(pts[1].x, pts[1].y);
+            ctx.lineTo(pts[2].x, pts[2].y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(pts[1].x, pts[1].y);
+            ctx.lineTo(pts[2].x, pts[2].y);
+            ctx.lineTo(pts[3].x, pts[3].y);
+            ctx.closePath();
+            ctx.fill();
+          } else {
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            ctx.lineTo(pts[1].x, pts[1].y);
+            ctx.lineTo(pts[2].x, pts[2].y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.beginPath();
+            ctx.moveTo(pts[2].x, pts[2].y);
+            ctx.lineTo(pts[3].x, pts[3].y);
+            ctx.lineTo(pts[4].x, pts[4].y);
+            ctx.closePath();
+            ctx.fill();
+          }
+          ctx.strokeStyle = lineCol;
+          ctx.lineWidth = baseW;
+          ctx.beginPath();
+          pts.forEach((p, idx) => (idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+          ctx.stroke();
+          const ratios = DrawingGeometry.computeHarmonicRatios(anchors);
+          ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+          pts.forEach((p, idx) => {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(labels[idx], p.x - 3, p.y - 7);
+          });
+          if (ratios.bcAb) {
+            const mx = (pts[0].x + pts[2].x) / 2;
+            const my = (pts[0].y + pts[2].y) / 2;
+            ctx.fillStyle = '#F59E0B';
+            ctx.fillText(ratios.bcAb.toFixed(3), mx, my);
+          }
+          if (ratios.cdBc) {
+            const pEnd = pts[pts.length - 1];
+            const pPrev2 = pts[pts.length - 3];
+            ctx.fillStyle = '#F59E0B';
+            ctx.fillText(ratios.cdBc.toFixed(3), (pEnd.x + pPrev2.x) / 2, (pEnd.y + pPrev2.y) / 2);
+          }
+        } else if (d.type === 'head_shoulders' && anchors.length >= 5) {
+          const pts = anchors.map((a) => ({ x: timeToX(a.timeUtcMillis), y: priceToY(a.price) }));
+          const labels = ['LS', 'NL', 'H', 'NR', 'RS'];
+          // Neckline through pts[1] & pts[3]
+          const nx1 = pts[1].x;
+          const ny1 = pts[1].y;
+          const nx2 = pts[3].x;
+          const ny2 = pts[3].y;
+          ctx.fillStyle = 'rgba(245, 158, 11, 0.14)';
+          ctx.beginPath();
+          pts.forEach((p, idx) => (idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+          ctx.closePath();
+          ctx.fill();
+
+          ctx.strokeStyle = lineCol;
+          ctx.lineWidth = baseW;
+          ctx.beginPath();
+          pts.forEach((p, idx) => (idx === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+          ctx.stroke();
+
+          ctx.strokeStyle = '#EF5350';
+          ctx.lineWidth = baseW + 0.3;
+          const ndx = nx2 - nx1 || 1;
+          const ndy = ny2 - ny1;
+          ctx.beginPath();
+          ctx.moveTo(nx1 - ndx * 0.4, ny1 - ndy * 0.4);
+          ctx.lineTo(nx2 + ndx * 0.8, ny2 + ndy * 0.8);
+          ctx.stroke();
+
+          // Measured height dashed vertical guide at Head (pts[2])
+          const tFrac = (pts[2].x - nx1) / ndx;
+          const neckAtHeadY = ny1 + tFrac * ndy;
+          ctx.save();
+          ctx.setLineDash([4, 4]);
+          ctx.strokeStyle = '#F59E0B';
+          ctx.beginPath();
+          ctx.moveTo(pts[2].x, pts[2].y);
+          ctx.lineTo(pts[2].x, neckAtHeadY);
+          ctx.stroke();
+          ctx.restore();
+
+          ctx.font = 'bold 9px "JetBrains Mono", monospace';
+          pts.forEach((p, idx) => {
+            ctx.fillStyle = '#FFFFFF';
+            ctx.fillText(labels[idx], p.x - 6, p.y - 7);
+          });
+        }
+
+        // Anchor handles for Phase 2 drawings
+        anchors.forEach((a) => {
+          const ax = timeToX(a.timeUtcMillis);
+          const ay = priceToY(a.price);
+          ctx.fillStyle = lineCol;
+          ctx.beginPath();
+          ctx.arc(ax, ay, isSel ? 5 : 3.2, 0, Math.PI * 2);
+          ctx.fill();
+        });
+      }
     }
   });
+
+  // Pending anchors live preview
+  const pending = Array.isArray(tab.pendingAnchors) && tab.pendingAnchors.length > 0
+    ? tab.pendingAnchors
+    : tab.pendingTrendStart
+      ? [{ timeUtcMillis: tab.pendingTrendStart.timeUtcMillis, price: tab.pendingTrendStart.price1 }]
+      : [];
+  if (pending.length > 0) {
+    const pCol = tab.activeDrawingColorHex || '#2962FF';
+    ctx.strokeStyle = pCol;
+    ctx.lineWidth = 1.6;
+    ctx.beginPath();
+    pending.forEach((pt, idx) => {
+      const px = timeToX(pt.timeUtcMillis);
+      const py = priceToY(pt.price);
+      if (idx === 0) ctx.moveTo(px, py);
+      else ctx.lineTo(px, py);
+    });
+    ctx.stroke();
+    pending.forEach((pt, idx) => {
+      const px = timeToX(pt.timeUtcMillis);
+      const py = priceToY(pt.price);
+      ctx.fillStyle = pCol;
+      ctx.beginPath();
+      ctx.arc(px, py, 5, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.fillStyle = '#FFFFFF';
+      ctx.font = 'bold 9px "JetBrains Mono", monospace';
+      ctx.fillText(String(idx + 1), px + 6, py - 4);
+    });
+  }
+
+  ctx.restore();
 
   // Crosshair (Vertical + Horizontal + Price Pill + Adaptive UTC Time Pill)
   const hoverIdx =

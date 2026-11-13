@@ -118,6 +118,13 @@ fun WatchlistScreen(
     onAddCustomSymbol: (String, String, Int, ProviderId) -> Unit = { _, _, _, _ -> },
     onNavigateToSettings: () -> Unit = {},
     onNavigateToPrediction: () -> Unit = {},
+    currentLanguage: es.manico.chartintelligence.i18n.AppLanguage = es.manico.chartintelligence.i18n.AppLanguage.EN,
+    symbolIntelByCode: Map<String, es.manico.chartintelligence.data.repository.SymbolIntelBundle> = emptyMap(),
+    isIntelLoading: Boolean = false,
+    onLoadSymbolIntel: (String, Boolean) -> Unit = { _, _ -> },
+    onGetD1CandlesForSymbol: (String) -> List<CandleBar> = { emptyList() },
+    onExportCandlesCsvToUri: (android.net.Uri, String, String) -> Unit = { _, _, _ -> },
+    onExportCandlesJsonToUri: (android.net.Uri, String, String) -> Unit = { _, _, _ -> },
     modifier: Modifier = Modifier
 ) {
     val financialPalette = LocalFinancialPalette.current
@@ -437,6 +444,7 @@ fun WatchlistScreen(
                                         {
                                             overviewSymbolCode = symbol.symbolCode
                                             overviewSubTab = "OVERVIEW"
+                                            onLoadSymbolIntel(symbol.symbolCode, false)
                                         }
                                     } else null,
                                     onOpenChartClick = { onOpenSymbolInChartTab(symbol) },
@@ -704,6 +712,26 @@ fun WatchlistScreen(
                                 }
                             }
                         }
+
+                        es.manico.chartintelligence.ui.components.CandleExportButtonsRow(
+                            symbolCode = overviewSymbol.symbolCode,
+                            timeframe = matchingTab?.timeframe ?: overviewSymbol.timeframe,
+                            hasCandles = loadedCandles.isNotEmpty(),
+                            onExportCsvToUri = { uri ->
+                                onExportCandlesCsvToUri(
+                                    uri,
+                                    overviewSymbol.symbolCode,
+                                    matchingTab?.timeframe ?: overviewSymbol.timeframe
+                                )
+                            },
+                            onExportJsonToUri = { uri ->
+                                onExportCandlesJsonToUri(
+                                    uri,
+                                    overviewSymbol.symbolCode,
+                                    matchingTab?.timeframe ?: overviewSymbol.timeframe
+                                )
+                            }
+                        )
 
                         // Flash Brief Banner -> Switches directly to News tab
                         Surface(
@@ -975,9 +1003,38 @@ fun WatchlistScreen(
                                 )
                             }
                         }
+
+                        val seasonalsD1 = remember(overviewSymbol.symbolCode, loadedCandles.size) {
+                            val d1 = onGetD1CandlesForSymbol(overviewSymbol.symbolCode)
+                            if (d1.isNotEmpty()) d1
+                            else if ((matchingTab?.timeframe ?: overviewSymbol.timeframe).equals("D1", ignoreCase = true)) loadedCandles
+                            else emptyList()
+                        }
+                        val seasonalsReport = remember(seasonalsD1) {
+                            es.manico.chartintelligence.algorithms.CandleExportAlgorithm.computeMultiYearSeasonals(seasonalsD1)
+                        }
+                        es.manico.chartintelligence.ui.components.MultiYearSeasonalsCard(
+                            language = currentLanguage,
+                            report = seasonalsReport
+                        )
                     }
 
                     "NEWS" -> {
+                        androidx.compose.runtime.LaunchedEffect(overviewSymbol.symbolCode) {
+                            if (symbolIntelByCode[overviewSymbol.symbolCode.uppercase()] == null && !isIntelLoading) {
+                                onLoadSymbolIntel(overviewSymbol.symbolCode, false)
+                            }
+                        }
+
+                        es.manico.chartintelligence.ui.components.LiveSymbolIntelSection(
+                            language = currentLanguage,
+                            symbolCode = overviewSymbol.symbolCode,
+                            isStockSymbol = overviewSymbol.assetClass == AssetClass.STOCKS,
+                            intel = symbolIntelByCode[overviewSymbol.symbolCode.uppercase()],
+                            isLoading = isIntelLoading,
+                            onRefresh = { onLoadSymbolIntel(overviewSymbol.symbolCode, true) }
+                        )
+
                         Card(
                             modifier = Modifier.fillMaxWidth(),
                             shape = RoundedCornerShape(10.dp),

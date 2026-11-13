@@ -127,6 +127,12 @@ fun SettingsScreen(
     onSaveApiKeys: (String, String, String, String) -> Unit = { _, _, _, _ -> },
     onAddCustomSymbol: (String, String, Int, ProviderId) -> Unit,
     onDeleteSymbol: (String) -> Unit,
+    activeGapReport: es.manico.chartintelligence.algorithms.GapReport? = null,
+    activeGapSymbolLabel: String? = null,
+    backupStatusMessage: String? = null,
+    onRunGapAudit: () -> Unit = {},
+    onExportBackupToUri: (android.net.Uri, String) -> Unit = { _, _ -> },
+    onRestoreBackupFromUri: (android.net.Uri, String) -> Unit = { _, _ -> },
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBackToWatchlist)
@@ -1791,8 +1797,24 @@ fun SettingsScreen(
                                     }
                                 }
                             }
+
+                            es.manico.chartintelligence.ui.components.GapAuditSection(
+                                language = currentLanguage,
+                                activeGapReport = activeGapReport,
+                                activeSymbolLabel = activeGapSymbolLabel,
+                                onRunGapAudit = onRunGapAudit
+                            )
                         }
                     }
+                }
+
+                if (activeSettingsTab == "sync") {
+                    es.manico.chartintelligence.ui.components.EncryptedBackupCard(
+                        language = currentLanguage,
+                        statusMessage = backupStatusMessage,
+                        onExportToUri = onExportBackupToUri,
+                        onRestoreFromUri = onRestoreBackupFromUri
+                    )
                 }
 
                 Card(

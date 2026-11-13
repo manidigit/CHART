@@ -35,16 +35,20 @@ final class TimeframeAggregator
         $minExpectedChildren = self::minExpectedChildren($sourceStepMs, $targetStepMs, $normTf, $symbolCode);
 
         $buckets = [];
+        $bucketCloseMap = [];
         foreach ($sourceCandles as $bar) {
             $openMs = (int) ($bar['open_time_utc_ms'] ?? 0);
             if ($openMs <= 0) {
                 continue;
             }
-            $bucketOpen = UtcTimeAnchor::snapToOpenUtcMs($openMs, $normTf);
-            if (!UtcTimeAnchor::isCandleClosed($bucketOpen, $normTf, $nowMs)) {
+            $bounds = UtcTimeAnchor::getSessionBucketBounds($openMs, $normTf, $symbolCode);
+            $bucketOpen = $bounds['open_ms'];
+            $bucketClose = $bounds['close_ms'];
+            if ($bucketClose > $nowMs) {
                 continue;
             }
             $buckets[$bucketOpen][$openMs] = $bar;
+            $bucketCloseMap[$bucketOpen] = max($bucketCloseMap[$bucketOpen] ?? 0, $bucketClose);
         }
 
         ksort($buckets);

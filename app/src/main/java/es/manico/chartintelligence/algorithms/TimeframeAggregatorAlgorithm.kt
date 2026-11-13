@@ -57,13 +57,18 @@ object TimeframeAggregatorAlgorithm {
             .distinctBy { it.openTimeUtcMillis }
 
         val buckets = LinkedHashMap<Long, MutableList<CandleBar>>()
+        val effectiveSymbol = symbolCode ?: "XAUUSD"
 
         for (bar in sortedUnique) {
-            val bucketOpen = UtcTimeAnchorAlgorithm.snapToCandleOpenUtc(bar.openTimeUtcMillis, targetTimeframe)
-            if (!UtcTimeAnchorAlgorithm.isCandleClosed(bucketOpen, targetTimeframe, nowUtcMillis)) {
+            val bounds = UtcTimeAnchorAlgorithm.getSessionBucketBounds(
+                bar.openTimeUtcMillis,
+                targetTimeframe,
+                effectiveSymbol
+            )
+            if (bounds.closeMs > nowUtcMillis) {
                 continue
             }
-            buckets.getOrPut(bucketOpen) { ArrayList() }.add(bar)
+            buckets.getOrPut(bounds.openMs) { ArrayList() }.add(bar)
         }
 
         val minChildren = minExpectedChildren(sourceTimeframe, targetTimeframe, symbolCode)

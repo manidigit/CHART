@@ -358,6 +358,76 @@ export const PriceFormatter = {
     }
   },
 
+  _nyWallClockToUtcMs(year, month, day, hour, minute) {
+    // Iterative 2-pass Intl inverse for America/New_York DST correctness (EDT -4h vs EST -5h)
+    const approxUtc = Date.UTC(year, month - 1, day, hour + 5, minute, 0, 0);
+    const p1 = this._getNewYorkParts(approxUtc);
+    const diff1 = Date.UTC(year, month - 1, day, hour, minute, 0, 0) - Date.UTC(p1.year, p1.month - 1, p1.day, p1.hour, p1.minute, 0, 0);
+    const pass2 = approxUtc + diff1;
+    const p2 = this._getNewYorkParts(pass2);
+    const diff2 = Date.UTC(year, month - 1, day, hour, minute, 0, 0) - Date.UTC(p2.year, p2.month - 1, p2.day, p2.hour, p2.minute, 0, 0);
+    return pass2 + diff2;
+  },
+
+  getSessionBucketBounds(epochMs, timeframe = 'M15', symbolCode = 'XAUUSD') {
+    const ms = Number(epochMs || 0);
+    const tf = String(timeframe || 'M15').toUpperCase();
+    const step = this.stepMilliseconds(tf);
+    const cal = this.getSessionCalendar(symbolCode);
+
+    if (!isFinite(ms) || ms <= 0) {
+      return { openMs: 0, closeMs: 0, sessionAnchored: false };
+    }
+    if (tf === 'W1' || cal === 'CRYPTO_24_7' || tf === 'M15' || tf === 'M30') {
+      const openMs = this.snapToOpenUtcMs(ms, tf);
+      return { openMs, closeMs: openMs + step, sessionAnchored: false };
+    }
+
+    if (cal === 'US_EQUITIES') {
+      const ny = this._getNewYorkParts(ms);
+      const sessionStartMs = this._nyWallClockToUtcMs(ny.year, ny.month, ny.day, 9, 30);
+      const sessionEndMs = this._nyWallClockToUtcMs(ny.year, ny.month, ny.day, 16, 0);
+      if (tf === 'D1') {
+        const utcDayOpenMs = this.snapToOpenUtcMs(ms, 'D1');
+        return {
+          openMs: utcDayOpenMs,
+          closeMs: Math.max(utcDayOpenMs + 1, sessionEndMs),
+          sessionAnchored: true,
+        };
+      }
+      if (ms >= sessionStartMs && ms < sessionEndMs) {
+        const idx = Math.floor((ms - sessionStartMs) / step);
+        const openMs = sessionStartMs + idx * step;
+        return {
+          openMs,
+          closeMs: Math.min(sessionEndMs, openMs + step),
+          sessionAnchored: true,
+        };
+      }
+      const idx = Math.floor((ms - sessionStartMs) / step);
+      const openMs = sessionStartMs + idx * step;
+      return { openMs, closeMs: openMs + step, sessionAnchored: true };
+    }
+
+    if (cal === 'OTC_FX_METALS' && tf === 'D1') {
+      const shiftedNy = this._getNewYorkParts(ms + 7 * 3600000);
+      const utcDayOpenMs = Date.UTC(shiftedNy.year, shiftedNy.month - 1, shiftedNy.day, 0, 0, 0, 0);
+      const rolloverCloseMs = this._nyWallClockToUtcMs(shiftedNy.year, shiftedNy.month, shiftedNy.day, 17, 0);
+      return {
+        openMs: utcDayOpenMs,
+        closeMs: rolloverCloseMs,
+        sessionAnchored: true,
+      };
+    }
+
+    const openMs = this.snapToOpenUtcMs(ms, tf);
+    return { openMs, closeMs: openMs + step, sessionAnchored: false };
+  },
+
+  snapToSessionOpenUtcMs(epochMs, timeframe = 'M15', symbolCode = 'XAUUSD') {
+    return this.getSessionBucketBounds(epochMs, timeframe, symbolCode).openMs;
+  },
+
   getSessionDayKey(epochMs, symbolCode = 'XAUUSD') {
     const ms = Number(epochMs || 0);
     const cal = this.getSessionCalendar(symbolCode);

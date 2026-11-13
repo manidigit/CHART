@@ -17,16 +17,31 @@ enum class ChartType(val id: String) {
 }
 
 /**
- * Supported interactive chart tools (Cursor/Crosshair + Drawing Tools).
+ * Supported interactive chart tools (Cursor/Crosshair + Core & Phase 2 Multi-Anchor Drawing Tools).
  */
-enum class DrawingTool(val id: String) {
-    CURSOR("cursor"),
-    HORIZONTAL_LINE("horizontal_line"),
-    VERTICAL_LINE("vertical_line"),
-    TREND_LINE("trend_line"),
-    FIB_RETRACEMENT("fib_retracement"),
-    LONG_POSITION("long_position"),
-    SHORT_POSITION("short_position");
+enum class DrawingTool(val id: String, val requiredAnchors: Int = 0) {
+    CURSOR("cursor", 0),
+    HORIZONTAL_LINE("horizontal_line", 1),
+    VERTICAL_LINE("vertical_line", 1),
+    TREND_LINE("trend_line", 2),
+    FIB_RETRACEMENT("fib_retracement", 2),
+    LONG_POSITION("long_position", 1),
+    SHORT_POSITION("short_position", 1),
+    AVWAP("avwap", 1),
+    REGRESSION_CHANNEL("regression_channel", 2),
+    FRVP("frvp", 2),
+    GANN_FAN("gann_fan", 2),
+    GANN_BOX("gann_box", 2),
+    PITCHFORK("pitchfork", 3),
+    FIB_TIME_ZONE("fib_time_zone", 2),
+    CYCLIC_LINES("cyclic_lines", 2),
+    FIB_SPEED_FAN("fib_speed_fan", 2),
+    ABCD_PATTERN("abcd_pattern", 4),
+    XABCD_PATTERN("xabcd_pattern", 5),
+    HEAD_SHOULDERS("head_shoulders", 5);
+
+    val isPhase2MultiAnchor: Boolean
+        get() = ordinal >= AVWAP.ordinal
 
     companion object {
         fun fromId(id: String?): DrawingTool {
@@ -34,6 +49,11 @@ enum class DrawingTool(val id: String) {
         }
     }
 }
+
+data class DrawingAnchor(
+    val timeUtcMillis: Long,
+    val price: BigDecimal
+)
 
 data class FibLevelSpec(
     val ratio: Double,
@@ -166,6 +186,20 @@ sealed class ChartDrawing {
                 return if (e > 1e-6) kotlin.math.abs((stopPrice.toDouble() - e) / e) * 100.0 else 0.0
             }
     }
+
+    /**
+     * Canonical Phase 2 multi-anchor drawing supporting all 12 tool families:
+     * AVWAP, Regression Channel, FRVP, Gann Fan, Gann Box, Pitchfork (4 variants),
+     * Fib Time Zone, Cyclic Lines, Fib Speed Resistance Fan, ABCD, XABCD, Head & Shoulders.
+     */
+    data class MultiAnchor(
+        override val id: String,
+        val toolType: DrawingTool,
+        val anchors: List<DrawingAnchor>,
+        val variant: String = "original",
+        override val colorHex: String? = null,
+        override val strokeWidthDp: Float = 2.0f
+    ) : ChartDrawing()
 }
 
 /**

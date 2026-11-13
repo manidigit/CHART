@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.38.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.39.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.39.0';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -18,6 +18,21 @@ export function escapeHtml(str) {
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;')
     .replace(/'/g, '&#39;');
+}
+
+export function sanitizeSymbolCode(raw) {
+  return String(raw ?? '')
+    .trim()
+    .toUpperCase()
+    .replace(/[^A-Z0-9._:-]/g, '')
+    .slice(0, 20);
+}
+
+export function sanitizeColorHex(raw, fallback = '#2962FF') {
+  const s = String(raw ?? '').trim();
+  if (/^#[0-9A-Fa-f]{6}$/.test(s)) return s.toUpperCase();
+  if (/^#[0-9A-Fa-f]{8}$/.test(s)) return '#' + s.slice(3).toUpperCase();
+  return fallback;
 }
 
 export function getLocalByokKeys() {
@@ -77,16 +92,34 @@ export const DEFAULT_PREFS = {
   bollingerStdDev: 2.0,
   showSma20: false,
   showSma50: false,
+  showSma200: false,
+  showEma20: false,
+  showEma50: false,
   showEma200: false,
+  showSupertrend: false,
+  showVwap: false,
+  showPsar: false,
+  showIchimoku: false,
+  showKeltner: false,
+  showDonchian: false,
+  showMtfEma: false,
+  showKillzones: false,
   showBollinger: false,
   showOverlayMacd: false,
   showRsi14: false,
   showMacd: false,
   showAtr14: false,
+  showAdx14: false,
   showStoch14: false,
   showCci20: false,
   showWillR14: false,
+  showObv: false,
+  showCmf20: false,
   showRoc12: false,
+  showSmcStructure: false,
+  showFvg: false,
+  showVolumeProfile: false,
+  pitchforkVariant: 'original',
 };
 
 export const PROVIDER_METHODS_CATALOG = [
@@ -664,6 +697,33 @@ export function normalizeDrawingObject(d) {
       stopPrice: Number(d.stopPrice || 0),
     };
   }
+  const phase2Types = [
+    'avwap',
+    'regression_channel',
+    'frvp',
+    'gann_fan',
+    'gann_box',
+    'pitchfork',
+    'fib_time_zone',
+    'cyclic_lines',
+    'fib_speed_fan',
+    'abcd_pattern',
+    'xabcd_pattern',
+    'head_shoulders',
+  ];
+  if (phase2Types.includes(type)) {
+    const anchors = Array.isArray(d.anchors)
+      ? d.anchors.map((a) => ({
+          timeUtcMillis: Number(a.timeUtcMillis || a.t || 0),
+          price: Number(a.price !== undefined ? a.price : a.p || 0),
+        }))
+      : [];
+    return {
+      ...base,
+      anchors,
+      variant: String(d.variant || 'original'),
+    };
+  }
   return base;
 }
 
@@ -828,18 +888,27 @@ export const INDICATOR_FLAG_KEYS = [
   'showEma200',
   'showSupertrend',
   'showVwap',
+  'showPsar',
+  'showIchimoku',
+  'showKeltner',
+  'showDonchian',
+  'showMtfEma',
+  'showKillzones',
   'showBollinger',
   'showOverlayMacd',
   'showRsi14',
   'showMacd',
   'showAtr14',
-  'showSmcStructure',
-  'showFvg',
-  'showVolumeProfile',
+  'showAdx14',
   'showStoch14',
   'showCci20',
   'showWillR14',
+  'showObv',
+  'showCmf20',
   'showRoc12',
+  'showSmcStructure',
+  'showFvg',
+  'showVolumeProfile',
 ];
 
 export function syncIndicatorsAcrossTabsAndPrefs(sourceTab, skipSave = false) {
@@ -955,14 +1024,28 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showSma200: Boolean(t.showSma200),
     showEma20: Boolean(t.showEma20),
     showEma50: Boolean(t.showEma50),
+    showEma200: Boolean(t.showEma200),
     showSupertrend: Boolean(t.showSupertrend),
     showVwap: Boolean(t.showVwap),
+    showPsar: Boolean(t.showPsar),
+    showIchimoku: Boolean(t.showIchimoku),
+    showKeltner: Boolean(t.showKeltner),
+    showDonchian: Boolean(t.showDonchian),
+    showMtfEma: Boolean(t.showMtfEma),
+    showKillzones: Boolean(t.showKillzones),
     showBollinger: Boolean(t.showBollinger),
     showOverlayMacd: Boolean(t.showOverlayMacd),
     showVolume: t.showVolume !== false,
     showRsi14: Boolean(t.showRsi14),
     showMacd: Boolean(t.showMacd),
     showAtr14: Boolean(t.showAtr14),
+    showAdx14: Boolean(t.showAdx14),
+    showStoch14: Boolean(t.showStoch14),
+    showCci20: Boolean(t.showCci20),
+    showWillR14: Boolean(t.showWillR14),
+    showObv: Boolean(t.showObv),
+    showCmf20: Boolean(t.showCmf20),
+    showRoc12: Boolean(t.showRoc12),
     showSmcStructure: Boolean(t.showSmcStructure),
     showFvg: Boolean(t.showFvg),
     showVolumeProfile: Boolean(t.showVolumeProfile),

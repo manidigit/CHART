@@ -1,4 +1,5 @@
-import { PriceFormatter } from './priceFormatter.js?v=1.38.0';
+import { PriceFormatter } from './priceFormatter.js?v=1.39.0';
+import { TimeframeAggregator } from './timeframeAggregator.js?v=1.39.0';
 
 export const TechnicalIndicators = {
   computeSma(candles = [], period = 20) {
@@ -568,5 +569,410 @@ export const TechnicalIndicators = {
   hasNonZeroVolume(candles = []) {
     if (!Array.isArray(candles)) return false;
     return candles.some((c) => Number(c.volume || 0) > 0);
+  },
+
+  computeParabolicSar(candles = [], step = 0.02, maxAf = 0.20) {
+    if (!Array.isArray(candles) || candles.length < 2) {
+      return new Array(Array.isArray(candles) ? candles.length : 0).fill(null);
+    }
+    const n = candles.length;
+    const out = new Array(n).fill(null);
+    const h0 = Number(candles[0].high || 0);
+    const l0 = Number(candles[0].low || 0);
+    const h1 = Number(candles[1].high || 0);
+    const l1 = Number(candles[1].low || 0);
+    let isUp = Number(candles[1].close || 0) >= Number(candles[0].close || 0);
+    let sar = isUp ? l0 : h0;
+    let ep = isUp ? h1 : l1;
+    let af = step;
+    out[1] = { sar, isUp };
+
+    for (let i = 2; i < n; i++) {
+      const hi = Number(candles[i].high || 0);
+      const lo = Number(candles[i].low || 0);
+      const prevLo1 = Number(candles[i - 1].low || 0);
+      const prevLo2 = Number(candles[i - 2].low || 0);
+      const prevHi1 = Number(candles[i - 1].high || 0);
+      const prevHi2 = Number(candles[i - 2].high || 0);
+
+      let nextSar = sar + af * (ep - sar);
+      if (isUp) {
+        nextSar = Math.min(nextSar, prevLo1, prevLo2);
+        if (lo < nextSar) {
+          isUp = false;
+          sar = ep;
+          ep = lo;
+          af = step;
+        } else {
+          sar = nextSar;
+          if (hi > ep) {
+            ep = hi;
+            af = Math.min(maxAf, af + step);
+          }
+        }
+      } else {
+        nextSar = Math.max(nextSar, prevHi1, prevHi2);
+        if (hi > nextSar) {
+          isUp = true;
+          sar = ep;
+          ep = hi;
+          af = step;
+        } else {
+          sar = nextSar;
+          if (lo < ep) {
+            ep = lo;
+            af = Math.min(maxAf, af + step);
+          }
+        }
+      }
+      out[i] = { sar, isUp };
+    }
+    return out;
+  },
+
+  computeIchimoku(candles = [], tenkanPeriod = 9, kijunPeriod = 26, senkouBPeriod = 52, displacement = 26) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n === 0) return { tenkan: [], kijun: [], senkouA: [], senkouB: [], chikou: [] };
+    const midRange = (endIdx, len) => {
+      if (endIdx < len - 1) return null;
+      let hh = -Infinity;
+      let ll = Infinity;
+      for (let j = endIdx - len + 1; j <= endIdx; j++) {
+        hh = Math.max(hh, Number(candles[j].high || 0));
+        ll = Math.min(ll, Number(candles[j].low || 0));
+      }
+      return (hh + ll) / 2;
+    };
+
+    const tenkan = new Array(n).fill(null);
+    const kijun = new Array(n).fill(null);
+    const rawSpanA = new Array(n).fill(null);
+    const rawSpanB = new Array(n).fill(null);
+    const senkouA = new Array(n).fill(null);
+    const senkouB = new Array(n).fill(null);
+    const chikou = new Array(n).fill(null);
+
+    for (let i = 0; i < n; i++) {
+      tenkan[i] = midRange(i, tenkanPeriod);
+      kijun[i] = midRange(i, kijunPeriod);
+      if (tenkan[i] !== null && kijun[i] !== null) {
+        rawSpanA[i] = (tenkan[i] + kijun[i]) / 2;
+      }
+      rawSpanB[i] = midRange(i, senkouBPeriod);
+      const srcIdx = i - displacement;
+      if (srcIdx >= 0) {
+        senkouA[i] = rawSpanA[srcIdx];
+        senkouB[i] = rawSpanB[srcIdx];
+      }
+      const fwdIdx = i + displacement;
+      if (fwdIdx < n) {
+        chikou[i] = Number(candles[fwdIdx].close || 0);
+      }
+    }
+    return { tenkan, kijun, senkouA, senkouB, chikou };
+  },
+
+  computeKeltnerChannels(candles = [], emaPeriod = 20, atrPeriod = 10, mult = 2.0) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n === 0) return [];
+    const mid = this.computeEma(candles, emaPeriod);
+    const atr = this.computeAtr(candles, atrPeriod);
+    return candles.map((_, i) => {
+      if (mid[i] === null || atr[i] === null) return null;
+      return {
+        middle: mid[i],
+        upper: mid[i] + mult * atr[i],
+        lower: mid[i] - mult * atr[i],
+      };
+    });
+  },
+
+  computeDonchianChannels(candles = [], period = 20) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n === 0 || period <= 0) return [];
+    const out = new Array(n).fill(null);
+    for (let i = period - 1; i < n; i++) {
+      let hh = -Infinity;
+      let ll = Infinity;
+      for (let j = i - period + 1; j <= i; j++) {
+        hh = Math.max(hh, Number(candles[j].high || 0));
+        ll = Math.min(ll, Number(candles[j].low || 0));
+      }
+      out[i] = { upper: hh, lower: ll, middle: (hh + ll) / 2 };
+    }
+    return out;
+  },
+
+  higherTimeframeFor(timeframe) {
+    switch (String(timeframe || 'M15').toUpperCase()) {
+      case 'M1':
+      case 'M5':
+        return 'M15';
+      case 'M15':
+        return 'H1';
+      case 'M30':
+      case 'H1':
+        return 'H4';
+      case 'H4':
+        return 'D1';
+      case 'D1':
+      case 'W1':
+      default:
+        return 'W1';
+    }
+  },
+
+  /**
+   * Non-lookahead Multi-Timeframe EMA(20): assigns higher-TF EMA value only once
+   * the higher-TF candle bucket has closed (bucket.closeMs <= baseBar.closeMs).
+   */
+  computeMtfEma(candles = [], currentTimeframe = 'M15', period = 20, symbolCode = 'XAUUSD') {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n === 0) return [];
+    const curTf = String(currentTimeframe || 'M15').toUpperCase();
+    const htf = this.higherTimeframeFor(curTf);
+    if (htf === curTf) {
+      return this.computeEma(candles, period);
+    }
+
+    const lastBarMs = Number(
+      candles[n - 1].open_time_utc_ms || (candles[n - 1].openTimeSec ? candles[n - 1].openTimeSec * 1000 : 0)
+    );
+    const lastBounds = PriceFormatter.getSessionBucketBounds(lastBarMs, curTf, symbolCode);
+    const htfCandles = TimeframeAggregator.aggregateCandles(candles, htf, lastBounds.closeMs, symbolCode);
+    if (!htfCandles.length) return new Array(n).fill(null);
+
+    const htfEma = this.computeEma(htfCandles, period);
+    const htfCloseBounds = htfCandles.map((b) => {
+      const ms = Number(b.open_time_utc_ms || (b.openTimeSec ? b.openTimeSec * 1000 : 0));
+      return PriceFormatter.getSessionBucketBounds(ms, htf, symbolCode).closeMs;
+    });
+
+    const out = new Array(n).fill(null);
+    let ptr = -1;
+    for (let i = 0; i < n; i++) {
+      const ms = Number(
+        candles[i].open_time_utc_ms || (candles[i].openTimeSec ? candles[i].openTimeSec * 1000 : 0)
+      );
+      const barCloseMs = PriceFormatter.getSessionBucketBounds(ms, curTf, symbolCode).closeMs;
+      while (ptr + 1 < htfCloseBounds.length && htfCloseBounds[ptr + 1] <= barCloseMs) {
+        ptr++;
+      }
+      if (ptr >= 0 && htfEma[ptr] !== null) {
+        out[i] = htfEma[ptr];
+      }
+    }
+    return out;
+  },
+
+  classifyKillzoneUtcHour(utcHour) {
+    const h = ((Number(utcHour) % 24) + 24) % 24;
+    if (h >= 13 && h < 16) return 'OVERLAP';
+    if (h >= 7 && h < 16) return 'LONDON';
+    if (h >= 13 && h < 22) return 'NEW_YORK';
+    if (h >= 0 && h < 9) return 'ASIA';
+    return null;
+  },
+
+  computeAdxDmi(candles = [], period = 14) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n < period * 2) return new Array(n).fill(null);
+    const tr = new Array(n).fill(0);
+    const plusDm = new Array(n).fill(0);
+    const minusDm = new Array(n).fill(0);
+    for (let i = 1; i < n; i++) {
+      const hi = Number(candles[i].high || 0);
+      const lo = Number(candles[i].low || 0);
+      const prevH = Number(candles[i - 1].high || 0);
+      const prevL = Number(candles[i - 1].low || 0);
+      const prevC = Number(candles[i - 1].close || 0);
+      tr[i] = Math.max(hi - lo, Math.abs(hi - prevC), Math.abs(lo - prevC));
+      const up = hi - prevH;
+      const dn = prevL - lo;
+      plusDm[i] = up > dn && up > 0 ? up : 0;
+      minusDm[i] = dn > up && dn > 0 ? dn : 0;
+    }
+
+    let smTr = 0;
+    let smPlus = 0;
+    let smMinus = 0;
+    for (let i = 1; i <= period; i++) {
+      smTr += tr[i];
+      smPlus += plusDm[i];
+      smMinus += minusDm[i];
+    }
+
+    const out = new Array(n).fill(null);
+    const dxList = [];
+    for (let i = period; i < n; i++) {
+      if (i > period) {
+        smTr = smTr - smTr / period + tr[i];
+        smPlus = smPlus - smPlus / period + plusDm[i];
+        smMinus = smMinus - smMinus / period + minusDm[i];
+      }
+      const pDi = smTr > 0 ? (100 * smPlus) / smTr : 0;
+      const mDi = smTr > 0 ? (100 * smMinus) / smTr : 0;
+      const sumDi = pDi + mDi;
+      const dx = sumDi > 0 ? (100 * Math.abs(pDi - mDi)) / sumDi : 0;
+      dxList.push({ idx: i, plusDi: pDi, minusDi: mDi, dx });
+    }
+    if (dxList.length < period) return out;
+    let adxSum = 0;
+    for (let k = 0; k < period; k++) adxSum += dxList[k].dx;
+    let prevAdx = adxSum / period;
+    out[dxList[period - 1].idx] = {
+      adx: prevAdx,
+      plusDi: dxList[period - 1].plusDi,
+      minusDi: dxList[period - 1].minusDi,
+    };
+    for (let k = period; k < dxList.length; k++) {
+      prevAdx = (prevAdx * (period - 1) + dxList[k].dx) / period;
+      out[dxList[k].idx] = {
+        adx: prevAdx,
+        plusDi: dxList[k].plusDi,
+        minusDi: dxList[k].minusDi,
+      };
+    }
+    return out;
+  },
+
+  computeStochastic(candles = [], kPeriod = 14, smoothK = 3, dPeriod = 3) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n === 0) return [];
+    const rawK = new Array(n).fill(null);
+    for (let i = kPeriod - 1; i < n; i++) {
+      let hh = -Infinity;
+      let ll = Infinity;
+      for (let j = i - kPeriod + 1; j <= i; j++) {
+        hh = Math.max(hh, Number(candles[j].high || 0));
+        ll = Math.min(ll, Number(candles[j].low || 0));
+      }
+      const span = hh - ll;
+      rawK[i] = span > 1e-12 ? ((Number(candles[i].close || 0) - ll) / span) * 100 : 50;
+    }
+
+    const slowK = new Array(n).fill(null);
+    for (let i = kPeriod - 1 + smoothK - 1; i < n; i++) {
+      let s = 0;
+      let ok = true;
+      for (let j = i - smoothK + 1; j <= i; j++) {
+        if (rawK[j] === null) {
+          ok = false;
+          break;
+        }
+        s += rawK[j];
+      }
+      if (ok) slowK[i] = s / smoothK;
+    }
+
+    const out = new Array(n).fill(null);
+    for (let i = 0; i < n; i++) {
+      if (slowK[i] === null) continue;
+      let dVal = null;
+      if (i >= dPeriod - 1) {
+        let s = 0;
+        let ok = true;
+        for (let j = i - dPeriod + 1; j <= i; j++) {
+          if (slowK[j] === null) {
+            ok = false;
+            break;
+          }
+          s += slowK[j];
+        }
+        if (ok) dVal = s / dPeriod;
+      }
+      out[i] = { k: slowK[i], d: dVal };
+    }
+    return out;
+  },
+
+  computeCci(candles = [], period = 20) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n < period) return new Array(n).fill(null);
+    const tp = candles.map(
+      (c) => (Number(c.high || 0) + Number(c.low || 0) + Number(c.close || 0)) / 3
+    );
+    const out = new Array(n).fill(null);
+    for (let i = period - 1; i < n; i++) {
+      let sum = 0;
+      for (let j = i - period + 1; j <= i; j++) sum += tp[j];
+      const sma = sum / period;
+      let dev = 0;
+      for (let j = i - period + 1; j <= i; j++) dev += Math.abs(tp[j] - sma);
+      const meanDev = dev / period;
+      out[i] = meanDev > 1e-12 ? (tp[i] - sma) / (0.015 * meanDev) : 0;
+    }
+    return out;
+  },
+
+  computeWilliamsR(candles = [], period = 14) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n < period) return new Array(n).fill(null);
+    const out = new Array(n).fill(null);
+    for (let i = period - 1; i < n; i++) {
+      let hh = -Infinity;
+      let ll = Infinity;
+      for (let j = i - period + 1; j <= i; j++) {
+        hh = Math.max(hh, Number(candles[j].high || 0));
+        ll = Math.min(ll, Number(candles[j].low || 0));
+      }
+      const span = hh - ll;
+      out[i] = span > 1e-12 ? (-100 * (hh - Number(candles[i].close || 0))) / span : -50;
+    }
+    return out;
+  },
+
+  computeObv(candles = []) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n === 0) return [];
+    const out = new Array(n).fill(0);
+    out[0] = Number(candles[0].volume || 0);
+    for (let i = 1; i < n; i++) {
+      const c = Number(candles[i].close || 0);
+      const pc = Number(candles[i - 1].close || 0);
+      const v = Number(candles[i].volume || 0);
+      if (c > pc) out[i] = out[i - 1] + v;
+      else if (c < pc) out[i] = out[i - 1] - v;
+      else out[i] = out[i - 1];
+    }
+    return out;
+  },
+
+  computeCmf(candles = [], period = 20) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n < period) return new Array(n).fill(null);
+    const mfv = candles.map((c) => {
+      const h = Number(c.high || 0);
+      const l = Number(c.low || 0);
+      const cl = Number(c.close || 0);
+      const v = Number(c.volume || 0);
+      const hl = h - l;
+      const mult = hl > 1e-12 ? (cl - l - (h - cl)) / hl : 0;
+      return mult * v;
+    });
+    const vols = candles.map((c) => Number(c.volume || 0));
+    const out = new Array(n).fill(null);
+    for (let i = period - 1; i < n; i++) {
+      let sMfv = 0;
+      let sVol = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        sMfv += mfv[j];
+        sVol += vols[j];
+      }
+      out[i] = sVol > 1e-12 ? sMfv / sVol : 0;
+    }
+    return out;
+  },
+
+  computeRoc(candles = [], period = 12) {
+    const n = Array.isArray(candles) ? candles.length : 0;
+    if (n <= period) return new Array(n).fill(null);
+    const out = new Array(n).fill(null);
+    for (let i = period; i < n; i++) {
+      const cur = Number(candles[i].close || 0);
+      const prev = Number(candles[i - period].close || 0);
+      out[i] = Math.abs(prev) > 1e-12 ? ((cur - prev) / prev) * 100 : 0;
+    }
+    return out;
   },
 };

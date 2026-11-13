@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.38.0';
-import { state, getAssetClass, escapeHtml, getInstrumentSpec } from '../core/store.js?v=1.38.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.39.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.39.0';
+import { state, getAssetClass, escapeHtml, getInstrumentSpec, getCachedOrAggregatedCandles } from '../core/store.js?v=1.39.0';
 
 const STOCK_SYMBOLS = new Set([
   'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
@@ -760,6 +760,67 @@ function computeRealOverviewMetrics(candles = [], decimals = 2, i18n) {
   };
 }
 
+function computeMultiYearSeasonals(d1Candles = []) {
+  if (!Array.isArray(d1Candles) || d1Candles.length === 0) {
+    return { hasSufficientData: false, distinctMonthCount: 0, yearsDesc: [], cells: {}, monthlyStats: [] };
+  }
+  const sorted = [...d1Candles].sort(
+    (a, b) => Number(a.open_time_utc_ms || 0) - Number(b.open_time_utc_ms || 0)
+  );
+  const buckets = new Map();
+  for (const bar of sorted) {
+    const o = Number(bar.open);
+    const c = Number(bar.close);
+    const ms = Number(bar.open_time_utc_ms || Number(bar.openTimeSec || 0) * 1000);
+    if (!Number.isFinite(o) || !Number.isFinite(c) || o <= 0 || ms <= 0) continue;
+    const dt = new Date(ms);
+    const yr = dt.getUTCFullYear();
+    const mo = dt.getUTCMonth() + 1;
+    const key = `${yr}-${mo}`;
+    if (!buckets.has(key)) {
+      buckets.set(key, { year: yr, month: mo, firstOpen: o, lastClose: c });
+    } else {
+      buckets.get(key).lastClose = c;
+    }
+  }
+  const distinctMonthCount = buckets.size;
+  if (distinctMonthCount < 12) {
+    return { hasSufficientData: false, distinctMonthCount, yearsDesc: [], cells: {}, monthlyStats: [] };
+  }
+  const cells = {};
+  const perMonth = Array.from({ length: 13 }, () => []);
+  const yearsSet = new Set();
+  for (const b of buckets.values()) {
+    const pct = ((b.lastClose - b.firstOpen) / b.firstOpen) * 100;
+    cells[`${b.year}-${b.month}`] = Math.round(pct * 100) / 100;
+    perMonth[b.month].push(pct);
+    yearsSet.add(b.year);
+  }
+  const monthlyStats = [];
+  for (let m = 1; m <= 12; m++) {
+    const arr = perMonth[m];
+    if (arr.length === 0) {
+      monthlyStats.push({ month: m, avgPct: null, winRatePct: null, n: 0 });
+    } else {
+      const avg = arr.reduce((s, v) => s + v, 0) / arr.length;
+      const wins = arr.filter((v) => v > 0).length;
+      monthlyStats.push({
+        month: m,
+        avgPct: Math.round(avg * 100) / 100,
+        winRatePct: Math.round((wins / arr.length) * 1000) / 10,
+        n: arr.length,
+      });
+    }
+  }
+  return {
+    hasSufficientData: true,
+    distinctMonthCount,
+    yearsDesc: Array.from(yearsSet).sort((a, b) => b - a),
+    cells,
+    monthlyStats,
+  };
+}
+
 export function renderSymbolOverviewModal(i18n) {
   const code = state.symbolOverviewCode;
   if (!code) return '';
@@ -846,39 +907,137 @@ export function renderSymbolOverviewModal(i18n) {
     .filter((s) => s.symbolCode !== sym.symbolCode && getAssetClass(s.symbolCode) === profileMeta.assetClass)
     .slice(0, 4);
 
+  const intelEntry = state.symbolIntelCache && state.symbolIntelCache[sym.symbolCode];
+  const intel = intelEntry ? intelEntry.data : (sym.intel || null);
+  const d1ForSeasonals = getCachedOrAggregatedCandles(sym.symbolCode, sym.activeProvider, 'D1');
+  const seasonals = computeMultiYearSeasonals(d1ForSeasonals.length > 0 ? d1ForSeasonals : (sym.timeframe === 'D1' ? fullCandles : []));
+  const isStockSymbol = getSymbolCategoryKey(sym.symbolCode) === 'STOCKS' || (intel && intel.asset_class === 'STOCKS');
+  const monthLabels = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+
   let tabBodyHtml = '';
   if (activeSubTab === 'NEWS') {
     const isFa = i18n.getCurrentLanguage() === 'fa';
     const feedStatus = d.isLive
       ? (isFa ? 'فید فعال و همگام' : 'Active & Synchronized')
       : (isFa ? 'بازار بسته / آخرین کلوز ذخیره‌شده' : 'Market Closed / Archived Close');
+    const newsList = (intel && Array.isArray(intel.news)) ? intel.news : [];
+    const secList = (intel && Array.isArray(intel.sec_filings)) ? intel.sec_filings : [];
+    const macroList = (intel && Array.isArray(intel.macro_events)) ? intel.macro_events : [];
+    const intermarketList = (intel && Array.isArray(intel.intermarket)) ? intel.intermarket : [];
+
     tabBodyHtml = `
       <div class="card-subtle" style="margin-bottom: 10px;">
-        <div style="font-size: 13px; font-weight: 700; color: var(--text-strong); margin-bottom: 8px;">
-          ${sym.symbolCode} — ${i18n.t('symbol_overview_tab_news') || 'Market Feed & Catalysts'}
+        <div class="row-between" style="margin-bottom: 8px; gap: 6px; flex-wrap: wrap;">
+          <div style="font-size: 13px; font-weight: 700; color: var(--text-strong);">
+            ${sym.symbolCode} — ${i18n.t('symbol_overview_tab_news') || 'Live News & External Intel'}
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="ltr-num" style="font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(56,189,248,0.14); color: #38BDF8;">EXTERNAL_LIVE</span>
+            <button type="button" class="btn btn-sm" data-action="refresh-symbol-intel" data-symbol="${escapeHtml(sym.symbolCode)}">↻</button>
+          </div>
         </div>
         <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
-          <span style="color: var(--text-muted);">Asset Class</span>
-          <strong>${profileMeta.assetClass} · ${profileMeta.sector}</strong>
+          <span style="color: var(--text-muted);">Asset Class / Source</span>
+          <strong>${profileMeta.assetClass} · ${badge.providerTag} (${feedStatus})</strong>
         </div>
-        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
-          <span style="color: var(--text-muted);">Active Data Source</span>
-          <strong>${badge.providerTag} (${feedStatus})</strong>
-        </div>
-        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
-          <span style="color: var(--text-muted);">${profileMeta.spec2Label}</span>
-          <strong>${profileMeta.spec2Val}</strong>
-        </div>
-        <div class="row-between ltr-num" style="font-size: 12px; margin-bottom: 6px;">
-          <span style="color: var(--text-muted);">${profileMeta.spec3Label}</span>
-          <strong>${profileMeta.spec3Val}</strong>
-        </div>
-        <div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5; margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);">
-          ${isFa
-            ? `نرخ لحظه‌ای ${sym.symbolCode} برابر ${PriceFormatter.formatPrice(d.lastClose, sym.decimals)} با تغییر ${pct} در محدوده ${PriceFormatter.formatPrice(d.dayLow, sym.decimals)} تا ${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)} ثبت شده است.`
-            : `${sym.symbolCode} is trading at ${PriceFormatter.formatPrice(d.lastClose, sym.decimals)} (${pct}) across ${PriceFormatter.formatPrice(d.dayLow, sym.decimals)} — ${PriceFormatter.formatPrice(d.dayHigh, sym.decimals)} on ${badge.providerTag}.`}
-        </div>
+        ${
+          !intel
+            ? `<div style="font-size: 11.5px; color: var(--text-muted); padding: 8px 0;">${isFa ? 'در حال دریافت فید زنده اخبار و داده‌های کلان...' : 'Fetching live RSS, macro & intermarket feed...'}</div>`
+            : newsList.length === 0
+              ? `<div style="font-size: 11.5px; color: var(--text-muted); padding: 6px 0;">${isFa ? 'در این لحظه سرفصل خبری تازه‌ای از فید عمومی برای این نماد بازگشت داده نشد.' : 'No live RSS headlines currently returned for this instrument.'}</div>`
+              : newsList
+                  .map(
+                    (n) => `
+                  <a href="${escapeHtml(n.url)}" target="_blank" rel="noopener noreferrer" style="display: block; padding: 7px 0; border-top: 1px solid rgba(120,123,134,0.14); text-decoration: none;">
+                    <div style="font-size: 12px; font-weight: 600; color: var(--text-strong); line-height: 1.4;">${escapeHtml(n.title)}</div>
+                    <div class="ltr-num" style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">
+                      ${escapeHtml(n.publisher || 'Feed')} · ${escapeHtml(String(n.published_utc || '').replace('T', ' ').slice(0, 16))} UTC · <span style="color: #38BDF8;">${escapeHtml(n.source_type || 'EXTERNAL_LIVE')}</span>
+                    </div>
+                  </a>
+                `
+                  )
+                  .join('')
+        }
       </div>
+
+      ${
+        isStockSymbol
+          ? `
+        <div class="card-subtle" style="margin-bottom: 10px;">
+          <div class="row-between" style="margin-bottom: 8px;">
+            <strong style="font-size: 12.5px; color: var(--text-strong);">SEC EDGAR Filings (10-K / 10-Q / 8-K)</strong>
+            <span class="ltr-num" style="font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(56,189,248,0.14); color: #38BDF8;">EXTERNAL_LIVE</span>
+          </div>
+          ${
+            secList.length > 0
+              ? secList
+                  .map(
+                    (f) => `
+                  <a href="${escapeHtml(f.url)}" target="_blank" rel="noopener noreferrer" class="row-between ltr-num" style="font-size: 11.5px; padding: 6px 0; border-top: 1px solid rgba(120,123,134,0.14); text-decoration: none; color: var(--text);">
+                    <span><strong style="color: var(--primary);">${escapeHtml(f.form)}</strong> · ${escapeHtml(f.description || f.form)}</span>
+                    <span style="color: var(--text-muted);">${escapeHtml(f.filing_date)} ↗</span>
+                  </a>
+                `
+                  )
+                  .join('')
+              : `<div style="font-size: 11px; color: var(--text-muted);">${escapeHtml((intel && intel.sec_notice) || 'SEC EDGAR filings unavailable for this ticker.')}</div>`
+          }
+        </div>
+      `
+          : ''
+      }
+
+      ${
+        macroList.length > 0
+          ? `
+        <div class="card-subtle" style="margin-bottom: 10px;">
+          <div class="row-between" style="margin-bottom: 8px;">
+            <strong style="font-size: 12.5px; color: var(--text-strong);">${isFa ? 'تقویم رویدادهای کلان (Macro Schedule)' : 'Macro Release Schedule (UTC)'}</strong>
+            <span class="ltr-num" style="font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(56,189,248,0.14); color: #38BDF8;">EXTERNAL_LIVE</span>
+          </div>
+          ${macroList
+            .map(
+              (ev) => `
+              <div class="row-between ltr-num" style="font-size: 11.5px; padding: 5px 0; border-top: 1px solid rgba(120,123,134,0.12); gap: 8px;">
+                <span style="color: var(--text); font-weight: 600;">${escapeHtml(ev.title)}</span>
+                <span style="color: ${ev.relevance === 'HIGH' ? 'var(--gold)' : 'var(--text-muted)'}; white-space: nowrap;">${escapeHtml(String(ev.scheduled_utc || '').replace('T', ' ').slice(0, 16))}Z</span>
+              </div>
+            `
+            )
+            .join('')}
+        </div>
+      `
+          : ''
+      }
+
+      ${
+        intermarketList.length > 0
+          ? `
+        <div class="card-subtle" style="margin-bottom: 10px;">
+          <div class="row-between" style="margin-bottom: 8px;">
+            <strong style="font-size: 12.5px; color: var(--text-strong);">${isFa ? 'همبستگی بین‌بازاری ۶۰ روزه' : 'Intermarket Benchmarks & 60d Correlation'}</strong>
+            <span class="ltr-num" style="font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(56,189,248,0.14); color: #38BDF8;">EXTERNAL_LIVE</span>
+          </div>
+          ${intermarketList
+            .map((im) => {
+              const imBull = Number(im.change_pct || 0) >= 0;
+              const corrStr = im.corr_60d !== null && im.corr_60d !== undefined ? `r=${Number(im.corr_60d).toFixed(2)}` : 'r=—';
+              return `
+                <div class="row-between ltr-num" style="font-size: 11.5px; padding: 5px 0; border-top: 1px solid rgba(120,123,134,0.12);">
+                  <span style="font-weight: 600; color: var(--text);">${escapeHtml(im.label)} <span style="color: var(--text-muted);">(${escapeHtml(im.ticker)})</span></span>
+                  <span>
+                    <strong>${Number(im.last_price).toFixed(2)}</strong>
+                    <span style="color: ${imBull ? 'var(--bull)' : 'var(--bear)'}; margin-left: 6px;">${imBull ? '+' : ''}${Number(im.change_pct).toFixed(2)}%</span>
+                    <span style="color: var(--primary); margin-left: 6px;">${corrStr}</span>
+                  </span>
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+      `
+          : ''
+      }
 
       ${
         peerSymbols.length > 0
@@ -1103,6 +1262,69 @@ export function renderSymbolOverviewModal(i18n) {
           : ''
       }
 
+      <!-- Multi-Year Seasonals Heatmap (Strictly derived from >= 12 distinct real D1 months) -->
+      <div class="card-subtle" style="margin-bottom: 10px;">
+        <div class="row-between" style="margin-bottom: 8px;">
+          <strong style="font-size: 13px; color: var(--text-strong);">
+            ${i18n.getCurrentLanguage() === 'fa' ? 'نقشه حرارتی فصلی چندساله (Multi-Year Seasonals)' : 'Multi-Year Seasonals Heatmap'}
+          </strong>
+          <span class="ltr-num" style="font-size: 9.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; background: rgba(38,166,154,0.14); color: var(--bull);">LOCAL_DERIVED</span>
+        </div>
+        ${
+          !seasonals.hasSufficientData
+            ? `<div style="font-size: 11.5px; color: var(--text-muted); line-height: 1.5;">
+                 ${
+                   i18n.getCurrentLanguage() === 'fa'
+                     ? `برای محاسبه دقیق فصلی حداقل به ۱۲ ماه تقویمی مجزا در تایم‌فریم روزانه (D1) نیاز است (موجود: ${seasonals.distinctMonthCount} ماه). تایم‌فریم D1 را همگام‌سازی کنید.`
+                     : `Requires at least 12 distinct UTC calendar months of D1 candles (currently ${seasonals.distinctMonthCount} months cached). Switch to D1/All to backfill.`
+                 }
+               </div>`
+            : `
+              <div style="overflow-x: auto;">
+                <table class="ltr-num" style="width: 100%; border-collapse: collapse; font-size: 10px; text-align: center;">
+                  <thead>
+                    <tr style="color: var(--text-muted); border-bottom: 1px solid var(--border);">
+                      <th style="padding: 4px; text-align: left;">Year</th>
+                      ${monthLabels.map((m) => `<th style="padding: 4px;">${m}</th>`).join('')}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    ${seasonals.yearsDesc
+                      .slice(0, 6)
+                      .map(
+                        (yr) => `
+                        <tr style="border-bottom: 1px solid rgba(120,123,134,0.12);">
+                          <td style="padding: 4px; font-weight: 700; text-align: left; color: var(--text-strong);">${yr}</td>
+                          ${Array.from({ length: 12 }, (_, idx) => idx + 1)
+                            .map((mo) => {
+                              const val = seasonals.cells[`${yr}-${mo}`];
+                              if (val === undefined) return '<td style="padding: 4px; color: var(--text-dim);">—</td>';
+                              const bg = val >= 0 ? 'rgba(38,166,154,0.18)' : 'rgba(239,83,80,0.18)';
+                              const fg = val >= 0 ? 'var(--bull)' : 'var(--bear)';
+                              return `<td style="padding: 4px; background: ${bg}; color: ${fg}; font-weight: 700;">${val >= 0 ? '+' : ''}${val.toFixed(1)}%</td>`;
+                            })
+                            .join('')}
+                        </tr>
+                      `
+                      )
+                      .join('')}
+                    <tr style="background: var(--card-bg); font-weight: 700;">
+                      <td style="padding: 4px; text-align: left; color: var(--primary);">Avg / Win</td>
+                      ${seasonals.monthlyStats
+                        .map((st) => {
+                          if (st.avgPct === null) return '<td style="padding: 4px;">—</td>';
+                          const fg = st.avgPct >= 0 ? 'var(--bull)' : 'var(--bear)';
+                          return `<td style="padding: 4px; color: ${fg};">${st.avgPct >= 0 ? '+' : ''}${st.avgPct.toFixed(1)}%<div style="font-size: 9px; color: var(--text-muted);">${st.winRatePct.toFixed(0)}%W</div></td>`;
+                        })
+                        .join('')}
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            `
+        }
+      </div>
+
       <!-- Instrument Profile (with Copyable FIGI, ISIN & GoogleFinance Formula) -->
       <div class="card-subtle">
         <div style="font-size: 13px; font-weight: 700; color: var(--text); margin-bottom: 8px;">
@@ -1188,13 +1410,13 @@ export function renderSymbolOverviewModal(i18n) {
             .join('')}
         </div>
 
-        <!-- Mini-Chart + Range Chips -->
+        <!-- Mini-Chart + Range Chips + Export -->
         <div style="background: var(--bg); border: 1px solid var(--border); border-radius: 6px; padding: 6px; margin-bottom: 10px;">
           <svg viewBox="0 0 ${svgW} ${svgH}" width="100%" height="122" style="display: block;">
             <line x1="0" y1="${prevCloseY.toFixed(1)}" x2="${svgW}" y2="${prevCloseY.toFixed(1)}" stroke="#787B86" stroke-dasharray="4 4" stroke-width="1"/>
             ${miniCandlesSvg}
           </svg>
-          <div class="row-between" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);">
+          <div class="row-between" style="margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border); gap: 6px; flex-wrap: wrap;">
             <div style="display: flex; align-items: center; gap: 3px; flex-wrap: wrap;">
               ${ranges
                 .map(
@@ -1202,9 +1424,13 @@ export function renderSymbolOverviewModal(i18n) {
                 )
                 .join('')}
             </div>
-            <button class="btn btn-sm btn-primary" data-action="open-chart" data-symbol="${sym.symbolCode}" title="${i18n.t('action_open_chart_view')}">
-              <span>⛶ ${i18n.t('action_open_chart_view')}</span>
-            </button>
+            <div style="display: flex; align-items: center; gap: 4px;">
+              <button class="btn btn-sm ltr-num" data-action="export-candles-csv" data-symbol="${sym.symbolCode}" title="Export CSV">CSV</button>
+              <button class="btn btn-sm ltr-num" data-action="export-candles-json" data-symbol="${sym.symbolCode}" title="Export JSON">JSON</button>
+              <button class="btn btn-sm btn-primary" data-action="open-chart" data-symbol="${sym.symbolCode}" title="${i18n.t('action_open_chart_view')}">
+                <span>⛶ ${i18n.t('action_open_chart_view')}</span>
+              </button>
+            </div>
           </div>
         </div>
 

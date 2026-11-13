@@ -5,8 +5,8 @@ import {
   escapeHtml,
   getLocalByokKeys,
   getInstrumentSpec,
-} from '../core/store.js?v=1.38.0';
-import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.38.1';
+} from '../core/store.js?v=1.39.0';
+import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.39.0';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -360,6 +360,61 @@ export function renderSettingsModal(i18n) {
             <div class="ltr-num" style="font-weight: 600; color: var(--text);">${serverUtc}</div>
           </div>
         </div>
+        ${(() => {
+          const activeTabObj = state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0];
+          const diagSym = activeTabObj ? state.symbols.find((s) => s.symbolCode === activeTabObj.symbolCode) : state.symbols[0];
+          const gap = (activeTabObj && activeTabObj.gapSummary) || (diagSym && diagSym.gapSummary) || null;
+          const gapsFound = gap ? Number(gap.gaps_found ?? gap.gap_count ?? 0) : 0;
+          const missingTotal = gap ? Number(gap.missing_bars_total ?? gap.totalMissingBars ?? 0) : 0;
+          const integrityStr = gap && Number.isFinite(Number(gap.integrity_ratio))
+            ? `${(Number(gap.integrity_ratio) * 100).toFixed(2)}%`
+            : '—';
+          const statusLabel = gap ? escapeHtml(String(gap.status || 'AUDITED')) : (isFa ? 'نیاز به بررسی' : 'Not Audited');
+          return `
+            <div class="row-between" style="margin-top: 10px; padding: 8px 10px; border-radius: 6px; border: 1px solid var(--border); background: var(--card-bg); flex-wrap: wrap; gap: 8px;">
+              <div style="font-size: 11px;">
+                <div style="font-weight: 700; color: var(--text-strong);">
+                  ${isFa ? 'ممیزی سلامت و گپ داده (ENG-03)' : 'Gap & Data Integrity Audit (ENG-03)'}
+                </div>
+                <div class="ltr-num" style="color: var(--text-muted); margin-top: 2px;">
+                  ${diagSym ? escapeHtml(diagSym.symbolCode) : '—'} · ${activeTabObj ? escapeHtml(activeTabObj.timeframe) : 'M15'} · Status: <strong>${statusLabel}</strong> · Gaps: <strong>${gapsFound}</strong> (${missingTotal} bars) · Integrity: <strong>${integrityStr}</strong>
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm" data-action="audit-active-gap">
+                🔍 ${isFa ? 'بررسی گپ و یکپارچگی' : 'Audit Gaps'}
+              </button>
+            </div>
+          `;
+        })()}
+      </div>
+    </details>
+
+    <details class="tv-accordion">
+      <summary>
+        <span>🛡️ ${i18n.t('settings_backup_title') || (isFa ? 'پشتیبان‌گیری و بازیابی رمزنگاری‌شده (AES-256-GCM)' : 'Encrypted Backup & Restore (AES-256-GCM)')}</span>
+      </summary>
+      <div class="tv-accordion-body" style="padding-top: 8px;">
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
+          ${i18n.t('settings_backup_subtitle') || (isFa ? 'خروجی و بازیابی کل فضای کاری با رمزنگاری PBKDF2-HMAC-SHA256 + AES-256-GCM بدون ذخیره کلیدهای API.' : 'Export/restore full workspace archive using PBKDF2-HMAC-SHA256 + AES-256-GCM; BYOK keys remain strictly device-local.')}
+        </div>
+        ${
+          state.backupStatusMessage
+            ? `<div class="ltr-num" style="font-size: 11px; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; background: rgba(38,166,154,0.12); border: 1px solid var(--bull); color: var(--text-strong);">${escapeHtml(state.backupStatusMessage)}</div>`
+            : ''
+        }
+        <form id="backup-export-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
+          <input id="backup-export-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1; min-width: 180px; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'عبارت عبور پشتیبان (حداقل ۸ کاراکتر)' : 'Backup passphrase (min 8 chars)'}" required autocomplete="off" />
+          <button type="submit" class="btn btn-sm btn-primary">
+            🔒 ${i18n.t('settings_backup_export_btn') || (isFa ? 'دانلود پشتیبان (.cibak.json)' : 'Export Backup (.cibak.json)')}
+          </button>
+        </form>
+        <form id="backup-restore-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 8px; border-top: 1px dashed var(--border);">
+          <input id="backup-restore-file" type="file" accept=".json,.cibak.json,application/json" class="input-field" style="flex: 1; min-width: 180px; font-size: 11px; padding: 4px;" required />
+          <input id="backup-restore-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1; min-width: 160px; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'رمز فایل پشتیبان' : 'Restore passphrase'}" required autocomplete="off" />
+          <button type="submit" class="btn btn-sm">
+            🔓 ${i18n.t('settings_backup_restore_btn') || (isFa ? 'بازیابی نسخه پشتیبان' : 'Restore Backup')}
+          </button>
+        </form>
       </div>
     </details>
   `;

@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
-import { state, escapeHtml } from '../core/store.js?v=1.38.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.38.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.39.0';
+import { state, escapeHtml } from '../core/store.js?v=1.39.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.39.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -25,14 +25,28 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showSma200 ? 1 : 0) +
       (activeTab.showEma20 ? 1 : 0) +
       (activeTab.showEma50 ? 1 : 0) +
+      (activeTab.showEma200 ? 1 : 0) +
       (activeTab.showSupertrend ? 1 : 0) +
       (activeTab.showVwap ? 1 : 0) +
+      (activeTab.showPsar ? 1 : 0) +
+      (activeTab.showIchimoku ? 1 : 0) +
+      (activeTab.showKeltner ? 1 : 0) +
+      (activeTab.showDonchian ? 1 : 0) +
+      (activeTab.showMtfEma ? 1 : 0) +
+      (activeTab.showKillzones ? 1 : 0) +
       (activeTab.showBollinger ? 1 : 0) +
       (activeTab.showOverlayMacd ? 1 : 0) +
       (activeTab.showVolume !== false ? 1 : 0) +
       (activeTab.showRsi14 ? 1 : 0) +
       (activeTab.showMacd ? 1 : 0) +
       (activeTab.showAtr14 ? 1 : 0) +
+      (activeTab.showAdx14 ? 1 : 0) +
+      (activeTab.showStoch14 ? 1 : 0) +
+      (activeTab.showCci20 ? 1 : 0) +
+      (activeTab.showWillR14 ? 1 : 0) +
+      (activeTab.showObv ? 1 : 0) +
+      (activeTab.showCmf20 ? 1 : 0) +
+      (activeTab.showRoc12 ? 1 : 0) +
       (activeTab.showSmcStructure ? 1 : 0) +
       (activeTab.showFvg ? 1 : 0) +
       (activeTab.showVolumeProfile ? 1 : 0)
@@ -202,6 +216,14 @@ export function renderTopHeaderBar(activeTab, i18n) {
           <span>${escapeHtml(statusText)}</span>
         </span>
 
+        <button class="tv-tool-btn ltr-num" data-action="export-candles-csv" title="${i18n.t('action_export_csv') || 'Export CSV'}">
+          CSV
+        </button>
+
+        <button class="tv-tool-btn ltr-num" data-action="export-candles-json" title="${i18n.t('action_export_json') || 'Export JSON'}">
+          JSON
+        </button>
+
         <button class="tv-tool-btn" data-action="take-chart-snapshot" title="${i18n.t('action_take_snapshot')}">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/><circle cx="12" cy="13" r="4"/></svg>
         </button>
@@ -314,8 +336,15 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('#EC4899', 'SMA 200', isFa ? 'میانگین متحرک ساده ۲۰۰ دوره‌ای (روند کلان)' : '200-Period Institutional Simple Moving Average', activeTab.showSma200, 'toggle-sma200')}
           ${renderToggleRow('#10B981', 'EMA 20', isFa ? 'میانگین متحرک نمایی سریع ۲۰ دوره‌ای' : '20-Period Fast Exponential Moving Average', activeTab.showEma20, 'toggle-ema20')}
           ${renderToggleRow('#06B6D4', 'EMA 50', isFa ? 'میانگین متحرک نمایی ۵۰ دوره‌ای' : '50-Period Exponential Moving Average', activeTab.showEma50, 'toggle-ema50')}
+          ${renderToggleRow('#F472B6', 'EMA 200', isFa ? 'میانگین متحرک نمایی ۲۰۰ دوره‌ای (روند بلندمدت)' : '200-Period Institutional Exponential Moving Average', activeTab.showEma200, 'toggle-ema200')}
           ${renderToggleRow('#26A69A', 'Supertrend (10, 3)', isFa ? 'خط روند هوشمند سوپرترند (سبز صعودی / قرمز نزولی)' : 'Dynamic ATR Supertrend trailing stop (Period 10, Mult 3)', activeTab.showSupertrend, 'toggle-supertrend')}
           ${renderToggleRow('#EAB308', 'Session VWAP', isFa ? 'میانگین قیمت وزنی حجم (تراز سشن روزانه UTC)' : 'Session-Anchored Volume Weighted Average Price', activeTab.showVwap, 'toggle-vwap')}
+          ${renderToggleRow('#FB923C', 'Parabolic SAR (0.02, 0.20)', isFa ? 'نقاط تعقیب روند و چرخش پارابولیک سار' : 'Wilder Parabolic Stop and Reverse dots (0.02, 0.20)', activeTab.showPsar, 'toggle-psar')}
+          ${renderToggleRow('#14B8A6', 'Ichimoku Cloud (9, 26, 52, 26)', isFa ? 'ابر ایچیموکو با تنکانسن، کیجونسن، سنکو اسپن A/B و چیکو' : 'Tenkan, Kijun, Senkou Span A/B cloud & Chikou Span', activeTab.showIchimoku, 'toggle-ichimoku')}
+          ${renderToggleRow('#0EA5E9', 'Keltner Channels (20, 10, 2.0)', isFa ? 'کانال کلتنر بر پایه EMA 20 و ۲ برابر ATR 10' : 'EMA 20 basis ± 2.0× Wilder ATR 10 channel', activeTab.showKeltner, 'toggle-keltner')}
+          ${renderToggleRow('#6366F1', 'Donchian Channels (20)', isFa ? 'کانال شکست دونچیان ۲۰ دوره‌ای (سقف/کف/میانه)' : '20-Period Highest High / Lowest Low breakout channel', activeTab.showDonchian, 'toggle-donchian')}
+          ${renderToggleRow('#FACC15', 'MTF EMA (20)', isFa ? 'میانگین نمایی تایم‌فریم بالاتر (بدون نشت آینده — Non-Lookahead)' : 'Higher-Timeframe closed-bar EMA 20 step overlay (Zero Lookahead)', activeTab.showMtfEma, 'toggle-mtf-ema')}
+          ${renderToggleRow('#38BDF8', isFa ? 'Trading Killzones (Asia / London / NY)' : 'Session Killzones (Asia / London / NY Overlap)', isFa ? 'نوارهای زمانی سشن‌های آسیا، لندن، نیویورک و همپوشانی (UTC)' : 'UTC session background bands (Asia 00-09, London 07-16, NY 13-22)', activeTab.showKillzones, 'toggle-killzones')}
           ${renderToggleRow('#A855F7', `Bollinger Bands (${state.chartPreferences.bollingerPeriod || 20}, ${state.chartPreferences.bollingerStdDev || 2})`, isFa ? 'کانال نوسان بولینگر با قابلیت تنظیم دوره (Period) و انحراف معیار (StdDev)' : 'Configurable Bollinger volatility channel (Period & StdDev)', activeTab.showBollinger, 'toggle-bollinger')}
           <div class="card-subtle" style="padding: 8px 11px; margin-top: -4px; border-top: 1px dashed var(--border);">
             <div class="row-between" style="font-size: 11.5px; margin-bottom: 6px; flex-wrap: wrap; gap: 6px;">
@@ -356,6 +385,13 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('#A855F7', 'RSI (14)', isFa ? 'شاخص قدرت نسبی ۱۴ دوره‌ای با سطوح اشباع ۳۰ و ۷۰ در پنل پایین' : '14-Period Wilder Relative Strength Index with 30/70 levels', activeTab.showRsi14, 'toggle-rsi14')}
           ${renderToggleRow('#2962FF', 'MACD (12, 26, 9)', isFa ? 'خطوط مکدی، سیگنال و هیستوگرام مومنتوم در پنل پایین' : 'MACD Line, Signal Line, and Momentum Histogram sub-pane', activeTab.showMacd, 'toggle-macd')}
           ${renderToggleRow('#F43F5E', 'ATR (14)', isFa ? 'میانگین دامنه نوسان واقعی ۱۴ دوره‌ای در پنل مجزای پایین' : '14-Period Wilder Average True Range volatility sub-pane', activeTab.showAtr14, 'toggle-atr14')}
+          ${renderToggleRow('#F59E0B', 'ADX / DMI (14)', isFa ? 'شاخص قدرت روند و جهت حرکتی (+DI / -DI / ADX) با خط مرجع ۲۵' : 'Directional Movement Index (+DI / -DI) & ADX trend strength (Ref 25)', activeTab.showAdx14, 'toggle-adx14')}
+          ${renderToggleRow('#06B6D4', 'Stochastic (14, 3, 3)', isFa ? 'اسیلاتور استوکاستیک کند (%K / %D) با سطوح اشباع ۲۰ و ۸۰' : 'Slow Stochastic Oscillator (%K / %D) with 20/80 thresholds', activeTab.showStoch14, 'toggle-stoch14')}
+          ${renderToggleRow('#10B981', 'CCI (20)', isFa ? 'شاخص کانال کالا ۲۰ دوره‌ای با سطوح -۱۰۰ و +۱۰۰' : 'Commodity Channel Index (20) with ±100 bands', activeTab.showCci20, 'toggle-cci20')}
+          ${renderToggleRow('#EC4899', 'Williams %R (14)', isFa ? 'شاخص ویلیامز درصد آر (-۱۰۰ تا ۰) با سطوح -۲۰ و -۸۰' : 'Williams Percent Range (-100 to 0) with -20 / -80 bands', activeTab.showWillR14, 'toggle-willr14')}
+          ${renderToggleRow('#3B82F6', 'OBV', isFa ? 'حجم تعادلی تجمعی (On-Balance Volume)' : 'On-Balance Volume cumulative flow', activeTab.showObv, 'toggle-obv')}
+          ${renderToggleRow('#22C55E', 'CMF (20)', isFa ? 'جریان نقدینگی چایکین ۲۰ دوره‌ای (-۱ تا +۱)' : 'Chaikin Money Flow (20) accumulation/distribution oscillator', activeTab.showCmf20, 'toggle-cmf20')}
+          ${renderToggleRow('#EAB308', 'ROC (12)', isFa ? 'نرخ تغییر قیمت ۱۲ دوره‌ای حول محور صفر' : '12-Period Price Rate of Change (%) around 0.0', activeTab.showRoc12, 'toggle-roc12')}
 
           <!-- Volume Pane & Height Control -->
           <div class="card-subtle" style="padding: 8px 11px;">

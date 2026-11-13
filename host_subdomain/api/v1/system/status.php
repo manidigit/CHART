@@ -115,8 +115,8 @@ if ($totalCandles === 0) {
 
 ApiEnvelope::sendSuccess([
     'status' => 'healthy',
-    'version' => '1.38.0',
-    'phase' => 'Phase 1 - DB-First Central Core, 6-Provider & 22-Symbol Catalog',
+    'version' => '1.39.0',
+    'phase' => 'Phase 2 & 3 - Multi-Anchor Pro Tools, Indicators, Killzones, Live Intel, Gap Audit & Backup',
     'server_time_utc' => $nowUtc,
     'server_time_ms' => $nowMs,
     'database' => [
@@ -129,6 +129,6 @@ ApiEnvelope::sendSuccess([
     'total_candles' => $totalCandles,
     'candle_stats' => $candleStats,
     'registered_owner' => $ownerRegistered,
-    'supported_timeframes' => ['M15', 'H1', 'H4', 'D1', 'W1'],
-    'supported_providers' => ['tvdatafeed', 'biquote', 'twelve_data', 'dukascopy', 'yahoo_finance', 'eia_brent_spot'],
+    'supported_timeframes' => ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
+    'supported_providers' => ['tvdatafeed', 'biquote', 'twelve_data', 'dukascopy', 'yahoo_finance', 'stooq', 'eia_brent_spot'],
 ], 'status_system_healthy');

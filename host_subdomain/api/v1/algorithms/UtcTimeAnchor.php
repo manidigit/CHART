@@ -68,6 +68,103 @@ final class UtcTimeAnchor
         return (int) (floor($epochMs / $step) * $step);
     }
 
+    /**
+     * DST- & session-calendar-aware bucket open/close resolver (ENG-01).
+     * - CRYPTO_24_7: always 00:00 UTC anchored.
+     * - US_EQUITIES: H1/H4/D1 aligned to 09:30 America/New_York regular session (with DST).
+     * - OTC_FX_METALS: D1 aligned to NY 17:00 rollover (17:00 prev day -> 17:00 day); intraday stays UTC.
+     *
+     * @return array{open_ms: int, close_ms: int, session_anchored: bool}
+     */
+    public static function getSessionBucketBounds(int $epochMs, string $timeframe, string $symbolCode = 'XAUUSD'): array
+    {
+        $tf = strtoupper($timeframe);
+        $step = self::stepMilliseconds($tf);
+        $cal = self::getSessionCalendar($symbolCode);
+
+        if ($tf === 'W1' || $cal === self::CALENDAR_CRYPTO_24_7 || $tf === 'M15' || $tf === 'M30') {
+            $openMs = self::snapToOpenUtcMs($epochMs, $tf);
+            return [
+                'open_ms' => $openMs,
+                'close_ms' => $openMs + $step,
+                'session_anchored' => false,
+            ];
+        }
+
+        try {
+            $nyTz = new \DateTimeZone('America/New_York');
+            $dtNy = (new \DateTimeImmutable('@' . intdiv($epochMs, 1000)))->setTimezone($nyTz);
+
+            if ($cal === self::CALENDAR_US_EQUITIES) {
+                $sessionDate = $dtNy->format('Y-m-d');
+                $sessionStart = new \DateTimeImmutable($sessionDate . ' 09:30:00', $nyTz);
+                $sessionEnd = new \DateTimeImmutable($sessionDate . ' 16:00:00', $nyTz);
+                $sessionStartMs = $sessionStart->getTimestamp() * 1000;
+                $sessionEndMs = $sessionEnd->getTimestamp() * 1000;
+
+                if ($tf === 'D1') {
+                    // Canonical D1 key stays aligned to UTC midnight for stable daily display while close respects 16:00 ET
+                    $utcDayOpenMs = self::snapToOpenUtcMs($epochMs, 'D1');
+                    return [
+                        'open_ms' => $utcDayOpenMs,
+                        'close_ms' => max($utcDayOpenMs + 1, $sessionEndMs),
+                        'session_anchored' => true,
+                    ];
+                }
+
+                // Regular US Equities H1 (09:30, 10:30, ..., 15:30 ET) & H4 (09:30, 13:30 ET)
+                if ($epochMs >= $sessionStartMs && $epochMs < $sessionEndMs) {
+                    $offsetMs = $epochMs - $sessionStartMs;
+                    $bucketIdx = intdiv($offsetMs, $step);
+                    $openMs = $sessionStartMs + ($bucketIdx * $step);
+                    $closeMs = min($sessionEndMs, $openMs + $step);
+                    return [
+                        'open_ms' => $openMs,
+                        'close_ms' => $closeMs,
+                        'session_anchored' => true,
+                    ];
+                }
+
+                // Extended/off-session fallback anchored to 09:30 ET step grid
+                $bucketIdx = (int) floor(($epochMs - $sessionStartMs) / $step);
+                $openMs = $sessionStartMs + ($bucketIdx * $step);
+                return [
+                    'open_ms' => $openMs,
+                    'close_ms' => $openMs + $step,
+                    'session_anchored' => true,
+                ];
+            }
+
+            if ($cal === self::CALENDAR_OTC_FX_METALS && $tf === 'D1') {
+                // NY 17:00 rollover day key, anchored at UTC midnight for D1 display while closing at 17:00 NY
+                $shiftedNy = $dtNy->modify('+7 hours');
+                $tradeDate = $shiftedNy->format('Y-m-d');
+                $rolloverClose = new \DateTimeImmutable($tradeDate . ' 17:00:00', $nyTz);
+                $utcDayOpenMs = (new \DateTimeImmutable($tradeDate . ' 00:00:00', new \DateTimeZone('UTC')))->getTimestamp() * 1000;
+                return [
+                    'open_ms' => $utcDayOpenMs,
+                    'close_ms' => $rolloverClose->getTimestamp() * 1000,
+                    'session_anchored' => true,
+                ];
+            }
+        } catch (\Throwable) {
+            // Fall through to standard UTC snapping
+        }
+
+        $openMs = self::snapToOpenUtcMs($epochMs, $tf);
+        return [
+            'open_ms' => $openMs,
+            'close_ms' => $openMs + $step,
+            'session_anchored' => false,
+        ];
+    }
+
+    public static function snapToSessionOpenUtcMs(int $epochMs, string $timeframe, string $symbolCode = 'XAUUSD'): int
+    {
+        $bounds = self::getSessionBucketBounds($epochMs, $timeframe, $symbolCode);
+        return $bounds['open_ms'];
+    }
+
     public static function snapToCandleOpenUtc(int $epochMs, string $timeframe): int
     {
         return self::snapToOpenUtcMs($epochMs, $timeframe);

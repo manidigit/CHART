@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.38.0';
+import { I18nManager } from './core/i18n.js?v=1.39.0';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -12,6 +12,7 @@ import {
   saveLocalByokKeys,
   savePanelLayout,
   escapeHtml,
+  sanitizeSymbolCode,
   getCachedOrAggregatedCandles,
   resetColorsToDefault,
   resetAlgoParamsToDefault,
@@ -19,7 +20,7 @@ import {
   registerAutoSyncCallback,
   INDICATOR_FLAG_KEYS,
   syncIndicatorsAcrossTabsAndPrefs,
-} from './core/store.js?v=1.38.0';
+} from './core/store.js?v=1.39.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -33,25 +34,30 @@ import {
   logoutOwnerOnServer,
   syncSymbolNow,
   syncAllWatchlistSymbols,
-} from './services/apiService.js?v=1.38.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.38.0';
-import { DrawingGeometry } from './algorithms/drawingGeometry.js?v=1.38.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.38.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.38.0';
+  fetchLiveQuote,
+  fetchGapReport,
+  exportEncryptedBackup,
+  restoreEncryptedBackup,
+  fetchSymbolIntel,
+} from './services/apiService.js?v=1.39.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.39.0';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.39.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.39.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.39.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.38.1';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.38.0';
+} from './views/headerView.js?v=1.39.0';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.39.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.38.1';
-import { renderPredictionModal } from './views/analysisView.js?v=1.38.1';
-import { renderSettingsModal } from './views/settingsView.js?v=1.38.1';
-import { renderRightIconRail } from './views/navigationView.js?v=1.38.0';
+} from './views/watchlistView.js?v=1.39.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.39.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.39.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.39.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -347,8 +353,15 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showSma200, '#EC4899', 'SMA 200', 'toggle-sma200');
   pushPill(activeTab.showEma20, '#10B981', 'EMA 20', 'toggle-ema20');
   pushPill(activeTab.showEma50, '#06B6D4', 'EMA 50', 'toggle-ema50');
+  pushPill(activeTab.showEma200, '#F472B6', 'EMA 200', 'toggle-ema200');
   pushPill(activeTab.showSupertrend, '#26A69A', 'Supertrend (10,3)', 'toggle-supertrend');
   pushPill(activeTab.showVwap, '#EAB308', 'VWAP', 'toggle-vwap');
+  pushPill(activeTab.showPsar, '#FB923C', 'PSAR', 'toggle-psar');
+  pushPill(activeTab.showIchimoku, '#14B8A6', 'Ichimoku', 'toggle-ichimoku');
+  pushPill(activeTab.showKeltner, '#0EA5E9', 'Keltner', 'toggle-keltner');
+  pushPill(activeTab.showDonchian, '#6366F1', 'Donchian', 'toggle-donchian');
+  pushPill(activeTab.showMtfEma, '#FACC15', 'MTF EMA 20', 'toggle-mtf-ema');
+  pushPill(activeTab.showKillzones, '#38BDF8', 'Killzones', 'toggle-killzones');
   const bbP = Number(state.chartPreferences.bollingerPeriod || 20);
   const bbS = Number(state.chartPreferences.bollingerStdDev || 2.0);
   pushPill(activeTab.showBollinger, '#A855F7', `BB (${bbP},${bbS})`, 'toggle-bollinger');
@@ -359,6 +372,26 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showRsi14, '#A855F7', 'RSI 14', 'toggle-rsi14');
   pushPill(activeTab.showMacd, '#2962FF', 'MACD', 'toggle-macd');
   pushPill(activeTab.showAtr14, '#F43F5E', 'ATR 14', 'toggle-atr14');
+  pushPill(activeTab.showAdx14, '#F59E0B', 'ADX 14', 'toggle-adx14');
+  pushPill(activeTab.showStoch14, '#06B6D4', 'Stoch 14', 'toggle-stoch14');
+  pushPill(activeTab.showCci20, '#10B981', 'CCI 20', 'toggle-cci20');
+  pushPill(activeTab.showWillR14, '#EC4899', 'Will %R', 'toggle-willr14');
+  pushPill(activeTab.showObv, '#3B82F6', 'OBV', 'toggle-obv');
+  pushPill(activeTab.showCmf20, '#22C55E', 'CMF 20', 'toggle-cmf20');
+  pushPill(activeTab.showRoc12, '#EAB308', 'ROC 12', 'toggle-roc12');
+
+  const gapInfo = activeTab.gapSummary || (sym && sym.gapSummary) || null;
+  const gapCount = gapInfo ? Number(gapInfo.gaps_found ?? gapInfo.gap_count ?? 0) : 0;
+  if (gapCount > 0) {
+    indPills.push(
+      `<span class="tv-ind-pill" style="color: #F59E0B; border-color: rgba(245,158,11,0.45);" title="Detected missing trading bars in feed history">⚠ Gaps: ${gapCount}</span>`
+    );
+  }
+  if (activeTab.liveQuoteMode === 'LIVE_TICK' && Number.isFinite(Number(activeTab.liveQuotePrice))) {
+    indPills.push(
+      `<span class="tv-ind-pill" style="color: #38BDF8; border-color: rgba(56,189,248,0.45);">LIVE ${PriceFormatter.formatPrice(activeTab.liveQuotePrice, dec)}</span>`
+    );
+  }
 
   return `
     <div class="tv-ohlc-overlay ltr-num" dir="ltr">
@@ -741,6 +774,151 @@ function bindCanvasEvents(activeTab) {
   let scaleStartY = 0;
   let scaleStartFactor = 1.0;
 
+  // Shared drawing placement helper for both desktop mouse and mobile 1-finger touch
+  const placeDrawingAtPoint = (x, y, meta) => {
+    const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
+    if (!tool || tool === 'cursor' || !meta || !meta.visible || meta.visible.length === 0) return false;
+    const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
+    const candle = meta.visible[idx];
+    if (!candle) return false;
+    const rawPrice = meta.yToPrice(y);
+    const price = activeTab.isMagnetMode
+      ? DrawingGeometry.snapToCandleOhlc(candle.open, candle.high, candle.low, candle.close, rawPrice)
+      : rawPrice;
+    const openSec = Number(
+      candle.openTimeSec || Math.floor(Number(candle.open_time_utc_ms || 0) / 1000)
+    );
+    const openMs = openSec * 1000;
+    const drawKey = `${activeTab.symbolCode}_${activeTab.timeframe}`;
+
+    if (tool === 'hline' || tool === 'horizontal_line') {
+      activeTab.drawings.push({
+        id: 'd_' + Date.now(),
+        type: 'horizontal_line',
+        price: price,
+        price1: price,
+        colorHex: activeTab.activeDrawingColorHex,
+        strokeWidthPx: activeTab.activeDrawingWidthPx,
+        lineWidthPx: activeTab.activeDrawingWidthPx,
+      });
+      activeTab.activeTool = 'cursor';
+      activeTab.activeDrawingTool = 'cursor';
+      saveDrawings(drawKey, activeTab.drawings);
+      renderApp();
+      return true;
+    }
+    if (tool === 'vline' || tool === 'vertical_line') {
+      activeTab.drawings.push({
+        id: 'd_' + Date.now(),
+        type: 'vertical_line',
+        timeUtcMillis: openMs,
+        time1EpochSec: openSec,
+        colorHex: activeTab.activeDrawingColorHex,
+        strokeWidthPx: activeTab.activeDrawingWidthPx,
+        lineWidthPx: activeTab.activeDrawingWidthPx,
+      });
+      activeTab.activeTool = 'cursor';
+      activeTab.activeDrawingTool = 'cursor';
+      saveDrawings(drawKey, activeTab.drawings);
+      renderApp();
+      return true;
+    }
+    if (tool === 'trend' || tool === 'trend_line' || tool === 'fib' || tool === 'fib_retracement') {
+      const canonicalType = tool === 'fib' || tool === 'fib_retracement' ? 'fib_retracement' : 'trend_line';
+      if (!activeTab.pendingTrendStart) {
+        activeTab.pendingTrendStart = { timeUtcMillis: openMs, time1EpochSec: openSec, price1: price };
+        activeTab.pendingAnchors = [{ timeUtcMillis: openMs, price }];
+        scheduleCanvasRedraw();
+        showFloatingToast(
+          i18n.getCurrentLanguage() === 'fa'
+            ? 'نقطه دوم را روی نمودار لمس یا کلیک کنید (1 / 2)'
+            : 'Click or tap anchor 2 on chart (1 / 2)'
+        );
+      } else {
+        activeTab.drawings.push({
+          id: 'd_' + Date.now(),
+          type: canonicalType,
+          startTimeUtcMillis: activeTab.pendingTrendStart.timeUtcMillis,
+          endTimeUtcMillis: openMs,
+          startPrice: activeTab.pendingTrendStart.price1,
+          endPrice: price,
+          time1EpochSec: activeTab.pendingTrendStart.time1EpochSec,
+          price1: activeTab.pendingTrendStart.price1,
+          time2EpochSec: openSec,
+          price2: price,
+          colorHex: activeTab.activeDrawingColorHex,
+          strokeWidthPx: activeTab.activeDrawingWidthPx,
+          lineWidthPx: activeTab.activeDrawingWidthPx,
+        });
+        activeTab.pendingTrendStart = null;
+        activeTab.pendingAnchors = [];
+        activeTab.activeTool = 'cursor';
+        activeTab.activeDrawingTool = 'cursor';
+        saveDrawings(drawKey, activeTab.drawings);
+        renderApp();
+      }
+      return true;
+    }
+    if (tool === 'long_position' || tool === 'short_position') {
+      const stepMs = PriceFormatter.stepMilliseconds(activeTab.timeframe);
+      const endMs = openMs + stepMs * 8;
+      const span = Math.max((meta.maxP - meta.minP) * 0.14, price * 0.004);
+      const isLong = tool === 'long_position';
+      const targetPrice = isLong ? price + span * 1.8 : Math.max(0.0001, price - span * 1.8);
+      const stopPrice = isLong ? Math.max(0.0001, price - span * 0.9) : price + span * 0.9;
+      activeTab.drawings.push({
+        id: 'd_' + Date.now(),
+        type: tool,
+        startTimeUtcMillis: openMs,
+        endTimeUtcMillis: endMs,
+        entryPrice: price,
+        targetPrice,
+        stopPrice,
+        colorHex: isLong ? '#26A69A' : '#EF5350',
+        strokeWidthPx: activeTab.activeDrawingWidthPx,
+        lineWidthPx: activeTab.activeDrawingWidthPx,
+      });
+      activeTab.activeTool = 'cursor';
+      activeTab.activeDrawingTool = 'cursor';
+      saveDrawings(drawKey, activeTab.drawings);
+      renderApp();
+      return true;
+    }
+    if (PHASE2_DRAWING_TOOLS.has(tool)) {
+      const needed = DrawingGeometry.requiredAnchorsForTool(tool);
+      const nextAnchors = [...(activeTab.pendingAnchors || []), { timeUtcMillis: openMs, price }];
+      if (nextAnchors.length < needed) {
+        activeTab.pendingAnchors = nextAnchors;
+        scheduleCanvasRedraw();
+        showFloatingToast(
+          i18n.getCurrentLanguage() === 'fa'
+            ? `نقطه ${nextAnchors.length} از ${needed} ثبت شد`
+            : `Anchor ${nextAnchors.length} / ${needed} placed`
+        );
+      } else {
+        const newDrawing = {
+          id: 'd_' + Date.now(),
+          type: tool,
+          anchors: nextAnchors,
+          variant: tool === 'pitchfork' ? String(activeTab.pitchforkVariant || 'original') : 'original',
+          colorHex: activeTab.activeDrawingColorHex,
+          strokeWidthPx: activeTab.activeDrawingWidthPx,
+          lineWidthPx: activeTab.activeDrawingWidthPx,
+        };
+        activeTab.drawings.push(newDrawing);
+        activeTab.selectedDrawingId = newDrawing.id;
+        activeTab.pendingAnchors = [];
+        activeTab.pendingTrendStart = null;
+        activeTab.activeTool = 'cursor';
+        activeTab.activeDrawingTool = 'cursor';
+        saveDrawings(drawKey, activeTab.drawings);
+        renderApp();
+      }
+      return true;
+    }
+    return false;
+  };
+
   canvas.addEventListener('mousedown', (e) => {
     const rect = canvas.getBoundingClientRect();
     const x = e.clientX - rect.left;
@@ -757,104 +935,8 @@ function bindCanvasEvents(activeTab) {
 
     const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
     if (tool && tool !== 'cursor') {
-      const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
-      const candle = meta.visible[idx];
-      if (!candle) return;
-      const rawPrice = meta.yToPrice(y);
-      const price = activeTab.isMagnetMode
-        ? DrawingGeometry.snapToCandleOhlc(candle.open, candle.high, candle.low, candle.close, rawPrice)
-        : rawPrice;
-      const openSec = Number(
-        candle.openTimeSec || Math.floor(Number(candle.open_time_utc_ms || 0) / 1000)
-      );
-      const openMs = openSec * 1000;
-      const drawKey = `${activeTab.symbolCode}_${activeTab.timeframe}`;
-
-      if (tool === 'hline' || tool === 'horizontal_line') {
-        activeTab.drawings.push({
-          id: 'd_' + Date.now(),
-          type: 'horizontal_line',
-          price: price,
-          price1: price,
-          colorHex: activeTab.activeDrawingColorHex,
-          strokeWidthPx: activeTab.activeDrawingWidthPx,
-          lineWidthPx: activeTab.activeDrawingWidthPx,
-        });
-        activeTab.activeTool = 'cursor';
-        activeTab.activeDrawingTool = 'cursor';
-        saveDrawings(drawKey, activeTab.drawings);
-        renderApp();
-        return;
-      }
-      if (tool === 'vline' || tool === 'vertical_line') {
-        activeTab.drawings.push({
-          id: 'd_' + Date.now(),
-          type: 'vertical_line',
-          timeUtcMillis: openMs,
-          time1EpochSec: openSec,
-          colorHex: activeTab.activeDrawingColorHex,
-          strokeWidthPx: activeTab.activeDrawingWidthPx,
-          lineWidthPx: activeTab.activeDrawingWidthPx,
-        });
-        activeTab.activeTool = 'cursor';
-        activeTab.activeDrawingTool = 'cursor';
-        saveDrawings(drawKey, activeTab.drawings);
-        renderApp();
-        return;
-      }
-      if (tool === 'trend' || tool === 'trend_line' || tool === 'fib' || tool === 'fib_retracement') {
-        const canonicalType = tool === 'fib' || tool === 'fib_retracement' ? 'fib_retracement' : 'trend_line';
-        if (!activeTab.pendingTrendStart) {
-          activeTab.pendingTrendStart = { timeUtcMillis: openMs, time1EpochSec: openSec, price1: price };
-        } else {
-          activeTab.drawings.push({
-            id: 'd_' + Date.now(),
-            type: canonicalType,
-            startTimeUtcMillis: activeTab.pendingTrendStart.timeUtcMillis,
-            endTimeUtcMillis: openMs,
-            startPrice: activeTab.pendingTrendStart.price1,
-            endPrice: price,
-            time1EpochSec: activeTab.pendingTrendStart.time1EpochSec,
-            price1: activeTab.pendingTrendStart.price1,
-            time2EpochSec: openSec,
-            price2: price,
-            colorHex: activeTab.activeDrawingColorHex,
-            strokeWidthPx: activeTab.activeDrawingWidthPx,
-            lineWidthPx: activeTab.activeDrawingWidthPx,
-          });
-          activeTab.pendingTrendStart = null;
-          activeTab.activeTool = 'cursor';
-          activeTab.activeDrawingTool = 'cursor';
-          saveDrawings(drawKey, activeTab.drawings);
-          renderApp();
-        }
-        return;
-      }
-      if (tool === 'long_position' || tool === 'short_position') {
-        const stepMs = PriceFormatter.stepMilliseconds(activeTab.timeframe);
-        const endMs = openMs + stepMs * 8;
-        const span = Math.max((meta.maxP - meta.minP) * 0.14, price * 0.004);
-        const isLong = tool === 'long_position';
-        const targetPrice = isLong ? price + span * 1.8 : Math.max(0.0001, price - span * 1.8);
-        const stopPrice = isLong ? Math.max(0.0001, price - span * 0.9) : price + span * 0.9;
-        activeTab.drawings.push({
-          id: 'd_' + Date.now(),
-          type: tool,
-          startTimeUtcMillis: openMs,
-          endTimeUtcMillis: endMs,
-          entryPrice: price,
-          targetPrice,
-          stopPrice,
-          colorHex: isLong ? '#26A69A' : '#EF5350',
-          strokeWidthPx: activeTab.activeDrawingWidthPx,
-          lineWidthPx: activeTab.activeDrawingWidthPx,
-        });
-        activeTab.activeTool = 'cursor';
-        activeTab.activeDrawingTool = 'cursor';
-        saveDrawings(drawKey, activeTab.drawings);
-        renderApp();
-        return;
-      }
+      placeDrawingAtPoint(x, y, meta);
+      return;
     } else if (canvas._chartLayout && Array.isArray(activeTab.drawings) && activeTab.drawings.length > 0) {
       const tol = Number(state.chartPreferences.drawingHitTolerancePx || 24);
       const hit = DrawingGeometry.hitTestDrawing(
@@ -960,116 +1042,6 @@ function bindCanvasEvents(activeTab) {
     },
     { passive: false }
   );
-
-  // Shared drawing placement helper for both desktop mouse and mobile 1-finger touch
-  const placeDrawingAtPoint = (x, y, meta) => {
-    const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
-    if (!tool || tool === 'cursor' || !meta || !meta.visible || meta.visible.length === 0) return false;
-    const idx = Math.max(0, Math.min(meta.visible.length - 1, Math.floor(x / meta.slotW)));
-    const candle = meta.visible[idx];
-    if (!candle) return false;
-    const rawPrice = meta.yToPrice(y);
-    const price = activeTab.isMagnetMode
-      ? DrawingGeometry.snapToCandleOhlc(candle.open, candle.high, candle.low, candle.close, rawPrice)
-      : rawPrice;
-    const openSec = Number(
-      candle.openTimeSec || Math.floor(Number(candle.open_time_utc_ms || 0) / 1000)
-    );
-    const openMs = openSec * 1000;
-    const drawKey = `${activeTab.symbolCode}_${activeTab.timeframe}`;
-
-    if (tool === 'hline' || tool === 'horizontal_line') {
-      activeTab.drawings.push({
-        id: 'd_' + Date.now(),
-        type: 'horizontal_line',
-        price: price,
-        price1: price,
-        colorHex: activeTab.activeDrawingColorHex,
-        strokeWidthPx: activeTab.activeDrawingWidthPx,
-        lineWidthPx: activeTab.activeDrawingWidthPx,
-      });
-      activeTab.activeTool = 'cursor';
-      activeTab.activeDrawingTool = 'cursor';
-      saveDrawings(drawKey, activeTab.drawings);
-      renderApp();
-      return true;
-    }
-    if (tool === 'vline' || tool === 'vertical_line') {
-      activeTab.drawings.push({
-        id: 'd_' + Date.now(),
-        type: 'vertical_line',
-        timeUtcMillis: openMs,
-        time1EpochSec: openSec,
-        colorHex: activeTab.activeDrawingColorHex,
-        strokeWidthPx: activeTab.activeDrawingWidthPx,
-        lineWidthPx: activeTab.activeDrawingWidthPx,
-      });
-      activeTab.activeTool = 'cursor';
-      activeTab.activeDrawingTool = 'cursor';
-      saveDrawings(drawKey, activeTab.drawings);
-      renderApp();
-      return true;
-    }
-    if (tool === 'trend' || tool === 'trend_line' || tool === 'fib' || tool === 'fib_retracement') {
-      const canonicalType = tool === 'fib' || tool === 'fib_retracement' ? 'fib_retracement' : 'trend_line';
-      if (!activeTab.pendingTrendStart) {
-        activeTab.pendingTrendStart = { timeUtcMillis: openMs, time1EpochSec: openSec, price1: price };
-        showFloatingToast(
-          i18n.getCurrentLanguage() === 'fa'
-            ? 'نقطه دوم را روی نمودار لمس یا کلیک کنید'
-            : 'Tap or click second point on chart'
-        );
-      } else {
-        activeTab.drawings.push({
-          id: 'd_' + Date.now(),
-          type: canonicalType,
-          startTimeUtcMillis: activeTab.pendingTrendStart.timeUtcMillis,
-          endTimeUtcMillis: openMs,
-          startPrice: activeTab.pendingTrendStart.price1,
-          endPrice: price,
-          time1EpochSec: activeTab.pendingTrendStart.time1EpochSec,
-          price1: activeTab.pendingTrendStart.price1,
-          time2EpochSec: openSec,
-          price2: price,
-          colorHex: activeTab.activeDrawingColorHex,
-          strokeWidthPx: activeTab.activeDrawingWidthPx,
-          lineWidthPx: activeTab.activeDrawingWidthPx,
-        });
-        activeTab.pendingTrendStart = null;
-        activeTab.activeTool = 'cursor';
-        activeTab.activeDrawingTool = 'cursor';
-        saveDrawings(drawKey, activeTab.drawings);
-        renderApp();
-      }
-      return true;
-    }
-    if (tool === 'long_position' || tool === 'short_position') {
-      const stepMs = PriceFormatter.stepMilliseconds(activeTab.timeframe);
-      const endMs = openMs + stepMs * 8;
-      const span = Math.max((meta.maxP - meta.minP) * 0.14, price * 0.004);
-      const isLong = tool === 'long_position';
-      const targetPrice = isLong ? price + span * 1.8 : Math.max(0.0001, price - span * 1.8);
-      const stopPrice = isLong ? Math.max(0.0001, price - span * 0.9) : price + span * 0.9;
-      activeTab.drawings.push({
-        id: 'd_' + Date.now(),
-        type: tool,
-        startTimeUtcMillis: openMs,
-        endTimeUtcMillis: endMs,
-        entryPrice: price,
-        targetPrice,
-        stopPrice,
-        colorHex: isLong ? '#26A69A' : '#EF5350',
-        strokeWidthPx: activeTab.activeDrawingWidthPx,
-        lineWidthPx: activeTab.activeDrawingWidthPx,
-      });
-      activeTab.activeTool = 'cursor';
-      activeTab.activeDrawingTool = 'cursor';
-      saveDrawings(drawKey, activeTab.drawings);
-      renderApp();
-      return true;
-    }
-    return false;
-  };
 
   // Mobile/Tablet Touch Support: 1-finger tap drawing, selected-drawing drag-to-translate, pan, 2-finger pinch-zoom, and long-press crosshair inspection
   let touchStartX = 0;
@@ -1431,17 +1403,79 @@ function bindSettingsForms() {
     });
   }
 
+  const backupExportForm = document.getElementById('backup-export-form');
+  if (backupExportForm) {
+    backupExportForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const passEl = document.getElementById('backup-export-passphrase');
+      const pass = String((passEl && passEl.value) || '');
+      if (pass.length < 8) {
+        showFloatingToast(i18n.t('error_password_short'));
+        return;
+      }
+      const res = await exportEncryptedBackup(pass);
+      if (res && res.ok && res.backup) {
+        const stamp = new Date().toISOString().slice(0, 10);
+        triggerTextDownload(
+          `chart_intelligence_backup_${stamp}.cibak.json`,
+          'application/json;charset=utf-8',
+          JSON.stringify(res.backup, null, 2)
+        );
+        state.backupStatusMessage = 'Encrypted AES-256-GCM backup exported.';
+        showFloatingToast(state.backupStatusMessage);
+      } else {
+        state.backupStatusMessage = (res && res.error) || 'Backup export failed';
+        showFloatingToast(state.backupStatusMessage);
+      }
+      renderApp();
+    });
+  }
+
+  const backupRestoreForm = document.getElementById('backup-restore-form');
+  if (backupRestoreForm) {
+    backupRestoreForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fileInput = document.getElementById('backup-restore-file');
+      const passInput = document.getElementById('backup-restore-passphrase');
+      const file = fileInput && fileInput.files ? fileInput.files[0] : null;
+      const pass = String((passInput && passInput.value) || '');
+      if (!file || pass.length < 8) {
+        showFloatingToast(i18n.t('error_password_short'));
+        return;
+      }
+      try {
+        const parsed = JSON.parse(await file.text());
+        const res = await restoreEncryptedBackup(parsed, pass);
+        if (res && res.ok) {
+          await downloadWorkspaceSync();
+          ensureInitialTabs();
+          state.backupStatusMessage = 'Workspace restored & verified cleanly.';
+          showFloatingToast(state.backupStatusMessage);
+        } else {
+          state.backupStatusMessage = (res && res.error) || 'Restore failed: wrong passphrase or tampered file.';
+          showFloatingToast(state.backupStatusMessage);
+        }
+      } catch {
+        state.backupStatusMessage = 'Invalid .cibak.json archive file.';
+        showFloatingToast(state.backupStatusMessage);
+      }
+      renderApp();
+    });
+  }
+
   const addSymForm = document.getElementById('add-symbol-form');
   if (addSymForm) {
     addSymForm.addEventListener('submit', async (e) => {
       e.preventDefault();
       const fd = new FormData(addSymForm);
-      const code = String(fd.get('symbol_code') || '')
-        .trim()
-        .toUpperCase();
-      const title = String(fd.get('symbol_title') || '').trim();
+      const code = sanitizeSymbolCode(fd.get('symbol_code') || '');
+      const title = String(fd.get('symbol_title') || '').trim().slice(0, 64);
       const provider = String(fd.get('provider') || 'tvdatafeed');
-      if (code && !state.symbols.some((s) => s.symbolCode === code)) {
+      if (!code || code.length < 2) {
+        showFloatingToast(i18n.t('error_invalid_symbol') || 'Invalid symbol code (A-Z, 0-9, ., _, :, -)');
+        return;
+      }
+      if (!state.symbols.some((s) => s.symbolCode === code)) {
         const initTf = provider === 'stooq' ? 'D1' : 'M15';
         state.symbols.push({
           symbolCode: code,
@@ -1589,11 +1623,65 @@ document.addEventListener('click', async (e) => {
       searchInput.select();
     }
   } else if (action === 'open-symbol-overview') {
-    state.symbolOverviewCode = el.getAttribute('data-symbol');
+    const code = el.getAttribute('data-symbol');
+    state.symbolOverviewCode = code;
     renderApp();
+    if (code) {
+      fetchSymbolIntel(code).then(() => renderApp()).catch(() => {});
+    }
   } else if (action === 'open-active-symbol-overview') {
-    state.symbolOverviewCode = activeTab ? activeTab.symbolCode : 'SPOTBRENT';
+    const code = activeTab ? activeTab.symbolCode : 'SPOTBRENT';
+    state.symbolOverviewCode = code;
     renderApp();
+    fetchSymbolIntel(code).then(() => renderApp()).catch(() => {});
+  } else if (action === 'refresh-symbol-intel') {
+    const code = el.getAttribute('data-symbol') || state.symbolOverviewCode;
+    if (code) {
+      showFloatingToast('Refreshing live external intel...');
+      await fetchSymbolIntel(code, true);
+      renderApp();
+    }
+  } else if (action === 'audit-active-gap') {
+    const targetTab = activeTab || state.openTabs[0];
+    if (targetTab) {
+      const report = await fetchGapReport(targetTab.symbolCode, targetTab.provider, targetTab.timeframe);
+      if (report) {
+        const gf = Number(report.gaps_found ?? report.gap_count ?? 0);
+        showFloatingToast(`Gap Audit (${targetTab.symbolCode} ${targetTab.timeframe}): ${report.status || 'CLEAN'} · ${gf} gaps`);
+      }
+      renderApp();
+    }
+  } else if (action === 'export-candles-csv' || action === 'export-candles-json') {
+    const codeAttr = el.getAttribute('data-symbol');
+    const symObj = codeAttr
+      ? state.symbols.find((s) => s.symbolCode === codeAttr)
+      : (activeTab ? state.symbols.find((s) => s.symbolCode === activeTab.symbolCode) : state.symbols[0]);
+    const tabForExport = (codeAttr && state.openTabs.find((t) => t.symbolCode === codeAttr)) || activeTab;
+    const symCode = (symObj && symObj.symbolCode) || (tabForExport && tabForExport.symbolCode) || 'SPOTBRENT';
+    const prov = (tabForExport && tabForExport.provider) || (symObj && symObj.activeProvider) || 'tvdatafeed';
+    const tf = (tabForExport && tabForExport.timeframe) || (symObj && symObj.timeframe) || 'M15';
+    const candles = (tabForExport && Array.isArray(tabForExport.candles) && tabForExport.candles.length > 0)
+      ? tabForExport.candles
+      : getCachedOrAggregatedCandles(symCode, prov, tf);
+    if (!candles || candles.length === 0) {
+      showFloatingToast('No candles loaded to export.');
+      return;
+    }
+    if (action === 'export-candles-csv') {
+      triggerTextDownload(
+        `${symCode}_${prov}_${tf}.csv`,
+        'text/csv;charset=utf-8',
+        formatCandlesCsv(symCode, prov, tf, candles)
+      );
+      showFloatingToast(`Exported ${candles.length} bars to CSV`);
+    } else {
+      triggerTextDownload(
+        `${symCode}_${prov}_${tf}.json`,
+        'application/json;charset=utf-8',
+        formatCandlesJson(symCode, prov, tf, candles)
+      );
+      showFloatingToast(`Exported ${candles.length} bars to JSON`);
+    }
   } else if (action === 'close-symbol-overview' || action === 'close-symbol-overview-backdrop') {
     if (action === 'close-symbol-overview-backdrop' && e.target !== el) return;
     state.symbolOverviewCode = null;
@@ -1740,12 +1828,40 @@ document.addEventListener('click', async (e) => {
     activeTab.showEma50 = !activeTab.showEma50;
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
+  } else if (action === 'toggle-ema200' && activeTab) {
+    activeTab.showEma200 = !activeTab.showEma200;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
   } else if (action === 'toggle-supertrend' && activeTab) {
     activeTab.showSupertrend = !activeTab.showSupertrend;
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-vwap' && activeTab) {
     activeTab.showVwap = !activeTab.showVwap;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-psar' && activeTab) {
+    activeTab.showPsar = !activeTab.showPsar;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-ichimoku' && activeTab) {
+    activeTab.showIchimoku = !activeTab.showIchimoku;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-keltner' && activeTab) {
+    activeTab.showKeltner = !activeTab.showKeltner;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-donchian' && activeTab) {
+    activeTab.showDonchian = !activeTab.showDonchian;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-mtf-ema' && activeTab) {
+    activeTab.showMtfEma = !activeTab.showMtfEma;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-killzones' && activeTab) {
+    activeTab.showKillzones = !activeTab.showKillzones;
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-bollinger' && activeTab) {
@@ -1776,6 +1892,34 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'toggle-atr14' && activeTab) {
     activeTab.showAtr14 = !activeTab.showAtr14;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-adx14' && activeTab) {
+    activeTab.showAdx14 = !activeTab.showAdx14;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-stoch14' && activeTab) {
+    activeTab.showStoch14 = !activeTab.showStoch14;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-cci20' && activeTab) {
+    activeTab.showCci20 = !activeTab.showCci20;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-willr14' && activeTab) {
+    activeTab.showWillR14 = !activeTab.showWillR14;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-obv' && activeTab) {
+    activeTab.showObv = !activeTab.showObv;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-cmf20' && activeTab) {
+    activeTab.showCmf20 = !activeTab.showCmf20;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-roc12' && activeTab) {
+    activeTab.showRoc12 = !activeTab.showRoc12;
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'toggle-smc-structure' && activeTab) {
@@ -1877,7 +2021,20 @@ document.addEventListener('click', async (e) => {
     activeTab.activeDrawingTool = t;
     activeTab.pendingTrendStart = null;
     activeTab.pendingTrendPoint = null;
+    activeTab.pendingAnchors = [];
+    state.activeRailPopup = null;
     state.mobileSheet = null;
+    renderApp();
+  } else if (action === 'set-pitchfork-variant' && activeTab) {
+    const variant = el.getAttribute('data-variant') || 'original';
+    activeTab.pitchforkVariant = variant;
+    if (activeTab.selectedDrawingId) {
+      activeTab.drawings = (activeTab.drawings || []).map((d) =>
+        d.id === activeTab.selectedDrawingId && d.type === 'pitchfork' ? { ...d, variant } : d
+      );
+      saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    }
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'toggle-magnet' && activeTab) {
     activeTab.isMagnetMode = !activeTab.isMagnetMode;
@@ -1955,6 +2112,9 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'clear-drawings' && activeTab) {
     activeTab.drawings = [];
     activeTab.selectedDrawingId = null;
+    activeTab.pendingTrendStart = null;
+    activeTab.pendingTrendPoint = null;
+    activeTab.pendingAnchors = [];
     saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, []);
     renderApp();
   } else if (action === 'project-scenario-levels' && activeTab) {
@@ -2195,6 +2355,71 @@ function showFloatingToast(message, durationMs = 3000) {
   }, durationMs);
 }
 
+function csvCell(val) {
+  const s = String(val ?? '');
+  return /[",\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+function formatCandlesCsv(symbolCode, provider, timeframe, candles) {
+  const header = 'symbol,provider,timeframe,open_time_utc_ms,open_time_utc_iso,open,high,low,close,volume';
+  const rows = candles.map((c) => {
+    const ms = Number(c.open_time_utc_ms || Number(c.openTimeSec || 0) * 1000);
+    const iso = c.open_time_utc_iso || c.open_time_utc || (ms > 0 ? new Date(ms).toISOString() : '');
+    return [
+      csvCell(symbolCode),
+      csvCell(provider),
+      csvCell(timeframe),
+      ms,
+      csvCell(iso),
+      c.open,
+      c.high,
+      c.low,
+      c.close,
+      c.volume ?? 0,
+    ].join(',');
+  });
+  return [header, ...rows].join('\n');
+}
+
+function formatCandlesJson(symbolCode, provider, timeframe, candles) {
+  return JSON.stringify(
+    {
+      schema: 'ci_candles_export_v1',
+      symbol: symbolCode,
+      provider,
+      timeframe,
+      count: candles.length,
+      exported_at_utc: new Date().toISOString(),
+      candles: candles.map((c) => {
+        const ms = Number(c.open_time_utc_ms || Number(c.openTimeSec || 0) * 1000);
+        return {
+          open_time_utc_ms: ms,
+          open_time_utc_iso: c.open_time_utc_iso || c.open_time_utc || (ms > 0 ? new Date(ms).toISOString() : ''),
+          open: Number(c.open),
+          high: Number(c.high),
+          low: Number(c.low),
+          close: Number(c.close),
+          volume: Number(c.volume ?? 0),
+        };
+      }),
+    },
+    null,
+    2
+  );
+}
+
+function triggerTextDownload(filename, mimeType, content) {
+  const blob = new Blob([content], { type: mimeType });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+}
+
 async function handleChartSnapshot() {
   const activeTab = getActiveTab();
   const canvas = document.getElementById('main-chart-canvas');
@@ -2406,8 +2631,9 @@ async function bootstrap() {
           const sym = state.symbols.find((s) => s.symbolCode === tab.symbolCode);
           const lastAuto = Number(tab._lastAutoSyncMs || 0);
           const lastFetch = Number((sym && sym.lastSuccessfulFetchMs) || 0);
-          const stepMs = PriceFormatter.stepMilliseconds(tab.timeframe || 'M15');
-          const snapOpen = PriceFormatter.snapToOpenUtcMs(nowMs, tab.timeframe || 'M15');
+          const snapOpen = PriceFormatter.snapToSessionOpenUtcMs
+            ? PriceFormatter.snapToSessionOpenUtcMs(nowMs, tab.timeframe || 'M15', tab.symbolCode)
+            : PriceFormatter.snapToOpenUtcMs(nowMs, tab.timeframe || 'M15');
           const elapsedInBar = nowMs - snapOpen;
           const isIntraday = ['M15', 'M30', 'H1', 'H4'].includes(String(tab.timeframe || 'M15').toUpperCase());
           const nearBarClose = elapsedInBar >= 1500 && elapsedInBar <= 12000 && nowMs - lastAuto >= 15000;
@@ -2415,6 +2641,22 @@ async function bootstrap() {
           if (nearBarClose || periodicRefresh) {
             tab._lastAutoSyncMs = nowMs;
             syncSymbolNow(tab.symbolCode, tab.timeframe, renderApp).catch(() => {});
+          }
+
+          // ENG-02: Non-intrusive 15s read-only forming quote tick polling
+          const lastQuotePoll = Number(tab._lastQuotePollMs || 0);
+          if (nowMs - lastQuotePoll >= 15000 && (tab.candles || []).length > 0) {
+            tab._lastQuotePollMs = nowMs;
+            fetchLiveQuote(tab.symbolCode, tab.provider, tab.timeframe)
+              .then((q) => {
+                if (q && Number.isFinite(Number(q.price))) {
+                  tab.liveQuotePrice = Number(q.price);
+                  tab.liveQuoteMode = q.mode || 'LIVE_TICK';
+                  tab.formingBar = q.forming_bar || null;
+                  redrawActiveCanvas();
+                }
+              })
+              .catch(() => {});
           }
         }
       }

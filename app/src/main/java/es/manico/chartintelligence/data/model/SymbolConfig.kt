@@ -55,7 +55,8 @@ data class SymbolConfig(
     val providerStatus: String = "READY",
     val lastSuccessfulFetchMs: Long = 0L,
     val lastCandleCloseMs: Long = 0L,
-    val connectionStatus: ConnectionStatus = ConnectionStatus.CONNECTED_LIVE
+    val connectionStatus: ConnectionStatus = ConnectionStatus.CONNECTED_LIVE,
+    val gapSummary: es.manico.chartintelligence.algorithms.GapReport? = null
 ) {
     val compositeTabKey: String
         get() = "${symbolCode}_${activeProvider.id}_${timeframe}"

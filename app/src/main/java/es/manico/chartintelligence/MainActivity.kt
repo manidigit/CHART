@@ -235,7 +235,14 @@ fun ChartIntelligenceApp(
                             onReorderSymbol = mainViewModel::reorderSymbol,
                             onAddCustomSymbol = mainViewModel::addCustomSymbol,
                             onNavigateToSettings = { mainViewModel.navigateTo(WorkspaceScreen.SETTINGS) },
-                            onNavigateToPrediction = { mainViewModel.navigateTo(WorkspaceScreen.PREDICTION) }
+                            onNavigateToPrediction = { mainViewModel.navigateTo(WorkspaceScreen.PREDICTION) },
+                            currentLanguage = state.language,
+                            symbolIntelByCode = state.symbolIntelByCode,
+                            isIntelLoading = state.isIntelLoading,
+                            onLoadSymbolIntel = mainViewModel::loadSymbolIntel,
+                            onGetD1CandlesForSymbol = mainViewModel::getD1CandlesForSymbol,
+                            onExportCandlesCsvToUri = { uri, sym, tf -> mainViewModel.exportCandlesCsvToUri(uri, sym, tf) },
+                            onExportCandlesJsonToUri = { uri, sym, tf -> mainViewModel.exportCandlesJsonToUri(uri, sym, tf) }
                         )
 
                         WorkspaceScreen.CHART_VIEW -> ChartViewScreen(
@@ -268,6 +275,20 @@ fun ChartIntelligenceApp(
                             onToggleSmcStructure = mainViewModel::toggleSmcStructureOnActiveTab,
                             onToggleFvg = mainViewModel::toggleFvgOnActiveTab,
                             onToggleVolumeProfile = mainViewModel::toggleVolumeProfileOnActiveTab,
+                            onToggleEma200 = mainViewModel::toggleEma200OnActiveTab,
+                            onTogglePsar = mainViewModel::togglePsarOnActiveTab,
+                            onToggleIchimoku = mainViewModel::toggleIchimokuOnActiveTab,
+                            onToggleKeltner = mainViewModel::toggleKeltnerOnActiveTab,
+                            onToggleDonchian = mainViewModel::toggleDonchianOnActiveTab,
+                            onToggleMtfEma = mainViewModel::toggleMtfEmaOnActiveTab,
+                            onToggleKillzones = mainViewModel::toggleKillzonesOnActiveTab,
+                            onToggleAdx14 = mainViewModel::toggleAdx14OnActiveTab,
+                            onToggleStoch14 = mainViewModel::toggleStoch14OnActiveTab,
+                            onToggleCci20 = mainViewModel::toggleCci20OnActiveTab,
+                            onToggleWillR14 = mainViewModel::toggleWillR14OnActiveTab,
+                            onToggleObv = mainViewModel::toggleObvOnActiveTab,
+                            onToggleCmf20 = mainViewModel::toggleCmf20OnActiveTab,
+                            onToggleRoc12 = mainViewModel::toggleRoc12OnActiveTab,
                             onUpdateBollingerParams = mainViewModel::updateBollingerParams,
                             onZoom = mainViewModel::zoomActiveTab,
                             onPinchZoom = mainViewModel::pinchZoomActiveTab,
@@ -280,6 +301,7 @@ fun ChartIntelligenceApp(
                             onToggleTimezoneMode = mainViewModel::toggleTimezoneMode,
                             onSelectCandle = mainViewModel::selectCandleOnActiveTab,
                             onSelectDrawingTool = mainViewModel::selectDrawingTool,
+                            onSelectPitchforkVariant = mainViewModel::setPitchforkVariantOnActiveTab,
                             onToggleMagnetMode = mainViewModel::toggleMagnetModeOnActiveTab,
                             onSelectDrawingColorHex = mainViewModel::setDrawingColorOnActiveTab,
                             onSelectDrawingWidthDp = mainViewModel::setDrawingWidthOnActiveTab,
@@ -335,7 +357,13 @@ fun ChartIntelligenceApp(
                             onUpdateTimezoneMode = mainViewModel::updateTimezoneMode,
                             onSaveApiKeys = mainViewModel::updatePersonalApiKeys,
                             onAddCustomSymbol = mainViewModel::addCustomSymbol,
-                            onDeleteSymbol = mainViewModel::deleteSymbol
+                            onDeleteSymbol = mainViewModel::deleteSymbol,
+                            activeGapReport = state.activeGapAuditReport ?: state.activeTab?.gapSummary,
+                            activeGapSymbolLabel = state.activeTab?.symbolCode ?: state.watchlistSymbols.firstOrNull()?.symbolCode,
+                            backupStatusMessage = state.backupStatusMessage,
+                            onRunGapAudit = mainViewModel::auditGapReportForActiveTab,
+                            onExportBackupToUri = mainViewModel::exportEncryptedBackupToUri,
+                            onRestoreBackupFromUri = mainViewModel::restoreEncryptedBackupFromUri
                         )
                     }
                 }

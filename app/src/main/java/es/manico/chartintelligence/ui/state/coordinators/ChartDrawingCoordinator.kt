@@ -3,6 +3,7 @@ package es.manico.chartintelligence.ui.state.coordinators
 import es.manico.chartintelligence.algorithms.DrawingGeometryAlgorithm
 import es.manico.chartintelligence.data.model.ChartDrawing
 import es.manico.chartintelligence.data.model.ChartTabState
+import es.manico.chartintelligence.data.model.DrawingAnchor
 import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.data.model.TrendAnchorPoint
 import es.manico.chartintelligence.data.repository.WorkspaceRepository
@@ -11,7 +12,7 @@ import java.util.UUID
 
 /**
  * Dedicated coordinator for managing interactive chart drawing tools lifecycle:
- * placement, selection, market-coordinate translation, deletion, and local persistence.
+ * placement, multi-anchor capture, Pitchfork variants, selection, translation, and persistence.
  */
 class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
 
@@ -19,6 +20,7 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
         return tab.copy(
             activeDrawingTool = tool,
             pendingTrendPoint = null,
+            pendingAnchors = emptyList(),
             isDrawingDockCollapsed = false
         )
     }
@@ -42,6 +44,8 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                 tab.copy(
                     drawings = updatedDrawings,
                     selectedDrawingId = newDrawing.id,
+                    pendingTrendPoint = null,
+                    pendingAnchors = emptyList(),
                     activeDrawingTool = DrawingTool.CURSOR
                 )
             }
@@ -57,16 +61,17 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                 tab.copy(
                     drawings = updatedDrawings,
                     selectedDrawingId = newDrawing.id,
+                    pendingTrendPoint = null,
+                    pendingAnchors = emptyList(),
                     activeDrawingTool = DrawingTool.CURSOR
                 )
             }
             DrawingTool.TREND_LINE -> {
                 if (tab.pendingTrendPoint == null) {
+                    val anchor = DrawingAnchor(timeUtcMillis = timeUtcMillis, price = price)
                     tab.copy(
-                        pendingTrendPoint = TrendAnchorPoint(
-                            timeUtcMillis = timeUtcMillis,
-                            price = price
-                        )
+                        pendingTrendPoint = TrendAnchorPoint(timeUtcMillis = timeUtcMillis, price = price),
+                        pendingAnchors = listOf(anchor)
                     )
                 } else {
                     val p1 = tab.pendingTrendPoint
@@ -85,17 +90,17 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                         drawings = updatedDrawings,
                         selectedDrawingId = newDrawing.id,
                         pendingTrendPoint = null,
+                        pendingAnchors = emptyList(),
                         activeDrawingTool = DrawingTool.CURSOR
                     )
                 }
             }
             DrawingTool.FIB_RETRACEMENT -> {
                 if (tab.pendingTrendPoint == null) {
+                    val anchor = DrawingAnchor(timeUtcMillis = timeUtcMillis, price = price)
                     tab.copy(
-                        pendingTrendPoint = TrendAnchorPoint(
-                            timeUtcMillis = timeUtcMillis,
-                            price = price
-                        )
+                        pendingTrendPoint = TrendAnchorPoint(timeUtcMillis = timeUtcMillis, price = price),
+                        pendingAnchors = listOf(anchor)
                     )
                 } else {
                     val p1 = tab.pendingTrendPoint
@@ -114,6 +119,7 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                         drawings = updatedDrawings,
                         selectedDrawingId = newDrawing.id,
                         pendingTrendPoint = null,
+                        pendingAnchors = emptyList(),
                         activeDrawingTool = DrawingTool.CURSOR
                     )
                 }
@@ -141,6 +147,8 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                 tab.copy(
                     drawings = updatedDrawings,
                     selectedDrawingId = newDrawing.id,
+                    pendingTrendPoint = null,
+                    pendingAnchors = emptyList(),
                     activeDrawingTool = DrawingTool.CURSOR
                 )
             }
@@ -167,10 +175,63 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                 tab.copy(
                     drawings = updatedDrawings,
                     selectedDrawingId = newDrawing.id,
+                    pendingTrendPoint = null,
+                    pendingAnchors = emptyList(),
                     activeDrawingTool = DrawingTool.CURSOR
                 )
             }
+            else -> {
+                val tool = tab.activeDrawingTool
+                val needed = tool.requiredAnchors.coerceAtLeast(1)
+                val nextAnchors = tab.pendingAnchors + DrawingAnchor(timeUtcMillis = timeUtcMillis, price = price)
+                if (nextAnchors.size < needed) {
+                    tab.copy(
+                        pendingAnchors = nextAnchors,
+                        pendingTrendPoint = nextAnchors.firstOrNull()?.let {
+                            TrendAnchorPoint(it.timeUtcMillis, it.price)
+                        }
+                    )
+                } else {
+                    val newDrawing = ChartDrawing.MultiAnchor(
+                        id = "${tool.id}_${UUID.randomUUID()}",
+                        toolType = tool,
+                        anchors = nextAnchors,
+                        variant = if (tool == DrawingTool.PITCHFORK) tab.pitchforkVariant else "original",
+                        colorHex = tab.activeDrawingColorHex,
+                        strokeWidthDp = tab.activeDrawingWidthDp
+                    )
+                    val updatedDrawings = tab.drawings + newDrawing
+                    repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
+                    tab.copy(
+                        drawings = updatedDrawings,
+                        selectedDrawingId = newDrawing.id,
+                        pendingAnchors = emptyList(),
+                        pendingTrendPoint = null,
+                        activeDrawingTool = DrawingTool.CURSOR
+                    )
+                }
+            }
         }
+    }
+
+    fun setPitchforkVariant(tab: ChartTabState, variant: String): ChartTabState {
+        val norm = variant.lowercase()
+        val targetId = tab.selectedDrawingId
+        val updatedDrawings = if (targetId != null) {
+            tab.drawings.map { d ->
+                if (d.id == targetId && d is ChartDrawing.MultiAnchor && d.toolType == DrawingTool.PITCHFORK) {
+                    d.copy(variant = norm)
+                } else {
+                    d
+                }
+            }.also { repository.saveDrawingsForChart(tab.chartId, it) }
+        } else {
+            tab.drawings
+        }
+        return tab.copy(
+            pitchforkVariant = norm,
+            drawings = updatedDrawings
+        )
     }
 
     fun toggleMagnetMode(tab: ChartTabState): ChartTabState {
@@ -198,6 +259,7 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                     is ChartDrawing.FibRetracement -> d.copy(colorHex = colorHex)
                     is ChartDrawing.LongPosition -> d.copy(colorHex = colorHex)
                     is ChartDrawing.ShortPosition -> d.copy(colorHex = colorHex)
+                    is ChartDrawing.MultiAnchor -> d.copy(colorHex = colorHex)
                 }
             }.also { repository.saveDrawingsForChart(tab.chartId, it) }
         } else {
@@ -221,6 +283,7 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
                     is ChartDrawing.FibRetracement -> d.copy(strokeWidthDp = clamped)
                     is ChartDrawing.LongPosition -> d.copy(strokeWidthDp = clamped)
                     is ChartDrawing.ShortPosition -> d.copy(strokeWidthDp = clamped)
+                    is ChartDrawing.MultiAnchor -> d.copy(strokeWidthDp = clamped)
                 }
             }.also { repository.saveDrawingsForChart(tab.chartId, it) }
         } else {
@@ -264,7 +327,8 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
         return tab.copy(
             drawings = emptyList(),
             selectedDrawingId = null,
-            pendingTrendPoint = null
+            pendingTrendPoint = null,
+            pendingAnchors = emptyList()
         )
     }
 }

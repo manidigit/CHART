@@ -164,79 +164,134 @@ jobs:
           bundle_json = json.dumps(bundle)
           deployer_php = f"""<?php
           $files = json_decode({repr(bundle_json)}, true);
-          foreach ($files as $rel => $b64) {{
-              $target = __DIR__ . '/' . $rel;
-              $dir = dirname($target);
-              if (!is_dir($dir)) {{
-                  @mkdir($dir, 0755, true);
-              }}
-              file_put_contents($target, base64_decode($b64));
-          }}
+          $snapshotName = 'snapshot_' . gmdate('Ymd_His');
+          $backupRoot = dirname(__DIR__) . '/_ci_backups';
           try {{
-              require_once __DIR__ . '/api/v1/core/Database.php';
-              $pdo = \\ChartIntelligence\\Core\\Database::getPdo();
+              if (!is_dir($backupRoot)) {{
+                  @mkdir($backupRoot, 0755, true);
+              }}
+              $snapDir = $backupRoot . '/' . $snapshotName;
+              @mkdir($snapDir, 0755, true);
+              $copyRec = function (string $src, string $dst) use (&$copyRec): void {{
+                  if (!is_dir($src)) return;
+                  if (!is_dir($dst)) @mkdir($dst, 0755, true);
+                  foreach (scandir($src) ?: [] as $entry) {{
+                      if ($entry === '.' || $entry === '..') continue;
+                      $s = $src . '/' . $entry;
+                      $d = $dst . '/' . $entry;
+                      if (is_dir($s)) $copyRec($s, $d);
+                      else @copy($s, $d);
+                  }}
+              }};
+              foreach (['api', 'assets', 'i18n', 'migrations'] as $dirName) {{
+                  $copyRec(__DIR__ . '/' . $dirName, $snapDir . '/' . $dirName);
+              }}
+              if (is_file(__DIR__ . '/index.html')) {{
+                  @copy(__DIR__ . '/index.html', $snapDir . '/index.html');
+              }}
+              // Keep only last 3 deployment snapshots
+              $allSnaps = glob($backupRoot . '/snapshot_*', GLOB_ONLYDIR) ?: [];
+              rsort($allSnaps, SORT_STRING);
+              foreach (array_slice($allSnaps, 3) as $staleSnap) {{
+                  $rmRec = function (string $p) use (&$rmRec): void {{
+                      if (!is_dir($p)) return;
+                      foreach (scandir($p) ?: [] as $e) {{
+                          if ($e === '.' || $e === '..') continue;
+                          $child = $p . '/' . $e;
+                          if (is_dir($child)) $rmRec($child);
+                          else @unlink($child);
+                      }}
+                      @rmdir($p);
+                  }};
+                  $rmRec($staleSnap);
+              }}
+
+              foreach ($files as $rel => $b64) {{
+                  $target = __DIR__ . '/' . $rel;
+                  $dir = dirname($target);
+                  if (!is_dir($dir)) {{
+                      @mkdir($dir, 0755, true);
+                  }}
+                  $tmpTarget = $target . '.tmp_' . getmypid();
+                  if (file_put_contents($tmpTarget, base64_decode($b64)) !== false) {{
+                      @rename($tmpTarget, $target);
+                  }} else {{
+                      file_put_contents($target, base64_decode($b64));
+                  }}
+              }}
+
               $seededCandles = 0;
-              if ($pdo !== null) {{
-                  $migrationFile = __DIR__ . '/migrations/001_phase1_init.sql';
-                  if (is_file($migrationFile)) {{
-                      $migSql = (string) file_get_contents($migrationFile);
-                      // Split by semicolon statements and execute sequentially
-                      $queries = array_filter(array_map('trim', explode(';', $migSql)));
-                      foreach ($queries as $q) {{
-                          if ($q !== '' && !str_starts_with($q, '--')) {{
-                              try {{ $pdo->exec($q); }} catch (\\Throwable) {{}}
+              try {{
+                  require_once __DIR__ . '/api/v1/core/Database.php';
+                  $pdo = \\ChartIntelligence\\Core\\Database::getPdo();
+                  if ($pdo !== null) {{
+                      foreach (['001_phase1_init.sql', '002_phase2_3_tables.sql'] as $migFileName) {{
+                          $migrationFile = __DIR__ . '/migrations/' . $migFileName;
+                          if (is_file($migrationFile)) {{
+                              $migSql = (string) file_get_contents($migrationFile);
+                              $queries = array_filter(array_map('trim', explode(';', $migSql)));
+                              foreach ($queries as $q) {{
+                                  if ($q !== '' && !str_starts_with($q, '--')) {{
+                                      try {{ $pdo->exec($q); }} catch (\\Throwable) {{}}
+                                  }}
+                              }}
                           }}
                       }}
-                  }}
-                  @$pdo->exec("DELETE FROM candles WHERE timeframe != 'D1' AND volume = 0 AND (high_price - low_price) < (open_price * 0.00018)");
-                  $sql = "INSERT INTO candles
-                      (chart_id, provider_id, timeframe, open_time_utc,
-                       open_price, high_price, low_price, close_price, volume, is_closed)
-                      VALUES (:cid, 'tvdatafeed', :tf, :open_ms, :o, :h, :l, :c, :v, 1)
-                      ON DUPLICATE KEY UPDATE
-                      open_price = VALUES(open_price),
-                      high_price = VALUES(high_price),
-                      low_price  = VALUES(low_price),
-                      close_price = VALUES(close_price),
-                      volume     = VALUES(volume)";
-                  $stmt = $pdo->prepare($sql);
-                  $symbolMap = [
-                      'SPOTBRENT' => 'chart_spotbrent_main',
-                      'XAUUSD'    => 'chart_xauusd_main',
-                  ];
-                  foreach ($symbolMap as $sym => $cid) {{
-                      foreach (['M15', 'H1', 'H4', 'D1', 'W1'] as $tf) {{
-                          $jsonPath = __DIR__ . '/data/tvdatafeed/' . $sym . '_' . $tf . '.json';
-                          if (is_file($jsonPath)) {{
-                              $decoded = json_decode((string) file_get_contents($jsonPath), true);
-                              $rows = $decoded['candles'] ?? [];
-                              if (is_array($rows) && count($rows) > 0) {{
-                                  $pdo->beginTransaction();
-                                  foreach ($rows as $bar) {{
-                                      $stmt->execute([
-                                          ':cid'     => $cid,
-                                          ':tf'      => $tf,
-                                          ':open_ms' => (int) ($bar['open_time_utc_ms'] ?? 0),
-                                          ':o'       => (string) ($bar['open'] ?? '0'),
-                                          ':h'       => (string) ($bar['high'] ?? '0'),
-                                          ':l'       => (string) ($bar['low'] ?? '0'),
-                                          ':c'       => (string) ($bar['close'] ?? '0'),
-                                          ':v'       => (string) ($bar['volume'] ?? '0'),
-                                      ]);
-                                      $seededCandles++;
+                      @$pdo->exec("DELETE FROM candles WHERE timeframe != 'D1' AND volume = 0 AND (high_price - low_price) < (open_price * 0.00018)");
+                      $sql = "INSERT INTO candles
+                          (chart_id, provider_id, timeframe, open_time_utc,
+                           open_price, high_price, low_price, close_price, volume, is_closed)
+                          VALUES (:cid, 'tvdatafeed', :tf, :open_ms, :o, :h, :l, :c, :v, 1)
+                          ON DUPLICATE KEY UPDATE
+                          open_price = VALUES(open_price),
+                          high_price = VALUES(high_price),
+                          low_price  = VALUES(low_price),
+                          close_price = VALUES(close_price),
+                          volume     = VALUES(volume)";
+                      $stmt = $pdo->prepare($sql);
+                      $symbolMap = [
+                          'SPOTBRENT' => 'chart_spotbrent_main',
+                          'XAUUSD'    => 'chart_xauusd_main',
+                      ];
+                      foreach ($symbolMap as $sym => $cid) {{
+                          foreach (['M15', 'H1', 'H4', 'D1', 'W1'] as $tf) {{
+                              $jsonPath = __DIR__ . '/data/tvdatafeed/' . $sym . '_' . $tf . '.json';
+                              if (is_file($jsonPath)) {{
+                                  $decoded = json_decode((string) file_get_contents($jsonPath), true);
+                                  $rows = $decoded['candles'] ?? [];
+                                  if (is_array($rows) && count($rows) > 0) {{
+                                      $pdo->beginTransaction();
+                                      foreach ($rows as $bar) {{
+                                          $stmt->execute([
+                                              ':cid'     => $cid,
+                                              ':tf'      => $tf,
+                                              ':open_ms' => (int) ($bar['open_time_utc_ms'] ?? 0),
+                                              ':o'       => (string) ($bar['open'] ?? '0'),
+                                              ':h'       => (string) ($bar['high'] ?? '0'),
+                                              ':l'       => (string) ($bar['low'] ?? '0'),
+                                              ':c'       => (string) ($bar['close'] ?? '0'),
+                                              ':v'       => (string) ($bar['volume'] ?? '0'),
+                                          ]);
+                                          $seededCandles++;
+                                      }}
+                                      $pdo->commit();
                                   }}
-                                  $pdo->commit();
                               }}
                           }}
                       }}
                   }}
+              }} catch (\\Throwable $e) {{
+                  // Database seeding error caught, web deployment stays intact
               }}
-          }} catch (\\Throwable $e) {{
-              // Database seeding error caught, web deployment stays intact
+              header('Content-Type: application/json');
+              echo json_encode(['ok' => true, 'snapshot' => $snapshotName, 'deployed_files' => count($files), 'seeded_tvdatafeed_candles' => $seededCandles]);
+          }} catch (\\Throwable $fatal) {{
+              http_response_code(500);
+              header('Content-Type: application/json');
+              echo json_encode(['ok' => false, 'error' => $fatal->getMessage()]);
+          }} finally {{
+              @unlink(__FILE__);
           }}
-          @unlink(__FILE__);
-          header('Content-Type: application/json');
-          echo json_encode(['ok' => true, 'deployed_files' => count($files), 'seeded_tvdatafeed_candles' => $seededCandles]);
           """
           with open("/tmp/_deploy_phase1.php", "w", encoding="utf-8") as df:
               df.write(deployer_php)
@@ -251,24 +306,37 @@ jobs:
           docroot = os.environ["CPANEL_DOCROOT"].strip().rstrip("/")
           auth_header = f"Authorization: cpanel {user}:{token}"
 
-          # Upload self-extracting deployer and index.html to docroot via Fileman/upload_files and Fileman/save_file_content
-          # Use content@{local_file} so curl reads large payloads (>128KB) from disk instead of hitting Linux MAX_ARG_STRLEN in execve
+          def run_curl_checked(cmd, label):
+              proc = subprocess.run(cmd, capture_output=True, text=True)
+              if proc.returncode != 0:
+                  raise RuntimeError(f"{{label}} curl failed ({{proc.returncode}}): {{proc.stderr}}")
+              lines = proc.stdout.strip().splitlines()
+              code = int(lines[-1]) if lines and lines[-1].isdigit() else 0
+              body = "\n".join(lines[:-1]) if lines and lines[-1].isdigit() else proc.stdout
+              if code >= 400:
+                  raise RuntimeError(f"{{label}} HTTP {{code}}: {{body}}")
+              return body
+
           for target_file, local_file in [("_deploy_phase1.php", "/tmp/_deploy_phase1.php"), ("index.html", "host_subdomain/index.html")]:
-              subprocess.run([
-                  "curl", "-ksS", "-H", auth_header,
+              run_curl_checked([
+                  "curl", "-ksS", "-w", "\\n%{{http_code}}", "-H", auth_header,
                   "-F", f"dir={docroot}",
                   "-F", "overwrite=1",
                   "-F", f"file-1=@{local_file};filename={target_file}",
                   f"{host}/execute/Fileman/upload_files"
-              ], check=False, stdout=subprocess.DEVNULL)
-              subprocess.run([
-                  "curl", "-ksS", "-H", auth_header,
+              ], f"upload {{target_file}}")
+              run_curl_checked([
+                  "curl", "-ksS", "-w", "\\n%{{http_code}}", "-H", auth_header,
                   "--data-urlencode", f"dir={docroot}",
                   "--data-urlencode", f"file={target_file}",
                   "--data-urlencode", f"content@{local_file}",
                   f"{host}/execute/Fileman/save_file_content"
-              ], check=False, stdout=subprocess.DEVNULL)
+              ], f"save {{target_file}}")
 
-          # Trigger extraction and MariaDB schema initialization
-          subprocess.run(["curl", "-ksSL", "https://chart.manico.es/_deploy_phase1.php"], check=False)
+          deploy_out = run_curl_checked([
+              "curl", "-ksSL", "-w", "\\n%{{http_code}}", "https://chart.manico.es/_deploy_phase1.php"
+          ], "execute _deploy_phase1.php")
+          print("Deploy response:", deploy_out)
+          if '"ok":true' not in deploy_out.replace(" ", ""):
+              raise RuntimeError(f"Deploy script did not return ok=true: {{deploy_out}}")
           EOF

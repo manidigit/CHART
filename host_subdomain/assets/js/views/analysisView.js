@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.38.0';
-import { state, escapeHtml } from '../core/store.js?v=1.38.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.38.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.39.0';
+import { state, escapeHtml } from '../core/store.js?v=1.39.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.39.0';
 
 export function computeTechnicalAnalytics(candles) {
   if (!candles || candles.length === 0) return null;
@@ -119,17 +119,17 @@ export function renderPredictionModal(activeTab, i18n) {
       ${selectorBar}
 
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 10px; margin-bottom: 12px;">
-        <!-- Bullish Breakout Card -->
+        <!-- Bullish Scenario Card -->
         <div class="card-subtle" style="border-color: rgba(38, 166, 154, 0.4);">
           <div class="row-between ltr-num" style="font-weight: 700; font-size: 13px; color: var(--bull); margin-bottom: 8px;">
-            <span>▲ Bullish Breakout</span>
+            <span>▲ Upside Structure Scenario</span>
             <span>${PriceFormatter.formatPrice(stats.r1, dec)} → ${PriceFormatter.formatPrice(stats.r2, dec)}</span>
           </div>
           <div class="ltr-num" style="font-size: 12px;">
-            <div class="row-between" style="margin-bottom: 5px;"><span style="color: var(--text-muted);">Entry Trigger (P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
-            <div class="row-between" style="margin-bottom: 5px; color: var(--bull);"><span>Target 1 (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
-            <div class="row-between" style="margin-bottom: 5px; color: var(--bull);"><span>Target 2 (R2)</span><strong>${PriceFormatter.formatPrice(stats.r2, dec)}</strong></div>
-            <div class="row-between" style="color: var(--bear); margin-bottom: 10px;"><span>Invalidation (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px;"><span style="color: var(--text-muted);">Breakout Threshold (P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px; color: var(--bull);"><span>Key Resistance 1 (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px; color: var(--bull);"><span>Key Resistance 2 (R2)</span><strong>${PriceFormatter.formatPrice(stats.r2, dec)}</strong></div>
+            <div class="row-between" style="color: var(--bear); margin-bottom: 10px;"><span>Structure Invalidation (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
             <button
               class="btn btn-sm btn-primary"
               style="width: 100%;"
@@ -145,17 +145,17 @@ export function renderPredictionModal(activeTab, i18n) {
           </div>
         </div>
 
-        <!-- Bearish Breakdown Card -->
+        <!-- Bearish Scenario Card -->
         <div class="card-subtle" style="border-color: rgba(239, 83, 80, 0.4);">
           <div class="row-between ltr-num" style="font-weight: 700; font-size: 13px; color: var(--bear); margin-bottom: 8px;">
-            <span>▼ Bearish Breakdown</span>
+            <span>▼ Downside Structure Scenario</span>
             <span>${PriceFormatter.formatPrice(stats.s1, dec)} → ${PriceFormatter.formatPrice(stats.s2, dec)}</span>
           </div>
           <div class="ltr-num" style="font-size: 12px;">
-            <div class="row-between" style="margin-bottom: 5px;"><span style="color: var(--text-muted);">Breakdown Trigger (P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
-            <div class="row-between" style="margin-bottom: 5px; color: var(--bear);"><span>Target 1 (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
-            <div class="row-between" style="margin-bottom: 5px; color: var(--bear);"><span>Target 2 (S2)</span><strong>${PriceFormatter.formatPrice(stats.s2, dec)}</strong></div>
-            <div class="row-between" style="color: var(--bull); margin-bottom: 10px;"><span>Invalidation (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px;"><span style="color: var(--text-muted);">Breakdown Threshold (P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px; color: var(--bear);"><span>Key Support 1 (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px; color: var(--bear);"><span>Key Support 2 (S2)</span><strong>${PriceFormatter.formatPrice(stats.s2, dec)}</strong></div>
+            <div class="row-between" style="color: var(--bull); margin-bottom: 10px;"><span>Structure Invalidation (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
             <button
               class="btn btn-sm btn-primary"
               style="width: 100%;"

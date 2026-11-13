@@ -1,4 +1,4 @@
-import { PriceFormatter } from './priceFormatter.js?v=1.38.0';
+import { PriceFormatter } from './priceFormatter.js?v=1.39.0';
 
 /**
  * Independent Web Algorithm Module:
@@ -61,8 +61,10 @@ export const TimeframeAggregator = {
     for (const bar of sorted) {
       const openMs = Number(bar.open_time_utc_ms || (bar.openTimeSec ? bar.openTimeSec * 1000 : 0));
       if (!openMs) continue;
-      const bucketOpen = PriceFormatter.snapToOpenUtcMs(openMs, normTf);
-      if (bucketOpen + targetStep > nowMs) continue;
+      const bounds = PriceFormatter.getSessionBucketBounds(openMs, normTf, symbolCode);
+      const bucketOpen = bounds.openMs;
+      const bucketClose = bounds.closeMs;
+      if (bucketClose > nowMs) continue;
       if (!buckets.has(bucketOpen)) {
         buckets.set(bucketOpen, []);
       }
