@@ -219,6 +219,24 @@ Chart Intelligence یک **موتور مستقل تحلیل و پیش‌بینی 
   - `Promotion Gate`: عبور از مقایسه آماری با Champion و Baseline + Calibration پایدار در چند پنجره.
   - `Change Budget` و `Freeze Conditions`: توقف آموزش/ارتقا در وضعیت `GAP_OPEN` یا `SOURCE_DEGRADED`؛ امکان `Rollback` فوری به نسخه قبلی Champion؛ ثبت کامل `Audit Trail`.
 
+## ۱۰.۵ مبانی علمی و دسته‌بندی روش‌های برونیابی و پیش‌بینی سری زمانی (`Extrapolation & Time Series Forecasting`)
+پیش‌بینی آینده نمودار از روی داده‌های تاریخی ریشه در اصول تثبیت‌شده ریاضیات و آمار سری‌های زمانی دارد:
+1. **برونیابی‌های ساده و هندسی (`Simple Extrapolations`):**
+   - برونیابی خطی (`Linear`)، برازش چندجمله‌ای (`Polynomial`)، منحنی‌های نمایی (`Exponential`) و لگاریتمی (`Logarithmic`).
+2. **مدل‌های آماری و اقتصادسنجی کلاسیک (`Classical Statistical Models`):**
+   - خانواده خودهمبسته و میانگین متحرک: `AR`, `MA`, `ARMA`, `ARIMA`, `SARIMA`.
+   - هموارسازی نمایی: `Holt-Winters` و انواع `ETS`.
+   - مدل‌های فضای حالت و فیلترهای پویای نویز: `State-Space Models` و `Kalman Filter`.
+   - برونیابی هارمونیک و موجی: `Fourier Extrapolation` و `Sequential Regression Extrapolation (SRE)`.
+3. **اکوسیستم کتابخانه‌ها و پروژه‌های مرجع سری زمانی:**
+   - `sktime` (شامل انواع `TrendForecaster` و متدهای رگرسیونی سری زمانی).
+   - `statsmodels` (`ARIMA/SARIMAX/StateSpace`).
+   - `Prophet` (تفکیک مؤلفه‌های روند، فصلی‌بودن و تعطیلات).
+   - `PyTorch Forecasting` و `GluonTS` (معماری‌های یادگیری عمیق `LSTM`, `DeepAR`, `TFT`).
+   - مدل‌های پایه نوین ترنسفورمر: `Google TimesFM` و `Kronos K-Line Foundation Model`.
+4. **تفاوت و اصالت معماری Chart Intelligence:**
+   - برونیابی در این سامانه یک فرمول تک‌بعدی نیست؛ ارزش محوری در **تحلیل ساختار تکنیکال (`BOS/CHoCH`, `FVG`, `Fibonacci`, `VRVP`)**، **مدل‌سازی هم‌زمان عدم‌قطعیت (`Quantile q10..q90`)**، **حلقه بازخورد واقعی از نتیجه (`Outcome Loop`)** و **تطبیق‌پذیری مستقل برای هر `chart_id`** نهفته است.
+
 ---
 
 # ۱۱. اعتبارسنجی تاریخی (`Walk-Forward`)، ثبت تغییرناپذیر و Outcome
