@@ -1,7 +1,7 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.41.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.41.0';
-import { state, escapeHtml } from '../core/store.js?v=1.41.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.41.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.42.0';
+import { state, escapeHtml } from '../core/store.js?v=1.42.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.42.0';
 
 export function computeTechnicalAnalytics(candles) {
   if (!candles || candles.length === 0) return null;
@@ -127,10 +127,10 @@ export function renderPredictionModal(activeTab, i18n) {
             <span>${PriceFormatter.formatPrice(stats.r1, dec)} → ${PriceFormatter.formatPrice(stats.r2, dec)}</span>
           </div>
           <div class="ltr-num" style="font-size: 12px;">
-            <div class="row-between" style="margin-bottom: 5px;"><span style="color: var(--text-muted);">Breakout Threshold (P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
-            <div class="row-between" style="margin-bottom: 5px; color: var(--bull);"><span>Key Resistance 1 (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
-            <div class="row-between" style="margin-bottom: 5px; color: var(--bull);"><span>Key Resistance 2 (R2)</span><strong>${PriceFormatter.formatPrice(stats.r2, dec)}</strong></div>
-            <div class="row-between" style="color: var(--bear); margin-bottom: 10px;"><span>Structure Invalidation (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px;"><span style="color: var(--text-muted);">Structural Pivot Anchor (P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px; color: var(--bull);"><span>Upper Variance Ref 1 (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px; color: var(--bull);"><span>Upper Variance Ref 2 (R2)</span><strong>${PriceFormatter.formatPrice(stats.r2, dec)}</strong></div>
+            <div class="row-between" style="color: var(--bear); margin-bottom: 10px;"><span>Structure Reversal Ref (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
             <button
               class="btn btn-sm btn-primary"
               style="width: 100%;"
@@ -153,10 +153,10 @@ export function renderPredictionModal(activeTab, i18n) {
             <span>${PriceFormatter.formatPrice(stats.s1, dec)} → ${PriceFormatter.formatPrice(stats.s2, dec)}</span>
           </div>
           <div class="ltr-num" style="font-size: 12px;">
-            <div class="row-between" style="margin-bottom: 5px;"><span style="color: var(--text-muted);">Breakdown Threshold (P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
-            <div class="row-between" style="margin-bottom: 5px; color: var(--bear);"><span>Key Support 1 (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
-            <div class="row-between" style="margin-bottom: 5px; color: var(--bear);"><span>Key Support 2 (S2)</span><strong>${PriceFormatter.formatPrice(stats.s2, dec)}</strong></div>
-            <div class="row-between" style="color: var(--bull); margin-bottom: 10px;"><span>Structure Invalidation (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px;"><span style="color: var(--text-muted);">Structural Pivot Anchor (P)</span><strong>${PriceFormatter.formatPrice(stats.pivot, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px; color: var(--bear);"><span>Lower Variance Ref 1 (S1)</span><strong>${PriceFormatter.formatPrice(stats.s1, dec)}</strong></div>
+            <div class="row-between" style="margin-bottom: 5px; color: var(--bear);"><span>Lower Variance Ref 2 (S2)</span><strong>${PriceFormatter.formatPrice(stats.s2, dec)}</strong></div>
+            <div class="row-between" style="color: var(--bull); margin-bottom: 10px;"><span>Structure Reversal Ref (R1)</span><strong>${PriceFormatter.formatPrice(stats.r1, dec)}</strong></div>
             <button
               class="btn btn-sm btn-primary"
               style="width: 100%;"
@@ -227,32 +227,41 @@ export function renderPredictionModal(activeTab, i18n) {
                   ${
                     isFa
                       ? `پیش‌بینی ۳۰ کندل آینده روی چارت (${tfStr} — حداقل ۱۰ کندل)`
-                      : `Future Projection (30 Periods on ${tfStr} — AI-Generated)`
+                      : `Probabilistic Horizon Projection (30 Periods on ${tfStr})`
                   }
                 </div>
                 <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
                   ${
                     isFa
-                      ? 'ترکیب Holt-Linear + AR(2) + هارمونیک فوریه همراه با خط جداکننده PAST | Future Projection روی چارت'
-                      : 'Holt-Linear + Damped AR(2) + Fourier Harmonic OHLC synthesis with Present Bar Divider'
+                      ? 'بازده لگاریتمی GARCH(1,1) + Kalman + AR(2)/GP همراه با خط جداکننده PAST | Forecast'
+                      : 'Log-Return Ensemble (Kalman + GARCH(1,1) + AR(2)/GP) with Present Bar Divider'
                   }
                 </div>
               </div>
-              <button
-                type="button"
-                class="btn btn-sm ${isProjActive ? 'btn-primary' : ''}"
-                data-action="toggle-future-projection-from-modal"
-              >
-                ${
-                  isProjActive
-                    ? isFa
-                      ? 'نمایش ۳۰ کندل آینده روی چارت: فعال ✓'
-                      : 'Future Candlesticks Active ✓'
-                    : isFa
-                      ? 'ترسیم ۳۰ کندل آینده روی چارت'
-                      : 'Render 30 Future Candles on Chart'
-                }
-              </button>
+              <div style="display:flex;gap:6px;flex-wrap:wrap;">
+                <button
+                  type="button"
+                  class="btn btn-sm btn-primary"
+                  data-action="open-forecast-studio"
+                >
+                  ${isFa ? 'باز کردن آزمایشگاه پیش‌بینی' : 'Open Forecast Studio'}
+                </button>
+                <button
+                  type="button"
+                  class="btn btn-sm ${isProjActive ? 'btn-primary' : ''}"
+                  data-action="toggle-future-projection-from-modal"
+                >
+                  ${
+                    isProjActive
+                      ? isFa
+                        ? 'نمایش ۳۰ کندل آینده روی چارت: فعال ✓'
+                        : 'Future Overlay Active ✓'
+                      : isFa
+                        ? 'ترسیم ۳۰ کندل آینده روی چارت'
+                        : 'Render Future on Chart'
+                  }
+                </button>
+              </div>
             </div>
             <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; text-align: center;" class="ltr-num">
               ${steps

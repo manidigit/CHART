@@ -36,8 +36,8 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import es.manico.chartintelligence.ui.screens.ChartViewScreen
+import es.manico.chartintelligence.ui.screens.ForecastLabScreen
 import es.manico.chartintelligence.ui.screens.LoginScreen
-import es.manico.chartintelligence.ui.screens.PredictionScreen
 import es.manico.chartintelligence.ui.screens.SettingsScreen
 import es.manico.chartintelligence.ui.screens.WatchlistScreen
 import es.manico.chartintelligence.ui.state.MainViewModel
@@ -149,7 +149,7 @@ fun ChartIntelligenceApp(
                                 modifier = Modifier.testTag("nav_chart_view_item")
                             )
 
-                            // 3. Prediction
+                            // 3. Forecast Lab
                             NavigationBarItem(
                                 selected = state.currentScreen == WorkspaceScreen.PREDICTION,
                                 onClick = { mainViewModel.navigateTo(WorkspaceScreen.PREDICTION) },
@@ -157,12 +157,12 @@ fun ChartIntelligenceApp(
                                 icon = {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Outlined.TrendingUp,
-                                        contentDescription = stringResource(R.string.nav_prediction)
+                                        contentDescription = stringResource(R.string.nav_forecast_lab)
                                     )
                                 },
                                 label = {
                                     Text(
-                                        text = stringResource(R.string.nav_prediction),
+                                        text = stringResource(R.string.nav_forecast_lab),
                                         style = MaterialTheme.typography.labelSmall
                                     )
                                 },
@@ -317,13 +317,26 @@ fun ChartIntelligenceApp(
                             onClearAllDrawings = mainViewModel::clearAllDrawingsOnActiveTab
                         )
 
-                        WorkspaceScreen.PREDICTION -> PredictionScreen(
+                        WorkspaceScreen.PREDICTION -> ForecastLabScreen(
                             activeTab = state.activeTab,
                             watchlistSymbols = state.watchlistSymbols,
+                            preferences = state.chartPreferences,
+                            localLedgerEntries = state.forecastLocalLedger,
+                            serverLedgerEntries = state.forecastServerLedger,
+                            ledgerVerifyResult = state.forecastLedgerVerifyResult,
                             onSelectSymbol = mainViewModel::selectSymbolInPrediction,
                             onSelectTimeframe = mainViewModel::selectTimeframeForActiveTab,
-                            onProjectLevelsToChart = mainViewModel::projectScenarioLevelsToChart,
-                            onToggleFutureCandlesOnChart = mainViewModel::enableFutureProjectionAndOpenChart,
+                            onSelectHorizonBars = mainViewModel::setForecastHorizon,
+                            onSelectRenderMode = mainViewModel::setForecastRenderMode,
+                            onToggleModelPlugin = mainViewModel::toggleForecastModel,
+                            onSetModelWeight = mainViewModel::setForecastModelWeight,
+                            onSetModelParam = mainViewModel::setForecastModelParam,
+                            onResetModelPlugins = mainViewModel::resetForecastModels,
+                            onSaveWorkerUrl = mainViewModel::saveForecastWorkerUrl,
+                            onRecordSnapshot = mainViewModel::recordAndSyncForecastSnapshot,
+                            onRefreshServerLedger = mainViewModel::refreshForecastServerLedger,
+                            onPlotReferenceLevelsToChart = mainViewModel::projectScenarioLevelsToChart,
+                            onApplyForecastToChart = mainViewModel::applyForecastAndOpenChart,
                             onBackToWatchlist = mainViewModel::navigateBack
                         )
 

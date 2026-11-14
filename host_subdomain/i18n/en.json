@@ -139,7 +139,7 @@
   "settings_group_sources": "Data Sources & Symbols",
   "settings_group_params": "Scales & Chart Options",
   "settings_group_about": "Server Health & About",
-  "settings_about_version": "CHART Intelligence · v1.41.0 (4-Variant Pivots, Phase 3 Historical Import, PHP Diagnostics, Gap Audit & Backup)",
+  "settings_about_version": "CHART Intelligence · v1.42.0 (Phase 4 Decoupled Forecast Studio, GARCH/Kalman Ensemble, Walk-Forward Gate & SHA-256 Ledger)",
   "settings_about_desc": "Real-time bi-directional Central Core synchronization of candles, drawings, tabs, and preferences across Web & Android.",
   "settings_sources_subtitle": "Select active data provider (TradingView, biquote, Twelve Data, Dukascopy, Yahoo, Stooq, EIA) and watchlist visibility.",
   "settings_group_colors": "Candlestick & Drawing Line Colors",
@@ -321,5 +321,8 @@
   "import_batches_empty": "No historical import batches recorded yet.",
   "error_image_upload_forbidden": "Image files cannot be imported as price history (No-Image-Storage Policy).",
   "error_import_parse_failed": "Could not parse historical OHLCV file.",
-  "status_import_completed": "Historical candle import batch saved and audited."
+  "status_import_completed": "Historical candle import batch saved and audited.",
+  "nav_forecast_lab": "Forecast Studio",
+  "forecast_apply_chart": "Apply & View on Chart",
+  "forecast_record_snapshot": "Record & Sync Snapshot"
 }

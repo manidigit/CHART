@@ -1,5 +1,5 @@
-import { PriceFormatter } from './priceFormatter.js?v=1.41.0';
-import { TimeframeAggregator } from './timeframeAggregator.js?v=1.41.0';
+import { PriceFormatter } from './priceFormatter.js?v=1.42.0';
+import { TimeframeAggregator } from './timeframeAggregator.js?v=1.42.0';
 
 export const TechnicalIndicators = {
   computeSma(candles = [], period = 20) {

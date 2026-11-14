@@ -2,7 +2,7 @@
 
 > راهنمای عملیاتی و فنی توسعه، تطبیق وضعیت واقعی کد با مشخصات، پیکربندی محرمانه و پایپ‌لاین CI/CD. مرجع تصمیمات محصول همچنان [`CHART_INTELLIGENCE_MASTER_SPEC.md`](../01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) است.
 
-**آخرین بازبینی:** `2026-11-14` · **نسخه کد و مستندات:** `1.41.0` · **وب‌اپلیکیشن:** https://chart.manico.es
+**آخرین بازبینی:** `2026-11-14` · **نسخه کد و مستندات:** `1.42.0` · **وب‌اپلیکیشن:** https://chart.manico.es
 
 ---
 
@@ -38,7 +38,8 @@
 | **۷. بهینه‌سازی ۶۰fps و ثبات اسکرول لیست‌ها** | کامل در وب و اندروید | `CandlestickCanvas.kt`, `chartRenderer.js`, `app.js`, `watchlistView.js`, `settingsView.js` | `VERIFIED` | Memoization اندیکاتورها (`remember` / `tab._indCache`), جداسازی تایمر معکوس ۱ ثانیه‌ای و حفظ `scrollTop`/`LazyListState`. |
 | **۸. شیت جزئیات نماد، `Symbol Intel` و `Seasonals`** | کامل در هر ۳ لایه | `symbol_intel.php`, `WatchlistScreen.kt`, `watchlistView.js` | `VERIFIED` | اتصال زنده به Yahoo/EIA RSS و SEC EDGAR (صرفاً سهام آمریکا)، شاخص‌های کلان و Seasonals قفل‌شده روی حداقل ۱۲ ماه واقعی. |
 | **۹. تنظیمات ۵ تبه، `php_runtime` و `Reset All`** | کامل در وب، اندروید و PHP | `ChartPreferenceCoordinator.kt`, `WorkspaceRepository.kt`, `store.js`, `settingsView.js`, `system/status.php` | `VERIFIED` | تنظیمات رنگ/اندیکاتورها، کاوشگر دوحالته، گزارش تشخیصی `php_runtime`، و بازنشانی `Reset All` با سینک ابری. |
-| **۱۰. فاز ۳ کامل در کد (`Gap`, `Import`, `Backup`) و فازهای ۴ تا ۶** | فاز ۳ کامل در کد؛ فازهای ۴ تا ۶ برنامه‌ریزی‌شده | `import_candles.php`, `LocalCsvAdapter.php`, `backup.php`, `candleImport.js`, `CandleImportAlgorithm.kt`, `Phase3ImportCard.kt` | `PHASE 3 CODE COMPLETE` | ورود فایل‌های `CSV / XLS (BIFF8, XML, HTML) / JSON / Manual OHLC` با `Strict No-Image-Storage Policy` و بکاپ رمزنگاری‌شده `AES-256-GCM` کامل در کد؛ تاییدهای زنده cPanel و موتور ML فازهای ۴–۶ باقی مانده است. |
+| **۱۰. فاز ۳ کامل در کد (`Gap`, `Import`, `Backup`)** | کامل در وب، اندروید و PHP | `import_candles.php`, `LocalCsvAdapter.php`, `backup.php`, `candleImport.js`, `CandleImportAlgorithm.kt`, `Phase3ImportCard.kt` | `VERIFIED (CODE)` | ورود فایل‌های `CSV / XLS (BIFF8, XML, HTML) / JSON / Manual OHLC` با `Strict No-Image-Storage Policy` و بکاپ رمزنگاری‌شده `AES-256-GCM` کامل در کد؛ تاییدهای زنده cPanel باقی مانده است. |
+| **۱۱. فاز ۴ — موتور پیش‌بینی مستقل و پلاگین‌محور (`PRED-01..08`)** | هسته آماری و دفترکل در کد کامل؛ Worker خارجی DL باز | `host_subdomain/assets/js/forecast/*`, `app/.../forecast/*`, `ForecastEnginePhp.php`, `forecast.php`, `003_phase4_forecast_tables.sql`, `forecastView.js`, `ForecastLabScreen.kt` | `PHASE 4 CORE VERIFIED` | موتور ایزوله با بازده لگاریتمی، ۶ مدل پلاگین (`Persistence`, `ATR Cone`, `Kalman`, `GARCH(1,1)`, `AR(2)+ETS`, `GP`)، Purged Walk-Forward (`AcceptanceGate`), دفترکل `SHA-256`, تب مستقل `Forecast Studio / Lab` و رندر ۳ حالته `Fan / Ghost / Hybrid` ($h=10..60$). |
 
 ---
 

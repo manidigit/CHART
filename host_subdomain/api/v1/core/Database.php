@@ -64,6 +64,7 @@ final class Database
         $files = [
             $migrationsDir . '/001_phase1_init.sql',
             $migrationsDir . '/002_phase2_3_tables.sql',
+            $migrationsDir . '/003_phase4_forecast_tables.sql',
         ];
         foreach ($files as $sqlFile) {
             if (!is_file($sqlFile)) {

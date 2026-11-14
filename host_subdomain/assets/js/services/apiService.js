@@ -15,9 +15,9 @@ import {
   normalizeHexForWeb,
   normalizeHexForAndroid,
   resolvePriceBasis,
-} from '../core/store.js?v=1.41.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.41.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.41.0';
+} from '../core/store.js?v=1.42.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.42.0';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
@@ -1503,4 +1503,81 @@ export async function fetchImportBatches(limit = 20) {
   }
   return state.importBatches || [];
 }
+
+/**
+ * Phase 4: Record a deterministic forecast snapshot or execute backend projection via /api/v1/forecast.php
+ */
+export async function runForecastOnServer({
+  symbolCode,
+  timeframe,
+  horizonBars = 30,
+  candles = [],
+  clientForecast = null,
+  workerUrl = '',
+} = {}) {
+  const token = localStorage.getItem('ci_session_token') || '';
+  try {
+    const res = await fetch('./api/v1/forecast.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        action: clientForecast ? 'append_client_forecast' : 'run_and_record',
+        symbol: symbolCode,
+        timeframe,
+        horizon_bars: horizonBars,
+        candles: candles.slice(-180),
+        client_forecast: clientForecast,
+        worker_url: workerUrl || '',
+      }),
+    });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return { ok: false, errorCode: 'UNAUTHORIZED' };
+    }
+    const json = await res.json();
+    if (res.ok && json && json.ok && json.data) {
+      return { ok: true, data: json.data };
+    }
+    return {
+      ok: false,
+      errorCode: (json && json.error_code) || 'FORECAST_SYNC_FAILED',
+      error: (json && json.error) || 'Forecast sync failed',
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      errorCode: 'NETWORK_ERROR',
+      error: err && err.message ? err.message : 'Network error',
+    };
+  }
+}
+
+export async function fetchForecastLedger(symbolCode = '', timeframe = '') {
+  const token = localStorage.getItem('ci_session_token') || '';
+  try {
+    const qs = new URLSearchParams({ action: 'ledger', _t: String(Date.now()) });
+    if (symbolCode) qs.set('symbol', symbolCode);
+    if (timeframe) qs.set('timeframe', timeframe);
+    const res = await fetch(`./api/v1/forecast.php?${qs.toString()}`, {
+      cache: 'no-store',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return [];
+    }
+    const json = await res.json();
+    if (res.ok && json && json.ok && json.data && Array.isArray(json.data.entries)) {
+      state.forecastServerLedger = json.data.entries;
+      return state.forecastServerLedger;
+    }
+  } catch {
+    // Non-fatal fallback
+  }
+  return state.forecastServerLedger || [];
+}
+
 

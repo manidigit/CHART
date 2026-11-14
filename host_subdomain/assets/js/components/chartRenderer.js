@@ -1,7 +1,10 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.41.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.41.0';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.41.0';
-import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.41.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.42.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.42.0';
+import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.42.0';
+import { ForecastEngine } from '../forecast/forecastEngine.js?v=1.42.0';
+import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.42.0';
+import { RENDER_MODES, normalizeRenderMode, clampHorizonBars } from '../forecast/forecastContract.js?v=1.42.0';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -159,9 +162,27 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       cache.smc || (cache.smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3)),
     getPivotPoints: () =>
       cache.pivots || (cache.pivots = TechnicalIndicators.computePivotPoints(candles, tf, symCode, pivType)),
-    getFutureProjection: () =>
-      cache.futureProjection ||
-      (cache.futureProjection = TechnicalIndicators.computeFutureCandlestickProjection(candles, tf, 30)),
+    getFutureProjection: () => {
+      const prefs = state.chartPreferences || {};
+      const horizonBars = clampHorizonBars(tab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
+      const renderMode = normalizeRenderMode(tab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.HYBRID);
+      if (prefs.forecastPluginConfig) {
+        defaultForecastRegistry.applyConfig(prefs.forecastPluginConfig);
+      }
+      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${candles.length}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
+      if (cache.futureProjKey !== fKey || !cache.futureProjectionResult) {
+        cache.futureProjKey = fKey;
+        cache.futureProjectionResult = ForecastEngine.project(candles, {
+          symbolCode: symCode,
+          timeframe: tf,
+          horizonBars,
+          renderMode,
+          registry: defaultForecastRegistry,
+          skipWalkForward: true,
+        });
+      }
+      return cache.futureProjectionResult.points || [];
+    },
     getVolumeProfile: (visible, startIdx, endIdx) => {
       const spec = getInstrumentSpec(symCode, prov);
       const vKey = `${startIdx}_${endIdx}_${spec.volumeType}`;
@@ -303,8 +324,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
   for (let k = 0; k < futureProj.length; k++) {
     const fp = futureProj[k];
-    rawMin = Math.min(rawMin, Number(fp.low));
-    rawMax = Math.max(rawMax, Number(fp.high));
+    rawMin = Math.min(rawMin, Number(fp.low), Number(fp.q10 ?? fp.low));
+    rawMax = Math.max(rawMax, Number(fp.high), Number(fp.q90 ?? fp.high));
   }
   if (!Number.isFinite(rawMin) || !Number.isFinite(rawMax)) return;
 
@@ -1142,40 +1163,93 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.restore();
   }
 
-  // PRED-09 & PRED-10: AI-Generated Future Candlesticks Projection (30 periods)
+  // Phase 4 (SPEC-PRED-01): Probabilistic Future Projection (HYBRID | FAN_CHART | GHOST_CANDLES)
   if (futureProj.length > 0) {
     const dividerX = visible.length * slotW;
+    const activeRenderMode = normalizeRenderMode(
+      tab.forecastRenderMode || (state.chartPreferences && state.chartPreferences.forecastRenderMode) || RENDER_MODES.HYBRID
+    );
+    const showFan = activeRenderMode === RENDER_MODES.FAN_CHART || activeRenderMode === RENDER_MODES.HYBRID;
+    const showGhost = activeRenderMode === RENDER_MODES.GHOST_CANDLES || activeRenderMode === RENDER_MODES.HYBRID;
+
     ctx.save();
 
     // Subtle right-side future zone tint
     ctx.fillStyle = isDark ? 'rgba(148, 130, 190, 0.04)' : 'rgba(148, 130, 190, 0.06)';
     ctx.fillRect(dividerX, topPad, chartW - dividerX, chartH);
 
-    // Ghosted future candlesticks (purple-slate palette matching reference design)
-    const ghostWickCol = isDark ? 'rgba(167, 150, 212, 0.58)' : 'rgba(124, 105, 172, 0.58)';
-    const ghostBullBody = isDark ? 'rgba(167, 150, 212, 0.62)' : 'rgba(124, 105, 172, 0.62)';
-    const ghostBearBody = isDark ? 'rgba(122, 108, 162, 0.46)' : 'rgba(100, 86, 145, 0.46)';
+    // Fan quantile bands (q10..q90 outer corridor & q25..q75 inner corridor)
+    const lastActual = visible[visible.length - 1];
+    const anchorX = idxToX(visible.length - 1);
+    const anchorY = priceToY(Number(lastActual.close));
 
-    futureProj.forEach((fp, kIdx) => {
-      const x = idxToX(visible.length + kIdx);
-      const highY = priceToY(fp.high);
-      const lowY = priceToY(fp.low);
-      const openY = priceToY(fp.open);
-      const closeY = priceToY(fp.close);
-      const isBull = fp.close >= fp.open;
-
-      ctx.strokeStyle = ghostWickCol;
-      ctx.lineWidth = 1.1;
+    if (showFan) {
+      // q10..q90 outer band
+      ctx.fillStyle = isDark ? 'rgba(56, 189, 248, 0.13)' : 'rgba(41, 98, 255, 0.11)';
       ctx.beginPath();
-      ctx.moveTo(x, highY);
-      ctx.lineTo(x, lowY);
-      ctx.stroke();
+      ctx.moveTo(anchorX, anchorY);
+      futureProj.forEach((fp, kIdx) => {
+        ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(fp.q90 ?? fp.high)));
+      });
+      for (let kIdx = futureProj.length - 1; kIdx >= 0; kIdx--) {
+        ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(futureProj[kIdx].q10 ?? futureProj[kIdx].low)));
+      }
+      ctx.closePath();
+      ctx.fill();
 
-      const topY = Math.min(openY, closeY);
-      const bodyH = Math.max(2, Math.abs(closeY - openY));
-      ctx.fillStyle = isBull ? ghostBullBody : ghostBearBody;
-      ctx.fillRect(x - bodyW / 2, topY, bodyW, bodyH);
+      // q25..q75 interquartile band
+      ctx.fillStyle = isDark ? 'rgba(245, 158, 11, 0.20)' : 'rgba(245, 158, 11, 0.18)';
+      ctx.beginPath();
+      ctx.moveTo(anchorX, anchorY);
+      futureProj.forEach((fp, kIdx) => {
+        ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(fp.q75 ?? fp.high)));
+      });
+      for (let kIdx = futureProj.length - 1; kIdx >= 0; kIdx--) {
+        ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(futureProj[kIdx].q25 ?? futureProj[kIdx].low)));
+      }
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    // Ghosted future candlesticks (GHOST_CANDLES or HYBRID)
+    if (showGhost) {
+      const ghostWickCol = isDark ? 'rgba(167, 150, 212, 0.58)' : 'rgba(124, 105, 172, 0.58)';
+      const ghostBullBody = isDark ? 'rgba(167, 150, 212, 0.62)' : 'rgba(124, 105, 172, 0.62)';
+      const ghostBearBody = isDark ? 'rgba(122, 108, 162, 0.46)' : 'rgba(100, 86, 145, 0.46)';
+
+      futureProj.forEach((fp, kIdx) => {
+        const x = idxToX(visible.length + kIdx);
+        const highY = priceToY(fp.high);
+        const lowY = priceToY(fp.low);
+        const openY = priceToY(fp.open);
+        const closeY = priceToY(fp.close);
+        const isBull = fp.close >= fp.open;
+
+        ctx.strokeStyle = ghostWickCol;
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        ctx.moveTo(x, highY);
+        ctx.lineTo(x, lowY);
+        ctx.stroke();
+
+        const topY = Math.min(openY, closeY);
+        const bodyH = Math.max(2, Math.abs(closeY - openY));
+        ctx.fillStyle = isBull ? ghostBullBody : ghostBearBody;
+        ctx.fillRect(x - bodyW / 2, topY, bodyW, bodyH);
+      });
+    }
+
+    // Median q50 trajectory curve
+    ctx.strokeStyle = '#F59E0B';
+    ctx.lineWidth = 1.8;
+    ctx.setLineDash([4, 3]);
+    ctx.beginPath();
+    ctx.moveTo(anchorX, anchorY);
+    futureProj.forEach((fp, kIdx) => {
+      ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(fp.q50 ?? fp.close)));
     });
+    ctx.stroke();
+    ctx.setLineDash([]);
 
     // Vertical dashed Present Bar Divider
     ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.85)' : 'rgba(15, 23, 42, 0.80)';
@@ -1187,12 +1261,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Top Header Banner: PAST (Actual Data) <- | -> Future Projection (30 periods) (AI-Generated)
+    // Top Header Banner: PAST (Actual Data) <- | -> Probabilistic Projection
     const headerY = topPad + 22;
     const arrowY = topPad + 30;
     const subY = topPad + 43;
 
-    // Left (PAST)
     const leftSpan = Math.max(60, dividerX - 16);
     const pastCenterX = dividerX / 2;
     ctx.fillStyle = isDark ? '#FFFFFF' : '#0F172A';
@@ -1206,7 +1279,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.moveTo(dividerX - 6, arrowY);
     ctx.lineTo(Math.max(12, dividerX - leftSpan), arrowY);
     ctx.stroke();
-    // Left arrowhead
     const leftTipX = Math.max(12, dividerX - leftSpan);
     ctx.fillStyle = '#38BDF8';
     ctx.beginPath();
@@ -1220,12 +1292,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.font = '10.5px "Inter", system-ui, sans-serif';
     ctx.fillText('(Actual Data)', pastCenterX, subY);
 
-    // Right (Future Projection)
     const rightSpan = Math.max(60, chartW - dividerX - 16);
     const futCenterX = dividerX + (chartW - dividerX) / 2;
     ctx.fillStyle = '#F59E0B';
     ctx.font = 'bold 11.5px "Inter", system-ui, sans-serif';
-    ctx.fillText(`Future Projection (${futureProj.length} periods)`, futCenterX, headerY);
+    ctx.fillText(`Forecast Horizon (+${futureProj.length} bars)`, futCenterX, headerY);
 
     ctx.strokeStyle = '#F59E0B';
     ctx.lineWidth = 1.8;
@@ -1235,7 +1306,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.lineTo(Math.min(chartW - 12, dividerX + rightSpan), arrowY);
     ctx.stroke();
     ctx.setLineDash([]);
-    // Right arrowhead
     const rightTipX = Math.min(chartW - 12, dividerX + rightSpan);
     ctx.fillStyle = '#F59E0B';
     ctx.beginPath();
@@ -1247,7 +1317,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
     ctx.fillStyle = textColor;
     ctx.font = '10.5px "Inter", system-ui, sans-serif';
-    ctx.fillText('(AI-Generated)', futCenterX, subY);
+    ctx.fillText(`(${activeRenderMode} · q10–q90)`, futCenterX, subY);
 
     ctx.restore();
   }

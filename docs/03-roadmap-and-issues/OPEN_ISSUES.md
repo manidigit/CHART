@@ -1,11 +1,11 @@
 # CHART — فهرست مسائل باز، نواقص راستی‌آزمایی‌شده و وضعیت ممیزی (`OPEN_ISSUES`)
 
-> **نسخه:** `1.41.0` · **تاریخ ممیزی و تکمیل:** `2026-11-14`  
-> این فایل وضعیت واقعی مسائل باز (`INF-01` تا `SEC-01` و یافته‌های ممیزی `AUTH-01` / `INF-03` / `ENG-01b` / `PAR-01` / `ENG-03b` / `QA-01` / `UI-02` / `IND-01` و آیتم‌های فاز ۳ شامل `Historical Import`) را روی **PHP + MariaDB (`host_subdomain`)**، **کلاینت وب**، **اپلیکیشن اندروید (Kotlin/Compose)** و **CI/CD (`build-apk.yml`)** ثبت می‌کند.
+> **نسخه:** `1.42.0` · **تاریخ ممیزی و تکمیل:** `2026-11-14`  
+> این فایل وضعیت واقعی مسائل باز (`INF-01` تا `SEC-01` و یافته‌های ممیزی `AUTH-01` / `INF-03` / `ENG-01b` / `PAR-01` / `ENG-03b` / `QA-01` / `UI-02` / `IND-01` و هسته مستقل پیش‌بینی فاز ۴ `PRED-01..08`) را روی **PHP + MariaDB (`host_subdomain`)**، **کلاینت وب**، **اپلیکیشن اندروید (Kotlin/Compose)** و **CI/CD (`build-apk.yml`)** ثبت می‌کند.
 
 ---
 
-## خلاصه وضعیت مسائل ممیزی (`v1.41.0`)
+## خلاصه وضعیت مسائل ممیزی (`v1.42.0`)
 
 - **پیاده‌سازی‌شده و بسته‌شده در کد (`Code Complete`):**
   - **`ENG-01` (بخش پایه)**: هم‌ترازی سشن‌های معاملاتی و DST (`CRYPTO_24_7`, `US_EQUITIES` `09:30–16:00 America/New_York`, `OTC_FX_METALS` `17:00 America/New_York`) — *شکاف‌های ظریف پاریتی بین کلاینت‌ها در `ENG-01b` بسته شد*.
@@ -17,8 +17,9 @@
   - **بهداشت امنیتی Auth/CORS (راستی‌آزمایی‌شده در کد فعلی):** حذف کامل ذخیره plaintext رمز عبور (`ci_saved_password` فقط `removeItem` می‌شود)، fallback آفلاین مبتنی بر **Salted SHA-256** (`ci_offline_pw_salt` + `ci_offline_pw_hash` و `PasswordHashAlgorithm.kt`)، حداقل طول رمز **۸ کاراکتر** در `auth.php`، و حذف `CORS *` به نفع whitelist + هدرهای امنیتی در `ApiEnvelope.php`.
   - **`INF-01` (بخش نرم‌افزاری)**: خروجی/بازیابی پشتیبان رمزنگاری‌شده (`PBKDF2-HMAC-SHA256` + `AES-256-GCM`) با حذف خودکار کلیدهای `BYOK` در `backup.php`، کلاینت وب، و `BackupExportHelper.kt` (با `SAF` بدون نیاز به مجوز Storage + `FileProvider` برای اشتراک امن فایل).
   - **`INF-02` (بخش اسکریپت استقرار)**: اسنپ‌شات خودکار `_ci_backups/snapshot_*` (حفظ ۳ نسخه آخر)، انتقال اتمیک فایل‌ها در `build-apk.yml`، و اندپوینت احراز هویت‌شده `rollback_release.php`.
+  - **`PRED-CORE-V1` (هسته مستقل پیش‌بینی فاز ۴)**: پیاده‌سازی پکیج‌های مجزا و ماژولار `forecast/` روی وب، اندروید و PHP (`ForecastEngine`, `ForecastModelRegistry`, `WalkForwardEvaluator`, `ForecastLedgerStore` با SHA-256، مایگریشن `003_phase4_forecast_tables.sql`، تب `Forecast Studio` در وب و `ForecastLabScreen` در اندروید، و رندر `Fan Chart / Ghost Candles / Hybrid` برای افق `10..60` کندل روی تمام ۶ تایم‌فریم).
   - **کنترل‌های تاییدشده دیگر در کد فعلی:** حذف کندل/قیمت ساختگی صفحه اولیه (Skeleton واقعی)، شرط حداقل ۲۰۰ کندل برای `SMA200`، تازه‌سازی دوره‌ای خودکار نزدیک بسته شدن کندل هم در وب و هم در `MainViewModel.kt` اندروید، تفکیک کلیدهای `BYOK` از Workspace و ارسال از طریق Header (`X-Provider-Api-Key`)، ذخیره تب‌ها/تب فعال در اندروید، مخفی‌شدن نوار ناوبری در صفحه Chart، و پوشش کامل **۱۵ از ۱۵** اندیکاتور ۳ سطحی TradingView شامل هر ۴ واریانت `Pivot Points` (`Standard / Fibonacci / Camarilla / Woodie` با `R3/R4/S3/S4`).
-- **باقی‌مانده و نیازمند اقدام:** بررسی مستقیم سرور زنده cPanel پس از استقرار (`INF-01`/`INF-02` عملیاتی و بخش ۴.۱)، و تصمیمات معماری پیش از فازهای ۴ تا ۶ (`UI-02`/`PRED-01..08` و بخش ۴.۲).
+- **باقی‌مانده و نیازمند اقدام:** بررسی مستقیم سرور زنده cPanel پس از استقرار (`INF-01`/`INF-02` عملیاتی و بخش ۴.۱)، استقرار سرور پایتونی خارجی مدل‌های پایه (`Chronos-2` / `TimesFM 2.5` / `N-HiTS` در بخش `PRED-DL-WORKER`) و تکمیل حلقه بازخورد خودکار فاز ۵ و شبیه‌ساز فاز ۶.
 
 ---
 
@@ -66,7 +67,9 @@
 | **`IND-01`** | `P2` | `[x]` **تکمیل شد در `v1.41.0` (`Code Complete`)** | پیاده‌سازی کامل هر ۴ واریانت **`Pivot Points` (`STANDARD`, `FIBONACCI`, `CAMARILLA`, `WOODIE`)** شامل سطوح **`R3/R4` و `S3/S4`** روی بوم چارت وب (`chartRenderer.js`) و اندروید (`CandlestickCanvas.kt`) با لنگر جلسه معاملاتی قبلی، انتخابگر نوع پیوت در پنل Indicators و سینک کامل در Workspace. | `technicalIndicators.js`, `chartRenderer.js`, `headerView.js`, `Phase2IndicatorsAlgorithm.kt`, `CandlestickCanvas.kt`, `ChartTabState.kt`, `ChartViewScreen.kt` |
 | **`PRED-09`** | `P1` | `[x]` **تکمیل شد (`Code Complete`)** | پیاده‌سازی کامل `AI-Generated Future Candlesticks Overlay (30 periods)` منطبق با تصویر مرجع در وب و اندروید شامل: خط‌چین عمودی `Present Bar Divider`، بنر `← PAST (Actual Data) ┆ Future Projection (30 periods) (AI-Generated) →`، ۳۰ کندل نیمه‌شفاف بنفش-خاکستری در سمت راست، و برچسب‌های `+5 (Future)`، `+10`، `+15`، `+20`، `+25`، `+30` همراه با درصد تغییر (`+X%`/`-X%`). | `technicalIndicators.js`, `chartRenderer.js`, `headerView.js`, `analysisView.js`, `Phase2IndicatorsAlgorithm.kt`, `CandlestickCanvas.kt`, `ChartViewScreen.kt`, `PredictionScreen.kt` |
 | **`PRED-10`** | `P1` | `[x]` **تکمیل شد (`Code Complete`)** | تضمین افق پیش‌بینی حداقل ۱۰ کندل ($h = 30 \ge 10$) روی تمامی تایم‌فریم‌ها (`M15`, `M30`, `H1`, `H4`, `D1`, `W1`) با رعایت تقویم سشن معاملاتی، پرش خودکار از تعطیلات آخر هفته بازارهای OTC/Equities، و تنظیم خودکار مقیاس افقی/عمودی چارت. | `technicalIndicators.js`, `chartRenderer.js`, `Phase2IndicatorsAlgorithm.kt`, `CandlestickCanvas.kt`, `PredictionScreen.kt` |
-| **`UI-02` / `PRED-01..08`** | `P1/P2` | `[ ]` **نقشه راه فاز ۴ (`Phase 4 Architecture Backlog`)** | موارد پژوهشی و زیرساختی فاز ۴ شامل Worker پایتونی مدل‌های پایه (`Chronos-2` / `TimesFM 2.5`)، ارزیابی Walk-Forward (`CRPS` / `Pinball Loss`) و درخت اشیاء پیشرفته دسکتاپ طبق مشخصات فنی فاز ۴ زمان‌بندی شده‌اند. | `FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md`, `ROADMAP_BACKLOG.md` |
+| **`PRED-01..08`** | `P1` | `[x]` **هسته آماری مستقل در کد (`v1.42.0`)** | پیاده‌سازی موتور مستقل پلاگین‌محور (بازده لگاریتمی، `Persistence`, `ATR Cone`, `Kalman`, `GARCH(1,1)`, `AR(2)+ETS`, `Gaussian Process`)، قرارداد `forecast-contract/v1`، رندر ۳ حالته `Fan Chart / Ghost Candles / Hybrid` ($h = 10..60$)، Purged `WalkForwardEvaluator` با `AcceptanceGate`، تب مستقل وب/اندروید (`Forecast Studio / Lab`)، مایگریشن `003_phase4_forecast_tables.sql` و زنجیره دفترکل `SHA-256` (`api/v1/forecast.php`). | `host_subdomain/assets/js/forecast/*`, `app/.../forecast/*`, `api/v1/forecast/*`, `003_phase4_forecast_tables.sql`, `ForecastLabScreen.kt`, `forecastView.js` |
+| **`PRED-DL-WORKER`** | `P2` | `[ ]` **استقرار Worker پایتونی خارجی (`Phase 4 DL Ops`)** | پل ارتباطی صادقانه `FORECAST_WORKER_URL` در کد پیاده شده است (`LOCAL_STATISTICAL_ONLY` / `UNCONFIGURED` در نبود Worker). استقرار سرویس خارجی `Chronos-2 (Apache 2.0)` / `TimesFM 2.5` / `N-HiTS` روی GPU/VPS همچنان باز است *(TimesFM 3.0 ممنوع)*. | `ForecastEnginePhp.php`, `ForecastLabScreen.kt`, `forecastView.js` |
+| **`UI-02`** | `P2` | `[ ]` **آیتم‌های تکمیلی دسکتاپ/فاز ۵–۶** | درخت اشیاء پیشرفته دسکتاپ و یکپارچه‌سازی با `Champion/Challenger Rollback` خودکار (فاز ۵). | `DESIGN_WORKSPACE_SPEC.md`, `ROADMAP_BACKLOG.md` |
 
 
 

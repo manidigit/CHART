@@ -188,6 +188,7 @@
     <string name="draw_tools_toggle">ترسیم</string>
     <string name="settings_change_provider">تغییر منبع</string>
     <string name="nav_prediction">پیش‌بینی</string>
+    <string name="nav_forecast_lab">آزمایشگاه پیش‌بینی</string>
     <string name="nav_chart_short">نمودار</string>
     <string name="chart_control_indicators">اندیکاتور</string>
     <string name="chart_control_more">بیشتر</string>
@@ -208,7 +209,7 @@
     <string name="settings_group_sources">۳. منبع داده و نمادها</string>
     <string name="settings_group_params">۴. پارامترهای تحلیل و سوئیچ‌های TradingView</string>
     <string name="settings_group_about">۵. سلامت سرور و درباره</string>
-    <string name="settings_about_version">نسخه ۱.۴۱.۰ · پیوت ۴گانه، ورود آرشیو تاریخی، داده‌های زنده، ممیزی گپ و پشتیبان رمزنگاری‌شده</string>
+    <string name="settings_about_version">نسخه ۱.۴۲.۰ · موتور مستقل پیش‌بینی فاز ۴ (بازده لگاریتمی + GARCH)، آزمون Walk-Forward و دفترکل SHA-256</string>
     <string name="settings_tab_account">حساب</string>
     <string name="settings_tab_appearance">ظاهر</string>
     <string name="settings_tab_sources">نمادها</string>
@@ -380,4 +381,22 @@
     <string name="settings_manual_ohlc_title">ثبت / اصلاح دستی کندل (Manual OHLC)</string>
     <string name="settings_manual_ohlc_btn">ثبت کندل</string>
     <string name="import_batches_empty">هنوز دسته‌ای از تاریخچه وارد نشده است.</string>
+    <string name="forecast_fan_title">مخروط چندک‌های آماری و کندل‌های شبح (q10..q90)</string>
+    <string name="forecast_plot_reference_btn">ترسیم باندهای مرجع روی چارت</string>
+    <string name="forecast_apply_chart_btn">اعمال روی چارت</string>
+    <string name="forecast_record_snapshot_btn">ثبت اسنپ‌شات SHA-256</string>
+    <string name="forecast_tab_overview">پیش‌بینی</string>
+    <string name="forecast_tab_models">مدل‌های پلاگین</string>
+    <string name="forecast_tab_backtest">Walk-Forward</string>
+    <string name="forecast_tab_ledger">دفترکل SHA-256</string>
+    <string name="forecast_models_header">مجموعه مدل‌های ماژولار پیش‌بینی (v1)</string>
+    <string name="forecast_reset_models_btn">بازنشانی پیش‌فرض</string>
+    <string name="forecast_worker_title">پل اختیاری ورکر یادگیری عمیق (Deep Learning Worker)</string>
+    <string name="forecast_worker_desc">آدرس سرویس پایتون برای Chronos-2 (Apache 2.0)، TimesFM 2.5 یا N-HiTS را وارد کنید. بدون ورکر فعال، خروجی صادقانه LOCAL_STATISTICAL_ONLY گزارش می‌شود.</string>
+    <string name="forecast_save_worker_btn">ذخیره آدرس ورکر</string>
+    <string name="forecast_wf_title">ارزیابی خارج از نمونه (Purged Walk-Forward)</string>
+    <string name="forecast_wf_unavailable">برای ارزیابی Walk-Forward حداقل ۳۲ کندل بسته‌شده معتبر لازم است.</string>
+    <string name="forecast_refresh_ledger_btn">بروزرسانی دفترکل از سرور MariaDB</string>
+    <string name="forecast_ledger_empty">هنوز اسنپ‌شاتی ثبت نشده است. با «ثبت اسنپ‌شات SHA-256» اولین زنجیره را بسازید.</string>
+    <string name="forecast_snapshot_recorded">اسنپ‌شات پیش‌بینی در زنجیره تغییرناپذیر SHA-256 ثبت شد.</string>
 </resources>

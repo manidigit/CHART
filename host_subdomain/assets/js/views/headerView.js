@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.41.0';
-import { state, escapeHtml, getIndicatorColorPalette } from '../core/store.js?v=1.41.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.41.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
+import { state, escapeHtml, getIndicatorColorPalette } from '../core/store.js?v=1.42.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.42.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -188,6 +188,30 @@ export function renderTopHeaderBar(activeTab, i18n) {
               : ''
           }
         </button>
+
+        <div class="tv-divider"></div>
+
+        <!-- Dedicated Workspace Mode Switcher: Chart vs Forecast Studio -->
+        <div class="tv-workspace-switcher" role="tablist" aria-label="Workspace Mode">
+          <button
+            type="button"
+            class="tv-ws-tab ${state.activeWorkspaceView !== 'forecast' ? 'active' : ''}"
+            data-action="set-workspace-view"
+            data-view="chart"
+            title="${isFa ? 'نمای چارت زنده' : 'Live Chart Workspace'}"
+          >
+            ${isFa ? 'چارت' : 'Chart'}
+          </button>
+          <button
+            type="button"
+            class="tv-ws-tab ${state.activeWorkspaceView === 'forecast' ? 'active' : ''}"
+            data-action="set-workspace-view"
+            data-view="forecast"
+            title="${i18n.t('nav_forecast_lab')}"
+          >
+            🔮 ${i18n.t('nav_forecast_lab')}
+          </button>
+        </div>
       </div>
 
       <div class="tv-topbar-right">

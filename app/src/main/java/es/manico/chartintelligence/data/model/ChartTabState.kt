@@ -58,6 +58,8 @@ data class ChartTabState(
     val showPivotPoints: Boolean = false,
     val pivotType: String = "STANDARD",
     val showFutureProjection: Boolean = false,
+    val forecastRenderMode: String = "HYBRID",
+    val forecastHorizonBars: Int = 30,
     val pitchforkVariant: String = "original",
     val activeDrawingTool: DrawingTool = DrawingTool.CURSOR,
     val activeDrawingColorHex: String = "FF2962FF",

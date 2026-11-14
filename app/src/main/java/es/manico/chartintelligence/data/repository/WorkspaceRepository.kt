@@ -48,7 +48,7 @@ data class ServerOwnerStatus(
 
 data class SystemStatusDto(
     val isHealthy: Boolean = false,
-    val version: String = "1.41.0",
+    val version: String = "1.42.0",
     val serverTimeUtc: String = "",
     val dbConnected: Boolean = false,
     val dbVersion: String = "MariaDB",
@@ -579,7 +579,11 @@ class WorkspaceRepository(context: Context) {
                 stooqApiKey = loadByokField("stooqApiKey", obj.optString("stooqApiKey", "")),
                 alphaVantageApiKey = loadByokField("alphaVantageApiKey", obj.optString("alphaVantageApiKey", "")),
                 finnhubApiKey = loadByokField("finnhubApiKey", obj.optString("finnhubApiKey", "")),
-                timezoneMode = obj.optString("timezoneMode", "UTC").uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" }
+                timezoneMode = obj.optString("timezoneMode", "UTC").uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" },
+                forecastRenderMode = obj.optString("forecastRenderMode", "HYBRID").uppercase(),
+                forecastHorizonBars = obj.optInt("forecastHorizonBars", 30).coerceIn(10, 60),
+                forecastPluginConfigJson = obj.optString("forecastPluginConfigJson", ""),
+                forecastWorkerUrl = obj.optString("forecastWorkerUrl", "")
             ).also { loaded ->
                 // One-time migration: scrub any legacy BYOK keys out of synced KEY_CHART_PREFERENCES_JSON
                 if (obj.has("twelveDataApiKey") || obj.has("stooqApiKey") ||
@@ -655,6 +659,10 @@ class WorkspaceRepository(context: Context) {
         obj.put("showPrevCloseLine", prefsObj.showPrevCloseLine)
         obj.put("showHighLowLabels", prefsObj.showHighLowLabels)
         obj.put("timezoneMode", prefsObj.timezoneMode)
+        obj.put("forecastRenderMode", prefsObj.forecastRenderMode)
+        obj.put("forecastHorizonBars", prefsObj.forecastHorizonBars.coerceIn(10, 60))
+        obj.put("forecastPluginConfigJson", prefsObj.forecastPluginConfigJson)
+        obj.put("forecastWorkerUrl", prefsObj.forecastWorkerUrl)
         prefs.edit().putString(AppConfig.KEY_CHART_PREFERENCES_JSON, obj.toString()).apply()
     }
 
@@ -1912,7 +1920,7 @@ class WorkspaceRepository(context: Context) {
                             } else ""
                             SystemStatusDto(
                                 isHealthy = data.optString("status") == "healthy",
-                                version = data.optString("version", "1.41.0"),
+                                version = data.optString("version", "1.42.0"),
                                 serverTimeUtc = data.optString("server_time_utc", ""),
                                 dbConnected = isDbConn,
                                 dbVersion = dbVer,
@@ -1928,7 +1936,7 @@ class WorkspaceRepository(context: Context) {
         }
         SystemStatusDto(
             isHealthy = false,
-            version = "1.41.0",
+            version = "1.42.0",
             serverTimeUtc = "Offline",
             dbConnected = false,
             dbVersion = "Offline (Local Cache)",
@@ -2019,6 +2027,12 @@ class WorkspaceRepository(context: Context) {
                         showPivotPoints = obj.optBoolean("showPivotPoints", false),
                         pivotType = obj.optString("pivotType", "STANDARD").uppercase(),
                         showFutureProjection = obj.optBoolean("showFutureProjection", false),
+                        forecastRenderMode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(
+                            obj.optString("forecastRenderMode", curPrefs.forecastRenderMode)
+                        ).key,
+                        forecastHorizonBars = es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(
+                            obj.optInt("forecastHorizonBars", curPrefs.forecastHorizonBars)
+                        ),
                         pitchforkVariant = obj.optString("pitchforkVariant", "original"),
                         isLogScale = obj.optBoolean("isLogScale", false),
                         activeDrawingColorHex = normalizeAndroidHex(
@@ -2086,6 +2100,8 @@ class WorkspaceRepository(context: Context) {
                 .put("showPivotPoints", t.showPivotPoints)
                 .put("pivotType", t.pivotType)
                 .put("showFutureProjection", t.showFutureProjection)
+                .put("forecastRenderMode", t.forecastRenderMode)
+                .put("forecastHorizonBars", t.forecastHorizonBars)
                 .put("pitchforkVariant", t.pitchforkVariant)
                 .put("isLogScale", t.isLogScale)
                 .put("activeDrawingColorHex", t.activeDrawingColorHex)
@@ -2164,6 +2180,10 @@ class WorkspaceRepository(context: Context) {
             .put("showPrevCloseLine", preferences.showPrevCloseLine)
             .put("showHighLowLabels", preferences.showHighLowLabels)
             .put("timezoneMode", preferences.timezoneMode)
+            .put("forecastRenderMode", preferences.forecastRenderMode)
+            .put("forecastHorizonBars", preferences.forecastHorizonBars)
+            .put("forecastPluginConfigJson", preferences.forecastPluginConfigJson)
+            .put("forecastWorkerUrl", preferences.forecastWorkerUrl)
 
         val refTab = openTabs.firstOrNull { it.tabId == loadActiveTabId() } ?: openTabs.firstOrNull()
         if (refTab != null) {
@@ -2250,6 +2270,8 @@ class WorkspaceRepository(context: Context) {
                 .put("showPivotPoints", t.showPivotPoints)
                 .put("pivotType", t.pivotType)
                 .put("showFutureProjection", t.showFutureProjection)
+                .put("forecastRenderMode", t.forecastRenderMode)
+                .put("forecastHorizonBars", t.forecastHorizonBars)
                 .put("pitchforkVariant", t.pitchforkVariant)
                 .put("isLogScale", t.isLogScale)
                 .put("activeDrawingColorHex", t.activeDrawingColorHex)
@@ -2415,7 +2437,15 @@ class WorkspaceRepository(context: Context) {
                     showCountdownToBarClose = prefsJson.optBoolean("showCountdownToBarClose", cur.showCountdownToBarClose),
                     showPrevCloseLine = prefsJson.optBoolean("showPrevCloseLine", cur.showPrevCloseLine),
                     showHighLowLabels = prefsJson.optBoolean("showHighLowLabels", cur.showHighLowLabels),
-                    timezoneMode = prefsJson.optString("timezoneMode", cur.timezoneMode).uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" }
+                    timezoneMode = prefsJson.optString("timezoneMode", cur.timezoneMode).uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" },
+                    forecastRenderMode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(
+                        prefsJson.optString("forecastRenderMode", cur.forecastRenderMode)
+                    ).key,
+                    forecastHorizonBars = es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(
+                        prefsJson.optInt("forecastHorizonBars", cur.forecastHorizonBars)
+                    ),
+                    forecastPluginConfigJson = prefsJson.optString("forecastPluginConfigJson", cur.forecastPluginConfigJson),
+                    forecastWorkerUrl = prefsJson.optString("forecastWorkerUrl", cur.forecastWorkerUrl)
                 )
                 saveChartPreferences(updatedPrefs)
                 changed = true
@@ -2522,6 +2552,12 @@ class WorkspaceRepository(context: Context) {
                             showPivotPoints = obj.optBoolean("showPivotPoints", prefsJson?.optBoolean("showPivotPoints", false) ?: false),
                             pivotType = obj.optString("pivotType", prefsJson?.optString("pivotType", "STANDARD") ?: "STANDARD").uppercase(),
                             showFutureProjection = obj.optBoolean("showFutureProjection", prefsJson?.optBoolean("showFutureProjection", false) ?: false),
+                            forecastRenderMode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(
+                                obj.optString("forecastRenderMode", curPrefs.forecastRenderMode)
+                            ).key,
+                            forecastHorizonBars = es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(
+                                obj.optInt("forecastHorizonBars", curPrefs.forecastHorizonBars)
+                            ),
                             pitchforkVariant = obj.optString("pitchforkVariant", prefsJson?.optString("pitchforkVariant", "original") ?: "original"),
                             isLogScale = obj.optBoolean("isLogScale", false),
                             activeDrawingColorHex = normalizeAndroidHex(
@@ -2779,6 +2815,127 @@ class WorkspaceRepository(context: Context) {
                     )
                 }
                 list
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    fun getForecastLedgerPrefs(): android.content.SharedPreferences = prefs
+
+    suspend fun syncForecastSnapshotToServer(
+        result: es.manico.chartintelligence.forecast.ForecastResult,
+        workerUrl: String
+    ): Boolean = withContext(Dispatchers.IO) {
+        val token = getSessionToken()
+        if (token.isBlank() || result.summary == null) return@withContext false
+        runCatching {
+            val pointsArr = JSONArray()
+            for (pt in result.points) {
+                pointsArr.put(
+                    JSONObject().apply {
+                        put("stepAhead", pt.stepAhead)
+                        put("openTimeUtcMs", pt.openTimeUtcMs)
+                        put("q10", pt.q10)
+                        put("q25", pt.q25)
+                        put("q50", pt.q50)
+                        put("q75", pt.q75)
+                        put("q90", pt.q90)
+                        put("open", pt.open)
+                        put("high", pt.high)
+                        put("low", pt.low)
+                        put("close", pt.close)
+                    }
+                )
+            }
+            val clientForecast = JSONObject().apply {
+                put("status", result.status.name)
+                put("regime", result.regime.name)
+                put("anchorOpenTimeUtcMs", result.anchorOpenTimeUtcMs)
+                put("anchorClose", result.anchorClose)
+                put("inputHash", result.inputHash)
+                put("remoteWorker", JSONObject().put("status", result.remoteWorkerStatus.name))
+                put("summary", JSONObject().apply {
+                    put("terminalQ10", result.summary.terminalQ10)
+                    put("terminalQ50", result.summary.terminalQ50)
+                    put("terminalQ90", result.summary.terminalQ90)
+                })
+                put("points", pointsArr)
+            }
+            val payload = JSONObject().apply {
+                put("session_token", token)
+                put("action", "append_client_forecast")
+                put("symbol", result.symbolCode)
+                put("timeframe", result.timeframe)
+                put("horizon_bars", result.horizonBars)
+                put("worker_url", workerUrl.trim())
+                put("client_forecast", clientForecast)
+            }
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}forecast.php")
+                .withOptionalBearerAuth()
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.code == 401) {
+                    clearLocalSessionOnUnauthorized()
+                    return@use false
+                }
+                resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+            }
+        }.getOrDefault(false)
+    }
+
+    suspend fun fetchForecastLedgerFromServer(
+        symbolFilter: String = ""
+    ): List<es.manico.chartintelligence.forecast.ForecastLedgerEntry> = withContext(Dispatchers.IO) {
+        val token = getSessionToken()
+        if (token.isBlank()) return@withContext emptyList()
+        runCatching {
+            val cleanSym = symbolFilter.trim().uppercase()
+            val url = if (cleanSym.isNotEmpty()) {
+                "${AppConfig.API_BASE_URL}forecast.php?action=ledger&symbol=$cleanSym"
+            } else {
+                "${AppConfig.API_BASE_URL}forecast.php?action=ledger"
+            }
+            val req = Request.Builder()
+                .url(url)
+                .withOptionalBearerAuth()
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.code == 401) {
+                    clearLocalSessionOnUnauthorized()
+                    return@use emptyList()
+                }
+                if (!resp.isSuccessful) return@use emptyList()
+                val root = JSONObject(resp.body?.string().orEmpty())
+                if (!root.optBoolean("ok", false)) return@use emptyList()
+                val arr = root.optJSONObject("data")?.optJSONArray("entries") ?: return@use emptyList()
+                val out = ArrayList<es.manico.chartintelligence.forecast.ForecastLedgerEntry>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    out.add(
+                        es.manico.chartintelligence.forecast.ForecastLedgerEntry(
+                            seq = o.optInt("id", i + 1),
+                            contractVersion = o.optString("contract_version", es.manico.chartintelligence.forecast.ForecastSha256.CONTRACT_VERSION),
+                            symbolCode = o.optString("symbol_code", ""),
+                            timeframe = o.optString("timeframe", "M15"),
+                            horizonBars = o.optInt("horizon_bars", 30),
+                            anchorOpenTimeUtcMs = o.optLong("anchor_open_time_utc_ms", 0L),
+                            anchorClose = o.optDouble("anchor_close", 0.0),
+                            forecastStatus = o.optString("forecast_status", "PROVISIONAL"),
+                            regime = o.optString("regime", "RANGING"),
+                            inputHash = o.optString("input_hash", ""),
+                            terminalMedian = o.optDouble("terminal_q50", 0.0),
+                            terminalQ10 = o.optDouble("terminal_q10", 0.0),
+                            terminalQ90 = o.optDouble("terminal_q90", 0.0),
+                            generatedAtUtcMs = o.optLong("created_at_utc_ms", 0L),
+                            prevForecastHash = o.optString("prev_forecast_hash", ""),
+                            forecastHash = o.optString("forecast_hash", ""),
+                            syncedToCloud = true
+                        )
+                    )
+                }
+                out
             }
         }.getOrDefault(emptyList())
     }

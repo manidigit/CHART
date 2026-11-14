@@ -1,4 +1,4 @@
-import { PriceFormatter } from './priceFormatter.js?v=1.41.0';
+import { PriceFormatter } from './priceFormatter.js?v=1.42.0';
 
 function sanitizeImportedCandle(rawMs, tf, open, high, low, close, volume) {
   if (!Number.isFinite(open) || !Number.isFinite(close) || open <= 0 || close <= 0) return null;

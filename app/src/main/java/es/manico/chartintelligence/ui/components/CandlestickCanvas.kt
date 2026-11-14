@@ -67,6 +67,9 @@ import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.ChartType
 import es.manico.chartintelligence.data.model.DrawingTool
+import es.manico.chartintelligence.forecast.ForecastEngine
+import es.manico.chartintelligence.forecast.ForecastModelRegistry
+import es.manico.chartintelligence.forecast.ForecastRenderMode
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 import java.math.BigDecimal
@@ -372,10 +375,41 @@ fun CandlestickCanvas(
         else Phase2IndicatorsAlgorithm.computePivotPoints(candles, tab.timeframe, tab.symbolCode, tab.pivotType)
     }
 
-    val futureProjectedCandles = remember(candles, tab.timeframe, tab.showFutureProjection, effectiveScrollOffset) {
-        if (!tab.showFutureProjection || effectiveScrollOffset > 0 || candles.size < 10) emptyList()
-        else Phase2IndicatorsAlgorithm.computeFutureCandlestickProjection(candles, tab.timeframe, 30)
+    val activeForecastRenderMode = remember(tab.forecastRenderMode, preferences.forecastRenderMode) {
+        ForecastRenderMode.parse(tab.forecastRenderMode.ifBlank { preferences.forecastRenderMode })
     }
+    val activeForecastHorizon = remember(tab.forecastHorizonBars, preferences.forecastHorizonBars) {
+        if (tab.forecastHorizonBars in 10..60) tab.forecastHorizonBars else preferences.forecastHorizonBars.coerceIn(10, 60)
+    }
+    val futureProjectionResult = remember(
+        candles,
+        tab.symbolCode,
+        tab.timeframe,
+        tab.showFutureProjection,
+        effectiveScrollOffset,
+        activeForecastHorizon,
+        activeForecastRenderMode,
+        preferences.forecastPluginConfigJson,
+        preferences.forecastWorkerUrl
+    ) {
+        if (!tab.showFutureProjection || effectiveScrollOffset > 0 || candles.size < 24) null
+        else {
+            val registry = ForecastModelRegistry().apply {
+                applyFromJson(preferences.forecastPluginConfigJson)
+            }
+            ForecastEngine.project(
+                candles = candles,
+                symbolCode = tab.symbolCode,
+                timeframe = tab.timeframe,
+                horizonBars = activeForecastHorizon,
+                renderMode = activeForecastRenderMode,
+                registry = registry,
+                workerUrl = preferences.forecastWorkerUrl,
+                skipWalkForward = true
+            )
+        }
+    }
+    val futureProjectedCandles = futureProjectionResult?.points.orEmpty()
 
     val inspectedIdx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
     val inspectedCandle = remember(tab.selectedCandleIndex, visibleSlice) {
@@ -413,10 +447,10 @@ fun CandlestickCanvas(
     val sliceMinPrice = visibleSlice.minOfOrNull { it.low.toDouble() } ?: 0.0
     val sliceMaxPrice = visibleSlice.maxOfOrNull { it.high.toDouble() } ?: 1.0
     val rawMinPrice = if (futureProjectedCandles.isNotEmpty()) {
-        min(sliceMinPrice, futureProjectedCandles.minOf { it.low })
+        min(sliceMinPrice, futureProjectedCandles.minOf { min(it.low, it.q10) })
     } else sliceMinPrice
     val rawMaxPrice = if (futureProjectedCandles.isNotEmpty()) {
-        max(sliceMaxPrice, futureProjectedCandles.maxOf { it.high })
+        max(sliceMaxPrice, futureProjectedCandles.maxOf { max(it.high, it.q90) })
     } else sliceMaxPrice
     val midPrice = (rawMinPrice + rawMaxPrice) / 2.0
     val rawHalfSpan = (rawMaxPrice - rawMinPrice) / 2.0
@@ -1242,7 +1276,7 @@ fun CandlestickCanvas(
                             }
                         }
 
-                        // 5f. PRED-09 & PRED-10: 30-Period AI Future Candlesticks Projection (Right of Present Bar Divider)
+                        // 5f. Phase 4 Statistical Future Projection (Quantile Fan Bands + Ghost Candlesticks + Median Path)
                         if (futureProjectedCandles.isNotEmpty()) {
                             val dividerX = visibleSlice.size * slotW
                             val futureDashEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
@@ -1258,34 +1292,93 @@ fun CandlestickCanvas(
                                 strokeWidth = 1.8f,
                                 pathEffect = futureDashEffect
                             )
-                            futureProjectedCandles.forEachIndexed { fIdx, fc ->
-                                val fCenterX = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                val fHighY = priceToY(fc.high)
-                                val fLowY = priceToY(fc.low)
-                                val fOpenY = priceToY(fc.open)
-                                val fCloseY = priceToY(fc.close)
-                                val isFutureBull = fc.close >= fc.open
-                                val wickCol = Color(0xFF9F8FD4).copy(alpha = 0.62f)
-                                val bodyCol = if (isFutureBull) {
-                                    Color(0xFFA796D4).copy(alpha = 0.60f)
-                                } else {
-                                    Color(0xFF726498).copy(alpha = 0.48f)
+
+                            val anchorX = ((visibleSlice.size - 0.5f) * slotW).coerceAtLeast(0f)
+                            val anchorCloseY = priceToY(visibleSlice.lastOrNull()?.close?.toDouble() ?: futureProjectedCandles.first().open)
+
+                            if (activeForecastRenderMode == ForecastRenderMode.FAN_CHART ||
+                                activeForecastRenderMode == ForecastRenderMode.HYBRID
+                            ) {
+                                val outerBandPath = obtainPath()
+                                outerBandPath.moveTo(anchorX, anchorCloseY)
+                                futureProjectedCandles.forEachIndexed { fIdx, pt ->
+                                    val x = (visibleSlice.size + fIdx + 0.5f) * slotW
+                                    outerBandPath.lineTo(x, priceToY(pt.q90))
                                 }
-                                drawLine(
-                                    color = wickCol,
-                                    start = Offset(fCenterX, fHighY),
-                                    end = Offset(fCenterX, fLowY),
-                                    strokeWidth = 1.2f
+                                for (fIdx in futureProjectedCandles.indices.reversed()) {
+                                    val pt = futureProjectedCandles[fIdx]
+                                    val x = (visibleSlice.size + fIdx + 0.5f) * slotW
+                                    outerBandPath.lineTo(x, priceToY(pt.q10))
+                                }
+                                outerBandPath.close()
+                                drawPath(
+                                    path = outerBandPath,
+                                    color = Color(0xFFA796D4).copy(alpha = 0.14f)
                                 )
-                                val topY = min(fOpenY, fCloseY)
-                                val botY = max(fOpenY, fCloseY)
-                                val bH = (botY - topY).coerceAtLeast(2.0f)
-                                drawRect(
-                                    color = bodyCol,
-                                    topLeft = Offset(fCenterX - bodyW / 2f, topY),
-                                    size = Size(bodyW, bH)
+
+                                val innerBandPath = obtainPath()
+                                innerBandPath.moveTo(anchorX, anchorCloseY)
+                                futureProjectedCandles.forEachIndexed { fIdx, pt ->
+                                    val x = (visibleSlice.size + fIdx + 0.5f) * slotW
+                                    innerBandPath.lineTo(x, priceToY(pt.q75))
+                                }
+                                for (fIdx in futureProjectedCandles.indices.reversed()) {
+                                    val pt = futureProjectedCandles[fIdx]
+                                    val x = (visibleSlice.size + fIdx + 0.5f) * slotW
+                                    innerBandPath.lineTo(x, priceToY(pt.q25))
+                                }
+                                innerBandPath.close()
+                                drawPath(
+                                    path = innerBandPath,
+                                    color = Color(0xFFA796D4).copy(alpha = 0.24f)
                                 )
                             }
+
+                            if (activeForecastRenderMode == ForecastRenderMode.GHOST_CANDLES ||
+                                activeForecastRenderMode == ForecastRenderMode.HYBRID
+                            ) {
+                                val candleAlpha = if (activeForecastRenderMode == ForecastRenderMode.HYBRID) 0.52f else 0.72f
+                                futureProjectedCandles.forEachIndexed { fIdx, fc ->
+                                    val fCenterX = (visibleSlice.size + fIdx + 0.5f) * slotW
+                                    val fHighY = priceToY(fc.high)
+                                    val fLowY = priceToY(fc.low)
+                                    val fOpenY = priceToY(fc.open)
+                                    val fCloseY = priceToY(fc.close)
+                                    val isFutureBull = fc.close >= fc.open
+                                    val wickCol = Color(0xFF9F8FD4).copy(alpha = candleAlpha)
+                                    val bodyCol = if (isFutureBull) {
+                                        Color(0xFFA796D4).copy(alpha = candleAlpha)
+                                    } else {
+                                        Color(0xFF726498).copy(alpha = candleAlpha * 0.85f)
+                                    }
+                                    drawLine(
+                                        color = wickCol,
+                                        start = Offset(fCenterX, fHighY),
+                                        end = Offset(fCenterX, fLowY),
+                                        strokeWidth = 1.2f
+                                    )
+                                    val topY = min(fOpenY, fCloseY)
+                                    val botY = max(fOpenY, fCloseY)
+                                    val bH = (botY - topY).coerceAtLeast(2.0f)
+                                    drawRect(
+                                        color = bodyCol,
+                                        topLeft = Offset(fCenterX - bodyW / 2f, topY),
+                                        size = Size(bodyW, bH)
+                                    )
+                                }
+                            }
+
+                            val medianPath = obtainPath()
+                            medianPath.moveTo(anchorX, anchorCloseY)
+                            futureProjectedCandles.forEachIndexed { fIdx, pt ->
+                                val x = (visibleSlice.size + fIdx + 0.5f) * slotW
+                                medianPath.lineTo(x, priceToY(pt.q50))
+                            }
+                            drawPath(
+                                path = medianPath,
+                                color = Color(0xFFC4B5FD),
+                                style = Stroke(width = 2.0f, pathEffect = futureDashEffect)
+                            )
                         }
 
                         // 6a. Previous Session Close Horizontal Dashed Line across Main Price Pane
@@ -2103,7 +2196,7 @@ fun CandlestickCanvas(
                         }
                         if (tab.showFutureProjection && futureProjectedCandles.isNotEmpty()) {
                             Text(
-                                text = "🔮 +${futureProjectedCandles.size} Bars",
+                                text = "🔮 +${futureProjectedCandles.size} (${activeForecastRenderMode.key})",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
@@ -2661,7 +2754,7 @@ fun CandlestickCanvas(
                     }
                 }
 
-                // PRED-09 Callout Header when Future Projection (30 periods) is active
+                // Statistical Future Projection Callout Header
                 if (futureProjectedCandles.isNotEmpty()) {
                     Row(
                         modifier = Modifier
@@ -2690,7 +2783,7 @@ fun CandlestickCanvas(
                             color = Color(0xFFF8FAFC)
                         )
                         Text(
-                            text = "Future Projection (30 periods) (AI-Generated) →",
+                            text = "Statistical Projection (+${futureProjectedCandles.size} bars · ${activeForecastRenderMode.key}) →",
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 9.sp,
                             fontFamily = JetBrainsMonoFontFamily,
@@ -2700,7 +2793,7 @@ fun CandlestickCanvas(
                     }
                 }
 
-                // Bottom X-Axis Smart Span-Aware UTC Time Labels + Future Milestone Labels (+5..+30) + Crosshair Pill
+                // Bottom X-Axis Smart Span-Aware UTC Time Labels + Future Milestone Labels + Crosshair Pill
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
@@ -2708,6 +2801,11 @@ fun CandlestickCanvas(
                         .padding(start = 8.dp, end = plotRightPadDp, bottom = 3.dp)
                 ) {
                     if (futureProjectedCandles.isNotEmpty()) {
+                        val hCount = futureProjectedCandles.size
+                        val stepMarks = listOf(5, (hCount * 0.35).roundToInt(), (hCount * 0.65).roundToInt(), hCount)
+                            .filter { it in 1..hCount }
+                            .distinct()
+                            .sorted()
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween,
@@ -2722,13 +2820,13 @@ fun CandlestickCanvas(
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
-                            for (stepMark in listOf(5, 10, 15, 25, 30)) {
+                            for (stepMark in stepMarks) {
                                 val fc = futureProjectedCandles.firstOrNull { it.stepAhead == stepMark }
                                 if (fc != null) {
                                     val sign = if (fc.pctChangeFromLast >= 0.0) "+" else ""
                                     val pctStr = String.format(java.util.Locale.US, "%s%.1f%%", sign, fc.pctChangeFromLast)
                                     Text(
-                                        text = if (stepMark == 5) "+5 (Future)" else "+$stepMark ($pctStr)",
+                                        text = "+$stepMark ($pctStr)",
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 8.5.sp,
                                         fontFamily = JetBrainsMonoFontFamily,

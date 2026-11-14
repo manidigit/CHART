@@ -5,8 +5,8 @@ import {
   escapeHtml,
   getLocalByokKeys,
   getInstrumentSpec,
-} from '../core/store.js?v=1.41.0';
-import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.41.0';
+} from '../core/store.js?v=1.42.0';
+import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.42.0';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';

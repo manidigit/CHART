@@ -1,4 +1,4 @@
-import { state } from '../core/store.js?v=1.41.0';
+import { state } from '../core/store.js?v=1.42.0';
 
 export function renderRightIconRail(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -23,12 +23,11 @@ export function renderRightIconRail(i18n) {
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
         </button>
 
-        <!-- 3. Prediction & Multi-Scenario Analysis -->
+        <!-- 3. Dedicated Forecast Studio Workspace Tab -->
         <button
-          class="tv-rail-btn ${state.activeModal === 'prediction' ? 'active' : ''}"
-          data-action="open-modal"
-          data-modal="prediction"
-          title="${i18n.t('nav_prediction')}"
+          class="tv-rail-btn ${state.activeWorkspaceView === 'forecast' ? 'active' : ''}"
+          data-action="toggle-forecast-studio"
+          title="${i18n.t('nav_forecast_lab')}"
         >
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>
         </button>

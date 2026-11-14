@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.41.0';
+import { I18nManager } from './core/i18n.js?v=1.42.0';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -24,7 +24,7 @@ import {
   syncIndicatorsAcrossTabsAndPrefs,
   getIndicatorColorPalette,
   normalizeHexForWeb,
-} from './core/store.js?v=1.41.0';
+} from './core/store.js?v=1.42.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -45,26 +45,36 @@ import {
   fetchSymbolIntel,
   uploadHistoricalImport,
   fetchImportBatches,
-} from './services/apiService.js?v=1.41.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.41.0';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.41.0';
-import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.41.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.41.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.41.0';
+  runForecastOnServer,
+  fetchForecastLedger,
+} from './services/apiService.js?v=1.42.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.42.0';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.42.0';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.42.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.42.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.42.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.41.0';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.41.0';
+} from './views/headerView.js?v=1.42.0';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.42.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.41.0';
-import { renderPredictionModal } from './views/analysisView.js?v=1.41.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.41.0';
-import { renderRightIconRail } from './views/navigationView.js?v=1.41.0';
+} from './views/watchlistView.js?v=1.42.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.42.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.42.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.42.0';
+import {
+  renderForecastStudioView,
+  renderForecastStudioFanCanvas,
+  buildForecastForTab,
+} from './views/forecastView.js?v=1.42.0';
+import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.42.0';
+import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.42.0';
+import { normalizeRenderMode, clampHorizonBars } from './forecast/forecastContract.js?v=1.42.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -625,15 +635,19 @@ export function renderApp() {
         ${renderTopHeaderBar(activeTab, i18n)}
 
         <div class="tv-main-area">
-          ${renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
+          ${state.activeWorkspaceView === 'forecast' ? '' : renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
 
-          <main class="chart-workspace">
-            <div class="chart-canvas-box">
-              ${renderOhlcvOverlay(activeTab)}
-              <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
-            </div>
-            ${renderBottomChartBar(activeTab, i18n)}
-          </main>
+          ${
+            state.activeWorkspaceView === 'forecast'
+              ? `<main class="forecast-workspace">${renderForecastStudioView(activeTab, i18n)}</main>`
+              : `<main class="chart-workspace">
+                  <div class="chart-canvas-box">
+                    ${renderOhlcvOverlay(activeTab)}
+                    <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
+                  </div>
+                  ${renderBottomChartBar(activeTab, i18n)}
+                </main>`
+          }
 
           ${renderRightSplitPanel(activeTab, i18n)}
           ${renderRightIconRail(i18n)}
@@ -787,6 +801,20 @@ function redrawActiveCanvas() {
           oldOverlay.replaceWith(temp.firstElementChild);
         }
       }
+    }
+  }
+
+  const studioCanvas = document.getElementById('forecast-studio-canvas');
+  if (studioCanvas && activeTab) {
+    const built = buildForecastForTab(activeTab);
+    if (built) {
+      renderForecastStudioFanCanvas(
+        studioCanvas,
+        built.candles,
+        built.result,
+        Number(activeTab.decimals || 2),
+        state.isDarkTheme
+      );
     }
   }
 }
@@ -2173,6 +2201,92 @@ document.addEventListener('click', async (e) => {
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
+  } else if (action === 'set-workspace-view') {
+    const targetView = el.getAttribute('data-view') === 'forecast' ? 'forecast' : 'chart';
+    state.activeWorkspaceView = targetView;
+    state.activeModal = null;
+    renderApp();
+  } else if (action === 'toggle-forecast-studio') {
+    state.activeWorkspaceView = state.activeWorkspaceView === 'forecast' ? 'chart' : 'forecast';
+    state.activeModal = null;
+    renderApp();
+    if (state.activeWorkspaceView === 'forecast' && activeTab) {
+      fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe).then(() => renderApp()).catch(() => {});
+    }
+  } else if (action === 'open-forecast-studio') {
+    state.activeWorkspaceView = 'forecast';
+    state.activeModal = null;
+    renderApp();
+  } else if (action === 'set-forecast-subtab') {
+    state.forecastStudioTab = el.getAttribute('data-tab') || 'overview';
+    renderApp();
+    if (state.forecastStudioTab === 'ledger' && activeTab) {
+      fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe).then(() => renderApp()).catch(() => {});
+    }
+  } else if (action === 'set-forecast-horizon' && activeTab) {
+    const h = clampHorizonBars(Number(el.getAttribute('data-horizon') || 30));
+    activeTab.forecastHorizonBars = h;
+    state.chartPreferences.forecastHorizonBars = h;
+    activeTab._indicatorCache = {};
+    savePreferences();
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'set-forecast-render-mode' && activeTab) {
+    const rm = normalizeRenderMode(el.getAttribute('data-mode'));
+    activeTab.forecastRenderMode = rm;
+    state.chartPreferences.forecastRenderMode = rm;
+    activeTab._indicatorCache = {};
+    savePreferences();
+    saveOpenTabsToStorage();
+    renderApp();
+  } else if (action === 'apply-forecast-to-chart' && activeTab) {
+    activeTab.showFutureProjection = true;
+    activeTab.scrollOffset = 0;
+    state.activeWorkspaceView = 'chart';
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    saveOpenTabsToStorage();
+    renderApp();
+    redrawActiveCanvas();
+  } else if (action === 'reset-forecast-models') {
+    defaultForecastRegistry.resetDefaults();
+    state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
+    if (activeTab) activeTab._indicatorCache = {};
+    savePreferences();
+    renderApp();
+  } else if (action === 'save-forecast-worker-url') {
+    const inp = document.getElementById('ci-forecast-worker-url');
+    state.chartPreferences.forecastWorkerUrl = inp ? String(inp.value || '').trim() : '';
+    savePreferences();
+    renderApp();
+    showFloatingToast(
+      i18n.getCurrentLanguage() === 'fa' ? 'آدرس Worker ذخیره شد' : 'Remote worker URL saved'
+    );
+  } else if (action === 'record-forecast-snapshot' && activeTab) {
+    const built = buildForecastForTab(activeTab);
+    if (built && built.result && built.result.status !== 'DATA_NOT_READY') {
+      const localEntry = defaultForecastLedger.appendFromForecast(built.result);
+      const serverRes = await runForecastOnServer({
+        symbolCode: activeTab.symbolCode,
+        timeframe: activeTab.timeframe,
+        horizonBars: built.result.horizonBars,
+        candles: built.candles,
+        clientForecast: built.result,
+        workerUrl: state.chartPreferences.forecastWorkerUrl || '',
+      });
+      if (serverRes.ok && localEntry) {
+        defaultForecastLedger.markSynced(localEntry.forecastHash);
+      }
+      await fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe);
+      renderApp();
+      showFloatingToast(
+        i18n.getCurrentLanguage() === 'fa'
+          ? 'اسنپ‌شات پیش‌بینی با زنجیره SHA-256 ثبت شد ✓'
+          : 'Forecast snapshot appended to SHA-256 ledger ✓'
+      );
+    }
+  } else if (action === 'refresh-forecast-ledger' && activeTab) {
+    await fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe);
+    renderApp();
   } else if (action === 'toggle-timezone-mode') {
     const nextTz = state.chartPreferences.timezoneMode === 'LOCAL' ? 'UTC' : 'LOCAL';
     state.chartPreferences.timezoneMode = nextTz;
@@ -2367,13 +2481,14 @@ document.addEventListener('click', async (e) => {
 
     activeTab.drawings = [
       ...(activeTab.drawings || []).filter((d) => !String(d.id).startsWith('proj_')),
-      { id: 'proj_entry', type: 'hline', price1: entry, colorHex: '#F59E0B', lineWidthPx: 2, label: 'Pivot Entry' },
-      { id: 'proj_t1', type: 'hline', price1: t1, colorHex: targetCol, lineWidthPx: 2, label: 'Target 1' },
-      { id: 'proj_t2', type: 'hline', price1: t2, colorHex: targetCol, lineWidthPx: 2, label: 'Target 2' },
-      { id: 'proj_stop', type: 'hline', price1: stop, colorHex: stopCol, lineWidthPx: 2, label: 'Invalidation' },
+      { id: 'proj_entry', type: 'hline', price1: entry, colorHex: '#F59E0B', lineWidthPx: 2, label: 'Anchor Ref' },
+      { id: 'proj_t1', type: 'hline', price1: t1, colorHex: targetCol, lineWidthPx: 2, label: 'Variance Ref 1' },
+      { id: 'proj_t2', type: 'hline', price1: t2, colorHex: targetCol, lineWidthPx: 2, label: 'Quantile Bound' },
+      { id: 'proj_stop', type: 'hline', price1: stop, colorHex: stopCol, lineWidthPx: 2, label: 'Pivot Ref' },
     ];
     saveDrawings(`${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
     state.activeModal = null;
+    state.activeWorkspaceView = 'chart';
     renderApp();
   } else if (action === 'take-chart-snapshot') {
     await handleChartSnapshot();
@@ -2598,6 +2713,38 @@ document.addEventListener('change', async (e) => {
       savePreferences();
       renderApp();
       redrawActiveCanvas();
+    }
+  } else if (action === 'toggle-forecast-model') {
+    const id = el.getAttribute('data-model-id');
+    if (id) {
+      defaultForecastRegistry.setEnabled(id, Boolean(el.checked));
+      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
+      const tab = getActiveTab();
+      if (tab) tab._indicatorCache = {};
+      savePreferences();
+      renderApp();
+    }
+  } else if (action === 'set-forecast-model-weight') {
+    const id = el.getAttribute('data-model-id');
+    if (id) {
+      defaultForecastRegistry.setWeight(id, Number(el.value || 0));
+      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
+      const tab = getActiveTab();
+      if (tab) tab._indicatorCache = {};
+      savePreferences();
+      renderApp();
+    }
+  } else if (action === 'set-forecast-model-param') {
+    const id = el.getAttribute('data-model-id');
+    const key = el.getAttribute('data-param-key');
+    const val = Number(el.value);
+    if (id && key && Number.isFinite(val)) {
+      defaultForecastRegistry.setParams(id, { [key]: val });
+      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
+      const tab = getActiveTab();
+      if (tab) tab._indicatorCache = {};
+      savePreferences();
+      renderApp();
     }
   }
 });

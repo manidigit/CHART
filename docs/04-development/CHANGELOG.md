@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.42.0] - 2026-11-14
+
+### Added (Phase 4: Independent, Modular Future Price Projection Engine v1)
+- **Decoupled, Pluggable Core Forecast Architecture (`forecast-contract/v1`):**
+  - Built an independent prediction core completely isolated from market data fetchers and chart UI/canvas renderers on **Web (`host_subdomain/assets/js/forecast/`)**, **Android (`app/src/main/java/es/manico/chartintelligence/forecast/`)**, and **PHP Backend (`host_subdomain/api/v1/forecast/`)**.
+  - Enforced strictly statistical terminology across all contracts, UI, and tests (`q10..q90`, probabilities summing to `1.000`, `Bullish Expansion Scenario`, `Base Range Scenario`, `Bearish Contraction Scenario`, `Structural Pivot Reference`) with zero trading advice labels.
+  - Added stationary log-return feature extraction ($r_t = \ln(C_t / C_{t-1})$), `DataReadinessGate`, pluggable `ForecastModelRegistry` / `modelRegistry.js` with live toggle/weight/parameter configuration (`NaivePersistence`, `ATR Volatility Cone`, `Kalman Filter`, `GARCH(1,1)`, `AR(2)+ETS`, `Gaussian Process Trend`), Purged Walk-Forward evaluation (`AcceptanceGate` vs `Persistence`), and session-aware calendar projection across all 6 timeframes (`M15..W1`, $h = 10..60$ bars).
+- **Dedicated Forecast Studio / Forecast Lab Views & 3-Mode Chart Overlays:**
+  - **Web (`views/forecastView.js`, `navigationView.js`, `chartRenderer.js`):** Added dedicated **Forecast Studio (`آزمایشگاه پیش‌بینی`)** tab and right-rail button with 4 sub-tabs (`Projection`, `Plugin Models`, `Walk-Forward`, `SHA-256 Ledger`), interactive SVG Fan Chart (`q10..q90` / `q25..q75` / `q50`), plugin weight & hyperparameter controls, and 3-mode canvas overlay (`Fan Chart`, `Ghost Candles`, `Hybrid`) synced via `store.js` and `apiService.js` (`?v=1.42.0`).
+  - **Android (`ForecastLabScreen.kt`, `ForecastLabComponents.kt`, `CandlestickCanvas.kt`, `MainViewModel.kt`, `MainActivity.kt`):** Added dedicated **Forecast Lab** navigation destination with 4 Material 3 tabs, Jetpack Compose mini fan preview, plugin controls + honest `FORECAST_WORKER_URL` bridge, Walk-Forward benchmark table, SHA-256 ledger inspector, and 3-mode chart canvas projection overlay.
+- **MariaDB Audit Schema, PHP API & Immutable SHA-256 Hash-Chained Ledger:**
+  - Added `host_subdomain/migrations/003_phase4_forecast_tables.sql` (`prediction_models`, `prediction_runs`, `prediction_forecasts`, `prediction_scenarios`, `prediction_walkforward_benchmarks`) registered in `Database.php`.
+  - Added `ForecastEnginePhp.php`, `api/v1/forecast.php`, honest remote worker probe (`LOCAL_STATISTICAL_ONLY` / `UNCONFIGURED` when unconfigured; never fabricates DL outputs or uses `TimesFM 3.0`), and version bump to `1.42.0` in `api/v1/system/status.php` and strings resources.
+- **Verification:** Added `tests/phase4_forecast.test.mjs` (`PRED-01..04`) and `Phase4ForecastTest.kt` (Robolectric + Compose UI tests).
+
+---
+
 ## [1.41.0] - 2026-11-14
 
 ### Added & Completed (Remaining Phase 1–3 Deliverables)

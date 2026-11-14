@@ -188,6 +188,7 @@
     <string name="draw_tools_toggle">Draw</string>
     <string name="settings_change_provider">Change Source</string>
     <string name="nav_prediction">Prediction</string>
+    <string name="nav_forecast_lab">Forecast Lab</string>
     <string name="nav_chart_short">Chart</string>
     <string name="chart_control_indicators">Indicators</string>
     <string name="chart_control_more">More</string>
@@ -208,7 +209,7 @@
     <string name="settings_group_sources">3. Data Sources &amp; Symbols</string>
     <string name="settings_group_params">4. Analysis &amp; TradingView Switches</string>
     <string name="settings_group_about">5. Server Health &amp; About</string>
-    <string name="settings_about_version">CHART Intelligence v1.41.0 · 4-Variant Pivots, Phase 3 Historical Import, Live Intel &amp; Encrypted Backup</string>
+    <string name="settings_about_version">CHART Intelligence v1.42.0 · Phase 4 Forecast Engine v1 (Log-Returns + GARCH), Purged Walk-Forward &amp; SHA-256 Ledger</string>
     <string name="settings_tab_account">Account</string>
     <string name="settings_tab_appearance">Appearance</string>
     <string name="settings_tab_sources">Symbols</string>
@@ -380,4 +381,22 @@
     <string name="settings_manual_ohlc_title">Manual OHLC Entry / Correction</string>
     <string name="settings_manual_ohlc_btn">Save Bar</string>
     <string name="import_batches_empty">No historical import batches recorded yet.</string>
+    <string name="forecast_fan_title">Quantile Fan &amp; Ghost Projection</string>
+    <string name="forecast_plot_reference_btn">Plot Reference Bands on Chart</string>
+    <string name="forecast_apply_chart_btn">Apply to Chart</string>
+    <string name="forecast_record_snapshot_btn">Record SHA-256 Snapshot</string>
+    <string name="forecast_tab_overview">Projection</string>
+    <string name="forecast_tab_models">Plugin Models</string>
+    <string name="forecast_tab_backtest">Walk-Forward</string>
+    <string name="forecast_tab_ledger">SHA-256 Ledger</string>
+    <string name="forecast_models_header">Pluggable Forecast Ensemble (v1)</string>
+    <string name="forecast_reset_models_btn">Reset Defaults</string>
+    <string name="forecast_worker_title">Optional Deep Learning Worker Bridge</string>
+    <string name="forecast_worker_desc">Configure an external Python worker for Chronos-2 (Apache 2.0), TimesFM 2.5, or N-HiTS. Without a configured worker, runs are strictly reported as LOCAL_STATISTICAL_ONLY.</string>
+    <string name="forecast_save_worker_btn">Save Worker URL</string>
+    <string name="forecast_wf_title">Purged Out-of-Sample Walk-Forward Benchmark</string>
+    <string name="forecast_wf_unavailable">At least 32 valid closed candles are needed to compute purged walk-forward benchmarks.</string>
+    <string name="forecast_refresh_ledger_btn">Sync Ledger from Host MariaDB</string>
+    <string name="forecast_ledger_empty">No immutable forecast snapshots recorded yet. Tap Record SHA-256 Snapshot to anchor a hash-chained run.</string>
+    <string name="forecast_snapshot_recorded">Forecast snapshot recorded in SHA-256 hash chain.</string>
 </resources>

@@ -139,7 +139,7 @@
   "settings_group_sources": "منبع داده و نمادها",
   "settings_group_params": "مقیاس و آپشن‌های چارت",
   "settings_group_about": "درباره و سلامت سرور",
-  "settings_about_version": "CHART Intelligence · نسخه ۱.۴۱.۰ (پیوت ۴گانه، ورود آرشیو تاریخی، سلامت PHP، ممیزی گپ و پشتیبان رمزنگاری‌شده)",
+  "settings_about_version": "CHART Intelligence · نسخه ۱.۴۲.۰ (فاز ۴ آزمایشگاه پیش‌بینی مستقل، انسمبل GARCH/Kalman، ارزیابی Walk-Forward و دفتر کل SHA-256)",
   "settings_about_desc": "همگام‌سازی خودکار دوطرفه کندل‌ها، خطوط ترسیم، تب‌ها و تنظیمات بین وب و اندروید از طریق هسته مرکزی سرور.",
   "settings_sources_subtitle": "تعیین منبع دریافت داده (TradingView، biquote، Twelve Data، Dukascopy، Yahoo، Stooq، EIA) و حضور در واچ‌لیست.",
   "settings_group_colors": "رنگ‌بندی کندل‌ها و خطوط ترسیم",
@@ -321,5 +321,8 @@
   "import_batches_empty": "هنوز دسته‌ای از تاریخچه وارد نشده است.",
   "error_image_upload_forbidden": "آپلود تصویر به عنوان تاریخچه قیمت مجاز نیست (No-Image-Storage Policy).",
   "error_import_parse_failed": "پردازش فایل تاریخچه ناموفق بود.",
-  "status_import_completed": "دسته ورود تاریخچه با موفقیت ثبت و ممیزی شد."
+  "status_import_completed": "دسته ورود تاریخچه با موفقیت ثبت و ممیزی شد.",
+  "nav_forecast_lab": "آزمایشگاه پیش‌بینی",
+  "forecast_apply_chart": "اعمال روی چارت و مشاهده",
+  "forecast_record_snapshot": "ثبت در دفتر کل + همگام‌سازی"
 }

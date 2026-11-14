@@ -104,7 +104,13 @@ data class ChartPreferences(
     val twelveDataApiKey: String = "",
     val stooqApiKey: String = "",
     val alphaVantageApiKey: String = "",
-    val finnhubApiKey: String = ""
+    val finnhubApiKey: String = "",
+
+    // Phase 4 Forecast Studio preferences
+    val forecastRenderMode: String = "HYBRID",
+    val forecastHorizonBars: Int = 30,
+    val forecastPluginConfigJson: String = "",
+    val forecastWorkerUrl: String = ""
 ) {
     val chartGroup: ChartSettingsGroup
         get() = ChartSettingsGroup(
