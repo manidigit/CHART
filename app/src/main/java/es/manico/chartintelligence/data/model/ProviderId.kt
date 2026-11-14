@@ -58,6 +58,9 @@ enum class ProviderId(
         defaultTimeframe = "D1"
     );
 
+    val isEnabled: Boolean
+        get() = this == TVDATAFEED
+
     fun resolvePriceBasis(symbolCode: String): String {
         val sym = symbolCode.trim().uppercase()
         return when (this) {

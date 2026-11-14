@@ -895,23 +895,34 @@ fun SettingsScreen(
                                             onDismissRequest = { providerMenuExpanded = false }
                                         ) {
                                             for (spec in methodCatalog) {
+                                                val isProvEnabled = spec.providerId.isEnabled
                                                 val isProvSelected = spec.providerId == selectedExplorerProvider
                                                 val catCount = spec.supportedSymbols.count {
                                                     matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
                                                 }
+                                                val futureSuffix = if (!isProvEnabled) {
+                                                    if (isFa) " — غیرفعال (توسعه آینده)" else " — Disabled (Future)"
+                                                } else ""
                                                 DropdownMenuItem(
+                                                    enabled = isProvEnabled,
                                                     text = {
                                                         Text(
-                                                            text = "${spec.providerId.badgeLabel} ($catCount)",
+                                                            text = "${if (isProvEnabled) "" else "🔒 "}${spec.providerId.badgeLabel} ($catCount)$futureSuffix",
                                                             style = MaterialTheme.typography.bodySmall,
                                                             fontFamily = JetBrainsMonoFontFamily,
                                                             fontWeight = if (isProvSelected) FontWeight.Bold else FontWeight.Medium,
-                                                            color = if (isProvSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+                                                            color = when {
+                                                                !isProvEnabled -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+                                                                isProvSelected -> MaterialTheme.colorScheme.primary
+                                                                else -> MaterialTheme.colorScheme.onSurface
+                                                            }
                                                         )
                                                     },
                                                     onClick = {
-                                                        selectedExplorerProvider = spec.providerId
-                                                        providerMenuExpanded = false
+                                                        if (isProvEnabled) {
+                                                            selectedExplorerProvider = spec.providerId
+                                                            providerMenuExpanded = false
+                                                        }
                                                     },
                                                     modifier = Modifier.testTag("select_explorer_provider_${spec.providerId.id}")
                                                 )
@@ -1241,13 +1252,19 @@ fun SettingsScreen(
                                             verticalArrangement = Arrangement.spacedBy(4.dp)
                                         ) {
                                             for (prov in symbol.allowedProviders) {
-                                                val isActive = symbol.activeProvider == prov
+                                                val isProvEnabled = prov.isEnabled
+                                                val isActive = isProvEnabled && symbol.activeProvider == prov
                                                 FilterChip(
                                                     selected = isActive,
-                                                    onClick = { onSelectProviderForSymbol(symbol.symbolCode, prov) },
+                                                    enabled = isProvEnabled,
+                                                    onClick = {
+                                                        if (isProvEnabled) {
+                                                            onSelectProviderForSymbol(symbol.symbolCode, prov)
+                                                        }
+                                                    },
                                                     label = {
                                                         Text(
-                                                            text = prov.badgeLabel,
+                                                            text = if (isProvEnabled) prov.badgeLabel else "🔒 ${prov.badgeLabel}",
                                                             style = MaterialTheme.typography.labelSmall,
                                                             fontFamily = JetBrainsMonoFontFamily
                                                         )
@@ -1922,7 +1939,7 @@ fun SettingsScreen(
                                     color = MaterialTheme.colorScheme.onSurface
                                 )
                                 Text(
-                                    text = if (isFa) "ذخیره امن روی دستگاه برای TwelveData، Stooq، AlphaVantage و Finnhub" else "Stored locally on device for TwelveData, Stooq, AlphaVantage & Finnhub",
+                                    text = if (isFa) "🔒 غیرفعال — توسعه آینده (فقط منبع TradingView فعال است)" else "🔒 Disabled — Future Release (Only TradingView is active)",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -1941,48 +1958,44 @@ fun SettingsScreen(
                                     OutlinedTextField(
                                         value = twelveDataKeyInput,
                                         onValueChange = { twelveDataKeyInput = it },
-                                        label = { Text("TwelveData API Key") },
+                                        enabled = false,
+                                        label = { Text("🔒 TwelveData API Key (Future)") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     OutlinedTextField(
                                         value = stooqKeyInput,
                                         onValueChange = { stooqKeyInput = it },
-                                        label = { Text("Stooq API Key") },
+                                        enabled = false,
+                                        label = { Text("🔒 Stooq API Key (Future)") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     OutlinedTextField(
                                         value = alphaVantageKeyInput,
                                         onValueChange = { alphaVantageKeyInput = it },
-                                        label = { Text("AlphaVantage API Key") },
+                                        enabled = false,
+                                        label = { Text("🔒 AlphaVantage API Key (Future)") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                     OutlinedTextField(
                                         value = finnhubKeyInput,
                                         onValueChange = { finnhubKeyInput = it },
-                                        label = { Text("Finnhub API Key") },
+                                        enabled = false,
+                                        label = { Text("🔒 Finnhub API Key (Future)") },
                                         singleLine = true,
                                         modifier = Modifier.fillMaxWidth()
                                     )
                                 }
                             }
                             Button(
-                                onClick = {
-                                    onUpdateTradingViewPreference {
-                                        it.copy(
-                                            twelveDataApiKey = twelveDataKeyInput.trim(),
-                                            stooqApiKey = stooqKeyInput.trim(),
-                                            alphaVantageApiKey = alphaVantageKeyInput.trim(),
-                                            finnhubApiKey = finnhubKeyInput.trim()
-                                        )
-                                    }
-                                },
+                                onClick = {},
+                                enabled = false,
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(if (isFa) "ذخیره کلیدهای API" else "Save API Keys")
+                                Text(if (isFa) "🔒 غیرفعال در این نسخه (فقط TradingView)" else "🔒 Disabled in Current Release (TradingView Only)")
                             }
                         }
                     }
@@ -2026,12 +2039,13 @@ fun SettingsScreen(
                     color = MaterialTheme.colorScheme.onSurface
                 )
                 for (provider in modalSymbol.allowedProviders) {
-                    val isSelected = modalSymbol.activeProvider == provider
+                    val isProvEnabled = provider.isEnabled
+                    val isSelected = isProvEnabled && modalSymbol.activeProvider == provider
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
-                            .clickable {
+                            .clickable(enabled = isProvEnabled) {
                                 onSelectProviderForSymbol(modalSymbol.symbolCode, provider)
                                 providerModalSymbolCode = null
                             }
@@ -2041,24 +2055,27 @@ fun SettingsScreen(
                     ) {
                         RadioButton(
                             selected = isSelected,
+                            enabled = isProvEnabled,
                             onClick = {
-                                onSelectProviderForSymbol(modalSymbol.symbolCode, provider)
-                                providerModalSymbolCode = null
+                                if (isProvEnabled) {
+                                    onSelectProviderForSymbol(modalSymbol.symbolCode, provider)
+                                    providerModalSymbolCode = null
+                                }
                             }
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = stringResource(provider.titleResId),
+                                text = (if (isProvEnabled) "" else "🔒 ") + stringResource(provider.titleResId),
                                 style = MaterialTheme.typography.bodyMedium,
                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                color = MaterialTheme.colorScheme.onSurface
+                                color = if (isProvEnabled) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                             Text(
-                                text = provider.badgeLabel,
+                                text = if (isProvEnabled) provider.badgeLabel else "${provider.badgeLabel} · ${if (currentLanguage == AppLanguage.FA) "غیرفعال (توسعه آینده)" else "Disabled (Future Release)"}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontFamily = JetBrainsMonoFontFamily,
-                                color = MaterialTheme.colorScheme.primary
+                                color = if (isProvEnabled) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
                             )
                         }
                     }
@@ -2215,7 +2232,7 @@ private fun AddCustomSymbolDialog(
     var symbolCode by rememberSaveable { mutableStateOf("") }
     var displayName by rememberSaveable { mutableStateOf("") }
     var decimalsText by rememberSaveable { mutableStateOf("2") }
-    var selectedProvider by rememberSaveable { mutableStateOf(ProviderId.DUKASCOPY) }
+    var selectedProvider by rememberSaveable { mutableStateOf(ProviderId.TVDATAFEED) }
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -2265,12 +2282,14 @@ private fun AddCustomSymbolDialog(
                         ProviderId.TWELVE_DATA,
                         ProviderId.YAHOO_FINANCE
                     ).forEach { prov ->
+                        val isProvEnabled = prov.isEnabled
                         FilterChip(
-                            selected = selectedProvider == prov,
-                            onClick = { selectedProvider = prov },
+                            selected = isProvEnabled && selectedProvider == prov,
+                            enabled = isProvEnabled,
+                            onClick = { if (isProvEnabled) selectedProvider = prov },
                             label = {
                                 Text(
-                                    text = prov.badgeLabel,
+                                    text = if (isProvEnabled) prov.badgeLabel else "🔒 ${prov.badgeLabel}",
                                     style = MaterialTheme.typography.labelSmall
                                 )
                             }

@@ -24,6 +24,9 @@ import {
   syncIndicatorsAcrossTabsAndPrefs,
   getIndicatorColorPalette,
   normalizeHexForWeb,
+  setIndicatorCustomColor,
+  resetIndicatorColorsToDefault,
+  isProviderEnabled,
 } from './core/store.js?v=1.42.0';
 import {
   syncServerAuthStatus,
@@ -539,12 +542,12 @@ function renderAddSymbolModal() {
               <div>
                 <label class="tv-input-label">${i18n.t('label_active_source')}</label>
                 <select class="input-field ltr-num" name="provider">
-                  <option value="tvdatafeed">TradingView (tvdatafeed)</option>
-                  <option value="biquote">biquote Feed</option>
-                  <option value="twelve_data">Twelve Data</option>
-                  <option value="dukascopy">Dukascopy</option>
-                  <option value="yahoo_finance">Yahoo Finance</option>
-                  <option value="stooq">Stooq EOD</option>
+                  <option value="tvdatafeed" selected>TradingView (tvdatafeed) — ✓ ${i18n.getCurrentLanguage() === 'fa' ? 'فعال' : 'Active'}</option>
+                  <option value="biquote" disabled>🔒 biquote Feed (${i18n.getCurrentLanguage() === 'fa' ? 'غیرفعال — توسعه آینده' : 'Disabled — Future Release'})</option>
+                  <option value="twelve_data" disabled>🔒 Twelve Data (${i18n.getCurrentLanguage() === 'fa' ? 'غیرفعال — توسعه آینده' : 'Disabled — Future Release'})</option>
+                  <option value="dukascopy" disabled>🔒 Dukascopy (${i18n.getCurrentLanguage() === 'fa' ? 'غیرفعال — توسعه آینده' : 'Disabled — Future Release'})</option>
+                  <option value="yahoo_finance" disabled>🔒 Yahoo Finance (${i18n.getCurrentLanguage() === 'fa' ? 'غیرفعال — توسعه آینده' : 'Disabled — Future Release'})</option>
+                  <option value="stooq" disabled>🔒 Stooq EOD (${i18n.getCurrentLanguage() === 'fa' ? 'غیرفعال — توسعه آینده' : 'Disabled — Future Release'})</option>
                 </select>
               </div>
               <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 4px; min-height: 36px;">
@@ -1692,13 +1695,13 @@ function bindSettingsForms() {
       const fd = new FormData(addSymForm);
       const code = sanitizeSymbolCode(fd.get('symbol_code') || '');
       const title = String(fd.get('symbol_title') || '').trim().slice(0, 64);
-      const provider = String(fd.get('provider') || 'tvdatafeed');
+      const provider = 'tvdatafeed';
       if (!code || code.length < 2) {
         showFloatingToast(i18n.t('error_invalid_symbol') || 'Invalid symbol code (A-Z, 0-9, ., _, :, -)');
         return;
       }
       if (!state.symbols.some((s) => s.symbolCode === code)) {
-        const initTf = provider === 'stooq' ? 'D1' : 'M15';
+        const initTf = 'M15';
         state.symbols.push({
           symbolCode: code,
           customTitle: title || code,
@@ -2509,6 +2512,10 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-wl-category') {
     state.watchlistCategory = el.getAttribute('data-category') || 'ALL';
     renderApp();
+  } else if (action === 'reset-indicator-colors') {
+    resetIndicatorColorsToDefault();
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'reset-chart-colors') {
     resetColorsToDefault();
     renderApp();
@@ -2581,11 +2588,13 @@ document.addEventListener('click', async (e) => {
     state.sourceExplorerMode = el.getAttribute('data-mode') || 'by_source';
     renderApp();
   } else if (action === 'select-explorer-provider') {
-    state.selectedExplorerProvider = el.getAttribute('data-provider') || 'tvdatafeed';
+    const reqProv = el.getAttribute('data-provider') || 'tvdatafeed';
+    if (!isProviderEnabled(reqProv)) return;
+    state.selectedExplorerProvider = 'tvdatafeed';
     renderApp();
   } else if (action === 'activate-source-symbol') {
     const code = (el.getAttribute('data-symbol') || '').trim().toUpperCase();
-    const prov = el.getAttribute('data-provider') || 'tvdatafeed';
+    const prov = 'tvdatafeed';
     if (!code) return;
     let sym = state.symbols.find((s) => s.symbolCode === code);
     if (!sym) {
@@ -2596,7 +2605,7 @@ document.addEventListener('click', async (e) => {
         inWatchlist: true,
         activeProvider: prov,
         allowedProviders: ['tvdatafeed', 'twelve_data', 'dukascopy', 'yahoo_finance'],
-        timeframe: prov === 'eia_brent_spot' ? 'D1' : 'M15',
+        timeframe: 'M15',
         storedCandleCount: 0,
         lastSyncMode: 'DB_CACHE_HIT',
         fetchedNewBars: 0,
@@ -2605,7 +2614,6 @@ document.addEventListener('click', async (e) => {
     } else {
       sym.activeProvider = prov;
       sym.inWatchlist = true;
-      if (prov === 'eia_brent_spot') sym.timeframe = 'D1';
     }
     saveSymbolsToStorage();
     renderApp();
@@ -2614,7 +2622,7 @@ document.addEventListener('click', async (e) => {
     state.settingsSourceCategory = el.getAttribute('data-category') || 'ALL';
     renderApp();
   } else if (action === 'apply-category-provider') {
-    const prov = el.getAttribute('data-provider') || 'tvdatafeed';
+    const prov = 'tvdatafeed';
     const cat = el.getAttribute('data-category') || 'ALL';
     const method = PROVIDER_METHODS_CATALOG.find((m) => m.providerId === prov);
     if (method && Array.isArray(method.symbols)) {
@@ -2632,7 +2640,7 @@ document.addEventListener('click', async (e) => {
             inWatchlist: true,
             activeProvider: prov,
             allowedProviders: ['tvdatafeed', 'biquote', 'twelve_data', 'dukascopy', 'yahoo_finance', 'stooq', 'eia_brent_spot'],
-            timeframe: prov === 'eia_brent_spot' ? 'D1' : 'M15',
+            timeframe: 'M15',
             storedCandleCount: 0,
             lastSyncMode: 'DB_CACHE_HIT',
             fetchedNewBars: 0,
@@ -2641,13 +2649,10 @@ document.addEventListener('click', async (e) => {
         } else {
           sym.activeProvider = prov;
           sym.inWatchlist = true;
-          if (prov === 'eia_brent_spot') sym.timeframe = 'D1';
-          else if (prov === 'stooq' && sym.timeframe !== 'W1') sym.timeframe = 'D1';
         }
         state.openTabs.forEach((t) => {
           if (t.symbolCode === code) {
             t.provider = prov;
-            if (prov === 'eia_brent_spot') t.timeframe = 'D1';
           }
         });
       });
@@ -2696,12 +2701,12 @@ document.addEventListener('input', (e) => {
     const indKey = el.getAttribute('data-indicator');
     const colorHex = el.value || el.getAttribute('data-color');
     if (indKey && colorHex) {
-      if (!state.chartPreferences.indicatorCustomColors) {
-        state.chartPreferences.indicatorCustomColors = {};
-      }
-      state.chartPreferences.indicatorCustomColors[indKey] = colorHex.toUpperCase();
+      const cleanHex = setIndicatorCustomColor(indKey, colorHex);
       const dot = el.parentElement ? el.parentElement.querySelector('.tv-ind-color-dot') : null;
-      if (dot) dot.style.backgroundColor = colorHex;
+      if (dot && cleanHex) dot.style.backgroundColor = cleanHex;
+      const rowCard = el.closest('.card-subtle');
+      const badge = rowCard ? rowCard.querySelector('.tv-ind-badge-tag') : null;
+      if (badge && cleanHex) badge.style.setProperty('--ind-accent', cleanHex);
       redrawActiveCanvas();
     }
   }
@@ -2722,11 +2727,10 @@ document.addEventListener('change', async (e) => {
     }
   } else if (action === 'select-provider-dropdown') {
     const code = el.getAttribute('data-symbol');
-    const prov = el.value;
+    el.value = 'tvdatafeed';
     const sym = state.symbols.find((s) => s.symbolCode === code);
     if (sym) {
-      sym.activeProvider = prov;
-      if (prov === 'eia_brent_spot') sym.timeframe = 'D1';
+      sym.activeProvider = 'tvdatafeed';
       saveSymbolsToStorage();
       await syncSymbolNow(code, sym.timeframe, renderApp);
       renderApp();
@@ -2756,18 +2760,19 @@ document.addEventListener('change', async (e) => {
     state.settingsSourceCategory = el.value || 'ALL';
     renderApp();
   } else if (action === 'select-explorer-provider-select') {
-    state.selectedExplorerProvider = el.value || 'tvdatafeed';
+    el.value = 'tvdatafeed';
+    state.selectedExplorerProvider = 'tvdatafeed';
     renderApp();
   } else if (action === 'set-indicator-color') {
     const indKey = el.getAttribute('data-indicator');
     const colorHex = el.value || el.getAttribute('data-color');
     if (indKey && colorHex) {
-      if (!state.chartPreferences.indicatorCustomColors) {
-        state.chartPreferences.indicatorCustomColors = {};
-      }
-      state.chartPreferences.indicatorCustomColors[indKey] = colorHex.toUpperCase();
-      savePreferences();
-      renderApp();
+      const cleanHex = setIndicatorCustomColor(indKey, colorHex);
+      const dot = el.parentElement ? el.parentElement.querySelector('.tv-ind-color-dot') : null;
+      if (dot && cleanHex) dot.style.backgroundColor = cleanHex;
+      const rowCard = el.closest('.card-subtle');
+      const badge = rowCard ? rowCard.querySelector('.tv-ind-badge-tag') : null;
+      if (badge && cleanHex) badge.style.setProperty('--ind-accent', cleanHex);
       redrawActiveCanvas();
     }
   } else if (action === 'toggle-forecast-model') {
@@ -3142,6 +3147,17 @@ document.addEventListener('dragend', () => {
 
 window.addEventListener('resize', () => {
   redrawActiveCanvas();
+});
+
+window.addEventListener('beforeunload', () => {
+  try {
+    savePreferences(true);
+    if (state.isAuthenticated && Number(state.chartPreferences.preferencesUpdatedAtMs || 0) > 0) {
+      uploadWorkspaceSync().catch(() => {});
+    }
+  } catch {
+    // Ignore unload errors
+  }
 });
 
 async function bootstrap() {

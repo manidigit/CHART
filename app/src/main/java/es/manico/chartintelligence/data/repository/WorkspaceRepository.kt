@@ -583,7 +583,9 @@ class WorkspaceRepository(context: Context) {
                 forecastRenderMode = obj.optString("forecastRenderMode", "HYBRID").uppercase(),
                 forecastHorizonBars = obj.optInt("forecastHorizonBars", 30).coerceIn(10, 60),
                 forecastPluginConfigJson = obj.optString("forecastPluginConfigJson", ""),
-                forecastWorkerUrl = obj.optString("forecastWorkerUrl", "")
+                forecastWorkerUrl = obj.optString("forecastWorkerUrl", ""),
+                indicatorCustomColors = parseIndicatorCustomColorsJson(obj.optJSONObject("indicatorCustomColors")),
+                preferencesUpdatedAtMs = obj.optLong("preferencesUpdatedAtMs", 0L)
             ).also { loaded ->
                 // One-time migration: scrub any legacy BYOK keys out of synced KEY_CHART_PREFERENCES_JSON
                 if (obj.has("twelveDataApiKey") || obj.has("stooqApiKey") ||
@@ -599,6 +601,25 @@ class WorkspaceRepository(context: Context) {
                 }
             }
         }.getOrDefault(ChartPreferences())
+    }
+
+    private fun parseIndicatorCustomColorsJson(jsonObj: JSONObject?): Map<String, String> {
+        if (jsonObj == null) return emptyMap()
+        val map = LinkedHashMap<String, String>()
+        val keys = jsonObj.keys()
+        while (keys.hasNext()) {
+            val k = keys.next()
+            val rawVal = jsonObj.optString(k, "").trim().removePrefix("#").uppercase()
+            val hex6 = when (rawVal.length) {
+                8 -> rawVal.substring(2)
+                6 -> rawVal
+                else -> ""
+            }
+            if (hex6.length == 6 && hex6.all { it in '0'..'9' || it in 'A'..'F' }) {
+                map[k] = "#$hex6"
+            }
+        }
+        return map
     }
 
     private fun loadByokField(field: String, legacyFallback: String = ""): String {
@@ -663,6 +684,12 @@ class WorkspaceRepository(context: Context) {
         obj.put("forecastHorizonBars", prefsObj.forecastHorizonBars.coerceIn(10, 60))
         obj.put("forecastPluginConfigJson", prefsObj.forecastPluginConfigJson)
         obj.put("forecastWorkerUrl", prefsObj.forecastWorkerUrl)
+        val customColorsObj = JSONObject()
+        for ((k, v) in prefsObj.indicatorCustomColors) {
+            customColorsObj.put(k, v)
+        }
+        obj.put("indicatorCustomColors", customColorsObj)
+        obj.put("preferencesUpdatedAtMs", prefsObj.preferencesUpdatedAtMs)
         prefs.edit().putString(AppConfig.KEY_CHART_PREFERENCES_JSON, obj.toString()).apply()
     }
 
@@ -692,16 +719,8 @@ class WorkspaceRepository(context: Context) {
                     val base = defaultMap[code]
 
                     if (base != null) {
-                        val validProvider = if (code == "SPOTBRENT" && !migratedSpotBrentTv) {
-                            ProviderId.TVDATAFEED
-                        } else if (provider in base.allowedProviders) {
-                            provider
-                        } else {
-                            base.activeProvider
-                        }
-                        val validTf = if (validProvider == ProviderId.EIA_BRENT_SPOT) "D1" else if (validProvider == ProviderId.STOOQ) {
-                            if (tf == "W1") "W1" else "D1"
-                        } else if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
+                        val validProvider = ProviderId.TVDATAFEED
+                        val validTf = if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
                         list.add(
                             base.copy(
                                 inWatchlist = inWatchlist,
@@ -720,11 +739,11 @@ class WorkspaceRepository(context: Context) {
                                 customTitle = customTitle ?: code,
                                 decimals = decimals,
                                 inWatchlist = inWatchlist,
-                                activeProvider = provider,
+                                activeProvider = ProviderId.TVDATAFEED,
                                 allowedProviders = listOf(
+                                    ProviderId.TVDATAFEED,
                                     ProviderId.YAHOO_FINANCE,
                                     ProviderId.TWELVE_DATA,
-                                    ProviderId.TVDATAFEED,
                                     ProviderId.BIQUOTE,
                                     ProviderId.DUKASCOPY,
                                     ProviderId.STOOQ,
@@ -1533,7 +1552,7 @@ class WorkspaceRepository(context: Context) {
             ProviderId.STOOQ
         )
         return listOf(
-            // 1. SPOTBRENT (Energy): TradingView -> Dukascopy -> biquote -> Yahoo -> TwelveData -> Stooq -> EIA
+            // 1. SPOTBRENT (Energy): TradingView active (others reserved for future releases)
             SymbolConfig(
                 chartId = "chart_spotbrent_main",
                 symbolCode = "SPOTBRENT",
@@ -1553,100 +1572,100 @@ class WorkspaceRepository(context: Context) {
                 ),
                 timeframe = "M15"
             ),
-            // 2. ETHUSD (Crypto): biquote -> Yahoo -> TwelveData -> TradingView -> Stooq
+            // 2. ETHUSD (Crypto)
             SymbolConfig(
                 chartId = "chart_ethusd_spot",
                 symbolCode = "ETHUSD",
                 titleResId = R.string.symbol_ethusd_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.BIQUOTE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
                     ProviderId.BIQUOTE,
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.TWELVE_DATA,
-                    ProviderId.TVDATAFEED,
                     ProviderId.STOOQ
                 ),
                 timeframe = "M15"
             ),
-            // 3. BTCUSD (Crypto): biquote -> Yahoo -> TwelveData -> TradingView -> Stooq
+            // 3. BTCUSD (Crypto)
             SymbolConfig(
                 chartId = "chart_btcusd_spot",
                 symbolCode = "BTCUSD",
                 titleResId = R.string.symbol_btcusd_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.BIQUOTE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
                     ProviderId.BIQUOTE,
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.TWELVE_DATA,
-                    ProviderId.TVDATAFEED,
                     ProviderId.STOOQ
                 ),
                 timeframe = "M15"
             ),
-            // 4. XAGUSD (Metals): biquote -> TwelveData -> Yahoo -> Dukascopy -> TradingView -> Stooq
+            // 4. XAGUSD (Metals)
             SymbolConfig(
                 chartId = "chart_xagusd_spot",
                 symbolCode = "XAGUSD",
                 titleResId = R.string.symbol_xagusd_name,
                 decimals = 3,
                 inWatchlist = true,
-                activeProvider = ProviderId.BIQUOTE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
                     ProviderId.BIQUOTE,
                     ProviderId.TWELVE_DATA,
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.DUKASCOPY,
-                    ProviderId.TVDATAFEED,
                     ProviderId.STOOQ
                 ),
                 timeframe = "M15"
             ),
-            // 5. XAUUSD (Metals): TwelveData -> biquote -> Dukascopy -> Yahoo -> TradingView -> Stooq
+            // 5. XAUUSD (Metals)
             SymbolConfig(
                 chartId = "chart_xauusd_main",
                 symbolCode = "XAUUSD",
                 titleResId = R.string.symbol_xauusd_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.TWELVE_DATA,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = listOf(
+                    ProviderId.TVDATAFEED,
                     ProviderId.TWELVE_DATA,
                     ProviderId.BIQUOTE,
                     ProviderId.DUKASCOPY,
                     ProviderId.YAHOO_FINANCE,
-                    ProviderId.TVDATAFEED,
                     ProviderId.STOOQ,
                     ProviderId.LOCAL_CSV
                 ),
                 timeframe = "M15"
             ),
-            // 6. SPX500USD (Indices): Yahoo -> TradingView -> TwelveData -> Stooq
+            // 6. SPX500USD (Indices)
             SymbolConfig(
                 chartId = "chart_spx500usd_index",
                 symbolCode = "SPX500USD",
                 titleResId = R.string.symbol_spx500usd_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
-            // 7. NDQ (Indices): Yahoo -> TradingView -> TwelveData -> Stooq
+            // 7. NDQ (Indices)
             SymbolConfig(
                 chartId = "chart_ndq_index",
                 symbolCode = "NDQ",
                 titleResId = R.string.symbol_ndq_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
-            // 8. EURUSD (FX): TradingView -> TwelveData -> biquote -> Dukascopy -> Yahoo -> Stooq
+            // 8. EURUSD (FX)
             SymbolConfig(
                 chartId = "chart_eurusd_spot",
                 symbolCode = "EURUSD",
@@ -1664,7 +1683,7 @@ class WorkspaceRepository(context: Context) {
                 ),
                 timeframe = "M15"
             ),
-            // 9. USOIL (Energy): TradingView -> Yahoo -> biquote -> TwelveData -> Stooq
+            // 9. USOIL (Energy)
             SymbolConfig(
                 chartId = "chart_usoil_spot",
                 symbolCode = "USOIL",
@@ -1681,14 +1700,14 @@ class WorkspaceRepository(context: Context) {
                 ),
                 timeframe = "M15"
             ),
-            // 10. NVDA (US Equities): Yahoo -> TwelveData -> TradingView
+            // 10. NVDA (US Equities)
             SymbolConfig(
                 chartId = "chart_nvda_stock",
                 symbolCode = "NVDA",
                 titleResId = R.string.symbol_nvda_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1699,7 +1718,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_amzn_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1710,7 +1729,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_tsla_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1721,7 +1740,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_aapl_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1732,7 +1751,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_googl_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1743,7 +1762,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_msft_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1754,7 +1773,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_meta_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1765,7 +1784,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_nflx_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1776,7 +1795,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_amd_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1787,7 +1806,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_uber_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1798,7 +1817,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_nke_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1809,7 +1828,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_ibm_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1820,7 +1839,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_san_name,
                 decimals = 2,
                 inWatchlist = true,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
@@ -1831,7 +1850,7 @@ class WorkspaceRepository(context: Context) {
                 titleResId = R.string.symbol_brent_futures_name,
                 decimals = 2,
                 inWatchlist = false,
-                activeProvider = ProviderId.YAHOO_FINANCE,
+                activeProvider = ProviderId.TVDATAFEED,
                 allowedProviders = listOf(
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.TVDATAFEED,
@@ -2184,6 +2203,13 @@ class WorkspaceRepository(context: Context) {
             .put("forecastHorizonBars", preferences.forecastHorizonBars)
             .put("forecastPluginConfigJson", preferences.forecastPluginConfigJson)
             .put("forecastWorkerUrl", preferences.forecastWorkerUrl)
+            .put("preferencesUpdatedAtMs", preferences.preferencesUpdatedAtMs.takeIf { it > 0L } ?: System.currentTimeMillis())
+
+        val customColorsObj = JSONObject()
+        for ((k, v) in preferences.indicatorCustomColors) {
+            customColorsObj.put(k, v)
+        }
+        prefsObj.put("indicatorCustomColors", customColorsObj)
 
         val refTab = openTabs.firstOrNull { it.tabId == loadActiveTabId() } ?: openTabs.firstOrNull()
         if (refTab != null) {
@@ -2445,7 +2471,17 @@ class WorkspaceRepository(context: Context) {
                         prefsJson.optInt("forecastHorizonBars", cur.forecastHorizonBars)
                     ),
                     forecastPluginConfigJson = prefsJson.optString("forecastPluginConfigJson", cur.forecastPluginConfigJson),
-                    forecastWorkerUrl = prefsJson.optString("forecastWorkerUrl", cur.forecastWorkerUrl)
+                    forecastWorkerUrl = prefsJson.optString("forecastWorkerUrl", cur.forecastWorkerUrl),
+                    indicatorCustomColors = run {
+                        val remoteColors = parseIndicatorCustomColorsJson(prefsJson.optJSONObject("indicatorCustomColors"))
+                        val remoteTs = prefsJson.optLong("preferencesUpdatedAtMs", 0L)
+                        if (cur.preferencesUpdatedAtMs > remoteTs && cur.indicatorCustomColors.isNotEmpty()) {
+                            remoteColors + cur.indicatorCustomColors
+                        } else {
+                            cur.indicatorCustomColors + remoteColors
+                        }
+                    },
+                    preferencesUpdatedAtMs = maxOf(cur.preferencesUpdatedAtMs, prefsJson.optLong("preferencesUpdatedAtMs", 0L))
                 )
                 saveChartPreferences(updatedPrefs)
                 changed = true

@@ -41,7 +41,7 @@ export function renderSettingsModal(i18n) {
             : 'account';
 
   const explorerMode = state.sourceExplorerMode || 'by_source';
-  const activeMethodId = state.selectedExplorerProvider || 'tvdatafeed';
+  const activeMethodId = 'tvdatafeed';
   const activeMethod =
     PROVIDER_METHODS_CATALOG.find((m) => m.providerId === activeMethodId) || PROVIDER_METHODS_CATALOG[0];
   const searchQuery = String(state.symbolExplorerSearchQuery || '').trim().toUpperCase();
@@ -78,14 +78,15 @@ export function renderSettingsModal(i18n) {
 
   // Mode 1: Filter by Collection Method (Source -> Symbols filtered by Market Category)
   const providerOptionsHtml = PROVIDER_METHODS_CATALOG.map((m) => {
-    const isSel = m.providerId === activeMethod.providerId;
+    const isEnabled = m.providerId === 'tvdatafeed';
+    const isSel = isEnabled;
     const catCount =
       marketCat === 'ALL'
         ? m.symbols.length
         : m.symbols.filter((s) => (s.category || getSymbolCategoryKey(s.symbolCode)) === marketCat).length;
     return `
-      <option value="${m.providerId}" ${isSel ? 'selected' : ''}>
-        ${m.badgeLabel} (${catCount})
+      <option value="${m.providerId}" ${isSel ? 'selected' : ''} ${!isEnabled ? 'disabled' : ''}>
+        ${isEnabled ? '✓ ' : '🔒 '}${m.badgeLabel} (${catCount})${!isEnabled ? (isFa ? ' — غیرفعال (توسعه آینده)' : ' — Disabled (Future Release)') : ''}
       </option>
     `;
   }).join('');
@@ -231,18 +232,20 @@ export function renderSettingsModal(i18n) {
           <div class="tv-settings-symbol-actions">
             <select
               class="input-field ltr-num"
-              style="width: 175px; min-height: 28px; padding: 2px 6px; font-size: 11px;"
+              style="width: 185px; min-height: 28px; padding: 2px 6px; font-size: 11px;"
               data-action="select-provider-dropdown"
               data-symbol="${safeCode}"
+              title="${isFa ? 'منبع فعال: TradingView (سایر منابع برای توسعه آینده رزرو شده‌اند)' : 'Active Source: TradingView (Other sources reserved for future versions)'}"
             >
               ${s.allowedProviders
-                .map(
-                  (prov) => `
-                  <option value="${escapeHtml(prov)}" ${s.activeProvider === prov ? 'selected' : ''}>
-                    ${escapeHtml(i18n.t('provider_' + prov) || prov)}
+                .map((prov) => {
+                  const isTv = prov === 'tvdatafeed';
+                  return `
+                  <option value="${escapeHtml(prov)}" ${isTv ? 'selected' : ''} ${!isTv ? 'disabled' : ''}>
+                    ${isTv ? '✓ ' : '🔒 '}${escapeHtml(i18n.t('provider_' + prov) || prov)}${!isTv ? (isFa ? ' (توسعه آینده)' : ' (Future)') : ''}
                   </option>
-                `
-                )
+                `;
+                })
                 .join('')}
             </select>
 
@@ -448,30 +451,41 @@ export function renderSettingsModal(i18n) {
 
   const localByok = getLocalByokKeys();
   const byokCard = `
-    <div class="card-subtle" style="margin-bottom: 10px;">
-      <div style="font-size: 13px; font-weight: 700; color: var(--text-strong); margin-bottom: 4px;">
-        🔑 ${i18n.t('settings_byok_title')}
+    <div class="card-subtle" style="margin-bottom: 10px; opacity: 0.78; border-style: dashed;">
+      <div class="row-between" style="margin-bottom: 6px; gap: 8px; flex-wrap: wrap;">
+        <div style="font-size: 13px; font-weight: 700; color: var(--text-strong);">
+          🔑 ${i18n.t('settings_byok_title')}
+        </div>
+        <span class="badge" style="font-size: 10.5px; padding: 2px 8px; background: rgba(245, 158, 11, 0.14); color: #F59E0B; border: 1px solid rgba(245, 158, 11, 0.35);">
+          🔒 ${isFa ? 'غیرفعال — توسعه آینده (فقط TradingView فعال است)' : 'Disabled — Future Release (TradingView Only)'}
+        </span>
       </div>
-      <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">${i18n.t('settings_byok_subtitle')}</div>
+      <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">
+        ${
+          isFa
+            ? 'در این نسخه، موتور یکپارچه TradingView (tvdatafeed) به‌عنوان تنها منبع فعال و بدون نیاز به کلید API تنظیم شده است. سایر منابع و کلیدهای API برای نسخه‌های آینده حفظ و غیرفعال شده‌اند.'
+            : 'In this version, the unified TradingView (tvdatafeed) engine is the sole active data source (no API key required). External provider API keys are preserved in disabled state for future releases.'
+        }
+      </div>
       <form id="settings-byok-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px;">
         <div>
-          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Twelve Data API Key (XAUUSD / Global)</label>
-          <input id="byok-twelve-data" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="e.g. 9f8a7b6c5d4e..." value="${escapeHtml(localByok.twelveDataApiKey || '')}" autocomplete="off" />
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">🔒 Twelve Data API Key (${isFa ? 'توسعه آینده' : 'Future Release'})</label>
+          <input id="byok-twelve-data" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px; cursor: not-allowed;" placeholder="Disabled — Future Version" value="${escapeHtml(localByok.twelveDataApiKey || '')}" autocomplete="off" disabled />
         </div>
         <div>
-          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Stooq API Key (Optional EOD D1/W1)</label>
-          <input id="byok-stooq" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Stooq Key..." value="${escapeHtml(localByok.stooqApiKey || '')}" autocomplete="off" />
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">🔒 Stooq API Key (${isFa ? 'توسعه آینده' : 'Future Release'})</label>
+          <input id="byok-stooq" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px; cursor: not-allowed;" placeholder="Disabled — Future Version" value="${escapeHtml(localByok.stooqApiKey || '')}" autocomplete="off" disabled />
         </div>
         <div>
-          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Alpha Vantage API Key (Backup)</label>
-          <input id="byok-alphavantage" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Alpha Vantage Key..." value="${escapeHtml(localByok.alphaVantageApiKey || '')}" autocomplete="off" />
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">🔒 Alpha Vantage API Key (${isFa ? 'توسعه آینده' : 'Future Release'})</label>
+          <input id="byok-alphavantage" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px; cursor: not-allowed;" placeholder="Disabled — Future Version" value="${escapeHtml(localByok.alphaVantageApiKey || '')}" autocomplete="off" disabled />
         </div>
         <div>
-          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Finnhub API Key (Backup)</label>
-          <input id="byok-finnhub" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Finnhub Key..." value="${escapeHtml(localByok.finnhubApiKey || '')}" autocomplete="off" />
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">🔒 Finnhub API Key (${isFa ? 'توسعه آینده' : 'Future Release'})</label>
+          <input id="byok-finnhub" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px; cursor: not-allowed;" placeholder="Disabled — Future Version" value="${escapeHtml(localByok.finnhubApiKey || '')}" autocomplete="off" disabled />
         </div>
         <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 2px;">
-          <button type="submit" class="btn btn-sm btn-primary">${i18n.t('settings_byok_save')}</button>
+          <button type="submit" class="btn btn-sm" style="cursor: not-allowed; opacity: 0.6;" disabled>🔒 ${i18n.t('settings_byok_save')} (${isFa ? 'غیرفعال' : 'Disabled'})</button>
         </div>
       </form>
     </div>
@@ -524,10 +538,10 @@ export function renderSettingsModal(i18n) {
           <div>
             <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">Source / Provider</label>
             <select id="historical-import-provider" class="input-field ltr-num" style="height: 32px; font-size: 11.5px;">
-              <option value="local_csv">local_csv</option>
-              <option value="eia_brent_spot">eia_brent_spot</option>
-              <option value="stooq">stooq</option>
-              <option value="tvdatafeed">tvdatafeed</option>
+              <option value="tvdatafeed" selected>✓ tvdatafeed (TradingView)</option>
+              <option value="local_csv" disabled>🔒 local_csv (${isFa ? 'توسعه آینده' : 'Future'})</option>
+              <option value="eia_brent_spot" disabled>🔒 eia_brent_spot (${isFa ? 'توسعه آینده' : 'Future'})</option>
+              <option value="stooq" disabled>🔒 stooq (${isFa ? 'توسعه آینده' : 'Future'})</option>
             </select>
           </div>
           <div>

@@ -378,8 +378,22 @@ export async function uploadWorkspaceSync() {
     delete p.alphaVantageApiKey;
     delete p.finnhubApiKey;
 
+    const normalizedCustomColors = {};
+    if (p.indicatorCustomColors && typeof p.indicatorCustomColors === 'object') {
+      for (const [ck, cv] of Object.entries(p.indicatorCustomColors)) {
+        if (ck && typeof cv === 'string') {
+          const normHex = normalizeHexForWeb(cv, '');
+          if (/^#[0-9A-F]{6}$/.test(normHex)) {
+            normalizedCustomColors[ck] = normHex;
+          }
+        }
+      }
+    }
+
     const unifiedPrefs = {
       ...p,
+      indicatorCustomColors: normalizedCustomColors,
+      preferencesUpdatedAtMs: Number(p.preferencesUpdatedAtMs || Date.now()),
       bullCandleColorHex: normalizeHexForAndroid(p.bullColor, 'FF26A69A'),
       bearCandleColorHex: normalizeHexForAndroid(p.bearColor, 'FFEF5350'),
       trendLineColorHex: normalizeHexForAndroid(p.trendColor, 'FF2962FF'),
@@ -413,7 +427,7 @@ export async function uploadWorkspaceSync() {
         customTitle: s.customTitle || '',
         decimals: s.decimals,
         inWatchlist: Boolean(s.inWatchlist),
-        activeProvider: s.activeProvider,
+        activeProvider: 'tvdatafeed',
         timeframe: s.timeframe || 'M15',
         isCustom: Boolean(s.isCustom),
       })),
@@ -423,7 +437,7 @@ export async function uploadWorkspaceSync() {
         tabs: (state.openTabs || []).map((t) => ({
           tabId: t.tabId,
           symbolCode: t.symbolCode,
-          provider: t.provider,
+          provider: 'tvdatafeed',
           timeframe: t.timeframe,
           chartType: t.chartType === 'line' ? 'line' : 'candlestick',
           visibleCount: t.visibleCount,
@@ -478,6 +492,7 @@ export async function uploadWorkspaceSync() {
     };
     const res = await fetch('./api/v1/workspace_sync.php', {
       method: 'POST',
+      keepalive: true,
       headers: {
         'Content-Type': 'application/json',
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -535,30 +550,77 @@ export async function downloadWorkspaceSync() {
 
       if (ws.preferences && typeof ws.preferences === 'object') {
         const p = ws.preferences;
-        const mappedPrefs = { ...state.chartPreferences, ...p };
+        const localPrefs = { ...(state.chartPreferences || {}) };
+        const localUpdatedAt = Number(localPrefs.preferencesUpdatedAtMs || 0);
+        const remoteUpdatedAt = Number(p.preferencesUpdatedAtMs || 0);
+
+        const localCustomColors = {};
+        if (localPrefs.indicatorCustomColors && typeof localPrefs.indicatorCustomColors === 'object') {
+          for (const [ck, cv] of Object.entries(localPrefs.indicatorCustomColors)) {
+            const normHex = normalizeHexForWeb(cv, '');
+            if (ck && /^#[0-9A-F]{6}$/.test(normHex)) {
+              localCustomColors[ck] = normHex;
+            }
+          }
+        }
+        const remoteCustomColors = {};
+        if (p.indicatorCustomColors && typeof p.indicatorCustomColors === 'object') {
+          for (const [ck, cv] of Object.entries(p.indicatorCustomColors)) {
+            const normHex = normalizeHexForWeb(cv, '');
+            if (ck && /^#[0-9A-F]{6}$/.test(normHex)) {
+              remoteCustomColors[ck] = normHex;
+            }
+          }
+        }
+
+        const isLocalNewer = localUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt;
+        const mappedPrefs = isLocalNewer
+          ? { ...p, ...localPrefs }
+          : { ...localPrefs, ...p };
+
         delete mappedPrefs.twelveDataApiKey;
         delete mappedPrefs.stooqApiKey;
         delete mappedPrefs.alphaVantageApiKey;
         delete mappedPrefs.finnhubApiKey;
-        if (p.bullCandleColorHex && !p.bullColor) mappedPrefs.bullColor = normalizeHexForWeb(p.bullCandleColorHex, '#26A69A');
-        if (p.bearCandleColorHex && !p.bearColor) mappedPrefs.bearColor = normalizeHexForWeb(p.bearCandleColorHex, '#EF5350');
-        if (p.trendLineColorHex && !p.trendColor) mappedPrefs.trendColor = normalizeHexForWeb(p.trendLineColorHex, '#2962FF');
-        if (p.horizontalLineColorHex && !p.hLineColor) mappedPrefs.hLineColor = normalizeHexForWeb(p.horizontalLineColorHex, '#F59E0B');
-        if (p.verticalLineColorHex && !p.vLineColor) mappedPrefs.vLineColor = normalizeHexForWeb(p.verticalLineColorHex, '#A855F7');
-        if (p.defaultDrawingColorHex) mappedPrefs.defaultDrawingColorHex = normalizeHexForWeb(p.defaultDrawingColorHex, '#2962FF');
-        if (p.defaultDrawingWidthDp !== undefined) mappedPrefs.defaultDrawingWidthPx = Number(p.defaultDrawingWidthDp || 2.0);
-        if (p.volumePaneRatio !== undefined) {
+
+        if (!isLocalNewer) {
+          if (p.bullCandleColorHex && !p.bullColor) mappedPrefs.bullColor = normalizeHexForWeb(p.bullCandleColorHex, '#26A69A');
+          if (p.bearCandleColorHex && !p.bearColor) mappedPrefs.bearColor = normalizeHexForWeb(p.bearCandleColorHex, '#EF5350');
+          if (p.trendLineColorHex && !p.trendColor) mappedPrefs.trendColor = normalizeHexForWeb(p.trendLineColorHex, '#2962FF');
+          if (p.horizontalLineColorHex && !p.hLineColor) mappedPrefs.hLineColor = normalizeHexForWeb(p.horizontalLineColorHex, '#F59E0B');
+          if (p.verticalLineColorHex && !p.vLineColor) mappedPrefs.vLineColor = normalizeHexForWeb(p.verticalLineColorHex, '#A855F7');
+          if (p.defaultDrawingColorHex) mappedPrefs.defaultDrawingColorHex = normalizeHexForWeb(p.defaultDrawingColorHex, '#2962FF');
+          if (p.defaultDrawingWidthDp !== undefined) mappedPrefs.defaultDrawingWidthPx = Number(p.defaultDrawingWidthDp || 2.0);
+        }
+        if (p.volumePaneRatio !== undefined && !isLocalNewer) {
           mappedPrefs.volumePaneRatio = Math.max(0.12, Math.min(0.35, Number(p.volumePaneRatio || 0.22)));
         }
-        if (p.bollingerPeriod !== undefined) mappedPrefs.bollingerPeriod = Math.max(5, Math.min(200, Number(p.bollingerPeriod || 20)));
-        if (p.bollingerStdDev !== undefined) mappedPrefs.bollingerStdDev = Math.max(0.5, Math.min(5.0, Number(p.bollingerStdDev || 2.0)));
+        if (p.bollingerPeriod !== undefined && !isLocalNewer) mappedPrefs.bollingerPeriod = Math.max(5, Math.min(200, Number(p.bollingerPeriod || 20)));
+        if (p.bollingerStdDev !== undefined && !isLocalNewer) mappedPrefs.bollingerStdDev = Math.max(0.5, Math.min(5.0, Number(p.bollingerStdDev || 2.0)));
         if (p.logarithmicScaleDefault !== undefined && p.isLogScale === undefined) mappedPrefs.isLogScale = Boolean(p.logarithmicScaleDefault);
-        if (p.timezoneMode !== undefined) mappedPrefs.timezoneMode = String(p.timezoneMode).toUpperCase() === 'LOCAL' ? 'LOCAL' : 'UTC';
+        if (p.timezoneMode !== undefined && !isLocalNewer) mappedPrefs.timezoneMode = String(p.timezoneMode).toUpperCase() === 'LOCAL' ? 'LOCAL' : 'UTC';
         if (p.rememberLastChartOnDevice !== undefined && p.rememberLastChart === undefined) mappedPrefs.rememberLastChart = Boolean(p.rememberLastChartOnDevice);
         if (p.pickerVibrations !== undefined && p.pickerVibrates === undefined) mappedPrefs.pickerVibrates = Boolean(p.pickerVibrations);
         if (p.showPickerScrollMagnifiers !== undefined && p.showScrollMagnifier === undefined) mappedPrefs.showScrollMagnifier = Boolean(p.showPickerScrollMagnifiers);
+
+        if (isLocalNewer) {
+          mappedPrefs.indicatorCustomColors = localCustomColors;
+          mappedPrefs.preferencesUpdatedAtMs = localUpdatedAt;
+        } else if (remoteUpdatedAt > 0 && p.indicatorCustomColors && typeof p.indicatorCustomColors === 'object') {
+          mappedPrefs.indicatorCustomColors = { ...localCustomColors, ...remoteCustomColors };
+          mappedPrefs.preferencesUpdatedAtMs = remoteUpdatedAt;
+        } else {
+          mappedPrefs.indicatorCustomColors = { ...remoteCustomColors, ...localCustomColors };
+          mappedPrefs.preferencesUpdatedAtMs = Math.max(localUpdatedAt, remoteUpdatedAt);
+        }
+
         state.chartPreferences = mappedPrefs;
         savePreferences(true);
+        if (isLocalNewer && state.isAuthenticated) {
+          setTimeout(() => {
+            uploadWorkspaceSync().catch(() => {});
+          }, 250);
+        }
       }
 
       if (Array.isArray(ws.symbols) && ws.symbols.length > 0) {
@@ -569,7 +631,7 @@ export async function downloadWorkspaceSync() {
           const existing = byCode.get(code);
           if (existing) {
             existing.inWatchlist = incoming.inWatchlist !== undefined ? Boolean(incoming.inWatchlist) : existing.inWatchlist;
-            existing.activeProvider = incoming.activeProvider || existing.activeProvider;
+            existing.activeProvider = 'tvdatafeed';
             existing.timeframe = incoming.timeframe || existing.timeframe;
             if (incoming.customTitle) existing.customTitle = incoming.customTitle;
           } else {
@@ -578,7 +640,7 @@ export async function downloadWorkspaceSync() {
               customTitle: incoming.customTitle || code,
               decimals: Number(incoming.decimals || 2),
               inWatchlist: Boolean(incoming.inWatchlist),
-              activeProvider: incoming.activeProvider || 'tvdatafeed',
+              activeProvider: 'tvdatafeed',
               allowedProviders: ['tvdatafeed', 'twelve_data', 'dukascopy', 'yahoo_finance'],
               timeframe: incoming.timeframe || 'M15',
               lastClose: 0,
@@ -608,8 +670,7 @@ export async function downloadWorkspaceSync() {
         state.openTabs = incomingOpenTabs.map((t, idx) => {
           const code = String(t.symbolCode || 'SPOTBRENT').toUpperCase();
           const tf = String(t.timeframe || 'M15').toUpperCase();
-          const sym = state.symbols.find((s) => s.symbolCode === code);
-          const prov = t.provider || (sym ? sym.activeProvider : 'tvdatafeed');
+          const prov = 'tvdatafeed';
           const prevLocal = existingBySym.get(code);
           const resolvedColor = normalizeHexForWeb(
             t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex,

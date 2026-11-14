@@ -110,7 +110,11 @@ data class ChartPreferences(
     val forecastRenderMode: String = "HYBRID",
     val forecastHorizonBars: Int = 30,
     val forecastPluginConfigJson: String = "",
-    val forecastWorkerUrl: String = ""
+    val forecastWorkerUrl: String = "",
+
+    // Cross-platform per-indicator custom colors & modification timestamp
+    val indicatorCustomColors: Map<String, String> = emptyMap(),
+    val preferencesUpdatedAtMs: Long = 0L
 ) {
     val chartGroup: ChartSettingsGroup
         get() = ChartSettingsGroup(
@@ -159,6 +163,14 @@ data class ChartPreferences(
         }.getOrDefault(fallback)
     }
 
+    fun resolveIndicatorColor(key: String, fallback: Color): Color {
+        val customHex = indicatorCustomColors[key]
+        if (!customHex.isNullOrBlank()) {
+            return parseColor(customHex, fallback)
+        }
+        return fallback
+    }
+
     fun shiftShade(base: Color, lumDelta: Float): Color {
         val r = if (lumDelta >= 0f) base.red + (1f - base.red) * lumDelta else base.red * (1f + lumDelta)
         val g = if (lumDelta >= 0f) base.green + (1f - base.green) * lumDelta else base.green * (1f + lumDelta)
@@ -202,41 +214,41 @@ data class ChartPreferences(
         get() = parseColor(indSmcFamilyColorHex, Color(0xFFEC4899))
 
     // Category 1: Moving Averages Spectrum
-    val sma20Color: Color get() = shiftShade(maFamilyBaseColor, 0.42f)
-    val sma50Color: Color get() = shiftShade(maFamilyBaseColor, 0.14f)
-    val sma200Color: Color get() = shiftShade(maFamilyBaseColor, -0.22f)
-    val ema20Color: Color get() = shiftShade(maFamilyBaseColor, 0.28f)
-    val ema50Color: Color get() = maFamilyBaseColor
-    val ema200Color: Color get() = shiftShade(maFamilyBaseColor, -0.34f)
-    val mtfEmaColor: Color get() = shiftShade(maFamilyBaseColor, 0.52f)
+    val sma20Color: Color get() = resolveIndicatorColor("sma20", shiftShade(maFamilyBaseColor, 0.42f))
+    val sma50Color: Color get() = resolveIndicatorColor("sma50", shiftShade(maFamilyBaseColor, 0.14f))
+    val sma200Color: Color get() = resolveIndicatorColor("sma200", shiftShade(maFamilyBaseColor, -0.22f))
+    val ema20Color: Color get() = resolveIndicatorColor("ema20", shiftShade(maFamilyBaseColor, 0.28f))
+    val ema50Color: Color get() = resolveIndicatorColor("ema50", maFamilyBaseColor)
+    val ema200Color: Color get() = resolveIndicatorColor("ema200", shiftShade(maFamilyBaseColor, -0.34f))
+    val mtfEmaColor: Color get() = resolveIndicatorColor("mtfEma", shiftShade(maFamilyBaseColor, 0.52f))
 
     // Category 2: Volatility Channels Spectrum
-    val bollingerColor: Color get() = bandsFamilyBaseColor
-    val keltnerColor: Color get() = shiftShade(bandsFamilyBaseColor, 0.24f)
-    val donchianColor: Color get() = shiftShade(bandsFamilyBaseColor, -0.18f)
+    val bollingerColor: Color get() = resolveIndicatorColor("bollinger", bandsFamilyBaseColor)
+    val keltnerColor: Color get() = resolveIndicatorColor("keltner", shiftShade(bandsFamilyBaseColor, 0.24f))
+    val donchianColor: Color get() = resolveIndicatorColor("donchian", shiftShade(bandsFamilyBaseColor, -0.18f))
 
     // Category 3: Key Levels, Pivots & Volume Profile Spectrum
-    val vwapColor: Color get() = shiftShade(levelsFamilyBaseColor, 0.22f)
-    val pivotPColor: Color get() = levelsFamilyBaseColor
-    val pivotR1Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.18f)
-    val pivotR2Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.30f)
-    val pivotR3Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.42f)
-    val pivotR4Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.54f)
-    val pivotS1Color: Color get() = shiftShade(levelsFamilyBaseColor, -0.14f)
-    val pivotS2Color: Color get() = shiftShade(levelsFamilyBaseColor, -0.26f)
-    val pivotS3Color: Color get() = shiftShade(levelsFamilyBaseColor, -0.38f)
-    val pivotS4Color: Color get() = shiftShade(levelsFamilyBaseColor, -0.48f)
-    val vrvpPocColor: Color get() = levelsFamilyBaseColor
-    val vrvpVaColor: Color get() = shiftShade(levelsFamilyBaseColor, 0.34f)
+    val vwapColor: Color get() = resolveIndicatorColor("vwap", shiftShade(levelsFamilyBaseColor, 0.22f))
+    val pivotPColor: Color get() = resolveIndicatorColor("pivotPoints", levelsFamilyBaseColor)
+    val pivotR1Color: Color get() = shiftShade(pivotPColor, 0.18f)
+    val pivotR2Color: Color get() = shiftShade(pivotPColor, 0.30f)
+    val pivotR3Color: Color get() = shiftShade(pivotPColor, 0.42f)
+    val pivotR4Color: Color get() = shiftShade(pivotPColor, 0.54f)
+    val pivotS1Color: Color get() = shiftShade(pivotPColor, -0.14f)
+    val pivotS2Color: Color get() = shiftShade(pivotPColor, -0.26f)
+    val pivotS3Color: Color get() = shiftShade(pivotPColor, -0.38f)
+    val pivotS4Color: Color get() = shiftShade(pivotPColor, -0.48f)
+    val vrvpPocColor: Color get() = resolveIndicatorColor("volumeProfile", levelsFamilyBaseColor)
+    val vrvpVaColor: Color get() = shiftShade(vrvpPocColor, 0.34f)
 
     // Category 4: Trend Systems & Cloud Spectrum
-    val supertrendColor: Color get() = trendFamilyBaseColor
-    val psarColor: Color get() = shiftShade(trendFamilyBaseColor, 0.26f)
-    val ichimokuColor: Color get() = shiftShade(trendFamilyBaseColor, -0.14f)
-    val overlayMacdColor: Color get() = shiftShade(trendFamilyBaseColor, 0.38f)
+    val supertrendColor: Color get() = resolveIndicatorColor("supertrend", trendFamilyBaseColor)
+    val psarColor: Color get() = resolveIndicatorColor("psar", shiftShade(trendFamilyBaseColor, 0.26f))
+    val ichimokuColor: Color get() = resolveIndicatorColor("ichimoku", shiftShade(trendFamilyBaseColor, -0.14f))
+    val overlayMacdColor: Color get() = resolveIndicatorColor("overlayMacd", shiftShade(trendFamilyBaseColor, 0.38f))
 
     // Category 5: Smart Money Concepts & Session Killzones Spectrum
-    val smcStructureColor: Color get() = smcFamilyBaseColor
-    val fvgColor: Color get() = shiftShade(smcFamilyBaseColor, 0.22f)
-    val killzonesColor: Color get() = shiftShade(smcFamilyBaseColor, -0.16f)
+    val smcStructureColor: Color get() = resolveIndicatorColor("smcStructure", smcFamilyBaseColor)
+    val fvgColor: Color get() = resolveIndicatorColor("fvg", shiftShade(smcFamilyBaseColor, 0.22f))
+    val killzonesColor: Color get() = resolveIndicatorColor("killzones", shiftShade(smcFamilyBaseColor, -0.16f))
 }

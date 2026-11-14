@@ -370,11 +370,29 @@ export function renderIndicatorsModal(activeTab, i18n) {
     <div class="modal-backdrop" data-action="close-modal-backdrop">
       <div class="modal-card" style="max-width: 580px; max-height: 86vh; display: flex; flex-direction: column;" dir="${isFa ? 'rtl' : 'ltr'}">
         <div class="tv-modal-header">
-          <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
             <span>${isFa ? 'اندیکاتورها، رنگ‌بندی مستقل و اسیلاتورها' : 'Indicators, Independent Colors & Oscillators'}</span>
+            <span class="badge badge-live" style="font-size: 10px; padding: 2px 7px;">
+              ${
+                Object.keys(state.chartPreferences.indicatorCustomColors || {}).length > 0
+                  ? isFa
+                    ? `✓ ${Object.keys(state.chartPreferences.indicatorCustomColors || {}).length} رنگ سفارشی ذخیره‌شده`
+                    : `✓ ${Object.keys(state.chartPreferences.indicatorCustomColors || {}).length} Custom Colors Saved`
+                  : isFa
+                    ? '✓ ذخیره خودکار رنگ‌ها'
+                    : '✓ Colors Auto-Saved'
+              }
+            </span>
           </div>
-          <button class="btn btn-sm btn-icon" data-action="close-modal">✕</button>
+          <div style="display: flex; align-items: center; gap: 6px;">
+            ${
+              Object.keys(state.chartPreferences.indicatorCustomColors || {}).length > 0
+                ? `<button type="button" class="btn btn-sm" data-action="reset-indicator-colors" title="${isFa ? 'بازگردانی رنگ اندیکاتورها به حالت پیش‌فرض' : 'Reset indicator colors to default'}" style="font-size: 11px; padding: 3px 8px;">↺ ${isFa ? 'پیش‌فرض رنگ‌ها' : 'Reset Colors'}</button>`
+                : ''
+            }
+            <button class="btn btn-sm btn-icon" data-action="close-modal">✕</button>
+          </div>
         </div>
 
         <div class="tv-modal-body" style="display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding-bottom: 14px;">

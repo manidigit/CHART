@@ -560,8 +560,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun selectProviderForSymbol(symbolCode: String, provider: ProviderId) {
-        val (updated, targetTf) = symbolCoordinator.selectProviderForSymbol(_uiState.value.symbols, symbolCode, provider)
-        val candles = repository.getCachedOrAggregatedCandles(symbolCode, provider, targetTf)
+        val effectiveProvider = if (provider.isEnabled) provider else ProviderId.TVDATAFEED
+        val (updated, targetTf) = symbolCoordinator.selectProviderForSymbol(_uiState.value.symbols, symbolCode, effectiveProvider)
+        val candles = repository.getCachedOrAggregatedCandles(symbolCode, effectiveProvider, targetTf)
         val latest = candles.lastOrNull()
         val enriched = updated.map { item ->
             if (item.symbolCode == symbolCode) {
@@ -575,7 +576,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
         repository.saveSymbolCatalog(enriched)
-        val newTabId = "${symbolCode}_${provider.id}"
+        val newTabId = "${symbolCode}_${effectiveProvider.id}"
         val canonicalChartId = UtcTimeAnchorAlgorithm.canonicalChartKey(symbolCode, targetTf)
         val legacyChartId = enriched.firstOrNull { it.symbolCode == symbolCode }?.chartId
             ?: UtcTimeAnchorAlgorithm.legacyChartId(symbolCode)
@@ -593,7 +594,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     tab.copy(
                         tabId = newTabId,
                         chartId = canonicalChartId,
-                        provider = provider,
+                        provider = effectiveProvider,
                         timeframe = targetTf,
                         candles = candles,
                         drawings = reloadedDrawings,
@@ -1623,17 +1624,66 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateIndicatorFamilyColor(family: String, colorHex: String) {
-        val cleanHex = colorHex.trim().removePrefix("#").uppercase().let {
-            if (it.length == 6) "FF$it" else it
-        }
+        val rawClean = colorHex.trim().removePrefix("#").uppercase()
+        val cleanHex = if (rawClean.length == 6) "FF$rawClean" else rawClean
+        val webHex = "#" + (if (rawClean.length == 8) rawClean.substring(2) else rawClean.takeLast(6))
+        val nowMs = System.currentTimeMillis()
         val cur = _uiState.value.chartPreferences
+        val nextCustomMap = cur.indicatorCustomColors.toMutableMap()
         val nextPrefs = when (family.lowercase()) {
-            "ma" -> cur.copy(indMaFamilyColorHex = cleanHex)
-            "bands" -> cur.copy(indBandsFamilyColorHex = cleanHex)
-            "levels" -> cur.copy(indLevelsFamilyColorHex = cleanHex)
-            "trend" -> cur.copy(indTrendFamilyColorHex = cleanHex)
-            "smc" -> cur.copy(indSmcFamilyColorHex = cleanHex)
-            else -> cur
+            "ma" -> {
+                listOf("sma20", "sma50", "sma200", "ema20", "ema50", "ema200", "mtfEma").forEach { nextCustomMap.remove(it) }
+                nextCustomMap["ema50"] = webHex
+                cur.copy(
+                    indMaFamilyColorHex = cleanHex,
+                    indicatorCustomColors = nextCustomMap,
+                    preferencesUpdatedAtMs = nowMs
+                )
+            }
+            "bands" -> {
+                listOf("bollinger", "keltner", "donchian").forEach { nextCustomMap.remove(it) }
+                nextCustomMap["bollinger"] = webHex
+                cur.copy(
+                    indBandsFamilyColorHex = cleanHex,
+                    indicatorCustomColors = nextCustomMap,
+                    preferencesUpdatedAtMs = nowMs
+                )
+            }
+            "levels" -> {
+                listOf("vwap", "pivotPoints", "volumeProfile").forEach { nextCustomMap.remove(it) }
+                nextCustomMap["pivotPoints"] = webHex
+                nextCustomMap["volumeProfile"] = webHex
+                cur.copy(
+                    indLevelsFamilyColorHex = cleanHex,
+                    indicatorCustomColors = nextCustomMap,
+                    preferencesUpdatedAtMs = nowMs
+                )
+            }
+            "trend" -> {
+                listOf("supertrend", "psar", "ichimoku", "overlayMacd").forEach { nextCustomMap.remove(it) }
+                nextCustomMap["supertrend"] = webHex
+                cur.copy(
+                    indTrendFamilyColorHex = cleanHex,
+                    indicatorCustomColors = nextCustomMap,
+                    preferencesUpdatedAtMs = nowMs
+                )
+            }
+            "smc" -> {
+                listOf("smcStructure", "fvg", "killzones").forEach { nextCustomMap.remove(it) }
+                nextCustomMap["smcStructure"] = webHex
+                cur.copy(
+                    indSmcFamilyColorHex = cleanHex,
+                    indicatorCustomColors = nextCustomMap,
+                    preferencesUpdatedAtMs = nowMs
+                )
+            }
+            else -> {
+                nextCustomMap[family] = webHex
+                cur.copy(
+                    indicatorCustomColors = nextCustomMap,
+                    preferencesUpdatedAtMs = nowMs
+                )
+            }
         }
         repository.saveChartPreferences(nextPrefs)
         _uiState.update { it.copy(chartPreferences = nextPrefs) }

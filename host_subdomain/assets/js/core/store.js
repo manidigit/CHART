@@ -129,6 +129,7 @@ export const DEFAULT_PREFS = {
   forecastWorkerUrl: '',
   pitchforkVariant: 'original',
   indicatorCustomColors: {},
+  preferencesUpdatedAtMs: 0,
 };
 
 export const DEFAULT_INDICATOR_COLORS = {
@@ -199,9 +200,14 @@ export const DEFAULT_INDICATOR_COLORS = {
   ichimokuChikou: '#10B981',
 };
 
+export function isProviderEnabled(providerId) {
+  return String(providerId || '').trim().toLowerCase() === 'tvdatafeed';
+}
+
 export const PROVIDER_METHODS_CATALOG = [
   {
     providerId: 'tvdatafeed',
+    enabled: true,
     badgeLabel: 'TradingView Wick',
     titleFa: 'الگوریتم استخراج کندل و شدو از TradingView (tvdatafeed)',
     titleEn: 'TradingView Wick & WebSocket Engine (tvdatafeed)',
@@ -238,6 +244,7 @@ export const PROVIDER_METHODS_CATALOG = [
   },
   {
     providerId: 'biquote',
+    enabled: false,
     badgeLabel: 'biquote Feed',
     titleFa: 'فید چنددارایی سریع و رایگان biquote (کریپتو، فلزات، انرژی و فارکس)',
     titleEn: 'biquote Multi-Asset Feed (Crypto, Metals, Energy & FX)',
@@ -259,6 +266,7 @@ export const PROVIDER_METHODS_CATALOG = [
   },
   {
     providerId: 'twelve_data',
+    enabled: false,
     badgeLabel: 'Twelve Data API',
     titleFa: 'وب‌سرویس رسمی Twelve Data REST API',
     titleEn: 'Twelve Data REST Time-Series API',
@@ -295,6 +303,7 @@ export const PROVIDER_METHODS_CATALOG = [
   },
   {
     providerId: 'dukascopy',
+    enabled: false,
     badgeLabel: 'Dukascopy Swiss',
     titleFa: 'فید بین‌بانکی دوکاسکپی سوئیس (Dukascopy Bank)',
     titleEn: 'Dukascopy Swiss Bank Historical Feed',
@@ -313,6 +322,7 @@ export const PROVIDER_METHODS_CATALOG = [
   },
   {
     providerId: 'yahoo_finance',
+    enabled: false,
     badgeLabel: 'Yahoo Finance v8',
     titleFa: 'موتور عمومی یاهو فایننس (Yahoo Finance Chart v8 — اولویت اول سهام و شاخص‌ها)',
     titleEn: 'Yahoo Finance v8 Chart Engine (Primary for US Equities & Indices)',
@@ -349,6 +359,7 @@ export const PROVIDER_METHODS_CATALOG = [
   },
   {
     providerId: 'eia_brent_spot',
+    enabled: false,
     badgeLabel: 'EIA FOB D1',
     titleFa: 'مرجع رسمی روزانه نفت برنت اداره اطلاعات انرژی آمریکا (EIA FOB)',
     titleEn: 'U.S. EIA Official Daily Brent Spot FOB Benchmark',
@@ -364,6 +375,7 @@ export const PROVIDER_METHODS_CATALOG = [
   },
   {
     providerId: 'local_csv',
+    enabled: false,
     badgeLabel: 'Local Import',
     titleFa: 'ورود تاریخچه محلی و دستی (CSV / EIA XLS / JSON / Manual)',
     titleEn: 'Local Historical Import & Manual OHLC (CSV / XLS / JSON)',
@@ -449,47 +461,47 @@ const DEFAULT_SYMBOLS = [
   // 1. SPOTBRENT — Brent Crude (Spot)
   createDefaultSymbolEntry('SPOTBRENT', 3, 'tvdatafeed', ['tvdatafeed', 'dukascopy', 'biquote', 'yahoo_finance', 'twelve_data', 'stooq', 'eia_brent_spot', 'local_csv']),
   // 2. ETHUSD — Ethereum / U.S. Dollar
-  createDefaultSymbolEntry('ETHUSD', 2, 'biquote', ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed', 'local_csv']),
+  createDefaultSymbolEntry('ETHUSD', 2, 'tvdatafeed', ['tvdatafeed', 'biquote', 'yahoo_finance', 'twelve_data', 'local_csv']),
   // 3. BTCUSD — Bitcoin / U.S. Dollar
-  createDefaultSymbolEntry('BTCUSD', 2, 'biquote', ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed', 'local_csv']),
+  createDefaultSymbolEntry('BTCUSD', 2, 'tvdatafeed', ['tvdatafeed', 'biquote', 'yahoo_finance', 'twelve_data', 'local_csv']),
   // 4. XAGUSD — Silver / U.S. Dollar
-  createDefaultSymbolEntry('XAGUSD', 3, 'biquote', ['biquote', 'twelve_data', 'yahoo_finance', 'dukascopy', 'tvdatafeed', 'local_csv']),
+  createDefaultSymbolEntry('XAGUSD', 3, 'tvdatafeed', ['tvdatafeed', 'biquote', 'twelve_data', 'yahoo_finance', 'dukascopy', 'local_csv']),
   // 5. XAUUSD — Gold Spot / U.S. Dollar
-  createDefaultSymbolEntry('XAUUSD', 2, 'twelve_data', ['twelve_data', 'biquote', 'dukascopy', 'yahoo_finance', 'tvdatafeed', 'local_csv']),
+  createDefaultSymbolEntry('XAUUSD', 2, 'tvdatafeed', ['tvdatafeed', 'twelve_data', 'biquote', 'dukascopy', 'yahoo_finance', 'local_csv']),
   // 6. SPX500USD — US SPX 500
-  createDefaultSymbolEntry('SPX500USD', 2, 'yahoo_finance', ['yahoo_finance', 'tvdatafeed', 'twelve_data']),
+  createDefaultSymbolEntry('SPX500USD', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 7. NDQ — US 100 Index (Nasdaq 100)
-  createDefaultSymbolEntry('NDQ', 2, 'yahoo_finance', ['yahoo_finance', 'tvdatafeed', 'twelve_data']),
+  createDefaultSymbolEntry('NDQ', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 8. EURUSD — Euro / U.S. Dollar
   createDefaultSymbolEntry('EURUSD', 4, 'tvdatafeed', ['tvdatafeed', 'twelve_data', 'biquote', 'dukascopy', 'yahoo_finance']),
   // 9. USOIL — CFDs on WTI Crude Oil
   createDefaultSymbolEntry('USOIL', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'biquote', 'twelve_data']),
   // 10. NVDA — NVIDIA Corporation
-  createDefaultSymbolEntry('NVDA', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('NVDA', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 11. AMZN — Amazon.com, Inc.
-  createDefaultSymbolEntry('AMZN', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('AMZN', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 12. TSLA — Tesla, Inc.
-  createDefaultSymbolEntry('TSLA', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('TSLA', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 13. AAPL — Apple Inc.
-  createDefaultSymbolEntry('AAPL', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('AAPL', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 14. GOOGL — Alphabet Inc (Google) Class A
-  createDefaultSymbolEntry('GOOGL', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('GOOGL', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 15. MSFT — Microsoft Corp.
-  createDefaultSymbolEntry('MSFT', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('MSFT', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 16. META — Meta Platforms, Inc.
-  createDefaultSymbolEntry('META', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('META', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 17. NFLX — Netflix, Inc.
-  createDefaultSymbolEntry('NFLX', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('NFLX', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 18. AMD — Advanced Micro Devices Inc
-  createDefaultSymbolEntry('AMD', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('AMD', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 19. UBER — Uber Technologies, Inc.
-  createDefaultSymbolEntry('UBER', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('UBER', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 20. NKE — Nike, Inc.
-  createDefaultSymbolEntry('NKE', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('NKE', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 21. IBM — International Business Machines
-  createDefaultSymbolEntry('IBM', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('IBM', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
   // 22. SAN — Banco Santander, S.A.
-  createDefaultSymbolEntry('SAN', 2, 'yahoo_finance', ['yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('SAN', 2, 'tvdatafeed', ['tvdatafeed', 'yahoo_finance', 'twelve_data']),
 ];
 
 export function filterSyntheticWeekendAndCombCandles(
@@ -664,10 +676,23 @@ export function resolvePriceBasis(symbolCode = '', providerId = '') {
   return 'Spot Feed';
 }
 
+function normalizeIndicatorCustomColorsMap(rawMap) {
+  if (!rawMap || typeof rawMap !== 'object') return {};
+  const cleaned = {};
+  for (const [k, v] of Object.entries(rawMap)) {
+    if (!k || typeof v !== 'string') continue;
+    const norm = normalizeHexForWeb(v, '');
+    if (/^#[0-9A-F]{6}$/.test(norm)) {
+      cleaned[k] = norm;
+    }
+  }
+  return cleaned;
+}
+
 function loadPreferences() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_PREFS);
-    if (!raw) return { ...DEFAULT_PREFS };
+    if (!raw) return { ...DEFAULT_PREFS, indicatorCustomColors: {} };
     const parsed = JSON.parse(raw);
     if (parsed && (parsed.twelveDataApiKey || parsed.stooqApiKey || parsed.alphaVantageApiKey || parsed.finnhubApiKey)) {
       const existing = getLocalByokKeys();
@@ -683,13 +708,18 @@ function loadPreferences() {
     delete sanitized.stooqApiKey;
     delete sanitized.alphaVantageApiKey;
     delete sanitized.finnhubApiKey;
-    const merged = { ...DEFAULT_PREFS, ...sanitized };
+    const merged = {
+      ...DEFAULT_PREFS,
+      ...sanitized,
+      indicatorCustomColors: normalizeIndicatorCustomColorsMap(sanitized.indicatorCustomColors),
+      preferencesUpdatedAtMs: Number(sanitized.preferencesUpdatedAtMs || 0),
+    };
     if (Number(merged.candleFetchLimit || 0) <= 500) {
       merged.candleFetchLimit = 2500;
     }
     return merged;
   } catch {
-    return { ...DEFAULT_PREFS };
+    return { ...DEFAULT_PREFS, indicatorCustomColors: {} };
   }
 }
 
@@ -709,11 +739,12 @@ function loadSymbols() {
           const allowed = def
             ? def.allowedProviders
             : ['tvdatafeed', 'dukascopy', 'twelve_data', 'yahoo_finance', 'stooq', 'local_csv'];
-          const activeProv = item.activeProvider || (def ? def.activeProvider : 'tvdatafeed');
+          const activeProv = 'tvdatafeed';
           const lastFetch = Number(item.lastSuccessfulFetchMs || 0);
           byCode.set(item.symbolCode, {
             ...(def || {}),
             ...item,
+            activeProvider: activeProv,
             allowedProviders: allowed,
             candles: Array.isArray(item.candles) ? item.candles : [],
             lastSuccessfulFetchMs: lastFetch,
@@ -721,7 +752,7 @@ function loadSymbols() {
             connectionStatus: lastFetch > 0 ? 'STALE' : 'OFFLINE',
             syncErrorMessage: '',
             lastSyncMode: item.lastSyncMode || 'NONE',
-            priceBasis: item.priceBasis || resolvePriceBasis(item.symbolCode, activeProv),
+            priceBasis: resolvePriceBasis(item.symbolCode, activeProv),
             instrumentSpec: getInstrumentSpec(item.symbolCode, activeProv),
             fetchedNewBars: Number(item.fetchedNewBars || 0),
             isSyncing: false,
@@ -922,7 +953,13 @@ function loadDrawingsByKey() {
 function loadOpenTabsFromStorage() {
   try {
     const raw = localStorage.getItem(STORAGE_KEY_OPEN_TABS);
-    return raw ? JSON.parse(raw) : [];
+    if (!raw) return [];
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.map((t) => ({
+      ...t,
+      provider: 'tvdatafeed',
+    }));
   } catch {
     return [];
   }
@@ -1050,13 +1087,42 @@ export function saveActiveTabId(tabId) {
 }
 
 export function savePreferences(skipCloudSync = false) {
-  const sanitized = { ...state.chartPreferences };
+  if (!skipCloudSync) {
+    state.chartPreferences.preferencesUpdatedAtMs = Date.now();
+  }
+  state.chartPreferences.indicatorCustomColors = normalizeIndicatorCustomColorsMap(
+    state.chartPreferences.indicatorCustomColors
+  );
+  const sanitized = {
+    ...state.chartPreferences,
+    indicatorCustomColors: { ...state.chartPreferences.indicatorCustomColors },
+  };
   delete sanitized.twelveDataApiKey;
   delete sanitized.stooqApiKey;
   delete sanitized.alphaVantageApiKey;
   delete sanitized.finnhubApiKey;
   localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(sanitized));
   if (!skipCloudSync) scheduleDebouncedCloudSync();
+}
+
+export function setIndicatorCustomColor(indKey, rawHex, skipCloudSync = false) {
+  if (!indKey) return;
+  const fallback = DEFAULT_INDICATOR_COLORS[indKey] || '#2962FF';
+  const cleanHex = normalizeHexForWeb(rawHex, fallback);
+  if (!state.chartPreferences.indicatorCustomColors || typeof state.chartPreferences.indicatorCustomColors !== 'object') {
+    state.chartPreferences.indicatorCustomColors = {};
+  }
+  state.chartPreferences.indicatorCustomColors = {
+    ...state.chartPreferences.indicatorCustomColors,
+    [indKey]: cleanHex,
+  };
+  savePreferences(skipCloudSync);
+  return cleanHex;
+}
+
+export function resetIndicatorColorsToDefault() {
+  state.chartPreferences.indicatorCustomColors = {};
+  savePreferences(false);
 }
 
 export const INDICATOR_FLAG_KEYS = [
