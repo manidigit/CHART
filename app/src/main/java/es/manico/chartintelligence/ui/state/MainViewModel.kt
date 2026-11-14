@@ -88,6 +88,8 @@ data class Phase1UiState(
     val forecastLocalLedger: List<es.manico.chartintelligence.forecast.ForecastLedgerEntry> = emptyList(),
     val forecastServerLedger: List<es.manico.chartintelligence.forecast.ForecastLedgerEntry> = emptyList(),
     val forecastLedgerVerifyResult: es.manico.chartintelligence.forecast.LedgerVerifyResult = es.manico.chartintelligence.forecast.LedgerVerifyResult(true, 0, -1, "Empty ledger"),
+    val forecastLifecycleEvents: List<es.manico.chartintelligence.forecast.ForecastLifecycleEvent> = emptyList(),
+    val forecastLifecycleVerifyResult: es.manico.chartintelligence.forecast.LifecycleVerifyResult = es.manico.chartintelligence.forecast.LifecycleVerifyResult(true, 0, -1, "Empty lifecycle log"),
     @param:StringRes val statusBannerResId: Int? = null
 ) {
     val watchlistSymbols: List<SymbolConfig>
@@ -112,6 +114,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         ?.takeIf { savedId -> initialOpenTabs.any { it.tabId == savedId } }
         ?: initialOpenTabs.firstOrNull()?.tabId
     private val initialLocalForecastLedger = forecastLedgerStore.loadEntries()
+    private val initialLifecycleEvents = forecastLedgerStore.loadLifecycleEvents()
 
     private val _uiState = MutableStateFlow(
         Phase1UiState(
@@ -127,7 +130,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             openTabs = initialOpenTabs,
             activeTabId = initialActiveTabId,
             forecastLocalLedger = initialLocalForecastLedger,
-            forecastLedgerVerifyResult = forecastLedgerStore.verifyChain(initialLocalForecastLedger)
+            forecastLedgerVerifyResult = forecastLedgerStore.verifyChain(initialLocalForecastLedger),
+            forecastLifecycleEvents = initialLifecycleEvents,
+            forecastLifecycleVerifyResult = forecastLedgerStore.verifyLifecycleChain(initialLifecycleEvents)
         )
     )
     val uiState: StateFlow<Phase1UiState> = _uiState.asStateFlow()
@@ -2817,6 +2822,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleDebouncedCloudSync()
     }
 
+    fun getHigherTimeframeCandlesForActiveTab(timeframe: String): List<CandleBar> {
+        val active = _uiState.value.activeTab ?: return emptyList()
+        if (timeframe.isBlank()) return emptyList()
+        return repository.getCachedOrAggregatedCandles(
+            symbolCode = active.symbolCode,
+            provider = active.provider,
+            timeframe = timeframe
+        )
+    }
+
     fun recordAndSyncForecastSnapshot() {
         val active = _uiState.value.activeTab ?: return
         val prefs = _uiState.value.chartPreferences
@@ -2825,8 +2840,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val mode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(active.forecastRenderMode.ifBlank { prefs.forecastRenderMode })
         val horizon = if (active.forecastHorizonBars in 10..60) active.forecastHorizonBars else prefs.forecastHorizonBars.coerceIn(10, 60)
+        val higherTf = es.manico.chartintelligence.forecast.ForecastV130Analyzer.resolveHigherTimeframe(active.timeframe)
 
         viewModelScope.launch {
+            val higherCandles = withContext(Dispatchers.Default) {
+                if (higherTf.isNotBlank()) {
+                    repository.getCachedOrAggregatedCandles(active.symbolCode, active.provider, higherTf)
+                } else emptyList()
+            }
             val result = withContext(Dispatchers.Default) {
                 es.manico.chartintelligence.forecast.ForecastEngine.project(
                     candles = active.candles,
@@ -2836,7 +2857,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     renderMode = mode,
                     registry = registry,
                     workerUrl = prefs.forecastWorkerUrl,
-                    skipWalkForward = false
+                    skipWalkForward = false,
+                    higherTimeframe = higherTf,
+                    higherTimeframeCandles = higherCandles
                 )
             }
             val appended = forecastLedgerStore.appendFromForecast(result)
@@ -2847,15 +2870,44 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val entries = forecastLedgerStore.loadEntries()
                 val verify = forecastLedgerStore.verifyChain(entries)
+                val lcEvents = forecastLedgerStore.loadLifecycleEvents()
+                val lcVerify = forecastLedgerStore.verifyLifecycleChain(lcEvents)
                 val serverEntries = if (synced) repository.fetchForecastLedgerFromServer(active.symbolCode) else _uiState.value.forecastServerLedger
                 _uiState.update {
                     it.copy(
                         forecastLocalLedger = entries,
                         forecastServerLedger = serverEntries,
                         forecastLedgerVerifyResult = verify,
+                        forecastLifecycleEvents = lcEvents,
+                        forecastLifecycleVerifyResult = lcVerify,
                         statusBannerResId = R.string.forecast_snapshot_recorded
                     )
                 }
+            }
+        }
+    }
+
+    fun evaluateMaturedForecastOutcomes() {
+        val active = _uiState.value.activeTab ?: return
+        viewModelScope.launch {
+            val appended = withContext(Dispatchers.Default) {
+                forecastLedgerStore.evaluateMaturedForecasts(
+                    candles = active.candles,
+                    symbolCode = active.symbolCode,
+                    timeframe = active.timeframe
+                )
+            }
+            for (ev in appended) {
+                repository.syncLifecycleEventToServer(ev)
+            }
+            val allEvents = forecastLedgerStore.loadLifecycleEvents()
+            val verify = forecastLedgerStore.verifyLifecycleChain(allEvents)
+            _uiState.update {
+                it.copy(
+                    forecastLifecycleEvents = allEvents,
+                    forecastLifecycleVerifyResult = verify,
+                    statusBannerResId = R.string.forecast_outcomes_evaluated
+                )
             }
         }
     }
@@ -2864,7 +2916,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val sym = _uiState.value.activeTab?.symbolCode.orEmpty()
         viewModelScope.launch {
             val entries = repository.fetchForecastLedgerFromServer(sym)
-            _uiState.update { it.copy(forecastServerLedger = entries) }
+            val serverLifecycle = repository.fetchForecastLifecycleFromServer(sym)
+            val mergedLifecycle = if (serverLifecycle.isNotEmpty()) serverLifecycle else forecastLedgerStore.loadLifecycleEvents()
+            _uiState.update {
+                it.copy(
+                    forecastServerLedger = entries,
+                    forecastLifecycleEvents = mergedLifecycle,
+                    forecastLifecycleVerifyResult = forecastLedgerStore.verifyLifecycleChain(mergedLifecycle)
+                )
+            }
         }
     }
 }

@@ -2846,7 +2846,48 @@ class WorkspaceRepository(context: Context) {
                     }
                 )
             }
+            val scenariosArr = JSONArray()
+            for (sc in result.scenarios) {
+                scenariosArr.put(
+                    JSONObject().apply {
+                        put("id", sc.id)
+                        put("leafId", sc.leafId)
+                        put("parentBranch", sc.parentBranch)
+                        put("label", sc.label)
+                        put("bias", sc.bias)
+                        put("probability", sc.probability)
+                        put("targetPrice", sc.targetPrice)
+                        put("extremePrice", sc.extremePrice)
+                        put("invalidationReference", sc.invalidationReference)
+                        put("pctChange", sc.pctChange)
+                        put("lowSampleWarning", sc.lowSampleWarning)
+                    }
+                )
+            }
+            val zonesArr = JSONArray()
+            for (z in result.keyZones) {
+                zonesArr.put(
+                    JSONObject().apply {
+                        put("zoneId", z.zoneId)
+                        put("zoneType", z.zoneType)
+                        put("lowPrice", z.lowPrice)
+                        put("highPrice", z.highPrice)
+                        put("centerPrice", z.centerPrice)
+                        put("source", z.source)
+                        put("strength", z.strength)
+                        put("touchProbability", z.touchProbability)
+                        put("penetrationProbability", z.penetrationProbability)
+                        put("reclaimProbability", z.reclaimProbability)
+                        put("confirmedBreakoutProbability", z.confirmedBreakoutProbability)
+                        put("reachBeforeInvalidationProb", z.reachBeforeInvalidationProb)
+                        put("invalidationBeforeReachProb", z.invalidationBeforeReachProb)
+                        put("expectedBarsToReachCensored", z.expectedBarsToReachCensored)
+                        put("invalidationPrice", z.invalidationPrice)
+                    }
+                )
+            }
             val clientForecast = JSONObject().apply {
+                put("specVersion", result.specVersion)
                 put("status", result.status.name)
                 put("regime", result.regime.name)
                 put("anchorOpenTimeUtcMs", result.anchorOpenTimeUtcMs)
@@ -2858,6 +2899,55 @@ class WorkspaceRepository(context: Context) {
                     put("terminalQ50", result.summary.terminalQ50)
                     put("terminalQ90", result.summary.terminalQ90)
                 })
+                result.uncertainty?.let { u ->
+                    put("uncertainty", JSONObject().apply {
+                        put("aleatoricPct", u.aleatoricPct)
+                        put("epistemicPct", u.epistemicPct)
+                        put("totalPct", u.totalPct)
+                        put("oodStatus", u.oodStatus.name)
+                        put("oodDistance", u.oodDistance)
+                        put("spreadMultiplierApplied", u.spreadMultiplierApplied)
+                    })
+                }
+                result.noEdgeGate?.let { gate ->
+                    put("noEdgeGate", JSONObject().apply {
+                        put("gateState", gate.gateState.name)
+                        put("hasEdge", gate.hasEdge)
+                        put("effectiveSampleSize", gate.effectiveSampleSize)
+                        put("skillScoreVsBaseline", gate.skillScoreVsBaseline)
+                    })
+                }
+                result.mtfCoordination?.let { mtf ->
+                    put("mtfCoordination", JSONObject().apply {
+                        put("referenceTimeframe", mtf.referenceTimeframe)
+                        put("alignmentState", mtf.alignmentState.name)
+                        put("ohlcConsistent", mtf.ohlcConsistent)
+                        put("independentMedianPct", mtf.independentMedianPct)
+                        put("coordinatedMedianPct", mtf.coordinatedMedianPct)
+                        put("uncertaintyAdjustmentFactor", mtf.uncertaintyAdjustmentFactor)
+                    })
+                }
+                result.walkForward?.let { wf ->
+                    put("walkForward", JSONObject().apply {
+                        put("evaluatedWindows", wf.evaluatedWindows)
+                        put("acceptancePassed", wf.acceptancePassed)
+                        put("effectiveSampleSize", wf.effectiveSampleSize)
+                        put("skillScoreVsNaive", wf.skillScoreVsNaive)
+                        wf.pathEventStats?.let { pe ->
+                            put("pathEventStats", JSONObject().apply {
+                                put("touchRatePct", pe.touchRatePct)
+                                put("penetrationRatePct", pe.penetrationRatePct)
+                                put("reclaimRatePct", pe.reclaimRatePct)
+                                put("breakoutRatePct", pe.breakoutRatePct)
+                                put("reachBeforeInvalidationPct", pe.reachBeforeInvalidationPct)
+                                put("ambiguousRatePct", pe.ambiguousRatePct)
+                                put("censoringRatePct", pe.censoringRatePct)
+                            })
+                        }
+                    })
+                }
+                put("scenarios", scenariosArr)
+                put("keyZones", zonesArr)
                 put("points", pointsArr)
             }
             val payload = JSONObject().apply {
@@ -2868,6 +2958,42 @@ class WorkspaceRepository(context: Context) {
                 put("horizon_bars", result.horizonBars)
                 put("worker_url", workerUrl.trim())
                 put("client_forecast", clientForecast)
+            }
+            val req = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}forecast.php")
+                .withOptionalBearerAuth()
+                .post(payload.toString().toRequestBody(jsonMediaType))
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (resp.code == 401) {
+                    clearLocalSessionOnUnauthorized()
+                    return@use false
+                }
+                resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
+            }
+        }.getOrDefault(false)
+    }
+
+    suspend fun syncLifecycleEventToServer(
+        event: es.manico.chartintelligence.forecast.ForecastLifecycleEvent
+    ): Boolean = withContext(Dispatchers.IO) {
+        val token = getSessionToken()
+        if (token.isBlank()) return@withContext false
+        runCatching {
+            val payload = JSONObject().apply {
+                put("session_token", token)
+                put("action", "append_lifecycle_event")
+                put("forecast_hash", event.forecastHash)
+                put("symbol_code", event.symbolCode)
+                put("timeframe", event.timeframe)
+                put("horizon_step", event.horizonStep)
+                put("lifecycle_status", event.lifecycleStatus.name)
+                put("evaluation_outcome", event.evaluationOutcome.name)
+                put("reason", event.reason)
+                if (event.observedClose != null) put("observed_close", event.observedClose)
+                put("recorded_at_utc_ms", event.recordedAtUtcMs)
+                put("prev_event_hash", event.prevEventHash)
+                put("event_hash", event.eventHash)
             }
             val req = Request.Builder()
                 .url("${AppConfig.API_BASE_URL}forecast.php")
@@ -2931,7 +3057,63 @@ class WorkspaceRepository(context: Context) {
                             generatedAtUtcMs = o.optLong("created_at_utc_ms", 0L),
                             prevForecastHash = o.optString("prev_forecast_hash", ""),
                             forecastHash = o.optString("forecast_hash", ""),
-                            syncedToCloud = true
+                            syncedToCloud = true,
+                            noEdgeGateState = o.optString("no_edge_gate_state", "NO_EDGE_DETECTED"),
+                            oodStatus = o.optString("ood_status", "IN_DISTRIBUTION")
+                        )
+                    )
+                }
+                out
+            }
+        }.getOrDefault(emptyList())
+    }
+
+    suspend fun fetchForecastLifecycleFromServer(
+        symbolFilter: String = ""
+    ): List<es.manico.chartintelligence.forecast.ForecastLifecycleEvent> = withContext(Dispatchers.IO) {
+        val token = getSessionToken()
+        if (token.isBlank()) return@withContext emptyList()
+        runCatching {
+            val cleanSym = symbolFilter.trim().uppercase()
+            val url = if (cleanSym.isNotEmpty()) {
+                "${AppConfig.API_BASE_URL}forecast.php?action=ledger&symbol=$cleanSym"
+            } else {
+                "${AppConfig.API_BASE_URL}forecast.php?action=ledger"
+            }
+            val req = Request.Builder()
+                .url(url)
+                .withOptionalBearerAuth()
+                .get()
+                .build()
+            httpClient.newCall(req).execute().use { resp ->
+                if (!resp.isSuccessful) return@use emptyList()
+                val root = JSONObject(resp.body?.string().orEmpty())
+                if (!root.optBoolean("ok", false)) return@use emptyList()
+                val arr = root.optJSONObject("data")?.optJSONArray("lifecycle_events") ?: return@use emptyList()
+                val out = ArrayList<es.manico.chartintelligence.forecast.ForecastLifecycleEvent>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val o = arr.optJSONObject(i) ?: continue
+                    val statusStr = o.optString("lifecycle_status", "ACTIVE")
+                    val outcomeStr = o.optString("evaluation_outcome", "PENDING")
+                    val obs = if (o.has("observed_close") && !o.isNull("observed_close")) o.optDouble("observed_close") else null
+                    out.add(
+                        es.manico.chartintelligence.forecast.ForecastLifecycleEvent(
+                            seq = o.optInt("id", i + 1),
+                            forecastHash = o.optString("forecast_hash", ""),
+                            symbolCode = o.optString("symbol_code", ""),
+                            timeframe = o.optString("timeframe", "M15"),
+                            horizonStep = o.optInt("horizon_step", 0),
+                            lifecycleStatus = runCatching {
+                                es.manico.chartintelligence.forecast.ForecastLifecycleStatus.valueOf(statusStr)
+                            }.getOrDefault(es.manico.chartintelligence.forecast.ForecastLifecycleStatus.ACTIVE),
+                            evaluationOutcome = runCatching {
+                                es.manico.chartintelligence.forecast.ForecastEvaluationOutcome.valueOf(outcomeStr)
+                            }.getOrDefault(es.manico.chartintelligence.forecast.ForecastEvaluationOutcome.PENDING),
+                            reason = o.optString("reason", ""),
+                            observedClose = obs,
+                            recordedAtUtcMs = o.optLong("recorded_at_utc_ms", 0L),
+                            prevEventHash = o.optString("prev_event_hash", ""),
+                            eventHash = o.optString("event_hash", "")
                         )
                     )
                 }

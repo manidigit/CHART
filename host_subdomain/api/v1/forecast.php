@@ -20,6 +20,7 @@ header('Content-Type: application/json; charset=utf-8');
 $pdo = Database::getPdo();
 $sessionsFile = dirname(__DIR__, 2) . '/config/sessions.local.json';
 $ledgerFile = dirname(__DIR__, 2) . '/config/forecast_ledger.local.json';
+$lifecycleFile = dirname(__DIR__, 2) . '/config/forecast_lifecycle.local.json';
 $rawBody = file_get_contents('php://input');
 $payload = is_string($rawBody) && $rawBody !== '' ? (json_decode($rawBody, true) ?? []) : [];
 
@@ -101,6 +102,28 @@ function saveLocalLedgerEntries(string $ledgerFile, array $entries): void
     @file_put_contents($ledgerFile, json_encode($trimmed, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), LOCK_EX);
 }
 
+function appendLocalLifecycleEvent(string $lifecycleFile, array $event): array
+{
+    $existing = loadLocalLedgerEntries($lifecycleFile);
+    $prevHash = !empty($existing)
+        ? (string) ($existing[count($existing) - 1]['event_hash'] ?? ForecastEnginePhp::GENESIS_HASH)
+        : ForecastEnginePhp::GENESIS_HASH;
+    $body = [
+        'forecast_hash' => (string) ($event['forecast_hash'] ?? ''),
+        'symbol_code' => (string) ($event['symbol_code'] ?? ''),
+        'timeframe' => (string) ($event['timeframe'] ?? ''),
+        'horizon_step' => (int) ($event['horizon_step'] ?? 0),
+        'lifecycle_status' => (string) ($event['lifecycle_status'] ?? 'ACTIVE'),
+        'evaluation_outcome' => (string) ($event['evaluation_outcome'] ?? 'PENDING'),
+        'recorded_at_utc_ms' => (int) ($event['recorded_at_utc_ms'] ?? 0),
+    ];
+    $event['prev_event_hash'] = $prevHash;
+    $event['event_hash'] = ForecastEnginePhp::computeChainHash($prevHash, $body);
+    $existing[] = $event;
+    saveLocalLedgerEntries($lifecycleFile, array_slice($existing, -240));
+    return $event;
+}
+
 $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
 $action = trim((string) ($payload['action'] ?? ($_GET['action'] ?? 'ledger')));
 $symbolFilter = strtoupper(trim((string) ($payload['symbol'] ?? ($_GET['symbol'] ?? ''))));
@@ -108,6 +131,7 @@ $tfFilter = strtoupper(trim((string) ($payload['timeframe'] ?? ($_GET['timeframe
 
 if ($method === 'GET' || $action === 'ledger') {
     $entries = [];
+    $lifecycleEvents = [];
     if ($pdo !== null) {
         try {
             $sql = "SELECT id, run_uuid, symbol_code, timeframe, horizon_bars, forecast_status, regime, anchor_open_time_utc_ms, anchor_close, terminal_q10, terminal_q50, terminal_q90, input_hash, prev_forecast_hash, forecast_hash, remote_worker_status, created_at_utc_ms FROM prediction_runs WHERE 1=1";
@@ -125,6 +149,22 @@ if ($method === 'GET' || $action === 'ledger') {
             $st->execute($params);
             $rows = $st->fetchAll() ?: [];
             $entries = array_reverse($rows);
+
+            $lcSql = "SELECT event_uuid, run_uuid, forecast_hash, symbol_code, timeframe, horizon_step, lifecycle_status, evaluation_outcome, reason, observed_close, prev_event_hash, event_hash, recorded_at_utc_ms FROM prediction_lifecycle_events WHERE 1=1";
+            $lcParams = [];
+            if ($symbolFilter !== '') {
+                $lcSql .= " AND symbol_code = :sym";
+                $lcParams[':sym'] = $symbolFilter;
+            }
+            if ($tfFilter !== '') {
+                $lcSql .= " AND timeframe = :tf";
+                $lcParams[':tf'] = $tfFilter;
+            }
+            $lcSql .= " ORDER BY id DESC LIMIT 80";
+            $lcSt = $pdo->prepare($lcSql);
+            $lcSt->execute($lcParams);
+            $lcRows = $lcSt->fetchAll() ?: [];
+            $lifecycleEvents = array_reverse($lcRows);
         } catch (\Throwable) {}
     }
     if (empty($entries)) {
@@ -139,15 +179,105 @@ if ($method === 'GET' || $action === 'ledger') {
             return true;
         }));
     }
+    if (empty($lifecycleEvents)) {
+        $localLc = loadLocalLedgerEntries($lifecycleFile);
+        $lifecycleEvents = array_values(array_filter($localLc, static function (array $row) use ($symbolFilter, $tfFilter): bool {
+            if ($symbolFilter !== '' && strtoupper((string) ($row['symbol_code'] ?? '')) !== $symbolFilter) {
+                return false;
+            }
+            if ($tfFilter !== '' && strtoupper((string) ($row['timeframe'] ?? '')) !== $tfFilter) {
+                return false;
+            }
+            return true;
+        }));
+    }
     ApiEnvelope::sendSuccess([
         'entries' => $entries,
         'count' => count($entries),
+        'lifecycle_events' => $lifecycleEvents,
+        'lifecycle_count' => count($lifecycleEvents),
     ], 'forecast_ledger_loaded');
     exit;
 }
 
 if ($method !== 'POST') {
     ApiEnvelope::sendError('METHOD_NOT_ALLOWED', 'error_method_not_allowed', 405);
+    exit;
+}
+
+if ($action === 'append_lifecycle_event') {
+    $evPayload = is_array($payload['lifecycle_event'] ?? null) ? $payload['lifecycle_event'] : $payload;
+    $nowEvMs = (int) ($evPayload['recorded_at_utc_ms'] ?? round(microtime(true) * 1000));
+    $fHash = trim((string) ($evPayload['forecast_hash'] ?? ''));
+    if ($fHash === '') {
+        ApiEnvelope::sendError('INVALID_INPUT', 'forecast_hash_required', 400);
+        exit;
+    }
+    $sym = strtoupper(trim((string) ($evPayload['symbol_code'] ?? ($payload['symbol'] ?? 'UNKNOWN'))));
+    $tf = strtoupper(trim((string) ($evPayload['timeframe'] ?? ($payload['timeframe'] ?? 'M15'))));
+    $step = (int) ($evPayload['horizon_step'] ?? 0);
+    $lcStatus = strtoupper(trim((string) ($evPayload['lifecycle_status'] ?? 'MATURED')));
+    $outcome = strtoupper(trim((string) ($evPayload['evaluation_outcome'] ?? 'PENDING')));
+    $reason = substr(trim((string) ($evPayload['reason'] ?? '')), 0, 250);
+    $obsClose = isset($evPayload['observed_close']) && is_numeric($evPayload['observed_close']) ? (float) $evPayload['observed_close'] : null;
+
+    $prevEvHash = ForecastEnginePhp::GENESIS_HASH;
+    if ($pdo !== null) {
+        try {
+            $lStmt = $pdo->query("SELECT event_hash FROM prediction_lifecycle_events ORDER BY id DESC LIMIT 1");
+            $lRow = $lStmt ? $lStmt->fetch() : null;
+            if ($lRow && !empty($lRow['event_hash'])) {
+                $prevEvHash = (string) $lRow['event_hash'];
+            }
+        } catch (\Throwable) {}
+    }
+    $evHash = ForecastEnginePhp::computeChainHash($prevEvHash, [
+        'forecast_hash' => $fHash,
+        'symbol_code' => $sym,
+        'timeframe' => $tf,
+        'horizon_step' => $step,
+        'lifecycle_status' => $lcStatus,
+        'evaluation_outcome' => $outcome,
+        'recorded_at_utc_ms' => $nowEvMs,
+    ]);
+    $evUuid = sprintf('LC-%s-%d-%s', $sym, $nowEvMs, substr($evHash, 0, 8));
+    $evRecord = [
+        'event_uuid' => $evUuid,
+        'run_uuid' => trim((string) ($evPayload['run_uuid'] ?? '')),
+        'forecast_hash' => $fHash,
+        'symbol_code' => $sym,
+        'timeframe' => $tf,
+        'horizon_step' => $step,
+        'lifecycle_status' => $lcStatus,
+        'evaluation_outcome' => $outcome,
+        'reason' => $reason,
+        'observed_close' => $obsClose,
+        'prev_event_hash' => $prevEvHash,
+        'event_hash' => $evHash,
+        'recorded_at_utc_ms' => $nowEvMs,
+    ];
+    if ($pdo !== null) {
+        try {
+            $evIns = $pdo->prepare("INSERT INTO prediction_lifecycle_events (event_uuid, run_uuid, forecast_hash, symbol_code, timeframe, horizon_step, lifecycle_status, evaluation_outcome, reason, observed_close, prev_event_hash, event_hash, recorded_at_utc_ms) VALUES (:eu, :ru, :fh, :sym, :tf, :hs, :ls, :eo, :rs, :oc, :ph, :eh, :ms)");
+            $evIns->execute([
+                ':eu' => $evUuid,
+                ':ru' => $evRecord['run_uuid'] ?: null,
+                ':fh' => $fHash,
+                ':sym' => $sym,
+                ':tf' => $tf,
+                ':hs' => $step,
+                ':ls' => $lcStatus,
+                ':eo' => $outcome,
+                ':rs' => $reason,
+                ':oc' => $obsClose,
+                ':ph' => $prevEvHash,
+                ':eh' => $evHash,
+                ':ms' => $nowEvMs,
+            ]);
+        } catch (\Throwable) {}
+    }
+    $storedEv = appendLocalLifecycleEvent($lifecycleFile, $evRecord);
+    ApiEnvelope::sendSuccess(['lifecycle_event' => $storedEv], 'lifecycle_event_appended');
     exit;
 }
 
@@ -283,13 +413,103 @@ if ($pdo !== null) {
                 ]);
             }
         }
+        if ($runId > 0 && is_array($forecast['scenarios'] ?? null)) {
+            $scIns = $pdo->prepare("INSERT INTO prediction_scenarios (run_id, scenario_id, scenario_label, bias, probability, target_price, extreme_price, invalidation_reference) VALUES (:rid, :sid, :sl, :bi, :pr, :tp, :ep, :ir)");
+            foreach ($forecast['scenarios'] as $sc) {
+                $scIns->execute([
+                    ':rid' => $runId,
+                    ':sid' => substr((string) ($sc['leafId'] ?? ($sc['id'] ?? 'SCENARIO')), 0, 32),
+                    ':sl' => substr((string) ($sc['label'] ?? ''), 0, 128),
+                    ':bi' => substr((string) ($sc['bias'] ?? 'neutral'), 0, 16),
+                    ':pr' => (float) ($sc['probability'] ?? 0),
+                    ':tp' => (float) ($sc['targetPrice'] ?? 0),
+                    ':ep' => (float) ($sc['extremePrice'] ?? 0),
+                    ':ir' => (float) ($sc['invalidationReference'] ?? 0),
+                ]);
+            }
+        }
+
+        if ($runId > 0 && is_array($forecast['keyZones'] ?? null)) {
+            $kzIns = $pdo->prepare("INSERT INTO prediction_key_zones (run_id, zone_id, zone_type, low_price, high_price, center_price, strength, touch_probability, penetration_probability, reclaim_probability, breakout_probability, reach_before_invalidation_prob, invalidation_before_reach_prob, expected_bars_to_reach, invalidation_price, horizon_bars) VALUES (:rid, :zid, :zt, :lp, :hp, :cp, :str, :tp, :pp, :rp, :bp, :rbi, :ibr, :ebr, :ip, :hb)");
+            foreach ($forecast['keyZones'] as $kz) {
+                $kzIns->execute([
+                    ':rid' => $runId,
+                    ':zid' => substr((string) ($kz['zoneId'] ?? 'ZONE'), 0, 64),
+                    ':zt' => substr((string) ($kz['zoneType'] ?? 'REACTION_PIVOT'), 0, 32),
+                    ':lp' => (float) ($kz['lowPrice'] ?? 0),
+                    ':hp' => (float) ($kz['highPrice'] ?? 0),
+                    ':cp' => (float) ($kz['centerPrice'] ?? 0),
+                    ':str' => (float) ($kz['strength'] ?? 0.5),
+                    ':tp' => (float) ($kz['touchProbability'] ?? 0),
+                    ':pp' => (float) ($kz['penetrationProbability'] ?? 0),
+                    ':rp' => (float) ($kz['reclaimProbability'] ?? 0),
+                    ':bp' => (float) ($kz['confirmedBreakoutProbability'] ?? 0),
+                    ':rbi' => (float) ($kz['reachBeforeInvalidationProb'] ?? 0),
+                    ':ibr' => (float) ($kz['invalidationBeforeReachProb'] ?? 0),
+                    ':ebr' => (float) ($kz['expectedBarsToReachCensored'] ?? 0),
+                    ':ip' => (float) ($kz['invalidationPrice'] ?? 0),
+                    ':hb' => (int) ($kz['horizonBars'] ?? $horizonBars),
+                ]);
+            }
+        }
+
+        if ($runId > 0 && is_array($forecast['mtfCoordination'] ?? null)) {
+            $mtf = $forecast['mtfCoordination'];
+            $mtfIns = $pdo->prepare("INSERT INTO prediction_mtf_coordination (run_id, independent_timeframe, reference_timeframe, alignment_state, ohlc_consistent, independent_median_pct, coordinated_median_pct, uncertainty_adjustment_factor, conflict_reasons_json) VALUES (:rid, :itf, :rtf, :as, :oc, :imp, :cmp, :uaf, :cr)");
+            $mtfIns->execute([
+                ':rid' => $runId,
+                ':itf' => $timeframe,
+                ':rtf' => substr((string) ($mtf['referenceTimeframe'] ?? ''), 0, 16),
+                ':as' => substr((string) ($mtf['alignmentState'] ?? 'SINGLE_TIMEFRAME'), 0, 40),
+                ':oc' => !empty($mtf['ohlcConsistent']) ? 1 : 0,
+                ':imp' => (float) ($mtf['independentMedianPct'] ?? 0),
+                ':cmp' => (float) ($mtf['coordinatedMedianPct'] ?? 0),
+                ':uaf' => (float) ($mtf['uncertaintyAdjustmentFactor'] ?? 1.0),
+                ':cr' => json_encode($mtf['conflictReasons'] ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ]);
+        }
+
+        if ($runId > 0) {
+            $unc = is_array($forecast['uncertainty'] ?? null) ? $forecast['uncertainty'] : [];
+            $neg = is_array($forecast['noEdgeGate'] ?? null) ? $forecast['noEdgeGate'] : [];
+            $wf = is_array($forecast['walkForward'] ?? null) ? $forecast['walkForward'] : [];
+            $ed = is_array($forecast['eventDictionary'] ?? null) ? $forecast['eventDictionary'] : [];
+            $peIns = $pdo->prepare("INSERT INTO prediction_path_events (run_id, aleatoric_pct, epistemic_pct, ood_status, ood_distance, no_edge_gate_state, effective_sample_size, skill_score_vs_baseline, ambiguous_rate_pct, path_stats_json, sensitivity_grid_json) VALUES (:rid, :ap, :ep, :os, :od, :neg, :neff, :ss, :ar, :ps, :sg)");
+            $peIns->execute([
+                ':rid' => $runId,
+                ':ap' => (float) ($unc['aleatoricPct'] ?? 0),
+                ':ep' => (float) ($unc['epistemicPct'] ?? 0),
+                ':os' => substr((string) ($unc['oodStatus'] ?? 'IN_DISTRIBUTION'), 0, 24),
+                ':od' => (float) ($unc['oodDistance'] ?? 0),
+                ':neg' => substr((string) ($neg['gateState'] ?? 'NO_EDGE_DETECTED'), 0, 32),
+                ':neff' => (float) ($neg['effectiveSampleSize'] ?? ($wf['effectiveSampleSize'] ?? 0)),
+                ':ss' => (float) ($neg['skillScoreVsBaseline'] ?? ($wf['skillScoreVsNaive'] ?? 0)),
+                ':ar' => (float) ($wf['ambiguousRatePct'] ?? 0),
+                ':ps' => json_encode($wf['pathEventStats'] ?? null, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+                ':sg' => json_encode($ed['sensitivityGrid'] ?? [], JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE),
+            ]);
+        }
     } catch (\Throwable) {}
 }
 
 $localEntries[] = $ledgerRecord;
 saveLocalLedgerEntries($ledgerFile, $localEntries);
+$initialLifecycle = appendLocalLifecycleEvent($lifecycleFile, [
+    'event_uuid' => sprintf('LC-%s-%d-%s', $symbolCode, $nowMs, substr($forecastHash, 0, 8)),
+    'run_uuid' => $runUuid,
+    'forecast_hash' => $forecastHash,
+    'symbol_code' => $symbolCode,
+    'timeframe' => $timeframe,
+    'horizon_step' => $horizonBars,
+    'lifecycle_status' => 'ACTIVE',
+    'evaluation_outcome' => 'PENDING',
+    'reason' => 'Immutable v1.3.0 snapshot anchored pre-outcome',
+    'observed_close' => null,
+    'recorded_at_utc_ms' => $nowMs,
+]);
 
 ApiEnvelope::sendSuccess([
     'forecast' => $forecast,
     'ledger_entry' => $ledgerRecord,
+    'lifecycle_event' => $initialLifecycle,
 ], 'forecast_recorded');

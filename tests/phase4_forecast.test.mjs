@@ -19,9 +19,15 @@ globalThis.localStorage = {
 
 const {
   CONTRACT_VERSION,
+  SPEC_VERSION,
   FORECAST_STATUS,
   REMOTE_WORKER_STATUS,
   RENDER_MODES,
+  OOD_STATUS,
+  NO_EDGE_GATE_STATE,
+  MTF_ALIGNMENT_STATE,
+  LIFECYCLE_STATUS,
+  EVALUATION_OUTCOME,
   containsForbiddenTradingTerms,
   sha256Hex,
 } = await import('../host_subdomain/assets/js/forecast/forecastContract.js');
@@ -66,6 +72,7 @@ test('PRED-01: Quantile monotonicity, h>=10 horizon, and calendar advancement ac
       renderMode: RENDER_MODES.HYBRID,
     });
     assert.equal(res.contractVersion, CONTRACT_VERSION);
+    assert.equal(res.specVersion, SPEC_VERSION);
     assert.equal(res.points.length, 30);
     assert.ok(res.points.length >= 10);
     assert.ok([FORECAST_STATUS.VALID, FORECAST_STATUS.PROVISIONAL].includes(res.status));
@@ -106,6 +113,7 @@ test('PRED-03: Walk-Forward benchmark computes non-empty metrics vs NaivePersist
   assert.ok(res.walkForward.ensembleMetrics.maePct > 0);
   assert.ok(res.walkForward.naiveMetrics.maePct > 0);
   assert.ok(res.walkForward.modelBenchmarks.length >= 6);
+  assert.ok(res.walkForward.effectiveSampleSize > 0);
   assert.equal(res.remoteWorker.status, REMOTE_WORKER_STATUS.LOCAL_STATISTICAL_ONLY);
   assert.equal(REMOTE_DL_WORKER_SPEC.supportedModels.some((m) => /TimesFM 3\.0/i.test(m)), false);
   assert.ok(REMOTE_DL_WORKER_SPEC.supportedModels.some((m) => /Chronos-2/i.test(m)));
@@ -174,3 +182,121 @@ test('PRED-04: Pluggable ModelRegistry extensibility & SHA-256 hash-chain ledger
   assert.equal(badVerify.valid, false);
   assert.equal(badVerify.brokenIndex, 0);
 });
+
+test('PRED-05: v1.3.0 Aleatoric vs Epistemic uncertainty decomposition and OOD extreme spike multiplier', () => {
+  const normalCandles = buildSyntheticCandles(90, 'H1');
+  const normalRes = ForecastEngine.project(normalCandles, { symbolCode: 'XAUUSD', timeframe: 'H1', horizonBars: 20 });
+  assert.ok(normalRes.uncertainty);
+  assert.ok(Math.abs(normalRes.uncertainty.aleatoricShare + normalRes.uncertainty.epistemicShare - 1.0) <= 0.002);
+  assert.equal(normalRes.uncertainty.oodStatus, OOD_STATUS.IN_DISTRIBUTION);
+
+  // Inject an extreme 12% tail shock candle at end
+  const shockCandles = buildSyntheticCandles(90, 'H1');
+  const last = shockCandles[shockCandles.length - 1];
+  shockCandles[shockCandles.length - 1] = {
+    ...last,
+    high: Number((last.open * 1.15).toFixed(4)),
+    close: Number((last.open * 1.12).toFixed(4)),
+  };
+  const oodRes = ForecastEngine.project(shockCandles, { symbolCode: 'XAUUSD', timeframe: 'H1', horizonBars: 20 });
+  assert.equal(oodRes.uncertainty.oodStatus, OOD_STATUS.EXTREME);
+  assert.ok(oodRes.uncertainty.spreadMultiplierApplied > 1.2);
+  assert.equal(oodRes.noEdgeGate.hasEdge, false);
+  assert.equal(oodRes.noEdgeGate.gateState, NO_EDGE_GATE_STATE.NO_EDGE_DETECTED);
+});
+
+test('PRED-06: v1.3.0 5-leaf Event Tree exact sum=1.000, Key Zones, Sensitivity Grid & No-Edge separation', () => {
+  const candles = buildSyntheticCandles(110, 'H1');
+  const res = ForecastEngine.project(candles, { symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 24 });
+  assert.equal(res.scenarios.length, 5);
+  const expectedIds = [
+    'NO_ZONE_TOUCH_RANGE',
+    'ZONE_REACTION_REJECTION',
+    'PENETRATE_AND_RECLAIM',
+    'CONFIRMED_BREAKOUT_BULL',
+    'CONFIRMED_BREAKOUT_BEAR',
+  ];
+  assert.deepEqual(
+    res.scenarios.map((s) => s.leafId),
+    expectedIds
+  );
+  const sum = res.scenarios.reduce((acc, s) => acc + s.probability, 0);
+  assert.ok(Math.abs(sum - 1.0) <= 0.002);
+  assert.equal(res.keyZones.length, 2);
+  assert.ok(res.keyZones[0].expectedBarsToReachCensored > 0);
+  assert.ok(res.eventDictionary.sensitivityGrid.length === 9);
+  assert.ok(res.noEdgeGate);
+  assert.equal(res.scenarios.some((s) => s.leafId === 'NO_EDGE_DETECTED'), false);
+});
+
+test('PRED-07: v1.3.0 MTF Coordination preserves independent forecast and detects conflict separately', () => {
+  const ltf = buildSyntheticCandles(96, 'H1');
+  const htf = buildSyntheticCandles(60, 'D1').map((b, idx, arr) => {
+    if (idx >= arr.length - 10) {
+      return { ...b, close: Number((b.close * 0.85).toFixed(4)), low: Number((b.low * 0.82).toFixed(4)) };
+    }
+    return b;
+  });
+
+  const withoutHtf = ForecastEngine.project(ltf, { symbolCode: 'BTCUSD', timeframe: 'H1', horizonBars: 20 });
+  const withHtf = ForecastEngine.project(ltf, {
+    symbolCode: 'BTCUSD',
+    timeframe: 'H1',
+    horizonBars: 20,
+    higherTimeframe: 'D1',
+    higherTimeframeCandles: htf,
+  });
+
+  assert.equal(withoutHtf.mtfCoordination.alignmentState, MTF_ALIGNMENT_STATE.SINGLE_TIMEFRAME);
+  assert.equal(withHtf.summary.terminalQ50, withoutHtf.summary.terminalQ50, 'Independent forecast must remain untouched');
+  assert.ok(
+    [MTF_ALIGNMENT_STATE.STRUCTURAL_CONFLICT, MTF_ALIGNMENT_STATE.NATURAL_HORIZON_DIVERGENCE].includes(
+      withHtf.mtfCoordination.alignmentState
+    )
+  );
+  assert.equal(withHtf.mtfCoordination.coordinatedPoints.length, 20);
+});
+
+test('PRED-08: v1.3.0 Append-only lifecycle log evaluates matured forecasts & preserves AMBIGUOUS inside-bar hits', () => {
+  memStore.clear();
+  const ledger = new ForecastLedger('test_ledger_lc');
+  const candles = buildSyntheticCandles(80, 'M15');
+  const baseRes = ForecastEngine.project(candles.slice(0, 60), {
+    symbolCode: 'EURUSD',
+    timeframe: 'M15',
+    horizonBars: 10,
+  });
+  const entry = ledger.appendFromForecast(baseRes);
+  assert.ok(entry);
+
+  // Build subsequent bars hitting BOTH terminalQ10 and terminalQ90 inside a single bar => AMBIGUOUS
+  const futureCandles = candles.slice(0, 60).concat(
+    Array.from({ length: 12 }, (_, idx) => {
+      const ts = baseRes.anchorOpenTimeUtcMs + (idx + 1) * 900_000;
+      if (idx === 2) {
+        return {
+          open_time_utc_ms: ts,
+          open: baseRes.anchorClose,
+          high: Math.max(baseRes.summary.terminalQ90, baseRes.anchorClose) * 1.03,
+          low: Math.min(baseRes.summary.terminalQ10, baseRes.anchorClose) * 0.97,
+          close: baseRes.anchorClose,
+        };
+      }
+      return {
+        open_time_utc_ms: ts,
+        open: baseRes.anchorClose,
+        high: baseRes.anchorClose * 1.002,
+        low: baseRes.anchorClose * 0.998,
+        close: baseRes.anchorClose,
+      };
+    })
+  );
+
+  const appended = ledger.evaluateMaturedForecasts(futureCandles, 'EURUSD', 'M15');
+  assert.ok(appended.length >= 2);
+  assert.ok(appended.some((ev) => ev.lifecycleStatus === LIFECYCLE_STATUS.MATURED));
+  assert.ok(appended.some((ev) => ev.evaluationOutcome === EVALUATION_OUTCOME.AMBIGUOUS));
+  assert.equal(ledger.verifyLifecycleChain().valid, true);
+  assert.equal(ledger.loadEntries().length, 1, 'Original run entry must never be mutated/deleted');
+});
+

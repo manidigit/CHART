@@ -11,6 +11,7 @@
 | دسته | سند کلیدی | کاربرد |
 |---|---|---|
 | **۰۱ — محصول و تحقیق** | [`CHART_INTELLIGENCE_MASTER_SPEC.md`](../01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) | مرجع اصلی محصول، قراردادهای داده/پیش‌بینی، قوانین مهندسی و فرمول‌های TA-Lib |
+| | [`CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md`](../01-product/CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md) | مشخصات فنی پیش‌بینی آینده نمودار، ارزیابی احتمالاتی، سناریوها و ممیزی |
 | | [`GROK_OPENMARKET_RESEARCH_NOTES.md`](../01-product/GROK_OPENMARKET_RESEARCH_NOTES.md) | پژوهش منابع رایگان/تیک (`biquote`, `Stooq`) و مدل‌های ML |
 | | [`TRADING_STRATEGY_SPEC.md`](../01-product/TRADING_STRATEGY_SPEC.md) | مشخصات ماژول شبیه‌ساز استراتژی (فاز ۶) |
 | **۰۲ — معماری و زیرساخت** | [`ARCHITECTURE.md`](../02-architecture/ARCHITECTURE.md) | معماری ۳ لایه، موتور `DB-First Delta Sync`، کاتالوگ ۷ منبع / ۲۲ نماد و قرارداد JSON |

@@ -5,7 +5,6 @@ import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
-import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
@@ -13,13 +12,6 @@ import kotlin.math.sin
 import kotlin.math.sqrt
 
 object ForecastEngine {
-
-    private fun normalCdf(z: Double): Double {
-        val t = 1.0 / (1.0 + 0.2316419 * abs(z))
-        val d = 0.3989422804014327 * exp((-z * z) / 2.0)
-        val p = d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))))
-        return if (z >= 0.0) 1.0 - p else p
-    }
 
     fun project(
         candles: List<CandleBar>,
@@ -30,7 +22,10 @@ object ForecastEngine {
         registry: ForecastModelRegistry = ForecastModelRegistry(),
         workerUrl: String = "",
         skipWalkForward: Boolean = false,
-        minBars: Int = 24
+        minBars: Int = 24,
+        higherTimeframe: String = "",
+        higherTimeframeCandles: List<CandleBar> = emptyList(),
+        previousForecast: ForecastResult? = null
     ): ForecastResult {
         val cleanSymbol = symbolCode.trim().uppercase(Locale.US)
         val cleanTf = timeframe.trim().uppercase(Locale.US)
@@ -72,7 +67,10 @@ object ForecastEngine {
         }
 
         val features = ForecastFeatureExtractor.extract(candles, 180)
-            ?: return project(emptyList(), cleanSymbol, cleanTf, horizon, renderMode, registry, workerUrl, skipWalkForward, minBars)
+            ?: return project(
+                emptyList(), cleanSymbol, cleanTf, horizon, renderMode, registry, workerUrl,
+                skipWalkForward, minBars, higherTimeframe, higherTimeframeCandles, previousForecast
+            )
 
         val enabled = registry.getEnabled().ifEmpty {
             listOf(Triple(NaivePersistenceModel(), 1.0, emptyMap()))
@@ -102,7 +100,8 @@ object ForecastEngine {
         val predictions = ArrayList<Triple<ForecastModelPlugin, Double, PluginPrediction>>(enabled.size)
         val contributions = ArrayList<ModelContribution>(enabled.size)
         val ensMeanReturns = DoubleArray(horizon)
-        val ensVarReturns = DoubleArray(horizon)
+        val aleatoricVarSteps = DoubleArray(horizon)
+        val epistemicDispSteps = DoubleArray(horizon)
 
         for (i in enabled.indices) {
             val (plugin, _, params) = enabled[i]
@@ -116,7 +115,7 @@ object ForecastEngine {
                 val sg = max(1e-5, pred.sigmas[h])
                 cumMean += mr
                 ensMeanReturns[h] += normW * mr
-                ensVarReturns[h] += normW * (sg * sg)
+                aleatoricVarSteps[h] += normW * (sg * sg)
             }
             val terminalPrice = features.lastClose * exp(cumMean)
             contributions.add(
@@ -131,26 +130,38 @@ object ForecastEngine {
             )
         }
 
-        // Epistemic inter-model dispersion variance
+        // Epistemic inter-model dispersion variance + Aleatoric decomposition + OOD detector
+        var totalAleatoricCumVar = 0.0
+        var totalEpistemicDispVar = 0.0
         for (h in 0 until horizon) {
             var dispVar = 0.0
             for ((_, normW, pred) in predictions) {
                 val diff = pred.meanReturns[h] - ensMeanReturns[h]
                 dispVar += normW * diff * diff
             }
-            ensVarReturns[h] += dispVar
+            epistemicDispSteps[h] = dispVar
+            totalAleatoricCumVar += aleatoricVarSteps[h]
+            totalEpistemicDispVar += dispVar
         }
+
+        val uncertainty = ForecastV130Analyzer.computeOodAndUncertainty(
+            features = features,
+            aleatoricCumVar = totalAleatoricCumVar,
+            epistemicDispVar = totalEpistemicDispVar,
+            effectiveSampleSize = wfReport?.effectiveSampleSize
+        )
 
         val timestamps = ForecastCalendarHelper.advanceFutureTimestamps(features.lastOpenMs, cleanTf, horizon, cleanSymbol)
         val points = ArrayList<ForecastPoint>(horizon)
         var cumLogRet = 0.0
         var cumVar = 0.0
         var prevSynthClose = features.lastClose
+        val epiPerStep = uncertainty.epistemicCumVar / max(1, horizon)
 
         for (h in 0 until horizon) {
             cumLogRet += ensMeanReturns[h]
-            cumVar += ensVarReturns[h]
-            val cumSigma = sqrt(cumVar) * (1.0 + 0.008 * h)
+            cumVar += aleatoricVarSteps[h] + epistemicDispSteps[h] + epiPerStep * 0.35
+            val cumSigma = sqrt(cumVar) * (1.0 + 0.008 * h) * uncertainty.spreadMultiplierApplied
 
             val q = ForecastCalendarHelper.enforceMonotonicQuantiles(
                 features.lastClose * exp(cumLogRet - 1.28155 * cumSigma),
@@ -161,7 +172,7 @@ object ForecastEngine {
                 features.lastClose * 0.02
             )
 
-            val stepSigma = sqrt(ensVarReturns[h])
+            val stepSigma = sqrt(aleatoricVarSteps[h] + epistemicDispSteps[h])
             val microCycle = sin((h + 1) * 0.92 + (features.barCount % 5)) * stepSigma * features.lastClose * 0.35
             val openP = prevSynthClose
             val targetClose = (q[2] + microCycle).coerceIn(q[1], q[3])
@@ -197,49 +208,16 @@ object ForecastEngine {
         }
 
         val lastPt = points.last()
-        val totalSig = max(1e-5, sqrt(cumVar))
-        val zDrift = ln(lastPt.q50 / features.lastClose) / totalSig
-        val pUp = normalCdf(zDrift - 0.35)
-        val pDown = normalCdf(-zDrift - 0.35)
-        val pBase = max(0.12, 1.0 - pUp - pDown)
-        val rawSum = pUp + pDown + pBase
-
-        val probBull = (round((pUp / rawSum) * 1000.0) / 1000.0)
-        val probBear = (round((pDown / rawSum) * 1000.0) / 1000.0)
-        val probBase = (round((1.0 - probBull - probBear) * 1000.0) / 1000.0)
-
-        val scenarios = listOf(
-            ForecastScenario(
-                id = "BULL_EXPANSION",
-                label = "Bullish Expansion Scenario",
-                bias = "bull",
-                probability = probBull,
-                targetPrice = lastPt.q75,
-                extremePrice = lastPt.q90,
-                invalidationReference = lastPt.q25,
-                pctChange = ((lastPt.q75 - features.lastClose) / features.lastClose) * 100.0
-            ),
-            ForecastScenario(
-                id = "BASE_RANGE",
-                label = "Base Range Scenario",
-                bias = "neutral",
-                probability = probBase,
-                targetPrice = lastPt.q50,
-                extremePrice = lastPt.q75,
-                invalidationReference = lastPt.q25,
-                pctChange = ((lastPt.q50 - features.lastClose) / features.lastClose) * 100.0
-            ),
-            ForecastScenario(
-                id = "BEAR_CONTRACTION",
-                label = "Bearish Contraction Scenario",
-                bias = "bear",
-                probability = probBear,
-                targetPrice = lastPt.q25,
-                extremePrice = lastPt.q10,
-                invalidationReference = lastPt.q75,
-                pctChange = ((lastPt.q25 - features.lastClose) / features.lastClose) * 100.0
-            )
+        val (scenarios, keyZones, eventDictionary) = ForecastV130Analyzer.detectKeyZonesAndEventTree(features, points, horizon)
+        val mtfCoordination = ForecastV130Analyzer.coordinateMultiTimeframe(
+            independentPoints = points,
+            independentScenarios = scenarios,
+            anchorClose = features.lastClose,
+            timeframe = cleanTf,
+            higherTimeframe = higherTimeframe,
+            higherCandles = higherTimeframeCandles
         )
+        val noEdgeGate = ForecastV130Analyzer.evaluateNoEdgeGate(wfReport, uncertainty)
 
         val status = wfReport?.forecastStatus ?: ForecastStatus.PROVISIONAL
         val inputHash = ForecastSha256.sha256Hex(
@@ -255,8 +233,21 @@ object ForecastEngine {
             )
         )
 
+        val summary = ForecastSummary(
+            terminalStep = lastPt.stepAhead,
+            terminalQ10 = lastPt.q10,
+            terminalQ25 = lastPt.q25,
+            terminalQ50 = lastPt.q50,
+            terminalQ75 = lastPt.q75,
+            terminalQ90 = lastPt.q90,
+            medianPctChange = lastPt.pctChangeFromLast,
+            corridorWidthPct = ((lastPt.q90 - lastPt.q10) / features.lastClose) * 100.0
+        )
+        val stability = ForecastV130Analyzer.computeForecastStability(summary, features.lastClose, previousForecast)
+
         return ForecastResult(
             contractVersion = ForecastSha256.CONTRACT_VERSION,
+            specVersion = ForecastSha256.SPEC_VERSION,
             status = status,
             symbolCode = cleanSymbol,
             timeframe = cleanTf,
@@ -280,17 +271,14 @@ object ForecastEngine {
             scenarios = scenarios,
             modelContributions = contributions,
             walkForward = wfReport,
-            summary = ForecastSummary(
-                terminalStep = lastPt.stepAhead,
-                terminalQ10 = lastPt.q10,
-                terminalQ25 = lastPt.q25,
-                terminalQ50 = lastPt.q50,
-                terminalQ75 = lastPt.q75,
-                terminalQ90 = lastPt.q90,
-                medianPctChange = lastPt.pctChangeFromLast,
-                corridorWidthPct = ((lastPt.q90 - lastPt.q10) / features.lastClose) * 100.0
-            ),
-            inputHash = inputHash
+            summary = summary,
+            inputHash = inputHash,
+            uncertainty = uncertainty,
+            noEdgeGate = noEdgeGate,
+            keyZones = keyZones,
+            eventDictionary = eventDictionary,
+            mtfCoordination = mtfCoordination,
+            stability = stability
         )
     }
 }

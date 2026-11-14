@@ -1,6 +1,7 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
 
 export const CONTRACT_VERSION = 'forecast-contract/v1';
+export const SPEC_VERSION = '1.3.0';
 
 export const RENDER_MODES = Object.freeze({
   HYBRID: 'HYBRID',
@@ -19,6 +20,47 @@ export const REMOTE_WORKER_STATUS = Object.freeze({
   UNCONFIGURED: 'UNCONFIGURED',
   CONNECTED: 'CONNECTED',
   ERROR: 'ERROR',
+});
+
+export const OOD_STATUS = Object.freeze({
+  IN_DISTRIBUTION: 'IN_DISTRIBUTION',
+  ELEVATED: 'ELEVATED',
+  EXTREME: 'EXTREME',
+});
+
+export const NO_EDGE_GATE_STATE = Object.freeze({
+  EDGE_SUPPORTED: 'EDGE_SUPPORTED',
+  NO_EDGE_DETECTED: 'NO_EDGE_DETECTED',
+});
+
+export const MTF_ALIGNMENT_STATE = Object.freeze({
+  ALIGNED: 'ALIGNED',
+  NATURAL_HORIZON_DIVERGENCE: 'NATURAL_HORIZON_DIVERGENCE',
+  STRUCTURAL_CONFLICT: 'STRUCTURAL_CONFLICT',
+  SINGLE_TIMEFRAME: 'SINGLE_TIMEFRAME',
+});
+
+export const LIFECYCLE_STATUS = Object.freeze({
+  ACTIVE: 'ACTIVE',
+  MATURED: 'MATURED',
+  SUPERSEDED: 'SUPERSEDED',
+  CANCELLED: 'CANCELLED',
+});
+
+export const EVALUATION_OUTCOME = Object.freeze({
+  PENDING: 'PENDING',
+  SUCCESS: 'SUCCESS',
+  FAILED: 'FAILED',
+  AMBIGUOUS: 'AMBIGUOUS',
+  INCOMPLETE_DATA: 'INCOMPLETE_DATA',
+});
+
+export const EVENT_DICTIONARY_DEFAULTS = Object.freeze({
+  priceBasis: 'MID_OHLC',
+  evaluationRule: 'HIGH_LOW_AND_CLOSE',
+  penetrationAtrMult: 0.2,
+  reclaimWindowBars: 3,
+  confirmedBreakoutCloses: 2,
 });
 
 const K_SHA256 = new Uint32Array([

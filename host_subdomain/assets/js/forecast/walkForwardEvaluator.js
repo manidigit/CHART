@@ -166,6 +166,24 @@ export function evaluateWalkForward(candles, registry, options = {}) {
 
   const naiveMae = Math.max(1e-9, naiveMetrics.mae);
   const maeImprovementVsNaivePct = ((naiveMae - ensembleMetrics.mae) / naiveMae) * 100;
+  const skillScoreVsNaive = (naiveMae - ensembleMetrics.mae) / naiveMae;
+  const effectiveSampleSize = Number((clean.length / Math.max(1, evalHorizon * 0.65)).toFixed(2));
+  const ensAcc = accumulators.get('ensemble');
+  const ambiguousOutcomeCount = ensAcc.ambiguousCount || 0;
+  const ambiguousRatePct = Number(((ambiguousOutcomeCount / Math.max(1, windowsRun)) * 100).toFixed(2));
+  const pathEventStats = {
+    evaluatedPaths: windowsRun,
+    targetReachedRatePct: Number((((ensAcc.targetReached || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
+    penetrationRatePct: Number((((ensAcc.penetrated || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
+    avgPenetrationDepthAtr: Number(((ensAcc.penDepthSum || 0) / Math.max(1, ensAcc.penetrated || 1)).toFixed(2)),
+    avgClosesOutsideZone: Number(((ensAcc.closesOutsideSum || 0) / Math.max(1, windowsRun)).toFixed(2)),
+    reclaimRatePct: Number((((ensAcc.reclaimed || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
+    avgReclaimBars: Number(((ensAcc.reclaimBarsSum || 0) / Math.max(1, ensAcc.reclaimed || 1)).toFixed(1)),
+    confirmedBreakoutRatePct: Number((((ensAcc.breakout || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
+    invalidationFirstRatePct: Number((((ensAcc.invalidationFirst || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
+    ambiguousRatePct,
+  };
+
   const beatsNaive = ensembleMetrics.mae <= naiveMetrics.mae * 1.015;
   const goodCoverage = ensembleMetrics.coverage80Pct >= 50 && ensembleMetrics.coverage80Pct <= 98;
   const acceptancePassed = windowsRun >= 5 && beatsNaive && goodCoverage;
@@ -175,7 +193,7 @@ export function evaluateWalkForward(candles, registry, options = {}) {
   if (windowsRun >= 5) {
     if (acceptancePassed) {
       forecastStatus = FORECAST_STATUS.VALID;
-      acceptanceReason = `Ensemble passes acceptance gate across ${windowsRun} purged windows (${maeImprovementVsNaivePct >= 0 ? '+' : ''}${maeImprovementVsNaivePct.toFixed(1)}% vs Naive MAE, ${ensembleMetrics.coverage80Pct.toFixed(0)}% 80% coverage).`;
+      acceptanceReason = `Ensemble passes acceptance gate across ${windowsRun} purged windows (${maeImprovementVsNaivePct >= 0 ? '+' : ''}${maeImprovementVsNaivePct.toFixed(1)}% vs Naive MAE, ${ensembleMetrics.coverage80Pct.toFixed(0)}% 80% coverage, N_eff=${effectiveSampleSize}).`;
     } else if (!beatsNaive) {
       acceptanceReason = `Ensemble MAE (${ensembleMetrics.mae.toFixed(4)}) did not improve over Naive Persistence (${naiveMetrics.mae.toFixed(4)}); status set to Provisional.`;
     } else {
@@ -193,6 +211,11 @@ export function evaluateWalkForward(candles, registry, options = {}) {
     naiveMetrics,
     modelBenchmarks,
     maeImprovementVsNaivePct,
+    skillScoreVsNaive: Number(skillScoreVsNaive.toFixed(4)),
+    effectiveSampleSize,
+    ambiguousOutcomeCount,
+    ambiguousRatePct,
+    pathEventStats,
   };
 }
 
@@ -204,8 +227,24 @@ function recordTrajectoryErrors(acc, clean, origin, baseClose, traj, evalHorizon
     acc.dirCorrect++;
   }
 
+  const term = traj[evalHorizon - 1];
+  const upperTgt = term.q75;
+  const lowerInv = term.q25;
+  const zoneHalf = Math.max(1e-6, (upperTgt - lowerInv) * 0.12);
+  let touched = false;
+  let penetrated = false;
+  let reclaimed = false;
+  let breakout = false;
+  let reachedTgt = false;
+  let reachedInv = false;
+  let ambiguous = false;
+  let consecOut = 0;
+
   for (let h = 0; h < evalHorizon; h++) {
-    const actual = Number(clean[origin + h].close);
+    const bar = clean[origin + h];
+    const actual = Number(bar.close);
+    const hi = Number(bar.high ?? actual);
+    const lo = Number(bar.low ?? actual);
     const p = traj[h];
     const err = Math.abs(actual - p.q50);
     acc.absErrSum += err;
@@ -217,5 +256,40 @@ function recordTrajectoryErrors(acc, clean, origin, baseClose, traj, evalHorizon
       acc.inBand80++;
     }
     acc.pointCount++;
+
+    if (!reachedTgt && !reachedInv) {
+      const hitU = hi >= upperTgt;
+      const hitL = lo <= lowerInv;
+      if (hitU && hitL) {
+        ambiguous = true;
+      } else if (hitU) {
+        reachedTgt = true;
+      } else if (hitL) {
+        reachedInv = true;
+      }
+    }
+    if (hi >= upperTgt - zoneHalf && lo <= upperTgt + zoneHalf) touched = true;
+    if (hi >= upperTgt + zoneHalf * 0.8) {
+      penetrated = true;
+      acc.penDepthSum = (acc.penDepthSum || 0) + (hi - upperTgt) / Math.max(1e-6, zoneHalf * 2.5);
+    }
+    if (actual > upperTgt + zoneHalf) {
+      acc.closesOutsideSum = (acc.closesOutsideSum || 0) + 1;
+      consecOut++;
+      if (consecOut >= 2) breakout = true;
+    } else {
+      if (penetrated && !reclaimed && h <= 3) {
+        reclaimed = true;
+        acc.reclaimBarsSum = (acc.reclaimBarsSum || 0) + Math.max(1, h);
+      }
+      consecOut = 0;
+    }
   }
+  if (ambiguous) acc.ambiguousCount = (acc.ambiguousCount || 0) + 1;
+  if (reachedTgt) acc.targetReached = (acc.targetReached || 0) + 1;
+  if (reachedInv && !reachedTgt) acc.invalidationFirst = (acc.invalidationFirst || 0) + 1;
+  if (touched) acc.touchedCount = (acc.touchedCount || 0) + 1;
+  if (penetrated) acc.penetrated = (acc.penetrated || 0) + 1;
+  if (reclaimed) acc.reclaimed = (acc.reclaimed || 0) + 1;
+  if (breakout) acc.breakout = (acc.breakout || 0) + 1;
 }

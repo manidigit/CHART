@@ -399,4 +399,16 @@
     <string name="forecast_refresh_ledger_btn">بروزرسانی دفترکل از سرور MariaDB</string>
     <string name="forecast_ledger_empty">هنوز اسنپ‌شاتی ثبت نشده است. با «ثبت اسنپ‌شات SHA-256» اولین زنجیره را بسازید.</string>
     <string name="forecast_snapshot_recorded">اسنپ‌شات پیش‌بینی در زنجیره تغییرناپذیر SHA-256 ثبت شد.</string>
+    <string name="forecast_eval_matured_btn">ارزیابی سررسیدها و Ambiguous</string>
+    <string name="forecast_coord_independent">مستقل (Independent)</string>
+    <string name="forecast_coord_coordinated">هماهنگ چندتایم‌فریمی (MTF)</string>
+    <string name="forecast_uncertainty_title">تفکیک عدم‌قطعیت و دروازه OOD</string>
+    <string name="forecast_zones_title">نواحی کلیدی قیمت و رقابت هدف/نقض</string>
+    <string name="forecast_lifecycle_title">گزارش چرخه عمر و سررسید فقط‌افزودنی</string>
+    <string name="forecast_outcomes_evaluated">ارزیابی سررسیدها در دفتر کل فقط‌افزودنی ثبت شد.</string>
+    <string name="forecast_no_edge_warning_title">دروازه آماری عدم برتری (No-Edge Gate)</string>
+    <string name="forecast_mtf_title">هماهنگ‌سازی چندتایم‌فریمی (MTF)</string>
+    <string name="forecast_path_stats_title">آمار رویدادهای مسیر و سانسور زمانی</string>
+    <string name="forecast_sensitivity_title">جدول حساسیت ۳×۳ فرهنگ رویدادها</string>
+    <string name="forecast_stability_title">پایداری پیش‌بینی نسبت به اجرای قبل</string>
 </resources>

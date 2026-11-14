@@ -41,6 +41,39 @@ enum class RemoteWorkerStatus {
     ERROR
 }
 
+enum class OodStatus {
+    IN_DISTRIBUTION,
+    ELEVATED,
+    EXTREME
+}
+
+enum class NoEdgeGateState {
+    EDGE_SUPPORTED,
+    NO_EDGE_DETECTED
+}
+
+enum class MtfAlignmentState {
+    ALIGNED,
+    NATURAL_HORIZON_DIVERGENCE,
+    STRUCTURAL_CONFLICT,
+    SINGLE_TIMEFRAME
+}
+
+enum class ForecastLifecycleStatus {
+    ACTIVE,
+    MATURED,
+    SUPERSEDED,
+    CANCELLED
+}
+
+enum class ForecastEvaluationOutcome {
+    PENDING,
+    SUCCESS,
+    FAILED,
+    AMBIGUOUS,
+    INCOMPLETE_DATA
+}
+
 data class ForecastPoint(
     val stepAhead: Int,
     val openTimeUtcMs: Long,
@@ -64,7 +97,124 @@ data class ForecastScenario(
     val targetPrice: Double,
     val extremePrice: Double,
     val invalidationReference: Double,
-    val pctChange: Double
+    val pctChange: Double,
+    val leafId: String = id,
+    val parentBranch: String = "TREE",
+    val entryCondition: String = "",
+    val intermediateEvent: String = "",
+    val invalidationCondition: String = "",
+    val lowSampleWarning: Boolean = false
+)
+
+data class UncertaintyBreakdown(
+    val aleatoricPct: Double,
+    val epistemicPct: Double,
+    val totalPct: Double,
+    val aleatoricShare: Double,
+    val epistemicShare: Double,
+    val oodStatus: OodStatus,
+    val oodDistance: Double,
+    val oodReasons: List<String>,
+    val spreadMultiplierApplied: Double,
+    val epistemicCumVar: Double
+)
+
+data class KeyPriceZone(
+    val zoneId: String,
+    val zoneType: String,
+    val lowPrice: Double,
+    val highPrice: Double,
+    val centerPrice: Double,
+    val detectedAtMs: Long,
+    val source: String,
+    val strength: Double,
+    val touchProbability: Double,
+    val penetrationProbability: Double,
+    val reclaimProbability: Double,
+    val confirmedBreakoutProbability: Double,
+    val reachBeforeInvalidationProb: Double,
+    val invalidationBeforeReachProb: Double,
+    val expectedBarsToReachCensored: Double,
+    val invalidationPrice: Double,
+    val horizonBars: Int
+)
+
+data class SensitivityGridPoint(
+    val penetrationAtrMult: Double,
+    val reclaimWindowBars: Int,
+    val breakoutCloses: Int,
+    val touchFreqPct: Double,
+    val reclaimFreqPct: Double,
+    val breakoutFreqPct: Double,
+    val ambiguousRatePct: Double
+)
+
+data class EventDictionarySpec(
+    val priceBasis: String = "MID_OHLC",
+    val evaluationRule: String = "HIGH_LOW_AND_CLOSE",
+    val penetrationAtrMult: Double = 0.20,
+    val reclaimWindowBars: Int = 3,
+    val confirmedBreakoutCloses: Int = 2,
+    val sensitivityGrid: List<SensitivityGridPoint> = emptyList()
+)
+
+data class PathEventStats(
+    val touchRatePct: Double,
+    val penetrationRatePct: Double,
+    val reclaimRatePct: Double,
+    val breakoutRatePct: Double,
+    val reachBeforeInvalidationPct: Double,
+    val ambiguousRatePct: Double,
+    val censoringRatePct: Double
+)
+
+data class NoEdgeGateReport(
+    val gateState: NoEdgeGateState,
+    val hasEdge: Boolean,
+    val effectiveSampleSize: Double,
+    val skillScoreVsBaseline: Double,
+    val reasons: List<String>
+)
+
+data class MtfCoordinationReport(
+    val referenceTimeframe: String,
+    val alignmentState: MtfAlignmentState,
+    val ohlcConsistent: Boolean,
+    val independentMedianPct: Double,
+    val coordinatedMedianPct: Double,
+    val coordinatedPoints: List<ForecastPoint>,
+    val coordinatedScenarios: List<ForecastScenario>,
+    val conflictReasons: List<String>,
+    val uncertaintyAdjustmentFactor: Double
+)
+
+data class ForecastStabilityReport(
+    val previousForecastHash: String?,
+    val medianDriftPct: Double,
+    val corridorShiftPct: Double,
+    val stable: Boolean
+)
+
+data class ForecastLifecycleEvent(
+    val seq: Int,
+    val forecastHash: String,
+    val symbolCode: String,
+    val timeframe: String,
+    val horizonStep: Int,
+    val lifecycleStatus: ForecastLifecycleStatus,
+    val evaluationOutcome: ForecastEvaluationOutcome,
+    val reason: String,
+    val observedClose: Double?,
+    val recordedAtUtcMs: Long,
+    val prevEventHash: String,
+    val eventHash: String
+)
+
+data class LifecycleVerifyResult(
+    val valid: Boolean,
+    val totalEvents: Int,
+    val brokenIndex: Int,
+    val reason: String
 )
 
 data class ModelContribution(
@@ -99,7 +249,12 @@ data class WalkForwardReport(
     val ensembleMetrics: ModelWalkForwardSummary?,
     val naiveMetrics: ModelWalkForwardSummary?,
     val modelBenchmarks: List<ModelWalkForwardSummary>,
-    val maeImprovementVsNaivePct: Double
+    val maeImprovementVsNaivePct: Double,
+    val skillScoreVsNaive: Double = 0.0,
+    val effectiveSampleSize: Double = 0.0,
+    val ambiguousOutcomeCount: Int = 0,
+    val ambiguousRatePct: Double = 0.0,
+    val pathEventStats: PathEventStats? = null
 )
 
 data class DataReadinessReport(
@@ -159,7 +314,9 @@ data class ForecastLedgerEntry(
     val generatedAtUtcMs: Long,
     val prevForecastHash: String,
     val forecastHash: String,
-    val syncedToCloud: Boolean
+    val syncedToCloud: Boolean,
+    val noEdgeGateState: String = "NO_EDGE_DETECTED",
+    val oodStatus: String = "IN_DISTRIBUTION"
 )
 
 data class LedgerVerifyResult(
@@ -188,11 +345,19 @@ data class ForecastResult(
     val modelContributions: List<ModelContribution>,
     val walkForward: WalkForwardReport?,
     val summary: ForecastSummary?,
-    val inputHash: String
+    val inputHash: String,
+    val specVersion: String = ForecastSha256.SPEC_VERSION,
+    val uncertainty: UncertaintyBreakdown? = null,
+    val noEdgeGate: NoEdgeGateReport? = null,
+    val keyZones: List<KeyPriceZone> = emptyList(),
+    val eventDictionary: EventDictionarySpec? = null,
+    val mtfCoordination: MtfCoordinationReport? = null,
+    val stability: ForecastStabilityReport? = null
 )
 
 object ForecastSha256 {
     const val CONTRACT_VERSION = "forecast-contract/v1"
+    const val SPEC_VERSION = "1.3.0"
     const val GENESIS_HASH = "0000000000000000000000000000000000000000000000000000000000000000"
 
     fun sha256Hex(input: String): String {

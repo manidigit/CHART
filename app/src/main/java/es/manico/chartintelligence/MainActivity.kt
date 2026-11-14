@@ -337,7 +337,11 @@ fun ChartIntelligenceApp(
                             onRefreshServerLedger = mainViewModel::refreshForecastServerLedger,
                             onPlotReferenceLevelsToChart = mainViewModel::projectScenarioLevelsToChart,
                             onApplyForecastToChart = mainViewModel::applyForecastAndOpenChart,
-                            onBackToWatchlist = mainViewModel::navigateBack
+                            onBackToWatchlist = mainViewModel::navigateBack,
+                            higherTimeframeCandlesProvider = mainViewModel::getHigherTimeframeCandlesForActiveTab,
+                            lifecycleEvents = state.forecastLifecycleEvents,
+                            lifecycleVerifyResult = state.forecastLifecycleVerifyResult,
+                            onEvaluateMaturedOutcomes = mainViewModel::evaluateMaturedForecastOutcomes
                         )
 
                         WorkspaceScreen.SETTINGS -> SettingsScreen(

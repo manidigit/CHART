@@ -399,4 +399,16 @@
     <string name="forecast_refresh_ledger_btn">Sync Ledger from Host MariaDB</string>
     <string name="forecast_ledger_empty">No immutable forecast snapshots recorded yet. Tap Record SHA-256 Snapshot to anchor a hash-chained run.</string>
     <string name="forecast_snapshot_recorded">Forecast snapshot recorded in SHA-256 hash chain.</string>
+    <string name="forecast_eval_matured_btn">Evaluate Matured Outcomes</string>
+    <string name="forecast_coord_independent">Independent</string>
+    <string name="forecast_coord_coordinated">Coordinated MTF</string>
+    <string name="forecast_uncertainty_title">Uncertainty Decomposition &amp; OOD Gate</string>
+    <string name="forecast_zones_title">Key Price Zones &amp; Target Competition</string>
+    <string name="forecast_lifecycle_title">Append-Only Lifecycle &amp; Outcome Log</string>
+    <string name="forecast_outcomes_evaluated">Lifecycle evaluation updated.</string>
+    <string name="forecast_no_edge_warning_title">No-Edge Statistical Gate</string>
+    <string name="forecast_mtf_title">Multi-Timeframe Coordination</string>
+    <string name="forecast_path_stats_title">Path Event Stats &amp; Censoring</string>
+    <string name="forecast_sensitivity_title">Event Dictionary 3x3 Sensitivity Grid</string>
+    <string name="forecast_stability_title">Forecast Stability vs Prior Run</string>
 </resources>

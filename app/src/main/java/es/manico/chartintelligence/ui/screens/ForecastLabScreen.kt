@@ -57,21 +57,33 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
+import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.forecast.ForecastEngine
 import es.manico.chartintelligence.forecast.ForecastLedgerEntry
+import es.manico.chartintelligence.forecast.ForecastLifecycleEvent
 import es.manico.chartintelligence.forecast.ForecastModelRegistry
 import es.manico.chartintelligence.forecast.ForecastRenderMode
+import es.manico.chartintelligence.forecast.ForecastResult
 import es.manico.chartintelligence.forecast.ForecastStatus
+import es.manico.chartintelligence.forecast.ForecastV130Analyzer
 import es.manico.chartintelligence.forecast.LedgerVerifyResult
+import es.manico.chartintelligence.forecast.LifecycleVerifyResult
 import es.manico.chartintelligence.forecast.RemoteWorkerStatus
 import es.manico.chartintelligence.ui.components.AssetSymbolBadge
 import es.manico.chartintelligence.ui.components.ForecastMiniFanCanvas
 import es.manico.chartintelligence.ui.components.ForecastModelPluginCard
 import es.manico.chartintelligence.ui.components.ForecastScenarioCard
 import es.manico.chartintelligence.ui.components.HashLedgerEntryCard
+import es.manico.chartintelligence.ui.components.KeyPriceZonesSection
+import es.manico.chartintelligence.ui.components.LifecycleEventLogCard
+import es.manico.chartintelligence.ui.components.MtfCoordinationCard
+import es.manico.chartintelligence.ui.components.NoEdgeAndOodHeaderBadges
+import es.manico.chartintelligence.ui.components.NoEdgeWarningBanner
+import es.manico.chartintelligence.ui.components.PathEventAndSensitivityCard
+import es.manico.chartintelligence.ui.components.UncertaintyBreakdownCard
 import es.manico.chartintelligence.ui.components.WalkForwardBenchmarkTable
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
@@ -103,13 +115,18 @@ fun ForecastLabScreen(
     onPlotReferenceLevelsToChart: (BigDecimal, BigDecimal, BigDecimal, BigDecimal, BigDecimal) -> Unit,
     onApplyForecastToChart: () -> Unit,
     onBackToWatchlist: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    higherTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() },
+    lifecycleEvents: List<ForecastLifecycleEvent> = emptyList(),
+    lifecycleVerifyResult: LifecycleVerifyResult = LifecycleVerifyResult(true, 0, -1, "Empty lifecycle log"),
+    onEvaluateMaturedOutcomes: () -> Unit = {}
 ) {
     BackHandler(onBack = onBackToWatchlist)
 
     val palette = LocalFinancialPalette.current
     var showSymbolSheet by rememberSaveable { mutableStateOf(false) }
     var selectedSubTab by rememberSaveable { mutableIntStateOf(0) }
+    var coordMode by rememberSaveable { mutableStateOf("independent") }
     var workerUrlDraft by remember(preferences.forecastWorkerUrl) {
         mutableStateOf(preferences.forecastWorkerUrl)
     }
@@ -131,9 +148,17 @@ fun ForecastLabScreen(
 
     val candles = activeTab?.candles.orEmpty()
     val decimals = activeTab?.decimals ?: 2
+    val higherTf = remember(activeTab?.timeframe) {
+        ForecastV130Analyzer.resolveHigherTimeframe(activeTab?.timeframe.orEmpty())
+    }
+    val higherCandles = remember(higherTf, candles) {
+        if (higherTf.isNotBlank()) higherTimeframeCandlesProvider(higherTf) else emptyList()
+    }
+    val previousRunMap = remember { mutableMapOf<String, ForecastResult>() }
 
     val forecastResult = remember(
         candles,
+        higherCandles,
         activeTab?.symbolCode,
         activeTab?.timeframe,
         activeHorizon,
@@ -142,16 +167,27 @@ fun ForecastLabScreen(
         preferences.forecastWorkerUrl
     ) {
         if (activeTab == null) null
-        else ForecastEngine.project(
-            candles = candles,
-            symbolCode = activeTab.symbolCode,
-            timeframe = activeTab.timeframe,
-            horizonBars = activeHorizon,
-            renderMode = activeRenderMode,
-            registry = registry,
-            workerUrl = preferences.forecastWorkerUrl,
-            skipWalkForward = false
-        )
+        else {
+            val runKey = "${activeTab.symbolCode}|${activeTab.timeframe}|$activeHorizon"
+            val prev = previousRunMap[runKey]
+            val res = ForecastEngine.project(
+                candles = candles,
+                symbolCode = activeTab.symbolCode,
+                timeframe = activeTab.timeframe,
+                horizonBars = activeHorizon,
+                renderMode = activeRenderMode,
+                registry = registry,
+                workerUrl = preferences.forecastWorkerUrl,
+                skipWalkForward = false,
+                higherTimeframe = higherTf,
+                higherTimeframeCandles = higherCandles,
+                previousForecast = prev
+            )
+            if (res.status != ForecastStatus.DATA_NOT_READY && res.inputHash != prev?.inputHash) {
+                previousRunMap[runKey] = res
+            }
+            res
+        }
     }
 
     Column(
@@ -215,6 +251,7 @@ fun ForecastLabScreen(
                                     )
                                 }
                             }
+                            NoEdgeAndOodHeaderBadges(result = forecastResult)
                         }
                     }
 
@@ -401,7 +438,8 @@ fun ForecastLabScreen(
                             ForecastMiniFanCanvas(
                                 candles = candles,
                                 result = forecastResult,
-                                decimals = decimals
+                                decimals = decimals,
+                                coordMode = coordMode
                             )
 
                             if (!forecastResult.readiness.ready) {
@@ -424,6 +462,10 @@ fun ForecastLabScreen(
                                     }
                                 }
                             } else {
+                                forecastResult.noEdgeGate?.let { gate ->
+                                    NoEdgeWarningBanner(noEdgeGate = gate)
+                                }
+
                                 forecastResult.featuresSummary?.let { fs ->
                                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                         Card(
@@ -447,6 +489,21 @@ fun ForecastLabScreen(
                                     }
                                 }
 
+                                forecastResult.uncertainty?.let { unc ->
+                                    UncertaintyBreakdownCard(
+                                        uncertainty = unc,
+                                        stability = forecastResult.stability
+                                    )
+                                }
+
+                                forecastResult.mtfCoordination?.let { mtf ->
+                                    MtfCoordinationCard(
+                                        mtf = mtf,
+                                        coordMode = coordMode,
+                                        onSelectCoordMode = { coordMode = it }
+                                    )
+                                }
+
                                 for (sc in forecastResult.scenarios) {
                                     ForecastScenarioCard(
                                         scenario = sc,
@@ -465,6 +522,11 @@ fun ForecastLabScreen(
                                         }
                                     )
                                 }
+
+                                KeyPriceZonesSection(
+                                    zones = forecastResult.keyZones,
+                                    decimals = decimals
+                                )
                             }
                         }
 
@@ -568,12 +630,16 @@ fun ForecastLabScreen(
                             }
                         }
 
-                        // TAB 2: PURGED WALK-FORWARD BENCHMARK
+                        // TAB 2: PURGED WALK-FORWARD BENCHMARK & SENSITIVITY GRID
                         2 -> {
                             WalkForwardBenchmarkTable(report = forecastResult.walkForward)
+                            PathEventAndSensitivityCard(
+                                walkForward = forecastResult.walkForward,
+                                eventDictionary = forecastResult.eventDictionary
+                            )
                         }
 
-                        // TAB 3: SHA-256 HASH-CHAIN LEDGER
+                        // TAB 3: SHA-256 HASH-CHAIN LEDGER & APPEND-ONLY LIFECYCLE
                         3 -> {
                             Card(
                                 modifier = Modifier.fillMaxWidth(),
@@ -603,6 +669,13 @@ fun ForecastLabScreen(
                                     }
                                 }
                             }
+
+                            LifecycleEventLogCard(
+                                events = lifecycleEvents,
+                                verifyResult = lifecycleVerifyResult,
+                                decimals = decimals,
+                                onEvaluateMatured = onEvaluateMaturedOutcomes
+                            )
 
                             val combinedEntries = remember(localLedgerEntries, serverLedgerEntries) {
                                 if (serverLedgerEntries.isNotEmpty()) serverLedgerEntries.reversed()

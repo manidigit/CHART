@@ -1,6 +1,7 @@
 import {
   CONTRACT_VERSION,
   FORECAST_STATUS,
+  SPEC_VERSION,
   advanceFutureTimestamps,
   canonicalJson,
   clampHorizonBars,
@@ -12,20 +13,19 @@ import {
 import { extractForecastFeatures } from './featureExtractor.js?v=1.42.0';
 import { defaultForecastRegistry, ForecastModelRegistry } from './modelRegistry.js?v=1.42.0';
 import { evaluateWalkForward } from './walkForwardEvaluator.js?v=1.42.0';
-
-function normalCdf(z) {
-  const t = 1 / (1 + 0.2316419 * Math.abs(z));
-  const d = 0.3989422804014327 * Math.exp((-z * z) / 2);
-  const p =
-    d * t * (0.31938153 + t * (-0.356563782 + t * (1.781477937 + t * (-1.821255978 + t * 1.330274429))));
-  return z >= 0 ? 1 - p : p;
-}
+import {
+  computeForecastStability,
+  computeOodAndUncertainty,
+  coordinateMultiTimeframe,
+  detectKeyZonesAndEventTree,
+  evaluateNoEdgeGate,
+} from './forecastV130Analyzer.js?v=1.42.0';
 
 /**
- * Decoupled Core Phase 4 Future Price Projection Engine (`forecast-contract/v1`).
+ * Decoupled Core Phase 4 Future Price Projection Engine (`forecast-contract/v1` / spec `1.3.0`).
  * Combines DataReadinessGate, log-return FeatureExtractor, Pluggable Model Registry,
- * GARCH/Kalman/AR/GP ensemble calibration, synthetic OHLC generation, purged Walk-Forward
- * Acceptance Gate, and non-trading analytical scenarios.
+ * Aleatoric/Epistemic + OOD decomposition, 5-leaf mutually exclusive Event Tree,
+ * Key Zones, MTF Coordination, No-Edge Gate, and purged Walk-Forward evaluation.
  */
 export class ForecastEngine {
   static project(candles = [], options = {}) {
@@ -37,11 +37,15 @@ export class ForecastEngine {
     const workerUrl = String(options.workerUrl || '');
     const generatedAtUtcMs = Number(options.generatedAtUtcMs || Date.now());
     const minBars = Math.max(10, Number(options.minBars || 24));
+    const higherTimeframe = String(options.higherTimeframe || '');
+    const higherTimeframeCandles = Array.isArray(options.higherTimeframeCandles) ? options.higherTimeframeCandles : [];
+    const previousForecast = options.previousForecast || null;
 
     const readiness = validateDataReadiness(candles, minBars);
     if (!readiness.ready) {
       return {
         contractVersion: CONTRACT_VERSION,
+        specVersion: SPEC_VERSION,
         status: FORECAST_STATUS.DATA_NOT_READY,
         symbolCode,
         timeframe,
@@ -50,6 +54,12 @@ export class ForecastEngine {
         generatedAtUtcMs,
         readiness,
         remoteWorker: ForecastModelRegistry.resolveRemoteWorkerStatus(workerUrl),
+        uncertainty: null,
+        noEdgeGate: null,
+        keyZones: [],
+        eventDictionary: null,
+        mtfCoordination: null,
+        stability: null,
         points: [],
         scenarios: [],
         modelContributions: [],
@@ -63,6 +73,9 @@ export class ForecastEngine {
           naiveMetrics: null,
           modelBenchmarks: [],
           maeImprovementVsNaivePct: 0,
+          effectiveSampleSize: 0,
+          ambiguousOutcomeCount: 0,
+          ambiguousRatePct: 0,
         },
         summary: null,
         inputHash: sha256Hex(`${symbolCode}|${timeframe}|EMPTY`),
@@ -82,7 +95,6 @@ export class ForecastEngine {
             (x) => Boolean(x.plugin)
           );
 
-    // Optional walk-forward pass (can be skipped for lightweight preview draws)
     const walkForward =
       options.skipWalkForward === true
         ? null
@@ -92,7 +104,6 @@ export class ForecastEngine {
             maxWindows: Number(options.maxWalkForwardWindows || 10),
           });
 
-    // Weight normalization (optionally boosted slightly by inverse walk-forward MAE if available)
     const benchById = new Map();
     if (walkForward?.modelBenchmarks) {
       for (const b of walkForward.modelBenchmarks) benchById.set(b.modelId, b);
@@ -112,7 +123,8 @@ export class ForecastEngine {
     const modelOutputs = [];
     const modelContributions = [];
     const ensMeanReturns = new Array(horizonBars).fill(0);
-    const ensVarReturns = new Array(horizonBars).fill(0);
+    const aleatoricVarSteps = new Array(horizonBars).fill(0);
+    const epistemicDispSteps = new Array(horizonBars).fill(0);
 
     for (let idx = 0; idx < effectivePlugins.length; idx++) {
       const { plugin, config } = effectivePlugins[idx];
@@ -126,7 +138,7 @@ export class ForecastEngine {
         const sg = Math.max(1e-5, Number(pred.sigmas[h] || features.ewmaSigma));
         cumMean += mr;
         ensMeanReturns[h] += normW * mr;
-        ensVarReturns[h] += normW * (sg * sg);
+        aleatoricVarSteps[h] += normW * (sg * sg);
       }
 
       const terminalPrice = features.lastClose * Math.exp(cumMean);
@@ -141,27 +153,37 @@ export class ForecastEngine {
       });
     }
 
-    // Include inter-model dispersion variance so quantile spread reflects epistemic disagreement
+    let totalAleatoricCumVar = 0;
+    let totalEpistemicDispVar = 0;
     for (let h = 0; h < horizonBars; h++) {
       let modelDisagreementVar = 0;
       for (const m of modelOutputs) {
         const diff = Number(m.pred.meanReturns[h] || 0) - ensMeanReturns[h];
         modelDisagreementVar += m.normW * diff * diff;
       }
-      ensVarReturns[h] += modelDisagreementVar;
+      epistemicDispSteps[h] = modelDisagreementVar;
+      totalAleatoricCumVar += aleatoricVarSteps[h];
+      totalEpistemicDispVar += modelDisagreementVar;
     }
+
+    const uncertainty = computeOodAndUncertainty(
+      features,
+      totalAleatoricCumVar,
+      totalEpistemicDispVar,
+      walkForward?.effectiveSampleSize
+    );
 
     const futureTimestamps = advanceFutureTimestamps(features.lastOpenMs, timeframe, horizonBars, symbolCode);
     const points = [];
     let cumLogRet = 0;
     let cumVar = 0;
     let prevSynthClose = features.lastClose;
+    const epiPerStep = uncertainty.epistemicCumVar / Math.max(1, horizonBars);
 
     for (let h = 0; h < horizonBars; h++) {
       cumLogRet += ensMeanReturns[h];
-      cumVar += ensVarReturns[h];
-      // Uncertainty widens slightly faster at longer steps, tempered by mild horizon damping
-      const cumSigma = Math.sqrt(cumVar) * (1 + 0.008 * h);
+      cumVar += aleatoricVarSteps[h] + epistemicDispSteps[h] + epiPerStep * 0.35;
+      const cumSigma = Math.sqrt(cumVar) * (1 + 0.008 * h) * uncertainty.spreadMultiplierApplied;
 
       const q = enforceMonotonicQuantiles(
         {
@@ -174,8 +196,7 @@ export class ForecastEngine {
         features.lastClose * 0.02
       );
 
-      // Deterministic harmonic micro-oscillation layered inside quantile corridor for readable ghost bars
-      const stepSigma = Math.sqrt(ensVarReturns[h]);
+      const stepSigma = Math.sqrt(aleatoricVarSteps[h] + epistemicDispSteps[h]);
       const microCycle = Math.sin((h + 1) * 0.92 + (features.barCount % 5)) * stepSigma * features.lastClose * 0.35;
       const openP = prevSynthClose;
       const targetClose = Math.max(q.q25, Math.min(q.q75, q.q50 + microCycle));
@@ -208,49 +229,16 @@ export class ForecastEngine {
     }
 
     const lastPt = points[points.length - 1];
-    const totalHorizonSigma = Math.max(1e-5, Math.sqrt(cumVar));
-    const zDrift = Math.log(lastPt.q50 / features.lastClose) / totalHorizonSigma;
-    const pUp = normalCdf(zDrift - 0.35);
-    const pDown = normalCdf(-zDrift - 0.35);
-    const pBaseRaw = Math.max(0.12, 1 - pUp - pDown);
-    const rawTotal = pUp + pDown + pBaseRaw;
-
-    const probBull = Number((pUp / rawTotal).toFixed(3));
-    const probBear = Number((pDown / rawTotal).toFixed(3));
-    const probBase = Number((1 - probBull - probBear).toFixed(3));
-
-    const scenarios = [
-      {
-        id: 'BULL_EXPANSION',
-        label: 'Bullish Expansion Scenario',
-        bias: 'bull',
-        probability: probBull,
-        targetPrice: lastPt.q75,
-        extremePrice: lastPt.q90,
-        invalidationReference: lastPt.q25,
-        pctChange: ((lastPt.q75 - features.lastClose) / features.lastClose) * 100,
-      },
-      {
-        id: 'BASE_RANGE',
-        label: 'Base Range Scenario',
-        bias: 'neutral',
-        probability: probBase,
-        targetPrice: lastPt.q50,
-        extremePrice: lastPt.q75,
-        invalidationReference: lastPt.q25,
-        pctChange: ((lastPt.q50 - features.lastClose) / features.lastClose) * 100,
-      },
-      {
-        id: 'BEAR_CONTRACTION',
-        label: 'Bearish Contraction Scenario',
-        bias: 'bear',
-        probability: probBear,
-        targetPrice: lastPt.q25,
-        extremePrice: lastPt.q10,
-        invalidationReference: lastPt.q75,
-        pctChange: ((lastPt.q25 - features.lastClose) / features.lastClose) * 100,
-      },
-    ];
+    const { scenarios, keyZones, eventDictionary } = detectKeyZonesAndEventTree(features, points, horizonBars);
+    const mtfCoordination = coordinateMultiTimeframe(
+      points,
+      scenarios,
+      features.lastClose,
+      timeframe,
+      higherTimeframe,
+      higherTimeframeCandles
+    );
+    const noEdgeGate = evaluateNoEdgeGate(walkForward, uncertainty);
 
     const status = walkForward ? walkForward.forecastStatus : FORECAST_STATUS.PROVISIONAL;
     const recentClosesSignature = features.candles.slice(-20).map((c) => Number(c.close.toFixed(6)));
@@ -265,8 +253,21 @@ export class ForecastEngine {
       })
     );
 
+    const summary = {
+      terminalStep: lastPt.stepAhead,
+      terminalQ10: lastPt.q10,
+      terminalQ25: lastPt.q25,
+      terminalQ50: lastPt.q50,
+      terminalQ75: lastPt.q75,
+      terminalQ90: lastPt.q90,
+      medianPctChange: lastPt.pctChangeFromLast,
+      corridorWidthPct: ((lastPt.q90 - lastPt.q10) / features.lastClose) * 100,
+    };
+    const stability = computeForecastStability(summary, features.lastClose, previousForecast);
+
     return {
       contractVersion: CONTRACT_VERSION,
+      specVersion: SPEC_VERSION,
       status,
       symbolCode,
       timeframe,
@@ -286,21 +287,19 @@ export class ForecastEngine {
       },
       readiness,
       remoteWorker: ForecastModelRegistry.resolveRemoteWorkerStatus(workerUrl),
+      uncertainty,
+      noEdgeGate,
+      keyZones,
+      eventDictionary,
+      mtfCoordination,
+      stability,
       points,
       scenarios,
       modelContributions,
       walkForward,
-      summary: {
-        terminalStep: lastPt.stepAhead,
-        terminalQ10: lastPt.q10,
-        terminalQ25: lastPt.q25,
-        terminalQ50: lastPt.q50,
-        terminalQ75: lastPt.q75,
-        terminalQ90: lastPt.q90,
-        medianPctChange: lastPt.pctChangeFromLast,
-        corridorWidthPct: ((lastPt.q90 - lastPt.q10) / features.lastClose) * 100,
-      },
+      summary,
       inputHash,
     };
   }
 }
+

@@ -47,6 +47,7 @@ import {
   fetchImportBatches,
   runForecastOnServer,
   fetchForecastLedger,
+  appendForecastLifecycleEventOnServer,
 } from './services/apiService.js?v=1.42.0';
 import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.42.0';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.42.0';
@@ -813,7 +814,8 @@ function redrawActiveCanvas() {
         built.candles,
         built.result,
         Number(activeTab.decimals || 2),
-        state.isDarkTheme
+        state.isDarkTheme,
+        state.forecastCoordView || 'independent'
       );
     }
   }
@@ -2284,6 +2286,32 @@ document.addEventListener('click', async (e) => {
           : 'Forecast snapshot appended to SHA-256 ledger ✓'
       );
     }
+  } else if (action === 'set-forecast-coord-mode') {
+    state.forecastCoordView = el.getAttribute('data-coord') === 'coordinated' ? 'coordinated' : 'independent';
+    renderApp();
+    redrawActiveCanvas();
+  } else if (action === 'evaluate-forecast-outcomes' && activeTab) {
+    const built = buildForecastForTab(activeTab);
+    const candles = built ? built.candles : activeTab.candles || [];
+    const appended = defaultForecastLedger.evaluateMaturedForecasts(
+      candles,
+      activeTab.symbolCode,
+      activeTab.timeframe
+    );
+    for (const ev of appended) {
+      await appendForecastLifecycleEventOnServer(ev);
+    }
+    await fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe);
+    renderApp();
+    showFloatingToast(
+      i18n.getCurrentLanguage() === 'fa'
+        ? appended.length > 0
+          ? `${appended.length} رویداد جدید سررسید در دفترکل ثبت شد ✓`
+          : 'پیش‌بینی جدیدی به سررسید نرسیده است'
+        : appended.length > 0
+          ? `${appended.length} matured lifecycle event(s) appended ✓`
+          : 'No new matured horizons ready for evaluation'
+    );
   } else if (action === 'refresh-forecast-ledger' && activeTab) {
     await fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe);
     renderApp();

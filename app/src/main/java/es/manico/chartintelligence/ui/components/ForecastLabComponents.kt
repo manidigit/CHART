@@ -73,14 +73,22 @@ fun ForecastMiniFanCanvas(
     candles: List<CandleBar>,
     result: ForecastResult?,
     decimals: Int,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    coordMode: String = "independent"
 ) {
     val palette = LocalFinancialPalette.current
     val hist = remember(candles) { candles.takeLast(44) }
-    val pts = result?.points.orEmpty()
+    val pts = remember(result, coordMode) {
+        if (coordMode == "coordinated" && !result?.mtfCoordination?.coordinatedPoints.isNullOrEmpty()) {
+            result!!.mtfCoordination!!.coordinatedPoints
+        } else {
+            result?.points.orEmpty()
+        }
+    }
+    val zones = result?.keyZones.orEmpty()
     val renderMode = result?.renderMode ?: ForecastRenderMode.HYBRID
 
-    val (minPrice, maxPrice) = remember(hist, pts) {
+    val (minPrice, maxPrice) = remember(hist, pts, zones) {
         if (hist.isEmpty()) 0.0 to 1.0
         else {
             var lo = hist.minOf { it.low.toDouble() }
@@ -88,6 +96,10 @@ fun ForecastMiniFanCanvas(
             for (p in pts) {
                 lo = min(lo, min(p.low, p.q10))
                 hi = max(hi, max(p.high, p.q90))
+            }
+            for (z in zones) {
+                lo = min(lo, z.lowPrice)
+                hi = max(hi, z.highPrice)
             }
             val pad = max(1e-6, (hi - lo) * 0.09)
             (lo - pad) to (hi + pad)
@@ -114,11 +126,13 @@ fun ForecastMiniFanCanvas(
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                if (result?.summary != null) {
+                if (result?.summary != null && pts.isNotEmpty()) {
+                    val lastQ50 = pts.last().q50
+                    val lastPct = pts.last().pctChangeFromLast
                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                        val sign = if (result.summary.medianPctChange >= 0.0) "+" else ""
+                        val sign = if (lastPct >= 0.0) "+" else ""
                         Text(
-                            text = "q50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(result.summary.terminalQ50), decimals)} ($sign${String.format(Locale.US, "%.2f", result.summary.medianPctChange)}%)",
+                            text = "${if (coordMode == "coordinated") "MTF " else ""}q50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(lastQ50), decimals)} ($sign${String.format(Locale.US, "%.2f", lastPct)}%)",
                             style = MaterialTheme.typography.labelMedium,
                             fontFamily = JetBrainsMonoFontFamily,
                             fontWeight = FontWeight.Bold,
@@ -189,6 +203,16 @@ fun ForecastMiniFanCanvas(
                                     topLeft = Offset(divX, 0f),
                                     size = Size(max(0f, size.width - divX), size.height)
                                 )
+                                for (z in zones) {
+                                    val zTop = yOf(z.highPrice)
+                                    val zBot = yOf(z.lowPrice)
+                                    val zCol = if (z.zoneType.contains("RESISTANCE")) Color(0xFFEF4444) else Color(0xFF22C55E)
+                                    drawRect(
+                                        color = zCol.copy(alpha = 0.14f),
+                                        topLeft = Offset(divX, min(zTop, zBot)),
+                                        size = Size(max(0f, size.width - divX), max(2f, abs(zBot - zTop)))
+                                    )
+                                }
                                 drawLine(Color(0xFFF8FAFC).copy(alpha = 0.85f), Offset(divX, 0f), Offset(divX, size.height), strokeWidth = 1.4f, pathEffect = dash)
 
                                 val anchorX = xOf(hist.lastIndex)
@@ -289,12 +313,33 @@ fun ForecastScenarioCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = scenario.label,
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = accent
-                )
+                Row(
+                    modifier = Modifier.weight(1f),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Text(
+                        text = scenario.label,
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = accent
+                    )
+                    if (scenario.lowSampleWarning) {
+                        Surface(
+                            color = Color(0xFFF59E0B).copy(alpha = 0.16f),
+                            shape = RoundedCornerShape(4.dp)
+                        ) {
+                            Text(
+                                text = "LOW_N",
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 9.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                color = Color(0xFFF59E0B)
+                            )
+                        }
+                    }
+                }
                 Surface(
                     color = accent.copy(alpha = 0.16f),
                     shape = RoundedCornerShape(6.dp)
@@ -326,11 +371,25 @@ fun ForecastScenarioCard(
                     )
                 }
                 Text(
-                    text = "Structural Pivot Ref: ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(scenario.invalidationReference), decimals)}",
+                    text = "Branch: ${scenario.parentBranch} · Pivot Ref: ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(scenario.invalidationReference), decimals)}",
                     style = MaterialTheme.typography.labelSmall,
                     fontFamily = JetBrainsMonoFontFamily,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+                if (scenario.entryCondition.isNotBlank()) {
+                    Text(
+                        text = "Trigger: ${scenario.entryCondition} | Event: ${scenario.intermediateEvent}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (scenario.invalidationCondition.isNotBlank()) {
+                    Text(
+                        text = "Invalidation: ${scenario.invalidationCondition}",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = Color(0xFFF59E0B)
+                    )
+                }
             }
 
             OutlinedButton(

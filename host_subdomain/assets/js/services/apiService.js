@@ -1570,9 +1570,14 @@ export async function fetchForecastLedger(symbolCode = '', timeframe = '') {
       return [];
     }
     const json = await res.json();
-    if (res.ok && json && json.ok && json.data && Array.isArray(json.data.entries)) {
-      state.forecastServerLedger = json.data.entries;
-      return state.forecastServerLedger;
+    if (res.ok && json && json.ok && json.data) {
+      if (Array.isArray(json.data.entries)) {
+        state.forecastServerLedger = json.data.entries;
+      }
+      if (Array.isArray(json.data.lifecycle_events)) {
+        state.forecastServerLifecycle = json.data.lifecycle_events;
+      }
+      return state.forecastServerLedger || [];
     }
   } catch {
     // Non-fatal fallback
@@ -1580,4 +1585,42 @@ export async function fetchForecastLedger(symbolCode = '', timeframe = '') {
   return state.forecastServerLedger || [];
 }
 
+export async function appendForecastLifecycleEventOnServer(ev = {}) {
+  const token = localStorage.getItem('ci_session_token') || '';
+  try {
+    const res = await fetch('./api/v1/forecast.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        action: 'append_lifecycle_event',
+        session_token: token,
+        lifecycle_event: {
+          forecast_hash: ev.forecastHash || '',
+          symbol_code: ev.symbolCode || '',
+          timeframe: ev.timeframe || '',
+          horizon_step: Number(ev.horizonStep || 0),
+          lifecycle_status: ev.lifecycleStatus || 'MATURED',
+          evaluation_outcome: ev.evaluationOutcome || 'PENDING',
+          reason: ev.reason || '',
+          observed_close: ev.observedClose ?? null,
+          recorded_at_utc_ms: Number(ev.recordedAtUtcMs || Date.now()),
+        },
+      }),
+    });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return { ok: false, errorCode: 'UNAUTHORIZED' };
+    }
+    const json = await res.json();
+    if (res.ok && json && json.ok && json.data) {
+      return { ok: true, data: json.data };
+    }
+    return { ok: false, errorCode: (json && json.error_code) || 'LIFECYCLE_APPEND_FAILED' };
+  } catch (err) {
+    return { ok: false, errorCode: 'NETWORK_ERROR', error: err?.message || 'Network error' };
+  }
+}
 

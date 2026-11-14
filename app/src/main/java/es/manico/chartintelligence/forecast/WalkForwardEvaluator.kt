@@ -1,11 +1,13 @@
 package es.manico.chartintelligence.forecast
 
 import es.manico.chartintelligence.data.model.CandleBar
+import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
+import kotlin.math.round
 import kotlin.math.sqrt
 
 object WalkForwardEvaluator {
@@ -108,6 +110,14 @@ object WalkForwardEvaluator {
         var windowsRun = 0
         var origin = effMinTrain
 
+        var wfTouch = 0
+        var wfPen = 0
+        var wfReclaim = 0
+        var wfBreakout = 0
+        var wfReachFirst = 0
+        var wfAmbig = 0
+        var wfCensored = 0
+
         while (origin <= availableEnd && windowsRun < effMaxW) {
             val trainStart = max(0, origin - 160)
             val feats = ForecastFeatureExtractor.extractClean(clean.subList(trainStart, origin))
@@ -138,6 +148,28 @@ object WalkForwardEvaluator {
                 val ensSigmas = DoubleArray(effEvalH) { sqrt(max(1e-10, ensVar[it])) }
                 val ensTraj = buildTrajectory(baseClose, ensMean, ensSigmas)
                 recordErrors(accFor("ensemble", "Calibrated Ensemble", "ENSEMBLE"), clean, origin, baseClose, ensTraj, effEvalH)
+
+                // Empirical v1.3.0 Path Event Vector over walk-forward out-of-sample window
+                val termPt = ensTraj.last()
+                val zoneHalf = max(feats.atr14 * 0.35, baseClose * 0.0008)
+                val evRes = ForecastV130Analyzer.simulatePathEventsOnWindow(
+                    candles = clean.subList(origin, origin + effEvalH),
+                    zoneLow = termPt.q75 - zoneHalf,
+                    zoneHigh = termPt.q75 + zoneHalf,
+                    targetPrice = termPt.q75,
+                    invalidationPrice = termPt.q25,
+                    penAtrMult = 0.20,
+                    reclaimBars = 3,
+                    breakoutCloses = 2,
+                    atr = feats.atr14
+                )
+                if (evRes.touched) wfTouch++
+                if (evRes.penetrated) wfPen++
+                if (evRes.reclaimed) wfReclaim++
+                if (evRes.confirmedBreakout) wfBreakout++
+                if (evRes.reachedTarget) wfReachFirst++
+                if (evRes.ambiguousBar) wfAmbig++
+                if (!evRes.reachedTarget && !evRes.reachedInvalidation) wfCensored++
             }
             origin += stride
         }
@@ -162,12 +194,30 @@ object WalkForwardEvaluator {
             )
         }
 
-        val ensSummary = toSummary(accs.getValue("ensemble"))
+        val ensAcc = accs.getValue("ensemble")
+        val ensSummary = toSummary(ensAcc)
         val naiveSummary = toSummary(accs.getValue(naiveModel.id))
         val modelBenchmarks = accs.entries.filter { it.key != "ensemble" }.map { toSummary(it.value) }
 
         val naiveMae = max(1e-9, naiveSummary.mae)
         val impPct = ((naiveMae - ensSummary.mae) / naiveMae) * 100.0
+        val skillScore = (naiveMae - ensSummary.mae) / naiveMae
+        val overlapFactor = if (stride > 0) min(effEvalH.toDouble(), effEvalH.toDouble() / stride) else 1.0
+        val effectiveSampleSize = (round((ensAcc.pointCount / max(1.0, overlapFactor * 0.6)) * 10.0) / 10.0)
+        val ambiguousRatePct = if (windowsRun > 0) round((wfAmbig.toDouble() / windowsRun) * 1000.0) / 10.0 else 0.0
+
+        val pathStats = if (windowsRun > 0) {
+            PathEventStats(
+                touchRatePct = round((wfTouch.toDouble() / windowsRun) * 1000.0) / 10.0,
+                penetrationRatePct = round((wfPen.toDouble() / windowsRun) * 1000.0) / 10.0,
+                reclaimRatePct = round((wfReclaim.toDouble() / windowsRun) * 1000.0) / 10.0,
+                breakoutRatePct = round((wfBreakout.toDouble() / windowsRun) * 1000.0) / 10.0,
+                reachBeforeInvalidationPct = round((wfReachFirst.toDouble() / windowsRun) * 1000.0) / 10.0,
+                ambiguousRatePct = ambiguousRatePct,
+                censoringRatePct = round((wfCensored.toDouble() / windowsRun) * 1000.0) / 10.0
+            )
+        } else null
+
         val beatsNaive = ensSummary.mae <= naiveSummary.mae * 1.015
         val goodCov = ensSummary.coverage80Pct in 50.0..98.0
         val passed = windowsRun >= 5 && beatsNaive && goodCov
@@ -175,9 +225,9 @@ object WalkForwardEvaluator {
         val status = if (passed) ForecastStatus.VALID else ForecastStatus.PROVISIONAL
         val reason = when {
             windowsRun < 5 -> "Walk-forward sample below minimum 5 windows; labeled Provisional."
-            passed -> "Ensemble passes acceptance gate across $windowsRun purged windows (${if (impPct >= 0) "+" else ""}${"%.1f".format(impPct)}% vs Naive MAE, ${"%.0f".format(ensSummary.coverage80Pct)}% coverage)."
+            passed -> "Ensemble passes acceptance gate across $windowsRun purged windows (${if (impPct >= 0) "+" else ""}${String.format(Locale.US, "%.1f", impPct)}% vs Naive MAE, ${String.format(Locale.US, "%.0f", ensSummary.coverage80Pct)}% coverage, N_eff=$effectiveSampleSize)."
             !beatsNaive -> "Ensemble MAE did not beat Naive Persistence; status set to Provisional."
-            else -> "80% coverage (${"%.0f".format(ensSummary.coverage80Pct)}%) outside calibrated [50%, 98%] band; Provisional."
+            else -> "80% coverage (${String.format(Locale.US, "%.0f", ensSummary.coverage80Pct)}%) outside calibrated [50%, 98%] band; Provisional."
         }
 
         return WalkForwardReport(
@@ -189,7 +239,12 @@ object WalkForwardEvaluator {
             ensembleMetrics = ensSummary,
             naiveMetrics = naiveSummary,
             modelBenchmarks = modelBenchmarks,
-            maeImprovementVsNaivePct = impPct
+            maeImprovementVsNaivePct = impPct,
+            skillScoreVsNaive = round(skillScore * 10000.0) / 10000.0,
+            effectiveSampleSize = effectiveSampleSize,
+            ambiguousOutcomeCount = wfAmbig,
+            ambiguousRatePct = ambiguousRatePct,
+            pathEventStats = pathStats
         )
     }
 
