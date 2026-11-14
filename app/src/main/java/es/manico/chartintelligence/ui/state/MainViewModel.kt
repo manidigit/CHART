@@ -1624,11 +1624,26 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun updateIndicatorFamilyColor(family: String, colorHex: String) {
+        val nowMs = System.currentTimeMillis()
+        val cur = _uiState.value.chartPreferences
+        if (family.equals("reset_all", ignoreCase = true)) {
+            val resetPrefs = cur.copy(
+                indMaFamilyColorHex = "FF2962FF",
+                indBandsFamilyColorHex = "FFA855F7",
+                indLevelsFamilyColorHex = "FFF59E0B",
+                indTrendFamilyColorHex = "FF14B8A6",
+                indSmcFamilyColorHex = "FFEC4899",
+                indicatorCustomColors = emptyMap(),
+                preferencesUpdatedAtMs = nowMs
+            )
+            repository.saveChartPreferences(resetPrefs)
+            _uiState.update { it.copy(chartPreferences = resetPrefs) }
+            scheduleDebouncedCloudSync()
+            return
+        }
         val rawClean = colorHex.trim().removePrefix("#").uppercase()
         val cleanHex = if (rawClean.length == 6) "FF$rawClean" else rawClean
         val webHex = "#" + (if (rawClean.length == 8) rawClean.substring(2) else rawClean.takeLast(6))
-        val nowMs = System.currentTimeMillis()
-        val cur = _uiState.value.chartPreferences
         val nextCustomMap = cur.indicatorCustomColors.toMutableMap()
         val nextPrefs = when (family.lowercase()) {
             "ma" -> {

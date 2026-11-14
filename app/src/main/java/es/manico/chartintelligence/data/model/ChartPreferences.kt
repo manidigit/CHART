@@ -246,9 +246,26 @@ data class ChartPreferences(
     val psarColor: Color get() = resolveIndicatorColor("psar", shiftShade(trendFamilyBaseColor, 0.26f))
     val ichimokuColor: Color get() = resolveIndicatorColor("ichimoku", shiftShade(trendFamilyBaseColor, -0.14f))
     val overlayMacdColor: Color get() = resolveIndicatorColor("overlayMacd", shiftShade(trendFamilyBaseColor, 0.38f))
+    val futureProjectionColor: Color get() = resolveIndicatorColor("futureProjection", Color(0xFFA796D4))
 
     // Category 5: Smart Money Concepts & Session Killzones Spectrum
     val smcStructureColor: Color get() = resolveIndicatorColor("smcStructure", smcFamilyBaseColor)
     val fvgColor: Color get() = resolveIndicatorColor("fvg", shiftShade(smcFamilyBaseColor, 0.22f))
     val killzonesColor: Color get() = resolveIndicatorColor("killzones", shiftShade(smcFamilyBaseColor, -0.16f))
+
+    // Category 6: Synchronized Sub-Pane Oscillators & Sub-Components
+    val rsi14Color: Color get() = resolveIndicatorColor("rsi14", Color(0xFFEC4899))
+    val macdColor: Color get() = resolveIndicatorColor("macd", Color(0xFF3B82F6))
+    val macdSignalColor: Color get() = resolveIndicatorColor("macdSignal", Color(0xFFF59E0B))
+    val atr14Color: Color get() = resolveIndicatorColor("atr14", Color(0xFFF97316))
+    val adx14Color: Color get() = resolveIndicatorColor("adx14", Color(0xFFF59E0B))
+    val adxPlusDiColor: Color get() = resolveIndicatorColor("adxPlusDi", Color(0xFF26A69A))
+    val adxMinusDiColor: Color get() = resolveIndicatorColor("adxMinusDi", Color(0xFFEF5350))
+    val stoch14Color: Color get() = resolveIndicatorColor("stoch14", Color(0xFF06B6D4))
+    val stochDColor: Color get() = resolveIndicatorColor("stochD", Color(0xFFF59E0B))
+    val cci20Color: Color get() = resolveIndicatorColor("cci20", Color(0xFF10B981))
+    val willr14Color: Color get() = resolveIndicatorColor("willr14", Color(0xFFEC4899))
+    val obvColor: Color get() = resolveIndicatorColor("obv", Color(0xFF3B82F6))
+    val cmf20Color: Color get() = resolveIndicatorColor("cmf20", Color(0xFF22C55E))
+    val roc12Color: Color get() = resolveIndicatorColor("roc12", Color(0xFFEAB308))
 }

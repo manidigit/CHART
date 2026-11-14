@@ -2429,19 +2429,32 @@ body.theme-light .tv-ind-badge-tag-sm {
 
 .ci-fc-table th,
 .ci-fc-table td {
-  padding: 8px 10px;
+  padding: 9px 11px;
   text-align: left;
   border-bottom: 1px solid var(--border);
+  white-space: nowrap;
 }
 
 .ci-fc-table th {
+  background: var(--bg);
   color: var(--text-muted);
   font-weight: 700;
   font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.ci-fc-table tbody tr:nth-child(even):not(.ci-fc-row-highlight) {
+  background: rgba(120, 123, 134, 0.04);
+}
+
+.ci-fc-table tbody tr:hover {
+  background: rgba(41, 98, 255, 0.06);
 }
 
 .ci-fc-row-highlight {
-  background: rgba(41, 98, 255, 0.08);
+  background: rgba(41, 98, 255, 0.11);
+  color: var(--primary);
 }
 
 .ci-fc-badge-edge {

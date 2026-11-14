@@ -574,7 +574,7 @@ fun WalkForwardBenchmarkTable(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, palette.cardBorder)
     ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -583,7 +583,8 @@ fun WalkForwardBenchmarkTable(
                 Text(
                     text = stringResource(R.string.forecast_wf_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 if (report != null) {
                     val gateColor = if (report.acceptancePassed) palette.bullCandle else Color(0xFFF59E0B)
@@ -612,22 +613,118 @@ fun WalkForwardBenchmarkTable(
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                HorizontalDivider(color = palette.cardBorder)
+
+                // Key Summary Stat Boxes (N_eff, Skill vs Naive, Ambiguous Inside-Bar)
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("Model", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(1.4f))
-                        Text("MAE%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.7f))
-                        Text("Dir%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.7f))
-                        Text("Cov80", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.7f))
-                        Text("CRPS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.8f))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.background,
+                            border = BorderStroke(1.dp, palette.cardBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "N_eff (Indep)",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = String.format(Locale.US, "%.1f", report.effectiveSampleSize),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.background,
+                            border = BorderStroke(1.dp, palette.cardBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "Skill vs Naive",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                val skillColor = if (report.skillScoreVsNaive > 0.0) palette.bullCandle else Color(0xFFF59E0B)
+                                Text(
+                                    text = String.format(Locale.US, "%+.2f%%", report.skillScoreVsNaive * 100.0),
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = skillColor
+                                )
+                            }
+                        }
+                        Surface(
+                            modifier = Modifier.weight(1f),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.background,
+                            border = BorderStroke(1.dp, palette.cardBorder)
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
+                                verticalArrangement = Arrangement.spacedBy(2.dp)
+                            ) {
+                                Text(
+                                    text = "Ambiguous",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 10.sp,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                Text(
+                                    text = "${report.ambiguousOutcomeCount} (${String.format(Locale.US, "%.0f%%", report.ambiguousRatePct)})",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                            }
+                        }
                     }
-                    report.ensembleMetrics?.let { ens ->
-                        HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.5f))
-                        BenchmarkMetricRow(ens, highlight = true)
-                    }
-                    for (m in report.modelBenchmarks) {
-                        HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.4f))
-                        BenchmarkMetricRow(m, highlight = false)
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.background)
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text("Model", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1.4f))
+                            Text("MAE%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.7f))
+                            Text("Dir%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.7f))
+                            Text("Cov80", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.7f))
+                            Text("CRPS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.8f))
+                        }
+                        report.ensembleMetrics?.let { ens ->
+                            HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.6f))
+                            BenchmarkMetricRow(ens, highlight = true, isEven = false)
+                        }
+                        report.modelBenchmarks.forEachIndexed { idx, m ->
+                            HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.4f))
+                            BenchmarkMetricRow(m, highlight = false, isEven = idx % 2 == 1)
+                        }
                     }
                 }
             }
@@ -638,14 +735,21 @@ fun WalkForwardBenchmarkTable(
 @Composable
 private fun BenchmarkMetricRow(
     summary: es.manico.chartintelligence.forecast.ModelWalkForwardSummary,
-    highlight: Boolean
+    highlight: Boolean,
+    isEven: Boolean = false
 ) {
     val color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-    val weight = if (highlight) FontWeight.Bold else FontWeight.Normal
+    val weight = if (highlight) FontWeight.Bold else FontWeight.Medium
+    val rowBg = when {
+        highlight -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        isEven -> MaterialTheme.colorScheme.background.copy(alpha = 0.45f)
+        else -> Color.Transparent
+    }
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .padding(vertical = 4.dp),
+            .background(rowBg)
+            .padding(horizontal = 8.dp, vertical = 6.dp),
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {

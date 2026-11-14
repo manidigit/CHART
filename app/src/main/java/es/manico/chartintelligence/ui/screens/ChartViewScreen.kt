@@ -917,19 +917,109 @@ fun ChartViewScreen(
                             }
 
                             ChartControlSheet.INDICATORS -> {
+                                var selectedIndCategory by remember { mutableStateOf("all") }
+                                var activeColorPickerKey by remember { mutableStateOf<String?>(null) }
+                                val universalPaletteOpts = listOf(
+                                    "#2962FF", "#0EA5E9", "#06B6D4", "#14B8A6", "#10B981",
+                                    "#22C55E", "#EAB308", "#F59E0B", "#F97316", "#EF5350",
+                                    "#EC4899", "#D946EF", "#A855F7", "#8B5CF6", "#6366F1"
+                                )
+
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .verticalScroll(indicatorsScrollState),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(10.dp)
                                 ) {
-                                    Text(
-                                        text = stringResource(R.string.chart_control_indicators),
-                                        style = MaterialTheme.typography.titleMedium,
-                                        fontWeight = FontWeight.Bold
+                                    // Top Header + Reset All Indicator Colors Button
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = stringResource(R.string.chart_control_indicators),
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Text(
+                                                text = if (preferences.indicatorCustomColors.isNotEmpty()) {
+                                                    "✓ ${preferences.indicatorCustomColors.size} رنگ سفارشی ذخیره شده در حساب کاربری"
+                                                } else {
+                                                    "برای تغییر رنگ هر اندیکاتور روی نشانگر رنگی کنار نام آن بزنید"
+                                                },
+                                                style = MaterialTheme.typography.labelSmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.surface)
+                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                                .clickable {
+                                                    activeColorPickerKey = null
+                                                    onUpdateIndicatorFamilyColor("reset_all", "")
+                                                }
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                .testTag("reset_all_indicator_colors_button")
+                                        ) {
+                                            Text(
+                                                text = "↺ پیش‌فرض رنگ‌ها",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+
+                                    // Category Filter Sub-Tabs
+                                    val indCategories = listOf(
+                                        "all" to "همه (All)",
+                                        "ma" to "میانگین‌ها (MA)",
+                                        "bands_levels" to "کانال و سطوح",
+                                        "trend_smc" to "روند و SMC",
+                                        "osc" to "اسیلاتور و حجم"
                                     )
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .horizontalScroll(rememberScrollState()),
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        for ((catKey, catLabel) in indCategories) {
+                                            val isCatSel = selectedIndCategory == catKey
+                                            Box(
+                                                modifier = Modifier
+                                                    .clip(RoundedCornerShape(8.dp))
+                                                    .background(
+                                                        if (isCatSel) MaterialTheme.colorScheme.primary
+                                                        else MaterialTheme.colorScheme.surface
+                                                    )
+                                                    .border(
+                                                        1.dp,
+                                                        if (isCatSel) MaterialTheme.colorScheme.primary else palette.cardBorder,
+                                                        RoundedCornerShape(8.dp)
+                                                    )
+                                                    .clickable { selectedIndCategory = catKey }
+                                                    .padding(horizontal = 12.dp, vertical = 7.dp)
+                                                    .testTag("ind_category_tab_$catKey")
+                                            ) {
+                                                Text(
+                                                    text = catLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = if (isCatSel) FontWeight.Bold else FontWeight.Medium,
+                                                    color = if (isCatSel) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface
+                                                )
+                                            }
+                                        }
+                                    }
 
                                     data class StudyRowSpec(
+                                        val colorKey: String,
                                         val title: String,
                                         val subtitle: String,
                                         val color: Color,
@@ -941,6 +1031,7 @@ fun ChartViewScreen(
 
                                     data class IndicatorFamilySection(
                                         val key: String,
+                                        val groupTab: String,
                                         val titleFa: String,
                                         val titleEn: String,
                                         val activeHex: String,
@@ -955,98 +1046,118 @@ fun ChartViewScreen(
                                     val familySections = listOf(
                                         IndicatorFamilySection(
                                             key = "ma",
+                                            groupTab = "ma",
                                             titleFa = "۱. خانواده میانگین‌های متحرک",
-                                            titleEn = "Moving Averages Spectrum",
+                                            titleEn = "Moving Averages",
                                             activeHex = preferences.indMaFamilyColorHex,
                                             activeColor = preferences.ema50Color,
                                             paletteOpts = listOf("#2962FF", "#0EA5E9", "#06B6D4", "#6366F1", "#10B981", "#F59E0B", "#EC4899", "#F43F5E"),
                                             specs = listOf(
-                                                StudyRowSpec("EMA 20", "Exponential Moving Average (20) — خط پیوسته روشن", preferences.ema20Color, activeTab.showEma20, onToggleEma20, "chart_ema20_toggle_button", "──"),
-                                                StudyRowSpec("EMA 50", "Exponential Moving Average (50) — خط پیوسته اصلی", preferences.ema50Color, activeTab.showEma50, onToggleEma50, "chart_ema50_toggle_button", "━━"),
-                                                StudyRowSpec("EMA 200", "Institutional EMA Baseline (200) — خط ضخیم تیره", preferences.ema200Color, activeTab.showEma200, onToggleEma200, "chart_ema200_toggle_button", "━━"),
-                                                StudyRowSpec("SMA 20", "Simple Moving Average (20) — خط‌چین روشن", preferences.sma20Color, activeTab.showSma20, onToggleSma20, "chart_sma20_toggle_button", "╌╌"),
-                                                StudyRowSpec("SMA 50", "Simple Moving Average (50) — خط‌چین میانی", preferences.sma50Color, activeTab.showSma50, onToggleSma50, "chart_sma50_toggle_button", "╌╌"),
-                                                StudyRowSpec("SMA 200", "Institutional Trend Baseline (200) — خط‌چین ضخیم", preferences.sma200Color, activeTab.showSma200, onToggleSma200, "chart_sma200_toggle_button", "━╌"),
-                                                StudyRowSpec("MTF EMA (20)", "Higher-TF Closed Bar Step (Non-Lookahead)", preferences.mtfEmaColor, activeTab.showMtfEma, onToggleMtfEma, "chart_mtf_ema_toggle_button", "⎍⎍")
+                                                StudyRowSpec("ema20", "EMA 20", "Exponential Moving Average (20)", preferences.ema20Color, activeTab.showEma20, onToggleEma20, "chart_ema20_toggle_button", "──"),
+                                                StudyRowSpec("ema50", "EMA 50", "Exponential Moving Average (50)", preferences.ema50Color, activeTab.showEma50, onToggleEma50, "chart_ema50_toggle_button", "━━"),
+                                                StudyRowSpec("ema200", "EMA 200", "Institutional EMA Baseline (200)", preferences.ema200Color, activeTab.showEma200, onToggleEma200, "chart_ema200_toggle_button", "━━"),
+                                                StudyRowSpec("sma20", "SMA 20", "Simple Moving Average (20)", preferences.sma20Color, activeTab.showSma20, onToggleSma20, "chart_sma20_toggle_button", "╌╌"),
+                                                StudyRowSpec("sma50", "SMA 50", "Simple Moving Average (50)", preferences.sma50Color, activeTab.showSma50, onToggleSma50, "chart_sma50_toggle_button", "╌╌"),
+                                                StudyRowSpec("sma200", "SMA 200", "Institutional Trend Baseline (200)", preferences.sma200Color, activeTab.showSma200, onToggleSma200, "chart_sma200_toggle_button", "━╌"),
+                                                StudyRowSpec("mtfEma", "MTF EMA (20)", "Higher-TF Closed Bar Step (Non-Lookahead)", preferences.mtfEmaColor, activeTab.showMtfEma, onToggleMtfEma, "chart_mtf_ema_toggle_button", "⎍⎍")
                                             )
                                         ),
                                         IndicatorFamilySection(
                                             key = "bands",
+                                            groupTab = "bands_levels",
                                             titleFa = "۲. کانال‌ها و باندهای نوسان",
-                                            titleEn = "Volatility Channels Spectrum",
+                                            titleEn = "Volatility Channels",
                                             activeHex = preferences.indBandsFamilyColorHex,
                                             activeColor = preferences.bollingerColor,
                                             paletteOpts = listOf("#A855F7", "#8B5CF6", "#D946EF", "#6366F1", "#3B82F6", "#14B8A6", "#F59E0B", "#EC4899"),
                                             specs = listOf(
-                                                StudyRowSpec("Bollinger Bands ($bbPeriod, $bbStdDev)", "Volatility Channel ±${bbStdDev}σ", preferences.bollingerColor, activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button", "≈≈"),
-                                                StudyRowSpec("Keltner Channels (20,10,2)", "EMA 20 ± 2.0× Wilder ATR 10 Channel", preferences.keltnerColor, activeTab.showKeltner, onToggleKeltner, "chart_keltner_toggle_button", "≈≈"),
-                                                StudyRowSpec("Donchian Channels (20)", "20-Bar High/Low Breakout Channel", preferences.donchianColor, activeTab.showDonchian, onToggleDonchian, "chart_donchian_toggle_button", "╌╌")
+                                                StudyRowSpec("bollinger", "Bollinger Bands ($bbPeriod, $bbStdDev)", "Volatility Channel ±${bbStdDev}σ", preferences.bollingerColor, activeTab.showBollinger, onToggleBollinger, "chart_bollinger_toggle_button", "≈≈"),
+                                                StudyRowSpec("keltner", "Keltner Channels (20,10,2)", "EMA 20 ± 2.0× Wilder ATR 10 Channel", preferences.keltnerColor, activeTab.showKeltner, onToggleKeltner, "chart_keltner_toggle_button", "≈≈"),
+                                                StudyRowSpec("donchian", "Donchian Channels (20)", "20-Bar High/Low Breakout Channel", preferences.donchianColor, activeTab.showDonchian, onToggleDonchian, "chart_donchian_toggle_button", "╌╌")
                                             )
                                         ),
                                         IndicatorFamilySection(
                                             key = "levels",
+                                            groupTab = "bands_levels",
                                             titleFa = "۳. سطوح کلیدی، پیوت و پروفایل حجم",
-                                            titleEn = "Levels, Pivots & VRVP Spectrum",
+                                            titleEn = "Levels, Pivots & VRVP",
                                             activeHex = preferences.indLevelsFamilyColorHex,
                                             activeColor = preferences.vwapColor,
                                             paletteOpts = listOf("#F59E0B", "#EAB308", "#F97316", "#FB923C", "#10B981", "#06B6D4", "#38BDF8", "#A855F7"),
                                             specs = listOf(
-                                                StudyRowSpec("Session VWAP", "Volume Weighted Average Price", preferences.vwapColor, activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button", "╌╌"),
-                                                StudyRowSpec("Pivot Points (Standard / Fib / Camarilla / Woodie)", "Multi-variant P, R1..R4, S1..S4 با برچسب ضدتداخل", preferences.pivotPColor, activeTab.showPivotPoints, onTogglePivotPoints, "chart_pivot_points_toggle_button", "P/R/S"),
-                                                StudyRowSpec("Session Volume Profile (VRVP)", "POC, VAH & VAL (70% Value Area)", preferences.vrvpPocColor, activeTab.showVolumeProfile, onToggleVolumeProfile, "chart_vp_toggle_button", "▋POC")
+                                                StudyRowSpec("vwap", "Session VWAP", "Volume Weighted Average Price", preferences.vwapColor, activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button", "╌╌"),
+                                                StudyRowSpec("pivotPoints", "Pivot Points (Standard / Fib / Camarilla / Woodie)", "Multi-variant P, R1..R4, S1..S4", preferences.pivotPColor, activeTab.showPivotPoints, onTogglePivotPoints, "chart_pivot_points_toggle_button", "P/R/S"),
+                                                StudyRowSpec("volumeProfile", "Session Volume Profile (VRVP)", "POC, VAH & VAL (70% Value Area)", preferences.vrvpPocColor, activeTab.showVolumeProfile, onToggleVolumeProfile, "chart_vp_toggle_button", "▋POC")
                                             )
                                         ),
                                         IndicatorFamilySection(
                                             key = "trend",
+                                            groupTab = "trend_smc",
                                             titleFa = "۴. سیستم‌های روند، ایچیموکو و پیش‌بینی",
-                                            titleEn = "Trend Systems & Cloud Spectrum",
+                                            titleEn = "Trend Systems & Cloud",
                                             activeHex = preferences.indTrendFamilyColorHex,
                                             activeColor = preferences.ichimokuColor,
                                             paletteOpts = listOf("#14B8A6", "#10B981", "#22C55E", "#06B6D4", "#3B82F6", "#8B5CF6", "#F97316", "#F43F5E"),
                                             specs = listOf(
-                                                StudyRowSpec("Supertrend (10, 3)", "ATR Dynamic Trend Ribbon", preferences.supertrendColor, activeTab.showSupertrend, onToggleSupertrend, "chart_supertrend_toggle_button", "▲▼"),
-                                                StudyRowSpec("Parabolic SAR (0.02, 0.20)", "Trailing Acceleration Stop & Reverse Dots", preferences.psarColor, activeTab.showPsar, onTogglePsar, "chart_psar_toggle_button", "•••"),
-                                                StudyRowSpec("Ichimoku Cloud (9,26,52)", "Tenkan, Kijun, Kumo Cloud & Chikou", preferences.ichimokuColor, activeTab.showIchimoku, onToggleIchimoku, "chart_ichimoku_toggle_button", "☁"),
-                                                StudyRowSpec("MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", preferences.overlayMacdColor, activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button", "ılı"),
-                                                StudyRowSpec("Future Candlesticks (30 Bars)", "AI-Generated 30-Period Future Projection (h≥10)", Color(0xFFA796D4), activeTab.showFutureProjection, onToggleFutureProjection, "chart_future_projection_toggle_button", "🔮")
+                                                StudyRowSpec("supertrend", "Supertrend (10, 3)", "ATR Dynamic Trend Ribbon", preferences.supertrendColor, activeTab.showSupertrend, onToggleSupertrend, "chart_supertrend_toggle_button", "▲▼"),
+                                                StudyRowSpec("psar", "Parabolic SAR (0.02, 0.20)", "Trailing Acceleration Stop & Reverse Dots", preferences.psarColor, activeTab.showPsar, onTogglePsar, "chart_psar_toggle_button", "•••"),
+                                                StudyRowSpec("ichimoku", "Ichimoku Cloud (9,26,52)", "Tenkan, Kijun, Kumo Cloud & Chikou", preferences.ichimokuColor, activeTab.showIchimoku, onToggleIchimoku, "chart_ichimoku_toggle_button", "☁"),
+                                                StudyRowSpec("overlayMacd", "MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", preferences.overlayMacdColor, activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button", "ılı"),
+                                                StudyRowSpec("futureProjection", "Future Candlesticks (30 Bars)", "30-Period Future Projection (h≥10)", preferences.futureProjectionColor, activeTab.showFutureProjection, onToggleFutureProjection, "chart_future_projection_toggle_button", "🔮")
                                             )
                                         ),
                                         IndicatorFamilySection(
                                             key = "smc",
+                                            groupTab = "trend_smc",
                                             titleFa = "۵. ساختار بازار هوشمند و کیل‌زون‌ها",
-                                            titleEn = "SMC & Session Killzones Spectrum",
+                                            titleEn = "SMC & Session Killzones",
                                             activeHex = preferences.indSmcFamilyColorHex,
                                             activeColor = preferences.smcStructureColor,
                                             paletteOpts = listOf("#EC4899", "#F43F5E", "#D946EF", "#A855F7", "#14B8A6", "#38BDF8", "#F59E0B", "#22C55E"),
                                             specs = listOf(
-                                                StudyRowSpec("BOS / CHoCH & EQH / EQL", "Break of Structure, Change of Character & Equal Highs/Lows", preferences.smcStructureColor, activeTab.showSmcStructure, onToggleSmcStructure, "chart_smc_toggle_button", "BOS"),
-                                                StudyRowSpec("FVG / Imbalance Zones", "3-Candle Bullish & Bearish Fair Value Gaps", preferences.fvgColor, activeTab.showFvg, onToggleFvg, "chart_fvg_toggle_button", "▭"),
-                                                StudyRowSpec("Session Killzones (UTC)", "Asia / London / NY & Overlap Highlights", preferences.killzonesColor, activeTab.showKillzones, onToggleKillzones, "chart_killzones_toggle_button", "🕒")
+                                                StudyRowSpec("smcStructure", "BOS / CHoCH & EQH / EQL", "Break of Structure, Change of Character & Equal Highs/Lows", preferences.smcStructureColor, activeTab.showSmcStructure, onToggleSmcStructure, "chart_smc_toggle_button", "BOS"),
+                                                StudyRowSpec("fvg", "FVG / Imbalance Zones", "3-Candle Bullish & Bearish Fair Value Gaps", preferences.fvgColor, activeTab.showFvg, onToggleFvg, "chart_fvg_toggle_button", "▭"),
+                                                StudyRowSpec("killzones", "Session Killzones (UTC)", "Asia / London / NY & Overlap Highlights", preferences.killzonesColor, activeTab.showKillzones, onToggleKillzones, "chart_killzones_toggle_button", "🕒")
                                             )
                                         )
                                     )
 
-                                    for (section in familySections) {
+                                    val visibleFamilySections = familySections.filter {
+                                        selectedIndCategory == "all" || it.groupTab == selectedIndCategory
+                                    }
+
+                                    for (section in visibleFamilySections) {
                                         Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
                                                 .clip(RoundedCornerShape(10.dp))
-                                                .background(MaterialTheme.colorScheme.background.copy(alpha = 0.55f))
-                                                .border(1.dp, section.activeColor.copy(alpha = 0.35f), RoundedCornerShape(10.dp))
-                                                .padding(10.dp),
-                                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                .background(MaterialTheme.colorScheme.surface)
+                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(10.dp))
+                                                .padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Row(
                                                 modifier = Modifier.fillMaxWidth(),
                                                 horizontalArrangement = Arrangement.SpaceBetween,
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Text(
-                                                    text = section.titleFa,
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = section.activeColor,
-                                                    fontWeight = FontWeight.Bold
-                                                )
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(10.dp)
+                                                            .clip(CircleShape)
+                                                            .background(section.activeColor)
+                                                    )
+                                                    Text(
+                                                        text = section.titleFa,
+                                                        style = MaterialTheme.typography.titleSmall,
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        fontWeight = FontWeight.Bold
+                                                    )
+                                                }
                                                 Text(
                                                     text = section.titleEn,
                                                     style = MaterialTheme.typography.labelSmall,
@@ -1064,12 +1175,13 @@ fun ChartViewScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = "طیف رنگ دسته:",
+                                                    text = "تم رنگ گروه:",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 for (hexOpt in section.paletteOpts) {
-                                                    val isSel = section.activeHex.equals(hexOpt, ignoreCase = true)
+                                                    val isSel = section.activeHex.equals(hexOpt, ignoreCase = true) ||
+                                                        section.activeHex.equals("FF" + hexOpt.removePrefix("#"), ignoreCase = true)
                                                     val swatchColor = try {
                                                         Color(android.graphics.Color.parseColor(hexOpt))
                                                     } catch (_: Exception) {
@@ -1082,7 +1194,7 @@ fun ChartViewScreen(
                                                             .background(swatchColor)
                                                             .border(
                                                                 width = if (isSel) 2.dp else 1.dp,
-                                                                color = if (isSel) Color.White else palette.cardBorder,
+                                                                color = if (isSel) MaterialTheme.colorScheme.onSurface else palette.cardBorder,
                                                                 shape = CircleShape
                                                             )
                                                             .clickable { onUpdateIndicatorFamilyColor(section.key, hexOpt) }
@@ -1091,65 +1203,117 @@ fun ChartViewScreen(
                                                 }
                                             }
 
+                                            HorizontalDivider(thickness = 0.5.dp, color = palette.cardBorder)
+
                                             for (spec in section.specs) {
-                                                Row(
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .heightIn(min = 48.dp)
-                                                        .clickable(onClick = spec.onToggle)
-                                                        .padding(vertical = 2.dp)
-                                                        .testTag(spec.testTag),
-                                                    horizontalArrangement = Arrangement.SpaceBetween,
-                                                    verticalAlignment = Alignment.CenterVertically
+                                                Column(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalArrangement = Arrangement.spacedBy(4.dp)
                                                 ) {
                                                     Row(
-                                                        modifier = Modifier.weight(1f),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .heightIn(min = 48.dp)
+                                                            .clickable(onClick = spec.onToggle)
+                                                            .padding(vertical = 2.dp)
+                                                            .testTag(spec.testTag),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
                                                     ) {
                                                         Row(
-                                                            modifier = Modifier
-                                                                .clip(RoundedCornerShape(5.dp))
-                                                                .background(MaterialTheme.colorScheme.surface)
-                                                                .border(1.5.dp, spec.color, RoundedCornerShape(5.dp))
-                                                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                                                            modifier = Modifier.weight(1f),
                                                             verticalAlignment = Alignment.CenterVertically,
-                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
                                                         ) {
-                                                            Box(
+                                                            // Tappable Color Swatch + Badge to customize individual indicator color
+                                                            Row(
                                                                 modifier = Modifier
-                                                                    .size(7.dp)
-                                                                    .clip(CircleShape)
-                                                                    .background(spec.color)
-                                                            )
-                                                            Text(
-                                                                text = spec.badge,
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                fontSize = 10.sp,
-                                                                fontFamily = JetBrainsMonoFontFamily,
-                                                                fontWeight = FontWeight.ExtraBold,
-                                                                color = MaterialTheme.colorScheme.onSurface
-                                                            )
+                                                                    .clip(RoundedCornerShape(6.dp))
+                                                                    .background(MaterialTheme.colorScheme.background)
+                                                                    .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                                    .clickable {
+                                                                        activeColorPickerKey = if (activeColorPickerKey == spec.colorKey) null else spec.colorKey
+                                                                    }
+                                                                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                                                                    .testTag("ind_color_badge_${spec.colorKey}"),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(10.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(spec.color)
+                                                                )
+                                                                Text(
+                                                                    text = spec.badge,
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontSize = 10.sp,
+                                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                            }
+                                                            Column {
+                                                                Text(
+                                                                    text = spec.title,
+                                                                    style = MaterialTheme.typography.bodyMedium,
+                                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                                Text(
+                                                                    text = spec.subtitle,
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
                                                         }
-                                                        Column {
+                                                        Switch(
+                                                            checked = spec.checked,
+                                                            onCheckedChange = { spec.onToggle() }
+                                                        )
+                                                    }
+
+                                                    // Per-indicator expandable color palette
+                                                    if (activeColorPickerKey == spec.colorKey) {
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .clip(RoundedCornerShape(8.dp))
+                                                                .background(MaterialTheme.colorScheme.background)
+                                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                                                .horizontalScroll(rememberScrollState())
+                                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
                                                             Text(
-                                                                text = spec.title,
-                                                                style = MaterialTheme.typography.bodyMedium,
-                                                                fontFamily = JetBrainsMonoFontFamily,
+                                                                text = "رنگ ${spec.title}:",
+                                                                style = MaterialTheme.typography.labelSmall,
                                                                 fontWeight = FontWeight.Bold,
                                                                 color = MaterialTheme.colorScheme.onSurface
                                                             )
-                                                            Text(
-                                                                text = spec.subtitle,
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                            )
+                                                            for (hexOpt in universalPaletteOpts) {
+                                                                val swColor = try {
+                                                                    Color(android.graphics.Color.parseColor(hexOpt))
+                                                                } catch (_: Exception) {
+                                                                    spec.color
+                                                                }
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(22.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(swColor)
+                                                                        .border(1.dp, palette.cardBorder, CircleShape)
+                                                                        .clickable {
+                                                                            onUpdateIndicatorFamilyColor(spec.colorKey, hexOpt)
+                                                                        }
+                                                                        .testTag("ind_custom_color_${spec.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
+                                                                )
+                                                            }
                                                         }
                                                     }
-                                                    Switch(
-                                                        checked = spec.checked,
-                                                        onCheckedChange = { spec.onToggle() }
-                                                    )
                                                 }
                                             }
 
@@ -1180,12 +1344,12 @@ fun ChartViewScreen(
                                                                 .heightIn(min = 48.dp)
                                                                 .clip(RoundedCornerShape(8.dp))
                                                                 .background(
-                                                                    if (isSelected) preferences.pivotPColor.copy(alpha = 0.22f)
-                                                                    else MaterialTheme.colorScheme.surface
+                                                                    if (isSelected) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                                                    else MaterialTheme.colorScheme.background
                                                                 )
                                                                 .border(
                                                                     1.dp,
-                                                                    if (isSelected) preferences.pivotPColor else palette.cardBorder,
+                                                                    if (isSelected) MaterialTheme.colorScheme.primary else palette.cardBorder,
                                                                     RoundedCornerShape(8.dp)
                                                                 )
                                                                 .clickable { onSelectPivotType(varKey) }
@@ -1208,238 +1372,302 @@ fun ChartViewScreen(
                                     }
 
                                     // Bollinger Bands Inline Parameter Customizer (Period & StdDev)
-                                    Column(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clip(RoundedCornerShape(8.dp))
-                                            .background(MaterialTheme.colorScheme.background)
-                                            .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
-                                            .padding(10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Text(
-                                            text = "تنظیمات باندهای بولینگر (Bollinger Period & StdDev):",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.onSurface
-                                        )
-                                        Row(
+                                    if (selectedIndCategory == "all" || selectedIndCategory == "bands_levels") {
+                                        Column(
                                             modifier = Modifier
                                                 .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState()),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(MaterialTheme.colorScheme.surface)
+                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(10.dp))
+                                                .padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Text(
-                                                text = "Period:",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontFamily = JetBrainsMonoFontFamily,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                text = "تنظیمات باندهای بولینگر (Bollinger Period & StdDev):",
+                                                style = MaterialTheme.typography.labelMedium,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
                                             )
-                                            for (pOpt in listOf(10, 14, 20, 30, 50)) {
-                                                val sel = bbPeriod == pOpt
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .background(if (sel) preferences.bollingerColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
-                                                        .border(1.dp, if (sel) preferences.bollingerColor else palette.cardBorder, RoundedCornerShape(6.dp))
-                                                        .clickable { onUpdateBollingerParams(pOpt, bbStdDev) }
-                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                        .testTag("bb_period_chip_$pOpt")
-                                                ) {
-                                                    Text(
-                                                        text = pOpt.toString(),
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontFamily = JetBrainsMonoFontFamily,
-                                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                                                        color = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                }
-                                            }
-                                        }
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .horizontalScroll(rememberScrollState()),
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            Text(
-                                                text = "StdDev:",
-                                                style = MaterialTheme.typography.labelSmall,
-                                                fontFamily = JetBrainsMonoFontFamily,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                            for (sdOpt in listOf(1.5f, 2.0f, 2.5f, 3.0f)) {
-                                                val sel = kotlin.math.abs(bbStdDev - sdOpt) < 0.05f
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .background(if (sel) preferences.bollingerColor.copy(alpha = 0.22f) else MaterialTheme.colorScheme.surface)
-                                                        .border(1.dp, if (sel) preferences.bollingerColor else palette.cardBorder, RoundedCornerShape(6.dp))
-                                                        .clickable { onUpdateBollingerParams(bbPeriod, sdOpt) }
-                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                        .testTag("bb_stddev_chip_${(sdOpt * 10).toInt()}")
-                                                ) {
-                                                    Text(
-                                                        text = "${sdOpt}σ",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontFamily = JetBrainsMonoFontFamily,
-                                                        fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                                                        color = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    HorizontalDivider(thickness = 1.dp, color = palette.cardBorder)
-
-                                    // Section 3: Synchronized Multi-Pane Sub-Panels (Package 2)
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "پنل‌های پایینی همگام",
-                                            style = MaterialTheme.typography.labelMedium,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "Multi-Pane Oscillators",
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
-
-                                    // Volume Histogram + Height Selector (16% / 22% / 30%)
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .clickable(onClick = onToggleVolume)
-                                            .padding(vertical = 2.dp)
-                                            .testTag("chart_volume_toggle_button"),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            Icon(
-                                                imageVector = Icons.Outlined.BarChart,
-                                                contentDescription = "Volume",
-                                                tint = MaterialTheme.colorScheme.primary
-                                            )
-                                            Text(
-                                                text = "${stringResource(R.string.chart_volume_panel)} (${(activeTab.volumePaneRatio * 100f).roundToInt()}%)",
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.SemiBold
-                                            )
-                                        }
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                        ) {
-                                            if (activeTab.showVolume) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(6.dp))
-                                                        .background(MaterialTheme.colorScheme.background)
-                                                        .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
-                                                        .clickable(onClick = onCycleVolumeHeight)
-                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                        .testTag("chart_volume_resize_button")
-                                                ) {
-                                                    Text(
-                                                        text = "${(activeTab.volumePaneRatio * 100f).roundToInt()}%",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontFamily = JetBrainsMonoFontFamily
-                                                    )
-                                                }
-                                            }
-                                            Switch(
-                                                checked = activeTab.showVolume,
-                                                onCheckedChange = { onToggleVolume() }
-                                            )
-                                        }
-                                    }
-
-                                    val oscSpecs = listOf(
-                                        StudyRowSpec("RSI 14", "Relative Strength Index (30 / 70 Levels)", Color(0xFFEC4899), activeTab.showRsi14, onToggleRsi14, "chart_rsi14_toggle_button", "RSI"),
-                                        StudyRowSpec("MACD (12, 26, 9)", "Momentum Histogram + MACD / Signal", Color(0xFF3B82F6), activeTab.showMacd, onToggleMacd, "chart_macd_toggle_button", "MACD"),
-                                        StudyRowSpec("ATR 14", "Wilder's Average True Range Volatility", Color(0xFFF97316), activeTab.showAtr14, onToggleAtr14, "chart_atr14_toggle_button", "ATR"),
-                                        StudyRowSpec("ADX / DMI (14)", "Trend Strength & Directional Index (Ref 25)", Color(0xFFF59E0B), activeTab.showAdx14, onToggleAdx14, "chart_adx14_toggle_button", "ADX"),
-                                        StudyRowSpec("Stochastic (14, 3, 3)", "Slow %K / %D Oscillator (20 / 80)", Color(0xFF06B6D4), activeTab.showStoch14, onToggleStoch14, "chart_stoch14_toggle_button", "%K%D"),
-                                        StudyRowSpec("CCI (20)", "Commodity Channel Index (±100 Bands)", Color(0xFF10B981), activeTab.showCci20, onToggleCci20, "chart_cci20_toggle_button", "CCI"),
-                                        StudyRowSpec("Williams %R (14)", "Momentum Oscillator (-20 / -80)", Color(0xFFEC4899), activeTab.showWillR14, onToggleWillR14, "chart_willr14_toggle_button", "%R"),
-                                        StudyRowSpec("OBV", "On-Balance Volume Cumulative Flow", Color(0xFF3B82F6), activeTab.showObv, onToggleObv, "chart_obv_toggle_button", "OBV"),
-                                        StudyRowSpec("CMF (20)", "Chaikin Money Flow (-1 to +1)", Color(0xFF22C55E), activeTab.showCmf20, onToggleCmf20, "chart_cmf20_toggle_button", "CMF"),
-                                        StudyRowSpec("ROC (12)", "Price Rate of Change (%)", Color(0xFFEAB308), activeTab.showRoc12, onToggleRoc12, "chart_roc12_toggle_button", "ROC")
-                                    )
-
-                                    for (spec in oscSpecs) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(min = 48.dp)
-                                                .clickable(onClick = spec.onToggle)
-                                                .padding(vertical = 2.dp)
-                                                .testTag(spec.testTag),
-                                            horizontalArrangement = Arrangement.SpaceBetween,
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
                                             Row(
-                                                modifier = Modifier.weight(1f),
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Row(
-                                                    modifier = Modifier
-                                                        .clip(RoundedCornerShape(5.dp))
-                                                        .background(MaterialTheme.colorScheme.surface)
-                                                        .border(1.5.dp, spec.color, RoundedCornerShape(5.dp))
-                                                        .padding(horizontal = 6.dp, vertical = 3.dp),
-                                                    verticalAlignment = Alignment.CenterVertically,
-                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                ) {
+                                                Text(
+                                                    text = "Period:",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                for (pOpt in listOf(10, 14, 20, 30, 50)) {
+                                                    val sel = bbPeriod == pOpt
                                                     Box(
                                                         modifier = Modifier
-                                                            .size(7.dp)
-                                                            .clip(CircleShape)
-                                                            .background(spec.color)
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .background(if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
+                                                            .border(1.dp, if (sel) MaterialTheme.colorScheme.primary else palette.cardBorder, RoundedCornerShape(6.dp))
+                                                            .clickable { onUpdateBollingerParams(pOpt, bbStdDev) }
+                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                            .testTag("bb_period_chip_$pOpt")
+                                                    ) {
+                                                        Text(
+                                                            text = pOpt.toString(),
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontFamily = JetBrainsMonoFontFamily,
+                                                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .horizontalScroll(rememberScrollState()),
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "StdDev:",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                for (sdOpt in listOf(1.5f, 2.0f, 2.5f, 3.0f)) {
+                                                    val sel = kotlin.math.abs(bbStdDev - sdOpt) < 0.05f
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .clip(RoundedCornerShape(6.dp))
+                                                            .background(if (sel) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
+                                                            .border(1.dp, if (sel) MaterialTheme.colorScheme.primary else palette.cardBorder, RoundedCornerShape(6.dp))
+                                                            .clickable { onUpdateBollingerParams(bbPeriod, sdOpt) }
+                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                            .testTag("bb_stddev_chip_${(sdOpt * 10).toInt()}")
+                                                    ) {
+                                                        Text(
+                                                            text = "${sdOpt}σ",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontFamily = JetBrainsMonoFontFamily,
+                                                            fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
+                                                            color = MaterialTheme.colorScheme.onSurface
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                    // Section 6: Synchronized Multi-Pane Sub-Panels (Oscillators & Volume)
+                                    if (selectedIndCategory == "all" || selectedIndCategory == "osc") {
+                                        Column(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(MaterialTheme.colorScheme.surface)
+                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(10.dp))
+                                                .padding(12.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "۶. پنل‌های پایینی همگام (حجم و اسیلاتورها)",
+                                                    style = MaterialTheme.typography.titleSmall,
+                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = "Sub-Pane Oscillators",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+
+                                            // Volume Histogram + Height Selector (16% / 22% / 30%)
+                                            Row(
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .clickable(onClick = onToggleVolume)
+                                                    .padding(vertical = 2.dp)
+                                                    .testTag("chart_volume_toggle_button"),
+                                                horizontalArrangement = Arrangement.SpaceBetween,
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    Icon(
+                                                        imageVector = Icons.Outlined.BarChart,
+                                                        contentDescription = "Volume",
+                                                        tint = MaterialTheme.colorScheme.primary
                                                     )
                                                     Text(
-                                                        text = spec.badge,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontSize = 10.sp,
-                                                        fontFamily = JetBrainsMonoFontFamily,
-                                                        fontWeight = FontWeight.ExtraBold,
+                                                        text = "${stringResource(R.string.chart_volume_panel)} (${(activeTab.volumePaneRatio * 100f).roundToInt()}%)",
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.SemiBold,
                                                         color = MaterialTheme.colorScheme.onSurface
                                                     )
                                                 }
-                                                Column {
-                                                    Text(
-                                                        text = spec.title,
-                                                        style = MaterialTheme.typography.bodyMedium,
-                                                        fontFamily = JetBrainsMonoFontFamily,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = MaterialTheme.colorScheme.onSurface
-                                                    )
-                                                    Text(
-                                                        text = spec.subtitle,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                ) {
+                                                    if (activeTab.showVolume) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .clip(RoundedCornerShape(6.dp))
+                                                                .background(MaterialTheme.colorScheme.background)
+                                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                                .clickable(onClick = onCycleVolumeHeight)
+                                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                .testTag("chart_volume_resize_button")
+                                                        ) {
+                                                            Text(
+                                                                text = "${(activeTab.volumePaneRatio * 100f).roundToInt()}%",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontFamily = JetBrainsMonoFontFamily,
+                                                                color = MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                        }
+                                                    }
+                                                    Switch(
+                                                        checked = activeTab.showVolume,
+                                                        onCheckedChange = { onToggleVolume() }
                                                     )
                                                 }
                                             }
-                                            Switch(
-                                                checked = spec.checked,
-                                                onCheckedChange = { spec.onToggle() }
+
+                                            HorizontalDivider(thickness = 0.5.dp, color = palette.cardBorder)
+
+                                            val oscSpecs = listOf(
+                                                StudyRowSpec("rsi14", "RSI 14", "Relative Strength Index (30 / 70 Levels)", preferences.rsi14Color, activeTab.showRsi14, onToggleRsi14, "chart_rsi14_toggle_button", "RSI"),
+                                                StudyRowSpec("macd", "MACD (12, 26, 9)", "Momentum Histogram + MACD / Signal", preferences.macdColor, activeTab.showMacd, onToggleMacd, "chart_macd_toggle_button", "MACD"),
+                                                StudyRowSpec("atr14", "ATR 14", "Wilder's Average True Range Volatility", preferences.atr14Color, activeTab.showAtr14, onToggleAtr14, "chart_atr14_toggle_button", "ATR"),
+                                                StudyRowSpec("adx14", "ADX / DMI (14)", "Trend Strength & Directional Index (Ref 25)", preferences.adx14Color, activeTab.showAdx14, onToggleAdx14, "chart_adx14_toggle_button", "ADX"),
+                                                StudyRowSpec("stoch14", "Stochastic (14, 3, 3)", "Slow %K / %D Oscillator (20 / 80)", preferences.stoch14Color, activeTab.showStoch14, onToggleStoch14, "chart_stoch14_toggle_button", "%K%D"),
+                                                StudyRowSpec("cci20", "CCI (20)", "Commodity Channel Index (±100 Bands)", preferences.cci20Color, activeTab.showCci20, onToggleCci20, "chart_cci20_toggle_button", "CCI"),
+                                                StudyRowSpec("willr14", "Williams %R (14)", "Momentum Oscillator (-20 / -80)", preferences.willr14Color, activeTab.showWillR14, onToggleWillR14, "chart_willr14_toggle_button", "%R"),
+                                                StudyRowSpec("obv", "OBV", "On-Balance Volume Cumulative Flow", preferences.obvColor, activeTab.showObv, onToggleObv, "chart_obv_toggle_button", "OBV"),
+                                                StudyRowSpec("cmf20", "CMF (20)", "Chaikin Money Flow (-1 to +1)", preferences.cmf20Color, activeTab.showCmf20, onToggleCmf20, "chart_cmf20_toggle_button", "CMF"),
+                                                StudyRowSpec("roc12", "ROC (12)", "Price Rate of Change (%)", preferences.roc12Color, activeTab.showRoc12, onToggleRoc12, "chart_roc12_toggle_button", "ROC")
                                             )
+
+                                            for (spec in oscSpecs) {
+                                                Column(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Row(
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .heightIn(min = 48.dp)
+                                                            .clickable(onClick = spec.onToggle)
+                                                            .padding(vertical = 2.dp)
+                                                            .testTag(spec.testTag),
+                                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        Row(
+                                                            modifier = Modifier.weight(1f),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                                        ) {
+                                                            Row(
+                                                                modifier = Modifier
+                                                                    .clip(RoundedCornerShape(6.dp))
+                                                                    .background(MaterialTheme.colorScheme.background)
+                                                                    .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                                    .clickable {
+                                                                        activeColorPickerKey = if (activeColorPickerKey == spec.colorKey) null else spec.colorKey
+                                                                    }
+                                                                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                                                                    .testTag("ind_color_badge_${spec.colorKey}"),
+                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                            ) {
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(10.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(spec.color)
+                                                                )
+                                                                Text(
+                                                                    text = spec.badge,
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontSize = 10.sp,
+                                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                            }
+                                                            Column {
+                                                                Text(
+                                                                    text = spec.title,
+                                                                    style = MaterialTheme.typography.bodyMedium,
+                                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                                    fontWeight = FontWeight.SemiBold,
+                                                                    color = MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                                Text(
+                                                                    text = spec.subtitle,
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                            }
+                                                        }
+                                                        Switch(
+                                                            checked = spec.checked,
+                                                            onCheckedChange = { spec.onToggle() }
+                                                        )
+                                                    }
+
+                                                    if (activeColorPickerKey == spec.colorKey) {
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .clip(RoundedCornerShape(8.dp))
+                                                                .background(MaterialTheme.colorScheme.background)
+                                                                .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                                                .horizontalScroll(rememberScrollState())
+                                                                .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text(
+                                                                text = "رنگ ${spec.title}:",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                            for (hexOpt in universalPaletteOpts) {
+                                                                val swColor = try {
+                                                                    Color(android.graphics.Color.parseColor(hexOpt))
+                                                                } catch (_: Exception) {
+                                                                    spec.color
+                                                                }
+                                                                Box(
+                                                                    modifier = Modifier
+                                                                        .size(22.dp)
+                                                                        .clip(CircleShape)
+                                                                        .background(swColor)
+                                                                        .border(1.dp, palette.cardBorder, CircleShape)
+                                                                        .clickable {
+                                                                            onUpdateIndicatorFamilyColor(spec.colorKey, hexOpt)
+                                                                        }
+                                                                        .testTag("ind_custom_color_${spec.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
+                                                                )
+                                                            }
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                     Spacer(modifier = Modifier.height(36.dp))

@@ -15,6 +15,7 @@ import es.manico.chartintelligence.algorithms.Phase2IndicatorsAlgorithm
 import es.manico.chartintelligence.algorithms.PsarPoint
 import es.manico.chartintelligence.algorithms.StochPoint
 import es.manico.chartintelligence.data.model.CandleBar
+import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
 import kotlin.math.abs
 import kotlin.math.max
@@ -199,6 +200,7 @@ object Phase2IndicatorRenderer {
     fun drawPhase2OscillatorPanes(
         scope: DrawScope,
         tab: ChartTabState,
+        preferences: ChartPreferences,
         startSubPaneTop: Float,
         oscPaneH: Float,
         canvasW: Float,
@@ -272,9 +274,9 @@ object Phase2IndicatorRenderer {
             }
             val y25 = toY(25.0)
             scope.drawLine(gridColor, Offset(0f, y25), Offset(canvasW, y25), strokeWidth = 1f, pathEffect = dashEffect)
-            drawSimpleLine(visibleAdx.map { it?.plusDi }, Color(0xFF26A69A), ::toY, 1.3f)
-            drawSimpleLine(visibleAdx.map { it?.minusDi }, Color(0xFFEF5350), ::toY, 1.3f)
-            drawSimpleLine(visibleAdx.map { it?.adx }, Color(0xFFF59E0B), ::toY, 1.9f)
+            drawSimpleLine(visibleAdx.map { it?.plusDi }, preferences.adxPlusDiColor, ::toY, 1.3f)
+            drawSimpleLine(visibleAdx.map { it?.minusDi }, preferences.adxMinusDiColor, ::toY, 1.3f)
+            drawSimpleLine(visibleAdx.map { it?.adx }, preferences.adx14Color, ::toY, 1.9f)
         }
 
         // 2. Stochastic (14, 3, 3)
@@ -290,8 +292,8 @@ object Phase2IndicatorRenderer {
             val y20 = toY(20.0)
             scope.drawLine(gridColor, Offset(0f, y80), Offset(canvasW, y80), strokeWidth = 1f, pathEffect = dashEffect)
             scope.drawLine(gridColor, Offset(0f, y20), Offset(canvasW, y20), strokeWidth = 1f, pathEffect = dashEffect)
-            drawSimpleLine(visibleStoch.map { it?.k }, Color(0xFF06B6D4), ::toY, 1.7f)
-            drawSimpleLine(visibleStoch.map { it?.d }, Color(0xFFF59E0B), ::toY, 1.4f)
+            drawSimpleLine(visibleStoch.map { it?.k }, preferences.stoch14Color, ::toY, 1.7f)
+            drawSimpleLine(visibleStoch.map { it?.d }, preferences.stochDColor, ::toY, 1.4f)
         }
 
         // 3. CCI (20)
@@ -308,7 +310,7 @@ object Phase2IndicatorRenderer {
             val yN100 = toY(-100.0)
             scope.drawLine(gridColor, Offset(0f, y100), Offset(canvasW, y100), strokeWidth = 1f, pathEffect = dashEffect)
             scope.drawLine(gridColor, Offset(0f, yN100), Offset(canvasW, yN100), strokeWidth = 1f, pathEffect = dashEffect)
-            drawSimpleLine(visibleCci, Color(0xFF10B981), ::toY, 1.7f)
+            drawSimpleLine(visibleCci, preferences.cci20Color, ::toY, 1.7f)
         }
 
         // 4. Williams %R (14)
@@ -324,7 +326,7 @@ object Phase2IndicatorRenderer {
             val y80 = toY(-80.0)
             scope.drawLine(gridColor, Offset(0f, y20), Offset(canvasW, y20), strokeWidth = 1f, pathEffect = dashEffect)
             scope.drawLine(gridColor, Offset(0f, y80), Offset(canvasW, y80), strokeWidth = 1f, pathEffect = dashEffect)
-            drawSimpleLine(visibleWillR, Color(0xFFEC4899), ::toY, 1.7f)
+            drawSimpleLine(visibleWillR, preferences.willr14Color, ::toY, 1.7f)
         }
 
         // 5. OBV
@@ -332,7 +334,7 @@ object Phase2IndicatorRenderer {
             val pTop = curTop
             curTop += oscPaneH
             drawBorder(pTop)
-            drawAutoScaledLine(visibleObv.map { it }, Color(0xFF3B82F6), pTop)
+            drawAutoScaledLine(visibleObv.map { it }, preferences.obvColor, pTop)
         }
 
         // 6. CMF (20)
@@ -358,7 +360,7 @@ object Phase2IndicatorRenderer {
                     )
                 }
             }
-            drawSimpleLine(visibleCmf, Color(0xFF22C55E), ::toY, 1.5f)
+            drawSimpleLine(visibleCmf, preferences.cmf20Color, ::toY, 1.5f)
         }
 
         // 7. ROC (12)
@@ -373,7 +375,7 @@ object Phase2IndicatorRenderer {
             }
             val zeroY = toY(0.0)
             scope.drawLine(gridColor, Offset(0f, zeroY), Offset(canvasW, zeroY), strokeWidth = 1f, pathEffect = dashEffect)
-            drawSimpleLine(visibleRoc, Color(0xFFEAB308), ::toY, 1.7f)
+            drawSimpleLine(visibleRoc, preferences.roc12Color, ::toY, 1.7f)
         }
     }
 }

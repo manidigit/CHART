@@ -1765,7 +1765,7 @@ fun CandlestickCanvas(
                         val y70 = rsiToY(70.0)
                         val y30 = rsiToY(30.0)
                         drawRect(
-                            color = Color(0xFFEC4899).copy(alpha = 0.07f),
+                            color = preferences.rsi14Color.copy(alpha = 0.07f),
                             topLeft = Offset(0f, min(y70, y30)),
                             size = Size(canvasW, abs(y30 - y70).coerceAtLeast(1f))
                         )
@@ -1787,7 +1787,7 @@ fun CandlestickCanvas(
                             }
                         }
                         if (started) {
-                            drawPath(path = rsiPath, color = Color(0xFFEC4899), style = Stroke(width = 1.8f))
+                            drawPath(path = rsiPath, color = preferences.rsi14Color, style = Stroke(width = 1.8f))
                         }
                     }
 
@@ -1851,8 +1851,8 @@ fun CandlestickCanvas(
                                 }
                             }
                         }
-                        if (mStarted) drawPath(path = macdPath, color = Color(0xFF3B82F6), style = Stroke(width = 1.7f))
-                        if (sStarted) drawPath(path = sigPath, color = Color(0xFFF59E0B), style = Stroke(width = 1.5f))
+                        if (mStarted) drawPath(path = macdPath, color = preferences.macdColor, style = Stroke(width = 1.7f))
+                        if (sStarted) drawPath(path = sigPath, color = preferences.macdSignalColor, style = Stroke(width = 1.5f))
                     }
 
                     // 8d. ATR (14) Synchronized Sub-Pane
@@ -1887,7 +1887,7 @@ fun CandlestickCanvas(
                                 }
                             }
                             if (started) {
-                                drawPath(path = atrPath, color = Color(0xFFF97316), style = Stroke(width = 1.8f))
+                                drawPath(path = atrPath, color = preferences.atr14Color, style = Stroke(width = 1.8f))
                             }
                         }
                     }
@@ -1896,6 +1896,7 @@ fun CandlestickCanvas(
                     Phase2IndicatorRenderer.drawPhase2OscillatorPanes(
                         scope = this,
                         tab = tab,
+                        preferences = preferences,
                         startSubPaneTop = nextSubPaneTop,
                         oscPaneH = oscPaneH,
                         canvasW = canvasW,

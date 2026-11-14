@@ -366,6 +366,15 @@ export function renderIndicatorsModal(activeTab, i18n) {
     </div>
   `;
 
+  const activeIndCat = state.activeIndicatorCategory || 'all';
+  const indCategories = [
+    { key: 'all', label: isFa ? 'همه (All)' : 'All' },
+    { key: 'ma', label: isFa ? 'میانگین‌ها (MA)' : 'Moving Averages' },
+    { key: 'bands_levels', label: isFa ? 'کانال و سطوح' : 'Bands & Levels' },
+    { key: 'trend_smc', label: isFa ? 'روند و SMC' : 'Trend & SMC' },
+    { key: 'osc', label: isFa ? 'اسیلاتور و حجم' : 'Oscillators & Vol' },
+  ];
+
   return `
     <div class="modal-backdrop" data-action="close-modal-backdrop">
       <div class="modal-card" style="max-width: 580px; max-height: 86vh; display: flex; flex-direction: column;" dir="${isFa ? 'rtl' : 'ltr'}">
@@ -386,16 +395,24 @@ export function renderIndicatorsModal(activeTab, i18n) {
             </span>
           </div>
           <div style="display: flex; align-items: center; gap: 6px;">
-            ${
-              Object.keys(state.chartPreferences.indicatorCustomColors || {}).length > 0
-                ? `<button type="button" class="btn btn-sm" data-action="reset-indicator-colors" title="${isFa ? 'بازگردانی رنگ اندیکاتورها به حالت پیش‌فرض' : 'Reset indicator colors to default'}" style="font-size: 11px; padding: 3px 8px;">↺ ${isFa ? 'پیش‌فرض رنگ‌ها' : 'Reset Colors'}</button>`
-                : ''
-            }
+            <button type="button" class="btn btn-sm" data-action="reset-indicator-colors" title="${isFa ? 'بازگردانی رنگ اندیکاتورها به حالت پیش‌فرض' : 'Reset indicator colors to default'}" style="font-size: 11px; padding: 3px 8px;">↺ ${isFa ? 'پیش‌فرض رنگ‌ها' : 'Reset Colors'}</button>
             <button class="btn btn-sm btn-icon" data-action="close-modal">✕</button>
           </div>
         </div>
 
+        <div class="chip-group" style="padding: 8px 14px; border-bottom: 1px solid var(--border); flex-wrap: wrap; gap: 6px;">
+          ${indCategories
+            .map(
+              (c) =>
+                `<button type="button" class="chip ${activeIndCat === c.key ? 'active' : ''}" data-action="set-indicator-category" data-category="${c.key}">${c.label}</button>`
+            )
+            .join('')}
+        </div>
+
         <div class="tv-modal-body" style="display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding-bottom: 14px;">
+          ${
+            activeIndCat === 'all' || activeIndCat === 'ma'
+              ? `
           ${renderSectionHeader(
             isFa ? '۱. میانگین‌های متحرک (Moving Averages)' : '1. Moving Averages',
             isFa ? 'طیف آبی‌های متمایز و هماهنگ — روی دایره رنگ برای تغییر رنگ هر میانگین کلیک کنید' : 'Distinct graduated blue spectrum — click color dot to customize each MA'
@@ -407,7 +424,13 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('ema50', pal.ema50, 'EMA 50', isFa ? 'میانگین متحرک نمایی ۵۰ دوره‌ای (آبی شفاف)' : '50-Period Exponential Moving Average (Electric Blue)', activeTab.showEma50, 'toggle-ema50', '──')}
           ${renderToggleRow('ema200', pal.ema200, 'EMA 200', isFa ? 'میانگین متحرک نمایی ۲۰۰ دوره‌ای (نیلی بولد — روند بلندمدت)' : '200-Period Institutional Exponential Moving Average (Indigo)', activeTab.showEma200, 'toggle-ema200', '━━')}
           ${renderToggleRow('mtfEma', pal.mtfEma, 'MTF EMA (20)', isFa ? 'میانگین نمایی تایم‌فریم بالاتر (خط‌چین پله‌ای بدون نشت آینده)' : 'Higher-Timeframe closed-bar EMA 20 step overlay (Dashed)', activeTab.showMtfEma, 'toggle-mtf-ema', '╌╌')}
+          `
+              : ''
+          }
 
+          ${
+            activeIndCat === 'all' || activeIndCat === 'bands_levels'
+              ? `
           ${renderSectionHeader(
             isFa ? '۲. کانال‌ها و باندهای نوسان (Volatility Bands & Channels)' : '2. Volatility Bands & Channels',
             isFa ? 'باندهای بولینگر، کلتنر و دونچیان با رنگ‌های گرم و مستقل' : 'Bollinger Bands, Keltner & Donchian with customizable colors'
@@ -461,7 +484,13 @@ export function renderIndicatorsModal(activeTab, i18n) {
             </div>
           </div>
           ${renderToggleRow('volumeProfile', pal.vrvpPoc, 'Volume Profile (VRVP — POC / VAH / VAL)', isFa ? 'پروفایل حجم محدوده با هیستوگرام فیروزه‌ای و خط POC' : 'Visible Range Volume Profile histogram with Point of Control & 70% Value Area', activeTab.showVolumeProfile, 'toggle-volume-profile', '▋POC')}
+          `
+              : ''
+          }
 
+          ${
+            activeIndCat === 'all' || activeIndCat === 'trend_smc'
+              ? `
           ${renderSectionHeader(
             isFa ? '۴. سیستم‌های روند، ابر و مکدی (Trend, Cloud & Momentum)' : '4. Trend Systems, Cloud & Momentum',
             isFa ? 'رنگ‌بندی جذاب و قابل تغییر برای سوپرترند، پارابولیک سار و ایچیموکو' : 'Distinct styling for Supertrend, Parabolic SAR, Ichimoku & Overlay MACD'
@@ -506,7 +535,13 @@ export function renderIndicatorsModal(activeTab, i18n) {
             </div>
           </div>
           ${renderToggleRow('killzones', pal.killzones, isFa ? 'Trading Killzones (Asia / London / NY)' : 'Session Killzones (Asia / London / NY Overlap)', isFa ? 'نوارهای زمانی سشن‌های آسیا، لندن، نیویورک و همپوشانی (UTC)' : 'UTC session background bands (Asia 00-09, London 07-16, NY 13-22)', activeTab.showKillzones, 'toggle-killzones', '▒▒')}
+          `
+              : ''
+          }
 
+          ${
+            activeIndCat === 'all' || activeIndCat === 'osc'
+              ? `
           ${renderSectionHeader(
             isFa ? '۶. پنل‌های پایینی همگام (Multi-Pane Sub-Charts)' : '6. Synchronized Sub-Pane Oscillators',
             isFa ? 'هر اسیلاتور دارای رنگ اختصاصی و قابل تغییر است' : 'Each oscillator has its own customizable distinct color'
@@ -581,6 +616,9 @@ export function renderIndicatorsModal(activeTab, i18n) {
                 : ''
             }
           </div>
+          `
+              : ''
+          }
         </div>
       </div>
     </div>

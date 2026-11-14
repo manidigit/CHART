@@ -2512,6 +2512,9 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-wl-category') {
     state.watchlistCategory = el.getAttribute('data-category') || 'ALL';
     renderApp();
+  } else if (action === 'set-indicator-category') {
+    state.activeIndicatorCategory = el.getAttribute('data-category') || 'all';
+    renderApp();
   } else if (action === 'reset-indicator-colors') {
     resetIndicatorColorsToDefault();
     renderApp();

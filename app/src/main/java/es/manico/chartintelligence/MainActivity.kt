@@ -60,7 +60,7 @@ fun ChartIntelligenceApp(
     mainViewModel: MainViewModel = viewModel()
 ) {
     val state by mainViewModel.uiState.collectAsStateWithLifecycle()
-    val hideBottomBar = state.currentScreen == WorkspaceScreen.CHART_VIEW
+    val hideBottomBar = false
 
     val handleSignOut: () -> Unit = {
         mainViewModel.signOut()

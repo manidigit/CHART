@@ -89,7 +89,14 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
             verticalLineColorHex = "FFF59E0B",
             chartGridColorHex = "FF2A2E39",
             defaultDrawingColorHex = "FF2962FF",
-            defaultDrawingWidthDp = 2.0f
+            defaultDrawingWidthDp = 2.0f,
+            indMaFamilyColorHex = "FF2962FF",
+            indBandsFamilyColorHex = "FFA855F7",
+            indLevelsFamilyColorHex = "FFF59E0B",
+            indTrendFamilyColorHex = "FF14B8A6",
+            indSmcFamilyColorHex = "FFEC4899",
+            indicatorCustomColors = emptyMap(),
+            preferencesUpdatedAtMs = System.currentTimeMillis()
         )
         repository.saveChartPreferences(next)
         return next

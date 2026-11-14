@@ -1121,132 +1121,129 @@ fun SettingsScreen(
                                     .fillMaxWidth()
                                     .testTag("symbol_explorer_search_input")
                             )
-                        }
 
-                        Text(
-                            text = stringResource(R.string.settings_symbols_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+                            Text(
+                                text = stringResource(R.string.settings_symbols_hint),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
 
-                        val filteredSymbols = symbols.filter {
-                            val matchesCat = matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
-                            val matchesQ = if (explorerMode == "by_symbol" && symbolSearchQuery.isNotBlank()) {
-                                val q = symbolSearchQuery.trim().uppercase()
-                                it.symbolCode.uppercase().contains(q) ||
-                                    (it.customTitle?.uppercase()?.contains(q) == true)
-                            } else {
-                                true
+                            val filteredSymbols = symbols.filter {
+                                val matchesCat = matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
+                                val matchesQ = if (symbolSearchQuery.isNotBlank()) {
+                                    val q = symbolSearchQuery.trim().uppercase()
+                                    it.symbolCode.uppercase().contains(q) ||
+                                        (it.customTitle?.uppercase()?.contains(q) == true)
+                                } else {
+                                    true
+                                }
+                                matchesCat && matchesQ
                             }
-                            matchesCat && matchesQ
-                        }
 
-                        for (symbol in filteredSymbols) {
-                            Card(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("settings_symbol_card_${symbol.symbolCode.lowercase()}"),
-                                shape = RoundedCornerShape(8.dp),
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.background
-                                ),
-                                border = BorderStroke(1.dp, financialPalette.cardBorder)
-                            ) {
-                                Column(
+                            for (symbol in filteredSymbols) {
+                                Card(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                        .testTag("settings_symbol_card_${symbol.symbolCode.lowercase()}"),
+                                    shape = RoundedCornerShape(8.dp),
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.background
+                                    ),
+                                    border = BorderStroke(1.dp, financialPalette.cardBorder)
                                 ) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(6.dp)
                                     ) {
                                         Row(
-                                            modifier = Modifier.weight(1f),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
                                         ) {
-                                            es.manico.chartintelligence.ui.components.AssetSymbolBadge(
-                                                symbolCode = symbol.symbolCode,
-                                                sizeDp = 34.dp
-                                            )
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                val displayTitle = symbol.titleResId?.let { stringResource(it) }
-                                                    ?: symbol.customTitle
-                                                    ?: symbol.symbolCode
-                                                Text(
-                                                    text = displayTitle,
-                                                    style = MaterialTheme.typography.bodyMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = MaterialTheme.colorScheme.onSurface
+                                            Row(
+                                                modifier = Modifier.weight(1f),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                            ) {
+                                                es.manico.chartintelligence.ui.components.AssetSymbolBadge(
+                                                    symbolCode = symbol.symbolCode,
+                                                    sizeDp = 34.dp
                                                 )
-                                                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                Column(modifier = Modifier.weight(1f)) {
+                                                    val displayTitle = symbol.titleResId?.let { stringResource(it) }
+                                                        ?: symbol.customTitle
+                                                        ?: symbol.symbolCode
                                                     Text(
-                                                        text = "${symbol.symbolCode} · ${symbol.activeProvider.badgeLabel} · ${symbol.storedCandleCount} bars · ${symbol.lastSyncMode}",
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontFamily = JetBrainsMonoFontFamily,
-                                                        color = MaterialTheme.colorScheme.primary
+                                                        text = displayTitle,
+                                                        style = MaterialTheme.typography.bodyMedium,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface
                                                     )
+                                                    CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                                        Text(
+                                                            text = "${symbol.symbolCode} · ${symbol.activeProvider.badgeLabel} · ${symbol.storedCandleCount} bars · ${symbol.lastSyncMode}",
+                                                            style = MaterialTheme.typography.labelSmall,
+                                                            fontFamily = JetBrainsMonoFontFamily,
+                                                            color = MaterialTheme.colorScheme.primary
+                                                        )
+                                                    }
                                                 }
                                             }
-                                        }
 
-                                        Row(
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                        ) {
-                                            OutlinedButton(
-                                                onClick = { providerModalSymbolCode = symbol.symbolCode },
-                                                shape = RoundedCornerShape(6.dp),
-                                                border = BorderStroke(1.dp, financialPalette.cardBorder),
-                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
-                                                modifier = Modifier
-                                                    .height(32.dp)
-                                                    .testTag("change_provider_${symbol.symbolCode.lowercase()}")
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Outlined.Tune,
-                                                    contentDescription = stringResource(R.string.settings_change_provider),
-                                                    modifier = Modifier.size(14.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(4.dp))
-                                                Text(
-                                                    text = symbol.activeProvider.badgeLabel,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    fontFamily = JetBrainsMonoFontFamily
-                                                )
-                                            }
-
-                                            Switch(
-                                                checked = symbol.inWatchlist,
-                                                onCheckedChange = { checked ->
-                                                    onToggleSymbolInWatchlist(symbol.symbolCode, checked)
-                                                },
-                                                modifier = Modifier.testTag("toggle_watchlist_${symbol.symbolCode.lowercase()}")
-                                            )
-
-                                            if (symbol.isCustom) {
-                                                IconButton(
-                                                    onClick = { onDeleteSymbol(symbol.symbolCode) },
+                                                OutlinedButton(
+                                                    onClick = { providerModalSymbolCode = symbol.symbolCode },
+                                                    shape = RoundedCornerShape(6.dp),
+                                                    border = BorderStroke(1.dp, financialPalette.cardBorder),
+                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
                                                     modifier = Modifier
-                                                        .size(32.dp)
-                                                        .testTag("delete_symbol_${symbol.symbolCode.lowercase()}")
+                                                        .height(32.dp)
+                                                        .testTag("change_provider_${symbol.symbolCode.lowercase()}")
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Outlined.Delete,
-                                                        contentDescription = stringResource(R.string.action_delete_symbol),
-                                                        tint = MaterialTheme.colorScheme.error,
-                                                        modifier = Modifier.size(18.dp)
+                                                        imageVector = Icons.Outlined.Tune,
+                                                        contentDescription = stringResource(R.string.settings_change_provider),
+                                                        modifier = Modifier.size(14.dp)
                                                     )
+                                                    Spacer(modifier = Modifier.width(4.dp))
+                                                    Text(
+                                                        text = symbol.activeProvider.badgeLabel,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontFamily = JetBrainsMonoFontFamily
+                                                    )
+                                                }
+
+                                                Switch(
+                                                    checked = symbol.inWatchlist,
+                                                    onCheckedChange = { checked ->
+                                                        onToggleSymbolInWatchlist(symbol.symbolCode, checked)
+                                                    },
+                                                    modifier = Modifier.testTag("toggle_watchlist_${symbol.symbolCode.lowercase()}")
+                                                )
+
+                                                if (symbol.isCustom) {
+                                                    IconButton(
+                                                        onClick = { onDeleteSymbol(symbol.symbolCode) },
+                                                        modifier = Modifier
+                                                            .size(32.dp)
+                                                            .testTag("delete_symbol_${symbol.symbolCode.lowercase()}")
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Outlined.Delete,
+                                                            contentDescription = stringResource(R.string.action_delete_symbol),
+                                                            tint = MaterialTheme.colorScheme.error,
+                                                            modifier = Modifier.size(18.dp)
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
-                                    }
 
-                                    // In by_symbol mode, also show direct provider selector chips for all compatible methods
-                                    if (explorerMode == "by_symbol") {
                                         FlowRow(
                                             horizontalArrangement = Arrangement.spacedBy(6.dp),
                                             verticalArrangement = Arrangement.spacedBy(4.dp)

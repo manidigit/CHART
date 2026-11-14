@@ -458,25 +458,59 @@ fun PathEventAndSensitivityCard(
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
         border = BorderStroke(1.dp, palette.cardBorder)
     ) {
-        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
             if (pathStats != null) {
                 Text(
                     text = stringResource(R.string.forecast_path_stats_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Text(
-                        text = "Touch ${String.format(Locale.US, "%.1f", pathStats.touchRatePct)}% · Pen ${String.format(Locale.US, "%.1f", pathStats.penetrationRatePct)}% · Reclaim ${String.format(Locale.US, "%.1f", pathStats.reclaimRatePct)}% · Break ${String.format(Locale.US, "%.1f", pathStats.breakoutRatePct)}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = JetBrainsMonoFontFamily
+                    val row1 = listOf(
+                        "Touch Rate" to "${String.format(Locale.US, "%.1f", pathStats.touchRatePct)}%",
+                        "Penetration" to "${String.format(Locale.US, "%.1f", pathStats.penetrationRatePct)}%",
+                        "Reclaim Rate" to "${String.format(Locale.US, "%.1f", pathStats.reclaimRatePct)}%"
                     )
-                    Text(
-                        text = "Reach-Before-Inv ${String.format(Locale.US, "%.1f", pathStats.reachBeforeInvalidationPct)}% · Ambiguous ${String.format(Locale.US, "%.1f", pathStats.ambiguousRatePct)}% · Censored ${String.format(Locale.US, "%.1f", pathStats.censoringRatePct)}%",
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = JetBrainsMonoFontFamily,
-                        color = Color(0xFFF59E0B)
+                    val row2 = listOf(
+                        "Breakout" to "${String.format(Locale.US, "%.1f", pathStats.breakoutRatePct)}%",
+                        "Reach < Inv" to "${String.format(Locale.US, "%.1f", pathStats.reachBeforeInvalidationPct)}%",
+                        "Amb / Cens" to "${String.format(Locale.US, "%.0f", pathStats.ambiguousRatePct)}% / ${String.format(Locale.US, "%.0f", pathStats.censoringRatePct)}%"
                     )
+                    for (statRow in listOf(row1, row2)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            for ((label, value) in statRow) {
+                                Surface(
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(8.dp),
+                                    color = MaterialTheme.colorScheme.background,
+                                    border = BorderStroke(1.dp, palette.cardBorder)
+                                ) {
+                                    Column(
+                                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Text(
+                                            text = label,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 10.sp,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = value,
+                                            style = MaterialTheme.typography.labelMedium,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
@@ -485,30 +519,49 @@ fun PathEventAndSensitivityCard(
                 Text(
                     text = stringResource(R.string.forecast_sensitivity_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
                 )
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                        Text("PenATR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.9f))
-                        Text("RecBar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.8f))
-                        Text("Touch%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.8f))
-                        Text("Rec%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.8f))
-                        Text("Brk%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.8f))
-                        Text("Amb%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, modifier = Modifier.weight(0.8f))
-                    }
-                    for (row in grid) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(MaterialTheme.colorScheme.background.copy(alpha = 0.35f))
+                    ) {
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(vertical = 2.dp),
+                                .background(MaterialTheme.colorScheme.background)
+                                .padding(horizontal = 8.dp, vertical = 6.dp),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("${String.format(Locale.US, "%.2f", row.penetrationAtrMult)}x", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.9f))
-                            Text("${row.reclaimWindowBars}b", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.8f))
-                            Text("${String.format(Locale.US, "%.0f", row.touchFreqPct)}%", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.8f))
-                            Text("${String.format(Locale.US, "%.0f", row.reclaimFreqPct)}%", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.8f))
-                            Text("${String.format(Locale.US, "%.0f", row.breakoutFreqPct)}%", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.8f))
-                            Text("${String.format(Locale.US, "%.0f", row.ambiguousRatePct)}%", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, color = Color(0xFFF59E0B), modifier = Modifier.weight(0.8f))
+                            Text("PenATR", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.9f))
+                            Text("RecBar", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.8f))
+                            Text("Touch%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.8f))
+                            Text("Rec%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.8f))
+                            Text("Brk%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.8f))
+                            Text("Amb%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.8f))
+                        }
+                        grid.forEachIndexed { idx, row ->
+                            HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.4f))
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(
+                                        if (idx % 2 == 1) MaterialTheme.colorScheme.background.copy(alpha = 0.5f)
+                                        else Color.Transparent
+                                    )
+                                    .padding(horizontal = 8.dp, vertical = 5.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("${String.format(Locale.US, "%.2f", row.penetrationAtrMult)}x", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.9f))
+                                Text("${row.reclaimWindowBars}b", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.8f))
+                                Text("${String.format(Locale.US, "%.0f", row.touchFreqPct)}%", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.8f))
+                                Text("${String.format(Locale.US, "%.0f", row.reclaimFreqPct)}%", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.8f))
+                                Text("${String.format(Locale.US, "%.0f", row.breakoutFreqPct)}%", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, modifier = Modifier.weight(0.8f))
+                                Text("${String.format(Locale.US, "%.0f", row.ambiguousRatePct)}%", style = MaterialTheme.typography.labelSmall, fontFamily = JetBrainsMonoFontFamily, color = Color(0xFFF59E0B), modifier = Modifier.weight(0.8f))
+                            }
                         }
                     }
                 }
