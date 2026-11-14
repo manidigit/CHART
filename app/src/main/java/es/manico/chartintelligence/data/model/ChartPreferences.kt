@@ -112,6 +112,43 @@ data class ChartPreferences(
     val forecastPluginConfigJson: String = "",
     val forecastWorkerUrl: String = "",
 
+    // Unified Cross-Platform Indicator Toggles & Chart Pane State (Synced across Web & Android)
+    val showVolume: Boolean = true,
+    val volumePaneRatio: Float = 0.22f,
+    val showSma20: Boolean = false,
+    val showSma50: Boolean = false,
+    val showSma200: Boolean = false,
+    val showEma20: Boolean = false,
+    val showEma50: Boolean = false,
+    val showEma200: Boolean = false,
+    val showBollinger: Boolean = false,
+    val showSupertrend: Boolean = false,
+    val showVwap: Boolean = false,
+    val showPsar: Boolean = false,
+    val showIchimoku: Boolean = false,
+    val showKeltner: Boolean = false,
+    val showDonchian: Boolean = false,
+    val showMtfEma: Boolean = false,
+    val showKillzones: Boolean = false,
+    val showRsi14: Boolean = false,
+    val showMacd: Boolean = false,
+    val showOverlayMacd: Boolean = false,
+    val showAtr14: Boolean = false,
+    val showAdx14: Boolean = false,
+    val showStoch14: Boolean = false,
+    val showCci20: Boolean = false,
+    val showWillR14: Boolean = false,
+    val showObv: Boolean = false,
+    val showCmf20: Boolean = false,
+    val showRoc12: Boolean = false,
+    val showSmcStructure: Boolean = false,
+    val showFvg: Boolean = false,
+    val showVolumeProfile: Boolean = false,
+    val showPivotPoints: Boolean = false,
+    val pivotType: String = "STANDARD",
+    val showFutureProjection: Boolean = false,
+    val pitchforkVariant: String = "original",
+
     // Cross-platform per-indicator custom colors & modification timestamp
     val indicatorCustomColors: Map<String, String> = emptyMap(),
     val preferencesUpdatedAtMs: Long = 0L
@@ -163,8 +200,9 @@ data class ChartPreferences(
         }.getOrDefault(fallback)
     }
 
-    fun resolveIndicatorColor(key: String, fallback: Color): Color {
+    fun resolveIndicatorColor(key: String, fallback: Color, vararg aliases: String): Color {
         val customHex = indicatorCustomColors[key]
+            ?: aliases.firstNotNullOfOrNull { alias -> indicatorCustomColors[alias] }
         if (!customHex.isNullOrBlank()) {
             return parseColor(customHex, fallback)
         }
@@ -213,23 +251,23 @@ data class ChartPreferences(
     val smcFamilyBaseColor: Color
         get() = parseColor(indSmcFamilyColorHex, Color(0xFFEC4899))
 
-    // Category 1: Moving Averages Spectrum
-    val sma20Color: Color get() = resolveIndicatorColor("sma20", shiftShade(maFamilyBaseColor, 0.42f))
-    val sma50Color: Color get() = resolveIndicatorColor("sma50", shiftShade(maFamilyBaseColor, 0.14f))
-    val sma200Color: Color get() = resolveIndicatorColor("sma200", shiftShade(maFamilyBaseColor, -0.22f))
-    val ema20Color: Color get() = resolveIndicatorColor("ema20", shiftShade(maFamilyBaseColor, 0.28f))
-    val ema50Color: Color get() = resolveIndicatorColor("ema50", maFamilyBaseColor)
-    val ema200Color: Color get() = resolveIndicatorColor("ema200", shiftShade(maFamilyBaseColor, -0.34f))
-    val mtfEmaColor: Color get() = resolveIndicatorColor("mtfEma", shiftShade(maFamilyBaseColor, 0.52f))
+    // Category 1: Moving Averages Spectrum (Synchronized with Web DEFAULT_INDICATOR_COLORS)
+    val sma20Color: Color get() = resolveIndicatorColor("sma20", if (indMaFamilyColorHex == "FF2962FF") Color(0xFF38BDF8) else shiftShade(maFamilyBaseColor, 0.42f))
+    val sma50Color: Color get() = resolveIndicatorColor("sma50", if (indMaFamilyColorHex == "FF2962FF") Color(0xFF2563EB) else shiftShade(maFamilyBaseColor, 0.14f))
+    val sma200Color: Color get() = resolveIndicatorColor("sma200", if (indMaFamilyColorHex == "FF2962FF") Color(0xFF1D4ED8) else shiftShade(maFamilyBaseColor, -0.22f))
+    val ema20Color: Color get() = resolveIndicatorColor("ema20", if (indMaFamilyColorHex == "FF2962FF") Color(0xFF06B6D4) else shiftShade(maFamilyBaseColor, 0.28f))
+    val ema50Color: Color get() = resolveIndicatorColor("ema50", if (indMaFamilyColorHex == "FF2962FF") Color(0xFF3B82F6) else maFamilyBaseColor)
+    val ema200Color: Color get() = resolveIndicatorColor("ema200", if (indMaFamilyColorHex == "FF2962FF") Color(0xFF6366F1) else shiftShade(maFamilyBaseColor, -0.34f))
+    val mtfEmaColor: Color get() = resolveIndicatorColor("mtfEma", if (indMaFamilyColorHex == "FF2962FF") Color(0xFF818CF8) else shiftShade(maFamilyBaseColor, 0.52f))
 
-    // Category 2: Volatility Channels Spectrum
-    val bollingerColor: Color get() = resolveIndicatorColor("bollinger", bandsFamilyBaseColor)
-    val keltnerColor: Color get() = resolveIndicatorColor("keltner", shiftShade(bandsFamilyBaseColor, 0.24f))
-    val donchianColor: Color get() = resolveIndicatorColor("donchian", shiftShade(bandsFamilyBaseColor, -0.18f))
+    // Category 2: Volatility Channels Spectrum (Synchronized with Web DEFAULT_INDICATOR_COLORS)
+    val bollingerColor: Color get() = resolveIndicatorColor("bollinger", if (indBandsFamilyColorHex == "FFA855F7") Color(0xFFF59E0B) else bandsFamilyBaseColor)
+    val keltnerColor: Color get() = resolveIndicatorColor("keltner", if (indBandsFamilyColorHex == "FFA855F7") Color(0xFFFB923C) else shiftShade(bandsFamilyBaseColor, 0.24f))
+    val donchianColor: Color get() = resolveIndicatorColor("donchian", if (indBandsFamilyColorHex == "FFA855F7") Color(0xFFF97316) else shiftShade(bandsFamilyBaseColor, -0.18f))
 
-    // Category 3: Key Levels, Pivots & Volume Profile Spectrum
-    val vwapColor: Color get() = resolveIndicatorColor("vwap", shiftShade(levelsFamilyBaseColor, 0.22f))
-    val pivotPColor: Color get() = resolveIndicatorColor("pivotPoints", levelsFamilyBaseColor)
+    // Category 3: Key Levels, Pivots & Volume Profile Spectrum (Synchronized with Web DEFAULT_INDICATOR_COLORS)
+    val vwapColor: Color get() = resolveIndicatorColor("vwap", if (indLevelsFamilyColorHex == "FFF59E0B") Color(0xFFEAB308) else shiftShade(levelsFamilyBaseColor, 0.22f))
+    val pivotPColor: Color get() = resolveIndicatorColor("pivotPoints", if (indLevelsFamilyColorHex == "FFF59E0B") Color(0xFFEC4899) else levelsFamilyBaseColor)
     val pivotR1Color: Color get() = shiftShade(pivotPColor, 0.18f)
     val pivotR2Color: Color get() = shiftShade(pivotPColor, 0.30f)
     val pivotR3Color: Color get() = shiftShade(pivotPColor, 0.42f)
@@ -238,30 +276,30 @@ data class ChartPreferences(
     val pivotS2Color: Color get() = shiftShade(pivotPColor, -0.26f)
     val pivotS3Color: Color get() = shiftShade(pivotPColor, -0.38f)
     val pivotS4Color: Color get() = shiftShade(pivotPColor, -0.48f)
-    val vrvpPocColor: Color get() = resolveIndicatorColor("volumeProfile", levelsFamilyBaseColor)
+    val vrvpPocColor: Color get() = resolveIndicatorColor("volumeProfile", if (indLevelsFamilyColorHex == "FFF59E0B") Color(0xFF14B8A6) else levelsFamilyBaseColor)
     val vrvpVaColor: Color get() = shiftShade(vrvpPocColor, 0.34f)
 
-    // Category 4: Trend Systems & Cloud Spectrum
-    val supertrendColor: Color get() = resolveIndicatorColor("supertrend", trendFamilyBaseColor)
-    val psarColor: Color get() = resolveIndicatorColor("psar", shiftShade(trendFamilyBaseColor, 0.26f))
-    val ichimokuColor: Color get() = resolveIndicatorColor("ichimoku", shiftShade(trendFamilyBaseColor, -0.14f))
-    val overlayMacdColor: Color get() = resolveIndicatorColor("overlayMacd", shiftShade(trendFamilyBaseColor, 0.38f))
-    val futureProjectionColor: Color get() = resolveIndicatorColor("futureProjection", Color(0xFFA796D4))
+    // Category 4: Trend Systems & Cloud Spectrum (Synchronized with Web DEFAULT_INDICATOR_COLORS)
+    val supertrendColor: Color get() = resolveIndicatorColor("supertrend", if (indTrendFamilyColorHex == "FF14B8A6") Color(0xFF10B981) else trendFamilyBaseColor)
+    val psarColor: Color get() = resolveIndicatorColor("psar", if (indTrendFamilyColorHex == "FF14B8A6") Color(0xFFA855F7) else shiftShade(trendFamilyBaseColor, 0.26f))
+    val ichimokuColor: Color get() = resolveIndicatorColor("ichimoku", if (indTrendFamilyColorHex == "FF14B8A6") Color(0xFF06B6D4) else shiftShade(trendFamilyBaseColor, -0.14f))
+    val overlayMacdColor: Color get() = resolveIndicatorColor("overlayMacd", if (indTrendFamilyColorHex == "FF14B8A6") Color(0xFF3B82F6) else shiftShade(trendFamilyBaseColor, 0.38f))
+    val futureProjectionColor: Color get() = resolveIndicatorColor("futureProjection", Color(0xFF8B5CF6))
 
-    // Category 5: Smart Money Concepts & Session Killzones Spectrum
-    val smcStructureColor: Color get() = resolveIndicatorColor("smcStructure", smcFamilyBaseColor)
-    val fvgColor: Color get() = resolveIndicatorColor("fvg", shiftShade(smcFamilyBaseColor, 0.22f))
-    val killzonesColor: Color get() = resolveIndicatorColor("killzones", shiftShade(smcFamilyBaseColor, -0.16f))
+    // Category 5: Smart Money Concepts & Session Killzones Spectrum (Synchronized with Web DEFAULT_INDICATOR_COLORS)
+    val smcStructureColor: Color get() = resolveIndicatorColor("smcStructure", if (indSmcFamilyColorHex == "FFEC4899") Color(0xFF38BDF8) else smcFamilyBaseColor)
+    val fvgColor: Color get() = resolveIndicatorColor("fvg", if (indSmcFamilyColorHex == "FFEC4899") Color(0xFFF43F5E) else shiftShade(smcFamilyBaseColor, 0.22f))
+    val killzonesColor: Color get() = resolveIndicatorColor("killzones", if (indSmcFamilyColorHex == "FFEC4899") Color(0xFF6366F1) else shiftShade(smcFamilyBaseColor, -0.16f))
 
-    // Category 6: Synchronized Sub-Pane Oscillators & Sub-Components
-    val rsi14Color: Color get() = resolveIndicatorColor("rsi14", Color(0xFFEC4899))
-    val macdColor: Color get() = resolveIndicatorColor("macd", Color(0xFF3B82F6))
+    // Category 6: Synchronized Sub-Pane Oscillators & Sub-Components (Supports both Android & Web alias keys)
+    val rsi14Color: Color get() = resolveIndicatorColor("rsi14", Color(0xFFA855F7))
+    val macdColor: Color get() = resolveIndicatorColor("macd", Color(0xFF2962FF), "macdLine")
     val macdSignalColor: Color get() = resolveIndicatorColor("macdSignal", Color(0xFFF59E0B))
-    val atr14Color: Color get() = resolveIndicatorColor("atr14", Color(0xFFF97316))
-    val adx14Color: Color get() = resolveIndicatorColor("adx14", Color(0xFFF59E0B))
-    val adxPlusDiColor: Color get() = resolveIndicatorColor("adxPlusDi", Color(0xFF26A69A))
-    val adxMinusDiColor: Color get() = resolveIndicatorColor("adxMinusDi", Color(0xFFEF5350))
-    val stoch14Color: Color get() = resolveIndicatorColor("stoch14", Color(0xFF06B6D4))
+    val atr14Color: Color get() = resolveIndicatorColor("atr14", Color(0xFFF43F5E))
+    val adx14Color: Color get() = resolveIndicatorColor("adx14", Color(0xFFF59E0B), "adxLine")
+    val adxPlusDiColor: Color get() = resolveIndicatorColor("adxPlusDi", Color(0xFF26A69A), "plusDi")
+    val adxMinusDiColor: Color get() = resolveIndicatorColor("adxMinusDi", Color(0xFFEF5350), "minusDi")
+    val stoch14Color: Color get() = resolveIndicatorColor("stoch14", Color(0xFF06B6D4), "stochK")
     val stochDColor: Color get() = resolveIndicatorColor("stochD", Color(0xFFF59E0B))
     val cci20Color: Color get() = resolveIndicatorColor("cci20", Color(0xFF10B981))
     val willr14Color: Color get() = resolveIndicatorColor("willr14", Color(0xFFEC4899))

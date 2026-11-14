@@ -15,6 +15,7 @@ import {
   normalizeHexForWeb,
   normalizeHexForAndroid,
   resolvePriceBasis,
+  INDICATOR_FLAG_KEYS,
 } from '../core/store.js?v=1.42.0';
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
 import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.42.0';
@@ -390,8 +391,21 @@ export async function uploadWorkspaceSync() {
       }
     }
 
+    const refTab =
+      (state.openTabs || []).find((t) => t.tabId === state.activeTabId) ||
+      (state.openTabs || [])[0] ||
+      null;
+    const indicatorFlagsPayload = {};
+    for (const k of INDICATOR_FLAG_KEYS) {
+      indicatorFlagsPayload[k] = Boolean(refTab ? refTab[k] : p[k]);
+    }
+
     const unifiedPrefs = {
       ...p,
+      ...indicatorFlagsPayload,
+      showVolume: refTab ? refTab.showVolume !== false : p.showVolume !== false,
+      pivotType: String((refTab && refTab.pivotType) || p.pivotType || 'STANDARD').toUpperCase(),
+      pitchforkVariant: String((refTab && refTab.pitchforkVariant) || p.pitchforkVariant || 'original'),
       indicatorCustomColors: normalizedCustomColors,
       preferencesUpdatedAtMs: Number(p.preferencesUpdatedAtMs || Date.now()),
       bullCandleColorHex: normalizeHexForAndroid(p.bullColor, 'FF26A69A'),
@@ -401,11 +415,19 @@ export async function uploadWorkspaceSync() {
       verticalLineColorHex: normalizeHexForAndroid(p.vLineColor, 'FFA855F7'),
       defaultDrawingColorHex: normalizeHexForAndroid(p.defaultDrawingColorHex || p.trendColor, 'FF2962FF'),
       defaultDrawingWidthDp: Number(p.defaultDrawingWidthPx || 2.0),
+      indMaFamilyColorHex: normalizeHexForAndroid(p.indMaFamilyColorHex, 'FF2962FF'),
+      indBandsFamilyColorHex: normalizeHexForAndroid(p.indBandsFamilyColorHex, 'FFA855F7'),
+      indLevelsFamilyColorHex: normalizeHexForAndroid(p.indLevelsFamilyColorHex, 'FFF59E0B'),
+      indTrendFamilyColorHex: normalizeHexForAndroid(p.indTrendFamilyColorHex, 'FF14B8A6'),
+      indSmcFamilyColorHex: normalizeHexForAndroid(p.indSmcFamilyColorHex, 'FFEC4899'),
       timezoneMode: p.timezoneMode === 'LOCAL' ? 'LOCAL' : 'UTC',
-      volumePaneRatio: Math.max(0.12, Math.min(0.35, Number(p.volumePaneRatio || 0.22))),
+      volumePaneRatio: Math.max(
+        0.12,
+        Math.min(0.35, Number((refTab && refTab.volumePaneRatio) || p.volumePaneRatio || 0.22))
+      ),
       bollingerPeriod: Number(p.bollingerPeriod || 20),
       bollingerStdDev: Number(p.bollingerStdDev || 2.0),
-      logarithmicScaleDefault: Boolean(p.isLogScale),
+      logarithmicScaleDefault: Boolean(refTab ? refTab.isLogScale : p.isLogScale),
       rememberLastChartOnDevice: Boolean(p.rememberLastChart),
       pickerVibrations: Boolean(p.pickerVibrates),
       showPickerScrollMagnifiers: Boolean(p.showScrollMagnifier),
@@ -548,11 +570,17 @@ export async function downloadWorkspaceSync() {
         localStorage.setItem('ci_drawings_v2', JSON.stringify(state.drawingsByChartId));
       }
 
+      const localPrefsSnapshot = { ...(state.chartPreferences || {}) };
+      const localUpdatedAt = Number(localPrefsSnapshot.preferencesUpdatedAtMs || 0);
+      const remoteUpdatedAt = Number(
+        (ws.preferences && ws.preferences.preferencesUpdatedAtMs) || 0
+      );
+      const isLocalNewer =
+        localUpdatedAt > 0 && remoteUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt;
+
       if (ws.preferences && typeof ws.preferences === 'object') {
         const p = ws.preferences;
         const localPrefs = { ...(state.chartPreferences || {}) };
-        const localUpdatedAt = Number(localPrefs.preferencesUpdatedAtMs || 0);
-        const remoteUpdatedAt = Number(p.preferencesUpdatedAtMs || 0);
 
         const localCustomColors = {};
         if (localPrefs.indicatorCustomColors && typeof localPrefs.indicatorCustomColors === 'object') {
@@ -573,7 +601,6 @@ export async function downloadWorkspaceSync() {
           }
         }
 
-        const isLocalNewer = localUpdatedAt > 0 && localUpdatedAt > remoteUpdatedAt;
         const mappedPrefs = isLocalNewer
           ? { ...p, ...localPrefs }
           : { ...localPrefs, ...p };
@@ -591,6 +618,14 @@ export async function downloadWorkspaceSync() {
           if (p.verticalLineColorHex && !p.vLineColor) mappedPrefs.vLineColor = normalizeHexForWeb(p.verticalLineColorHex, '#A855F7');
           if (p.defaultDrawingColorHex) mappedPrefs.defaultDrawingColorHex = normalizeHexForWeb(p.defaultDrawingColorHex, '#2962FF');
           if (p.defaultDrawingWidthDp !== undefined) mappedPrefs.defaultDrawingWidthPx = Number(p.defaultDrawingWidthDp || 2.0);
+          for (const k of INDICATOR_FLAG_KEYS) {
+            if (p[k] !== undefined) {
+              mappedPrefs[k] = Boolean(p[k]);
+            }
+          }
+          if (p.showVolume !== undefined) mappedPrefs.showVolume = Boolean(p.showVolume);
+          if (p.pivotType !== undefined) mappedPrefs.pivotType = String(p.pivotType || 'STANDARD').toUpperCase();
+          if (p.pitchforkVariant !== undefined) mappedPrefs.pitchforkVariant = String(p.pitchforkVariant || 'original');
         }
         if (p.volumePaneRatio !== undefined && !isLocalNewer) {
           mappedPrefs.volumePaneRatio = Math.max(0.12, Math.min(0.35, Number(p.volumePaneRatio || 0.22)));
@@ -607,10 +642,10 @@ export async function downloadWorkspaceSync() {
           mappedPrefs.indicatorCustomColors = localCustomColors;
           mappedPrefs.preferencesUpdatedAtMs = localUpdatedAt;
         } else if (remoteUpdatedAt > 0 && p.indicatorCustomColors && typeof p.indicatorCustomColors === 'object') {
-          mappedPrefs.indicatorCustomColors = { ...localCustomColors, ...remoteCustomColors };
+          mappedPrefs.indicatorCustomColors = remoteCustomColors;
           mappedPrefs.preferencesUpdatedAtMs = remoteUpdatedAt;
         } else {
-          mappedPrefs.indicatorCustomColors = { ...remoteCustomColors, ...localCustomColors };
+          mappedPrefs.indicatorCustomColors = { ...localCustomColors, ...remoteCustomColors };
           mappedPrefs.preferencesUpdatedAtMs = Math.max(localUpdatedAt, remoteUpdatedAt);
         }
 
@@ -661,16 +696,22 @@ export async function downloadWorkspaceSync() {
         : ws.open_tabs && Array.isArray(ws.open_tabs.tabs)
           ? ws.open_tabs.tabs
           : [];
-      if (ws.open_tabs && typeof ws.open_tabs === 'object' && ws.open_tabs.lastOpenedSymbolCode) {
+      if (
+        !isLocalNewer &&
+        ws.open_tabs &&
+        typeof ws.open_tabs === 'object' &&
+        ws.open_tabs.lastOpenedSymbolCode
+      ) {
         state.lastOpenedSymbolCode = String(ws.open_tabs.lastOpenedSymbolCode).trim().toUpperCase();
         localStorage.setItem('ci_last_opened_symbol', state.lastOpenedSymbolCode);
       }
-      if (incomingOpenTabs.length > 0) {
+      if (incomingOpenTabs.length > 0 && (!isLocalNewer || !state.openTabs || state.openTabs.length === 0)) {
         const existingBySym = new Map((state.openTabs || []).map((et) => [et.symbolCode, et]));
         state.openTabs = incomingOpenTabs.map((t, idx) => {
           const code = String(t.symbolCode || 'SPOTBRENT').toUpperCase();
           const tf = String(t.timeframe || 'M15').toUpperCase();
           const prov = 'tvdatafeed';
+          const sym = (state.symbols || []).find((s) => s.symbolCode === code);
           const prevLocal = existingBySym.get(code);
           const resolvedColor = normalizeHexForWeb(
             t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex,
@@ -690,6 +731,10 @@ export async function downloadWorkspaceSync() {
             )
           );
           const cachedCandles = getCachedOrAggregatedCandles(code, prov, tf);
+          const resolveFlag = (flagKey) =>
+            t[flagKey] !== undefined
+              ? Boolean(t[flagKey])
+              : Boolean(state.chartPreferences[flagKey]);
           return {
             tabId: t.tabId || `tab_${code}_${tf}_${idx}`,
             chartId: `${code}_${tf}`,
@@ -704,41 +749,41 @@ export async function downloadWorkspaceSync() {
                   ? prevLocal.candles
                   : [],
             chartType: String(t.chartType || '').toLowerCase() === 'line' ? 'line' : 'candles',
-            showVolume: t.showVolume !== false,
+            showVolume: t.showVolume !== undefined ? t.showVolume !== false : state.chartPreferences.showVolume !== false,
             volumePaneRatio: resolvedVolRatio,
-            showSma20: Boolean(t.showSma20),
-            showSma50: Boolean(t.showSma50),
-            showSma200: Boolean(t.showSma200),
-            showEma20: Boolean(t.showEma20),
-            showEma50: Boolean(t.showEma50),
-            showEma200: Boolean(t.showEma200),
-            showSupertrend: Boolean(t.showSupertrend),
-            showVwap: Boolean(t.showVwap),
-            showPsar: Boolean(t.showPsar),
-            showIchimoku: Boolean(t.showIchimoku),
-            showKeltner: Boolean(t.showKeltner),
-            showDonchian: Boolean(t.showDonchian),
-            showMtfEma: Boolean(t.showMtfEma),
-            showKillzones: Boolean(t.showKillzones),
-            showBollinger: Boolean(t.showBollinger),
-            showOverlayMacd: Boolean(t.showOverlayMacd),
-            showRsi14: Boolean(t.showRsi14),
-            showMacd: Boolean(t.showMacd),
-            showAtr14: Boolean(t.showAtr14),
-            showAdx14: Boolean(t.showAdx14),
-            showStoch14: Boolean(t.showStoch14),
-            showCci20: Boolean(t.showCci20),
-            showWillR14: Boolean(t.showWillR14),
-            showObv: Boolean(t.showObv),
-            showCmf20: Boolean(t.showCmf20),
-            showRoc12: Boolean(t.showRoc12),
-            showSmcStructure: Boolean(t.showSmcStructure),
-            showFvg: Boolean(t.showFvg),
-            showVolumeProfile: Boolean(t.showVolumeProfile),
-            showPivotPoints: Boolean(t.showPivotPoints),
+            showSma20: resolveFlag('showSma20'),
+            showSma50: resolveFlag('showSma50'),
+            showSma200: resolveFlag('showSma200'),
+            showEma20: resolveFlag('showEma20'),
+            showEma50: resolveFlag('showEma50'),
+            showEma200: resolveFlag('showEma200'),
+            showSupertrend: resolveFlag('showSupertrend'),
+            showVwap: resolveFlag('showVwap'),
+            showPsar: resolveFlag('showPsar'),
+            showIchimoku: resolveFlag('showIchimoku'),
+            showKeltner: resolveFlag('showKeltner'),
+            showDonchian: resolveFlag('showDonchian'),
+            showMtfEma: resolveFlag('showMtfEma'),
+            showKillzones: resolveFlag('showKillzones'),
+            showBollinger: resolveFlag('showBollinger'),
+            showOverlayMacd: resolveFlag('showOverlayMacd'),
+            showRsi14: resolveFlag('showRsi14'),
+            showMacd: resolveFlag('showMacd'),
+            showAtr14: resolveFlag('showAtr14'),
+            showAdx14: resolveFlag('showAdx14'),
+            showStoch14: resolveFlag('showStoch14'),
+            showCci20: resolveFlag('showCci20'),
+            showWillR14: resolveFlag('showWillR14'),
+            showObv: resolveFlag('showObv'),
+            showCmf20: resolveFlag('showCmf20'),
+            showRoc12: resolveFlag('showRoc12'),
+            showSmcStructure: resolveFlag('showSmcStructure'),
+            showFvg: resolveFlag('showFvg'),
+            showVolumeProfile: resolveFlag('showVolumeProfile'),
+            showPivotPoints: resolveFlag('showPivotPoints'),
             pivotType: String(t.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase(),
-            showFutureProjection: Boolean(t.showFutureProjection),
-            pitchforkVariant: t.pitchforkVariant || 'original',
+            showFutureProjection: resolveFlag('showFutureProjection'),
+            pitchforkVariant: t.pitchforkVariant || state.chartPreferences.pitchforkVariant || 'original',
             isMagnetMode: Boolean(t.isMagnetMode),
             isLogScale: t.isLogScale !== undefined ? Boolean(t.isLogScale) : Boolean(state.chartPreferences.isLogScale),
             selectedRangePreset: null,
@@ -772,43 +817,25 @@ export async function downloadWorkspaceSync() {
         const sourceTab =
           state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0];
         if (sourceTab) {
-          for (const k of [
-            'showSma20',
-            'showSma50',
-            'showSma200',
-            'showEma20',
-            'showEma50',
-            'showEma200',
-            'showSupertrend',
-            'showVwap',
-            'showPsar',
-            'showIchimoku',
-            'showKeltner',
-            'showDonchian',
-            'showMtfEma',
-            'showKillzones',
-            'showBollinger',
-            'showOverlayMacd',
-            'showRsi14',
-            'showMacd',
-            'showAtr14',
-            'showAdx14',
-            'showStoch14',
-            'showCci20',
-            'showWillR14',
-            'showObv',
-            'showCmf20',
-            'showRoc12',
-            'showSmcStructure',
-            'showFvg',
-            'showVolumeProfile',
-            'showPivotPoints',
-            'showFutureProjection',
-          ]) {
+          for (const k of INDICATOR_FLAG_KEYS) {
             state.chartPreferences[k] = Boolean(sourceTab[k]);
           }
           state.chartPreferences.volumePaneRatio = sourceTab.volumePaneRatio;
           savePreferences(true);
+        }
+        saveOpenTabsToStorage(true);
+      } else if (!isLocalNewer && state.openTabs && state.openTabs.length > 0) {
+        // Even if open_tabs was empty on server, propagate updated preferences indicator flags to local tabs
+        for (const tab of state.openTabs) {
+          for (const k of INDICATOR_FLAG_KEYS) {
+            tab[k] = Boolean(state.chartPreferences[k]);
+          }
+          if (state.chartPreferences.volumePaneRatio !== undefined) {
+            tab.volumePaneRatio = Number(state.chartPreferences.volumePaneRatio || 0.22);
+          }
+          if (state.chartPreferences.pivotType) {
+            tab.pivotType = String(state.chartPreferences.pivotType).toUpperCase();
+          }
         }
         saveOpenTabsToStorage(true);
       }

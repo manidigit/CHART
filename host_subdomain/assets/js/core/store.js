@@ -676,6 +676,19 @@ export function resolvePriceBasis(symbolCode = '', providerId = '') {
   return 'Spot Feed';
 }
 
+const INDICATOR_COLOR_ALIASES = {
+  macd: 'macdLine',
+  macdLine: 'macd',
+  adx14: 'adxLine',
+  adxLine: 'adx14',
+  plusDi: 'adxPlusDi',
+  adxPlusDi: 'plusDi',
+  minusDi: 'adxMinusDi',
+  adxMinusDi: 'minusDi',
+  stoch14: 'stochK',
+  stochK: 'stoch14',
+};
+
 function normalizeIndicatorCustomColorsMap(rawMap) {
   if (!rawMap || typeof rawMap !== 'object') return {};
   const cleaned = {};
@@ -684,6 +697,10 @@ function normalizeIndicatorCustomColorsMap(rawMap) {
     const norm = normalizeHexForWeb(v, '');
     if (/^#[0-9A-F]{6}$/.test(norm)) {
       cleaned[k] = norm;
+      const alias = INDICATOR_COLOR_ALIASES[k];
+      if (alias && !rawMap[alias]) {
+        cleaned[alias] = norm;
+      }
     }
   }
   return cleaned;
@@ -1112,16 +1129,26 @@ export function setIndicatorCustomColor(indKey, rawHex, skipCloudSync = false) {
   if (!state.chartPreferences.indicatorCustomColors || typeof state.chartPreferences.indicatorCustomColors !== 'object') {
     state.chartPreferences.indicatorCustomColors = {};
   }
-  state.chartPreferences.indicatorCustomColors = {
+  const nextColors = {
     ...state.chartPreferences.indicatorCustomColors,
     [indKey]: cleanHex,
   };
+  const alias = INDICATOR_COLOR_ALIASES[indKey];
+  if (alias) {
+    nextColors[alias] = cleanHex;
+  }
+  state.chartPreferences.indicatorCustomColors = nextColors;
   savePreferences(skipCloudSync);
   return cleanHex;
 }
 
 export function resetIndicatorColorsToDefault() {
   state.chartPreferences.indicatorCustomColors = {};
+  state.chartPreferences.indMaFamilyColorHex = 'FF2962FF';
+  state.chartPreferences.indBandsFamilyColorHex = 'FFA855F7';
+  state.chartPreferences.indLevelsFamilyColorHex = 'FFF59E0B';
+  state.chartPreferences.indTrendFamilyColorHex = 'FF14B8A6';
+  state.chartPreferences.indSmcFamilyColorHex = 'FFEC4899';
   savePreferences(false);
 }
 
@@ -1241,7 +1268,7 @@ export function getIndicatorColorPalette(prefs = state.chartPreferences) {
   const customs = p.indicatorCustomColors || {};
 
   const getColor = (key) => {
-    const custom = customs[key];
+    const custom = customs[key] || (INDICATOR_COLOR_ALIASES[key] ? customs[INDICATOR_COLOR_ALIASES[key]] : null);
     if (custom && typeof custom === 'string' && /^#[0-9A-Fa-f]{6}$/.test(custom)) {
       return custom.toUpperCase();
     }

@@ -14,43 +14,46 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
     }
 
     fun updateBullCandleColor(current: ChartPreferences, colorHex: String): ChartPreferences {
-        val next = current.copy(bullCandleColorHex = colorHex)
+        val next = current.copy(bullCandleColorHex = colorHex, preferencesUpdatedAtMs = System.currentTimeMillis())
         repository.saveChartPreferences(next)
         return next
     }
 
     fun updateBearCandleColor(current: ChartPreferences, colorHex: String): ChartPreferences {
-        val next = current.copy(bearCandleColorHex = colorHex)
+        val next = current.copy(bearCandleColorHex = colorHex, preferencesUpdatedAtMs = System.currentTimeMillis())
         repository.saveChartPreferences(next)
         return next
     }
 
     fun updateTrendLineColor(current: ChartPreferences, colorHex: String): ChartPreferences {
-        val next = current.copy(trendLineColorHex = colorHex)
+        val next = current.copy(trendLineColorHex = colorHex, preferencesUpdatedAtMs = System.currentTimeMillis())
         repository.saveChartPreferences(next)
         return next
     }
 
     fun updateHorizontalLineColor(current: ChartPreferences, colorHex: String): ChartPreferences {
-        val next = current.copy(horizontalLineColorHex = colorHex)
+        val next = current.copy(horizontalLineColorHex = colorHex, preferencesUpdatedAtMs = System.currentTimeMillis())
         repository.saveChartPreferences(next)
         return next
     }
 
     fun updateVerticalLineColor(current: ChartPreferences, colorHex: String): ChartPreferences {
-        val next = current.copy(verticalLineColorHex = colorHex)
+        val next = current.copy(verticalLineColorHex = colorHex, preferencesUpdatedAtMs = System.currentTimeMillis())
         repository.saveChartPreferences(next)
         return next
     }
 
     fun updateDefaultDrawingColor(current: ChartPreferences, colorHex: String): ChartPreferences {
-        val next = current.copy(defaultDrawingColorHex = colorHex)
+        val next = current.copy(defaultDrawingColorHex = colorHex, preferencesUpdatedAtMs = System.currentTimeMillis())
         repository.saveChartPreferences(next)
         return next
     }
 
     fun updateDefaultDrawingWidth(current: ChartPreferences, widthDp: Float): ChartPreferences {
-        val next = current.copy(defaultDrawingWidthDp = widthDp.coerceIn(1.0f, 8.0f))
+        val next = current.copy(
+            defaultDrawingWidthDp = widthDp.coerceIn(1.0f, 8.0f),
+            preferencesUpdatedAtMs = System.currentTimeMillis()
+        )
         repository.saveChartPreferences(next)
         return next
     }
@@ -58,7 +61,8 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
     fun updateBollingerParams(current: ChartPreferences, period: Int, stdDev: Float): ChartPreferences {
         val next = current.copy(
             bollingerPeriod = period.coerceIn(5, 200),
-            bollingerStdDev = stdDev.coerceIn(0.5f, 5.0f)
+            bollingerStdDev = stdDev.coerceIn(0.5f, 5.0f),
+            preferencesUpdatedAtMs = System.currentTimeMillis()
         )
         repository.saveChartPreferences(next)
         return next
@@ -74,7 +78,8 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
             candleFetchLimit = fetchLimit.coerceIn(40, 5000),
             maxVisibleCandles = 5000,
             zoomStepCandles = zoomStep.coerceIn(2, 24),
-            drawingHitTolerancePx = touchTolerance.coerceIn(12f, 48f)
+            drawingHitTolerancePx = touchTolerance.coerceIn(12f, 48f),
+            preferencesUpdatedAtMs = System.currentTimeMillis()
         )
         repository.saveChartPreferences(next)
         return next
@@ -109,7 +114,8 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
             zoomStepCandles = 8,
             drawingHitTolerancePx = 28f,
             bollingerPeriod = 20,
-            bollingerStdDev = 2.0f
+            bollingerStdDev = 2.0f,
+            preferencesUpdatedAtMs = System.currentTimeMillis()
         )
         repository.saveChartPreferences(next)
         return next
@@ -120,7 +126,8 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
             twelveDataApiKey = current.twelveDataApiKey,
             stooqApiKey = current.stooqApiKey,
             alphaVantageApiKey = current.alphaVantageApiKey,
-            finnhubApiKey = current.finnhubApiKey
+            finnhubApiKey = current.finnhubApiKey,
+            preferencesUpdatedAtMs = System.currentTimeMillis()
         )
         repository.saveChartPreferences(next)
         return next
@@ -128,7 +135,7 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
 
     fun updateTimezoneMode(current: ChartPreferences, mode: String): ChartPreferences {
         val norm = if (mode.equals("LOCAL", ignoreCase = true)) "LOCAL" else "UTC"
-        val next = current.copy(timezoneMode = norm)
+        val next = current.copy(timezoneMode = norm, preferencesUpdatedAtMs = System.currentTimeMillis())
         repository.saveChartPreferences(next)
         return next
     }
@@ -137,7 +144,7 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
         current: ChartPreferences,
         transform: (ChartPreferences) -> ChartPreferences
     ): ChartPreferences {
-        val next = transform(current)
+        val next = transform(current).copy(preferencesUpdatedAtMs = System.currentTimeMillis())
         repository.saveChartPreferences(next)
         return next
     }
@@ -157,7 +164,8 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
                 es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(it)
             } ?: current.forecastHorizonBars,
             forecastPluginConfigJson = pluginConfigJson ?: current.forecastPluginConfigJson,
-            forecastWorkerUrl = workerUrl ?: current.forecastWorkerUrl
+            forecastWorkerUrl = workerUrl ?: current.forecastWorkerUrl,
+            preferencesUpdatedAtMs = System.currentTimeMillis()
         )
         repository.saveChartPreferences(next)
         return next

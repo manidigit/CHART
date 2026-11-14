@@ -139,6 +139,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     private var autoSyncJob: kotlinx.coroutines.Job? = null
     private val lastAutoSyncAtMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
+    @Volatile
+    private var lastCloudPullCheckAtMs: Long = 0L
 
     init {
         viewModelScope.launch {
@@ -277,6 +279,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun navigateTo(screen: WorkspaceScreen) {
         val current = _uiState.value.currentScreen
         if (current == screen) return
+
+        if (_uiState.value.isAuthenticated) {
+            val nowMs = System.currentTimeMillis()
+            if (nowMs - lastCloudPullCheckAtMs >= 3_500L) {
+                lastCloudPullCheckAtMs = nowMs
+                viewModelScope.launch {
+                    pullCloudIfRemoteIsNewer()
+                }
+            }
+        }
 
         if (screen in listOf(WorkspaceScreen.CHART_VIEW, WorkspaceScreen.PREDICTION) && _uiState.value.openTabs.isEmpty()) {
             val savedCode = if (_uiState.value.chartPreferences.rememberLastChartOnDevice) {
@@ -828,66 +840,67 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         repository.saveLastOpenedSymbolCode(symbol.symbolCode)
         val tabId = "${symbol.symbolCode}_${symbol.activeProvider.id}"
         val currentTabs = _uiState.value.openTabs
-        val existingTab = currentTabs.firstOrNull { it.tabId == tabId }
+        val existingTab = currentTabs.firstOrNull {
+            it.tabId == tabId || it.symbolCode.equals(symbol.symbolCode, ignoreCase = true)
+        }
 
         if (existingTab != null) {
+            val resolvedTabId = existingTab.tabId
             val curActive = _uiState.value.activeTab
+            val curPrefs = _uiState.value.chartPreferences
             _uiState.update { state ->
                 val nextStack = if (state.currentScreen != targetScreen) {
                     (state.screenBackStack + state.currentScreen).takeLast(6)
                 } else {
                     state.screenBackStack
                 }
-                val updatedTabs = if (curActive != null) {
-                    state.openTabs.map { tab ->
-                        tab.copy(
-                            showVolume = curActive.showVolume,
-                            volumePaneRatio = curActive.volumePaneRatio,
-                            showSma20 = curActive.showSma20,
-                            showSma50 = curActive.showSma50,
-                            showSma200 = curActive.showSma200,
-                            showEma20 = curActive.showEma20,
-                            showEma50 = curActive.showEma50,
-                            showEma200 = curActive.showEma200,
-                            showSupertrend = curActive.showSupertrend,
-                            showVwap = curActive.showVwap,
-                            showBollinger = curActive.showBollinger,
-                            showPsar = curActive.showPsar,
-                            showIchimoku = curActive.showIchimoku,
-                            showKeltner = curActive.showKeltner,
-                            showDonchian = curActive.showDonchian,
-                            showMtfEma = curActive.showMtfEma,
-                            showKillzones = curActive.showKillzones,
-                            showOverlayMacd = curActive.showOverlayMacd,
-                            showRsi14 = curActive.showRsi14,
-                            showMacd = curActive.showMacd,
-                            showAtr14 = curActive.showAtr14,
-                            showAdx14 = curActive.showAdx14,
-                            showStoch14 = curActive.showStoch14,
-                            showCci20 = curActive.showCci20,
-                            showWillR14 = curActive.showWillR14,
-                            showObv = curActive.showObv,
-                            showCmf20 = curActive.showCmf20,
-                            showRoc12 = curActive.showRoc12,
-                            showSmcStructure = curActive.showSmcStructure,
-                            showFvg = curActive.showFvg,
-                            showVolumeProfile = curActive.showVolumeProfile,
-                            showPivotPoints = curActive.showPivotPoints,
-                            showFutureProjection = curActive.showFutureProjection,
-                            pitchforkVariant = curActive.pitchforkVariant
-                        )
-                    }
-                } else {
-                    state.openTabs
+                val updatedTabs = state.openTabs.map { tab ->
+                    tab.copy(
+                        showVolume = curActive?.showVolume ?: curPrefs.showVolume,
+                        volumePaneRatio = curActive?.volumePaneRatio ?: curPrefs.volumePaneRatio,
+                        showSma20 = curActive?.showSma20 ?: curPrefs.showSma20,
+                        showSma50 = curActive?.showSma50 ?: curPrefs.showSma50,
+                        showSma200 = curActive?.showSma200 ?: curPrefs.showSma200,
+                        showEma20 = curActive?.showEma20 ?: curPrefs.showEma20,
+                        showEma50 = curActive?.showEma50 ?: curPrefs.showEma50,
+                        showEma200 = curActive?.showEma200 ?: curPrefs.showEma200,
+                        showSupertrend = curActive?.showSupertrend ?: curPrefs.showSupertrend,
+                        showVwap = curActive?.showVwap ?: curPrefs.showVwap,
+                        showBollinger = curActive?.showBollinger ?: curPrefs.showBollinger,
+                        showPsar = curActive?.showPsar ?: curPrefs.showPsar,
+                        showIchimoku = curActive?.showIchimoku ?: curPrefs.showIchimoku,
+                        showKeltner = curActive?.showKeltner ?: curPrefs.showKeltner,
+                        showDonchian = curActive?.showDonchian ?: curPrefs.showDonchian,
+                        showMtfEma = curActive?.showMtfEma ?: curPrefs.showMtfEma,
+                        showKillzones = curActive?.showKillzones ?: curPrefs.showKillzones,
+                        showOverlayMacd = curActive?.showOverlayMacd ?: curPrefs.showOverlayMacd,
+                        showRsi14 = curActive?.showRsi14 ?: curPrefs.showRsi14,
+                        showMacd = curActive?.showMacd ?: curPrefs.showMacd,
+                        showAtr14 = curActive?.showAtr14 ?: curPrefs.showAtr14,
+                        showAdx14 = curActive?.showAdx14 ?: curPrefs.showAdx14,
+                        showStoch14 = curActive?.showStoch14 ?: curPrefs.showStoch14,
+                        showCci20 = curActive?.showCci20 ?: curPrefs.showCci20,
+                        showWillR14 = curActive?.showWillR14 ?: curPrefs.showWillR14,
+                        showObv = curActive?.showObv ?: curPrefs.showObv,
+                        showCmf20 = curActive?.showCmf20 ?: curPrefs.showCmf20,
+                        showRoc12 = curActive?.showRoc12 ?: curPrefs.showRoc12,
+                        showSmcStructure = curActive?.showSmcStructure ?: curPrefs.showSmcStructure,
+                        showFvg = curActive?.showFvg ?: curPrefs.showFvg,
+                        showVolumeProfile = curActive?.showVolumeProfile ?: curPrefs.showVolumeProfile,
+                        showPivotPoints = curActive?.showPivotPoints ?: curPrefs.showPivotPoints,
+                        pivotType = curActive?.pivotType ?: curPrefs.pivotType,
+                        showFutureProjection = curActive?.showFutureProjection ?: curPrefs.showFutureProjection,
+                        pitchforkVariant = curActive?.pitchforkVariant ?: curPrefs.pitchforkVariant
+                    )
                 }
                 state.copy(
                     openTabs = updatedTabs,
-                    activeTabId = tabId,
+                    activeTabId = resolvedTabId,
                     currentScreen = targetScreen,
                     screenBackStack = nextStack
                 )
             }
-            repository.saveActiveTabId(tabId)
+            repository.saveActiveTabId(resolvedTabId)
             repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
             if (existingTab.candles.isEmpty() && !existingTab.isLoading) {
                 syncSingleSymbolUpToNow(symbol.symbolCode)
@@ -913,40 +926,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 timeframe = symbol.timeframe,
                 candles = cachedCandles,
                 chartType = curActive?.chartType ?: ChartType.CANDLESTICK,
-                showVolume = curActive?.showVolume ?: true,
-                volumePaneRatio = curActive?.volumePaneRatio ?: 0.22f,
-                showSma20 = curActive?.showSma20 ?: false,
-                showSma50 = curActive?.showSma50 ?: false,
-                showSma200 = curActive?.showSma200 ?: false,
-                showEma20 = curActive?.showEma20 ?: false,
-                showEma50 = curActive?.showEma50 ?: false,
-                showEma200 = curActive?.showEma200 ?: false,
-                showSupertrend = curActive?.showSupertrend ?: false,
-                showVwap = curActive?.showVwap ?: false,
-                showBollinger = curActive?.showBollinger ?: false,
-                showPsar = curActive?.showPsar ?: false,
-                showIchimoku = curActive?.showIchimoku ?: false,
-                showKeltner = curActive?.showKeltner ?: false,
-                showDonchian = curActive?.showDonchian ?: false,
-                showMtfEma = curActive?.showMtfEma ?: false,
-                showKillzones = curActive?.showKillzones ?: false,
-                showOverlayMacd = curActive?.showOverlayMacd ?: false,
-                showRsi14 = curActive?.showRsi14 ?: false,
-                showMacd = curActive?.showMacd ?: false,
-                showAtr14 = curActive?.showAtr14 ?: false,
-                showAdx14 = curActive?.showAdx14 ?: false,
-                showStoch14 = curActive?.showStoch14 ?: false,
-                showCci20 = curActive?.showCci20 ?: false,
-                showWillR14 = curActive?.showWillR14 ?: false,
-                showObv = curActive?.showObv ?: false,
-                showCmf20 = curActive?.showCmf20 ?: false,
-                showRoc12 = curActive?.showRoc12 ?: false,
-                showSmcStructure = curActive?.showSmcStructure ?: false,
-                showFvg = curActive?.showFvg ?: false,
-                showVolumeProfile = curActive?.showVolumeProfile ?: false,
-                showPivotPoints = curActive?.showPivotPoints ?: false,
-                showFutureProjection = curActive?.showFutureProjection ?: false,
-                pitchforkVariant = curActive?.pitchforkVariant ?: "original",
+                showVolume = curActive?.showVolume ?: curPrefs.showVolume,
+                volumePaneRatio = curActive?.volumePaneRatio ?: curPrefs.volumePaneRatio,
+                showSma20 = curActive?.showSma20 ?: curPrefs.showSma20,
+                showSma50 = curActive?.showSma50 ?: curPrefs.showSma50,
+                showSma200 = curActive?.showSma200 ?: curPrefs.showSma200,
+                showEma20 = curActive?.showEma20 ?: curPrefs.showEma20,
+                showEma50 = curActive?.showEma50 ?: curPrefs.showEma50,
+                showEma200 = curActive?.showEma200 ?: curPrefs.showEma200,
+                showSupertrend = curActive?.showSupertrend ?: curPrefs.showSupertrend,
+                showVwap = curActive?.showVwap ?: curPrefs.showVwap,
+                showBollinger = curActive?.showBollinger ?: curPrefs.showBollinger,
+                showPsar = curActive?.showPsar ?: curPrefs.showPsar,
+                showIchimoku = curActive?.showIchimoku ?: curPrefs.showIchimoku,
+                showKeltner = curActive?.showKeltner ?: curPrefs.showKeltner,
+                showDonchian = curActive?.showDonchian ?: curPrefs.showDonchian,
+                showMtfEma = curActive?.showMtfEma ?: curPrefs.showMtfEma,
+                showKillzones = curActive?.showKillzones ?: curPrefs.showKillzones,
+                showOverlayMacd = curActive?.showOverlayMacd ?: curPrefs.showOverlayMacd,
+                showRsi14 = curActive?.showRsi14 ?: curPrefs.showRsi14,
+                showMacd = curActive?.showMacd ?: curPrefs.showMacd,
+                showAtr14 = curActive?.showAtr14 ?: curPrefs.showAtr14,
+                showAdx14 = curActive?.showAdx14 ?: curPrefs.showAdx14,
+                showStoch14 = curActive?.showStoch14 ?: curPrefs.showStoch14,
+                showCci20 = curActive?.showCci20 ?: curPrefs.showCci20,
+                showWillR14 = curActive?.showWillR14 ?: curPrefs.showWillR14,
+                showObv = curActive?.showObv ?: curPrefs.showObv,
+                showCmf20 = curActive?.showCmf20 ?: curPrefs.showCmf20,
+                showRoc12 = curActive?.showRoc12 ?: curPrefs.showRoc12,
+                showSmcStructure = curActive?.showSmcStructure ?: curPrefs.showSmcStructure,
+                showFvg = curActive?.showFvg ?: curPrefs.showFvg,
+                showVolumeProfile = curActive?.showVolumeProfile ?: curPrefs.showVolumeProfile,
+                showPivotPoints = curActive?.showPivotPoints ?: curPrefs.showPivotPoints,
+                pivotType = curActive?.pivotType ?: curPrefs.pivotType,
+                showFutureProjection = curActive?.showFutureProjection ?: curPrefs.showFutureProjection,
+                pitchforkVariant = curActive?.pitchforkVariant ?: curPrefs.pitchforkVariant,
+                isLogScale = curActive?.isLogScale ?: curPrefs.logarithmicScaleDefault,
                 isMagnetMode = curActive?.isMagnetMode ?: false,
                 activeDrawingColorHex = curActive?.activeDrawingColorHex ?: curPrefs.defaultDrawingColorHex,
                 activeDrawingWidthDp = curActive?.activeDrawingWidthDp ?: curPrefs.defaultDrawingWidthDp,
@@ -1694,6 +1709,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             else -> {
                 nextCustomMap[family] = webHex
+                when (family) {
+                    "macd" -> nextCustomMap["macdLine"] = webHex
+                    "macdLine" -> nextCustomMap["macd"] = webHex
+                    "adx14" -> nextCustomMap["adxLine"] = webHex
+                    "adxLine" -> nextCustomMap["adx14"] = webHex
+                    "adxPlusDi" -> nextCustomMap["plusDi"] = webHex
+                    "plusDi" -> nextCustomMap["adxPlusDi"] = webHex
+                    "adxMinusDi" -> nextCustomMap["minusDi"] = webHex
+                    "minusDi" -> nextCustomMap["adxMinusDi"] = webHex
+                    "stoch14" -> nextCustomMap["stochK"] = webHex
+                    "stochK" -> nextCustomMap["stoch14"] = webHex
+                }
                 cur.copy(
                     indicatorCustomColors = nextCustomMap,
                     preferencesUpdatedAtMs = nowMs
@@ -1705,182 +1732,176 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleDebouncedCloudSync()
     }
 
-    fun toggleVolumeOnActiveTab() {
-        val activeId = _uiState.value.activeTab?.tabId ?: return
+    private fun updateIndicatorsInTabsAndPrefs(
+        tabTransform: (ChartTabState) -> ChartTabState,
+        prefTransform: (ChartPreferences) -> ChartPreferences
+    ) {
+        val nowMs = System.currentTimeMillis()
+        var updatedPrefs: ChartPreferences? = null
+        var updatedTabs: List<ChartTabState> = emptyList()
         _uiState.update { state ->
+            val nextPrefs = prefTransform(state.chartPreferences).copy(preferencesUpdatedAtMs = nowMs)
+            val nextTabs = state.openTabs.map(tabTransform)
+            updatedPrefs = nextPrefs
+            updatedTabs = nextTabs
             state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(showVolume = !tab.showVolume) else tab
-                }
+                chartPreferences = nextPrefs,
+                openTabs = nextTabs
             )
         }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        updatedPrefs?.let { repository.saveChartPreferences(it) }
+        repository.saveOpenTabsToPrefs(updatedTabs)
         scheduleDebouncedCloudSync()
     }
 
+    fun toggleVolumeOnActiveTab() {
+        val cur = _uiState.value.activeTab?.showVolume ?: _uiState.value.chartPreferences.showVolume
+        val nextVal = !cur
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showVolume = nextVal) },
+            prefTransform = { it.copy(showVolume = nextVal) }
+        )
+    }
+
     fun cycleVolumePaneHeightOnActiveTab() {
-        val curRatio = _uiState.value.activeTab?.volumePaneRatio ?: return
+        val curRatio = _uiState.value.activeTab?.volumePaneRatio ?: _uiState.value.chartPreferences.volumePaneRatio
         val nextRatio = when {
             curRatio < 0.19f -> 0.22f
             curRatio < 0.26f -> 0.30f
             else -> 0.16f
         }
-        _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    tab.copy(
-                        showVolume = true,
-                        volumePaneRatio = nextRatio
-                    )
-                }
-            )
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showVolume = true, volumePaneRatio = nextRatio) },
+            prefTransform = { it.copy(showVolume = true, volumePaneRatio = nextRatio) }
+        )
     }
 
     fun toggleSma20OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showSma20 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showSma20 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showSma20 ?: _uiState.value.chartPreferences.showSma20)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showSma20 = nextVal) },
+            prefTransform = { it.copy(showSma20 = nextVal) }
+        )
     }
 
     fun toggleSma50OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showSma50 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showSma50 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showSma50 ?: _uiState.value.chartPreferences.showSma50)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showSma50 = nextVal) },
+            prefTransform = { it.copy(showSma50 = nextVal) }
+        )
     }
 
     fun toggleSma200OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showSma200 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showSma200 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showSma200 ?: _uiState.value.chartPreferences.showSma200)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showSma200 = nextVal) },
+            prefTransform = { it.copy(showSma200 = nextVal) }
+        )
     }
 
     fun toggleEma20OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showEma20 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showEma20 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showEma20 ?: _uiState.value.chartPreferences.showEma20)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showEma20 = nextVal) },
+            prefTransform = { it.copy(showEma20 = nextVal) }
+        )
     }
 
     fun toggleEma50OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showEma50 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showEma50 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showEma50 ?: _uiState.value.chartPreferences.showEma50)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showEma50 = nextVal) },
+            prefTransform = { it.copy(showEma50 = nextVal) }
+        )
     }
 
     fun toggleBollingerOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showBollinger ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showBollinger = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showBollinger ?: _uiState.value.chartPreferences.showBollinger)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showBollinger = nextVal) },
+            prefTransform = { it.copy(showBollinger = nextVal) }
+        )
     }
 
     fun toggleSupertrendOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showSupertrend ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showSupertrend = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showSupertrend ?: _uiState.value.chartPreferences.showSupertrend)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showSupertrend = nextVal) },
+            prefTransform = { it.copy(showSupertrend = nextVal) }
+        )
     }
 
     fun toggleVwapOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showVwap ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showVwap = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showVwap ?: _uiState.value.chartPreferences.showVwap)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showVwap = nextVal) },
+            prefTransform = { it.copy(showVwap = nextVal) }
+        )
     }
 
     fun toggleRsi14OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showRsi14 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showRsi14 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showRsi14 ?: _uiState.value.chartPreferences.showRsi14)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showRsi14 = nextVal) },
+            prefTransform = { it.copy(showRsi14 = nextVal) }
+        )
     }
 
     fun toggleMacdOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showMacd ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showMacd = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showMacd ?: _uiState.value.chartPreferences.showMacd)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showMacd = nextVal) },
+            prefTransform = { it.copy(showMacd = nextVal) }
+        )
     }
 
     fun toggleOverlayMacdOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showOverlayMacd ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showOverlayMacd = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showOverlayMacd ?: _uiState.value.chartPreferences.showOverlayMacd)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showOverlayMacd = nextVal) },
+            prefTransform = { it.copy(showOverlayMacd = nextVal) }
+        )
     }
 
     fun toggleAtr14OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showAtr14 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showAtr14 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showAtr14 ?: _uiState.value.chartPreferences.showAtr14)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showAtr14 = nextVal) },
+            prefTransform = { it.copy(showAtr14 = nextVal) }
+        )
     }
 
     fun toggleSmcStructureOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showSmcStructure ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showSmcStructure = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showSmcStructure ?: _uiState.value.chartPreferences.showSmcStructure)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showSmcStructure = nextVal) },
+            prefTransform = { it.copy(showSmcStructure = nextVal) }
+        )
     }
 
     fun toggleFvgOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showFvg ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showFvg = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showFvg ?: _uiState.value.chartPreferences.showFvg)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showFvg = nextVal) },
+            prefTransform = { it.copy(showFvg = nextVal) }
+        )
     }
 
     fun toggleVolumeProfileOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showVolumeProfile ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showVolumeProfile = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showVolumeProfile ?: _uiState.value.chartPreferences.showVolumeProfile)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showVolumeProfile = nextVal) },
+            prefTransform = { it.copy(showVolumeProfile = nextVal) }
+        )
     }
 
     fun togglePivotPointsOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showPivotPoints ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showPivotPoints = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showPivotPoints ?: _uiState.value.chartPreferences.showPivotPoints)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showPivotPoints = nextVal) },
+            prefTransform = { it.copy(showPivotPoints = nextVal) }
+        )
     }
 
     fun setPivotTypeOnActiveTab(variant: String) {
@@ -1888,38 +1909,42 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             "FIBONACCI", "CAMARILLA", "WOODIE" -> variant.trim().uppercase()
             else -> "STANDARD"
         }
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(pivotType = normalized, showPivotPoints = true) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(pivotType = normalized, showPivotPoints = true) },
+            prefTransform = { it.copy(pivotType = normalized, showPivotPoints = true) }
+        )
     }
 
     fun toggleFutureProjectionOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showFutureProjection ?: return)
-        _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    tab.copy(
-                        showFutureProjection = nextVal,
-                        scrollOffsetFromRight = if (nextVal) 0 else tab.scrollOffsetFromRight
-                    )
-                }
-            )
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showFutureProjection ?: _uiState.value.chartPreferences.showFutureProjection)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { tab ->
+                tab.copy(
+                    showFutureProjection = nextVal,
+                    scrollOffsetFromRight = if (nextVal) 0 else tab.scrollOffsetFromRight
+                )
+            },
+            prefTransform = { it.copy(showFutureProjection = nextVal) }
+        )
     }
 
     fun enableFutureProjectionAndOpenChart() {
-        val nextVal = !(_uiState.value.activeTab?.showFutureProjection ?: false)
+        val nextVal = !(_uiState.value.activeTab?.showFutureProjection ?: _uiState.value.chartPreferences.showFutureProjection)
+        val nowMs = System.currentTimeMillis()
+        var updatedPrefs: ChartPreferences? = null
         _uiState.update { state ->
             val nextStack = if (state.currentScreen != WorkspaceScreen.CHART_VIEW && nextVal) {
                 (state.screenBackStack + state.currentScreen).takeLast(6)
             } else {
                 state.screenBackStack
             }
+            val nextPrefs = state.chartPreferences.copy(
+                showFutureProjection = nextVal,
+                preferencesUpdatedAtMs = nowMs
+            )
+            updatedPrefs = nextPrefs
             state.copy(
+                chartPreferences = nextPrefs,
                 openTabs = state.openTabs.map { tab ->
                     tab.copy(
                         showFutureProjection = nextVal,
@@ -1930,134 +1955,121 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 screenBackStack = nextStack
             )
         }
+        updatedPrefs?.let { repository.saveChartPreferences(it) }
         repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
         scheduleDebouncedCloudSync()
     }
 
     fun toggleEma200OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showEma200 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showEma200 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showEma200 ?: _uiState.value.chartPreferences.showEma200)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showEma200 = nextVal) },
+            prefTransform = { it.copy(showEma200 = nextVal) }
+        )
     }
 
     fun togglePsarOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showPsar ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showPsar = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showPsar ?: _uiState.value.chartPreferences.showPsar)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showPsar = nextVal) },
+            prefTransform = { it.copy(showPsar = nextVal) }
+        )
     }
 
     fun toggleIchimokuOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showIchimoku ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showIchimoku = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showIchimoku ?: _uiState.value.chartPreferences.showIchimoku)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showIchimoku = nextVal) },
+            prefTransform = { it.copy(showIchimoku = nextVal) }
+        )
     }
 
     fun toggleKeltnerOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showKeltner ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showKeltner = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showKeltner ?: _uiState.value.chartPreferences.showKeltner)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showKeltner = nextVal) },
+            prefTransform = { it.copy(showKeltner = nextVal) }
+        )
     }
 
     fun toggleDonchianOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showDonchian ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showDonchian = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showDonchian ?: _uiState.value.chartPreferences.showDonchian)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showDonchian = nextVal) },
+            prefTransform = { it.copy(showDonchian = nextVal) }
+        )
     }
 
     fun toggleMtfEmaOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showMtfEma ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showMtfEma = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showMtfEma ?: _uiState.value.chartPreferences.showMtfEma)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showMtfEma = nextVal) },
+            prefTransform = { it.copy(showMtfEma = nextVal) }
+        )
     }
 
     fun toggleKillzonesOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showKillzones ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showKillzones = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showKillzones ?: _uiState.value.chartPreferences.showKillzones)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showKillzones = nextVal) },
+            prefTransform = { it.copy(showKillzones = nextVal) }
+        )
     }
 
     fun toggleAdx14OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showAdx14 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showAdx14 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showAdx14 ?: _uiState.value.chartPreferences.showAdx14)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showAdx14 = nextVal) },
+            prefTransform = { it.copy(showAdx14 = nextVal) }
+        )
     }
 
     fun toggleStoch14OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showStoch14 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showStoch14 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showStoch14 ?: _uiState.value.chartPreferences.showStoch14)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showStoch14 = nextVal) },
+            prefTransform = { it.copy(showStoch14 = nextVal) }
+        )
     }
 
     fun toggleCci20OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showCci20 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showCci20 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showCci20 ?: _uiState.value.chartPreferences.showCci20)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showCci20 = nextVal) },
+            prefTransform = { it.copy(showCci20 = nextVal) }
+        )
     }
 
     fun toggleWillR14OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showWillR14 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showWillR14 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showWillR14 ?: _uiState.value.chartPreferences.showWillR14)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showWillR14 = nextVal) },
+            prefTransform = { it.copy(showWillR14 = nextVal) }
+        )
     }
 
     fun toggleObvOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showObv ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showObv = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showObv ?: _uiState.value.chartPreferences.showObv)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showObv = nextVal) },
+            prefTransform = { it.copy(showObv = nextVal) }
+        )
     }
 
     fun toggleCmf20OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showCmf20 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showCmf20 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showCmf20 ?: _uiState.value.chartPreferences.showCmf20)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showCmf20 = nextVal) },
+            prefTransform = { it.copy(showCmf20 = nextVal) }
+        )
     }
 
     fun toggleRoc12OnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showRoc12 ?: return)
-        _uiState.update { state ->
-            state.copy(openTabs = state.openTabs.map { it.copy(showRoc12 = nextVal) })
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.showRoc12 ?: _uiState.value.chartPreferences.showRoc12)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showRoc12 = nextVal) },
+            prefTransform = { it.copy(showRoc12 = nextVal) }
+        )
     }
 
     fun setDrawingColorOnActiveTab(colorHex: String) {
@@ -2125,15 +2137,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun setPitchforkVariantOnActiveTab(variant: String) {
         val active = _uiState.value.activeTab ?: return
         val updatedTab = drawingCoordinator.setPitchforkVariant(active, variant)
-        _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == active.tabId) updatedTab else tab
-                }
-            )
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { tab -> if (tab.tabId == active.tabId) updatedTab else tab.copy(pitchforkVariant = updatedTab.pitchforkVariant) },
+            prefTransform = { it.copy(pitchforkVariant = updatedTab.pitchforkVariant) }
+        )
     }
 
     // --- Dynamic Symbol & Preference Management (Anti-Hardcoding) ---
@@ -2177,15 +2184,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
 
     fun toggleLogScaleOnActiveTab() {
         val activeId = _uiState.value.activeTab?.tabId ?: return
-        _uiState.update { state ->
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == activeId) tab.copy(isLogScale = !tab.isLogScale) else tab
-                }
-            )
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
+        val nextVal = !(_uiState.value.activeTab?.isLogScale ?: _uiState.value.chartPreferences.logarithmicScaleDefault)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { tab -> if (tab.tabId == activeId) tab.copy(isLogScale = nextVal) else tab },
+            prefTransform = { it.copy(logarithmicScaleDefault = nextVal) }
+        )
     }
 
     fun projectScenarioLevelsToChart(
@@ -2403,20 +2406,21 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
-    private suspend fun pullAndApplyCloudWorkspaceOnStartup() {
-        val ws = repository.fetchCloudWorkspace() ?: return
+    private suspend fun pullAndApplyCloudWorkspaceOnStartup(preFetchedWs: org.json.JSONObject? = null) {
+        val ws = preFetchedWs ?: repository.fetchCloudWorkspace() ?: return
         val applied = repository.applyCloudWorkspaceToLocal(ws)
         if (applied) {
             val refreshedSymbols = repository.loadSymbolCatalog()
             val refreshedPrefs = repository.loadChartPreferences()
             val savedTabs = repository.loadSavedOpenTabs()
             val savedActiveId = repository.loadActiveTabId()
+            val lastCode = repository.loadLastOpenedSymbolCode()
             val nowTimeStr = java.time.LocalTime.now().toString().take(5)
             _uiState.update { state ->
-                val existingBySym = state.openTabs.associateBy { it.symbolCode }
+                val existingBySym = state.openTabs.associateBy { it.symbolCode.uppercase() }
                 val tabsToUse = if (savedTabs.isNotEmpty()) {
                     savedTabs.map { cloudTab ->
-                        val localTab = existingBySym[cloudTab.symbolCode]
+                        val localTab = existingBySym[cloudTab.symbolCode.uppercase()]
                         val mergedCandles = if (cloudTab.candles.isNotEmpty()) {
                             cloudTab.candles
                         } else if (localTab != null && localTab.timeframe == cloudTab.timeframe && localTab.candles.isNotEmpty()) {
@@ -2439,6 +2443,43 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 } else if (state.openTabs.isNotEmpty()) {
                     state.openTabs.map { tab ->
                         tab.copy(
+                            showVolume = refreshedPrefs.showVolume,
+                            volumePaneRatio = refreshedPrefs.volumePaneRatio,
+                            showSma20 = refreshedPrefs.showSma20,
+                            showSma50 = refreshedPrefs.showSma50,
+                            showSma200 = refreshedPrefs.showSma200,
+                            showEma20 = refreshedPrefs.showEma20,
+                            showEma50 = refreshedPrefs.showEma50,
+                            showEma200 = refreshedPrefs.showEma200,
+                            showSupertrend = refreshedPrefs.showSupertrend,
+                            showVwap = refreshedPrefs.showVwap,
+                            showBollinger = refreshedPrefs.showBollinger,
+                            showPsar = refreshedPrefs.showPsar,
+                            showIchimoku = refreshedPrefs.showIchimoku,
+                            showKeltner = refreshedPrefs.showKeltner,
+                            showDonchian = refreshedPrefs.showDonchian,
+                            showMtfEma = refreshedPrefs.showMtfEma,
+                            showKillzones = refreshedPrefs.showKillzones,
+                            showOverlayMacd = refreshedPrefs.showOverlayMacd,
+                            showRsi14 = refreshedPrefs.showRsi14,
+                            showMacd = refreshedPrefs.showMacd,
+                            showAtr14 = refreshedPrefs.showAtr14,
+                            showAdx14 = refreshedPrefs.showAdx14,
+                            showStoch14 = refreshedPrefs.showStoch14,
+                            showCci20 = refreshedPrefs.showCci20,
+                            showWillR14 = refreshedPrefs.showWillR14,
+                            showObv = refreshedPrefs.showObv,
+                            showCmf20 = refreshedPrefs.showCmf20,
+                            showRoc12 = refreshedPrefs.showRoc12,
+                            showSmcStructure = refreshedPrefs.showSmcStructure,
+                            showFvg = refreshedPrefs.showFvg,
+                            showVolumeProfile = refreshedPrefs.showVolumeProfile,
+                            showPivotPoints = refreshedPrefs.showPivotPoints,
+                            pivotType = refreshedPrefs.pivotType,
+                            showFutureProjection = refreshedPrefs.showFutureProjection,
+                            pitchforkVariant = refreshedPrefs.pitchforkVariant,
+                            activeDrawingColorHex = refreshedPrefs.defaultDrawingColorHex,
+                            activeDrawingWidthDp = refreshedPrefs.defaultDrawingWidthDp,
                             drawings = repository.loadDrawingsForChart(
                                 tab.chartId,
                                 UtcTimeAnchorAlgorithm.legacyChartId(tab.symbolCode)
@@ -2450,6 +2491,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 val activeId = when {
                     savedActiveId != null && tabsToUse.any { it.tabId == savedActiveId } -> savedActiveId
+                    !lastCode.isNullOrBlank() && tabsToUse.any { it.symbolCode.equals(lastCode, ignoreCase = true) } ->
+                        tabsToUse.first { it.symbolCode.equals(lastCode, ignoreCase = true) }.tabId
                     tabsToUse.any { it.tabId == state.activeTabId } -> state.activeTabId
                     else -> tabsToUse.firstOrNull()?.tabId
                 }
@@ -2464,25 +2507,48 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private suspend fun pullCloudIfRemoteIsNewer() {
+        val remoteWs = repository.fetchCloudWorkspace() ?: return
+        val remoteTs = repository.extractRemotePreferencesTimestamp(remoteWs)
+        val localTs = _uiState.value.chartPreferences.preferencesUpdatedAtMs
+        if (remoteTs > localTs || localTs <= 0L) {
+            pullAndApplyCloudWorkspaceOnStartup(remoteWs)
+        }
+    }
+
     fun syncCloudWorkspace() {
         if (_uiState.value.isWorkspaceSyncing) return
         viewModelScope.launch {
             _uiState.update { it.copy(isWorkspaceSyncing = true) }
-            val symbols = _uiState.value.symbols
-            val prefs = _uiState.value.chartPreferences
-            val tabs = _uiState.value.openTabs
-            val chartIds = symbols.map { it.chartId }
-            val drawings = repository.getAllCachedDrawings(chartIds)
-            val success = repository.syncWorkspaceToCloud(symbols, prefs, drawings, tabs)
-            if (!success) {
-                pullAndApplyCloudWorkspaceOnStartup()
-            }
+            val remoteWs = repository.fetchCloudWorkspace()
+            val remoteTs = if (remoteWs != null) repository.extractRemotePreferencesTimestamp(remoteWs) else 0L
+            val localTs = _uiState.value.chartPreferences.preferencesUpdatedAtMs
             val nowTimeStr = java.time.LocalTime.now().toString().take(5)
-            _uiState.update {
-                it.copy(
-                    isWorkspaceSyncing = false,
-                    lastWorkspaceSyncedAt = if (success) nowTimeStr else it.lastWorkspaceSyncedAt
-                )
+
+            if (remoteWs != null && remoteTs > localTs) {
+                pullAndApplyCloudWorkspaceOnStartup(remoteWs)
+                _uiState.update {
+                    it.copy(
+                        isWorkspaceSyncing = false,
+                        lastWorkspaceSyncedAt = nowTimeStr
+                    )
+                }
+            } else {
+                val symbols = _uiState.value.symbols
+                val prefs = _uiState.value.chartPreferences
+                val tabs = _uiState.value.openTabs
+                val chartIds = symbols.map { it.chartId }
+                val drawings = repository.getAllCachedDrawings(chartIds)
+                val success = repository.syncWorkspaceToCloud(symbols, prefs, drawings, tabs)
+                if (!success && remoteWs != null) {
+                    pullAndApplyCloudWorkspaceOnStartup(remoteWs)
+                }
+                _uiState.update {
+                    it.copy(
+                        isWorkspaceSyncing = false,
+                        lastWorkspaceSyncedAt = if (success || remoteWs != null) nowTimeStr else it.lastWorkspaceSyncedAt
+                    )
+                }
             }
         }
     }

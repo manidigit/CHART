@@ -114,12 +114,13 @@ function ensureInitialTabs(forceHydrate = false) {
       }
       return;
     }
-    // Determine active indicator state from chartPreferences or any tab that has indicators enabled
+    // Determine active indicator state from chartPreferences (or fallback to openTabs on initial cold boot)
     const effectiveIndicators = {};
     for (const k of INDICATOR_FLAG_KEYS) {
-      effectiveIndicators[k] =
-        Boolean(state.chartPreferences[k]) ||
-        state.openTabs.some((t) => Boolean(t && t[k]));
+      effectiveIndicators[k] = forceHydrate
+        ? Boolean(state.chartPreferences[k])
+        : Boolean(state.chartPreferences[k]) ||
+          state.openTabs.some((t) => Boolean(t && t[k]));
       state.chartPreferences[k] = effectiveIndicators[k];
     }
 
@@ -1804,10 +1805,14 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'sync-cloud-workspace') {
     state.isWorkspaceSyncing = true;
     renderApp();
+    await downloadWorkspaceSync();
+    ensureInitialTabs(true);
     const ok = await uploadWorkspaceSync();
     await fetchSystemStatus();
+    state.isWorkspaceSyncing = false;
     state.statusBannerKey = ok ? 'status_workspace_synced' : '';
     renderApp();
+    redrawActiveCanvas();
   } else if (action === 'open-mobile-sheet') {
     const sheet = el.getAttribute('data-sheet') || null;
     state.mobileSheet = state.mobileSheet === sheet ? null : sheet;
@@ -3150,6 +3155,35 @@ document.addEventListener('dragend', () => {
 
 window.addEventListener('resize', () => {
   redrawActiveCanvas();
+});
+
+let lastFocusWorkspacePullMs = 0;
+
+async function pullWorkspaceOnFocusIfNeeded() {
+  if (!state.isAuthenticated || state.isWorkspaceSyncing) return;
+  const nowMs = Date.now();
+  if (nowMs - lastFocusWorkspacePullMs < 4000) return;
+  lastFocusWorkspacePullMs = nowMs;
+  try {
+    const ok = await downloadWorkspaceSync();
+    if (ok) {
+      ensureInitialTabs(true);
+      renderApp();
+      redrawActiveCanvas();
+    }
+  } catch {
+    // Non-fatal focus sync check
+  }
+}
+
+window.addEventListener('focus', () => {
+  pullWorkspaceOnFocusIfNeeded();
+});
+
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') {
+    pullWorkspaceOnFocusIfNeeded();
+  }
 });
 
 window.addEventListener('beforeunload', () => {
