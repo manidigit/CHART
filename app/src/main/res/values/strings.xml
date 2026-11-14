@@ -208,7 +208,7 @@
     <string name="settings_group_sources">3. Data Sources &amp; Symbols</string>
     <string name="settings_group_params">4. Analysis &amp; TradingView Switches</string>
     <string name="settings_group_about">5. Server Health &amp; About</string>
-    <string name="settings_about_version">CHART Intelligence v1.39.0 · Pro Drawing Tools, Indicators, Killzones, Live Intel &amp; Encrypted Backup</string>
+    <string name="settings_about_version">CHART Intelligence v1.41.0 · 4-Variant Pivots, Phase 3 Historical Import, Live Intel &amp; Encrypted Backup</string>
     <string name="settings_tab_account">Account</string>
     <string name="settings_tab_appearance">Appearance</string>
     <string name="settings_tab_sources">Symbols</string>
@@ -373,4 +373,11 @@
     <string name="prediction_future_candles_desc">Projects 30 forward OHLC candlesticks (+5, +10, +15, +20, +25, +30) on the right side of the Present Bar Divider across every timeframe.</string>
     <string name="prediction_render_future_candles_btn">Render 30 Future Candlesticks on Chart</string>
     <string name="prediction_future_candles_active_btn">Future Candlesticks Active on Chart (Tap to Hide)</string>
+    <string name="provider_local_csv">Local Historical Import (CSV / EIA XLS / JSON / Manual)</string>
+    <string name="settings_import_title">Historical Data Import &amp; Manual OHLC (CSV / XLS / JSON)</string>
+    <string name="settings_import_subtitle">Supports CSV, EIA RBRTEd.xls (BIFF8/XML/HTML), DataHub 2-column daily CSV (forced D1), and JSON. Image uploads are strictly rejected.</string>
+    <string name="settings_import_upload_btn">Import File</string>
+    <string name="settings_manual_ohlc_title">Manual OHLC Entry / Correction</string>
+    <string name="settings_manual_ohlc_btn">Save Bar</string>
+    <string name="import_batches_empty">No historical import batches recorded yet.</string>
 </resources>

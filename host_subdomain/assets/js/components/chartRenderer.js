@@ -1,7 +1,7 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.40.1';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.40.1';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.40.1';
-import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.40.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.41.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.41.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.41.0';
+import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.41.0';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -63,7 +63,8 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
   const tf = String(tab.timeframe || 'M15').toUpperCase();
   const symCode = String(tab.symbolCode || 'XAUUSD').toUpperCase();
   const prov = String(tab.provider || 'tvdatafeed');
-  const cacheKey = `${n}_${firstMs}_${lastMs}_${lastClose}_${bbPeriod}_${bbStdDev}_${tf}_${symCode}_${prov}`;
+  const pivType = String(tab.pivotType || 'STANDARD').toUpperCase();
+  const cacheKey = `${n}_${firstMs}_${lastMs}_${lastClose}_${bbPeriod}_${bbStdDev}_${tf}_${symCode}_${prov}_${pivType}`;
 
   if (!tab._indCache || tab._indCache.key !== cacheKey) {
     tab._indCache = {
@@ -157,7 +158,7 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
     getSmc: () =>
       cache.smc || (cache.smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3)),
     getPivotPoints: () =>
-      cache.pivots || (cache.pivots = TechnicalIndicators.computePivotPoints(candles, tf, symCode)),
+      cache.pivots || (cache.pivots = TechnicalIndicators.computePivotPoints(candles, tf, symCode, pivType)),
     getFutureProjection: () =>
       cache.futureProjection ||
       (cache.futureProjection = TechnicalIndicators.computeFutureCandlestickProjection(candles, tf, 30)),
@@ -1068,17 +1069,21 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // IND-01: Standard Floor Pivot Points (P, R1, R2, S1, S2) Overlay
+  // IND-01: Multi-Variant Pivot Points (Standard, Fibonacci, Camarilla, Woodie) Overlay
   if (tab.showPivotPoints && candles.length >= 2) {
     const piv = indCache.getPivotPoints();
     if (piv) {
       const levels = [
+        { key: 'R4', val: piv.r4, col: indPal.pivotR4 || indPal.pivotR2 },
+        { key: 'R3', val: piv.r3, col: indPal.pivotR3 || indPal.pivotR2 },
         { key: 'R2', val: piv.r2, col: indPal.pivotR2 },
         { key: 'R1', val: piv.r1, col: indPal.pivotR1 },
         { key: 'P', val: piv.p, col: indPal.pivotP },
         { key: 'S1', val: piv.s1, col: indPal.pivotS1 },
         { key: 'S2', val: piv.s2, col: indPal.pivotS2 },
-      ];
+        { key: 'S3', val: piv.s3, col: indPal.pivotS3 || indPal.pivotS2 },
+        { key: 'S4', val: piv.s4, col: indPal.pivotS4 || indPal.pivotS2 },
+      ].filter((lv) => Number.isFinite(Number(lv.val)));
       ctx.save();
       for (const lv of levels) {
         const py = priceToY(lv.val);

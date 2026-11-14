@@ -169,6 +169,7 @@ fun ChartViewScreen(
     onToggleFvg: () -> Unit = {},
     onToggleVolumeProfile: () -> Unit = {},
     onTogglePivotPoints: () -> Unit = {},
+    onSelectPivotType: (String) -> Unit = {},
     onToggleFutureProjection: () -> Unit = {},
     onToggleEma200: () -> Unit = {},
     onTogglePsar: () -> Unit = {},
@@ -991,7 +992,7 @@ fun ChartViewScreen(
                                             paletteOpts = listOf("#F59E0B", "#EAB308", "#F97316", "#FB923C", "#10B981", "#06B6D4", "#38BDF8", "#A855F7"),
                                             specs = listOf(
                                                 StudyRowSpec("Session VWAP", "Volume Weighted Average Price", preferences.vwapColor, activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button", "╌╌"),
-                                                StudyRowSpec("Pivot Points (P, R1, R2, S1, S2)", "Classic Prior-Session Floor Pivots (برچسب تراز بدون تداخل)", preferences.pivotPColor, activeTab.showPivotPoints, onTogglePivotPoints, "chart_pivot_points_toggle_button", "P/R/S"),
+                                                StudyRowSpec("Pivot Points (Standard / Fib / Camarilla / Woodie)", "Multi-variant P, R1..R4, S1..S4 با برچسب ضدتداخل", preferences.pivotPColor, activeTab.showPivotPoints, onTogglePivotPoints, "chart_pivot_points_toggle_button", "P/R/S"),
                                                 StudyRowSpec("Session Volume Profile (VRVP)", "POC, VAH & VAL (70% Value Area)", preferences.vrvpPocColor, activeTab.showVolumeProfile, onToggleVolumeProfile, "chart_vp_toggle_button", "▋POC")
                                             )
                                         ),
@@ -1142,6 +1143,58 @@ fun ChartViewScreen(
                                                         checked = spec.checked,
                                                         onCheckedChange = { spec.onToggle() }
                                                     )
+                                                }
+                                            }
+
+                                            if (section.key == "levels") {
+                                                val currentPivotType = activeTab.pivotType.uppercase()
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .horizontalScroll(rememberScrollState()),
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Text(
+                                                        text = "Pivot Method:",
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                    )
+                                                    for ((varKey, varLabel) in listOf(
+                                                        "STANDARD" to "Standard",
+                                                        "FIBONACCI" to "Fibonacci",
+                                                        "CAMARILLA" to "Camarilla",
+                                                        "WOODIE" to "Woodie"
+                                                    )) {
+                                                        val isSelected = currentPivotType == varKey
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .heightIn(min = 48.dp)
+                                                                .clip(RoundedCornerShape(8.dp))
+                                                                .background(
+                                                                    if (isSelected) preferences.pivotPColor.copy(alpha = 0.22f)
+                                                                    else MaterialTheme.colorScheme.surface
+                                                                )
+                                                                .border(
+                                                                    1.dp,
+                                                                    if (isSelected) preferences.pivotPColor else palette.cardBorder,
+                                                                    RoundedCornerShape(8.dp)
+                                                                )
+                                                                .clickable { onSelectPivotType(varKey) }
+                                                                .padding(horizontal = 10.dp, vertical = 6.dp)
+                                                                .testTag("pivot_variant_chip_$varKey"),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                text = varLabel,
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontFamily = JetBrainsMonoFontFamily,
+                                                                fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
+                                                                color = if (isSelected) preferences.pivotPColor else MaterialTheme.colorScheme.onSurface
+                                                            )
+                                                        }
+                                                    }
                                                 }
                                             }
                                         }

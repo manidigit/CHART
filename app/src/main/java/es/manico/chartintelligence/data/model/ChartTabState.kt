@@ -56,6 +56,7 @@ data class ChartTabState(
     val showFvg: Boolean = false,
     val showVolumeProfile: Boolean = false,
     val showPivotPoints: Boolean = false,
+    val pivotType: String = "STANDARD",
     val showFutureProjection: Boolean = false,
     val pitchforkVariant: String = "original",
     val activeDrawingTool: DrawingTool = DrawingTool.CURSOR,

@@ -145,11 +145,15 @@ $resolveProviderError = static function (string $provId): string {
         'stooq' => StooqAdapter::$lastError,
         'eia_brent_spot' => EiaBenchmarkAdapter::$lastError,
         'yahoo_finance' => YahooFinanceAdapter::$lastError,
+        'local_csv' => '',
         default => 'Unsupported provider',
     };
 };
 
-if ($hasSufficientBase && !$forceBackfill && $effectiveSinceMs >= $expectedLastClosedOpenMs) {
+if ($provider === 'local_csv') {
+    $syncMode = 'DB_CACHE_HIT';
+    $upstreamSucceeded = true;
+} elseif ($hasSufficientBase && !$forceBackfill && $effectiveSinceMs >= $expectedLastClosedOpenMs) {
     // [STATE 1: DB_CACHE_HIT] Historical candles up to the latest closed UTC bucket are already stored.
     // ZERO external API / WebSocket calls are made!
     $syncMode = 'DB_CACHE_HIT';

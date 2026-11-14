@@ -52,6 +52,7 @@ final class ProviderCatalog
             'dukascopy' => 'Interbank Spot',
             'biquote' => 'CFD / MT5 Feed',
             'stooq' => 'EOD Historical',
+            'local_csv' => 'Imported Archive',
             'twelve_data' => in_array($sym, ['NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN'], true)
                 ? 'Official Exchange'
                 : 'Spot REST',
@@ -348,6 +349,25 @@ final class ProviderCatalog
                 'symbols' => $buildSymbolList([
                     'SPOTBRENT' => 'EIA:RBRTE',
                 ], 'eia_brent_spot'),
+            ],
+            [
+                'provider_id' => 'local_csv',
+                'badge_label' => 'Local Import',
+                'title_fa' => 'ورود تاریخچه محلی و دستی (CSV / EIA XLS / JSON / Manual)',
+                'title_en' => 'Local Historical Import & Manual OHLC (CSV / XLS / JSON)',
+                'method_type' => 'LOCAL_BATCH_IMPORT',
+                'requires_api_key' => false,
+                'is_configured' => true,
+                'status_code' => 'READY',
+                'formula_fa' => 'واردسازی ایمن فایل‌های تاریخی CSV، اکسل EIA RBRTEd.xls (BIFF8/XML/HTML)، JSON و ثبت دستی کندل با ثبت دسته (Batch Lineage) و لاگ اصلاحات.',
+                'formula_en' => 'Audited batch import from CSV, EIA RBRTEd.xls, JSON, and manual OHLC entry with lineage and data_corrections history.',
+                'supported_timeframes' => ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
+                'storage_key_rule' => 'UNIQUE(chart_id, provider_id, timeframe, open_time_utc) + data_import_batches',
+                'symbols' => $buildSymbolList([
+                    'SPOTBRENT' => 'IMPORT:SPOTBRENT',
+                    'XAUUSD' => 'IMPORT:XAUUSD',
+                    'BTCUSD' => 'IMPORT:BTCUSD',
+                ], 'local_csv'),
             ],
         ];
     }

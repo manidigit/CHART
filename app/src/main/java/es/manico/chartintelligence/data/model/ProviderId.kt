@@ -50,6 +50,12 @@ enum class ProviderId(
         badgeLabel = "Stooq EOD",
         titleResId = R.string.provider_stooq,
         defaultTimeframe = "D1"
+    ),
+    LOCAL_CSV(
+        id = "local_csv",
+        badgeLabel = "Local Import",
+        titleResId = R.string.provider_local_csv,
+        defaultTimeframe = "D1"
     );
 
     fun resolvePriceBasis(symbolCode: String): String {
@@ -59,6 +65,7 @@ enum class ProviderId(
             DUKASCOPY -> "Interbank Spot"
             BIQUOTE -> "CFD / MT5 Feed"
             STOOQ -> "EOD Historical"
+            LOCAL_CSV -> "Imported Archive"
             else -> when {
                 sym in setOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN") -> "Official Exchange"
                 sym in setOf("BTCUSD", "ETHUSD") -> "Spot REST"
@@ -263,6 +270,21 @@ enum class ProviderId(
                 supportedTimeframes = listOf("D1"),
                 supportedSymbols = listOf(
                     ProviderSourceSymbolSpec("SPOTBRENT", "PET.RBRTE.D", "نفت برنت اسپات اروپا (EIA FOB D1)", "Europe Brent Spot FOB (D1)")
+                )
+            ),
+            ProviderMethodSpec(
+                providerId = LOCAL_CSV,
+                methodCode = "METHOD_LOCAL_IMPORT_BATCH",
+                nameFa = "ورود تاریخچه محلی و دستی (CSV / EIA XLS / JSON / Manual)",
+                nameEn = "Local Historical Import & Manual OHLC (CSV / XLS / JSON)",
+                formulaFa = "واردسازی فایل‌های CSV، اکسل EIA RBRTEd.xls (BIFF8/XML/HTML)، JSON و ثبت دستی کندل با ثبت دسته و تاریخچه اصلاحات (No Image Uploads)",
+                formulaEn = "Audited import of CSV, EIA RBRTEd.xls, JSON, and manual OHLC rows with batch lineage & data corrections audit trail",
+                endpointProtocol = "Local Device / Verified Session POST /api/v1/import_candles.php",
+                persistenceRule = "UNIQUE(chart_id, provider_id, timeframe, open_time_utc) + data_import_batches & data_corrections",
+                supportedTimeframes = listOf("M15", "M30", "H1", "H4", "D1", "W1"),
+                supportedSymbols = listOf(
+                    ProviderSourceSymbolSpec("SPOTBRENT", "IMPORT:SPOTBRENT", "ورود فایل برنت / EIA XLS / CSV", "Brent Historical Import (CSV/XLS)"),
+                    ProviderSourceSymbolSpec("XAUUSD", "IMPORT:XAUUSD", "ورود تاریخچه طلا (CSV/JSON)", "Gold Historical Import (CSV/JSON)")
                 )
             )
         )

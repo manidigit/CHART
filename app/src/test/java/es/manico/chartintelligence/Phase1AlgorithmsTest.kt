@@ -382,7 +382,11 @@ class Phase1AlgorithmsTest {
         assertEquals("biquote", biquote.badgeLabel)
 
         val catalog = es.manico.chartintelligence.data.model.ProviderId.providerMethodCatalog
-        assertEquals(7, catalog.size)
+        assertEquals(8, catalog.size)
+
+        val localCsv = es.manico.chartintelligence.data.model.ProviderId.fromId("local_csv")
+        assertEquals(es.manico.chartintelligence.data.model.ProviderId.LOCAL_CSV, localCsv)
+        assertEquals("Imported Archive", localCsv.resolvePriceBasis("SPOTBRENT"))
 
         val stooq = es.manico.chartintelligence.data.model.ProviderId.fromId("stooq")
         assertEquals(es.manico.chartintelligence.data.model.ProviderId.STOOQ, stooq)

@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.40.1';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.40.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.41.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.41.0';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -121,6 +121,7 @@ export const DEFAULT_PREFS = {
   showFvg: false,
   showVolumeProfile: false,
   showPivotPoints: false,
+  pivotType: 'STANDARD',
   showFutureProjection: false,
   pitchforkVariant: 'original',
   indicatorCustomColors: {},
@@ -357,6 +358,22 @@ export const PROVIDER_METHODS_CATALOG = [
       { symbolCode: 'SPOTBRENT', providerTicker: 'EIA:RBRTE', titleFa: 'نفت برنت اسپات', titleEn: 'Brent Crude (Spot)', category: 'ENERGY', decimals: 3 },
     ],
   },
+  {
+    providerId: 'local_csv',
+    badgeLabel: 'Local Import',
+    titleFa: 'ورود تاریخچه محلی و دستی (CSV / EIA XLS / JSON / Manual)',
+    titleEn: 'Local Historical Import & Manual OHLC (CSV / XLS / JSON)',
+    methodType: 'LOCAL_BATCH_IMPORT',
+    requiresApiKey: false,
+    formulaFa: 'واردسازی فایل‌های CSV، اکسل EIA RBRTEd.xls (BIFF8/XML/HTML)، JSON و ثبت دستی کندل با ثبت دسته و تاریخچه اصلاحات (بدون ذخیره تصویر).',
+    formulaEn: 'Audited import of CSV, EIA RBRTEd.xls, JSON, and manual OHLC rows with batch lineage and data corrections log (no image uploads).',
+    supportedTimeframes: ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
+    storageKeyRule: 'UNIQUE(chart_id, provider_id, timeframe, open_time_utc) + data_import_batches',
+    symbols: [
+      { symbolCode: 'SPOTBRENT', providerTicker: 'IMPORT:SPOTBRENT', titleFa: 'ورود فایل برنت / EIA XLS / CSV', titleEn: 'Brent Historical Import (CSV/XLS)', category: 'ENERGY', decimals: 3 },
+      { symbolCode: 'XAUUSD', providerTicker: 'IMPORT:XAUUSD', titleFa: 'ورود تاریخچه طلا (CSV/JSON)', titleEn: 'Gold Historical Import (CSV/JSON)', category: 'METALS', decimals: 2 },
+    ],
+  },
 ];
 
 export function getAssetClass(symbolCode) {
@@ -426,15 +443,15 @@ function createDefaultSymbolEntry(symbolCode, decimals, activeProvider, allowedP
 
 const DEFAULT_SYMBOLS = [
   // 1. SPOTBRENT — Brent Crude (Spot)
-  createDefaultSymbolEntry('SPOTBRENT', 3, 'tvdatafeed', ['tvdatafeed', 'dukascopy', 'biquote', 'yahoo_finance', 'twelve_data', 'eia_brent_spot']),
+  createDefaultSymbolEntry('SPOTBRENT', 3, 'tvdatafeed', ['tvdatafeed', 'dukascopy', 'biquote', 'yahoo_finance', 'twelve_data', 'stooq', 'eia_brent_spot', 'local_csv']),
   // 2. ETHUSD — Ethereum / U.S. Dollar
-  createDefaultSymbolEntry('ETHUSD', 2, 'biquote', ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('ETHUSD', 2, 'biquote', ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed', 'local_csv']),
   // 3. BTCUSD — Bitcoin / U.S. Dollar
-  createDefaultSymbolEntry('BTCUSD', 2, 'biquote', ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed']),
+  createDefaultSymbolEntry('BTCUSD', 2, 'biquote', ['biquote', 'yahoo_finance', 'twelve_data', 'tvdatafeed', 'local_csv']),
   // 4. XAGUSD — Silver / U.S. Dollar
-  createDefaultSymbolEntry('XAGUSD', 3, 'biquote', ['biquote', 'twelve_data', 'yahoo_finance', 'dukascopy', 'tvdatafeed']),
+  createDefaultSymbolEntry('XAGUSD', 3, 'biquote', ['biquote', 'twelve_data', 'yahoo_finance', 'dukascopy', 'tvdatafeed', 'local_csv']),
   // 5. XAUUSD — Gold Spot / U.S. Dollar
-  createDefaultSymbolEntry('XAUUSD', 2, 'twelve_data', ['twelve_data', 'biquote', 'dukascopy', 'yahoo_finance', 'tvdatafeed']),
+  createDefaultSymbolEntry('XAUUSD', 2, 'twelve_data', ['twelve_data', 'biquote', 'dukascopy', 'yahoo_finance', 'tvdatafeed', 'local_csv']),
   // 6. SPX500USD — US SPX 500
   createDefaultSymbolEntry('SPX500USD', 2, 'yahoo_finance', ['yahoo_finance', 'tvdatafeed', 'twelve_data']),
   // 7. NDQ — US 100 Index (Nasdaq 100)
@@ -612,6 +629,7 @@ export function resolvePriceBasis(symbolCode = '', providerId = '') {
   if (prov === 'dukascopy') return 'Interbank Spot';
   if (prov === 'biquote') return 'CFD / MT5 Feed';
   if (prov === 'stooq') return 'EOD Historical';
+  if (prov === 'local_csv') return 'Imported Archive';
   if (prov === 'yahoo_finance') {
     if (['SPOTBRENT', 'USOIL', 'XAUUSD', 'XAGUSD', 'BRENT_FUTURES'].includes(sym)) {
       return 'Futures Ref';
@@ -686,7 +704,7 @@ function loadSymbols() {
           const def = DEFAULT_SYMBOLS.find((d) => d.symbolCode === item.symbolCode);
           const allowed = def
             ? def.allowedProviders
-            : ['tvdatafeed', 'dukascopy', 'twelve_data', 'yahoo_finance', 'stooq'];
+            : ['tvdatafeed', 'dukascopy', 'twelve_data', 'yahoo_finance', 'stooq', 'local_csv'];
           const activeProv = item.activeProvider || (def ? def.activeProvider : 'tvdatafeed');
           const lastFetch = Number(item.lastSuccessfulFetchMs || 0);
           byCode.set(item.symbolCode, {
@@ -972,6 +990,8 @@ export const state = {
   symbolExplorerSearchQuery: '',
   settingsSourceCategory: 'ALL',
   providerCatalogStats: [],
+  importBatches: [],
+  importStatusMessage: '',
 
   rightPanelWidth: Math.max(
     185,
@@ -1094,6 +1114,14 @@ export function syncIndicatorsAcrossTabsAndPrefs(sourceTab, skipSave = false) {
       tab.volumePaneRatio = vr;
     }
   }
+  if (sourceTab.pivotType !== undefined) {
+    const rawPt = String(sourceTab.pivotType || 'STANDARD').toUpperCase();
+    const validPt = ['STANDARD', 'FIBONACCI', 'CAMARILLA', 'WOODIE'].includes(rawPt) ? rawPt : 'STANDARD';
+    state.chartPreferences.pivotType = validPt;
+    for (const tab of state.openTabs) {
+      tab.pivotType = validPt;
+    }
+  }
   if (!skipSave) {
     savePreferences();
     saveOpenTabsToStorage();
@@ -1179,10 +1207,14 @@ export function getIndicatorColorPalette(prefs = state.chartPreferences) {
     // Category 3: Institutional Levels, Pivots & Volume Profile
     vwap: getColor('vwap'),
     pivotP: pivotColor,
-    pivotR1: shiftHexShade(pivotColor, 0.18, 0.05),
-    pivotR2: shiftHexShade(pivotColor, 0.36, 0.10),
-    pivotS1: shiftHexShade(pivotColor, -0.15, 0.05),
-    pivotS2: shiftHexShade(pivotColor, -0.30, 0.10),
+    pivotR1: shiftHexShade(pivotColor, 0.16, 0.05),
+    pivotR2: shiftHexShade(pivotColor, 0.28, 0.08),
+    pivotR3: shiftHexShade(pivotColor, 0.40, 0.10),
+    pivotR4: shiftHexShade(pivotColor, 0.52, 0.12),
+    pivotS1: shiftHexShade(pivotColor, -0.14, 0.05),
+    pivotS2: shiftHexShade(pivotColor, -0.26, 0.08),
+    pivotS3: shiftHexShade(pivotColor, -0.38, 0.10),
+    pivotS4: shiftHexShade(pivotColor, -0.48, 0.12),
     vrvpPoc: vrvpColor,
     vrvpVa: shiftHexShade(vrvpColor, 0.25, 0.08),
 
@@ -1350,6 +1382,7 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showFvg: Boolean(t.showFvg),
     showVolumeProfile: Boolean(t.showVolumeProfile),
     showPivotPoints: Boolean(t.showPivotPoints),
+    pivotType: String(t.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase(),
     showFutureProjection: Boolean(t.showFutureProjection),
     isMagnetMode: Boolean(t.isMagnetMode),
     activeDrawingColor:

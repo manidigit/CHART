@@ -510,11 +510,16 @@ object Phase2IndicatorsAlgorithm {
     }
 
     data class PivotPointsResult(
+        val variant: String = "STANDARD",
         val p: Double,
         val r1: Double,
         val r2: Double,
+        val r3: Double? = null,
+        val r4: Double? = null,
         val s1: Double,
-        val s2: Double
+        val s2: Double,
+        val s3: Double? = null,
+        val s4: Double? = null
     )
 
     data class FutureProjectedCandle(
@@ -534,30 +539,38 @@ object Phase2IndicatorsAlgorithm {
     }
 
     /**
-     * Standard Floor Pivot Points (P, R1, R2, S1, S2) computed from the prior session/period HLC (IND-01).
+     * Multi-Variant Pivot Points (Standard, Fibonacci, Camarilla, Woodie) computed from prior session HLC and current session Open (IND-01).
      */
     fun computePivotPoints(
         candles: List<CandleBar>,
         timeframe: String = "M15",
-        symbolCode: String = "XAUUSD"
+        symbolCode: String = "XAUUSD",
+        pivotType: String = "STANDARD"
     ): PivotPointsResult? {
         if (candles.size < 2) return null
         val tf = timeframe.uppercase()
+        val rawVariant = pivotType.trim().uppercase()
+        val variant = if (rawVariant in setOf("STANDARD", "FIBONACCI", "CAMARILLA", "WOODIE")) rawVariant else "STANDARD"
         var high = Double.NEGATIVE_INFINITY
         var low = Double.POSITIVE_INFINITY
         var close = candles.last().close.toDouble()
+        var currOpen = candles.last().open.toDouble()
 
         if (tf == "D1" || tf == "W1") {
             val prevBar = candles[candles.size - 2]
+            val currBar = candles.last()
             high = prevBar.high.toDouble()
             low = prevBar.low.toDouble()
             close = prevBar.close.toDouble()
+            currOpen = currBar.open.toDouble()
         } else {
             val lastDayKey = UtcTimeAnchorAlgorithm.getSessionDayKey(candles.last().openTimeUtcMillis, symbolCode)
             var prevDayKey: String? = null
             for (i in candles.lastIndex downTo 0) {
                 val dk = UtcTimeAnchorAlgorithm.getSessionDayKey(candles[i].openTimeUtcMillis, symbolCode)
-                if (dk != lastDayKey) {
+                if (dk == lastDayKey) {
+                    currOpen = candles[i].open.toDouble()
+                } else {
                     if (prevDayKey == null) {
                         prevDayKey = dk
                         close = candles[i].close.toDouble()
@@ -578,19 +591,75 @@ object Phase2IndicatorsAlgorithm {
                     low = min(low, candles[i].low.toDouble())
                     close = candles[i].close.toDouble()
                 }
+                currOpen = candles[winEnd].open.toDouble()
             }
         }
 
         if (!high.isFinite() || !low.isFinite() || high < low) return null
-        val p = (high + low + close) / 3.0
         val range = high - low
-        return PivotPointsResult(
-            p = p,
-            r1 = 2.0 * p - low,
-            s1 = 2.0 * p - high,
-            r2 = p + range,
-            s2 = p - range
-        )
+
+        return when (variant) {
+            "FIBONACCI" -> {
+                val p = (high + low + close) / 3.0
+                PivotPointsResult(
+                    variant = variant,
+                    p = p,
+                    r1 = p + 0.382 * range,
+                    r2 = p + 0.618 * range,
+                    r3 = p + 1.0 * range,
+                    r4 = null,
+                    s1 = p - 0.382 * range,
+                    s2 = p - 0.618 * range,
+                    s3 = p - 1.0 * range,
+                    s4 = null
+                )
+            }
+            "CAMARILLA" -> {
+                val p = (high + low + close) / 3.0
+                PivotPointsResult(
+                    variant = variant,
+                    p = p,
+                    r1 = close + range * 1.1 / 12.0,
+                    r2 = close + range * 1.1 / 6.0,
+                    r3 = close + range * 1.1 / 4.0,
+                    r4 = close + range * 1.1 / 2.0,
+                    s1 = close - range * 1.1 / 12.0,
+                    s2 = close - range * 1.1 / 6.0,
+                    s3 = close - range * 1.1 / 4.0,
+                    s4 = close - range * 1.1 / 2.0
+                )
+            }
+            "WOODIE" -> {
+                val p = (high + low + 2.0 * currOpen) / 4.0
+                PivotPointsResult(
+                    variant = variant,
+                    p = p,
+                    r1 = 2.0 * p - low,
+                    r2 = p + range,
+                    r3 = high + 2.0 * (p - low),
+                    r4 = null,
+                    s1 = 2.0 * p - high,
+                    s2 = p - range,
+                    s3 = low - 2.0 * (high - p),
+                    s4 = null
+                )
+            }
+            else -> {
+                val p = (high + low + close) / 3.0
+                PivotPointsResult(
+                    variant = "STANDARD",
+                    p = p,
+                    r1 = 2.0 * p - low,
+                    r2 = p + range,
+                    r3 = high + 2.0 * (p - low),
+                    r4 = null,
+                    s1 = 2.0 * p - high,
+                    s2 = p - range,
+                    s3 = low - 2.0 * (high - p),
+                    s4 = null
+                )
+            }
+        }
     }
 
     /**

@@ -3,6 +3,7 @@ package es.manico.chartintelligence.data.repository
 import android.content.Context
 import android.content.SharedPreferences
 import es.manico.chartintelligence.R
+import es.manico.chartintelligence.algorithms.CandleImportAlgorithm
 import es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm
 import es.manico.chartintelligence.algorithms.PasswordHashAlgorithm
 import es.manico.chartintelligence.algorithms.TimeframeAggregatorAlgorithm
@@ -36,6 +37,7 @@ import okhttp3.RequestBody.Companion.toRequestBody
 import org.json.JSONArray
 import org.json.JSONObject
 import java.math.BigDecimal
+import java.util.Base64
 import java.util.concurrent.TimeUnit
 
 data class ServerOwnerStatus(
@@ -46,12 +48,13 @@ data class ServerOwnerStatus(
 
 data class SystemStatusDto(
     val isHealthy: Boolean = false,
-    val version: String = "1.39.0",
+    val version: String = "1.41.0",
     val serverTimeUtc: String = "",
     val dbConnected: Boolean = false,
     val dbVersion: String = "MariaDB",
     val totalCandles: Long = 0L,
-    val registeredOwner: Boolean = false
+    val registeredOwner: Boolean = false,
+    val phpRuntimeSummary: String = ""
 )
 
 data class LiveQuoteResult(
@@ -59,6 +62,31 @@ data class LiveQuoteResult(
     val mode: String, // "LIVE_TICK" | "LAST_CLOSED_FALLBACK"
     val updatedAtUtc: String,
     val formingBar: CandleBar? = null
+)
+
+data class ImportBatchDto(
+    val id: Long,
+    val symbolCode: String,
+    val providerId: String,
+    val timeframe: String,
+    val sourceType: String,
+    val fileName: String,
+    val qualityStatus: String,
+    val rowsInserted: Int,
+    val rowsCorrected: Int,
+    val importedAtUtc: String
+)
+
+data class HistoricalImportResult(
+    val ok: Boolean,
+    val effectiveTimeframe: String,
+    val importedCount: Int,
+    val rowsInserted: Int,
+    val rowsCorrected: Int,
+    val forcedDailyOnly: Boolean,
+    val serverSynced: Boolean,
+    val errorMessage: String? = null,
+    val candles: List<CandleBar> = emptyList()
 )
 
 /**
@@ -691,7 +719,8 @@ class WorkspaceRepository(context: Context) {
                                     ProviderId.TVDATAFEED,
                                     ProviderId.BIQUOTE,
                                     ProviderId.DUKASCOPY,
-                                    ProviderId.STOOQ
+                                    ProviderId.STOOQ,
+                                    ProviderId.LOCAL_CSV
                                 ),
                                 timeframe = if (tf in AppConfig.SUPPORTED_TIMEFRAMES) tf else "M15"
                             )
@@ -1511,7 +1540,8 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.TWELVE_DATA,
                     ProviderId.STOOQ,
-                    ProviderId.EIA_BRENT_SPOT
+                    ProviderId.EIA_BRENT_SPOT,
+                    ProviderId.LOCAL_CSV
                 ),
                 timeframe = "M15"
             ),
@@ -1581,7 +1611,8 @@ class WorkspaceRepository(context: Context) {
                     ProviderId.DUKASCOPY,
                     ProviderId.YAHOO_FINANCE,
                     ProviderId.TVDATAFEED,
-                    ProviderId.STOOQ
+                    ProviderId.STOOQ,
+                    ProviderId.LOCAL_CSV
                 ),
                 timeframe = "M15"
             ),
@@ -1869,14 +1900,25 @@ class WorkspaceRepository(context: Context) {
                             val dbObj = data.optJSONObject("database")
                             val isDbConn = dbObj?.optBoolean("connected", false) ?: false
                             val dbVer = dbObj?.optString("version", "MariaDB") ?: "MariaDB"
+                            val phpObj = data.optJSONObject("php_runtime")
+                            val phpSummary = if (phpObj != null) {
+                                val pv = phpObj.optString("php_version", "")
+                                val mem = phpObj.optString("memory_limit", "")
+                                val extObj = phpObj.optJSONObject("extensions")
+                                val exts = listOf("pdo_mysql", "curl", "openssl", "mbstring", "json")
+                                    .filter { extObj?.optBoolean(it, false) == true }
+                                    .joinToString(",")
+                                "PHP $pv · mem $mem · ext[$exts]".trim()
+                            } else ""
                             SystemStatusDto(
                                 isHealthy = data.optString("status") == "healthy",
-                                version = data.optString("version", "1.38.0"),
+                                version = data.optString("version", "1.41.0"),
                                 serverTimeUtc = data.optString("server_time_utc", ""),
                                 dbConnected = isDbConn,
                                 dbVersion = dbVer,
                                 totalCandles = data.optLong("total_candles", 0L),
-                                registeredOwner = data.optBoolean("registered_owner", false)
+                                registeredOwner = data.optBoolean("registered_owner", false),
+                                phpRuntimeSummary = phpSummary
                             )
                         } else null
                     } else null
@@ -1886,12 +1928,13 @@ class WorkspaceRepository(context: Context) {
         }
         SystemStatusDto(
             isHealthy = false,
-            version = "1.38.0",
+            version = "1.41.0",
             serverTimeUtc = "Offline",
             dbConnected = false,
             dbVersion = "Offline (Local Cache)",
             totalCandles = 0L,
-            registeredOwner = isOwnerAccountRegistered()
+            registeredOwner = isOwnerAccountRegistered(),
+            phpRuntimeSummary = ""
         )
     }
 
@@ -1974,6 +2017,7 @@ class WorkspaceRepository(context: Context) {
                         showFvg = obj.optBoolean("showFvg", false),
                         showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
                         showPivotPoints = obj.optBoolean("showPivotPoints", false),
+                        pivotType = obj.optString("pivotType", "STANDARD").uppercase(),
                         showFutureProjection = obj.optBoolean("showFutureProjection", false),
                         pitchforkVariant = obj.optString("pitchforkVariant", "original"),
                         isLogScale = obj.optBoolean("isLogScale", false),
@@ -2040,6 +2084,7 @@ class WorkspaceRepository(context: Context) {
                 .put("showFvg", t.showFvg)
                 .put("showVolumeProfile", t.showVolumeProfile)
                 .put("showPivotPoints", t.showPivotPoints)
+                .put("pivotType", t.pivotType)
                 .put("showFutureProjection", t.showFutureProjection)
                 .put("pitchforkVariant", t.pitchforkVariant)
                 .put("isLogScale", t.isLogScale)
@@ -2155,6 +2200,7 @@ class WorkspaceRepository(context: Context) {
                 .put("showFvg", refTab.showFvg)
                 .put("showVolumeProfile", refTab.showVolumeProfile)
                 .put("showPivotPoints", refTab.showPivotPoints)
+                .put("pivotType", refTab.pivotType)
                 .put("showFutureProjection", refTab.showFutureProjection)
                 .put("pitchforkVariant", refTab.pitchforkVariant)
         }
@@ -2202,6 +2248,7 @@ class WorkspaceRepository(context: Context) {
                 .put("showFvg", t.showFvg)
                 .put("showVolumeProfile", t.showVolumeProfile)
                 .put("showPivotPoints", t.showPivotPoints)
+                .put("pivotType", t.pivotType)
                 .put("showFutureProjection", t.showFutureProjection)
                 .put("pitchforkVariant", t.pitchforkVariant)
                 .put("isLogScale", t.isLogScale)
@@ -2473,6 +2520,7 @@ class WorkspaceRepository(context: Context) {
                             showFvg = obj.optBoolean("showFvg", prefsJson?.optBoolean("showFvg", false) ?: false),
                             showVolumeProfile = obj.optBoolean("showVolumeProfile", prefsJson?.optBoolean("showVolumeProfile", false) ?: false),
                             showPivotPoints = obj.optBoolean("showPivotPoints", prefsJson?.optBoolean("showPivotPoints", false) ?: false),
+                            pivotType = obj.optString("pivotType", prefsJson?.optString("pivotType", "STANDARD") ?: "STANDARD").uppercase(),
                             showFutureProjection = obj.optBoolean("showFutureProjection", prefsJson?.optBoolean("showFutureProjection", false) ?: false),
                             pitchforkVariant = obj.optString("pitchforkVariant", prefsJson?.optString("pitchforkVariant", "original") ?: "original"),
                             isLogScale = obj.optBoolean("isLogScale", false),
@@ -2498,6 +2546,241 @@ class WorkspaceRepository(context: Context) {
 
             changed
         }.getOrDefault(false)
+    }
+
+    suspend fun importHistoricalCandlesToLocalAndServer(
+        symbolCode: String,
+        providerId: String,
+        timeframe: String,
+        qualityStatus: String,
+        rawBytes: ByteArray,
+        fileName: String,
+        mimeType: String = ""
+    ): HistoricalImportResult = withContext(Dispatchers.IO) {
+        val cleanSym = symbolCode.trim().uppercase()
+        val prov = ProviderId.fromId(providerId)
+        val parsed = CandleImportAlgorithm.parseHistoricalBytes(
+            bytes = rawBytes,
+            fileName = fileName,
+            requestedTf = timeframe,
+            mimeType = mimeType
+        )
+        if (!parsed.ok || parsed.candles.isEmpty()) {
+            return@withContext HistoricalImportResult(
+                ok = false,
+                effectiveTimeframe = parsed.effectiveTimeframe,
+                importedCount = 0,
+                rowsInserted = 0,
+                rowsCorrected = 0,
+                forcedDailyOnly = parsed.forcedDailyOnly,
+                serverSynced = false,
+                errorMessage = parsed.errorCode ?: "PARSE_FAILED"
+            )
+        }
+
+        val effTf = parsed.effectiveTimeframe
+        val tfKey = "${cleanSym}_${prov.id}_$effTf"
+        val configuredLimit = loadChartPreferences().candleFetchLimit.coerceIn(500, 5000)
+        val existing = candleMemoryStore[tfKey] ?: loadCandlesFromPrefs(tfKey, effTf)
+        val merged = CandleValidatorAlgorithm.mergeIdempotent(
+            existing = existing,
+            incoming = parsed.candles,
+            timeframe = effTf
+        ).takeLast(configuredLimit)
+        candleMemoryStore[tfKey] = merged
+        saveCandlesToPrefs(tfKey, merged, configuredLimit)
+
+        var serverSynced = false
+        var rowsInserted = parsed.candles.size
+        var rowsCorrected = 0
+        var finalCandles = merged
+        val token = getSessionToken()
+        if (token.isNotBlank()) {
+            runCatching {
+                val payload = JSONObject().apply {
+                    put("session_token", token)
+                    put("action", "import")
+                    put("symbol", cleanSym)
+                    put("provider", prov.id)
+                    put("timeframe", effTf)
+                    put("quality_status", qualityStatus)
+                    put("file_name", fileName)
+                    put("mime_type", mimeType)
+                    put("file_base64", Base64.getEncoder().encodeToString(rawBytes))
+                }
+                val req = Request.Builder()
+                    .url("${AppConfig.API_BASE_URL}import_candles.php")
+                    .header("Authorization", "Bearer $token")
+                    .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val root = JSONObject(resp.body?.string().orEmpty())
+                        if (root.optBoolean("ok", false)) {
+                            serverSynced = true
+                            val data = root.optJSONObject("data")
+                            val batch = data?.optJSONObject("batch")
+                            if (batch != null) {
+                                rowsInserted = batch.optInt("rows_inserted", rowsInserted)
+                                rowsCorrected = batch.optInt("rows_corrected", 0)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        HistoricalImportResult(
+            ok = true,
+            effectiveTimeframe = effTf,
+            importedCount = parsed.candles.size,
+            rowsInserted = rowsInserted,
+            rowsCorrected = rowsCorrected,
+            forcedDailyOnly = parsed.forcedDailyOnly,
+            serverSynced = serverSynced,
+            candles = finalCandles
+        )
+    }
+
+    suspend fun importManualCandleToLocalAndServer(
+        symbolCode: String,
+        providerId: String,
+        timeframe: String,
+        qualityStatus: String,
+        dateTimeInput: String,
+        open: Double,
+        high: Double,
+        low: Double,
+        close: Double,
+        volume: Double
+    ): HistoricalImportResult = withContext(Dispatchers.IO) {
+        val cleanSym = symbolCode.trim().uppercase()
+        val prov = ProviderId.fromId(providerId)
+        val effTf = timeframe.trim().uppercase().let {
+            if (it in AppConfig.SUPPORTED_TIMEFRAMES) it else "D1"
+        }
+        val candle = CandleImportAlgorithm.buildManualCandle(
+            dateTimeInput = dateTimeInput,
+            open = open,
+            high = high,
+            low = low,
+            close = close,
+            volume = volume,
+            timeframe = effTf
+        ) ?: return@withContext HistoricalImportResult(
+            ok = false,
+            effectiveTimeframe = effTf,
+            importedCount = 0,
+            rowsInserted = 0,
+            rowsCorrected = 0,
+            forcedDailyOnly = false,
+            serverSynced = false,
+            errorMessage = "INVALID_MANUAL_OHLC"
+        )
+
+        val tfKey = "${cleanSym}_${prov.id}_$effTf"
+        val configuredLimit = loadChartPreferences().candleFetchLimit.coerceIn(500, 5000)
+        val existing = candleMemoryStore[tfKey] ?: loadCandlesFromPrefs(tfKey, effTf)
+        val merged = CandleValidatorAlgorithm.mergeIdempotent(
+            existing = existing,
+            incoming = listOf(candle),
+            timeframe = effTf
+        ).takeLast(configuredLimit)
+        candleMemoryStore[tfKey] = merged
+        saveCandlesToPrefs(tfKey, merged, configuredLimit)
+
+        var serverSynced = false
+        var rowsInserted = 1
+        var rowsCorrected = 0
+        val token = getSessionToken()
+        if (token.isNotBlank()) {
+            runCatching {
+                val barObj = JSONObject().apply {
+                    put("open_time_utc_ms", candle.openTimeUtcMillis)
+                    put("open", candle.open.toPlainString())
+                    put("high", candle.high.toPlainString())
+                    put("low", candle.low.toPlainString())
+                    put("close", candle.close.toPlainString())
+                    put("volume", candle.volume.toPlainString())
+                }
+                val payload = JSONObject().apply {
+                    put("session_token", token)
+                    put("action", "manual")
+                    put("symbol", cleanSym)
+                    put("provider", prov.id)
+                    put("timeframe", effTf)
+                    put("quality_status", qualityStatus)
+                    put("file_name", "manual_ohlc_entry")
+                    put("manual_candles", JSONArray().put(barObj))
+                }
+                val req = Request.Builder()
+                    .url("${AppConfig.API_BASE_URL}import_candles.php")
+                    .header("Authorization", "Bearer $token")
+                    .post(payload.toString().toRequestBody("application/json; charset=utf-8".toMediaType()))
+                    .build()
+                httpClient.newCall(req).execute().use { resp ->
+                    if (resp.isSuccessful) {
+                        val root = JSONObject(resp.body?.string().orEmpty())
+                        if (root.optBoolean("ok", false)) {
+                            serverSynced = true
+                            val batch = root.optJSONObject("data")?.optJSONObject("batch")
+                            if (batch != null) {
+                                rowsInserted = batch.optInt("rows_inserted", 1)
+                                rowsCorrected = batch.optInt("rows_corrected", 0)
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        HistoricalImportResult(
+            ok = true,
+            effectiveTimeframe = effTf,
+            importedCount = 1,
+            rowsInserted = rowsInserted,
+            rowsCorrected = rowsCorrected,
+            forcedDailyOnly = false,
+            serverSynced = serverSynced,
+            candles = merged
+        )
+    }
+
+    suspend fun fetchImportBatches(limit: Int = 20): List<ImportBatchDto> = withContext(Dispatchers.IO) {
+        val token = getSessionToken()
+        runCatching {
+            val reqBuilder = Request.Builder()
+                .url("${AppConfig.API_BASE_URL}import_candles.php?action=batches&limit=$limit")
+                .get()
+            if (token.isNotBlank()) {
+                reqBuilder.header("Authorization", "Bearer $token")
+            }
+            httpClient.newCall(reqBuilder.build()).execute().use { resp ->
+                if (!resp.isSuccessful) return@withContext emptyList()
+                val root = JSONObject(resp.body?.string().orEmpty())
+                if (!root.optBoolean("ok", false)) return@withContext emptyList()
+                val arr = root.optJSONObject("data")?.optJSONArray("batches") ?: return@withContext emptyList()
+                val list = ArrayList<ImportBatchDto>(arr.length())
+                for (i in 0 until arr.length()) {
+                    val b = arr.optJSONObject(i) ?: continue
+                    list.add(
+                        ImportBatchDto(
+                            id = b.optLong("id", 0L),
+                            symbolCode = b.optString("symbol_code", ""),
+                            providerId = b.optString("provider_id", ""),
+                            timeframe = b.optString("timeframe", ""),
+                            sourceType = b.optString("source_type", ""),
+                            fileName = b.optString("file_name", ""),
+                            qualityStatus = b.optString("quality_status", "OFFICIAL"),
+                            rowsInserted = b.optInt("rows_inserted", 0),
+                            rowsCorrected = b.optInt("rows_corrected", 0),
+                            importedAtUtc = b.optString("imported_at_utc", "")
+                        )
+                    )
+                }
+                list
+            }
+        }.getOrDefault(emptyList())
     }
 }
 

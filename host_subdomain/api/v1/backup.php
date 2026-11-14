@@ -181,6 +181,15 @@ if ($action === 'export') {
         ApiEnvelope::sendError('ENCRYPT_FAILED', 'error_backup_crypto_unavailable', 500);
     }
 
+    if ($pdo !== null) {
+        try {
+            $bStmt = $pdo->prepare("INSERT INTO backup_records (username, action_type, format_version, checksum_sha256, size_bytes) VALUES (:u, 'EXPORT', 'ci_encrypted_backup_v1', :cs, :sz)");
+            $bStmt->execute([':u' => $username, ':cs' => $checksum, ':sz' => strlen($ciphertext)]);
+            $aStmt = $pdo->prepare("INSERT INTO audit_logs (actor_username, event_type, entity_type, entity_id, details_json) VALUES (:u, 'BACKUP_EXPORT', 'workspace', :u2, :d)");
+            $aStmt->execute([':u' => $username, ':u2' => $username, ':d' => json_encode(['checksum_sha256' => $checksum, 'size_bytes' => strlen($ciphertext)], JSON_UNESCAPED_SLASHES)]);
+        } catch (\Throwable) {}
+    }
+
     ApiEnvelope::sendSuccess([
         'format' => 'ci_encrypted_backup_v1',
         'cipher' => 'AES-256-GCM',
@@ -267,6 +276,16 @@ if ($action === 'restore') {
         'workspace' => $workspaceData,
         'updated_at_utc' => $nowIso,
     ], JSON_UNESCAPED_UNICODE), LOCK_EX);
+
+    if ($pdo !== null) {
+        try {
+            $cs = hash('sha256', $plaintext);
+            $bStmt = $pdo->prepare("INSERT INTO backup_records (username, action_type, format_version, checksum_sha256, size_bytes) VALUES (:u, 'RESTORE', 'ci_encrypted_backup_v1', :cs, :sz)");
+            $bStmt->execute([':u' => $username, ':cs' => $cs, ':sz' => strlen($ciphertext)]);
+            $aStmt = $pdo->prepare("INSERT INTO audit_logs (actor_username, event_type, entity_type, entity_id, details_json) VALUES (:u, 'BACKUP_RESTORE', 'workspace', :u2, :d)");
+            $aStmt->execute([':u' => $username, ':u2' => $username, ':d' => json_encode(['checksum_sha256' => $cs, 'saved_in_database' => $savedInDb], JSON_UNESCAPED_SLASHES)]);
+        } catch (\Throwable) {}
+    }
 
     ApiEnvelope::sendSuccess([
         'restored' => true,

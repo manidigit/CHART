@@ -130,6 +130,7 @@
   "provider_eia_brent_spot": "EIA Europe Brent Spot FOB (مرجع رسمی D1)",
   "provider_yahoo_finance": "Yahoo Finance v8 (اولویت اول سهام آمریکا و شاخص‌ها)",
   "provider_stooq": "Stooq EOD (آرشیو تاریخی چنددهه‌ای D1/W1)",
+  "provider_local_csv": "ورود تاریخچه محلی و دستی (CSV / EIA XLS / JSON)",
   "settings_algo_params_section": "پارامترهای فنی و ظرفیت تاریخچه",
   "settings_param_fetch_limit": "حداکثر کندل‌های دریافتی و ذخیره‌شده (تا ۵۰۰۰ کندل)",
   "nav_analysis": "پیش‌بینی",
@@ -138,7 +139,7 @@
   "settings_group_sources": "منبع داده و نمادها",
   "settings_group_params": "مقیاس و آپشن‌های چارت",
   "settings_group_about": "درباره و سلامت سرور",
-  "settings_about_version": "CHART Intelligence · نسخه ۱.۳۹.۰ (ابزارهای حرفه‌ای، اندیکاتورها، کیل‌زون‌ها، داده‌های زنده و پشتیبان رمزنگاری‌شده)",
+  "settings_about_version": "CHART Intelligence · نسخه ۱.۴۱.۰ (پیوت ۴گانه، ورود آرشیو تاریخی، سلامت PHP، ممیزی گپ و پشتیبان رمزنگاری‌شده)",
   "settings_about_desc": "همگام‌سازی خودکار دوطرفه کندل‌ها، خطوط ترسیم، تب‌ها و تنظیمات بین وب و اندروید از طریق هسته مرکزی سرور.",
   "settings_sources_subtitle": "تعیین منبع دریافت داده (TradingView، biquote، Twelve Data، Dukascopy، Yahoo، Stooq، EIA) و حضور در واچ‌لیست.",
   "settings_group_colors": "رنگ‌بندی کندل‌ها و خطوط ترسیم",
@@ -311,5 +312,14 @@
   "draw_tool_fib_speed_fan": "بادبزن سرعت فیبو",
   "draw_tool_abcd_pattern": "الگوی ABCD",
   "draw_tool_xabcd_pattern": "هارمونیک XABCD",
-  "draw_tool_head_shoulders": "الگوی سر و شانه"
+  "draw_tool_head_shoulders": "الگوی سر و شانه",
+  "settings_import_title": "ورود تاریخچه و اصلاح دستی کندل (CSV / EIA XLS / JSON)",
+  "settings_import_subtitle": "پشتیبانی از CSV، اکسل EIA RBRTEd.xls (BIFF8/XML/HTML)، DataHub (فقط D1) و JSON. آپلود تصویر کاملاً مسدود است.",
+  "settings_import_upload_btn": "پردازش و ورود فایل",
+  "settings_manual_ohlc_title": "ثبت / اصلاح دستی کندل (Manual OHLC)",
+  "settings_manual_ohlc_btn": "ثبت کندل",
+  "import_batches_empty": "هنوز دسته‌ای از تاریخچه وارد نشده است.",
+  "error_image_upload_forbidden": "آپلود تصویر به عنوان تاریخچه قیمت مجاز نیست (No-Image-Storage Policy).",
+  "error_import_parse_failed": "پردازش فایل تاریخچه ناموفق بود.",
+  "status_import_completed": "دسته ورود تاریخچه با موفقیت ثبت و ممیزی شد."
 }

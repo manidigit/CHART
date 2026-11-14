@@ -5,8 +5,8 @@ import {
   escapeHtml,
   getLocalByokKeys,
   getInstrumentSpec,
-} from '../core/store.js?v=1.40.1';
-import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.40.1';
+} from '../core/store.js?v=1.41.0';
+import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.41.0';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -368,6 +368,22 @@ export function renderSettingsModal(i18n) {
             <div style="color: var(--text-muted); font-size: 10px;">${isFa ? 'ساعت سرور UTC' : 'Server UTC'}</div>
             <div class="ltr-num" style="font-weight: 600; color: var(--text);">${serverUtc}</div>
           </div>
+          ${(() => {
+            const rt = sys && sys.php_runtime ? sys.php_runtime : null;
+            if (!rt) return '';
+            const exts = rt.extensions && typeof rt.extensions === 'object'
+              ? Object.keys(rt.extensions).filter((k) => rt.extensions[k]).join(', ')
+              : '';
+            const phpStr = `PHP ${escapeHtml(String(rt.php_version || '8.x'))} · mem ${escapeHtml(String(rt.memory_limit || '-'))} · max ${escapeHtml(String(rt.max_execution_time || '-'))}s`;
+            const upStr = `upload ${escapeHtml(String(rt.upload_max_filesize || '-'))} / post ${escapeHtml(String(rt.post_max_size || '-'))}`;
+            return `
+              <div style="background: var(--card-bg); padding: 6px 10px; border-radius: 6px; border: 1px solid var(--border); grid-column: 1 / -1;">
+                <div style="color: var(--text-muted); font-size: 10px;">PHP Runtime Diagnostics (§4.1)</div>
+                <div class="ltr-num" style="font-weight: 600; color: var(--text-strong);">${phpStr} · ${upStr}</div>
+                ${exts ? `<div class="ltr-num" style="color: var(--bull); font-size: 10px; margin-top: 2px;">ext[${escapeHtml(exts)}]</div>` : ''}
+              </div>
+            `;
+          })()}
         </div>
         ${(() => {
           const activeTabObj = state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0];
@@ -461,11 +477,118 @@ export function renderSettingsModal(i18n) {
     </details>
   `;
 
+  const importSymbolOptions = state.symbols
+    .map((s) => `<option value="${escapeHtml(s.symbolCode)}">${escapeHtml(s.symbolCode)}</option>`)
+    .join('');
+
+  const importBatchesListHtml = Array.isArray(state.importBatches) && state.importBatches.length > 0
+    ? state.importBatches
+        .slice(0, 8)
+        .map(
+          (b) => `
+            <div class="row-between" style="padding: 6px 8px; border-radius: 6px; border: 1px solid var(--border); background: var(--card-bg); font-size: 11px; gap: 8px; flex-wrap: wrap;">
+              <div>
+                <strong class="ltr-num">${escapeHtml(String(b.symbol_code || ''))}</strong>
+                <span class="ltr-num" style="color: var(--primary);">· ${escapeHtml(String(b.provider_id || ''))} · ${escapeHtml(String(b.timeframe || ''))}</span>
+                <span style="color: var(--text-muted);">(${escapeHtml(String(b.source_type || ''))})</span>
+                <div class="ltr-num" style="font-size: 10px; color: var(--text-muted);">${escapeHtml(String(b.file_name || ''))} · ${escapeHtml(String(b.imported_at_utc || ''))}</div>
+              </div>
+              <div class="ltr-num" style="font-weight: 700; color: var(--bull);">
+                +${Number(b.rows_inserted || 0)} / ~${Number(b.rows_corrected || 0)} corr
+              </div>
+            </div>
+          `
+        )
+        .join('')
+    : `<div style="font-size: 11px; color: var(--text-muted);">${i18n.t('import_batches_empty') || (isFa ? 'هنوز دسته‌ای از تاریخچه وارد نشده است.' : 'No historical import batches recorded yet.')}</div>`;
+
+  const historicalImportCard = `
+    <details class="tv-accordion">
+      <summary>
+        <span>📥 ${i18n.t('settings_import_title') || (isFa ? 'ورود تاریخچه و اصلاح دستی کندل (CSV / EIA XLS / JSON)' : 'Historical Data Import & Manual OHLC (CSV / XLS / JSON)')}</span>
+      </summary>
+      <div class="tv-accordion-body" style="padding-top: 8px;">
+        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
+          ${i18n.t('settings_import_subtitle') || (isFa ? 'پشتیبانی از CSV، اکسل EIA RBRTEd.xls (BIFF8/XML/HTML)، DataHub 2-col (فقط D1) و JSON. آپلود تصویر کاملاً مسدود است.' : 'Supports CSV, EIA RBRTEd.xls (BIFF8/XML/HTML), DataHub 2-column daily CSV (forced D1), and JSON. Image uploads are strictly rejected.')}
+        </div>
+        ${
+          state.importStatusMessage
+            ? `<div class="ltr-num" style="font-size: 11px; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; background: rgba(41,98,255,0.12); border: 1px solid var(--primary); color: var(--text-strong);">${escapeHtml(state.importStatusMessage)}</div>`
+            : ''
+        }
+        <form id="historical-import-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px; margin-bottom: 10px;">
+          <div>
+            <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">Symbol</label>
+            <select id="historical-import-symbol" class="input-field ltr-num" style="height: 32px; font-size: 11.5px;">${importSymbolOptions}</select>
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">Source / Provider</label>
+            <select id="historical-import-provider" class="input-field ltr-num" style="height: 32px; font-size: 11.5px;">
+              <option value="local_csv">local_csv</option>
+              <option value="eia_brent_spot">eia_brent_spot</option>
+              <option value="stooq">stooq</option>
+              <option value="tvdatafeed">tvdatafeed</option>
+            </select>
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">Timeframe</label>
+            <select id="historical-import-tf" class="input-field ltr-num" style="height: 32px; font-size: 11.5px;">
+              <option value="D1">D1</option>
+              <option value="M15">M15</option>
+              <option value="M30">M30</option>
+              <option value="H1">H1</option>
+              <option value="H4">H4</option>
+              <option value="W1">W1</option>
+            </select>
+          </div>
+          <div>
+            <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">Quality Status</label>
+            <select id="historical-import-quality" class="input-field ltr-num" style="height: 32px; font-size: 11.5px;">
+              <option value="OFFICIAL">OFFICIAL</option>
+              <option value="VERIFIED">VERIFIED</option>
+              <option value="CORRECTED">CORRECTED</option>
+            </select>
+          </div>
+          <div style="grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
+            <input id="historical-import-file" type="file" accept=".csv,.xls,.json,.txt,text/csv,application/vnd.ms-excel,application/json" class="input-field" style="flex: 1; min-width: 200px; font-size: 11px; padding: 4px;" required />
+            <button type="submit" class="btn btn-sm btn-primary" data-testid="upload_historical_import_btn">
+              📥 ${i18n.t('settings_import_upload_btn') || (isFa ? 'پردازش و ورود فایل' : 'Import File')}
+            </button>
+          </div>
+        </form>
+
+        <form id="manual-ohlc-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; padding-top: 8px; border-top: 1px dashed var(--border); margin-bottom: 10px;">
+          <div style="grid-column: 1 / -1; font-size: 11px; font-weight: 700; color: var(--text-strong);">
+            ${i18n.t('settings_manual_ohlc_title') || (isFa ? 'ثبت / اصلاح دستی یک کندل (Manual OHLC Entry)' : 'Manual OHLC Entry / Correction')}
+          </div>
+          <input id="manual-ohlc-datetime" type="text" class="input-field ltr-num" style="grid-column: span 2; height: 30px; font-size: 11px;" placeholder="2026-11-13 or 2026-11-13 14:00" required />
+          <input id="manual-ohlc-open" type="number" step="any" class="input-field ltr-num" style="height: 30px; font-size: 11px;" placeholder="Open" required />
+          <input id="manual-ohlc-high" type="number" step="any" class="input-field ltr-num" style="height: 30px; font-size: 11px;" placeholder="High" required />
+          <input id="manual-ohlc-low" type="number" step="any" class="input-field ltr-num" style="height: 30px; font-size: 11px;" placeholder="Low" required />
+          <input id="manual-ohlc-close" type="number" step="any" class="input-field ltr-num" style="height: 30px; font-size: 11px;" placeholder="Close" required />
+          <input id="manual-ohlc-volume" type="number" step="any" min="0" class="input-field ltr-num" style="height: 30px; font-size: 11px;" placeholder="Vol (0)" value="0" />
+          <button type="submit" class="btn btn-sm" data-testid="submit_manual_ohlc_btn">
+            ✓ ${i18n.t('settings_manual_ohlc_btn') || (isFa ? 'ثبت کندل' : 'Save Bar')}
+          </button>
+        </form>
+
+        <div class="row-between" style="margin-bottom: 6px;">
+          <span style="font-size: 11px; font-weight: 700; color: var(--text-strong);">${isFa ? 'تاریخچه دسته‌های ورود داده (Lineage)' : 'Recent Import Lineage Batches'}</span>
+          <button type="button" class="btn btn-sm" data-action="refresh-import-batches">↻ ${isFa ? 'بروزرسانی' : 'Refresh'}</button>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 6px;">
+          ${importBatchesListHtml}
+        </div>
+      </div>
+    </details>
+  `;
+
   let bodyHtml = '';
   if (tab === 'sync') {
     bodyHtml = `
       ${serverDiagCard}
       ${byokCard}
+      ${historicalImportCard}
 
       <div class="card-subtle" style="margin-bottom: 10px;">
         <div class="row-between" style="margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">

@@ -1,23 +1,24 @@
 # CHART — فهرست مسائل باز، نواقص راستی‌آزمایی‌شده و وضعیت ممیزی (`OPEN_ISSUES`)
 
-> **نسخه:** `1.40.0` · **تاریخ ممیزی و تکمیل:** `2026-11-13`  
-> این فایل وضعیت واقعی مسائل باز (`INF-01` تا `SEC-01` و یافته‌های ممیزی جدید `AUTH-01` / `INF-03` / `ENG-01b` / `PAR-01` / `ENG-03b` / `QA-01` / `UI-02` / `IND-01`) را روی **PHP + MariaDB (`host_subdomain`)**، **کلاینت وب**، **اپلیکیشن اندروید (Kotlin/Compose)** و **CI/CD (`build-apk.yml`)** ثبت می‌کند.
+> **نسخه:** `1.41.0` · **تاریخ ممیزی و تکمیل:** `2026-11-14`  
+> این فایل وضعیت واقعی مسائل باز (`INF-01` تا `SEC-01` و یافته‌های ممیزی `AUTH-01` / `INF-03` / `ENG-01b` / `PAR-01` / `ENG-03b` / `QA-01` / `UI-02` / `IND-01` و آیتم‌های فاز ۳ شامل `Historical Import`) را روی **PHP + MariaDB (`host_subdomain`)**، **کلاینت وب**، **اپلیکیشن اندروید (Kotlin/Compose)** و **CI/CD (`build-apk.yml`)** ثبت می‌کند.
 
 ---
 
-## خلاصه وضعیت مسائل ممیزی (`v1.40.0`)
+## خلاصه وضعیت مسائل ممیزی (`v1.41.0`)
 
 - **پیاده‌سازی‌شده و بسته‌شده در کد (`Code Complete`):**
-  - **`ENG-01` (بخش پایه)**: هم‌ترازی سشن‌های معاملاتی و DST (`CRYPTO_24_7`, `US_EQUITIES` `09:30–16:00 America/New_York`, `OTC_FX_METALS` `17:00 America/New_York`) — *شکاف‌های ظریف پاریتی بین کلاینت‌ها در `ENG-01b` ثبت شد*.
+  - **`ENG-01` (بخش پایه)**: هم‌ترازی سشن‌های معاملاتی و DST (`CRYPTO_24_7`, `US_EQUITIES` `09:30–16:00 America/New_York`, `OTC_FX_METALS` `17:00 America/New_York`) — *شکاف‌های ظریف پاریتی بین کلاینت‌ها در `ENG-01b` بسته شد*.
   - **`ENG-02`**: تفکیک کامل Quote زنده / Forming Bar (`api/v1/quote.php`) از ذخیره قطعی کندل‌های بسته‌شده (`is_closed = 1`) با ایزوله‌سازی سخت‌گیرانه پرووایدر.
   - **`ENG-03`**: موتور تشخیص هوشمند Gap (`GapDetector` + `api/v1/gap_report.php` + جدول `data_quality_reports` در `002_phase2_3_tables.sql`) بدون خطای کاذب تعطیلات آخر هفته.
+  - **`PHASE3-IMPORT`**: موتور ورود آرشیو تاریخی (`LocalCsvAdapter.php`، `api/v1/import_candles.php`، کلاینت وب `candleImport.js` و اندروید `CandleImportAlgorithm.kt` + `Phase3ImportCard.kt` با `SAF`) و جداول نسب/ممیزی (`data_import_batches`, `data_corrections`, `backup_records`, `audit_logs`) با اجبار `D1` برای سری‌های دو‌ستونی روزانه و رد قطعی فایل‌های تصویری (`ERR_IMAGE_UPLOAD_FORBIDDEN`).
   - **`UI-01`**: اتصال زنده `Symbol Intel` (`api/v1/symbol_intel.php` شامل کش MariaDB، `Yahoo Finance RSS`، `U.S. EIA RSS`، و `SEC EDGAR 10-K/10-Q/8-K` منحصراً برای سهام آمریکا) همراه با برچسب شفاف تفکیک داده خارجی vs محاسبات محلی.
   - **`SEC-01`**: اعمال `sanitizeSymbolCode()` سخت‌گیرانه (`[A-Z0-9._:-]` حداکثر ۲۰ کاراکتر) و پوشش کامل `escapeHtml()` در تمام DOM و `data-*`های وب.
   - **بهداشت امنیتی Auth/CORS (راستی‌آزمایی‌شده در کد فعلی):** حذف کامل ذخیره plaintext رمز عبور (`ci_saved_password` فقط `removeItem` می‌شود)، fallback آفلاین مبتنی بر **Salted SHA-256** (`ci_offline_pw_salt` + `ci_offline_pw_hash` و `PasswordHashAlgorithm.kt`)، حداقل طول رمز **۸ کاراکتر** در `auth.php`، و حذف `CORS *` به نفع whitelist + هدرهای امنیتی در `ApiEnvelope.php`.
   - **`INF-01` (بخش نرم‌افزاری)**: خروجی/بازیابی پشتیبان رمزنگاری‌شده (`PBKDF2-HMAC-SHA256` + `AES-256-GCM`) با حذف خودکار کلیدهای `BYOK` در `backup.php`، کلاینت وب، و `BackupExportHelper.kt` (با `SAF` بدون نیاز به مجوز Storage + `FileProvider` برای اشتراک امن فایل).
   - **`INF-02` (بخش اسکریپت استقرار)**: اسنپ‌شات خودکار `_ci_backups/snapshot_*` (حفظ ۳ نسخه آخر)، انتقال اتمیک فایل‌ها در `build-apk.yml`، و اندپوینت احراز هویت‌شده `rollback_release.php`.
-  - **کنترل‌های تاییدشده دیگر در کد فعلی:** حذف کندل/قیمت ساختگی صفحه اولیه (Skeleton واقعی)، شرط حداقل ۲۰۰ کندل برای `SMA200`، تازه‌سازی دوره‌ای خودکار نزدیک بسته شدن کندل هم در وب و هم در `MainViewModel.kt` اندروید، تفکیک کلیدهای `BYOK` از Workspace و ارسال از طریق Header (`X-Provider-Api-Key`)، ذخیره تب‌ها/تب فعال در اندروید، مخفی‌شدن نوار ناوبری در صفحه Chart، و پوشش ۱۴ مورد از ۱۵ اندیکاتور ۳ سطحی TradingView (`Moving Average`, `RSI`, `MACD`, `Bollinger Bands`, `Volume/VRVP`, `Stochastic`, `ATR`, `VWAP`, `Supertrend`, `Ichimoku`, `ADX`, `Parabolic SAR`, `Fibonacci`, `OBV`).
-- **باقی‌مانده و نیازمند اقدام:** موارد جدید **`ENG-01b`، `ENG-03b`، `PAR-01`، `AUTH-01`، `INF-03`، `QA-01`، `UI-02`، `IND-01`** (بخش ۳.۱)، بررسی مستقیم سرور زنده cPanel (بخش ۱ و ۴.۱)، و تصمیمات معماری پیش از فاز ۴ (بخش ۴.۲).
+  - **کنترل‌های تاییدشده دیگر در کد فعلی:** حذف کندل/قیمت ساختگی صفحه اولیه (Skeleton واقعی)، شرط حداقل ۲۰۰ کندل برای `SMA200`، تازه‌سازی دوره‌ای خودکار نزدیک بسته شدن کندل هم در وب و هم در `MainViewModel.kt` اندروید، تفکیک کلیدهای `BYOK` از Workspace و ارسال از طریق Header (`X-Provider-Api-Key`)، ذخیره تب‌ها/تب فعال در اندروید، مخفی‌شدن نوار ناوبری در صفحه Chart، و پوشش کامل **۱۵ از ۱۵** اندیکاتور ۳ سطحی TradingView شامل هر ۴ واریانت `Pivot Points` (`Standard / Fibonacci / Camarilla / Woodie` با `R3/R4/S3/S4`).
+- **باقی‌مانده و نیازمند اقدام:** بررسی مستقیم سرور زنده cPanel پس از استقرار (`INF-01`/`INF-02` عملیاتی و بخش ۴.۱)، و تصمیمات معماری پیش از فازهای ۴ تا ۶ (`UI-02`/`PRED-01..08` و بخش ۴.۲).
 
 ---
 
@@ -62,7 +63,7 @@
 | **`AUTH-01`** | `P1` | `[x]` **تکمیل شد (`Code Complete`)** | ارتقای `sendRecoveryEmailMessage()` در `auth.php` با پشتیبانی از ۱) API تراکنشی HTTPS (`RESEND_API_KEY`)، ۲) سوکت TLS/SSL SMTP احراز هویت‌شده (`SMTP_HOST`/`SMTP_PORT`/`SMTP_USER`/`SMTP_PASS` از `env.local.php`)، و ۳) fallback ایمیل محلی با Envelope Sender. | `host_subdomain/api/v1/auth.php` |
 | **`INF-03`** | `P1` | `[x]` **تکمیل شد (`Code Complete`)** | محدودسازی کوئری `DELETE FROM candles` در `.github/workflows/build-apk.yml` (خط ۲۴۰) به `timeframe NOT IN ('D1', 'W1')`، نمادهای غیرکریپتو، و بازه تعطیلات آخر هفته OTC (`Fri 22:00 – Sun 21:59 UTC`) هم‌تراز با `candles_sync.php`. | `.github/workflows/build-apk.yml`, `host_subdomain/api/v1/candles_sync.php` |
 | **`QA-01`** | `P1` | `[x]` **تکمیل شد (`Code Complete`)** | ایجاد و اجرای تست‌های واحد مشترک در اندروید (`Phase2AlgorithmsTest.kt`) و وب (`tests/web_parity.test.mjs` با `node --test`) برای راستی‌آزمایی `PAR-01`، `SYNC-01`، `ENG-01b`، `ENG-03b`، `IND-01` و `PRED-09`/`PRED-10`. | `app/src/test/java/es/manico/chartintelligence/Phase2AlgorithmsTest.kt`, `tests/web_parity.test.mjs` |
-| **`IND-01`** | `P2` | `[x]` **تکمیل شد (`Code Complete`)** | افزودن اندیکاتور هم‌پوشان `Pivot Points (P, R1, R2, S1, S2)` روی بوم چارت در وب (`chartRenderer.js`) و اندروید (`CandlestickCanvas.kt`) با لنگر جلسه معاملاتی قبلی، سوئیچ در پنل Indicators و سینک کامل در Workspace. | `technicalIndicators.js`, `chartRenderer.js`, `Phase2IndicatorsAlgorithm.kt`, `CandlestickCanvas.kt`, `ChartTabState.kt`, `ChartViewScreen.kt` |
+| **`IND-01`** | `P2` | `[x]` **تکمیل شد در `v1.41.0` (`Code Complete`)** | پیاده‌سازی کامل هر ۴ واریانت **`Pivot Points` (`STANDARD`, `FIBONACCI`, `CAMARILLA`, `WOODIE`)** شامل سطوح **`R3/R4` و `S3/S4`** روی بوم چارت وب (`chartRenderer.js`) و اندروید (`CandlestickCanvas.kt`) با لنگر جلسه معاملاتی قبلی، انتخابگر نوع پیوت در پنل Indicators و سینک کامل در Workspace. | `technicalIndicators.js`, `chartRenderer.js`, `headerView.js`, `Phase2IndicatorsAlgorithm.kt`, `CandlestickCanvas.kt`, `ChartTabState.kt`, `ChartViewScreen.kt` |
 | **`PRED-09`** | `P1` | `[x]` **تکمیل شد (`Code Complete`)** | پیاده‌سازی کامل `AI-Generated Future Candlesticks Overlay (30 periods)` منطبق با تصویر مرجع در وب و اندروید شامل: خط‌چین عمودی `Present Bar Divider`، بنر `← PAST (Actual Data) ┆ Future Projection (30 periods) (AI-Generated) →`، ۳۰ کندل نیمه‌شفاف بنفش-خاکستری در سمت راست، و برچسب‌های `+5 (Future)`، `+10`، `+15`، `+20`، `+25`، `+30` همراه با درصد تغییر (`+X%`/`-X%`). | `technicalIndicators.js`, `chartRenderer.js`, `headerView.js`, `analysisView.js`, `Phase2IndicatorsAlgorithm.kt`, `CandlestickCanvas.kt`, `ChartViewScreen.kt`, `PredictionScreen.kt` |
 | **`PRED-10`** | `P1` | `[x]` **تکمیل شد (`Code Complete`)** | تضمین افق پیش‌بینی حداقل ۱۰ کندل ($h = 30 \ge 10$) روی تمامی تایم‌فریم‌ها (`M15`, `M30`, `H1`, `H4`, `D1`, `W1`) با رعایت تقویم سشن معاملاتی، پرش خودکار از تعطیلات آخر هفته بازارهای OTC/Equities، و تنظیم خودکار مقیاس افقی/عمودی چارت. | `technicalIndicators.js`, `chartRenderer.js`, `Phase2IndicatorsAlgorithm.kt`, `CandlestickCanvas.kt`, `PredictionScreen.kt` |
 | **`UI-02` / `PRED-01..08`** | `P1/P2` | `[ ]` **نقشه راه فاز ۴ (`Phase 4 Architecture Backlog`)** | موارد پژوهشی و زیرساختی فاز ۴ شامل Worker پایتونی مدل‌های پایه (`Chronos-2` / `TimesFM 2.5`)، ارزیابی Walk-Forward (`CRPS` / `Pinball Loss`) و درخت اشیاء پیشرفته دسکتاپ طبق مشخصات فنی فاز ۴ زمان‌بندی شده‌اند. | `FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md`, `ROADMAP_BACKLOG.md` |
@@ -75,7 +76,7 @@
 ## ۴. موارد نیازمند راستی‌آزمایی هاست و تصمیمات باز پیش از فاز ۴ (`TO VERIFY / OPEN`)
 
 ### ۴.۱. موارد زیرساختی تاییدنشده روی cPanel (`Section 5 of INFRASTRUCTURE_INVENTORY.md`)
-- [ ] نسخه دقیق PHP فعال زیر `chart.manico.es` (از خروجی زنده `/api/v1/system/status.php`), `memory_limit`, `max_execution_time`, `upload_max_filesize`, `post_max_size`.
+- [ ] تایید عملی نسخه و محدودیت‌های زنده PHP زیر `chart.manico.es` روی هاست cPanel (بخش گزارش تشخیصی ایمن `php_runtime` شامل `php_version`, `memory_limit`, `max_execution_time`, `upload_max_filesize`, `post_max_size`, `extensions` در `v1.41.0` به `api/v1/system/status.php` و صفحه Settings وب/اندروید اضافه شد؛ مشاهده مقادیر واقعی پس از استقرار روی سرور زنده باقی مانده است).
 - [ ] فعال بودن `php` CLI، وضعیت و حداقل بازه مجاز `crond` در سطح اکانت برای همگام‌سازی ۱۵ دقیقه‌ای (`scripts/cron_sync_tvdatafeed.php`).
 - [ ] دسترسی خروجی HTTPS سرور هاست به دامنه‌های خارجی (`api.twelvedata.com`, `query1.finance.yahoo.com`, `stooq.com`, `data.eia.gov`, `data.sec.gov`, `feeds.finance.yahoo.com`) و وجود هرگونه محدودیت/Rate Limit روی IP اشتراکی.
 - [ ] وضعیت واقعی دسترسی `SSH` برای کاربر اکانت، امکان یا عدم امکان اجرای `Python` / `Worker` دائمی و سقف اتصالات هم‌زمان MariaDB.

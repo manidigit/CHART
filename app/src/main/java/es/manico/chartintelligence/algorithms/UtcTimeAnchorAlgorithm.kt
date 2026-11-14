@@ -315,6 +315,7 @@ object UtcTimeAnchorAlgorithm {
                 "XAUUSD", "XAGUSD", "EURUSD", "BTCUSD", "ETHUSD", "GBPUSD", "USDJPY" -> "Spot Feed"
                 else -> "Official Exchange"
             }
+            ProviderId.LOCAL_CSV -> "Imported Archive"
         }
     }
 
@@ -382,6 +383,7 @@ object UtcTimeAnchorAlgorithm {
                 else -> "$sym.US"
             }
             ProviderId.EIA_BRENT_SPOT -> "EIA:RBRTE"
+            ProviderId.LOCAL_CSV -> "LOCAL:$sym"
         }
     }
 

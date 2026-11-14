@@ -276,6 +276,7 @@ fun ChartIntelligenceApp(
                             onToggleFvg = mainViewModel::toggleFvgOnActiveTab,
                             onToggleVolumeProfile = mainViewModel::toggleVolumeProfileOnActiveTab,
                             onTogglePivotPoints = mainViewModel::togglePivotPointsOnActiveTab,
+                            onSelectPivotType = mainViewModel::setPivotTypeOnActiveTab,
                             onToggleFutureProjection = mainViewModel::toggleFutureProjectionOnActiveTab,
                             onToggleEma200 = mainViewModel::toggleEma200OnActiveTab,
                             onTogglePsar = mainViewModel::togglePsarOnActiveTab,
@@ -365,9 +366,14 @@ fun ChartIntelligenceApp(
                             activeGapReport = state.activeGapAuditReport ?: state.activeTab?.gapSummary,
                             activeGapSymbolLabel = state.activeTab?.symbolCode ?: state.watchlistSymbols.firstOrNull()?.symbolCode,
                             backupStatusMessage = state.backupStatusMessage,
+                            importBatches = state.importBatches,
+                            importStatusMessage = state.importStatusMessage,
                             onRunGapAudit = mainViewModel::auditGapReportForActiveTab,
                             onExportBackupToUri = mainViewModel::exportEncryptedBackupToUri,
-                            onRestoreBackupFromUri = mainViewModel::restoreEncryptedBackupFromUri
+                            onRestoreBackupFromUri = mainViewModel::restoreEncryptedBackupFromUri,
+                            onImportDocumentUri = mainViewModel::importHistoricalDocumentFromUri,
+                            onSubmitManualOhlc = mainViewModel::submitManualOhlcEntry,
+                            onRefreshImportBatches = mainViewModel::refreshImportBatches
                         )
                     }
                 }

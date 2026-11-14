@@ -208,7 +208,7 @@
     <string name="settings_group_sources">۳. منبع داده و نمادها</string>
     <string name="settings_group_params">۴. پارامترهای تحلیل و سوئیچ‌های TradingView</string>
     <string name="settings_group_about">۵. سلامت سرور و درباره</string>
-    <string name="settings_about_version">نسخه ۱.۳۹.۰ · ابزارهای حرفه‌ای ترسیم، اندیکاتورها، کیل‌زون‌ها، داده‌های زنده و پشتیبان رمزنگاری‌شده</string>
+    <string name="settings_about_version">نسخه ۱.۴۱.۰ · پیوت ۴گانه، ورود آرشیو تاریخی، داده‌های زنده، ممیزی گپ و پشتیبان رمزنگاری‌شده</string>
     <string name="settings_tab_account">حساب</string>
     <string name="settings_tab_appearance">ظاهر</string>
     <string name="settings_tab_sources">نمادها</string>
@@ -373,4 +373,11 @@
     <string name="prediction_future_candles_desc">رسم ۳۰ کندل احتمالی آینده (+5، +10، +15، +20، +25، +30) با خط چین جداکننده زمان حال روی تمامی تایم‌فریم‌ها.</string>
     <string name="prediction_render_future_candles_btn">رسم ۳۰ کندل پیش‌بینی آینده روی چارت</string>
     <string name="prediction_future_candles_active_btn">کندل‌های پیش‌بینی آینده فعال است (حذف از چارت)</string>
+    <string name="provider_local_csv">ورود تاریخچه محلی و دستی (CSV / EIA XLS / JSON)</string>
+    <string name="settings_import_title">ورود تاریخچه و اصلاح دستی کندل (CSV / EIA XLS / JSON)</string>
+    <string name="settings_import_subtitle">پشتیبانی از CSV، اکسل EIA RBRTEd.xls (BIFF8/XML/HTML)، DataHub (فقط D1) و JSON. آپلود تصویر کاملاً مسدود است.</string>
+    <string name="settings_import_upload_btn">انتخاب و ورود فایل</string>
+    <string name="settings_manual_ohlc_title">ثبت / اصلاح دستی کندل (Manual OHLC)</string>
+    <string name="settings_manual_ohlc_btn">ثبت کندل</string>
+    <string name="import_batches_empty">هنوز دسته‌ای از تاریخچه وارد نشده است.</string>
 </resources>

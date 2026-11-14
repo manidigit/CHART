@@ -1,5 +1,5 @@
-import { PriceFormatter } from './priceFormatter.js?v=1.40.1';
-import { TimeframeAggregator } from './timeframeAggregator.js?v=1.40.1';
+import { PriceFormatter } from './priceFormatter.js?v=1.41.0';
+import { TimeframeAggregator } from './timeframeAggregator.js?v=1.41.0';
 
 export const TechnicalIndicators = {
   computeSma(candles = [], period = 20) {
@@ -1000,27 +1000,37 @@ export const TechnicalIndicators = {
   },
 
   /**
-   * Standard Floor Pivot Points (P, R1, R2, S1, S2) computed from the prior session/period HLC.
+   * IND-01: Multi-Variant Pivot Points (Standard, Fibonacci, Camarilla, Woodie)
+   * computed from prior session HLC and current session Open.
    */
-  computePivotPoints(candles = [], timeframe = 'M15', symbolCode = 'XAUUSD') {
+  computePivotPoints(candles = [], timeframe = 'M15', symbolCode = 'XAUUSD', pivotType = 'STANDARD') {
     if (!Array.isArray(candles) || candles.length < 2) return null;
     const tf = String(timeframe || 'M15').toUpperCase();
+    const rawVariant = String(pivotType || 'STANDARD').toUpperCase();
+    const variant = ['STANDARD', 'FIBONACCI', 'CAMARILLA', 'WOODIE'].includes(rawVariant)
+      ? rawVariant
+      : 'STANDARD';
     let high = -Infinity;
     let low = Infinity;
     let close = Number(candles[candles.length - 1].close || 0);
+    let currOpen = Number(candles[candles.length - 1].open || close);
 
     if (tf === 'D1' || tf === 'W1') {
       const prevBar = candles[candles.length - 2];
+      const currBar = candles[candles.length - 1];
       high = Number(prevBar.high || 0);
       low = Number(prevBar.low || 0);
       close = Number(prevBar.close || 0);
+      currOpen = Number(currBar.open || close);
     } else {
       const getMs = (c) => Number(c.open_time_utc_ms || (c.openTimeSec ? c.openTimeSec * 1000 : 0));
       const lastDayKey = PriceFormatter.getSessionDayKey(getMs(candles[candles.length - 1]), symbolCode);
       let prevDayKey = null;
       for (let i = candles.length - 1; i >= 0; i--) {
         const dk = PriceFormatter.getSessionDayKey(getMs(candles[i]), symbolCode);
-        if (dk !== lastDayKey) {
+        if (dk === lastDayKey) {
+          currOpen = Number(candles[i].open || close);
+        } else {
           if (prevDayKey === null) {
             prevDayKey = dk;
             close = Number(candles[i].close || 0);
@@ -1041,18 +1051,73 @@ export const TechnicalIndicators = {
           low = Math.min(low, Number(candles[i].low || 0));
           close = Number(candles[i].close || 0);
         }
+        currOpen = Number(candles[winEnd]?.open || close);
       }
     }
 
     if (!isFinite(high) || !isFinite(low) || high < low) return null;
-    const p = (high + low + close) / 3;
     const range = high - low;
+
+    if (variant === 'FIBONACCI') {
+      const p = (high + low + close) / 3;
+      return {
+        variant,
+        p,
+        r1: p + 0.382 * range,
+        s1: p - 0.382 * range,
+        r2: p + 0.618 * range,
+        s2: p - 0.618 * range,
+        r3: p + 1.0 * range,
+        s3: p - 1.0 * range,
+        r4: null,
+        s4: null,
+      };
+    }
+
+    if (variant === 'CAMARILLA') {
+      const p = (high + low + close) / 3;
+      return {
+        variant,
+        p,
+        r1: close + (range * 1.1) / 12,
+        s1: close - (range * 1.1) / 12,
+        r2: close + (range * 1.1) / 6,
+        s2: close - (range * 1.1) / 6,
+        r3: close + (range * 1.1) / 4,
+        s3: close - (range * 1.1) / 4,
+        r4: close + (range * 1.1) / 2,
+        s4: close - (range * 1.1) / 2,
+      };
+    }
+
+    if (variant === 'WOODIE') {
+      const p = (high + low + 2 * currOpen) / 4;
+      return {
+        variant,
+        p,
+        r1: 2 * p - low,
+        s1: 2 * p - high,
+        r2: p + range,
+        s2: p - range,
+        r3: high + 2 * (p - low),
+        s3: low - 2 * (high - p),
+        r4: null,
+        s4: null,
+      };
+    }
+
+    const p = (high + low + close) / 3;
     return {
+      variant: 'STANDARD',
       p,
       r1: 2 * p - low,
       s1: 2 * p - high,
       r2: p + range,
       s2: p - range,
+      r3: high + 2 * (p - low),
+      s3: low - 2 * (high - p),
+      r4: null,
+      s4: null,
     };
   },
 

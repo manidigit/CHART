@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.40.1';
-import { state, escapeHtml, getIndicatorColorPalette } from '../core/store.js?v=1.40.1';
-import { renderSymbolBadge } from './watchlistView.js?v=1.40.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.41.0';
+import { state, escapeHtml, getIndicatorColorPalette } from '../core/store.js?v=1.41.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.41.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -427,7 +427,21 @@ export function renderIndicatorsModal(activeTab, i18n) {
             isFa ? 'تگ‌های راست‌چین ضدتداخل با رنگ‌های متمایز' : 'Right-docked non-overlapping level tags with customizable colors'
           )}
           ${renderToggleRow('vwap', pal.vwap, 'Session VWAP', isFa ? 'میانگین قیمت وزنی حجم (خط‌چین طلایی تراز سشن روزانه UTC)' : 'Session-Anchored Volume Weighted Average Price', activeTab.showVwap, 'toggle-vwap', '╌╌')}
-          ${renderToggleRow('pivotPoints', pal.pivotP, 'Pivot Points (P, R1, R2, S1, S2)', isFa ? 'سطوح پیوت استاندارد کف/سقف با برچسب‌های ضدتداخل' : 'Standard floor pivot levels with collision-free right-edge badges', activeTab.showPivotPoints, 'toggle-pivot-points', 'P/R/S')}
+          ${renderToggleRow('pivotPoints', pal.pivotP, 'Pivot Points (Standard / Fibonacci / Camarilla / Woodie)', isFa ? 'سطوح پیوت چندحالته (P, R1..R4, S1..S4) با برچسب‌های ضدتداخل' : 'Multi-variant Pivot Points (P, R1..R4, S1..S4) with collision-free right-edge badges', activeTab.showPivotPoints, 'toggle-pivot-points', 'P/R/S')}
+          <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
+            <div class="row-between" style="font-size: 11.5px; flex-wrap: wrap; gap: 6px;">
+              <span style="color: var(--text-muted);">${isFa ? 'نوع پیوت (Pivot Variant):' : 'Pivot Method:'}</span>
+              <div class="chip-group ltr-num">
+                ${['STANDARD', 'FIBONACCI', 'CAMARILLA', 'WOODIE']
+                  .map((v) => {
+                    const activeVar = String(activeTab.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase();
+                    const lbl = v === 'STANDARD' ? 'Standard' : v === 'FIBONACCI' ? 'Fibonacci' : v === 'CAMARILLA' ? 'Camarilla' : 'Woodie';
+                    return `<button type="button" class="chip ${activeVar === v ? 'active' : ''}" data-action="set-pivot-type" data-pivot-type="${v}">${lbl}</button>`;
+                  })
+                  .join('')}
+              </div>
+            </div>
+          </div>
           ${renderToggleRow('volumeProfile', pal.vrvpPoc, 'Volume Profile (VRVP — POC / VAH / VAL)', isFa ? 'پروفایل حجم محدوده با هیستوگرام فیروزه‌ای و خط POC' : 'Visible Range Volume Profile histogram with Point of Control & 70% Value Area', activeTab.showVolumeProfile, 'toggle-volume-profile', '▋POC')}
 
           ${renderSectionHeader(

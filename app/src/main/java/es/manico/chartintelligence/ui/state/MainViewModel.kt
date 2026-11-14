@@ -2,11 +2,13 @@ package es.manico.chartintelligence.ui.state
 
 import android.app.Application
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.annotation.StringRes
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.algorithms.CandleExportAlgorithm
+import es.manico.chartintelligence.algorithms.CandleImportAlgorithm
 import es.manico.chartintelligence.algorithms.ConnectionStatus
 import es.manico.chartintelligence.algorithms.GapDetectorAlgorithm
 import es.manico.chartintelligence.algorithms.GapReport
@@ -20,6 +22,7 @@ import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.model.SymbolConfig
 import es.manico.chartintelligence.data.repository.BackupExportHelper
+import es.manico.chartintelligence.data.repository.ImportBatchDto
 import es.manico.chartintelligence.data.repository.SymbolIntelBundle
 import es.manico.chartintelligence.data.repository.SymbolIntelRepository
 import es.manico.chartintelligence.data.repository.WorkspaceRepository
@@ -79,6 +82,8 @@ data class Phase1UiState(
     val symbolIntelByCode: Map<String, SymbolIntelBundle> = emptyMap(),
     val isIntelLoading: Boolean = false,
     val backupStatusMessage: String? = null,
+    val importBatches: List<ImportBatchDto> = emptyList(),
+    val importStatusMessage: String? = null,
     val activeGapAuditReport: GapReport? = null,
     @param:StringRes val statusBannerResId: Int? = null
 ) {
@@ -147,7 +152,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
             }
             val status = repository.fetchSystemStatus()
-            _uiState.update { it.copy(systemStatus = status) }
+            val batches = repository.fetchImportBatches()
+            _uiState.update { it.copy(systemStatus = status, importBatches = batches) }
             if (_uiState.value.isAuthenticated) {
                 pullAndApplyCloudWorkspaceOnStartup()
             }
@@ -1800,6 +1806,18 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleDebouncedCloudSync()
     }
 
+    fun setPivotTypeOnActiveTab(variant: String) {
+        val normalized = when (variant.trim().uppercase()) {
+            "FIBONACCI", "CAMARILLA", "WOODIE" -> variant.trim().uppercase()
+            else -> "STANDARD"
+        }
+        _uiState.update { state ->
+            state.copy(openTabs = state.openTabs.map { it.copy(pivotType = normalized, showPivotPoints = true) })
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
     fun toggleFutureProjectionOnActiveTab() {
         val nextVal = !(_uiState.value.activeTab?.showFutureProjection ?: return)
         _uiState.update { state ->
@@ -2524,6 +2542,140 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 }
                 getApplication<Application>().contentResolver.openOutputStream(uri)?.use { out ->
                     out.write(text.toByteArray(Charsets.UTF_8))
+                }
+            }
+        }
+    }
+
+    fun refreshImportBatches() {
+        viewModelScope.launch {
+            val batches = repository.fetchImportBatches()
+            _uiState.update { it.copy(importBatches = batches) }
+        }
+    }
+
+    fun importHistoricalDocumentFromUri(
+        uri: Uri,
+        symbolCode: String,
+        providerId: String,
+        timeframe: String,
+        qualityStatus: String
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(importStatusMessage = "Reading and validating file...") }
+            val app = getApplication<Application>()
+            val (fileName, mimeType, bytes) = withContext(Dispatchers.IO) {
+                val cr = app.contentResolver
+                val mime = cr.getType(uri).orEmpty()
+                var displayName = uri.lastPathSegment ?: "upload.csv"
+                cr.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                    if (cursor.moveToFirst()) {
+                        val idx = cursor.getColumnIndex(OpenableColumns.DISPLAY_NAME)
+                        if (idx >= 0) {
+                            displayName = cursor.getString(idx) ?: displayName
+                        }
+                    }
+                }
+                val raw = cr.openInputStream(uri)?.use { it.readBytes() } ?: ByteArray(0)
+                Triple(displayName, mime, raw)
+            }
+
+            if (CandleImportAlgorithm.isImagePayload(bytes, fileName, mimeType)) {
+                _uiState.update {
+                    it.copy(
+                        importStatusMessage = "ERR_IMAGE_UPLOAD_FORBIDDEN: Image files cannot be imported as price history."
+                    )
+                }
+                return@launch
+            }
+
+            val res = repository.importHistoricalCandlesToLocalAndServer(
+                symbolCode = symbolCode,
+                providerId = providerId,
+                timeframe = timeframe,
+                qualityStatus = qualityStatus,
+                rawBytes = bytes,
+                fileName = fileName,
+                mimeType = mimeType
+            )
+
+            if (res.ok) {
+                val updatedSymbols = repository.loadSymbolCatalog()
+                val batches = repository.fetchImportBatches()
+                _uiState.update { state ->
+                    val nextTabs = state.openTabs.map { tab ->
+                        if (tab.symbolCode == symbolCode && tab.provider.id == providerId && tab.timeframe == res.effectiveTimeframe) {
+                            tab.copy(candles = res.candles)
+                        } else {
+                            tab
+                        }
+                    }
+                    state.copy(
+                        symbols = updatedSymbols,
+                        openTabs = nextTabs,
+                        importBatches = batches,
+                        importStatusMessage = "Imported ${res.importedCount} bars ($symbolCode · ${res.effectiveTimeframe}) — +${res.rowsInserted} / ~${res.rowsCorrected} corr"
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        importStatusMessage = "Import failed: ${res.errorMessage ?: "PARSE_FAILED"}"
+                    )
+                }
+            }
+        }
+    }
+
+    fun submitManualOhlcEntry(
+        symbolCode: String,
+        providerId: String,
+        timeframe: String,
+        qualityStatus: String,
+        dateTimeInput: String,
+        open: Double,
+        high: Double,
+        low: Double,
+        close: Double,
+        volume: Double
+    ) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(importStatusMessage = "Saving manual OHLC candle...") }
+            val res = repository.importManualCandleToLocalAndServer(
+                symbolCode = symbolCode,
+                providerId = providerId,
+                timeframe = timeframe,
+                qualityStatus = qualityStatus,
+                dateTimeInput = dateTimeInput,
+                open = open,
+                high = high,
+                low = low,
+                close = close,
+                volume = volume
+            )
+            if (res.ok) {
+                val updatedSymbols = repository.loadSymbolCatalog()
+                val batches = repository.fetchImportBatches()
+                _uiState.update { state ->
+                    val nextTabs = state.openTabs.map { tab ->
+                        if (tab.symbolCode == symbolCode && tab.provider.id == providerId && tab.timeframe == res.effectiveTimeframe) {
+                            tab.copy(candles = res.candles)
+                        } else {
+                            tab
+                        }
+                    }
+                    state.copy(
+                        symbols = updatedSymbols,
+                        openTabs = nextTabs,
+                        importBatches = batches,
+                        importStatusMessage = "Saved manual $symbolCode (${res.effectiveTimeframe}) candle — +${res.rowsInserted} / ~${res.rowsCorrected} corr"
+                    )
+                }
+            } else {
+                _uiState.update {
+                    it.copy(
+                        importStatusMessage = "Manual OHLC failed: ${res.errorMessage ?: "INVALID_MANUAL_OHLC"}"
+                    )
                 }
             }
         }

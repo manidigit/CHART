@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.41.0] - 2026-11-14
+
+### Added & Completed (Remaining Phase 1–3 Deliverables)
+- **Full 4-Variant Pivot Points (`IND-01` Complete across Web, Android, and Workspace Sync):**
+  - Expanded `TechnicalIndicators.computePivotPoints` (`technicalIndicators.js`) and `Phase2IndicatorsAlgorithm.computePivotPoints` (`Phase2IndicatorsAlgorithm.kt`) to compute all 4 variants: **`STANDARD`**, **`FIBONACCI`**, **`CAMARILLA`**, and **`WOODIE`**, including extended **`R3 / R4 / S3 / S4`** levels.
+  - Added variant selector (`pivotType`) to the Web Indicators menu (`headerView.js`, `app.js`), Android Indicators sheet (`ChartViewScreen.kt`, `MainViewModel.kt`), and bi-directional cloud workspace sync (`store.js`, `apiService.js`, `WorkspaceRepository.kt`).
+- **Phase 3 Historical Data Import, Lineage & Audit Schema (`ROADMAP_BACKLOG §3` Item 2):**
+  - **SQL Audit Schema (`host_subdomain/migrations/002_phase2_3_tables.sql`):** Registered `stooq` and `local_csv` in `data_providers` and added non-destructive audit tables `data_import_batches`, `data_corrections`, `backup_records`, and `audit_logs` alongside MariaDB persistence wiring in `backup.php` and `candles_sync.php`.
+  - **PHP Backend (`LocalCsvAdapter.php`, `api/v1/import_candles.php`, `ProviderCatalog.php`):** Implemented server-side historical ingestion supporting `CSV/TSV` (full OHLCV and DataHub 2-column daily series), `EIA RBRTEd.xls` (pure PHP binary `BIFF8 OLE2` parser with FAT/DIFAT/MiniFAT + `SST`/`RK`/`NUMBER`, `SpreadsheetML XML`, `HTML` table, and `TSV`), `JSON`, and manual `OHLC` entries, plus `GET` batch lineage history. Enforces **Strict No-Image-Storage Policy** (`ERR_IMAGE_UPLOAD_FORBIDDEN`) and forces 2-column daily series strictly to `D1` without fabricating intraday bars.
+  - **Web & Android Parity (`candleImport.js`, `settingsView.js`, `CandleImportAlgorithm.kt`, `Phase3ImportCard.kt`):** Implemented client-side parsers (including pure JS/Kotlin binary `BIFF8 OLE2` readers), Settings -> `Sync` Historical Import UI and Manual OHLC modal using zero-permission Android `SAF` (`ActivityResultContracts.OpenDocument()`), `LOCAL_CSV` provider registration, batch lineage viewer, EN/FA translations, and unified `?v=1.41.0` cache-busters across all ES modules.
+- **Safe PHP Runtime Diagnostics (`OPEN_ISSUES §4.1`):**
+  - Added safe `php_runtime` diagnostics (`php_version`, `memory_limit`, `max_execution_time`, `upload_max_filesize`, `post_max_size`, and extension flags) to `api/v1/system/status.php` and rendered them cleanly inside Settings diagnostics on Web and Android.
+- **Verification & Tests:** Extended `tests/web_parity.test.mjs` and `Phase2AlgorithmsTest.kt` with 4-variant Pivot Point formula tests and Phase 3 import/BIFF8/forced-`D1`/no-image-upload tests.
+
+---
+
 ## [1.39.0] - 2026-11-13
 
 ### Added & Resolved (`OPEN_ISSUES` + `ROADMAP_BACKLOG §2.1–§2.3`)

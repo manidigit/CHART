@@ -15,9 +15,9 @@ import {
   normalizeHexForWeb,
   normalizeHexForAndroid,
   resolvePriceBasis,
-} from '../core/store.js?v=1.40.1';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.40.1';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.40.1';
+} from '../core/store.js?v=1.41.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.41.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.41.0';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
@@ -463,6 +463,7 @@ export async function uploadWorkspaceSync() {
           showFvg: Boolean(t.showFvg),
           showVolumeProfile: Boolean(t.showVolumeProfile),
           showPivotPoints: Boolean(t.showPivotPoints),
+          pivotType: String(t.pivotType || p.pivotType || 'STANDARD').toUpperCase(),
           showFutureProjection: Boolean(t.showFutureProjection),
           pitchforkVariant: t.pitchforkVariant || p.pitchforkVariant || 'original',
           isLogScale: Boolean(t.isLogScale),
@@ -674,6 +675,7 @@ export async function downloadWorkspaceSync() {
             showFvg: Boolean(t.showFvg),
             showVolumeProfile: Boolean(t.showVolumeProfile),
             showPivotPoints: Boolean(t.showPivotPoints),
+            pivotType: String(t.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase(),
             showFutureProjection: Boolean(t.showFutureProjection),
             pitchforkVariant: t.pitchforkVariant || 'original',
             isMagnetMode: Boolean(t.isMagnetMode),
@@ -1408,3 +1410,97 @@ export async function fetchSymbolIntel(symbolCode, forceRefresh = false) {
   }
   return (state.symbolIntelCache && state.symbolIntelCache[symbolCode]?.data) || null;
 }
+
+/**
+ * Phase 3: Upload historical CSV/EIA XLS/JSON file or manual OHLC entry with batch lineage.
+ */
+export async function uploadHistoricalImport({
+  action = 'import',
+  symbol = 'SPOTBRENT',
+  provider = 'local_csv',
+  timeframe = 'D1',
+  qualityStatus = 'OFFICIAL',
+  fileName = 'upload.csv',
+  mimeType = '',
+  fileBase64 = '',
+  rawText = '',
+  manualCandles = null,
+  notes = '',
+}) {
+  const token = localStorage.getItem('ci_session_token') || '';
+  const body = {
+    session_token: token,
+    action,
+    symbol,
+    provider,
+    timeframe,
+    quality_status: qualityStatus,
+    file_name: fileName,
+    mime_type: mimeType,
+    notes,
+  };
+  if (Array.isArray(manualCandles) && manualCandles.length > 0) {
+    body.manual_candles = manualCandles;
+  } else if (fileBase64) {
+    body.file_base64 = fileBase64;
+  } else if (rawText) {
+    body.raw_text = rawText;
+  }
+
+  try {
+    const res = await fetch('./api/v1/import_candles.php', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify(body),
+    });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return { ok: false, errorCode: 'UNAUTHORIZED', errorKey: 'error_unauthorized' };
+    }
+    const json = await res.json();
+    if (res.ok && json && json.ok && json.data) {
+      return { ok: true, data: json.data };
+    }
+    return {
+      ok: false,
+      errorCode: (json && json.error_code) || 'IMPORT_FAILED',
+      errorKey: (json && json.message_key) || 'error_import_parse_failed',
+      error: (json && json.error) || 'Import failed',
+    };
+  } catch (err) {
+    return {
+      ok: false,
+      errorCode: 'NETWORK_ERROR',
+      error: err && err.message ? err.message : 'Network error during historical import',
+    };
+  }
+}
+
+/**
+ * Phase 3: Fetch recent historical import lineage batches.
+ */
+export async function fetchImportBatches(limit = 20) {
+  const token = localStorage.getItem('ci_session_token') || '';
+  try {
+    const res = await fetch(`./api/v1/import_candles.php?action=batches&limit=${limit}&_t=${Date.now()}`, {
+      cache: 'no-store',
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return state.importBatches || [];
+    }
+    const json = await res.json();
+    if (res.ok && json && json.ok && json.data && Array.isArray(json.data.batches)) {
+      state.importBatches = json.data.batches;
+      return state.importBatches;
+    }
+  } catch {
+    // Non-fatal fallback
+  }
+  return state.importBatches || [];
+}
+

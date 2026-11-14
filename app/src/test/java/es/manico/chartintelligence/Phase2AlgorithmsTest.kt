@@ -4,6 +4,7 @@ import android.content.Context
 import androidx.compose.ui.test.performClick
 import androidx.test.core.app.ApplicationProvider
 import es.manico.chartintelligence.algorithms.CandleExportAlgorithm
+import es.manico.chartintelligence.algorithms.CandleImportAlgorithm
 import es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm
 import es.manico.chartintelligence.algorithms.DrawingGeometryAlgorithm
 import es.manico.chartintelligence.algorithms.GapDetectorAlgorithm
@@ -536,5 +537,205 @@ class Phase2AlgorithmsTest {
         }
         composeTestRule.onNode(androidx.compose.ui.test.hasTestTag("explorer_mode_by_symbol")).performClick()
         composeTestRule.waitForIdle()
+    }
+
+    @Test
+    fun ind01_allFourPivotPointVariantsFormulaParity() {
+        val d1Bars = listOf(
+            makeBar(Instant.parse("2026-07-13T00:00:00Z").toEpochMilli(), "D1", 100.0, 120.0, 90.0, 110.0),
+            makeBar(Instant.parse("2026-07-14T00:00:00Z").toEpochMilli(), "D1", 114.0, 118.0, 112.0, 115.0)
+        )
+
+        val std = Phase2IndicatorsAlgorithm.computePivotPoints(d1Bars, "D1", "SPOTBRENT", "STANDARD")!!
+        assertEquals("STANDARD", std.variant)
+        assertTrue(std.r3!! > std.r2 && std.r2 > std.r1 && std.r1 > std.p && std.p > std.s1 && std.s1 > std.s2 && std.s2 > std.s3!!)
+
+        val fib = Phase2IndicatorsAlgorithm.computePivotPoints(d1Bars, "D1", "SPOTBRENT", "FIBONACCI")!!
+        assertEquals("FIBONACCI", fib.variant)
+        val expectedP = (120.0 + 90.0 + 110.0) / 3.0
+        assertEquals(expectedP, fib.p, 1e-6)
+        assertEquals(expectedP + 0.382 * 30.0, fib.r1, 1e-6)
+        assertEquals(expectedP + 30.0, fib.r3!!, 1e-6)
+
+        val cam = Phase2IndicatorsAlgorithm.computePivotPoints(d1Bars, "D1", "SPOTBRENT", "CAMARILLA")!!
+        assertEquals("CAMARILLA", cam.variant)
+        assertEquals(110.0 + 30.0 * 1.1 / 2.0, cam.r4!!, 1e-6)
+        assertTrue(cam.r4!! > cam.r3!! && cam.r3!! > cam.r2 && cam.r2 > cam.r1)
+
+        val woodie = Phase2IndicatorsAlgorithm.computePivotPoints(d1Bars, "D1", "SPOTBRENT", "WOODIE")!!
+        assertEquals("WOODIE", woodie.variant)
+        val expectedWoodieP = (120.0 + 90.0 + 2.0 * 114.0) / 4.0
+        assertEquals(expectedWoodieP, woodie.p, 1e-6)
+    }
+
+    private fun buildSyntheticBiff8Xls(strings: List<String>, cells: List<Triple<Int, Int, Any>>): ByteArray {
+        val records = ArrayList<ByteArray>()
+        fun pushRec(type: Int, payload: ByteArray) {
+            val buf = java.nio.ByteBuffer.allocate(4 + payload.size).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+            buf.putShort(type.toShort())
+            buf.putShort(payload.size.toShort())
+            buf.put(payload)
+            records.add(buf.array())
+        }
+        fun bof(bofType: Int): ByteArray = java.nio.ByteBuffer.allocate(16).order(java.nio.ByteOrder.LITTLE_ENDIAN).apply {
+            putShort(0x0600.toShort())
+            putShort(bofType.toShort())
+        }.array()
+
+        pushRec(0x0809, bof(0x0005))
+        var sstLen = 8
+        for (s in strings) sstLen += 3 + s.length
+        val sstBuf = java.nio.ByteBuffer.allocate(sstLen).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        sstBuf.putInt(strings.size)
+        sstBuf.putInt(strings.size)
+        for (s in strings) {
+            sstBuf.putShort(s.length.toShort())
+            sstBuf.put(0.toByte())
+            sstBuf.put(s.toByteArray(Charsets.ISO_8859_1))
+        }
+        pushRec(0x00FC, sstBuf.array())
+        pushRec(0x000A, ByteArray(0))
+
+        pushRec(0x0809, bof(0x0010))
+        for ((r, c, v) in cells) {
+            if (v is Int) {
+                val rec = java.nio.ByteBuffer.allocate(10).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                rec.putShort(r.toShort())
+                rec.putShort(c.toShort())
+                rec.putShort(0)
+                rec.putInt(v)
+                pushRec(0x00FD, rec.array())
+            } else {
+                val rec = java.nio.ByteBuffer.allocate(14).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+                rec.putShort(r.toShort())
+                rec.putShort(c.toShort())
+                rec.putShort(0)
+                rec.putDouble((v as Number).toDouble())
+                pushRec(0x0203, rec.array())
+            }
+        }
+        pushRec(0x000A, ByteArray(0))
+
+        val wbTotal = records.sumOf { it.size }
+        val wbSize = maxOf(4096, ((wbTotal + 511) / 512) * 512)
+        val wbSectors = wbSize / 512
+        val totalSectors = 2 + wbSectors
+        val file = ByteArray(512 + totalSectors * 512)
+        val h = java.nio.ByteBuffer.wrap(file).order(java.nio.ByteOrder.LITTLE_ENDIAN)
+        byteArrayOf(0xD0.toByte(), 0xCF.toByte(), 0x11, 0xE0.toByte(), 0xA1.toByte(), 0xB1.toByte(), 0x1A, 0xE1.toByte()).copyInto(file, 0)
+        h.putShort(24, 0x003E.toShort())
+        h.putShort(26, 0x0003.toShort())
+        h.putShort(28, 0xFFFE.toShort())
+        h.putShort(30, 9.toShort())
+        h.putShort(32, 6.toShort())
+        h.putInt(44, 1)
+        h.putInt(48, 1)
+        h.putInt(56, 4096)
+        h.putInt(60, -2)
+        h.putInt(68, -2)
+        for (i in 0 until 109) h.putInt(76 + i * 4, if (i == 0) 0 else -1)
+
+        val fatOff = 512
+        for (i in 0 until 128) h.putInt(fatOff + i * 4, -1)
+        h.putInt(fatOff, -3)
+        h.putInt(fatOff + 4, -2)
+        for (s in 0 until wbSectors) {
+            h.putInt(fatOff + (2 + s) * 4, if (s == wbSectors - 1) -2 else 2 + s + 1)
+        }
+
+        fun writeDir(slot: Int, name: String, objType: Int, startSec: Int, size: Int) {
+            val base = 1024 + slot * 128
+            for (i in name.indices) h.putShort(base + i * 2, name[i].code.toShort())
+            h.putShort(base + 64, ((name.length + 1) * 2).toShort())
+            file[base + 66] = objType.toByte()
+            h.putInt(base + 116, startSec)
+            h.putInt(base + 120, size)
+        }
+        writeDir(0, "Root Entry", 5, -2, 0)
+        writeDir(1, "Workbook", 2, 2, wbSize)
+
+        var pos = 1536
+        for (r in records) {
+            r.copyInto(file, pos)
+            pos += r.size
+        }
+        return file
+    }
+
+    @Test
+    fun phase3_candleImport_formatsForcedD1AndNoImageStoragePolicy() {
+        // 1. Strict No-Image-Storage Policy
+        val pngHeader = byteArrayOf(0x89.toByte(), 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A)
+        assertTrue(CandleImportAlgorithm.isImagePayload(pngHeader, "data.bin", "application/octet-stream"))
+        val pngRes = CandleImportAlgorithm.parseHistoricalBytes(pngHeader, "shot.dat", "D1")
+        assertFalse(pngRes.ok)
+        assertEquals("ERR_IMAGE_UPLOAD_FORBIDDEN", pngRes.errorCode)
+
+        val svgRes = CandleImportAlgorithm.parseHistoricalBytes("<svg></svg>".toByteArray(), "chart.txt", "M15")
+        assertFalse(svgRes.ok)
+        assertEquals("ERR_IMAGE_UPLOAD_FORBIDDEN", svgRes.errorCode)
+
+        // 2. DataHub 2-col daily CSV requested on M15 forces D1
+        val dhCsv = "Date,Price\n2026-01-02,74.10\n2026-01-05,75.40\n".toByteArray()
+        val dhRes = CandleImportAlgorithm.parseHistoricalBytes(dhCsv, "brent-daily.csv", "M15")
+        assertTrue(dhRes.ok)
+        assertTrue(dhRes.forcedDailyOnly)
+        assertEquals("D1", dhRes.effectiveTimeframe)
+        assertEquals(2, dhRes.candles.size)
+        assertEquals(74.10, dhRes.candles[1].open.toDouble(), 1e-6)
+
+        // 3. OHLCV CSV on H1 preserves H1
+        val ohlcvCsv = "open_time_utc_iso,open,high,low,close,volume\n2026-07-15T12:00:00Z,100,105,99,104,500\n".toByteArray()
+        val csvRes = CandleImportAlgorithm.parseHistoricalBytes(ohlcvCsv, "bars.csv", "H1")
+        assertTrue(csvRes.ok)
+        assertFalse(csvRes.forcedDailyOnly)
+        assertEquals("H1", csvRes.effectiveTimeframe)
+
+        // 4. SpreadsheetML XML .xls
+        val xml = "<Workbook><Worksheet><Table><Row><Cell><Data>Date</Data></Cell><Cell><Data>Spot Price</Data></Cell></Row><Row><Cell><Data>1987-05-20</Data></Cell><Cell><Data>18.63</Data></Cell></Row></Table></Worksheet></Workbook>".toByteArray()
+        val xmlRes = CandleImportAlgorithm.parseHistoricalBytes(xml, "RBRTEd.xls", "M15")
+        assertTrue(xmlRes.ok)
+        assertEquals("XLS_XML", xmlRes.detectedFormat)
+        assertTrue(xmlRes.forcedDailyOnly)
+        assertEquals("D1", xmlRes.effectiveTimeframe)
+
+        // 5. HTML .xls
+        val html = "<table><tr><th>Date</th><th>Brent</th></tr><tr><td>2026-02-02</td><td>71.20</td></tr></table>".toByteArray()
+        val htmlRes = CandleImportAlgorithm.parseHistoricalBytes(html, "RBRTEd.xls", "H4")
+        assertTrue(htmlRes.ok)
+        assertEquals("XLS_HTML", htmlRes.detectedFormat)
+        assertEquals("D1", htmlRes.effectiveTimeframe)
+
+        // 6. Synthetic binary BIFF8 OLE2 .xls
+        val biff = buildSyntheticBiff8Xls(
+            listOf("Date", "Europe Brent Spot Price FOB"),
+            listOf(
+                Triple(0, 0, 0),
+                Triple(0, 1, 1),
+                Triple(1, 0, 46023.0),
+                Triple(1, 1, 72.45),
+                Triple(2, 0, 46024.0),
+                Triple(2, 1, 73.80)
+            )
+        )
+        val biffRes = CandleImportAlgorithm.parseHistoricalBytes(biff, "RBRTEd.xls", "M15")
+        assertTrue(biffRes.ok)
+        assertEquals("XLS_BIFF8", biffRes.detectedFormat)
+        assertTrue(biffRes.forcedDailyOnly)
+        assertEquals("D1", biffRes.effectiveTimeframe)
+        assertEquals(2, biffRes.candles.size)
+        assertEquals(Instant.parse("2026-01-01T00:00:00Z").toEpochMilli(), biffRes.candles[0].openTimeUtcMillis)
+        assertEquals(73.80, biffRes.candles[1].close.toDouble(), 1e-6)
+
+        // 7. JSON & Manual OHLC
+        val json = """{"candles":[{"t":"2026-07-15T14:00:00Z","o":100,"h":102,"l":98,"c":101,"v":250}]}""".toByteArray()
+        val jsonRes = CandleImportAlgorithm.parseHistoricalBytes(json, "feed.json", "H1")
+        assertTrue(jsonRes.ok)
+        assertEquals("JSON", jsonRes.detectedFormat)
+        assertEquals("H1", jsonRes.effectiveTimeframe)
+
+        val manual = CandleImportAlgorithm.buildManualCandle("2026-07-15 14:22 UTC", 98.1, 99.0, 97.9, 98.6, 120.0, "M15")
+        assertNotNull(manual)
+        assertEquals(Instant.parse("2026-07-15T14:15:00Z").toEpochMilli(), manual!!.openTimeUtcMillis)
     }
 }

@@ -367,9 +367,9 @@ fun CandlestickCanvas(
         else fullRoc12.subList(startIndex, endIndexExclusive.coerceAtMost(fullRoc12.size))
     }
 
-    val pivotPoints = remember(candles, tab.timeframe, tab.symbolCode, tab.showPivotPoints) {
+    val pivotPoints = remember(candles, tab.timeframe, tab.symbolCode, tab.showPivotPoints, tab.pivotType) {
         if (!tab.showPivotPoints || candles.size < 2) null
-        else Phase2IndicatorsAlgorithm.computePivotPoints(candles, tab.timeframe, tab.symbolCode)
+        else Phase2IndicatorsAlgorithm.computePivotPoints(candles, tab.timeframe, tab.symbolCode, tab.pivotType)
     }
 
     val futureProjectedCandles = remember(candles, tab.timeframe, tab.showFutureProjection, effectiveScrollOffset) {
@@ -1215,15 +1215,19 @@ fun CandlestickCanvas(
                             }
                         }
 
-                        // 5e. IND-01: Classic Floor Pivot Points (P, R1, R2, S1, S2) Horizontal Dashed Lines
+                        // 5e. IND-01: Multi-Variant Floor Pivot Points (Standard, Fibonacci, Camarilla, Woodie)
                         if (tab.showPivotPoints && pivotPoints != null) {
-                            val ppLevels = listOf(
-                                pivotPoints.r2 to preferences.pivotR2Color,
-                                pivotPoints.r1 to preferences.pivotR1Color,
-                                pivotPoints.p to preferences.pivotPColor,
-                                pivotPoints.s1 to preferences.pivotS1Color,
-                                pivotPoints.s2 to preferences.pivotS2Color
-                            )
+                            val ppLevels = buildList {
+                                pivotPoints.r4?.let { add(it to preferences.pivotR4Color) }
+                                pivotPoints.r3?.let { add(it to preferences.pivotR3Color) }
+                                add(pivotPoints.r2 to preferences.pivotR2Color)
+                                add(pivotPoints.r1 to preferences.pivotR1Color)
+                                add(pivotPoints.p to preferences.pivotPColor)
+                                add(pivotPoints.s1 to preferences.pivotS1Color)
+                                add(pivotPoints.s2 to preferences.pivotS2Color)
+                                pivotPoints.s3?.let { add(it to preferences.pivotS3Color) }
+                                pivotPoints.s4?.let { add(it to preferences.pivotS4Color) }
+                            }
                             for ((ppVal, ppColor) in ppLevels) {
                                 val py = priceToY(ppVal)
                                 if (py in 2f..(pricePaneH - 2f)) {
@@ -2087,8 +2091,9 @@ fun CandlestickCanvas(
                             )
                         }
                         if (tab.showPivotPoints && pivotPoints != null) {
+                            val varShort = pivotPoints.variant.take(3)
                             Text(
-                                text = "P ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(pivotPoints.p), tab.decimals)}",
+                                text = "P ($varShort) ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(pivotPoints.p), tab.decimals)}",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
@@ -2569,13 +2574,17 @@ fun CandlestickCanvas(
                         )
                     }
                     if (tab.showPivotPoints && pivotPoints != null) {
-                        val pList = listOf(
-                            Triple("R2", pivotPoints.r2, preferences.pivotR2Color),
-                            Triple("R1", pivotPoints.r1, preferences.pivotR1Color),
-                            Triple("P", pivotPoints.p, preferences.pivotPColor),
-                            Triple("S1", pivotPoints.s1, preferences.pivotS1Color),
-                            Triple("S2", pivotPoints.s2, preferences.pivotS2Color)
-                        )
+                        val pList = buildList {
+                            pivotPoints.r4?.let { add(Triple("R4", it, preferences.pivotR4Color)) }
+                            pivotPoints.r3?.let { add(Triple("R3", it, preferences.pivotR3Color)) }
+                            add(Triple("R2", pivotPoints.r2, preferences.pivotR2Color))
+                            add(Triple("R1", pivotPoints.r1, preferences.pivotR1Color))
+                            add(Triple("P", pivotPoints.p, preferences.pivotPColor))
+                            add(Triple("S1", pivotPoints.s1, preferences.pivotS1Color))
+                            add(Triple("S2", pivotPoints.s2, preferences.pivotS2Color))
+                            pivotPoints.s3?.let { add(Triple("S3", it, preferences.pivotS3Color)) }
+                            pivotPoints.s4?.let { add(Triple("S4", it, preferences.pivotS4Color)) }
+                        }
                         for ((tag, priceVal, col) in pList) {
                             val r = mapPriceToNormRatio(priceVal)
                             if (r in 0.02f..0.98f) {

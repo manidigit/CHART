@@ -1,7 +1,7 @@
 # CHART — وضعیت واقعی قابلیت‌ها و نقشه راه توسعه (`ROADMAP_BACKLOG`)
 
-> **نسخه:** `1.40.0` · **تاریخ ممیزی واقعی در کد:** `2026-11-13`  
-> این سند تفاوت بین **قابلیت‌های پیاده‌سازی‌شده و تأییدشده در کد فعلی** را از **بک‌لاگ باقی‌مانده (از جمله `Pivot Points` روی چارت و فازهای ۳.۲ و ۴ تا ۶)** به‌طور دقیق و صادقانه جدا می‌کند.
+> **نسخه:** `1.41.0` · **تاریخ ممیزی واقعی در کد:** `2026-11-14`  
+> این سند تفاوت بین **قابلیت‌های پیاده‌سازی‌شده و تأییدشده در کد فعلی** را از **بک‌لاگ باقی‌مانده (فازهای ۴ تا ۶ و آزمون‌های عملیاتی cPanel زنده)** به‌طور دقیق و صادقانه جدا می‌کند.
 
 ---
 
@@ -38,7 +38,7 @@
 
 ### ۲.۲. کاتالوگ کامل اندیکاتورها و اسیلاتورها (دسته‌بندی ۳ سطحی محبوبیت TradingView)
 
-بر اساس بررسی مستقیم کد در **کلاینت وب (`technicalIndicators.js`, `chartRenderer.js`)** و **اپلیکیشن اندروید (`PriceFormatterAlgorithm.kt`, `Phase2IndicatorsAlgorithm.kt`, `ChartViewScreen.kt`)**، از ۱۵ ابزار/اندیکاتور اصلی پرکاربرد در TradingView، **۱۴ مورد پیاده‌سازی شده‌اند** و صرفاً **`Pivot Points` (ردیف ۱۴)** به‌عنوان اندیکاتور هم‌پوشان روی بوم چارت هنوز باز است (`IND-01`):
+بر اساس بررسی مستقیم کد در **کلاینت وب (`technicalIndicators.js`, `chartRenderer.js`)** و **اپلیکیشن اندروید (`PriceFormatterAlgorithm.kt`, `Phase2IndicatorsAlgorithm.kt`, `ChartViewScreen.kt`)**، **تمامی ۱۵ مورد (۱۵ از ۱۵)** اندیکاتور/ابزار اصلی ۳ سطحی TradingView در کد پیاده‌سازی شده‌اند (`IND-01` نیز با هر ۴ واریانت کامل شد):
 
 #### سطح اول — ضروری‌ترین و پرکاربردترین‌ها (۵ ابزار هسته)
 | رتبه | اندیکاتور | وضعیت در کد (Web + Android) | پوشش فعلی و یادداشت فنی |
@@ -65,7 +65,7 @@
 | `11` | **ADX** | `[x]` **کامل** | `ADX / +DI / -DI (14)` با خط مرجع `25` |
 | `12` | **Parabolic SAR** | `[x]` **کامل** | `Parabolic SAR (0.02, 0.20)` با نقاط توقف/چرخش روند |
 | `13` | **Fibonacci Retracement** | `[x]` **کامل** | ابزار ترسیمی `FIB` با `Magnet Mode` و همگام‌سازی مختصاتی |
-| `14` | **Pivot Points** | `[ ]` **ناقص — نیازمند افزودن روی چارت (`IND-01`)** | اکنون فقط به‌صورت عددی ایستا (`Classic P/R1/R2/S1/S2`) در کارت Overview/Prediction دیده می‌شود و هنوز به‌عنوان **Overlay Indicator قابل فعال‌سازی روی بوم چارت (`Standard / Fibonacci / Camarilla / Woodie`)** ساخته نشده است. |
+| `14` | **Pivot Points** | `[x]` **کامل در `v1.41.0` (`IND-01`)** | هر ۴ واریانت **Standard / Fibonacci / Camarilla / Woodie** شامل سطوح **`R3/R4` و `S3/S4`** به‌صورت Overlay تعاملی روی بوم وب و اندروید، با انتخاب واریانت در Indicators و همگام‌سازی کامل Workspace. |
 | `15` | **OBV (On Balance Volume)** | `[x]` **کامل** | `OBV` تجمعی در پنل اسیلاتورها |
 
 - **اندیکاتورهای تکمیلی دیگر که هم‌اکنون در کد فعال هستند:** `Keltner Channels (20, 10, 2×ATR)`، `Donchian Channels (20)`، `CCI (20)`، `Williams %R (14)`، `ROC (12)`، `Chaikin Money Flow (CMF 20)` و ساختار بازار `SMC (BOS / CHoCH / EQH / EQL / FVG)`.
@@ -85,9 +85,9 @@
 
 > **قاعده دروازه فازها (`Build → Install → Test → Owner Approval Gate`):** هر فاز پس از تایید عملی فاز قبل آغاز می‌شود.
 
-### فاز ۳ — کیفیت داده، ورود آرشیو تاریخی و Backup/Restore
+### فاز ۳ — کیفیت داده، ورود آرشیو تاریخی و Backup/Restore (تکمیل‌شده در کد تا `v1.41.0`)
 1. `[x]` **تشخیص هوشمند Gap (`Smart Gap Detection`):** در `v1.39.0` پیاده‌سازی شد (`ENG-03`).
-2. `[ ]` **ورود فایل‌های تاریخی (`Historical Import` & `LocalCsvAdapter`):** آپلود مستقیم آرشیو `EIA Europe Brent Spot FOB` (`RBRTEd.xls` از ۱۹۸۷ تا امروز)، فایل‌های CSV/XLS/JSON و پشتیبان `DataHub (brent-daily.csv)`؛ پشتیبانی از ورود دستی/استخراج عددی بدون ذخیره هیچ تصویر نمودار (`Strict No-Image-Storage Policy`).
+2. `[x]` **ورود فایل‌های تاریخی (`Historical Import` & `LocalCsvAdapter` — `v1.41.0`):** `LocalCsvAdapter.php` + `api/v1/import_candles.php` + جداول نسب و ممیزی `data_import_batches`، `data_corrections`، `backup_records`، `audit_logs` در `002_phase2_3_tables.sql` + کلاینت وب (`candleImport.js`, `settingsView.js`) و اندروید (`CandleImportAlgorithm.kt`, `Phase3ImportCard.kt` با `SAF` بدون نیاز به مجوز Storage)؛ پشتیبانی کامل از `EIA RBRTEd.xls` (باینری `BIFF8 OLE2`، `SpreadsheetML XML`، `HTML`، `TSV`)، `DataHub brent-daily.csv` (اجبار خودکار به `D1` بدون جعل اینترادی)، `CSV` استاندارد، `JSON`، ورود دستی `OHLC` و اعمال سخت‌گیرانه **سیاست ممنوعیت ذخیره تصویر (`ERR_IMAGE_UPLOAD_FORBIDDEN`)**. *(استقرار/اجرای زنده روی `chart.manico.es` پس از دیپلوی بعدی تأیید می‌شود.)*
 3. `[x]` **Backup & Restore رمزنگاری‌شده در سطح برنامه (`PBKDF2 + AES-256-GCM`):** در `v1.39.0` در PHP/Web/Android پیاده‌سازی شد (`INF-01`؛ تست نهایی بازیابی روی cPanel زنده باقی مانده است).
 
 ### فاز ۴ — موتور تحلیل ساختار و پیش‌بینی آینده قیمت (`Future Price Projection Engine v1`)

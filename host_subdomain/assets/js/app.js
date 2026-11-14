@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.40.1';
+import { I18nManager } from './core/i18n.js?v=1.41.0';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -14,6 +14,8 @@ import {
   escapeHtml,
   sanitizeSymbolCode,
   getCachedOrAggregatedCandles,
+  mergeCandlesIdempotent,
+  saveCandlesToCache,
   resetColorsToDefault,
   resetAlgoParamsToDefault,
   resetAllPreferencesToDefault,
@@ -22,7 +24,7 @@ import {
   syncIndicatorsAcrossTabsAndPrefs,
   getIndicatorColorPalette,
   normalizeHexForWeb,
-} from './core/store.js?v=1.40.1';
+} from './core/store.js?v=1.41.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -41,25 +43,28 @@ import {
   exportEncryptedBackup,
   restoreEncryptedBackup,
   fetchSymbolIntel,
-} from './services/apiService.js?v=1.40.1';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.40.1';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.40.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.40.1';
-import { renderLoginScreen } from './views/loginView.js?v=1.40.1';
+  uploadHistoricalImport,
+  fetchImportBatches,
+} from './services/apiService.js?v=1.41.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.41.0';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.41.0';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.41.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.41.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.41.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.40.1';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.40.1';
+} from './views/headerView.js?v=1.41.0';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.41.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.40.1';
-import { renderPredictionModal } from './views/analysisView.js?v=1.40.1';
-import { renderSettingsModal } from './views/settingsView.js?v=1.40.1';
-import { renderRightIconRail } from './views/navigationView.js?v=1.40.1';
+} from './views/watchlistView.js?v=1.41.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.41.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.41.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.41.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -192,6 +197,7 @@ function ensureInitialTabs(forceHydrate = false) {
     for (const k of INDICATOR_FLAG_KEYS) {
       tabObj[k] = Boolean(state.chartPreferences[k]);
     }
+    tabObj.pivotType = String(state.chartPreferences.pivotType || 'STANDARD').toUpperCase();
     state.openTabs.push(tabObj);
   });
 
@@ -229,6 +235,9 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     for (const k of INDICATOR_FLAG_KEYS) {
       existing[k] = Boolean(curActive ? curActive[k] : state.chartPreferences[k]);
     }
+    existing.pivotType = String(
+      (curActive && curActive.pivotType) || existing.pivotType || state.chartPreferences.pivotType || 'STANDARD'
+    ).toUpperCase();
     state.activeTabId = existing.tabId;
     saveActiveTabId(state.activeTabId);
     syncIndicatorsAcrossTabsAndPrefs(existing, true);
@@ -281,6 +290,9 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     for (const k of INDICATOR_FLAG_KEYS) {
       newTab[k] = Boolean(curActive ? curActive[k] : state.chartPreferences[k]);
     }
+    newTab.pivotType = String(
+      (curActive && curActive.pivotType) || state.chartPreferences.pivotType || 'STANDARD'
+    ).toUpperCase();
     state.openTabs.push(newTab);
     state.activeTabId = tabId;
     saveActiveTabId(state.activeTabId);
@@ -395,7 +407,9 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showKeltner, pal.keltner, 'Keltner', 'toggle-keltner');
   pushPill(activeTab.showDonchian, pal.donchian, 'Donchian', 'toggle-donchian');
   pushPill(activeTab.showVwap, pal.vwap, 'VWAP', 'toggle-vwap');
-  pushPill(activeTab.showPivotPoints, pal.pivotP, 'Pivots', 'toggle-pivot-points');
+  const pivShortMap = { STANDARD: 'STD', FIBONACCI: 'FIB', CAMARILLA: 'CAM', WOODIE: 'WOD' };
+  const pivShort = pivShortMap[String(activeTab.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase()] || 'STD';
+  pushPill(activeTab.showPivotPoints, pal.pivotP, `Pivots (${pivShort})`, 'toggle-pivot-points');
   pushPill(activeTab.showVolumeProfile, pal.vrvpPoc, 'VP (POC)', 'toggle-volume-profile');
   pushPill(activeTab.showSupertrend, pal.supertrend, 'Supertrend', 'toggle-supertrend');
   pushPill(activeTab.showPsar, pal.psar, 'PSAR', 'toggle-psar');
@@ -1496,6 +1510,151 @@ function bindSettingsForms() {
     });
   }
 
+  const bytesToBase64 = (bytes) => {
+    let bin = '';
+    const chunk = 0x8000;
+    for (let i = 0; i < bytes.length; i += chunk) {
+      bin += String.fromCharCode(...bytes.subarray(i, i + chunk));
+    }
+    return btoa(bin);
+  };
+
+  const applyImportedBarsLocally = (symbolCode, provider, timeframe, newBars) => {
+    if (!Array.isArray(newBars) || newBars.length === 0) return;
+    const key = `${symbolCode}_${provider}_${timeframe}`;
+    const existing = getCachedOrAggregatedCandles(symbolCode, provider, timeframe) || [];
+    const merged = mergeCandlesIdempotent(existing, newBars, timeframe, Date.now(), symbolCode);
+    saveCandlesToCache(key, merged, 5000, symbolCode);
+
+    const symObj = state.symbols.find((s) => s.symbolCode === symbolCode);
+    if (symObj) {
+      if (!Array.isArray(symObj.allowedProviders)) symObj.allowedProviders = [];
+      if (!symObj.allowedProviders.includes(provider)) {
+        symObj.allowedProviders.push(provider);
+      }
+      if (symObj.activeProvider === provider && symObj.timeframe === timeframe && merged.length > 0) {
+        const last = merged[merged.length - 1];
+        symObj.candles = merged.slice(-1500);
+        symObj.lastClose = last.close;
+        symObj.lastCandleUtc = last.open_time_utc_iso || '';
+        symObj.connectionStatus = 'LIVE';
+      }
+      saveSymbolsToStorage();
+    }
+
+    for (const t of state.openTabs) {
+      if (t.symbolCode === symbolCode && t.provider === provider && t.timeframe === timeframe) {
+        t.candles = merged.slice(-2500);
+      }
+    }
+  };
+
+  const historicalImportForm = document.getElementById('historical-import-form');
+  if (historicalImportForm) {
+    historicalImportForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const symCode = String(document.getElementById('historical-import-symbol')?.value || 'SPOTBRENT').toUpperCase();
+      const provider = String(document.getElementById('historical-import-provider')?.value || 'local_csv').toLowerCase();
+      const tf = String(document.getElementById('historical-import-tf')?.value || 'D1').toUpperCase();
+      const qualityStatus = String(document.getElementById('historical-import-quality')?.value || 'OFFICIAL').toUpperCase();
+      const fileEl = document.getElementById('historical-import-file');
+      const file = fileEl && fileEl.files ? fileEl.files[0] : null;
+      if (!file) return;
+
+      const bytes = new Uint8Array(await file.arrayBuffer());
+      if (isImageBytesOrFilename(bytes, file.name, file.type || '')) {
+        state.importStatusMessage = i18n.t('error_image_upload_forbidden') || 'Image files cannot be imported as price history.';
+        showFloatingToast(state.importStatusMessage);
+        renderApp();
+        return;
+      }
+
+      const localParsed = parseHistoricalBytes(bytes, file.name, tf, symCode, file.type || '');
+      if (!localParsed.ok) {
+        state.importStatusMessage = `${localParsed.errorCode || 'PARSE_FAILED'} (${file.name})`;
+        showFloatingToast(state.importStatusMessage);
+        renderApp();
+        return;
+      }
+
+      const effTf = localParsed.effectiveTimeframe || tf;
+      applyImportedBarsLocally(symCode, provider, effTf, localParsed.candles);
+
+      const res = await uploadHistoricalImport({
+        action: 'import',
+        symbol: symCode,
+        provider,
+        timeframe: effTf,
+        qualityStatus,
+        fileName: file.name,
+        mimeType: file.type || '',
+        fileBase64: bytesToBase64(bytes),
+      });
+
+      if (res && res.ok && res.data) {
+        if (Array.isArray(res.data.candles) && res.data.candles.length > 0) {
+          applyImportedBarsLocally(symCode, provider, res.data.effective_timeframe || effTf, res.data.candles);
+        }
+        const batch = res.data.batch || {};
+        state.importStatusMessage = `Imported ${res.data.candles_count || localParsed.candles.length} bars (${symCode} · ${effTf}) — +${batch.rows_inserted ?? localParsed.candles.length} new / ~${batch.rows_corrected ?? 0} corrected.`;
+        await fetchImportBatches();
+      } else {
+        state.importStatusMessage = `Cached ${localParsed.candles.length} bars locally (${effTf}); server note: ${(res && (res.error || res.errorCode)) || 'offline'}`;
+      }
+      showFloatingToast(state.importStatusMessage);
+      renderApp();
+      redrawActiveCanvas();
+    });
+  }
+
+  const manualOhlcForm = document.getElementById('manual-ohlc-form');
+  if (manualOhlcForm) {
+    manualOhlcForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const symCode = String(document.getElementById('historical-import-symbol')?.value || 'SPOTBRENT').toUpperCase();
+      const provider = String(document.getElementById('historical-import-provider')?.value || 'local_csv').toLowerCase();
+      const tf = String(document.getElementById('historical-import-tf')?.value || 'D1').toUpperCase();
+      const qualityStatus = String(document.getElementById('historical-import-quality')?.value || 'CORRECTED').toUpperCase();
+      const dateTimeInput = String(document.getElementById('manual-ohlc-datetime')?.value || '').trim();
+      const open = document.getElementById('manual-ohlc-open')?.value;
+      const high = document.getElementById('manual-ohlc-high')?.value;
+      const low = document.getElementById('manual-ohlc-low')?.value;
+      const close = document.getElementById('manual-ohlc-close')?.value;
+      const volume = document.getElementById('manual-ohlc-volume')?.value || 0;
+
+      const candle = buildManualCandle({ dateTimeInput, open, high, low, close, volume, timeframe: tf });
+      if (!candle) {
+        state.importStatusMessage = 'Invalid manual OHLC values or UTC timestamp.';
+        showFloatingToast(state.importStatusMessage);
+        renderApp();
+        return;
+      }
+
+      applyImportedBarsLocally(symCode, provider, tf, [candle]);
+
+      const res = await uploadHistoricalImport({
+        action: 'manual',
+        symbol: symCode,
+        provider,
+        timeframe: tf,
+        qualityStatus,
+        fileName: 'manual_ohlc_entry',
+        manualCandles: [candle],
+      });
+
+      if (res && res.ok && res.data) {
+        const batch = res.data.batch || {};
+        state.importStatusMessage = `Saved manual ${symCode} (${tf}) bar at ${candle.open_time_utc_iso} — +${batch.rows_inserted ?? 1} / ~${batch.rows_corrected ?? 0} corr.`;
+        await fetchImportBatches();
+      } else {
+        state.importStatusMessage = `Saved manual bar locally (${candle.open_time_utc_iso}); server note: ${(res && (res.error || res.errorCode)) || 'offline'}`;
+      }
+      showFloatingToast(state.importStatusMessage);
+      renderApp();
+      redrawActiveCanvas();
+    });
+  }
+
   const addSymForm = document.getElementById('add-symbol-form');
   if (addSymForm) {
     addSymForm.addEventListener('submit', async (e) => {
@@ -1581,6 +1740,9 @@ document.addEventListener('click', async (e) => {
     state.activeModal = state.activeModal === modalName ? null : modalName;
     state.statusBannerKey = '';
     renderApp();
+    if (state.activeModal === 'settings') {
+      Promise.all([fetchSystemStatus(), fetchImportBatches()]).then(() => renderApp()).catch(() => {});
+    }
   } else if (action === 'close-modal' || action === 'close-modal-backdrop') {
     if (action === 'close-modal-backdrop' && e.target !== el) return;
     state.activeModal = null;
@@ -1589,6 +1751,12 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-settings-tab') {
     state.settingsTab = el.getAttribute('data-tab') || 'sources';
     state.statusBannerKey = '';
+    renderApp();
+    if (state.settingsTab === 'sync') {
+      Promise.all([fetchSystemStatus(), fetchImportBatches()]).then(() => renderApp()).catch(() => {});
+    }
+  } else if (action === 'refresh-import-batches') {
+    await fetchImportBatches();
     renderApp();
   } else if (action === 'toggle-fullscreen') {
     state.isFullscreen = !state.isFullscreen;
@@ -1981,6 +2149,14 @@ document.addEventListener('click', async (e) => {
     activeTab.showPivotPoints = !activeTab.showPivotPoints;
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
+  } else if (action === 'set-pivot-type' && activeTab) {
+    const rawVar = String(el.getAttribute('data-pivot-type') || 'STANDARD').toUpperCase();
+    const validVar = ['STANDARD', 'FIBONACCI', 'CAMARILLA', 'WOODIE'].includes(rawVar) ? rawVar : 'STANDARD';
+    activeTab.pivotType = validVar;
+    activeTab.showPivotPoints = true;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'toggle-future-projection' && activeTab) {
     activeTab.showFutureProjection = !activeTab.showFutureProjection;
     if (activeTab.showFutureProjection) {
@@ -2617,6 +2793,10 @@ async function handleChartSnapshot() {
       if (activeTab.showEma200) activePills.push({ label: 'EMA 200', color: pal.ema200 });
       if (activeTab.showBollinger) activePills.push({ label: 'BB', color: pal.bollinger });
       if (activeTab.showVwap) activePills.push({ label: 'VWAP', color: pal.vwap });
+      if (activeTab.showPivotPoints) {
+        const pivTag = String(activeTab.pivotType || 'STANDARD').toUpperCase().slice(0, 3);
+        activePills.push({ label: `Pivots (${pivTag})`, color: pal.pivotP });
+      }
       if (activeTab.showSupertrend) activePills.push({ label: 'Supertrend', color: pal.supertrend });
       if (activeTab.showSmcStructure) activePills.push({ label: 'SMC (BOS)', color: pal.smcStructure });
       if (activeTab.showFvg) activePills.push({ label: 'FVG', color: pal.fvg });

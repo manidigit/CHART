@@ -113,10 +113,26 @@ if ($totalCandles === 0) {
     }
 }
 
+$phpRuntime = [
+    'php_version' => PHP_VERSION,
+    'memory_limit' => (string) ini_get('memory_limit'),
+    'max_execution_time' => (int) ini_get('max_execution_time'),
+    'upload_max_filesize' => (string) ini_get('upload_max_filesize'),
+    'post_max_size' => (string) ini_get('post_max_size'),
+    'extensions' => [
+        'pdo_mysql' => extension_loaded('pdo_mysql'),
+        'curl' => extension_loaded('curl'),
+        'openssl' => extension_loaded('openssl'),
+        'mbstring' => extension_loaded('mbstring'),
+        'zip' => extension_loaded('zip'),
+        'json' => extension_loaded('json'),
+    ],
+];
+
 ApiEnvelope::sendSuccess([
     'status' => 'healthy',
-    'version' => '1.39.0',
-    'phase' => 'Phase 2 & 3 - Multi-Anchor Pro Tools, Indicators, Killzones, Live Intel, Gap Audit & Backup',
+    'version' => '1.41.0',
+    'phase' => 'Phase 2 & 3 - Multi-Variant Pivots, Historical Import Lineage, Backup Audit & Runtime Diagnostics',
     'server_time_utc' => $nowUtc,
     'server_time_ms' => $nowMs,
     'database' => [
@@ -126,9 +142,10 @@ ApiEnvelope::sendSuccess([
         'host' => $cfg['DB_HOST'] ?? 'localhost',
         'database_name' => $cfg['DB_NAME'] ?? '',
     ],
+    'php_runtime' => $phpRuntime,
     'total_candles' => $totalCandles,
     'candle_stats' => $candleStats,
     'registered_owner' => $ownerRegistered,
     'supported_timeframes' => ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'],
-    'supported_providers' => ['tvdatafeed', 'biquote', 'twelve_data', 'dukascopy', 'yahoo_finance', 'stooq', 'eia_brent_spot'],
+    'supported_providers' => ['tvdatafeed', 'biquote', 'twelve_data', 'dukascopy', 'yahoo_finance', 'stooq', 'eia_brent_spot', 'local_csv'],
 ], 'status_system_healthy');

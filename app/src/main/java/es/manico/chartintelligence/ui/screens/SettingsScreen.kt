@@ -130,9 +130,14 @@ fun SettingsScreen(
     activeGapReport: es.manico.chartintelligence.algorithms.GapReport? = null,
     activeGapSymbolLabel: String? = null,
     backupStatusMessage: String? = null,
+    importBatches: List<es.manico.chartintelligence.data.repository.ImportBatchDto> = emptyList(),
+    importStatusMessage: String? = null,
     onRunGapAudit: () -> Unit = {},
     onExportBackupToUri: (android.net.Uri, String) -> Unit = { _, _ -> },
     onRestoreBackupFromUri: (android.net.Uri, String) -> Unit = { _, _ -> },
+    onImportDocumentUri: (android.net.Uri, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
+    onSubmitManualOhlc: (String, String, String, String, String, Double, Double, Double, Double, Double) -> Unit = { _, _, _, _, _, _, _, _, _, _ -> },
+    onRefreshImportBatches: () -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBackToWatchlist)
@@ -1798,6 +1803,31 @@ fun SettingsScreen(
                                 }
                             }
 
+                            val phpSummary = systemStatus?.phpRuntimeSummary.orEmpty()
+                            if (phpSummary.isNotBlank()) {
+                                Surface(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    shape = RoundedCornerShape(6.dp),
+                                    color = MaterialTheme.colorScheme.background,
+                                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                                ) {
+                                    Column(modifier = Modifier.padding(8.dp)) {
+                                        Text(
+                                            text = "PHP Runtime Diagnostics (§4.1)",
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Text(
+                                            text = phpSummary,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontWeight = FontWeight.SemiBold,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
+                                }
+                            }
+
                             es.manico.chartintelligence.ui.components.GapAuditSection(
                                 language = currentLanguage,
                                 activeGapReport = activeGapReport,
@@ -1814,6 +1844,16 @@ fun SettingsScreen(
                         statusMessage = backupStatusMessage,
                         onExportToUri = onExportBackupToUri,
                         onRestoreFromUri = onRestoreBackupFromUri
+                    )
+
+                    es.manico.chartintelligence.ui.components.Phase3ImportCard(
+                        language = currentLanguage,
+                        symbols = symbols,
+                        importBatches = importBatches,
+                        statusMessage = importStatusMessage,
+                        onImportDocumentUri = onImportDocumentUri,
+                        onSubmitManualOhlc = onSubmitManualOhlc,
+                        onRefreshBatches = onRefreshImportBatches
                     )
                 }
 

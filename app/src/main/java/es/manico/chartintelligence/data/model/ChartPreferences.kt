@@ -212,10 +212,14 @@ data class ChartPreferences(
     // Category 3: Key Levels, Pivots & Volume Profile Spectrum
     val vwapColor: Color get() = shiftShade(levelsFamilyBaseColor, 0.22f)
     val pivotPColor: Color get() = levelsFamilyBaseColor
-    val pivotR1Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.30f)
-    val pivotR2Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.46f)
+    val pivotR1Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.18f)
+    val pivotR2Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.30f)
+    val pivotR3Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.42f)
+    val pivotR4Color: Color get() = shiftShade(levelsFamilyBaseColor, 0.54f)
     val pivotS1Color: Color get() = shiftShade(levelsFamilyBaseColor, -0.14f)
-    val pivotS2Color: Color get() = shiftShade(levelsFamilyBaseColor, -0.28f)
+    val pivotS2Color: Color get() = shiftShade(levelsFamilyBaseColor, -0.26f)
+    val pivotS3Color: Color get() = shiftShade(levelsFamilyBaseColor, -0.38f)
+    val pivotS4Color: Color get() = shiftShade(levelsFamilyBaseColor, -0.48f)
     val vrvpPocColor: Color get() = levelsFamilyBaseColor
     val vrvpVaColor: Color get() = shiftShade(levelsFamilyBaseColor, 0.34f)
 
