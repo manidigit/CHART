@@ -28,15 +28,17 @@ export function renderSettingsModal(i18n) {
   if (state.activeModal !== 'settings') return '';
   const p = state.chartPreferences;
   const isFa = i18n.getCurrentLanguage() === 'fa';
-  const rawTab = state.settingsTab || 'sync';
+  const rawTab = state.settingsTab || 'sources';
   const tab =
-    rawTab === 'sources' || rawTab === 'health'
-      ? 'sync'
-      : rawTab === 'appearance'
-        ? 'theme'
-        : rawTab === 'scales' || rawTab === 'params'
-          ? 'chart'
-          : rawTab;
+    rawTab === 'sync' || rawTab === 'sources' || rawTab === 'health'
+      ? 'sources'
+      : rawTab === 'watchlist' || rawTab === 'symbols'
+        ? 'watchlist'
+        : rawTab === 'appearance' || rawTab === 'theme'
+          ? 'theme'
+          : rawTab === 'scales' || rawTab === 'params' || rawTab === 'notifications' || rawTab === 'chart'
+            ? 'chart'
+            : 'account';
 
   const explorerMode = state.sourceExplorerMode || 'by_source';
   const activeMethodId = state.selectedExplorerProvider || 'tvdatafeed';
@@ -113,7 +115,7 @@ export function renderSettingsModal(i18n) {
   `;
 
   const sourceSymbolsRowsHtml =
-    tab !== 'sync'
+    tab !== 'watchlist'
       ? ''
       : filteredMethodSymbols.length === 0
         ? `<div style="padding: 12px; font-size: 12px; color: var(--text-muted); text-align: center;">${isFa ? 'هیچ نمادی از این بازار در منبع انتخاب‌شده وجود ندارد.' : 'No symbols from this market category are available in this provider.'}</div>`
@@ -193,7 +195,7 @@ export function renderSettingsModal(i18n) {
 
   // Mode 2: Search / Filter by Symbol (Filtered by Market Category + Query)
   const filteredSymbols =
-    tab !== 'sync'
+    tab !== 'watchlist'
       ? []
       : state.symbols.filter((s) => {
           const matchesCat = marketCat === 'ALL' || getSymbolCategoryKey(s.symbolCode) === marketCat;
@@ -350,7 +352,7 @@ export function renderSettingsModal(i18n) {
       </div>
     </div>
 
-    <details class="tv-accordion">
+    <details class="tv-accordion" open>
       <summary>
         <span>${i18n.t('settings_technical_accordion') || 'Advanced Database & Technical Diagnostics'}</span>
       </summary>
@@ -413,68 +415,66 @@ export function renderSettingsModal(i18n) {
         })()}
       </div>
     </details>
+  `;
 
-    <details class="tv-accordion">
-      <summary>
-        <span>🛡️ ${i18n.t('settings_backup_title') || (isFa ? 'پشتیبان‌گیری و بازیابی رمزنگاری‌شده (AES-256-GCM)' : 'Encrypted Backup & Restore (AES-256-GCM)')}</span>
-      </summary>
-      <div class="tv-accordion-body" style="padding-top: 8px;">
-        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">
-          ${i18n.t('settings_backup_subtitle') || (isFa ? 'خروجی و بازیابی کل فضای کاری با رمزنگاری PBKDF2-HMAC-SHA256 + AES-256-GCM بدون ذخیره کلیدهای API.' : 'Export/restore full workspace archive using PBKDF2-HMAC-SHA256 + AES-256-GCM; BYOK keys remain strictly device-local.')}
-        </div>
-        ${
-          state.backupStatusMessage
-            ? `<div class="ltr-num" style="font-size: 11px; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; background: rgba(38,166,154,0.12); border: 1px solid var(--bull); color: var(--text-strong);">${escapeHtml(state.backupStatusMessage)}</div>`
-            : ''
-        }
-        <form id="backup-export-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
-          <input id="backup-export-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1; min-width: 180px; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'عبارت عبور پشتیبان (حداقل ۸ کاراکتر)' : 'Backup passphrase (min 8 chars)'}" required autocomplete="off" />
-          <button type="submit" class="btn btn-sm btn-primary">
-            🔒 ${i18n.t('settings_backup_export_btn') || (isFa ? 'دانلود پشتیبان (.cibak.json)' : 'Export Backup (.cibak.json)')}
-          </button>
-        </form>
-        <form id="backup-restore-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 8px; border-top: 1px dashed var(--border);">
-          <input id="backup-restore-file" type="file" accept=".json,.cibak.json,application/json" class="input-field" style="flex: 1; min-width: 180px; font-size: 11px; padding: 4px;" required />
-          <input id="backup-restore-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1; min-width: 160px; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'رمز فایل پشتیبان' : 'Restore passphrase'}" required autocomplete="off" />
-          <button type="submit" class="btn btn-sm">
-            🔓 ${i18n.t('settings_backup_restore_btn') || (isFa ? 'بازیابی نسخه پشتیبان' : 'Restore Backup')}
-          </button>
-        </form>
+  const encryptedBackupCard = `
+    <div class="card-subtle" style="margin-bottom: 12px;">
+      <h5 style="margin: 0 0 6px 0; color: var(--text-strong);">
+        🛡️ ${i18n.t('settings_backup_title') || (isFa ? 'پشتیبان‌گیری و بازیابی رمزنگاری‌شده (AES-256-GCM)' : 'Encrypted Workspace Backup & Restore (AES-256-GCM)')}
+      </h5>
+      <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 10px;">
+        ${i18n.t('settings_backup_subtitle') || (isFa ? 'خروجی و بازیابی کل فضای کاری با رمزنگاری PBKDF2-HMAC-SHA256 + AES-256-GCM بدون ذخیره کلیدهای API.' : 'Export/restore full workspace archive using PBKDF2-HMAC-SHA256 + AES-256-GCM; BYOK keys remain strictly device-local.')}
       </div>
-    </details>
+      ${
+        state.backupStatusMessage
+          ? `<div class="ltr-num" style="font-size: 11px; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; background: rgba(38,166,154,0.12); border: 1px solid var(--bull); color: var(--text-strong);">${escapeHtml(state.backupStatusMessage)}</div>`
+          : ''
+      }
+      <form id="backup-export-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
+        <input id="backup-export-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1; min-width: 180px; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'عبارت عبور پشتیبان (حداقل ۸ کاراکتر)' : 'Backup passphrase (min 8 chars)'}" required autocomplete="off" />
+        <button type="submit" class="btn btn-sm btn-primary">
+          🔒 ${i18n.t('settings_backup_export_btn') || (isFa ? 'دانلود پشتیبان (.cibak.json)' : 'Export Backup (.cibak.json)')}
+        </button>
+      </form>
+      <form id="backup-restore-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 8px; border-top: 1px dashed var(--border);">
+        <input id="backup-restore-file" type="file" accept=".json,.cibak.json,application/json" class="input-field" style="flex: 1; min-width: 180px; font-size: 11px; padding: 4px;" required />
+        <input id="backup-restore-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1; min-width: 160px; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'رمز فایل پشتیبان' : 'Restore passphrase'}" required autocomplete="off" />
+        <button type="submit" class="btn btn-sm">
+          🔓 ${i18n.t('settings_backup_restore_btn') || (isFa ? 'بازیابی نسخه پشتیبان' : 'Restore Backup')}
+        </button>
+      </form>
+    </div>
   `;
 
   const localByok = getLocalByokKeys();
   const byokCard = `
-    <details class="tv-accordion">
-      <summary>
-        <span>🔑 ${i18n.t('settings_byok_title')}</span>
-      </summary>
-      <div class="tv-accordion-body" style="padding-top: 8px;">
-        <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 8px;">${i18n.t('settings_byok_subtitle')}</div>
-        <form id="settings-byok-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px;">
-          <div>
-            <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Twelve Data API Key (XAUUSD / Global)</label>
-            <input id="byok-twelve-data" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="e.g. 9f8a7b6c5d4e..." value="${escapeHtml(localByok.twelveDataApiKey || '')}" autocomplete="off" />
-          </div>
-          <div>
-            <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Stooq API Key (Optional EOD D1/W1)</label>
-            <input id="byok-stooq" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Stooq Key..." value="${escapeHtml(localByok.stooqApiKey || '')}" autocomplete="off" />
-          </div>
-          <div>
-            <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Alpha Vantage API Key (Backup)</label>
-            <input id="byok-alphavantage" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Alpha Vantage Key..." value="${escapeHtml(localByok.alphaVantageApiKey || '')}" autocomplete="off" />
-          </div>
-          <div>
-            <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Finnhub API Key (Backup)</label>
-            <input id="byok-finnhub" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Finnhub Key..." value="${escapeHtml(localByok.finnhubApiKey || '')}" autocomplete="off" />
-          </div>
-          <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 2px;">
-            <button type="submit" class="btn btn-sm btn-primary">${i18n.t('settings_byok_save')}</button>
-          </div>
-        </form>
+    <div class="card-subtle" style="margin-bottom: 10px;">
+      <div style="font-size: 13px; font-weight: 700; color: var(--text-strong); margin-bottom: 4px;">
+        🔑 ${i18n.t('settings_byok_title')}
       </div>
-    </details>
+      <div style="font-size: 11px; color: var(--text-muted); margin-bottom: 10px;">${i18n.t('settings_byok_subtitle')}</div>
+      <form id="settings-byok-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px;">
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Twelve Data API Key (XAUUSD / Global)</label>
+          <input id="byok-twelve-data" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="e.g. 9f8a7b6c5d4e..." value="${escapeHtml(localByok.twelveDataApiKey || '')}" autocomplete="off" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Stooq API Key (Optional EOD D1/W1)</label>
+          <input id="byok-stooq" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Stooq Key..." value="${escapeHtml(localByok.stooqApiKey || '')}" autocomplete="off" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Alpha Vantage API Key (Backup)</label>
+          <input id="byok-alphavantage" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Alpha Vantage Key..." value="${escapeHtml(localByok.alphaVantageApiKey || '')}" autocomplete="off" />
+        </div>
+        <div>
+          <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">Finnhub API Key (Backup)</label>
+          <input id="byok-finnhub" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px;" placeholder="Optional Finnhub Key..." value="${escapeHtml(localByok.finnhubApiKey || '')}" autocomplete="off" />
+        </div>
+        <div style="grid-column: 1 / -1; display: flex; justify-content: flex-end; margin-top: 2px;">
+          <button type="submit" class="btn btn-sm btn-primary">${i18n.t('settings_byok_save')}</button>
+        </div>
+      </form>
+    </div>
   `;
 
   const importSymbolOptions = state.symbols
@@ -584,12 +584,14 @@ export function renderSettingsModal(i18n) {
   `;
 
   let bodyHtml = '';
-  if (tab === 'sync') {
+  if (tab === 'sources') {
     bodyHtml = `
       ${serverDiagCard}
       ${byokCard}
       ${historicalImportCard}
-
+    `;
+  } else if (tab === 'watchlist') {
+    bodyHtml = `
       <div class="card-subtle" style="margin-bottom: 10px;">
         <div class="row-between" style="margin-bottom: 8px; gap: 8px; flex-wrap: wrap;">
           <h4 style="margin: 0; font-size: 13.5px; color: var(--text-strong);">${i18n.t('settings_group_sources')}</h4>
@@ -763,16 +765,6 @@ export function renderSettingsModal(i18n) {
           </button>
         </div>
       </div>
-
-      <div class="card-subtle">
-        <h5 style="margin: 0 0 6px 0; color: var(--text-strong);">${i18n.t('settings_group_about')}</h5>
-        <div class="ltr-num" style="font-size: 12px; color: var(--primary); font-weight: 600;">
-          ${i18n.t('settings_about_version')}
-        </div>
-        <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
-          ${i18n.t('settings_about_desc')}
-        </div>
-      </div>
     `;
   } else if (tab === 'chart') {
     bodyHtml = `
@@ -865,15 +857,9 @@ export function renderSettingsModal(i18n) {
             </div>
           </div>
         </div>
-
-        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end;">
-          <button type="button" class="btn btn-sm" style="color: var(--bear); border-color: var(--bear);" data-action="reset-all-defaults">
-            ↺ ${isFa ? 'بازنشانی تمامی تنظیمات و رنگ‌ها به حالت اولیه (Reset All)' : 'Reset All Settings & Colors to Factory Defaults'}
-          </button>
-        </div>
       </div>
 
-      <div class="card-subtle">
+      <div class="card-subtle" style="margin-bottom: 12px;">
         <h5 style="margin: 0 0 8px 0; color: var(--text-strong);">${i18n.t('settings_tv_preferences_title')}</h5>
 
         <div class="tv-switch-row" style="padding: 6px 0;">
@@ -918,9 +904,7 @@ export function renderSettingsModal(i18n) {
           )
           .join('')}
       </div>
-    `;
-  } else if (tab === 'notifications') {
-    bodyHtml = `
+
       <div class="card-subtle">
         <h5 style="margin: 0 0 4px 0; color: var(--text-strong);">${i18n.t('settings_section_notifications_title')}</h5>
         <div style="font-size: 11.5px; color: var(--text-muted); margin-bottom: 10px;">${i18n.t('settings_section_notifications_hint')}</div>
@@ -978,6 +962,18 @@ export function renderSettingsModal(i18n) {
           </div>
         </form>
       </div>
+
+      ${encryptedBackupCard}
+
+      <div class="card-subtle">
+        <h5 style="margin: 0 0 6px 0; color: var(--text-strong);">${i18n.t('settings_group_about')}</h5>
+        <div class="ltr-num" style="font-size: 12px; color: var(--primary); font-weight: 600;">
+          ${i18n.t('settings_about_version')}
+        </div>
+        <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 4px;">
+          ${i18n.t('settings_about_desc')}
+        </div>
+      </div>
     `;
   }
 
@@ -986,27 +982,27 @@ export function renderSettingsModal(i18n) {
       <div class="modal-card">
         <div class="tv-modal-header">
           <div class="tv-modal-title">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
             <span>${i18n.t('nav_settings')}</span>
           </div>
           <button type="button" class="btn btn-sm btn-icon" data-action="close-modal">✕</button>
         </div>
 
         <div class="tv-modal-tabs">
-          <button type="button" class="tv-modal-tab ${tab === 'sync' ? 'active' : ''}" data-action="set-settings-tab" data-tab="sync">
-            ${i18n.t('settings_cat_sync')}
+          <button type="button" class="tv-modal-tab ${tab === 'sources' ? 'active' : ''}" data-action="set-settings-tab" data-tab="sources">
+            ${isFa ? 'منابع داده و API' : 'Data Sources & APIs'}
+          </button>
+          <button type="button" class="tv-modal-tab ${tab === 'watchlist' ? 'active' : ''}" data-action="set-settings-tab" data-tab="watchlist">
+            ${isFa ? 'واچ‌لیست و نمادها' : 'Watchlist & Symbols'}
           </button>
           <button type="button" class="tv-modal-tab ${tab === 'chart' ? 'active' : ''}" data-action="set-settings-tab" data-tab="chart">
-            ${i18n.t('settings_cat_chart')}
-          </button>
-          <button type="button" class="tv-modal-tab ${tab === 'notifications' ? 'active' : ''}" data-action="set-settings-tab" data-tab="notifications">
-            ${i18n.t('settings_cat_notifications')}
+            ${isFa ? 'چارت و تعامل' : 'Chart & Interaction'}
           </button>
           <button type="button" class="tv-modal-tab ${tab === 'theme' ? 'active' : ''}" data-action="set-settings-tab" data-tab="theme">
-            ${i18n.t('settings_cat_theme')}
+            ${isFa ? 'تم و رنگ‌بندی' : 'Theme & Colors'}
           </button>
           <button type="button" class="tv-modal-tab ${tab === 'account' ? 'active' : ''}" data-action="set-settings-tab" data-tab="account">
-            ${i18n.t('settings_cat_account')}
+            ${isFa ? 'حساب و پشتیبان' : 'Account & Backup'}
           </button>
         </div>
 

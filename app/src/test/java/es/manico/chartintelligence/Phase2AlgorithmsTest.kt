@@ -531,7 +531,7 @@ class Phase2AlgorithmsTest {
             }
         }
         composeTestRule.waitForIdle()
-        for (tabKey in listOf("chart", "notifications", "theme", "account", "sync")) {
+        for (tabKey in listOf("chart", "theme", "account", "sources", "watchlist")) {
             composeTestRule.onNode(androidx.compose.ui.test.hasTestTag("settings_tab_$tabKey")).performClick()
             composeTestRule.waitForIdle()
         }

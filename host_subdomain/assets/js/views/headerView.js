@@ -188,30 +188,6 @@ export function renderTopHeaderBar(activeTab, i18n) {
               : ''
           }
         </button>
-
-        <div class="tv-divider"></div>
-
-        <!-- Dedicated Workspace Mode Switcher: Chart vs Forecast Studio -->
-        <div class="tv-workspace-switcher" role="tablist" aria-label="Workspace Mode">
-          <button
-            type="button"
-            class="tv-ws-tab ${state.activeWorkspaceView !== 'forecast' ? 'active' : ''}"
-            data-action="set-workspace-view"
-            data-view="chart"
-            title="${isFa ? 'نمای چارت زنده' : 'Live Chart Workspace'}"
-          >
-            ${isFa ? 'چارت' : 'Chart'}
-          </button>
-          <button
-            type="button"
-            class="tv-ws-tab ${state.activeWorkspaceView === 'forecast' ? 'active' : ''}"
-            data-action="set-workspace-view"
-            data-view="forecast"
-            title="${i18n.t('nav_forecast_lab')}"
-          >
-            🔮 ${i18n.t('nav_forecast_lab')}
-          </button>
-        </div>
       </div>
 
       <div class="tv-topbar-right">
@@ -326,19 +302,19 @@ export function renderIndicatorsModal(activeTab, i18n) {
   const pal = getIndicatorColorPalette(state.chartPreferences);
 
   const renderSectionHeader = (title, subtitle) => `
-    <div style="margin-top: 10px; margin-bottom: 2px; padding: 4px 8px; border-inline-start: 3px solid var(--primary); background: rgba(41, 98, 255, 0.05); border-radius: 0 4px 4px 0;">
-      <div style="font-size: 11.5px; font-weight: 800; color: var(--text-strong); letter-spacing: 0.3px;">
+    <div style="margin-top: 12px; margin-bottom: 4px; padding: 6px 10px; border-inline-start: 3px solid var(--primary); background: var(--primary-soft); border-radius: 0 6px 6px 0;">
+      <div style="font-size: 12px; font-weight: 800; color: var(--text-strong); letter-spacing: 0.2px;">
         ${title}
       </div>
-      <div style="font-size: 10.5px; color: var(--text-muted); margin-top: 1px;">
+      <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
         ${subtitle}
       </div>
     </div>
   `;
 
   const renderToggleRow = (indicatorKey, color, title, subtitle, isActive, actionName, styleBadge = '──') => `
-    <div class="card-subtle row-between" style="padding: 7px 11px; gap: 8px;">
-      <div style="display: flex; align-items: center; gap: 9px; flex: 1; min-width: 0;">
+    <div class="card-subtle row-between" style="padding: 8px 12px; gap: 10px;">
+      <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
         <label class="tv-ind-color-picker-label" title="${isFa ? 'انتخاب رنگ سفارشی برای ' + title : 'Pick custom color for ' + title}">
           <input
             type="color"
@@ -350,11 +326,11 @@ export function renderIndicatorsModal(activeTab, i18n) {
           <span class="tv-ind-color-dot" style="background-color: ${color};"></span>
         </label>
         <div style="min-width: 0; flex: 1;">
-          <div style="font-weight: 700; color: var(--text-strong); font-size: 12.5px; display: flex; align-items: center; gap: 6px;">
-            <span class="ltr-num" style="display: inline-flex; align-items: center; justify-content: center; min-width: 22px; height: 15px; padding: 0 4px; border-radius: 4px; background: rgba(15,23,42,0.45); border: 1px solid ${color}; color: ${color}; font-size: 9.5px; font-weight: 800;">${styleBadge}</span>
+          <div style="font-weight: 700; color: var(--text-strong); font-size: 13px; display: flex; align-items: center; gap: 7px;">
+            <span class="tv-ind-badge-tag ltr-num" style="--ind-accent: ${color};">${styleBadge}</span>
             <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</span>
           </div>
-          <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+          <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.35;">
             ${subtitle}
           </div>
         </div>
@@ -362,7 +338,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
       <button
         class="btn btn-sm ${isActive ? 'btn-primary' : ''}"
         data-action="${actionName}"
-        style="white-space: nowrap; flex-shrink: 0;"
+        style="white-space: nowrap; flex-shrink: 0; min-width: 68px;"
       >
         ${isActive ? (isFa ? 'فعال ✓' : 'Active ✓') : isFa ? 'افزودن' : 'Add'}
       </button>
@@ -370,7 +346,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
   `;
 
   const renderColorRow = (indicatorKey, color, title, styleBadge = '──') => `
-    <div class="card-subtle row-between" style="padding: 5px 9px; gap: 8px;">
+    <div class="card-subtle row-between" style="padding: 6px 10px; gap: 8px;">
       <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
         <label class="tv-ind-color-picker-label" title="${isFa ? 'انتخاب رنگ سفارشی برای ' + title : 'Pick custom color for ' + title}">
           <input
@@ -383,8 +359,8 @@ export function renderIndicatorsModal(activeTab, i18n) {
           <span class="tv-ind-color-dot" style="background-color: ${color};"></span>
         </label>
         <div style="min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px;">
-          <span class="ltr-num" style="display: inline-flex; align-items: center; justify-content: center; min-width: 20px; height: 14px; padding: 0 3px; border-radius: 3px; background: rgba(15,23,42,0.45); border: 1px solid ${color}; color: ${color}; font-size: 9px; font-weight: 800;">${styleBadge}</span>
-          <span style="font-weight: 700; color: var(--text-strong); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</span>
+          <span class="tv-ind-badge-tag tv-ind-badge-tag-sm ltr-num" style="--ind-accent: ${color};">${styleBadge}</span>
+          <span style="font-weight: 700; color: var(--text-strong); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</span>
         </div>
       </div>
     </div>

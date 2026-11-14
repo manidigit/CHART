@@ -2,12 +2,21 @@ import { state } from '../core/store.js?v=1.42.0';
 
 export function renderRightIconRail(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
+  const isSettingsActive = state.activeModal === 'settings';
+  const isOverviewActive = !isSettingsActive && Boolean(state.symbolOverviewCode);
+  const isForecastActive = !isSettingsActive && !isOverviewActive && state.activeWorkspaceView === 'forecast';
+  const isWatchlistActive =
+    !isSettingsActive &&
+    !isOverviewActive &&
+    !isForecastActive &&
+    Boolean(state.isSideDrawerOpen);
+
   return `
     <aside class="tv-right-rail" dir="ltr">
       <div class="tv-rail-group">
         <!-- 1. Watchlist & Symbol Details Split Panel Toggle -->
         <button
-          class="tv-rail-btn ${state.isSideDrawerOpen ? 'active' : ''}"
+          class="tv-rail-btn ${isWatchlistActive ? 'active' : ''}"
           data-action="toggle-right-panel"
           title="${i18n.t('nav_watchlist')}"
         >
@@ -16,7 +25,7 @@ export function renderRightIconRail(i18n) {
 
         <!-- 2. Chart & Symbol Seasonals Overview -->
         <button
-          class="tv-rail-btn ${state.symbolOverviewCode ? 'active' : ''}"
+          class="tv-rail-btn ${isOverviewActive ? 'active' : ''}"
           data-action="open-active-symbol-overview"
           title="${i18n.t('symbol_overview_seasonals')}"
         >
@@ -25,7 +34,7 @@ export function renderRightIconRail(i18n) {
 
         <!-- 3. Dedicated Forecast Studio Workspace Tab -->
         <button
-          class="tv-rail-btn ${state.activeWorkspaceView === 'forecast' ? 'active' : ''}"
+          class="tv-rail-btn ${isForecastActive ? 'active' : ''}"
           data-action="toggle-forecast-studio"
           title="${i18n.t('nav_forecast_lab')}"
         >
@@ -34,7 +43,7 @@ export function renderRightIconRail(i18n) {
 
         <!-- 4. Settings (Centered TradingView Modal) -->
         <button
-          class="tv-rail-btn ${state.activeModal === 'settings' ? 'active' : ''}"
+          class="tv-rail-btn ${isSettingsActive ? 'active' : ''}"
           data-action="open-modal"
           data-modal="settings"
           title="${i18n.t('nav_settings')}"

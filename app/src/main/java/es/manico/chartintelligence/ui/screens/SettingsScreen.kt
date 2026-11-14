@@ -148,7 +148,7 @@ fun SettingsScreen(
     var showAddSymbolDialog by rememberSaveable { mutableStateOf(false) }
     var showColorsBottomSheet by rememberSaveable { mutableStateOf(false) }
     var providerModalSymbolCode by rememberSaveable { mutableStateOf<String?>(null) }
-    var activeSettingsTab by rememberSaveable { mutableStateOf("sync") }
+    var activeSettingsTab by rememberSaveable { mutableStateOf("sources") }
 
     var twelveDataKeyInput by rememberSaveable(chartPreferences.twelveDataApiKey) { mutableStateOf(chartPreferences.twelveDataApiKey) }
     var stooqKeyInput by rememberSaveable(chartPreferences.stooqApiKey) { mutableStateOf(chartPreferences.stooqApiKey) }
@@ -156,11 +156,11 @@ fun SettingsScreen(
     var finnhubKeyInput by rememberSaveable(chartPreferences.finnhubApiKey) { mutableStateOf(chartPreferences.finnhubApiKey) }
 
     val settingsTabs = listOf(
-        "sync" to R.string.settings_cat_sync,
-        "chart" to R.string.settings_cat_chart,
-        "notifications" to R.string.settings_cat_notifications,
-        "theme" to R.string.settings_cat_theme,
-        "account" to R.string.settings_cat_account
+        "sources" to (if (currentLanguage == AppLanguage.FA) "منابع داده و API" else "Data Sources & APIs"),
+        "watchlist" to (if (currentLanguage == AppLanguage.FA) "واچ‌لیست و نمادها" else "Watchlist & Symbols"),
+        "chart" to (if (currentLanguage == AppLanguage.FA) "چارت و تعامل" else "Chart & Interaction"),
+        "theme" to (if (currentLanguage == AppLanguage.FA) "تم و رنگ‌بندی" else "Theme & Colors"),
+        "account" to (if (currentLanguage == AppLanguage.FA) "حساب و پشتیبان" else "Account & Backup")
     )
 
     Column(
@@ -200,7 +200,7 @@ fun SettingsScreen(
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    for ((tabKey, labelRes) in settingsTabs) {
+                    for ((tabKey, tabLabel) in settingsTabs) {
                         val isSelected = activeSettingsTab == tabKey
                         Surface(
                             shape = RoundedCornerShape(8.dp),
@@ -220,7 +220,7 @@ fun SettingsScreen(
                                 modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
                             ) {
                                 Text(
-                                    text = stringResource(labelRes),
+                                    text = tabLabel,
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
                                     color = if (isSelected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant
@@ -379,6 +379,58 @@ fun SettingsScreen(
                         ) {
                             Text(text = stringResource(R.string.settings_change_password))
                         }
+                    }
+                }
+
+                es.manico.chartintelligence.ui.components.EncryptedBackupCard(
+                    language = currentLanguage,
+                    statusMessage = backupStatusMessage,
+                    onExportToUri = onExportBackupToUri,
+                    onRestoreFromUri = onRestoreBackupFromUri
+                )
+
+                Card(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("settings_group_about"),
+                    shape = RoundedCornerShape(10.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    border = BorderStroke(1.dp, financialPalette.cardBorder)
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(14.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Outlined.Info,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = stringResource(R.string.settings_group_about),
+                                style = MaterialTheme.typography.titleSmall,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Text(
+                            text = stringResource(R.string.settings_about_version),
+                            style = MaterialTheme.typography.labelMedium,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Text(
+                            text = stringResource(R.string.app_subtitle),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
                 }
@@ -568,9 +620,9 @@ fun SettingsScreen(
                 }
 
                 // =========================================================================
-                // GROUP 4: Sync & Data Sources — Dual-Mode Source & Symbol Explorer (v1.31.0)
+                // GROUP 4: Watchlist & Symbols — Dual-Mode Source & Symbol Explorer (v1.31.0)
                 // =========================================================================
-                if (activeSettingsTab == "sync") {
+                if (activeSettingsTab == "watchlist") {
                 var explorerMode by rememberSaveable { mutableStateOf("by_source") }
                 var selectedExplorerProvider by rememberSaveable { mutableStateOf(ProviderId.TVDATAFEED) }
                 var selectedMarketCategory by rememberSaveable { mutableStateOf("ALL") }
@@ -1537,9 +1589,9 @@ fun SettingsScreen(
                 }
 
                 // =========================================================================
-                // GROUP 3: Notifications, Haptic Feedback & Watchlist Display (نوتیفیکیشن و بازخورد)
+                // GROUP 3: Haptic Feedback & Watchlist Display (Integrated under Chart & Interaction)
                 // =========================================================================
-                if (activeSettingsTab == "notifications") {
+                if (activeSettingsTab == "chart") {
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1618,10 +1670,12 @@ fun SettingsScreen(
                 }
 
                 // =========================================================================
-                // Server Health & Cloud Workspace Status (under Sync tab) + About (under Theme/Sync)
+                // Server Health, Cloud Sync, BYOK API Keys & Historical Data Import (under Sources tab)
                 // =========================================================================
-                if (activeSettingsTab == "sync" || activeSettingsTab == "theme") {
+                if (activeSettingsTab == "sources") {
                 var isDiagnosticsExpanded by rememberSaveable { mutableStateOf(false) }
+                var isByokExpanded by rememberSaveable { mutableStateOf(false) }
+                val isFa = currentLanguage == AppLanguage.FA
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1838,29 +1892,11 @@ fun SettingsScreen(
                     }
                 }
 
-                if (activeSettingsTab == "sync") {
-                    es.manico.chartintelligence.ui.components.EncryptedBackupCard(
-                        language = currentLanguage,
-                        statusMessage = backupStatusMessage,
-                        onExportToUri = onExportBackupToUri,
-                        onRestoreFromUri = onRestoreBackupFromUri
-                    )
-
-                    es.manico.chartintelligence.ui.components.Phase3ImportCard(
-                        language = currentLanguage,
-                        symbols = symbols,
-                        importBatches = importBatches,
-                        statusMessage = importStatusMessage,
-                        onImportDocumentUri = onImportDocumentUri,
-                        onSubmitManualOhlc = onSubmitManualOhlc,
-                        onRefreshBatches = onRefreshImportBatches
-                    )
-                }
-
+                // Personal Data Provider API Keys (BYOK) Card
                 Card(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .testTag("settings_group_about"),
+                        .testTag("settings_byok_card"),
                     shape = RoundedCornerShape(10.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, financialPalette.cardBorder)
@@ -1869,38 +1905,98 @@ fun SettingsScreen(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable { isByokExpanded = !isByokExpanded },
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = if (isFa) "🔑 کلیدهای API اختصاصی منابع داده (BYOK)" else "🔑 Personal Data Provider API Keys (BYOK)",
+                                    style = MaterialTheme.typography.titleSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Text(
+                                    text = if (isFa) "ذخیره امن روی دستگاه برای TwelveData، Stooq، AlphaVantage و Finnhub" else "Stored locally on device for TwelveData, Stooq, AlphaVantage & Finnhub",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                             Icon(
-                                imageVector = Icons.Outlined.Info,
+                                imageVector = if (isByokExpanded) Icons.Outlined.ExpandLess else Icons.Outlined.ExpandMore,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = stringResource(R.string.settings_group_about),
-                                style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.onSurface
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Text(
-                            text = stringResource(R.string.settings_about_version),
-                            style = MaterialTheme.typography.labelMedium,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Text(
-                            text = stringResource(R.string.app_subtitle),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
+
+                        if (isByokExpanded) {
+                            HorizontalDivider(thickness = 1.dp, color = financialPalette.cardBorder)
+                            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                    OutlinedTextField(
+                                        value = twelveDataKeyInput,
+                                        onValueChange = { twelveDataKeyInput = it },
+                                        label = { Text("TwelveData API Key") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = stooqKeyInput,
+                                        onValueChange = { stooqKeyInput = it },
+                                        label = { Text("Stooq API Key") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = alphaVantageKeyInput,
+                                        onValueChange = { alphaVantageKeyInput = it },
+                                        label = { Text("AlphaVantage API Key") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    OutlinedTextField(
+                                        value = finnhubKeyInput,
+                                        onValueChange = { finnhubKeyInput = it },
+                                        label = { Text("Finnhub API Key") },
+                                        singleLine = true,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                }
+                            }
+                            Button(
+                                onClick = {
+                                    onUpdateTradingViewPreference {
+                                        it.copy(
+                                            twelveDataApiKey = twelveDataKeyInput.trim(),
+                                            stooqApiKey = stooqKeyInput.trim(),
+                                            alphaVantageApiKey = alphaVantageKeyInput.trim(),
+                                            finnhubApiKey = finnhubKeyInput.trim()
+                                        )
+                                    }
+                                },
+                                shape = RoundedCornerShape(8.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Text(if (isFa) "ذخیره کلیدهای API" else "Save API Keys")
+                            }
+                        }
                     }
                 }
+
+                es.manico.chartintelligence.ui.components.Phase3ImportCard(
+                    language = currentLanguage,
+                    symbols = symbols,
+                    importBatches = importBatches,
+                    statusMessage = importStatusMessage,
+                    onImportDocumentUri = onImportDocumentUri,
+                    onSubmitManualOhlc = onSubmitManualOhlc,
+                    onRefreshBatches = onRefreshImportBatches
+                )
                 }
 
                 Spacer(modifier = Modifier.height(12.dp))

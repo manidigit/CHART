@@ -1107,21 +1107,28 @@ fun ChartViewScreen(
                                                         verticalAlignment = Alignment.CenterVertically,
                                                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                                                     ) {
-                                                        Box(
+                                                        Row(
                                                             modifier = Modifier
-                                                                .clip(RoundedCornerShape(4.dp))
-                                                                .background(spec.color.copy(alpha = 0.16f))
-                                                                .border(1.dp, spec.color.copy(alpha = 0.65f), RoundedCornerShape(4.dp))
-                                                                .padding(horizontal = 5.dp, vertical = 2.dp),
-                                                            contentAlignment = Alignment.Center
+                                                                .clip(RoundedCornerShape(5.dp))
+                                                                .background(MaterialTheme.colorScheme.surface)
+                                                                .border(1.5.dp, spec.color, RoundedCornerShape(5.dp))
+                                                                .padding(horizontal = 6.dp, vertical = 3.dp),
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
                                                         ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .size(7.dp)
+                                                                    .clip(CircleShape)
+                                                                    .background(spec.color)
+                                                            )
                                                             Text(
                                                                 text = spec.badge,
                                                                 style = MaterialTheme.typography.labelSmall,
-                                                                fontSize = 9.sp,
+                                                                fontSize = 10.sp,
                                                                 fontFamily = JetBrainsMonoFontFamily,
-                                                                fontWeight = FontWeight.Bold,
-                                                                color = spec.color
+                                                                fontWeight = FontWeight.ExtraBold,
+                                                                color = MaterialTheme.colorScheme.onSurface
                                                             )
                                                         }
                                                         Column {
@@ -1129,8 +1136,8 @@ fun ChartViewScreen(
                                                                 text = spec.title,
                                                                 style = MaterialTheme.typography.bodyMedium,
                                                                 fontFamily = JetBrainsMonoFontFamily,
-                                                                fontWeight = FontWeight.SemiBold,
-                                                                color = if (spec.checked) spec.color else MaterialTheme.colorScheme.onSurface
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = MaterialTheme.colorScheme.onSurface
                                                             )
                                                             Text(
                                                                 text = spec.subtitle,
@@ -1191,7 +1198,7 @@ fun ChartViewScreen(
                                                                 style = MaterialTheme.typography.labelSmall,
                                                                 fontFamily = JetBrainsMonoFontFamily,
                                                                 fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Medium,
-                                                                color = if (isSelected) preferences.pivotPColor else MaterialTheme.colorScheme.onSurface
+                                                                color = MaterialTheme.colorScheme.onSurface
                                                             )
                                                         }
                                                     }
@@ -1214,7 +1221,7 @@ fun ChartViewScreen(
                                             text = "تنظیمات باندهای بولینگر (Bollinger Period & StdDev):",
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.Bold,
-                                            color = preferences.bollingerColor
+                                            color = MaterialTheme.colorScheme.onSurface
                                         )
                                         Row(
                                             modifier = Modifier
@@ -1245,7 +1252,7 @@ fun ChartViewScreen(
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontFamily = JetBrainsMonoFontFamily,
                                                         fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (sel) preferences.bollingerColor else MaterialTheme.colorScheme.onSurface
+                                                        color = MaterialTheme.colorScheme.onSurface
                                                     )
                                                 }
                                             }
@@ -1279,7 +1286,7 @@ fun ChartViewScreen(
                                                         style = MaterialTheme.typography.labelSmall,
                                                         fontFamily = JetBrainsMonoFontFamily,
                                                         fontWeight = if (sel) FontWeight.Bold else FontWeight.Medium,
-                                                        color = if (sel) preferences.bollingerColor else MaterialTheme.colorScheme.onSurface
+                                                        color = MaterialTheme.colorScheme.onSurface
                                                     )
                                                 }
                                             }
@@ -1362,16 +1369,16 @@ fun ChartViewScreen(
                                     }
 
                                     val oscSpecs = listOf(
-                                        StudyRowSpec("RSI 14", "Relative Strength Index (30 / 70 Levels)", Color(0xFFEC4899), activeTab.showRsi14, onToggleRsi14, "chart_rsi14_toggle_button"),
-                                        StudyRowSpec("MACD (12, 26, 9)", "Momentum Histogram + MACD / Signal", Color(0xFF3B82F6), activeTab.showMacd, onToggleMacd, "chart_macd_toggle_button"),
-                                        StudyRowSpec("ATR 14", "Wilder's Average True Range Volatility", Color(0xFFF97316), activeTab.showAtr14, onToggleAtr14, "chart_atr14_toggle_button"),
-                                        StudyRowSpec("ADX / DMI (14)", "Trend Strength & Directional Index (Ref 25)", Color(0xFFF59E0B), activeTab.showAdx14, onToggleAdx14, "chart_adx14_toggle_button"),
-                                        StudyRowSpec("Stochastic (14, 3, 3)", "Slow %K / %D Oscillator (20 / 80)", Color(0xFF06B6D4), activeTab.showStoch14, onToggleStoch14, "chart_stoch14_toggle_button"),
-                                        StudyRowSpec("CCI (20)", "Commodity Channel Index (±100 Bands)", Color(0xFF10B981), activeTab.showCci20, onToggleCci20, "chart_cci20_toggle_button"),
-                                        StudyRowSpec("Williams %R (14)", "Momentum Oscillator (-20 / -80)", Color(0xFFEC4899), activeTab.showWillR14, onToggleWillR14, "chart_willr14_toggle_button"),
-                                        StudyRowSpec("OBV", "On-Balance Volume Cumulative Flow", Color(0xFF3B82F6), activeTab.showObv, onToggleObv, "chart_obv_toggle_button"),
-                                        StudyRowSpec("CMF (20)", "Chaikin Money Flow (-1 to +1)", Color(0xFF22C55E), activeTab.showCmf20, onToggleCmf20, "chart_cmf20_toggle_button"),
-                                        StudyRowSpec("ROC (12)", "Price Rate of Change (%)", Color(0xFFEAB308), activeTab.showRoc12, onToggleRoc12, "chart_roc12_toggle_button")
+                                        StudyRowSpec("RSI 14", "Relative Strength Index (30 / 70 Levels)", Color(0xFFEC4899), activeTab.showRsi14, onToggleRsi14, "chart_rsi14_toggle_button", "RSI"),
+                                        StudyRowSpec("MACD (12, 26, 9)", "Momentum Histogram + MACD / Signal", Color(0xFF3B82F6), activeTab.showMacd, onToggleMacd, "chart_macd_toggle_button", "MACD"),
+                                        StudyRowSpec("ATR 14", "Wilder's Average True Range Volatility", Color(0xFFF97316), activeTab.showAtr14, onToggleAtr14, "chart_atr14_toggle_button", "ATR"),
+                                        StudyRowSpec("ADX / DMI (14)", "Trend Strength & Directional Index (Ref 25)", Color(0xFFF59E0B), activeTab.showAdx14, onToggleAdx14, "chart_adx14_toggle_button", "ADX"),
+                                        StudyRowSpec("Stochastic (14, 3, 3)", "Slow %K / %D Oscillator (20 / 80)", Color(0xFF06B6D4), activeTab.showStoch14, onToggleStoch14, "chart_stoch14_toggle_button", "%K%D"),
+                                        StudyRowSpec("CCI (20)", "Commodity Channel Index (±100 Bands)", Color(0xFF10B981), activeTab.showCci20, onToggleCci20, "chart_cci20_toggle_button", "CCI"),
+                                        StudyRowSpec("Williams %R (14)", "Momentum Oscillator (-20 / -80)", Color(0xFFEC4899), activeTab.showWillR14, onToggleWillR14, "chart_willr14_toggle_button", "%R"),
+                                        StudyRowSpec("OBV", "On-Balance Volume Cumulative Flow", Color(0xFF3B82F6), activeTab.showObv, onToggleObv, "chart_obv_toggle_button", "OBV"),
+                                        StudyRowSpec("CMF (20)", "Chaikin Money Flow (-1 to +1)", Color(0xFF22C55E), activeTab.showCmf20, onToggleCmf20, "chart_cmf20_toggle_button", "CMF"),
+                                        StudyRowSpec("ROC (12)", "Price Rate of Change (%)", Color(0xFFEAB308), activeTab.showRoc12, onToggleRoc12, "chart_roc12_toggle_button", "ROC")
                                     )
 
                                     for (spec in oscSpecs) {
@@ -1386,21 +1393,41 @@ fun ChartViewScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Row(
+                                                modifier = Modifier.weight(1f),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                Box(
+                                                Row(
                                                     modifier = Modifier
-                                                        .size(10.dp)
-                                                        .clip(CircleShape)
-                                                        .background(spec.color)
-                                                )
+                                                        .clip(RoundedCornerShape(5.dp))
+                                                        .background(MaterialTheme.colorScheme.surface)
+                                                        .border(1.5.dp, spec.color, RoundedCornerShape(5.dp))
+                                                        .padding(horizontal = 6.dp, vertical = 3.dp),
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(7.dp)
+                                                            .clip(CircleShape)
+                                                            .background(spec.color)
+                                                    )
+                                                    Text(
+                                                        text = spec.badge,
+                                                        style = MaterialTheme.typography.labelSmall,
+                                                        fontSize = 10.sp,
+                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                        fontWeight = FontWeight.ExtraBold,
+                                                        color = MaterialTheme.colorScheme.onSurface
+                                                    )
+                                                }
                                                 Column {
                                                     Text(
                                                         text = spec.title,
                                                         style = MaterialTheme.typography.bodyMedium,
                                                         fontFamily = JetBrainsMonoFontFamily,
-                                                        fontWeight = FontWeight.SemiBold
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onSurface
                                                     )
                                                     Text(
                                                         text = spec.subtitle,

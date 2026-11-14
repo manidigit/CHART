@@ -37,9 +37,10 @@ export function buildPriceTrajectoryFromReturns(lastClose, meanReturns, sigmas) 
  * Strict chronological Walk-Forward Evaluator with purged horizon gap (zero lookahead leakage).
  */
 export function evaluateWalkForward(candles, registry, options = {}) {
-  const clean = Array.isArray(candles)
+  const rawClean = Array.isArray(candles)
     ? candles.filter((c) => Number(c?.close) > 0 && Number.isFinite(Number(c?.close)))
     : [];
+  const clean = rawClean.length > 360 ? rawClean.slice(-360) : rawClean;
 
   const minTrainBars = Math.max(24, Number(options.minTrainBars || 30));
   const evalHorizon = Math.max(3, Math.min(12, Math.round(Number(options.evalHorizon || 5))));
@@ -167,21 +168,29 @@ export function evaluateWalkForward(candles, registry, options = {}) {
   const naiveMae = Math.max(1e-9, naiveMetrics.mae);
   const maeImprovementVsNaivePct = ((naiveMae - ensembleMetrics.mae) / naiveMae) * 100;
   const skillScoreVsNaive = (naiveMae - ensembleMetrics.mae) / naiveMae;
-  const effectiveSampleSize = Number((clean.length / Math.max(1, evalHorizon * 0.65)).toFixed(2));
+  const effectiveSampleSize = Number((rawClean.length / Math.max(1, evalHorizon * 0.65)).toFixed(2));
   const ensAcc = accumulators.get('ensemble');
   const ambiguousOutcomeCount = ensAcc.ambiguousCount || 0;
   const ambiguousRatePct = Number(((ambiguousOutcomeCount / Math.max(1, windowsRun)) * 100).toFixed(2));
+  const targetReachedRatePct = Number((((ensAcc.targetReached || 0) / Math.max(1, windowsRun)) * 100).toFixed(1));
+  const confirmedBreakoutRatePct = Number((((ensAcc.breakout || 0) / Math.max(1, windowsRun)) * 100).toFixed(1));
+  const touchRatePct = Number((((ensAcc.touchedCount || 0) / Math.max(1, windowsRun)) * 100).toFixed(1));
+  const censoringRatePct = Number((((ensAcc.censoredCount || 0) / Math.max(1, windowsRun)) * 100).toFixed(1));
   const pathEventStats = {
     evaluatedPaths: windowsRun,
-    targetReachedRatePct: Number((((ensAcc.targetReached || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
+    touchRatePct,
+    targetReachedRatePct,
+    reachBeforeInvalidationPct: targetReachedRatePct,
     penetrationRatePct: Number((((ensAcc.penetrated || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
     avgPenetrationDepthAtr: Number(((ensAcc.penDepthSum || 0) / Math.max(1, ensAcc.penetrated || 1)).toFixed(2)),
     avgClosesOutsideZone: Number(((ensAcc.closesOutsideSum || 0) / Math.max(1, windowsRun)).toFixed(2)),
     reclaimRatePct: Number((((ensAcc.reclaimed || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
     avgReclaimBars: Number(((ensAcc.reclaimBarsSum || 0) / Math.max(1, ensAcc.reclaimed || 1)).toFixed(1)),
-    confirmedBreakoutRatePct: Number((((ensAcc.breakout || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
+    breakoutRatePct: confirmedBreakoutRatePct,
+    confirmedBreakoutRatePct,
     invalidationFirstRatePct: Number((((ensAcc.invalidationFirst || 0) / Math.max(1, windowsRun)) * 100).toFixed(1)),
     ambiguousRatePct,
+    censoringRatePct,
   };
 
   const beatsNaive = ensembleMetrics.mae <= naiveMetrics.mae * 1.015;
@@ -288,6 +297,7 @@ function recordTrajectoryErrors(acc, clean, origin, baseClose, traj, evalHorizon
   if (ambiguous) acc.ambiguousCount = (acc.ambiguousCount || 0) + 1;
   if (reachedTgt) acc.targetReached = (acc.targetReached || 0) + 1;
   if (reachedInv && !reachedTgt) acc.invalidationFirst = (acc.invalidationFirst || 0) + 1;
+  if (!reachedTgt && !reachedInv && !ambiguous) acc.censoredCount = (acc.censoredCount || 0) + 1;
   if (touched) acc.touchedCount = (acc.touchedCount || 0) + 1;
   if (penetrated) acc.penetrated = (acc.penetrated || 0) + 1;
   if (reclaimed) acc.reclaimed = (acc.reclaimed || 0) + 1;

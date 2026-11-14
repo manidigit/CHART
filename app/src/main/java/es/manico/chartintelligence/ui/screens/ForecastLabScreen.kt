@@ -353,6 +353,7 @@ fun ForecastLabScreen(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+                            val isAppliedOnChart = activeTab?.showFutureProjection == true
                             Button(
                                 onClick = onApplyForecastToChart,
                                 modifier = Modifier
@@ -362,7 +363,11 @@ fun ForecastLabScreen(
                                 shape = RoundedCornerShape(8.dp)
                             ) {
                                 Text(
-                                    text = stringResource(R.string.forecast_apply_chart_btn),
+                                    text = if (isAppliedOnChart) {
+                                        "✓ ${stringResource(R.string.forecast_apply_chart_btn)}"
+                                    } else {
+                                        stringResource(R.string.forecast_apply_chart_btn)
+                                    },
                                     style = MaterialTheme.typography.labelMedium,
                                     fontWeight = FontWeight.Bold
                                 )

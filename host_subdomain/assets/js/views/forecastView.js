@@ -424,8 +424,13 @@ export function renderForecastStudioView(activeTab, i18n) {
             ${fc && fc.regime ? `<span class="ci-fc-regime-badge ltr-num">${escapeHtml(fc.regime)}</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            <button type="button" class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary' : ''}" data-action="apply-forecast-to-chart">
-              ${activeTab?.showFutureProjection ? (isFa ? 'نمایش روی چارت: فعال ✓' : 'Applied to Chart ✓') : isFa ? 'اعمال روی چارت و مشاهده' : 'Apply & View on Chart'}
+            <button
+              type="button"
+              class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary' : ''}"
+              data-action="apply-forecast-to-chart"
+              title="${activeTab?.showFutureProjection ? (isFa ? 'برای حذف پیش‌بینی از روی چارت کلیک کنید' : 'Click to remove forecast overlay from chart') : (isFa ? 'برای نمایش پیش‌بینی روی چارت کلیک کنید' : 'Click to project forecast onto chart')}"
+            >
+              ${activeTab?.showFutureProjection ? (isFa ? '✓ نمایش روی چارت فعال (حذف)' : '✓ Applied to Chart (Hide)') : isFa ? 'اعمال روی چارت و مشاهده' : 'Apply & View on Chart'}
             </button>
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
               ${isFa ? 'ثبت در دفتر کل + همگام‌سازی' : 'Record & Sync Snapshot'}
@@ -761,12 +766,12 @@ function renderBacktestPanel(fc, decimals, isFa) {
         <tr class="${isEns ? 'ci-fc-row-highlight' : ''}">
           <td><strong>${escapeHtml(m.modelName)}</strong></td>
           <td class="ltr-num">${escapeHtml(m.family)}</td>
-          <td class="ltr-num">${m.mae.toFixed(decimals >= 3 ? 4 : 3)} (${m.maePct.toFixed(2)}%)</td>
-          <td class="ltr-num">${m.rmse.toFixed(decimals >= 3 ? 4 : 3)}</td>
-          <td class="ltr-num">${m.directionalAccuracyPct.toFixed(1)}%</td>
-          <td class="ltr-num">${m.coverage80Pct.toFixed(1)}%</td>
-          <td class="ltr-num">${m.pinballLoss.toFixed(4)}</td>
-          <td class="ltr-num">${m.crps.toFixed(4)}</td>
+          <td class="ltr-num">${Number(m.mae ?? 0).toFixed(decimals >= 3 ? 4 : 3)} (${Number(m.maePct ?? 0).toFixed(2)}%)</td>
+          <td class="ltr-num">${Number(m.rmse ?? 0).toFixed(decimals >= 3 ? 4 : 3)}</td>
+          <td class="ltr-num">${Number(m.directionalAccuracyPct ?? 0).toFixed(1)}%</td>
+          <td class="ltr-num">${Number(m.coverage80Pct ?? 0).toFixed(1)}%</td>
+          <td class="ltr-num">${Number(m.pinballLoss ?? 0).toFixed(4)}</td>
+          <td class="ltr-num">${Number(m.crps ?? 0).toFixed(4)}</td>
         </tr>
       `;
     })
@@ -779,13 +784,13 @@ function renderBacktestPanel(fc, decimals, isFa) {
     .map(
       (s) => `
       <tr>
-        <td class="ltr-num">${s.penetrationAtrMult.toFixed(2)}× ATR</td>
-        <td class="ltr-num">${s.reclaimWindowBars} bars</td>
-        <td class="ltr-num">${s.breakoutCloses} closes</td>
-        <td class="ltr-num">${s.touchFreqPct.toFixed(1)}%</td>
-        <td class="ltr-num">${s.reclaimFreqPct.toFixed(1)}%</td>
-        <td class="ltr-num">${s.breakoutFreqPct.toFixed(1)}%</td>
-        <td class="ltr-num">${s.ambiguousRatePct.toFixed(1)}%</td>
+        <td class="ltr-num">${Number(s.penetrationAtrMult ?? 0).toFixed(2)}× ATR</td>
+        <td class="ltr-num">${Number(s.reclaimWindowBars ?? 0)} bars</td>
+        <td class="ltr-num">${Number(s.breakoutCloses ?? 0)} closes</td>
+        <td class="ltr-num">${Number(s.touchFreqPct ?? 0).toFixed(1)}%</td>
+        <td class="ltr-num">${Number(s.reclaimFreqPct ?? 0).toFixed(1)}%</td>
+        <td class="ltr-num">${Number(s.breakoutFreqPct ?? 0).toFixed(1)}%</td>
+        <td class="ltr-num">${Number(s.ambiguousRatePct ?? 0).toFixed(1)}%</td>
       </tr>
     `
     )
@@ -806,7 +811,7 @@ function renderBacktestPanel(fc, decimals, isFa) {
         <div class="ci-fc-mini-stat"><span>Ambiguous Inside-Bar</span><strong>${wf.ambiguousOutcomeCount || 0} (${Number(wf.ambiguousRatePct || 0).toFixed(1)}%)</strong></div>
         ${
           stab
-            ? `<div class="ci-fc-mini-stat"><span>Stability Drift</span><strong>${stab.medianDriftPct.toFixed(2)}% (${stab.stable ? 'STABLE' : 'SHIFT'})</strong></div>`
+            ? `<div class="ci-fc-mini-stat"><span>Stability Drift</span><strong>${Number(stab.medianDriftPct ?? 0).toFixed(2)}% (${stab.stable ? 'STABLE' : 'SHIFT'})</strong></div>`
             : ''
         }
       </div>
@@ -818,12 +823,12 @@ function renderBacktestPanel(fc, decimals, isFa) {
       <div class="ci-fc-card" style="margin-bottom:12px;">
         <strong style="font-size:13px;display:block;margin-bottom:8px;">${isFa ? 'بردار رویدادهای مسیر مستقل (بدون ادغام مصنوعی در یک عدد)' : 'Independent Path Event Vector (Empirical Telemetry)'}</strong>
         <div class="ci-fc-ladder-grid ltr-num">
-          <div class="ci-fc-mini-stat"><span>Touch Rate</span><strong>${pv.touchRatePct.toFixed(1)}%</strong></div>
-          <div class="ci-fc-mini-stat"><span>Reclaim Rate</span><strong>${pv.reclaimRatePct.toFixed(1)}%</strong></div>
-          <div class="ci-fc-mini-stat"><span>Confirmed Breakout</span><strong>${pv.breakoutRatePct.toFixed(1)}%</strong></div>
-          <div class="ci-fc-mini-stat"><span>Reach Before Inv</span><strong>${pv.reachBeforeInvalidationPct.toFixed(1)}%</strong></div>
-          <div class="ci-fc-mini-stat"><span>Ambiguous Rate</span><strong>${pv.ambiguousRatePct.toFixed(1)}%</strong></div>
-          <div class="ci-fc-mini-stat"><span>Censoring Rate</span><strong>${pv.censoringRatePct.toFixed(1)}%</strong></div>
+          <div class="ci-fc-mini-stat"><span>Touch Rate</span><strong>${Number(pv.touchRatePct ?? pv.targetReachedRatePct ?? 0).toFixed(1)}%</strong></div>
+          <div class="ci-fc-mini-stat"><span>Reclaim Rate</span><strong>${Number(pv.reclaimRatePct ?? 0).toFixed(1)}%</strong></div>
+          <div class="ci-fc-mini-stat"><span>Confirmed Breakout</span><strong>${Number(pv.breakoutRatePct ?? pv.confirmedBreakoutRatePct ?? 0).toFixed(1)}%</strong></div>
+          <div class="ci-fc-mini-stat"><span>Reach Before Inv</span><strong>${Number(pv.reachBeforeInvalidationPct ?? pv.targetReachedRatePct ?? 0).toFixed(1)}%</strong></div>
+          <div class="ci-fc-mini-stat"><span>Ambiguous Rate</span><strong>${Number(pv.ambiguousRatePct ?? 0).toFixed(1)}%</strong></div>
+          <div class="ci-fc-mini-stat"><span>Censoring Rate</span><strong>${Number(pv.censoringRatePct ?? 0).toFixed(1)}%</strong></div>
         </div>
       </div>
     `

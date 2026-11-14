@@ -401,7 +401,7 @@ function renderOhlcvOverlay(activeTab) {
   const pushPill = (flag, color, label, action) => {
     if (flag) {
       indPills.push(
-        `<span class="tv-ind-pill" style="color: ${color}; border-color: ${color}55;">${label} <span style="cursor:pointer; opacity:0.8;" data-action="${action}">✕</span></span>`
+        `<span class="tv-ind-pill" style="--pill-accent: ${color};"><span class="tv-ind-pill-dot" style="background:${color};"></span><span>${label}</span><span class="tv-ind-pill-close" data-action="${action}">✕</span></span>`
       );
     }
   };
@@ -647,10 +647,10 @@ export function renderApp() {
                     <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
                   </div>
                   ${renderBottomChartBar(activeTab, i18n)}
-                </main>`
+                </main>
+                ${renderRightSplitPanel(activeTab, i18n)}`
           }
 
-          ${renderRightSplitPanel(activeTab, i18n)}
           ${renderRightIconRail(i18n)}
         </div>
 
@@ -1763,7 +1763,14 @@ document.addEventListener('click', async (e) => {
     state.activeModal = null;
     renderApp();
   } else if (action === 'toggle-right-panel') {
-    state.isSideDrawerOpen = !state.isSideDrawerOpen;
+    if (state.activeWorkspaceView === 'forecast') {
+      state.activeWorkspaceView = 'chart';
+      state.isSideDrawerOpen = true;
+    } else {
+      state.isSideDrawerOpen = !state.isSideDrawerOpen;
+    }
+    state.activeModal = null;
+    state.symbolOverviewCode = null;
     renderApp();
   } else if (action === 'open-modal') {
     const modalName = el.getAttribute('data-modal');
@@ -1929,8 +1936,9 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'open-prediction-from-overview') {
     const symCode = el.getAttribute('data-symbol');
     state.symbolOverviewCode = null;
+    state.activeModal = null;
     if (symCode) openOrFocusSymbolTab(symCode);
-    state.activeModal = 'prediction';
+    state.activeWorkspaceView = 'forecast';
     renderApp();
   } else if (action === 'copy-identifier') {
     const textToCopy = el.getAttribute('data-copy') || '';
@@ -2242,6 +2250,26 @@ document.addEventListener('click', async (e) => {
     saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'apply-forecast-to-chart' && activeTab) {
+    const nextState = !activeTab.showFutureProjection;
+    activeTab.showFutureProjection = nextState;
+    if (nextState) {
+      activeTab.scrollOffset = 0;
+      state.activeWorkspaceView = 'chart';
+    }
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    saveOpenTabsToStorage();
+    renderApp();
+    redrawActiveCanvas();
+    showFloatingToast(
+      nextState
+        ? i18n.getCurrentLanguage() === 'fa'
+          ? 'پیش‌بینی روی چارت فعال شد ✓'
+          : 'Forecast overlay applied to chart ✓'
+        : i18n.getCurrentLanguage() === 'fa'
+          ? 'پیش‌بینی از روی چارت برداشته شد'
+          : 'Forecast overlay removed from chart'
+    );
+  } else if (action === 'view-forecast-on-chart' && activeTab) {
     activeTab.showFutureProjection = true;
     activeTab.scrollOffset = 0;
     state.activeWorkspaceView = 'chart';
