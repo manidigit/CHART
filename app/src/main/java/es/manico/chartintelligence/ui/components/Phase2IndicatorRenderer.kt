@@ -31,7 +31,8 @@ object Phase2IndicatorRenderer {
         visibleSlice: List<CandleBar>,
         timeframe: String,
         slotW: Float,
-        pricePaneH: Float
+        pricePaneH: Float,
+        preferences: ChartPreferences
     ) {
         val tfUpper = timeframe.uppercase()
         if (tfUpper == "D1" || tfUpper == "W1") return
@@ -39,10 +40,10 @@ object Phase2IndicatorRenderer {
             visibleSlice.forEachIndexed { idx, candle ->
                 val kz = Phase2IndicatorsAlgorithm.classifyKillzone(candle.openTimeUtcMillis) ?: return@forEachIndexed
                 val fillColor = when (kz) {
-                    KillzoneSession.OVERLAP -> Color(0xFFA855F7).copy(alpha = 0.11f)
-                    KillzoneSession.LONDON -> Color(0xFF3B82F6).copy(alpha = 0.07f)
-                    KillzoneSession.NEW_YORK -> Color(0xFFF59E0B).copy(alpha = 0.07f)
-                    KillzoneSession.ASIA -> Color(0xFF06B6D4).copy(alpha = 0.06f)
+                    KillzoneSession.OVERLAP -> preferences.killzonesColor.copy(alpha = 0.11f)
+                    KillzoneSession.LONDON -> preferences.maFamilyBaseColor.copy(alpha = 0.065f)
+                    KillzoneSession.NEW_YORK -> preferences.levelsFamilyBaseColor.copy(alpha = 0.065f)
+                    KillzoneSession.ASIA -> preferences.trendFamilyBaseColor.copy(alpha = 0.055f)
                 }
                 drawRect(
                     color = fillColor,
@@ -119,9 +120,14 @@ object Phase2IndicatorRenderer {
         visibleCount: Int,
         slotW: Float,
         priceToY: (Double) -> Float,
-        dashEffect: PathEffect
+        dashEffect: PathEffect,
+        preferences: ChartPreferences
     ) {
         if (visibleCount <= 0) return
+        val tenkanCol = preferences.ichimokuTenkanColor
+        val kijunCol = preferences.ichimokuKijunColor
+        val cloudCol = preferences.ichimokuCloudColor
+        val chikouCol = preferences.ichimokuChikouColor
         with(scope) {
             for (idx in 1 until visibleCount) {
                 val gPrev = startIndex + idx - 1
@@ -140,7 +146,7 @@ object Phase2IndicatorRenderer {
                         lineTo(x0, priceToY(b0))
                         close()
                     }
-                    val fillColor = if (a1 >= b1) Color(0xFF26A69A).copy(alpha = 0.14f)
+                    val fillColor = if (a1 >= b1) cloudCol.copy(alpha = 0.14f)
                     else Color(0xFFEF5350).copy(alpha = 0.14f)
                     drawPath(path = cloudPath, color = fillColor)
                 }
@@ -169,11 +175,11 @@ object Phase2IndicatorRenderer {
                 }
             }
 
-            drawSub(ichimoku.tenkan, Color(0xFF2962FF), 1.4f)
-            drawSub(ichimoku.kijun, Color(0xFFEF5350), 1.5f)
-            drawSub(ichimoku.senkouA, Color(0xFF26A69A).copy(alpha = 0.85f), 1.2f)
-            drawSub(ichimoku.senkouB, Color(0xFFEF5350).copy(alpha = 0.85f), 1.2f)
-            drawSub(ichimoku.chikou, Color(0xFF14B8A6).copy(alpha = 0.78f), 1.2f, dashed = true)
+            drawSub(ichimoku.tenkan, tenkanCol, 1.4f)
+            drawSub(ichimoku.kijun, kijunCol, 1.5f)
+            drawSub(ichimoku.senkouA, cloudCol.copy(alpha = 0.85f), 1.2f)
+            drawSub(ichimoku.senkouB, Color(0xFFEF5350).copy(alpha = 0.80f), 1.2f)
+            drawSub(ichimoku.chikou, chikouCol.copy(alpha = 0.78f), 1.2f, dashed = true)
         }
     }
 
@@ -181,14 +187,15 @@ object Phase2IndicatorRenderer {
         scope: DrawScope,
         visiblePsar: List<PsarPoint?>,
         slotW: Float,
-        priceToY: (Double) -> Float
+        priceToY: (Double) -> Float,
+        preferences: ChartPreferences
     ) {
         with(scope) {
             val dotR = (slotW * 0.22f).coerceIn(2.0f, 4.2f)
             visiblePsar.forEachIndexed { idx, pt ->
                 if (pt != null) {
                     drawCircle(
-                        color = if (pt.isUp) Color(0xFF26A69A) else Color(0xFFEF5350),
+                        color = if (pt.isUp) preferences.psarColor else Color(0xFFEF5350),
                         radius = dotR,
                         center = Offset((idx + 0.5f) * slotW, priceToY(pt.sar))
                     )

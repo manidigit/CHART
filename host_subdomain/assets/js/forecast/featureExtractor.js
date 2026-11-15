@@ -1,4 +1,4 @@
-import { extractCandleClose, extractCandleOpenMs } from './forecastContract.js?v=1.42.0';
+import { extractCandleClose, extractCandleOpenMs } from './forecastContract.js?v=1.43.0';
 
 export const MARKET_REGIME = Object.freeze({
   TRENDING_UP: 'TRENDING_UP',

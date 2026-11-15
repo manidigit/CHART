@@ -26,9 +26,20 @@ const {
     buildManualCandle,
     isImageBytesOrFilename
 } = await import('../host_subdomain/assets/js/algorithms/candleImport.js');
-const { resolvePriceBasis, filterSyntheticWeekendAndCombCandles } = await import(
-    '../host_subdomain/assets/js/core/store.js'
-);
+const {
+    resolvePriceBasis,
+    filterSyntheticWeekendAndCombCandles,
+    UNIVERSAL_COLOR_PALETTE,
+    DEFAULT_INDICATOR_COLORS,
+    normalizeHexForWeb,
+    normalizeHexForAndroid,
+    state,
+    setIndicatorCustomColor,
+    resetSingleIndicatorColor,
+    setChartAppearanceColor,
+    resetIndicatorColorsToDefault,
+    getIndicatorColorPalette
+} = await import('../host_subdomain/assets/js/core/store.js');
 
 test('PAR-01: resolvePriceBasis returns CFD Feed for SPOTBRENT on tvdatafeed', () => {
     assert.equal(resolvePriceBasis('SPOTBRENT', 'tvdatafeed'), 'CFD Feed');
@@ -411,5 +422,52 @@ test('PHASE3-IMPORT: CSV, 2-col Daily Forced D1, SpreadsheetML, HTML, BIFF8 OLE2
     assert.equal(manual.open_time_utc_ms, Date.parse('2026-07-15T14:15:00Z'));
     assert.equal(manual.close, 98.6);
 });
+
+test('COLOR-PARITY: hex normalization, universal palette, custom indicator color set/reset, and chart appearance colors', () => {
+    assert.equal(UNIVERSAL_COLOR_PALETTE.length, 18);
+    assert.equal(normalizeHexForWeb('#f5a'), '#FF55AA');
+    assert.equal(normalizeHexForWeb('FF2962FF'), '#2962FF');
+    assert.equal(normalizeHexForWeb('invalid', '#123456'), '#123456');
+    assert.equal(normalizeHexForAndroid('#0af'), 'FF00AAFF');
+    assert.equal(normalizeHexForAndroid('#FF10B981'), 'FF10B981');
+
+    resetIndicatorColorsToDefault();
+    const initPal = getIndicatorColorPalette(state.chartPreferences);
+    assert.equal(initPal.ichimokuTenkan, '#2962FF');
+    assert.equal(initPal.ichimokuKijun, '#EF5350');
+    assert.equal(initPal.ichimokuCloud, '#06B6D4');
+    assert.equal(initPal.ichimokuChikou, '#10B981');
+    assert.equal(initPal.smcBullChoch, '#38BDF8');
+    assert.equal(initPal.smcEql, '#10B981');
+    assert.ok(initPal.maBase);
+    assert.ok(initPal.bandsBase);
+    assert.ok(initPal.levelsBase);
+    assert.ok(initPal.trendBase);
+    assert.ok(initPal.smcBase);
+
+    // Custom indicator color + alias syncing (macd <-> macdLine, adx14 <-> adxLine, stoch14 <-> stochK)
+    assert.equal(setIndicatorCustomColor('macd', '#a855f7', true), '#A855F7');
+    assert.equal(state.chartPreferences.indicatorCustomColors.macd, '#A855F7');
+    assert.equal(state.chartPreferences.indicatorCustomColors.macdLine, '#A855F7');
+    assert.equal(getIndicatorColorPalette(state.chartPreferences).macd, '#A855F7');
+
+    // Single-key reset restores default and cleans alias
+    const restoredMacd = resetSingleIndicatorColor('macd', true);
+    assert.equal(restoredMacd, DEFAULT_INDICATOR_COLORS.macd);
+    assert.equal(getIndicatorColorPalette(state.chartPreferences).macd, DEFAULT_INDICATOR_COLORS.macd);
+
+    // Non-3/6 char garbage is safely normalized to fallback instead of corrupting
+    assert.equal(setIndicatorCustomColor('rsi14', '#123456', true), '#123456');
+    assert.equal(getIndicatorColorPalette(state.chartPreferences).rsi14, '#123456');
+    resetSingleIndicatorColor('rsi14', true);
+    assert.equal(getIndicatorColorPalette(state.chartPreferences).rsi14, DEFAULT_INDICATOR_COLORS.rsi14);
+
+    // Settings chart appearance colors
+    assert.equal(setChartAppearanceColor('bullColor', '#10b981', true), '#10B981');
+    assert.equal(state.chartPreferences.bullColor, '#10B981');
+    assert.equal(setChartAppearanceColor('trendColor', '#f59e0b', true), '#F59E0B');
+    assert.equal(state.chartPreferences.trendColor, '#F59E0B');
+});
+
 
 

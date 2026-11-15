@@ -1,11 +1,11 @@
-import { NaivePersistenceModel, HistoricalDriftModel } from './models/baselineModels.js?v=1.42.0';
+import { NaivePersistenceModel, HistoricalDriftModel } from './models/baselineModels.js?v=1.43.0';
 import {
   KalmanMomentumModel,
   GarchVolatilityModel,
   ArimaEtsModel,
   GaussianProcessModel,
-} from './models/statisticalModels.js?v=1.42.0';
-import { REMOTE_WORKER_STATUS } from './forecastContract.js?v=1.42.0';
+} from './models/statisticalModels.js?v=1.43.0';
+import { REMOTE_WORKER_STATUS } from './forecastContract.js?v=1.43.0';
 
 /**
  * Metadata-only specification for the optional self-hosted Python DL inference worker.

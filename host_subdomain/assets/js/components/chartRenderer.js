@@ -1,10 +1,10 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.42.0';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.42.0';
-import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.42.0';
-import { ForecastEngine } from '../forecast/forecastEngine.js?v=1.42.0';
-import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.42.0';
-import { RENDER_MODES, normalizeRenderMode, clampHorizonBars } from '../forecast/forecastContract.js?v=1.42.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.43.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.43.0';
+import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.43.0';
+import { ForecastEngine } from '../forecast/forecastEngine.js?v=1.43.0';
+import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.43.0';
+import { RENDER_MODES, normalizeRenderMode, clampHorizonBars } from '../forecast/forecastContract.js?v=1.43.0';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -1047,7 +1047,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         const hY = macdToY(pt.histogram);
         const topBarY = Math.min(zeroY, hY);
         const barH = Math.max(1.5, Math.abs(hY - zeroY));
-        ctx.fillStyle = pt.histogram >= 0 ? 'rgba(38, 166, 154, 0.38)' : 'rgba(239, 83, 80, 0.38)';
+        ctx.fillStyle = pt.histogram >= 0 ? hexToRgba(indPal.macdHistBull, 0.42) : hexToRgba(indPal.macdHistBear, 0.42);
         ctx.fillRect(x - bodyW * 0.42, topBarY, Math.max(1.5, bodyW * 0.84), barH);
       }
 
@@ -1071,8 +1071,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       }
       if (startedM) ctx.stroke();
 
-      // Signal Line (#FF6D00)
-      ctx.strokeStyle = '#FF6D00';
+      // Signal Line
+      ctx.strokeStyle = indPal.macdSignal;
       ctx.lineWidth = 1.4;
       ctx.beginPath();
       let startedS = false;

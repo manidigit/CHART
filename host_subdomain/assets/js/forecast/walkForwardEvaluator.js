@@ -1,6 +1,6 @@
-import { FORECAST_STATUS, enforceMonotonicQuantiles } from './forecastContract.js?v=1.42.0';
-import { extractForecastFeatures } from './featureExtractor.js?v=1.42.0';
-import { NaivePersistenceModel } from './models/baselineModels.js?v=1.42.0';
+import { FORECAST_STATUS, enforceMonotonicQuantiles } from './forecastContract.js?v=1.43.0';
+import { extractForecastFeatures } from './featureExtractor.js?v=1.43.0';
+import { NaivePersistenceModel } from './models/baselineModels.js?v=1.43.0';
 
 function pinball(actual, qPred, tau) {
   const err = actual - qPred;

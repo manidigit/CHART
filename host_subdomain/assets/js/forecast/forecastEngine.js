@@ -9,18 +9,18 @@ import {
   normalizeRenderMode,
   sha256Hex,
   validateDataReadiness,
-} from './forecastContract.js?v=1.42.0';
-import { extractForecastFeatures } from './featureExtractor.js?v=1.42.0';
-import { defaultForecastRegistry, ForecastModelRegistry } from './modelRegistry.js?v=1.42.0';
-import { evaluateWalkForward } from './walkForwardEvaluator.js?v=1.42.0';
+} from './forecastContract.js?v=1.43.0';
+import { extractForecastFeatures } from './featureExtractor.js?v=1.43.0';
+import { defaultForecastRegistry, ForecastModelRegistry } from './modelRegistry.js?v=1.43.0';
+import { evaluateWalkForward } from './walkForwardEvaluator.js?v=1.43.0';
 import {
   computeForecastStability,
   computeOodAndUncertainty,
   coordinateMultiTimeframe,
   detectKeyZonesAndEventTree,
   evaluateNoEdgeGate,
-} from './forecastV130Analyzer.js?v=1.42.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.42.0';
+} from './forecastV130Analyzer.js?v=1.43.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.43.0';
 
 /**
  * CHART INTELLIGENCE — Scenario-Based Future Candle Projection Engine

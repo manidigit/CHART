@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.42.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.43.0';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -131,6 +131,27 @@ export const DEFAULT_PREFS = {
   indicatorCustomColors: {},
   preferencesUpdatedAtMs: 0,
 };
+
+export const UNIVERSAL_COLOR_PALETTE = [
+  '#2962FF',
+  '#38BDF8',
+  '#06B6D4',
+  '#14B8A6',
+  '#10B981',
+  '#22C55E',
+  '#26A69A',
+  '#EAB308',
+  '#F59E0B',
+  '#F97316',
+  '#EF5350',
+  '#F43F5E',
+  '#EC4899',
+  '#D946EF',
+  '#A855F7',
+  '#8B5CF6',
+  '#6366F1',
+  '#94A3B8',
+];
 
 export const DEFAULT_INDICATOR_COLORS = {
   // Moving Averages Family: Graduated Harmonious Blue/Cyan/Indigo Spectrum
@@ -849,16 +870,35 @@ export function normalizeCanonicalChartKey(rawKey) {
 export function normalizeHexForWeb(rawHex, fallback = '#2962FF') {
   if (!rawHex || typeof rawHex !== 'string') return fallback;
   const clean = rawHex.trim().replace(/^#/, '');
-  if (clean.length === 8) return '#' + clean.slice(2).toUpperCase();
-  if (clean.length === 6) return '#' + clean.toUpperCase();
+  if (/^[0-9A-Fa-f]{8}$/.test(clean)) return '#' + clean.slice(2).toUpperCase();
+  if (/^[0-9A-Fa-f]{6}$/.test(clean)) return '#' + clean.toUpperCase();
+  if (/^[0-9A-Fa-f]{3}$/.test(clean)) {
+    return (
+      '#' +
+      clean
+        .split('')
+        .map((ch) => ch + ch)
+        .join('')
+        .toUpperCase()
+    );
+  }
   return fallback;
 }
 
 export function normalizeHexForAndroid(rawHex, fallback = 'FF2962FF') {
   if (!rawHex || typeof rawHex !== 'string') return fallback;
   const clean = rawHex.trim().replace(/^#/, '').toUpperCase();
-  if (clean.length === 6) return 'FF' + clean;
-  if (clean.length === 8) return clean;
+  if (/^[0-9A-F]{6}$/.test(clean)) return 'FF' + clean;
+  if (/^[0-9A-F]{8}$/.test(clean)) return clean;
+  if (/^[0-9A-F]{3}$/.test(clean)) {
+    return (
+      'FF' +
+      clean
+        .split('')
+        .map((ch) => ch + ch)
+        .join('')
+    );
+  }
   return fallback;
 }
 
@@ -1055,6 +1095,7 @@ export const state = {
   providerCatalogStats: [],
   importBatches: [],
   importStatusMessage: '',
+  activeColorPickerKey: null,
 
   rightPanelWidth: Math.max(
     185,
@@ -1133,8 +1174,8 @@ export function isFocusPullSuspended() {
 }
 
 export function setIndicatorCustomColor(indKey, rawHex, skipCloudSync = false) {
-  if (!indKey) return;
-  suspendFocusPull(8000);
+  if (!indKey) return null;
+  suspendFocusPull(15000);
   const fallback = DEFAULT_INDICATOR_COLORS[indKey] || '#2962FF';
   const cleanHex = normalizeHexForWeb(rawHex, fallback);
   if (!state.chartPreferences.indicatorCustomColors || typeof state.chartPreferences.indicatorCustomColors !== 'object') {
@@ -1153,8 +1194,34 @@ export function setIndicatorCustomColor(indKey, rawHex, skipCloudSync = false) {
   return cleanHex;
 }
 
+export function resetSingleIndicatorColor(indKey, skipCloudSync = false) {
+  if (!indKey) return null;
+  suspendFocusPull(15000);
+  const nextColors = { ...(state.chartPreferences.indicatorCustomColors || {}) };
+  delete nextColors[indKey];
+  const alias = INDICATOR_COLOR_ALIASES[indKey];
+  if (alias) delete nextColors[alias];
+  state.chartPreferences.indicatorCustomColors = nextColors;
+  savePreferences(skipCloudSync);
+  return DEFAULT_INDICATOR_COLORS[indKey] || '#2962FF';
+}
+
+export function setChartAppearanceColor(target, rawHex, skipCloudSync = false) {
+  const validTargets = ['bullColor', 'bearColor', 'trendColor', 'hLineColor', 'vLineColor'];
+  if (!validTargets.includes(target)) return null;
+  suspendFocusPull(15000);
+  const fallback = DEFAULT_PREFS[target] || '#2962FF';
+  const cleanHex = normalizeHexForWeb(rawHex, fallback);
+  state.chartPreferences[target] = cleanHex;
+  if (target === 'trendColor') {
+    state.chartPreferences.defaultDrawingColorHex = cleanHex;
+  }
+  savePreferences(skipCloudSync);
+  return cleanHex;
+}
+
 export function resetIndicatorColorsToDefault() {
-  suspendFocusPull(8000);
+  suspendFocusPull(15000);
   state.chartPreferences.indicatorCustomColors = {};
   state.chartPreferences.indMaFamilyColorHex = 'FF2962FF';
   state.chartPreferences.indBandsFamilyColorHex = 'FFA855F7';
@@ -1299,6 +1366,11 @@ export function getIndicatorColorPalette(prefs = state.chartPreferences) {
 
   return {
     getColor,
+    maBase: normalizeHexForWeb(p.indMaFamilyColorHex, '#2962FF'),
+    bandsBase: normalizeHexForWeb(p.indBandsFamilyColorHex, '#A855F7'),
+    levelsBase: normalizeHexForWeb(p.indLevelsFamilyColorHex, '#F59E0B'),
+    trendBase: normalizeHexForWeb(p.indTrendFamilyColorHex, '#14B8A6'),
+    smcBase: normalizeHexForWeb(p.indSmcFamilyColorHex, '#EC4899'),
     // Category 1: Moving Averages (Individual customizable colors, default graduated blues/cyans)
     sma20: getColor('sma20'),
     sma50: getColor('sma50'),

@@ -838,7 +838,8 @@ fun CandlestickCanvas(
                                 visibleSlice = visibleSlice,
                                 timeframe = tab.timeframe,
                                 slotW = slotW,
-                                pricePaneH = pricePaneH
+                                pricePaneH = pricePaneH,
+                                preferences = preferences
                             )
                         }
                         // 4.0a Package 3: Session / Visible Range Volume Profile (VRVP — POC / VAH / VAL)
@@ -905,7 +906,7 @@ fun CandlestickCanvas(
                                 val boxTop = min(yTop, yBot)
                                 val boxH = max(2f, abs(yBot - yTop))
                                 val boxW = max(6f, x2 - x1)
-                                val fvgColor = if (fvg.direction == 1) bullColor else bearColor
+                                val fvgColor = if (fvg.direction == 1) preferences.fvgBullColor else preferences.fvgBearColor
                                 drawRect(
                                     color = fvgColor.copy(alpha = 0.16f),
                                     topLeft = Offset(x1, boxTop),
@@ -1109,7 +1110,8 @@ fun CandlestickCanvas(
                                 visibleCount = visibleSlice.size,
                                 slotW = slotW,
                                 priceToY = ::priceToY,
-                                dashEffect = dashEffect
+                                dashEffect = dashEffect,
+                                preferences = preferences
                             )
                         }
                         if (tab.showPsar) {
@@ -1117,7 +1119,8 @@ fun CandlestickCanvas(
                                 scope = this,
                                 visiblePsar = visiblePsar,
                                 slotW = slotW,
-                                priceToY = ::priceToY
+                                priceToY = ::priceToY,
+                                preferences = preferences
                             )
                         }
 
@@ -1149,7 +1152,11 @@ fun CandlestickCanvas(
                                 val x1 = (localStart + 0.5f) * slotW
                                 val x2 = (localBreak + 0.5f) * slotW
                                 val y = priceToY(st.price)
-                                val stColor = if (st.direction == 1) preferences.smcStructureColor else preferences.fvgColor
+                                val stColor = if (st.direction == 1) {
+                                    if (st.type == "CHoCH") preferences.smcBullChochColor else preferences.smcBullBosColor
+                                } else {
+                                    if (st.type == "CHoCH") preferences.smcBearChochColor else preferences.smcBearBosColor
+                                }
                                 drawLine(
                                     color = stColor,
                                     start = Offset(x1, y),
@@ -1170,7 +1177,7 @@ fun CandlestickCanvas(
                                 val x1 = (localStart + 0.5f) * slotW
                                 val x2 = (localEnd + 0.5f) * slotW
                                 val y = priceToY(eq.price)
-                                val eqColor = if (eq.type == "EQH") preferences.smcStructureColor else preferences.killzonesColor
+                                val eqColor = if (eq.type == "EQH") preferences.smcEqhColor else preferences.smcEqlColor
                                 drawLine(
                                     color = eqColor,
                                     start = Offset(x1, y),
@@ -1216,38 +1223,38 @@ fun CandlestickCanvas(
                                         val histY = overlayMidY - ((histVal / maxAbs).toFloat() * overlayHalfH)
                                         val hTop = min(overlayMidY, histY)
                                         val hHeight = max(1.5f, abs(histY - overlayMidY))
-                                        val hColor = if (histVal >= 0.0) bullColor.copy(alpha = 0.48f) else bearColor.copy(alpha = 0.48f)
-                                        drawRect(
-                                            color = hColor,
-                                            topLeft = Offset(x - histBarW / 2f, hTop),
-                                            size = Size(histBarW, hHeight)
-                                        )
-                                    }
-                                    val mY = overlayMidY - ((pt.macd / maxAbs).toFloat() * overlayHalfH)
-                                    if (!mStarted) {
-                                        ovMacdPath.moveTo(x, mY)
-                                        mStarted = true
-                                    } else {
-                                        ovMacdPath.lineTo(x, mY)
-                                    }
-                                    pt.signal?.let { sigVal ->
-                                        val sY = overlayMidY - ((sigVal / maxAbs).toFloat() * overlayHalfH)
-                                        if (!sStarted) {
-                                            ovSigPath.moveTo(x, sY)
-                                            sStarted = true
-                                        } else {
-                                            ovSigPath.lineTo(x, sY)
-                                        }
-                                    }
-                                }
-                            }
-                            if (mStarted) {
-                                drawPath(path = ovMacdPath, color = preferences.overlayMacdColor, style = Stroke(width = 2.0f))
-                            }
-                            if (sStarted) {
-                                drawPath(path = ovSigPath, color = preferences.psarColor, style = Stroke(width = 1.8f))
-                            }
-                        }
+                                         val hColor = if (histVal >= 0.0) preferences.macdHistBullColor.copy(alpha = 0.48f) else preferences.macdHistBearColor.copy(alpha = 0.48f)
+                                         drawRect(
+                                             color = hColor,
+                                             topLeft = Offset(x - histBarW / 2f, hTop),
+                                             size = Size(histBarW, hHeight)
+                                         )
+                                     }
+                                     val mY = overlayMidY - ((pt.macd / maxAbs).toFloat() * overlayHalfH)
+                                     if (!mStarted) {
+                                         ovMacdPath.moveTo(x, mY)
+                                         mStarted = true
+                                     } else {
+                                         ovMacdPath.lineTo(x, mY)
+                                     }
+                                     pt.signal?.let { sigVal ->
+                                         val sY = overlayMidY - ((sigVal / maxAbs).toFloat() * overlayHalfH)
+                                         if (!sStarted) {
+                                             ovSigPath.moveTo(x, sY)
+                                             sStarted = true
+                                         } else {
+                                             ovSigPath.lineTo(x, sY)
+                                         }
+                                     }
+                                 }
+                             }
+                             if (mStarted) {
+                                 drawPath(path = ovMacdPath, color = preferences.overlayMacdColor, style = Stroke(width = 2.0f))
+                             }
+                             if (sStarted) {
+                                 drawPath(path = ovSigPath, color = preferences.macdSignalColor, style = Stroke(width = 1.8f))
+                             }
+                         }
 
                         // 5e. IND-01: Multi-Variant Floor Pivot Points (Standard, Fibonacci, Camarilla, Woodie)
                         if (tab.showPivotPoints && pivotPoints != null) {
@@ -1860,7 +1867,7 @@ fun CandlestickCanvas(
                                     val hY = zeroY - (pt.histogram / maxAbs).toFloat() * halfH
                                     val barTop = min(zeroY, hY)
                                     val barH = abs(hY - zeroY).coerceAtLeast(1.2f)
-                                    val hColor = if (pt.histogram >= 0.0) bullColor.copy(alpha = 0.55f) else bearColor.copy(alpha = 0.55f)
+                                    val hColor = if (pt.histogram >= 0.0) preferences.macdHistBullColor.copy(alpha = 0.55f) else preferences.macdHistBearColor.copy(alpha = 0.55f)
                                     drawRect(
                                         color = hColor,
                                         topLeft = Offset(x - bodyW / 2f, barTop),
@@ -1885,7 +1892,7 @@ fun CandlestickCanvas(
                                 }
                             }
                         }
-                        if (mStarted) drawPath(path = macdPath, color = preferences.macdColor, style = Stroke(width = 1.7f))
+                        if (mStarted) drawPath(path = macdPath, color = preferences.macdLineColor, style = Stroke(width = 1.7f))
                         if (sStarted) drawPath(path = sigPath, color = preferences.macdSignalColor, style = Stroke(width = 1.5f))
                     }
 
@@ -2154,7 +2161,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFEC4899)
+                                color = preferences.rsi14Color
                             )
                         }
                         if ((tab.showMacd || tab.showOverlayMacd) && inspectedMacd != null) {
@@ -2165,7 +2172,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = preferences.overlayMacdColor
+                                color = if (tab.showOverlayMacd) preferences.overlayMacdColor else preferences.macdColor
                             )
                         }
                         if (tab.showAtr14 && inspectedAtr14 != null) {
@@ -2175,7 +2182,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF97316)
+                                color = preferences.atr14Color
                             )
                         }
                         if (tab.showEma200 && inspectedEma200 != null) {
@@ -2236,7 +2243,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFA796D4)
+                                color = preferences.futureProjectionColor
                             )
                         }
                         if (tab.showKillzones) {
@@ -2256,7 +2263,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFF59E0B)
+                                color = preferences.adx14Color
                             )
                         }
                         if (tab.showStoch14 && inspectedStoch14 != null) {
@@ -2266,7 +2273,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF06B6D4)
+                                color = preferences.stoch14Color
                             )
                         }
                         if (tab.showCci20 && inspectedCci20 != null) {
@@ -2276,7 +2283,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF10B981)
+                                color = preferences.cci20Color
                             )
                         }
                         if (tab.showWillR14 && inspectedWillR14 != null) {
@@ -2286,7 +2293,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFEC4899)
+                                color = preferences.willr14Color
                             )
                         }
                         if (tab.showObv && inspectedObv != null) {
@@ -2296,7 +2303,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF3B82F6)
+                                color = preferences.obvColor
                             )
                         }
                         if (tab.showCmf20 && inspectedCmf20 != null) {
@@ -2306,7 +2313,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFF22C55E)
+                                color = preferences.cmf20Color
                             )
                         }
                         if (tab.showRoc12 && inspectedRoc12 != null) {
@@ -2316,7 +2323,7 @@ fun CandlestickCanvas(
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = Color(0xFFEAB308)
+                                color = preferences.roc12Color
                             )
                         }
                         if (tab.showVolumeProfile && visibleVolumeProfile != null) {

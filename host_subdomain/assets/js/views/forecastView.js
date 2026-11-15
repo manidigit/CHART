@@ -1,4 +1,4 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 import {
   RENDER_MODES,
   FORECAST_STATUS,
@@ -8,12 +8,12 @@ import {
   EVALUATION_OUTCOME,
   normalizeRenderMode,
   clampHorizonBars,
-} from '../forecast/forecastContract.js?v=1.42.0';
-import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=1.42.0';
-import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.42.0';
-import { ForecastEngine } from '../forecast/forecastEngine.js?v=1.42.0';
-import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.42.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.42.0';
+} from '../forecast/forecastContract.js?v=1.43.0';
+import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=1.43.0';
+import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.43.0';
+import { ForecastEngine } from '../forecast/forecastEngine.js?v=1.43.0';
+import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.43.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.43.0';
 
 export function resolveHigherTimeframe(tf = 'M15') {
   const norm = String(tf || 'M15').toUpperCase();

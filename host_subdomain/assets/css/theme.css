@@ -169,50 +169,134 @@ body {
   display: block;
 }
 
-/* Individual Indicator Color Picker */
-.tv-ind-color-picker-label {
-  position: relative;
+/* Individual Indicator Color Picker & Expandable Swatch Drawer */
+.tv-ind-color-badge-btn {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: 50%;
+  gap: 6px;
+  padding: 4px 8px;
+  border-radius: 7px;
+  border: 1px solid var(--border);
+  background: var(--bg);
+  color: var(--text-strong);
   cursor: pointer;
   flex-shrink: 0;
-  border: 1.5px solid rgba(255, 255, 255, 0.28);
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
-  transition: transform 0.15s ease, border-color 0.15s ease;
-  padding: 0;
-  margin: 0;
+  min-height: 30px;
+  transition: border-color 0.15s ease, background-color 0.15s ease, transform 0.12s ease;
 }
 
-.tv-ind-color-picker-label:hover {
-  transform: scale(1.18);
-  border-color: #FFFFFF;
+.tv-ind-color-badge-btn:hover {
+  border-color: var(--primary);
+  transform: translateY(-0.5px);
 }
 
-.tv-ind-color-input {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  opacity: 0;
-  cursor: pointer;
-  border: none;
-  padding: 0;
-  margin: 0;
-  box-sizing: border-box;
+.tv-ind-color-badge-btn.active {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  box-shadow: 0 0 0 1px var(--primary-soft);
 }
 
 .tv-ind-color-dot {
-  width: 15px;
-  height: 15px;
+  width: 13px;
+  height: 13px;
   border-radius: 50%;
-  display: block;
-  pointer-events: none;
-  border: 1px solid rgba(0, 0, 0, 0.3);
-  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.3);
+  display: inline-block;
+  flex-shrink: 0;
+  border: 1px solid rgba(15, 23, 42, 0.35);
+  box-shadow: inset 0 0 2px rgba(255, 255, 255, 0.35);
+}
+
+.tv-ind-color-drawer {
+  margin-top: 6px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--primary);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.tv-ind-color-drawer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tv-ind-swatch-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.tv-ind-swatch-btn {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  border: 1.5px solid rgba(255, 255, 255, 0.25);
+  cursor: pointer;
+  padding: 0;
+  flex-shrink: 0;
+  transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
+}
+
+.tv-ind-swatch-btn:hover {
+  transform: scale(1.14);
+}
+
+.tv-ind-swatch-btn.active {
+  border: 2.5px solid var(--text-strong);
+  box-shadow: 0 0 0 2px var(--primary);
+  transform: scale(1.1);
+}
+
+.tv-ind-custom-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  padding-top: 4px;
+  border-top: 1px dashed var(--border);
+}
+
+.tv-ind-native-color-input {
+  width: 34px;
+  height: 28px;
+  padding: 2px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.tv-ind-hex-input {
+  width: 92px;
+  height: 28px;
+  padding: 2px 7px;
+  font-size: 11.5px;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 700;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-strong);
+  text-transform: uppercase;
+}
+
+.tv-settings-color-input {
+  width: 28px;
+  height: 22px;
+  padding: 1px;
+  border-radius: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  cursor: pointer;
+  flex-shrink: 0;
 }
 
 .tv-auth-controls-pill {

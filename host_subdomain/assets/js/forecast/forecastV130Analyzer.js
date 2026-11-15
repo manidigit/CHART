@@ -4,8 +4,8 @@ import {
   NO_EDGE_GATE_STATE,
   OOD_STATUS,
   enforceMonotonicQuantiles,
-} from './forecastContract.js?v=1.42.0';
-import { extractForecastFeatures } from './featureExtractor.js?v=1.42.0';
+} from './forecastContract.js?v=1.43.0';
+import { extractForecastFeatures } from './featureExtractor.js?v=1.43.0';
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));

@@ -923,9 +923,10 @@ fun ChartViewScreen(
                                 var selectedIndCategory by remember { mutableStateOf("all") }
                                 var activeColorPickerKey by remember { mutableStateOf<String?>(null) }
                                 val universalPaletteOpts = listOf(
-                                    "#2962FF", "#0EA5E9", "#06B6D4", "#14B8A6", "#10B981",
-                                    "#22C55E", "#EAB308", "#F59E0B", "#F97316", "#EF5350",
-                                    "#EC4899", "#D946EF", "#A855F7", "#8B5CF6", "#6366F1"
+                                    "#2962FF", "#38BDF8", "#06B6D4", "#14B8A6", "#10B981",
+                                    "#22C55E", "#26A69A", "#EAB308", "#F59E0B", "#F97316",
+                                    "#EF5350", "#F43F5E", "#EC4899", "#D946EF", "#A855F7",
+                                    "#8B5CF6", "#6366F1", "#94A3B8"
                                 )
 
                                 Column(
@@ -1425,6 +1426,7 @@ fun ChartViewScreen(
 
                                                     // Per-indicator expandable color palette
                                                     if (activeColorPickerKey == spec.colorKey) {
+                                                        val hasCustomColor = preferences.indicatorCustomColors.containsKey(spec.colorKey)
                                                         Row(
                                                             modifier = Modifier
                                                                 .fillMaxWidth()
@@ -1448,16 +1450,37 @@ fun ChartViewScreen(
                                                                 } catch (_: Exception) {
                                                                     spec.color
                                                                 }
+                                                                val isActiveSw = swColor == spec.color
                                                                 Box(
                                                                     modifier = Modifier
-                                                                        .size(22.dp)
+                                                                        .size(if (isActiveSw) 25.dp else 22.dp)
                                                                         .clip(CircleShape)
                                                                         .background(swColor)
-                                                                        .border(1.dp, palette.cardBorder, CircleShape)
+                                                                        .border(
+                                                                            width = if (isActiveSw) 2.5.dp else 1.dp,
+                                                                            color = if (isActiveSw) MaterialTheme.colorScheme.onSurface else palette.cardBorder,
+                                                                            shape = CircleShape
+                                                                        )
                                                                         .clickable {
                                                                             onUpdateIndicatorFamilyColor(spec.colorKey, hexOpt)
                                                                         }
                                                                         .testTag("ind_custom_color_${spec.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
+                                                                )
+                                                            }
+                                                            if (hasCustomColor) {
+                                                                Text(
+                                                                    text = "↺ پیش‌فرض",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.primary,
+                                                                    modifier = Modifier
+                                                                        .clip(RoundedCornerShape(6.dp))
+                                                                        .background(MaterialTheme.colorScheme.surface)
+                                                                        .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                                        .clickable {
+                                                                            onUpdateIndicatorFamilyColor("reset_key:${spec.colorKey}", "")
+                                                                        }
+                                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                                                 )
                                                             }
                                                         }
@@ -1466,6 +1489,7 @@ fun ChartViewScreen(
                                                     // Sub-component expandable color palette
                                                     for (sub in spec.subColors) {
                                                         if (activeColorPickerKey == sub.colorKey) {
+                                                            val hasCustomSubColor = preferences.indicatorCustomColors.containsKey(sub.colorKey)
                                                             Row(
                                                                 modifier = Modifier
                                                                     .fillMaxWidth()
@@ -1489,16 +1513,37 @@ fun ChartViewScreen(
                                                                     } catch (_: Exception) {
                                                                         sub.color
                                                                     }
+                                                                    val isActiveSw = swColor == sub.color
                                                                     Box(
                                                                         modifier = Modifier
-                                                                            .size(22.dp)
+                                                                            .size(if (isActiveSw) 25.dp else 22.dp)
                                                                             .clip(CircleShape)
                                                                             .background(swColor)
-                                                                            .border(1.dp, palette.cardBorder, CircleShape)
+                                                                            .border(
+                                                                                width = if (isActiveSw) 2.5.dp else 1.dp,
+                                                                                color = if (isActiveSw) MaterialTheme.colorScheme.onSurface else palette.cardBorder,
+                                                                                shape = CircleShape
+                                                                            )
                                                                             .clickable {
                                                                                 onUpdateIndicatorFamilyColor(sub.colorKey, hexOpt)
                                                                             }
                                                                             .testTag("ind_custom_color_${sub.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
+                                                                    )
+                                                                }
+                                                                if (hasCustomSubColor) {
+                                                                    Text(
+                                                                        text = "↺ پیش‌فرض",
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = MaterialTheme.colorScheme.primary,
+                                                                        modifier = Modifier
+                                                                            .clip(RoundedCornerShape(6.dp))
+                                                                            .background(MaterialTheme.colorScheme.surface)
+                                                                            .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                                            .clickable {
+                                                                                onUpdateIndicatorFamilyColor("reset_key:${sub.colorKey}", "")
+                                                                            }
+                                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
                                                                     )
                                                                 }
                                                             }
@@ -1953,6 +1998,7 @@ fun ChartViewScreen(
                                                     }
 
                                                     if (activeColorPickerKey == spec.colorKey) {
+                                                        val hasCustomColor = preferences.indicatorCustomColors.containsKey(spec.colorKey)
                                                         Row(
                                                             modifier = Modifier
                                                                 .fillMaxWidth()
@@ -1976,16 +2022,37 @@ fun ChartViewScreen(
                                                                 } catch (_: Exception) {
                                                                     spec.color
                                                                 }
+                                                                val isActiveSw = swColor == spec.color
                                                                 Box(
                                                                     modifier = Modifier
-                                                                        .size(22.dp)
+                                                                        .size(if (isActiveSw) 25.dp else 22.dp)
                                                                         .clip(CircleShape)
                                                                         .background(swColor)
-                                                                        .border(1.dp, palette.cardBorder, CircleShape)
+                                                                        .border(
+                                                                            width = if (isActiveSw) 2.5.dp else 1.dp,
+                                                                            color = if (isActiveSw) MaterialTheme.colorScheme.onSurface else palette.cardBorder,
+                                                                            shape = CircleShape
+                                                                        )
                                                                         .clickable {
                                                                             onUpdateIndicatorFamilyColor(spec.colorKey, hexOpt)
                                                                         }
                                                                         .testTag("ind_custom_color_${spec.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
+                                                                )
+                                                            }
+                                                            if (hasCustomColor) {
+                                                                Text(
+                                                                    text = "↺ پیش‌فرض",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.primary,
+                                                                    modifier = Modifier
+                                                                        .clip(RoundedCornerShape(6.dp))
+                                                                        .background(MaterialTheme.colorScheme.surface)
+                                                                        .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                                        .clickable {
+                                                                            onUpdateIndicatorFamilyColor("reset_key:${spec.colorKey}", "")
+                                                                        }
+                                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
                                                                 )
                                                             }
                                                         }
@@ -1994,6 +2061,7 @@ fun ChartViewScreen(
                                                     // Sub-component expandable color palette
                                                     for (sub in spec.subColors) {
                                                         if (activeColorPickerKey == sub.colorKey) {
+                                                            val hasCustomSubColor = preferences.indicatorCustomColors.containsKey(sub.colorKey)
                                                             Row(
                                                                 modifier = Modifier
                                                                     .fillMaxWidth()
@@ -2017,16 +2085,37 @@ fun ChartViewScreen(
                                                                     } catch (_: Exception) {
                                                                         sub.color
                                                                     }
+                                                                    val isActiveSw = swColor == sub.color
                                                                     Box(
                                                                         modifier = Modifier
-                                                                            .size(22.dp)
+                                                                            .size(if (isActiveSw) 25.dp else 22.dp)
                                                                             .clip(CircleShape)
                                                                             .background(swColor)
-                                                                            .border(1.dp, palette.cardBorder, CircleShape)
+                                                                            .border(
+                                                                                width = if (isActiveSw) 2.5.dp else 1.dp,
+                                                                                color = if (isActiveSw) MaterialTheme.colorScheme.onSurface else palette.cardBorder,
+                                                                                shape = CircleShape
+                                                                            )
                                                                             .clickable {
                                                                                 onUpdateIndicatorFamilyColor(sub.colorKey, hexOpt)
                                                                             }
                                                                             .testTag("ind_custom_color_${sub.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
+                                                                    )
+                                                                }
+                                                                if (hasCustomSubColor) {
+                                                                    Text(
+                                                                        text = "↺ پیش‌فرض",
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        fontWeight = FontWeight.Bold,
+                                                                        color = MaterialTheme.colorScheme.primary,
+                                                                        modifier = Modifier
+                                                                            .clip(RoundedCornerShape(6.dp))
+                                                                            .background(MaterialTheme.colorScheme.surface)
+                                                                            .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
+                                                                            .clickable {
+                                                                                onUpdateIndicatorFamilyColor("reset_key:${sub.colorKey}", "")
+                                                                            }
+                                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
                                                                     )
                                                                 }
                                                             }

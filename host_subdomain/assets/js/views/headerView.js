@@ -1,6 +1,12 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
-import { state, escapeHtml, getIndicatorColorPalette } from '../core/store.js?v=1.42.0';
-import { renderSymbolBadge } from './watchlistView.js?v=1.42.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
+import {
+  state,
+  escapeHtml,
+  getIndicatorColorPalette,
+  UNIVERSAL_COLOR_PALETTE,
+  DEFAULT_INDICATOR_COLORS,
+} from '../core/store.js?v=1.43.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.43.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -312,59 +318,131 @@ export function renderIndicatorsModal(activeTab, i18n) {
     </div>
   `;
 
-  const renderToggleRow = (indicatorKey, color, title, subtitle, isActive, actionName, styleBadge = '──') => `
-    <div class="card-subtle row-between" style="padding: 8px 12px; gap: 10px;">
-      <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
-        <label class="tv-ind-color-picker-label" title="${isFa ? 'انتخاب رنگ سفارشی برای ' + title : 'Pick custom color for ' + title}">
-          <input
-            type="color"
-            class="tv-ind-color-input"
-            data-action="set-indicator-color"
-            data-indicator="${indicatorKey}"
-            value="${color}"
-          />
-          <span class="tv-ind-color-dot" style="background-color: ${color};"></span>
-        </label>
-        <div style="min-width: 0; flex: 1;">
-          <div style="font-weight: 700; color: var(--text-strong); font-size: 13px; display: flex; align-items: center; gap: 7px;">
-            <span class="tv-ind-badge-tag ltr-num" style="--ind-accent: ${color};">${styleBadge}</span>
-            <span style="overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</span>
+  const renderColorDrawer = (indicatorKey, currentColor, label) => {
+    if (state.activeColorPickerKey !== indicatorKey) return '';
+    const normCur = String(currentColor || '#2962FF').toUpperCase();
+    const defCol = String(DEFAULT_INDICATOR_COLORS[indicatorKey] || '#2962FF').toUpperCase();
+    const isCustom = normCur !== defCol;
+    return `
+      <div class="tv-ind-color-drawer" data-ind-drawer="${escapeHtml(indicatorKey)}">
+        <div class="tv-ind-color-drawer-head">
+          <div style="display: flex; align-items: center; gap: 6px;">
+            <span class="tv-ind-color-dot" style="background-color: ${normCur};"></span>
+            <span style="font-size: 11.5px; font-weight: 700; color: var(--text-strong);">${isFa ? 'انتخاب رنگ:' : 'Color:'} ${escapeHtml(label)}</span>
+            <span class="ltr-num" style="font-size: 10.5px; color: var(--primary); font-weight: 700;">${normCur}</span>
           </div>
-          <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.35;">
-            ${subtitle}
+          <div style="display: flex; align-items: center; gap: 4px;">
+            ${
+              isCustom
+                ? `<button type="button" class="btn btn-sm" data-action="reset-single-indicator-color" data-indicator="${escapeHtml(indicatorKey)}" style="font-size: 10px; padding: 2px 6px;">↺ ${isFa ? 'پیش‌فرض' : 'Default'}</button>`
+                : ''
+            }
+            <button type="button" class="btn btn-sm btn-icon" data-action="toggle-ind-color-picker" data-indicator="${escapeHtml(indicatorKey)}" title="${isFa ? 'بستن' : 'Close'}" style="width: 24px; height: 24px; font-size: 11px;">✕</button>
           </div>
         </div>
+        <div class="tv-ind-swatch-grid">
+          ${UNIVERSAL_COLOR_PALETTE.map((hex) => {
+            const isSel = normCur === hex.toUpperCase();
+            return `<button type="button" class="tv-ind-swatch-btn ${isSel ? 'active' : ''}" style="background-color: ${hex};" data-action="pick-indicator-color-swatch" data-indicator="${escapeHtml(indicatorKey)}" data-color="${hex}" title="${hex}" aria-label="${hex}"></button>`;
+          }).join('')}
+        </div>
+        <div class="tv-ind-custom-row">
+          <span style="font-size: 11px; color: var(--text-muted);">${isFa ? 'رنگ دلخواه:' : 'Custom:'}</span>
+          <input
+            type="color"
+            class="tv-ind-native-color-input"
+            data-action="set-indicator-color"
+            data-indicator="${escapeHtml(indicatorKey)}"
+            value="${normCur}"
+            title="${isFa ? 'انتخاب رنگ دلخواه سیستم' : 'System color picker'}"
+          />
+          <input
+            type="text"
+            class="tv-ind-hex-input ltr-num"
+            id="ci-ind-hex-${escapeHtml(indicatorKey)}"
+            data-indicator="${escapeHtml(indicatorKey)}"
+            value="${normCur}"
+            maxlength="7"
+            placeholder="#2962FF"
+            dir="ltr"
+          />
+          <button
+            type="button"
+            class="btn btn-sm btn-primary"
+            data-action="apply-ind-hex-color"
+            data-indicator="${escapeHtml(indicatorKey)}"
+            style="font-size: 11px; padding: 3px 9px; height: 28px;"
+          >
+            ${isFa ? 'اعمال' : 'Apply'}
+          </button>
+        </div>
       </div>
-      <button
-        class="btn btn-sm ${isActive ? 'btn-primary' : ''}"
-        data-action="${actionName}"
-        style="white-space: nowrap; flex-shrink: 0; min-width: 68px;"
-      >
-        ${isActive ? (isFa ? 'فعال ✓' : 'Active ✓') : isFa ? 'افزودن' : 'Add'}
-      </button>
-    </div>
-  `;
+    `;
+  };
 
-  const renderColorRow = (indicatorKey, color, title, styleBadge = '──') => `
-    <div class="card-subtle row-between" style="padding: 6px 10px; gap: 8px;">
-      <div style="display: flex; align-items: center; gap: 8px; flex: 1; min-width: 0;">
-        <label class="tv-ind-color-picker-label" title="${isFa ? 'انتخاب رنگ سفارشی برای ' + title : 'Pick custom color for ' + title}">
-          <input
-            type="color"
-            class="tv-ind-color-input"
-            data-action="set-indicator-color"
-            data-indicator="${indicatorKey}"
-            value="${color}"
-          />
-          <span class="tv-ind-color-dot" style="background-color: ${color};"></span>
-        </label>
-        <div style="min-width: 0; flex: 1; display: flex; align-items: center; gap: 6px;">
-          <span class="tv-ind-badge-tag tv-ind-badge-tag-sm ltr-num" style="--ind-accent: ${color};">${styleBadge}</span>
-          <span style="font-weight: 700; color: var(--text-strong); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</span>
+  const renderToggleRow = (indicatorKey, color, title, subtitle, isActive, actionName, styleBadge = '──') => {
+    const isPickerOpen = state.activeColorPickerKey === indicatorKey;
+    return `
+    <div class="card-subtle" style="padding: 8px 12px;">
+      <div class="row-between" style="gap: 10px;">
+        <div style="display: flex; align-items: center; gap: 10px; flex: 1; min-width: 0;">
+          <button
+            type="button"
+            class="tv-ind-color-badge-btn ${isPickerOpen ? 'active' : ''}"
+            data-action="toggle-ind-color-picker"
+            data-indicator="${escapeHtml(indicatorKey)}"
+            title="${isFa ? 'تغییر رنگ ' + title : 'Change color for ' + title}"
+          >
+            <span class="tv-ind-color-dot" style="background-color: ${color};"></span>
+            <span class="tv-ind-badge-tag ltr-num" style="--ind-accent: ${color};">${styleBadge}</span>
+          </button>
+          <div style="min-width: 0; flex: 1;">
+            <div style="font-weight: 700; color: var(--text-strong); font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">
+              ${title}
+            </div>
+            <div style="font-size: 11.5px; color: var(--text-muted); margin-top: 2px; line-height: 1.35;">
+              ${subtitle}
+            </div>
+          </div>
         </div>
+        <button
+          type="button"
+          class="btn btn-sm ${isActive ? 'btn-primary' : ''}"
+          data-action="${actionName}"
+          style="white-space: nowrap; flex-shrink: 0; min-width: 68px;"
+        >
+          ${isActive ? (isFa ? 'فعال ✓' : 'Active ✓') : isFa ? 'افزودن' : 'Add'}
+        </button>
       </div>
+      ${renderColorDrawer(indicatorKey, color, title)}
     </div>
   `;
+  };
+
+  const renderColorRow = (indicatorKey, color, title, styleBadge = '──') => {
+    const isPickerOpen = state.activeColorPickerKey === indicatorKey;
+    return `
+    <button
+      type="button"
+      class="card-subtle row-between"
+      data-action="toggle-ind-color-picker"
+      data-indicator="${escapeHtml(indicatorKey)}"
+      title="${isFa ? 'تغییر رنگ ' + title : 'Change color for ' + title}"
+      style="padding: 6px 9px; gap: 6px; cursor: pointer; width: 100%; text-align: start; border: 1px solid ${isPickerOpen ? 'var(--primary)' : 'var(--border)'}; background: ${isPickerOpen ? 'var(--primary-soft)' : 'var(--bg)'};"
+    >
+      <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 0;">
+        <span class="tv-ind-color-dot" style="background-color: ${color};"></span>
+        <span class="tv-ind-badge-tag tv-ind-badge-tag-sm ltr-num" style="--ind-accent: ${color};">${styleBadge}</span>
+        <span style="font-weight: 700; color: var(--text-strong); font-size: 11.5px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">${title}</span>
+      </div>
+    </button>
+  `;
+  };
+
+  const renderSubColorSectionDrawer = (subItems) => {
+    const match = subItems.find((item) => item.key === state.activeColorPickerKey);
+    return match ? renderColorDrawer(match.key, match.color, match.label) : '';
+  };
 
   const activeIndCat = state.activeIndicatorCategory || 'all';
   const indCategories = [
@@ -506,6 +584,12 @@ export function renderIndicatorsModal(activeTab, i18n) {
               ${renderColorRow('ichimokuCloud', pal.ichimokuCloud, 'Cloud Span A/B (ابر)', 'CLOUD')}
               ${renderColorRow('ichimokuChikou', pal.ichimokuChikou, 'Chikou Span (چیکو)', 'CHK')}
             </div>
+            ${renderSubColorSectionDrawer([
+              { key: 'ichimokuTenkan', color: pal.ichimokuTenkan, label: 'Tenkan-sen' },
+              { key: 'ichimokuKijun', color: pal.ichimokuKijun, label: 'Kijun-sen' },
+              { key: 'ichimokuCloud', color: pal.ichimokuCloud, label: 'Cloud Span A/B' },
+              { key: 'ichimokuChikou', color: pal.ichimokuChikou, label: 'Chikou Span' },
+            ])}
           </div>
           ${renderToggleRow('overlayMacd', pal.overlayMacd, isFa ? 'MACD Classic (روی چارت اصلی — Overlay)' : 'MACD Classic (Main Chart Overlay)', isFa ? 'مکدی کلاسیک (۱۲، ۲۶، ۹) مستقیماً روی چارت قیمت' : 'Render Classic MACD directly overlaid on the main price canvas', activeTab.showOverlayMacd, 'toggle-overlay-macd', '∿')}
           ${renderToggleRow('futureProjection', pal.futureProjection, isFa ? 'Future Candlesticks (پیش‌بینی ۳۰ کندل آینده روی چارت)' : 'Future Candlesticks (30-Period AI Projection)', isFa ? 'ترسیم ۳۰ کندل آینده با برچسب‌های تفکیک‌شده' : 'Render 30 ghosted future candlesticks with Present Bar Divider', activeTab.showFutureProjection, 'toggle-future-projection', '+30')}
@@ -525,6 +609,14 @@ export function renderIndicatorsModal(activeTab, i18n) {
               ${renderColorRow('smcEqh', pal.smcEqh, 'Equal Highs (EQH)', 'EQH')}
               ${renderColorRow('smcEql', pal.smcEql, 'Equal Lows (EQL)', 'EQL')}
             </div>
+            ${renderSubColorSectionDrawer([
+              { key: 'smcBullBos', color: pal.smcBullBos, label: isFa ? 'شکست صعودی (Bullish BOS)' : 'Bullish BOS' },
+              { key: 'smcBearBos', color: pal.smcBearBos, label: isFa ? 'شکست نزولی (Bearish BOS)' : 'Bearish BOS' },
+              { key: 'smcBullChoch', color: pal.smcBullChoch, label: isFa ? 'تغییر کاراکتر صعودی' : 'Bullish CHoCH' },
+              { key: 'smcBearChoch', color: pal.smcBearChoch, label: isFa ? 'تغییر کاراکتر نزولی' : 'Bearish CHoCH' },
+              { key: 'smcEqh', color: pal.smcEqh, label: 'Equal Highs (EQH)' },
+              { key: 'smcEql', color: pal.smcEql, label: 'Equal Lows (EQL)' },
+            ])}
           </div>
           ${renderToggleRow('fvg', pal.fvg, 'Fair Value Gaps (FVG / Imbalance)', isFa ? 'باکس گپ‌های ارزش منصفانه صعودی و نزولی تسویه‌نشده' : 'Highlight unmitigated 3-candle Bullish & Bearish Fair Value Gaps', activeTab.showFvg, 'toggle-fvg', '▭FVG')}
           <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
@@ -533,6 +625,10 @@ export function renderIndicatorsModal(activeTab, i18n) {
               ${renderColorRow('fvgBull', pal.fvgBull, isFa ? 'FVG صعودی (Bullish)' : 'Bullish FVG', 'FVG↑')}
               ${renderColorRow('fvgBear', pal.fvgBear, isFa ? 'FVG نزولی (Bearish)' : 'Bearish FVG', 'FVG↓')}
             </div>
+            ${renderSubColorSectionDrawer([
+              { key: 'fvgBull', color: pal.fvgBull, label: isFa ? 'FVG صعودی (Bullish)' : 'Bullish FVG' },
+              { key: 'fvgBear', color: pal.fvgBear, label: isFa ? 'FVG نزولی (Bearish)' : 'Bearish FVG' },
+            ])}
           </div>
           ${renderToggleRow('killzones', pal.killzones, isFa ? 'Trading Killzones (Asia / London / NY)' : 'Session Killzones (Asia / London / NY Overlap)', isFa ? 'نوارهای زمانی سشن‌های آسیا، لندن، نیویورک و همپوشانی (UTC)' : 'UTC session background bands (Asia 00-09, London 07-16, NY 13-22)', activeTab.showKillzones, 'toggle-killzones', '▒▒')}
           `
@@ -556,6 +652,12 @@ export function renderIndicatorsModal(activeTab, i18n) {
               ${renderColorRow('macdHistBull', pal.macdHistBull, 'Histogram Bull (+)', 'HIST+')}
               ${renderColorRow('macdHistBear', pal.macdHistBear, 'Histogram Bear (-)', 'HIST-')}
             </div>
+            ${renderSubColorSectionDrawer([
+              { key: 'macdLine', color: pal.macdLine, label: 'MACD Line' },
+              { key: 'macdSignal', color: pal.macdSignal, label: 'Signal Line' },
+              { key: 'macdHistBull', color: pal.macdHistBull, label: 'Histogram Bull (+)' },
+              { key: 'macdHistBear', color: pal.macdHistBear, label: 'Histogram Bear (-)' },
+            ])}
           </div>
           ${renderToggleRow('atr14', pal.atr14, 'ATR (14)', isFa ? 'میانگین دامنه نوسان واقعی ۱۴ دوره‌ای در پنل مجزای پایین' : '14-Period Wilder Average True Range volatility sub-pane', activeTab.showAtr14, 'toggle-atr14', 'ATR')}
           ${renderToggleRow('adx14', pal.adx14, 'ADX / DMI (14)', isFa ? 'شاخص قدرت روند و جهت حرکتی (+DI / -DI / ADX) با خط مرجع ۲۵' : 'Directional Movement Index (+DI / -DI) & ADX trend strength (Ref 25)', activeTab.showAdx14, 'toggle-adx14', 'ADX')}
@@ -566,6 +668,11 @@ export function renderIndicatorsModal(activeTab, i18n) {
               ${renderColorRow('plusDi', pal.plusDi, '+DI Line', '+DI')}
               ${renderColorRow('minusDi', pal.minusDi, '-DI Line', '-DI')}
             </div>
+            ${renderSubColorSectionDrawer([
+              { key: 'adxLine', color: pal.adxLine, label: 'ADX Line' },
+              { key: 'plusDi', color: pal.plusDi, label: '+DI Line' },
+              { key: 'minusDi', color: pal.minusDi, label: '-DI Line' },
+            ])}
           </div>
           ${renderToggleRow('stoch14', pal.stoch14, 'Stochastic (14, 3, 3)', isFa ? 'اسیلاتور استوکاستیک کند (%K / %D) با سطوح اشباع ۲۰ و ۸۰' : 'Slow Stochastic Oscillator (%K / %D) with 20/80 thresholds', activeTab.showStoch14, 'toggle-stoch14', '%K%D')}
           <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
@@ -574,6 +681,10 @@ export function renderIndicatorsModal(activeTab, i18n) {
               ${renderColorRow('stochK', pal.stochK, '%K Line', '%K')}
               ${renderColorRow('stochD', pal.stochD, '%D Line', '%D')}
             </div>
+            ${renderSubColorSectionDrawer([
+              { key: 'stochK', color: pal.stochK, label: '%K Line' },
+              { key: 'stochD', color: pal.stochD, label: '%D Line' },
+            ])}
           </div>
           ${renderToggleRow('cci20', pal.cci20, 'CCI (20)', isFa ? 'شاخص کانال کالا ۲۰ دوره‌ای با سطوح -۱۰۰ و +۱۰۰' : 'Commodity Channel Index (20) with ±100 bands', activeTab.showCci20, 'toggle-cci20', 'CCI')}
           ${renderToggleRow('willr14', pal.willr14, 'Williams %R (14)', isFa ? 'شاخص ویلیامز درصد آر (-۱۰۰ تا ۰) با سطوح -۲۰ و -۸۰' : 'Williams Percent Range (-100 to 0) with -20 / -80 bands', activeTab.showWillR14, 'toggle-willr14', '%R')}

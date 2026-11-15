@@ -3,7 +3,7 @@ import {
   LIFECYCLE_STATUS,
   canonicalJson,
   sha256Hex,
-} from './forecastContract.js?v=1.42.0';
+} from './forecastContract.js?v=1.43.0';
 
 const LEDGER_STORAGE_KEY = 'ci_forecast_ledger_v1';
 const LIFECYCLE_STORAGE_KEY = 'ci_forecast_lifecycle_v1';

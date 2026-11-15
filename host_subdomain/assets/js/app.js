@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.42.0';
+import { I18nManager } from './core/i18n.js?v=1.43.0';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -25,10 +25,12 @@ import {
   getIndicatorColorPalette,
   normalizeHexForWeb,
   setIndicatorCustomColor,
+  resetSingleIndicatorColor,
+  setChartAppearanceColor,
   resetIndicatorColorsToDefault,
   isProviderEnabled,
   isFocusPullSuspended,
-} from './core/store.js?v=1.42.0';
+} from './core/store.js?v=1.43.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -52,38 +54,39 @@ import {
   runForecastOnServer,
   fetchForecastLedger,
   appendForecastLifecycleEventOnServer,
-} from './services/apiService.js?v=1.42.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.42.0';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.42.0';
-import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.42.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.42.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.42.0';
+} from './services/apiService.js?v=1.43.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.43.0';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.43.0';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.43.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.43.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.43.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.42.0';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.42.0';
+} from './views/headerView.js?v=1.43.0';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.43.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.42.0';
-import { renderPredictionModal } from './views/analysisView.js?v=1.42.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.42.0';
-import { renderRightIconRail } from './views/navigationView.js?v=1.42.0';
+} from './views/watchlistView.js?v=1.43.0';
+import { renderPredictionModal } from './views/analysisView.js?v=1.43.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.43.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.43.0';
 import {
   renderForecastStudioView,
   renderForecastStudioFanCanvas,
   buildForecastForTab,
-} from './views/forecastView.js?v=1.42.0';
-import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.42.0';
-import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.42.0';
-import { normalizeRenderMode, clampHorizonBars } from './forecast/forecastContract.js?v=1.42.0';
+} from './views/forecastView.js?v=1.43.0';
+import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.43.0';
+import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.43.0';
+import { normalizeRenderMode, clampHorizonBars } from './forecast/forecastContract.js?v=1.43.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
 let canvasResizeObserver = null;
+let lastColorInputInteractMs = 0;
 
 registerAutoSyncCallback(() => {
   if (state.isAuthenticated) {
@@ -1780,14 +1783,19 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'open-modal') {
     const modalName = el.getAttribute('data-modal');
     state.activeModal = state.activeModal === modalName ? null : modalName;
+    state.activeColorPickerKey = null;
     state.statusBannerKey = '';
     renderApp();
     if (state.activeModal === 'settings') {
       Promise.all([fetchSystemStatus(), fetchImportBatches()]).then(() => renderApp()).catch(() => {});
     }
   } else if (action === 'close-modal' || action === 'close-modal-backdrop') {
-    if (action === 'close-modal-backdrop' && e.target !== el) return;
+    if (action === 'close-modal-backdrop') {
+      if (e.target !== el) return;
+      if (Date.now() - lastColorInputInteractMs < 600) return;
+    }
     state.activeModal = null;
+    state.activeColorPickerKey = null;
     state.statusBannerKey = '';
     renderApp();
   } else if (action === 'set-settings-tab') {
@@ -2529,9 +2537,47 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'set-indicator-category') {
     state.activeIndicatorCategory = el.getAttribute('data-category') || 'all';
+    state.activeColorPickerKey = null;
     renderApp();
+  } else if (action === 'toggle-ind-color-picker') {
+    const indKey = el.getAttribute('data-indicator');
+    if (indKey) {
+      state.activeColorPickerKey = state.activeColorPickerKey === indKey ? null : indKey;
+      renderApp();
+    }
+  } else if (action === 'pick-indicator-color-swatch') {
+    const indKey = el.getAttribute('data-indicator');
+    const colHex = el.getAttribute('data-color');
+    if (indKey && colHex) {
+      setIndicatorCustomColor(indKey, colHex, false);
+      renderApp();
+      redrawActiveCanvas();
+    }
+  } else if (action === 'apply-ind-hex-color') {
+    const indKey = el.getAttribute('data-indicator');
+    const inp = indKey ? document.getElementById(`ci-ind-hex-${indKey}`) : null;
+    const rawVal = inp ? String(inp.value || '').trim().replace(/^#/, '') : '';
+    if (indKey && (/^[0-9A-Fa-f]{6}$/.test(rawVal) || /^[0-9A-Fa-f]{3}$/.test(rawVal))) {
+      setIndicatorCustomColor(indKey, `#${rawVal}`, false);
+      renderApp();
+      redrawActiveCanvas();
+    } else if (inp) {
+      showFloatingToast(
+        i18n.getCurrentLanguage() === 'fa'
+          ? 'کد رنگ باید ۶ کاراکتر هگز مثل #2962FF باشد'
+          : 'Enter a valid hex color like #2962FF'
+      );
+    }
+  } else if (action === 'reset-single-indicator-color') {
+    const indKey = el.getAttribute('data-indicator');
+    if (indKey) {
+      resetSingleIndicatorColor(indKey, false);
+      renderApp();
+      redrawActiveCanvas();
+    }
   } else if (action === 'reset-indicator-colors') {
     resetIndicatorColorsToDefault();
+    state.activeColorPickerKey = null;
     renderApp();
     redrawActiveCanvas();
   } else if (action === 'reset-chart-colors') {
@@ -2593,9 +2639,9 @@ document.addEventListener('click', async (e) => {
     const target = el.getAttribute('data-target');
     const col = el.getAttribute('data-color');
     if (target && col) {
-      state.chartPreferences[target] = col;
-      savePreferences();
+      setChartAppearanceColor(target, col, false);
       renderApp();
+      redrawActiveCanvas();
     }
   } else if (action === 'delete-symbol') {
     const code = el.getAttribute('data-symbol');
@@ -2716,15 +2762,35 @@ document.addEventListener('input', (e) => {
     const lbl = document.getElementById('hit-tolerance-value-label');
     if (lbl) lbl.textContent = `${val} px`;
   } else if (action === 'set-indicator-color') {
+    lastColorInputInteractMs = Date.now();
     const indKey = el.getAttribute('data-indicator');
     const colorHex = el.value || el.getAttribute('data-color');
     if (indKey && colorHex) {
-      const cleanHex = setIndicatorCustomColor(indKey, colorHex);
-      const dot = el.parentElement ? el.parentElement.querySelector('.tv-ind-color-dot') : null;
-      if (dot && cleanHex) dot.style.backgroundColor = cleanHex;
-      const rowCard = el.closest('.card-subtle');
-      const badge = rowCard ? rowCard.querySelector('.tv-ind-badge-tag') : null;
-      if (badge && cleanHex) badge.style.setProperty('--ind-accent', cleanHex);
+      const cleanHex = setIndicatorCustomColor(indKey, colorHex, true);
+      const drawer = el.closest('.tv-ind-color-drawer');
+      if (drawer && cleanHex) {
+        const dot = drawer.querySelector('.tv-ind-color-drawer-head .tv-ind-color-dot');
+        if (dot) dot.style.backgroundColor = cleanHex;
+        const hexLbl = drawer.querySelector('.tv-ind-color-drawer-head .ltr-num');
+        if (hexLbl) hexLbl.textContent = cleanHex;
+        const hexInp = drawer.querySelector('.tv-ind-hex-input');
+        if (hexInp) hexInp.value = cleanHex;
+      }
+      const badgeBtn = document.querySelector(`[data-action="toggle-ind-color-picker"][data-indicator="${indKey}"]`);
+      if (badgeBtn && cleanHex) {
+        const dot = badgeBtn.querySelector('.tv-ind-color-dot');
+        if (dot) dot.style.backgroundColor = cleanHex;
+        const tag = badgeBtn.querySelector('.tv-ind-badge-tag');
+        if (tag) tag.style.setProperty('--ind-accent', cleanHex);
+      }
+      redrawActiveCanvas();
+    }
+  } else if (action === 'set-chart-custom-color') {
+    lastColorInputInteractMs = Date.now();
+    const target = el.getAttribute('data-target');
+    const colorHex = el.value;
+    if (target && colorHex) {
+      setChartAppearanceColor(target, colorHex, true);
       redrawActiveCanvas();
     }
   }
@@ -2782,15 +2848,21 @@ document.addEventListener('change', async (e) => {
     state.selectedExplorerProvider = 'tvdatafeed';
     renderApp();
   } else if (action === 'set-indicator-color') {
+    lastColorInputInteractMs = Date.now();
     const indKey = el.getAttribute('data-indicator');
     const colorHex = el.value || el.getAttribute('data-color');
     if (indKey && colorHex) {
-      const cleanHex = setIndicatorCustomColor(indKey, colorHex);
-      const dot = el.parentElement ? el.parentElement.querySelector('.tv-ind-color-dot') : null;
-      if (dot && cleanHex) dot.style.backgroundColor = cleanHex;
-      const rowCard = el.closest('.card-subtle');
-      const badge = rowCard ? rowCard.querySelector('.tv-ind-badge-tag') : null;
-      if (badge && cleanHex) badge.style.setProperty('--ind-accent', cleanHex);
+      setIndicatorCustomColor(indKey, colorHex, false);
+      renderApp();
+      redrawActiveCanvas();
+    }
+  } else if (action === 'set-chart-custom-color') {
+    lastColorInputInteractMs = Date.now();
+    const target = el.getAttribute('data-target');
+    const colorHex = el.value;
+    if (target && colorHex) {
+      setChartAppearanceColor(target, colorHex, false);
+      renderApp();
       redrawActiveCanvas();
     }
   } else if (action === 'toggle-forecast-model') {
@@ -2825,6 +2897,26 @@ document.addEventListener('change', async (e) => {
       savePreferences();
       renderApp();
     }
+  }
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key !== 'Enter') return;
+  const el = e.target;
+  if (!el || !el.classList || !el.classList.contains('tv-ind-hex-input')) return;
+  e.preventDefault();
+  const indKey = el.getAttribute('data-indicator');
+  const rawVal = String(el.value || '').trim().replace(/^#/, '');
+  if (indKey && (/^[0-9A-Fa-f]{6}$/.test(rawVal) || /^[0-9A-Fa-f]{3}$/.test(rawVal))) {
+    setIndicatorCustomColor(indKey, `#${rawVal}`, false);
+    renderApp();
+    redrawActiveCanvas();
+  } else {
+    showFloatingToast(
+      i18n.getCurrentLanguage() === 'fa'
+        ? 'کد رنگ باید ۶ کاراکتر هگز مثل #2962FF باشد'
+        : 'Enter a valid hex color like #2962FF'
+    );
   }
 });
 
@@ -3017,17 +3109,34 @@ async function handleChartSnapshot() {
       if (activeTab.showEma20) activePills.push({ label: 'EMA 20', color: pal.ema20 });
       if (activeTab.showEma50) activePills.push({ label: 'EMA 50', color: pal.ema50 });
       if (activeTab.showEma200) activePills.push({ label: 'EMA 200', color: pal.ema200 });
+      if (activeTab.showMtfEma) activePills.push({ label: 'MTF EMA', color: pal.mtfEma });
       if (activeTab.showBollinger) activePills.push({ label: 'BB', color: pal.bollinger });
+      if (activeTab.showKeltner) activePills.push({ label: 'Keltner', color: pal.keltner });
+      if (activeTab.showDonchian) activePills.push({ label: 'Donchian', color: pal.donchian });
       if (activeTab.showVwap) activePills.push({ label: 'VWAP', color: pal.vwap });
       if (activeTab.showPivotPoints) {
         const pivTag = String(activeTab.pivotType || 'STANDARD').toUpperCase().slice(0, 3);
         activePills.push({ label: `Pivots (${pivTag})`, color: pal.pivotP });
       }
+      if (activeTab.showVolumeProfile) activePills.push({ label: 'VP (POC)', color: pal.vrvpPoc });
       if (activeTab.showSupertrend) activePills.push({ label: 'Supertrend', color: pal.supertrend });
+      if (activeTab.showPsar) activePills.push({ label: 'PSAR', color: pal.psar });
+      if (activeTab.showIchimoku) activePills.push({ label: 'Ichimoku', color: pal.ichimoku });
+      if (activeTab.showOverlayMacd) activePills.push({ label: 'MACD Ovr', color: pal.overlayMacd });
+      if (activeTab.showFutureProjection) activePills.push({ label: 'Future Proj', color: pal.futureProjection });
       if (activeTab.showSmcStructure) activePills.push({ label: 'SMC (BOS)', color: pal.smcStructure });
       if (activeTab.showFvg) activePills.push({ label: 'FVG', color: pal.fvg });
+      if (activeTab.showKillzones) activePills.push({ label: 'Killzones', color: pal.killzones });
       if (activeTab.showRsi14) activePills.push({ label: 'RSI', color: pal.rsi14 });
       if (activeTab.showMacd) activePills.push({ label: 'MACD', color: pal.macd });
+      if (activeTab.showAtr14) activePills.push({ label: 'ATR', color: pal.atr14 });
+      if (activeTab.showAdx14) activePills.push({ label: 'ADX', color: pal.adx14 });
+      if (activeTab.showStoch14) activePills.push({ label: 'Stoch', color: pal.stoch14 });
+      if (activeTab.showCci20) activePills.push({ label: 'CCI', color: pal.cci20 });
+      if (activeTab.showWillR14) activePills.push({ label: 'Will %R', color: pal.willr14 });
+      if (activeTab.showObv) activePills.push({ label: 'OBV', color: pal.obv });
+      if (activeTab.showCmf20) activePills.push({ label: 'CMF', color: pal.cmf20 });
+      if (activeTab.showRoc12) activePills.push({ label: 'ROC', color: pal.roc12 });
 
       if (activePills.length > 0) {
         let pillX = 16 * dpr;

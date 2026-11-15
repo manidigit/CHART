@@ -5,8 +5,9 @@ import {
   escapeHtml,
   getLocalByokKeys,
   getInstrumentSpec,
-} from '../core/store.js?v=1.42.0';
-import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.42.0';
+  normalizeHexForWeb,
+} from '../core/store.js?v=1.43.0';
+import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.43.0';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -726,19 +727,31 @@ export function renderSettingsModal(i18n) {
           <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 10px;">
             ${colorRows
               .map(
-                (row) => `
-                <div class="row-between" style="gap: 10px;">
+                (row) => {
+                  const normVal = normalizeHexForWeb(row.value, row.palette[0]);
+                  return `
+                <div class="row-between" style="gap: 10px; flex-wrap: wrap;">
                   <span style="font-size: 12px; font-weight: 600; color: var(--text);">${row.label}</span>
-                  <div class="color-picker-row">
+                  <div class="color-picker-row" style="display: flex; align-items: center; gap: 6px;">
                     ${row.palette
                       .map(
                         (c) =>
-                          `<div class="color-dot ${row.value.toUpperCase() === c.toUpperCase() ? 'active' : ''}" style="background: ${c};" data-action="set-color" data-target="${row.target}" data-color="${c}"></div>`
+                          `<div class="color-dot ${normVal.toUpperCase() === c.toUpperCase() ? 'active' : ''}" style="background: ${c};" data-action="set-color" data-target="${row.target}" data-color="${c}"></div>`
                       )
                       .join('')}
+                    <input
+                      type="color"
+                      class="tv-settings-color-input"
+                      data-action="set-chart-custom-color"
+                      data-target="${row.target}"
+                      value="${normVal}"
+                      title="${isFa ? 'انتخاب رنگ دلخواه' : 'Pick custom color'}"
+                    />
+                    <span class="ltr-num" style="font-size: 10.5px; color: var(--text-muted); min-width: 58px;">${normVal}</span>
                   </div>
                 </div>
-              `
+              `;
+                }
               )
               .join('')}
           </div>

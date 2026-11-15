@@ -1,4 +1,4 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.42.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 
 export const CONTRACT_VERSION = 'forecast-contract/v1';
 export const SPEC_VERSION = '1.3.0';

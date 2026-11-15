@@ -1656,6 +1656,33 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             scheduleDebouncedCloudSync()
             return
         }
+        if (family.startsWith("reset_key:", ignoreCase = true)) {
+            val targetKey = family.substringAfter(":").trim()
+            if (targetKey.isNotEmpty()) {
+                val nextCustomMap = cur.indicatorCustomColors.toMutableMap()
+                nextCustomMap.remove(targetKey)
+                when (targetKey) {
+                    "macd" -> nextCustomMap.remove("macdLine")
+                    "macdLine" -> nextCustomMap.remove("macd")
+                    "adx14" -> nextCustomMap.remove("adxLine")
+                    "adxLine" -> nextCustomMap.remove("adx14")
+                    "adxPlusDi" -> nextCustomMap.remove("plusDi")
+                    "plusDi" -> nextCustomMap.remove("adxPlusDi")
+                    "adxMinusDi" -> nextCustomMap.remove("minusDi")
+                    "minusDi" -> nextCustomMap.remove("adxMinusDi")
+                    "stoch14" -> nextCustomMap.remove("stochK")
+                    "stochK" -> nextCustomMap.remove("stoch14")
+                }
+                val resetOnePrefs = cur.copy(
+                    indicatorCustomColors = nextCustomMap,
+                    preferencesUpdatedAtMs = nowMs
+                )
+                repository.saveChartPreferences(resetOnePrefs)
+                _uiState.update { it.copy(chartPreferences = resetOnePrefs) }
+                scheduleDebouncedCloudSync()
+            }
+            return
+        }
         val rawClean = colorHex.trim().removePrefix("#").uppercase()
         val cleanHex = if (rawClean.length == 6) "FF$rawClean" else rawClean
         val webHex = "#" + (if (rawClean.length == 8) rawClean.substring(2) else rawClean.takeLast(6))
