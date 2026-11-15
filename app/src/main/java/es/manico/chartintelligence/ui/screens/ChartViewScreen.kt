@@ -212,7 +212,8 @@ fun ChartViewScreen(
     onDeleteSelectedDrawing: () -> Unit,
     onClearAllDrawings: () -> Unit,
     modifier: Modifier = Modifier,
-    lowerTimeframeCandlesProvider: (String) -> List<es.manico.chartintelligence.data.model.CandleBar> = { emptyList() }
+    lowerTimeframeCandlesProvider: (String) -> List<es.manico.chartintelligence.data.model.CandleBar> = { emptyList() },
+    higherTimeframeCandlesProvider: (String) -> List<es.manico.chartintelligence.data.model.CandleBar> = { emptyList() }
 ) {
     BackHandler(onBack = onBackToWatchlist)
     val palette = LocalFinancialPalette.current
@@ -580,7 +581,8 @@ fun ChartViewScreen(
                     onTranslateSelectedDrawing = onTranslateSelectedDrawing,
                     onRetrySync = { onSyncActiveSymbolNow(activeTab.symbolCode) },
                     modifier = Modifier.fillMaxSize(),
-                    lowerTimeframeCandlesProvider = lowerTimeframeCandlesProvider
+                    lowerTimeframeCandlesProvider = lowerTimeframeCandlesProvider,
+                    higherTimeframeCandlesProvider = higherTimeframeCandlesProvider
                 )
 
                 // Floating Quick Drawing Bar only when a drawing tool or line is actively selected on canvas

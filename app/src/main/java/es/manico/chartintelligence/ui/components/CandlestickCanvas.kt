@@ -140,7 +140,8 @@ fun CandlestickCanvas(
     onTranslateSelectedDrawing: (Long, BigDecimal) -> Unit,
     onRetrySync: () -> Unit,
     modifier: Modifier = Modifier,
-    lowerTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() }
+    lowerTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() },
+    higherTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() }
 ) {
     val financialPalette = LocalFinancialPalette.current
     val density = LocalDensity.current
@@ -409,6 +410,12 @@ fun CandlestickCanvas(
     val activeForecastHorizon = remember(tab.forecastHorizonBars, preferences.forecastHorizonBars) {
         if (tab.forecastHorizonBars in 10..60) tab.forecastHorizonBars else preferences.forecastHorizonBars.coerceIn(10, 60)
     }
+    val higherTf = remember(tab.timeframe) {
+        es.manico.chartintelligence.forecast.ForecastV130Analyzer.resolveHigherTimeframe(tab.timeframe)
+    }
+    val higherCandles = remember(higherTf, candles) {
+        if (higherTf.isNotBlank()) higherTimeframeCandlesProvider(higherTf) else emptyList()
+    }
     val lowerInfo = remember(tab.timeframe) {
         resolveLowerTimeframeInfo(tab.timeframe)
     }
@@ -420,6 +427,7 @@ fun CandlestickCanvas(
     }
     val futureProjectionResult = remember(
         candles,
+        higherCandles,
         lowerCandles,
         tab.symbolCode,
         tab.timeframe,
@@ -445,6 +453,8 @@ fun CandlestickCanvas(
                 registry = registry,
                 workerUrl = preferences.forecastWorkerUrl,
                 skipWalkForward = false,
+                higherTimeframe = higherTf,
+                higherTimeframeCandles = higherCandles,
                 lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
                 lowerTimeframeCandles = lowerCandles,
                 selectedModelId = activeSelectedModelId

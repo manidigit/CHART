@@ -501,7 +501,7 @@ fun ForecastLabScreen(
                                         text = if (isAppliedOnChart) {
                                             "✓ ${stringResource(R.string.forecast_apply_chart_btn)}"
                                         } else {
-                                            stringResource(R.string.forecast_apply_chart_btn)
+                                            "☐ ${stringResource(R.string.forecast_apply_chart_btn)}"
                                         },
                                         style = MaterialTheme.typography.labelMedium,
                                         fontWeight = FontWeight.Bold,

@@ -7,6 +7,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.44.0] - 2026-11-15
+
+### Fixed & Enhanced (Forecast Studio UX, Full-Page Scroll & Multi-Timeframe Parity Across Web & Android)
+- **Multi-Timeframe (`1h` / `4h` / `15m`) Forecast Direction Synchronization & Localized `POC` (`ForecastEngine` — Web & Android):**
+  - **Localized Volume Profile (`POC / VAH / VAL`) Window:** Replaced the fixed 140-candle lookback in `extractMultiTimeframeFeatures` (`forecastEngine.js`, `ForecastEngine.kt`) with a timeframe-proportional window (`M15: 80, M30: 64, H1: 54, H4: 38, D1: 30` bars) and clamped `POC` within `lastClose ± 3.5 × ATR` so multi-month historical spikes (e.g., `114.810` on `SPOTBRENT 4h`) never pull near-term trajectories away from current price (`~98.548`).
+  - **Synchronized `SCENARIO_A / B / C` Ranking & 10-Bar Sub-Bar Rollup:** Synchronized higher-timeframe (`4h`, `1h`) cluster ordering (`SCENARIO_A / SCENARIO_B / SCENARIO_C`) and blended posterior probabilities (`0.58 * ltfProb + 0.42 * htfProb`) with the lower timeframe during `Lower-TF Sub-Bar Anchoring`, and expanded `overlapBars` from `3` to `10` (`40 hours` on `H4`, `10 hours` on `H1`). Wired `higherTimeframe` and `higherTimeframeCandles` into both Web (`chartRenderer.js`) and Android (`CandlestickCanvas.kt`, `ChartViewScreen.kt`, `MainActivity.kt`) so chart overlays and Forecast Studio match 100%.
+- **Holiday- & Early-Settlement-Aware Smart Gap Detector (`GapDetector` — Web, Android & PHP):**
+  - Updated `host_subdomain/assets/js/algorithms/gapDetector.js`, `host_subdomain/api/v1/algorithms/GapDetector.php`, and `app/src/main/java/es/manico/chartintelligence/algorithms/GapDetectorAlgorithm.kt` to filter out US holiday early settlement closes (e.g., Labor Day 3-hour early close before `21:00 UTC` break) and single-day exchange holidays (Christmas, New Year's Day, Good Friday). Verified `0` false gaps (`CLEAN`) across `SPOTBRENT` `M15`, `H1`, `H4`, and `D1`.
+- **Standard Document-Level Scrolling in Forecast Studio (Web):**
+  - Enabled native `window`/`document` scrolling (`html.is-forecast-scroll`, `body.is-forecast-scroll`, `.tv-app-shell.is-forecast-view`) when viewing the `Forecast` workspace so Firefox and Chrome full-page screenshot extensions can scroll and capture the entire Forecast Studio page from top to bottom.
+- **Two-State `Apply & View on Chart` Toggle (`✓` / `☐`) Across Web & Android:**
+  - Updated `data-action="apply-forecast-to-chart"` (`app.js`, `forecastView.js`) and `applyForecastAndOpenChart` (`MainViewModel.kt`, `ForecastLabScreen.kt`) so clicking the button when already active (`✓`) unchecks it (`☐`) and disables `showFutureProjection` on the active chart tab; clicking when unchecked (`☐`) enables the overlay and opens the chart.
+- **Forecast Studio Canvas Right Gutter & Card Grid Alignment (Web & Android):**
+  - Added a dedicated right-hand price and quantile badge gutter (`padR = 112` on Web `#forecast-studio-canvas`; `92.dp` column on Android `ForecastMiniFanCanvas`) with vertical anti-collision spacing so `q90`, `q50`, and `q10` badges never overlap candlesticks or grid labels.
+  - Fixed the 12-model comparison grid (`.ci-fc-models-comparison-grid`), prevented vertical character wrapping on the `APPROX` badge (`white-space: nowrap`), and equalized heights and bottom button alignment across the 3 SMC scenario cards and 5 Event Tree scenario cards.
+
+---
+
+## [1.43.0] - 2026-11-15
+
+### Changed & Streamlined (Top-Bar Workspace Consolidation, CSV-Only Export & Compact Status Dot)
+- **Complete Removal of Web Right Navigation Rail & Consolidation into Top Header Bar:**
+  - Removed the vertical right-hand dock rail (`.tv-right-rail`) from the web workspace (`navigationView.js`, `app.js`, `theme.css`).
+  - Placed **`Chart`**, **`Forecast`**, **`Performance`**, **`Watchlist`**, and **`Settings`** navigation buttons directly in the top header bar next to the **Indicators** button (`headerView.js`).
+  - Removed redundant quick-toggle buttons (Theme, Language, Logout) from the workspace bar since they are configured once inside **Settings**.
+- **CSV-Only Data Export (Redundant `JSON` Export Button Removed Across Web & Android):**
+  - Removed the `JSON` export button next to the screenshot camera in `headerView.js`, `watchlistView.js`, and Android `CandleExportButtonsRow` (`Phase2WorkspaceSheets.kt`), keeping a single clean **`CSV`** export button.
+- **Minimal Blinking Market Status Indicator (`Live` / `Market Closed` Dot):**
+  - Replaced verbose `"Market Closed"` / `"Live"` text pills in the top header bar (`headerView.js`) with a compact blinking green (`Live`) or pulsing red (`Market Closed`) status dot (`.ci-status-dot` with inline fallback styles) next to the `CSV` and camera buttons, matching Android's compact status dot (`ChartViewScreen.kt`).
+
+---
+
 ## [1.42.0] - 2026-11-14
 
 ### Added (Phase 4: Independent, Modular Future Price Projection Engine v1)

@@ -1,6 +1,6 @@
 # CHART — مشخصات طراحی و ساختار میزکار نمودار (DESIGN_WORKSPACE_SPEC)
 
-> **شناسه سند:** `DESIGN_WORKSPACE_SPEC` · **نسخه:** `1.38.1` · **تاریخ بازبینی:** `2026-11-13`  
+> **شناسه سند:** `DESIGN_WORKSPACE_SPEC` · **نسخه:** `1.44.0` · **تاریخ بازبینی:** `2026-11-15`  
 > **وضعیت:** `DECIDED` — مرجع استانداردهای طراحی بصری، چیدمان دسکتاپ و موبایل، لایه‌های رندر، اولویت لمسی و توکن‌های رنگی در هر دو پلتفرم Web و Android.
 
 ---
@@ -23,24 +23,23 @@
 
 ```text
 +------------------------------------------------------------------------------------------------------------------+
-| [1] UNIFIED TOP HEADER BAR & OPEN TABS STRIP:                                                                    |
-|     [CI] | [Tab1: SPOTBRENT 15m ✕] [Tab2: XAUUSD 15m ✕] [+] | [15m 30m 1h 4h 1D 1W] | [🕯 📈] | [fx اندیکاتورها] | [● زنده] |
-+------+---------------------------------------------------------------+-----------+------------------------+------+
-| [2]  | [3] CHART CANVAS - MAIN PANE (position: absolute; inset: 0)   | [4] RIGHT | [5] RIGHT SPLIT PANEL  | [6]  |
-| LEFT |   +-------------------------------------------------------+   | NICE-NUM  | (Resizable 185..520px) | DOCK |
-| DRAW |   | [3.1] LIVE OHLCV + ACTIVE INDICATOR PILLS OVERLAY     |   | PRICE     | [5.1] WATCHLIST PANE   | RAIL |
-| RAIL |   +-------------------------------------------------------+   | AXIS      |  [Filter▾] [Search][+] |      |
-| 38px |                                                               | (64px)    |  🪙 XAUUSD    4134.03  | [📋] |
-|      |                     Candlesticks + SMA/EMA/BB/ST/VWAP/SMC     |   94.00   |  🛢️ SPOTBRENT  93.485  | [📊] |
-| [+]  |                     + Interactive Drawings                    |   93.50   |                        | [🎯] |
-| [/]  |                                                               | [93.485]  | === ROW RESIZER ===    | [⚙]  |
-| [-]  +---------------------------------------------------------------+   93.00   |                        |      |
-| [|]  | [3.2] LOWER SYNCHRONIZED PANES (Volume / RSI / MACD / ATR)    |   92.50   | [5.2] SYMBOL DETAILS   | [FA] |
-| [🎨] +---------------------------------------------------------------+-----------+  Single-line Header +  | [☀]  |
-| [🔍] | [3.3] SMART SPAN-AWARE TIME AXIS (Hours / Days / Months / Years)          |  Key Stats & Tech/Pivot| [↪]  |
-| [🗑] +---------------------------------------------------------------------------+                        |      |
-|      | [7] BOTTOM CHART BAR (28px): [1D..All] | [⤢] [⏭] | UTC/Local Clock | [log] [auto]                 |      |
-+------+---------------------------------------------------------------------------+------------------------+------+
+| [1] UNIFIED TOP HEADER BAR & OPEN TABS STRIP (No Right Dock Rail):                                               |
+| [CI] [SPOTBRENT 1h] [+] | [15m..1W] | [🕯 📈] | [Indicators] | [Chart][Forecast][Performance][Watchlist][Settings] | [CSV][●][📷][↻][⛶] |
++------+---------------------------------------------------------------------------------------+-------------------+
+| [2]  | [3] CHART CANVAS - MAIN PANE (position: absolute; inset: 0)                           | [4] RIGHT         |
+| LEFT |   +-------------------------------------------------------------------------------+   | NICE-NUMBER       |
+| DRAW |   | [3.1] LIVE OHLCV + ACTIVE INDICATOR PILLS + CLEAN GAP BADGE OVERLAY           |   | PRICE AXIS        |
+| RAIL |   +-------------------------------------------------------------------------------+   | (64px)            |
+| 38px |                                                                                       |   102.00          |
+|      |                     Candlesticks + SMA/EMA/BB/ST/VWAP/SMC + Future Projection         |   100.00          |
+| [+]  |                     + Interactive Drawings                                            |  [98.548]         |
+| [/]  +---------------------------------------------------------------------------------------+    96.00          |
+| [-]  | [3.2] LOWER SYNCHRONIZED PANES (Volume / RSI / MACD / ATR)                            |    94.00          |
+| [|]  +---------------------------------------------------------------------------------------+-------------------+
+| [🎨] | [3.3] SMART SPAN-AWARE TIME AXIS (Hours / Days / Months / Years + Future Horizon)                         |
+| [🔍] +-----------------------------------------------------------------------------------------------------------+
+| [🗑] | [5] BOTTOM CHART BAR (28px): [1D..All] | [⤢] [⏭] | UTC/Local Clock | [log] [auto]                         |
++------+-----------------------------------------------------------------------------------------------------------+
 ```
 
 ### ۲.۲. طرح ساختاری نسخه موبایل و اندروید (Mobile / Compact 5-Layer Layout)
@@ -87,11 +86,11 @@
 
 | بخش اصلی | مسئولیت‌های کلیدی | پیاده‌سازی وب (`host_subdomain/assets/`) | پیاده‌سازی اندروید (`app/src/main/java/...`) |
 |---|---|---|---|
-| **۱. نوار بالایی و تب‌ها** | نوار تب‌های باز چارت (`✕` و `+`), تایم‌فریم‌ها (`M15..W1`), سبک نمودار (`Candles`/`Line`), دکمه اندیکاتورها و نشانگر ۵گانه وضعیت بازار (`Live`, `Market Closed`, `Cached`, `Sync Error`, `API Key Required`) | `js/views/headerView.js`, `js/app.js` | `ui/components/ChartTabBar.kt`, `ui/screens/ChartViewScreen.kt` |
+| **۱. نوار بالایی و تب‌ها** | نوار تب‌های باز چارت (`✕` و `+`), تایم‌فریم‌ها (`M15..W1`), سبک نمودار (`Candles`/`Line`), دکمه اندیکاتورها، دکمه‌های ناوبری یکپارچه (`Chart`, `Forecast`, `Performance`, `Watchlist`, `Settings`)، خروجی `CSV` و چراغ چشمک‌زن وضعیت بازار (`Live` سبز / `Closed` قرمز بدون متن شلوغ) | `js/views/headerView.js`, `js/app.js` | `ui/components/ChartTabBar.kt`, `ui/screens/ChartViewScreen.kt` |
 | **۲. ابزارهای رسم و چرخه اشیا** | نوار عمودی ۴۲px در دسکتاپ / گرید ۴ ستونه داخل BottomSheet در موبایل + Hit-testing، دستگیره‌های لنگر، جابه‌جایی، تغییر رنگ/ضخامت و حذف | `js/views/toolRailView.js`, `js/algorithms/drawingGeometry.js`, `js/app.js` | `ui/components/DrawingToolbar.kt`, `algorithms/DrawingGeometryAlgorithm.kt`, `ui/state/coordinators/ChartDrawingCoordinator.kt` |
 | **۳. بوم مرکزی نمودار و پنل‌ها** | رندر کندل‌ها، حجم، اسیلاتورها (`RSI 14`, `MACD`, `ATR 14`), اندیکاتورهای هم‌پوشان (`SMA`, `EMA`, `BB`, `Supertrend`, `VWAP`, `MACD Classic Overlay`), ساختار بازار (`BOS/CHoCH`, `EQH/EQL`, `FVG`, `VRVP`), محور قیمت Heckbert (`Auto`/`Log`/Countdown), محور زمان UTC/Local، لژاند OHLC و Splitter بین پنل‌ها | `js/components/chartRenderer.js`, `js/algorithms/technicalIndicators.js`, `js/algorithms/priceFormatter.js`, `js/app.js` | `ui/components/CandlestickCanvas.kt`, `algorithms/PriceFormatterAlgorithm.kt`, `algorithms/UtcTimeAnchorAlgorithm.kt` |
 | **۴. نوار وضعیت و بازه‌های پایینی** | چیپ‌های بازه تاریخی (`1D..All`) با سوئیچ خودکار رزولوشن، دکمه‌های Fit (`⤢`) و Latest (`⏭`), ساعت زنده `UTC / Local`، دکمه‌های `[log]` و `[auto]` | `js/views/headerView.js`, `js/app.js` | `ui/screens/ChartViewScreen.kt`, `ui/components/CandlestickCanvas.kt` |
-| **۵. واچ‌لیست، پیش‌بینی و تنظیمات** | جدول تراز‌شده ۲۲ نماد با جستجو و کمبوباکس دسته‌بندی، شیت جزئیات نماد متناسب با کلاس دارایی (`Overview | News | Minds | Ideas`), صفحه `Prediction` با نردبان پیوت و دکمه ترسیم روی چارت، تنظیمات ۵ تب و مدیریت `BYOK` | `js/views/watchlistView.js`, `js/views/analysisView.js`, `js/views/settingsView.js`, `js/views/navigationView.js` | `ui/screens/WatchlistScreen.kt`, `ui/components/WatchlistRowCard.kt`, `ui/screens/PredictionScreen.kt`, `ui/screens/SettingsScreen.kt`, `ui/components/LanguageThemeSelector.kt` |
+| **۵. واچ‌لیست، آزمایشگاه پیش‌بینی و تنظیمات** | جدول تراز‌شده ۲۲ نماد با جستجو و کمبوباکس دسته‌بندی، شیت جزئیات نماد متناسب با کلاس دارایی (`Overview | News | Minds | Ideas`), صفحه `Forecast Studio / Lab` با اسکرول کامل صفحه، ستون راست `q90/q50/q10` و دکمه دوحالته `✓ / ☐ Apply & View on Chart`, تنظیمات ۵ تب (شامل تم، زبان و خروج) و مدیریت `BYOK` | `js/views/watchlistView.js`, `js/views/forecastView.js`, `js/views/settingsView.js`, `js/views/navigationView.js` | `ui/screens/WatchlistScreen.kt`, `ui/components/WatchlistRowCard.kt`, `ui/screens/ForecastLabScreen.kt`, `ui/screens/SettingsScreen.kt`, `ui/components/LanguageThemeSelector.kt` |
 
 ---
 

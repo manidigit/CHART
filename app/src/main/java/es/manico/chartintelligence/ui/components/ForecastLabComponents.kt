@@ -365,20 +365,84 @@ fun ForecastMiniFanCanvas(
                         Column(
                             modifier = Modifier
                                 .padding(start = 6.dp)
-                                .width(66.dp)
+                                .width(92.dp)
                                 .fillMaxSize(),
                             verticalArrangement = Arrangement.SpaceBetween,
                             horizontalAlignment = Alignment.End
                         ) {
-                            for (g in 0..4) {
-                                val v = maxPrice - (maxPrice - minPrice) * (g / 4.0)
+                            val lastPt = pts.lastOrNull()
+                            if (lastPt != null) {
+                                Surface(
+                                    color = Color(0xFF38BDF8).copy(alpha = 0.16f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "q90 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(lastPt.q90), decimals)}",
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 8.5.sp,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF38BDF8),
+                                        maxLines = 1
+                                    )
+                                }
                                 Text(
-                                    text = PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(v), decimals),
+                                    text = PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(maxPrice - (maxPrice - minPrice) * 0.25), decimals),
                                     style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 9.5.sp,
+                                    fontSize = 9.sp,
                                     fontFamily = JetBrainsMonoFontFamily,
                                     color = Color(0xFF94A3B8)
                                 )
+                                val activeMedColor = MODEL_OVERLAY_COLORS[result?.selectedChartModelId] ?: Color(0xFFF59E0B)
+                                Surface(
+                                    color = activeMedColor.copy(alpha = 0.18f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "q50 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(lastPt.q50), decimals)}",
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 8.5.sp,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        color = activeMedColor,
+                                        maxLines = 1
+                                    )
+                                }
+                                Text(
+                                    text = PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(maxPrice - (maxPrice - minPrice) * 0.75), decimals),
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    color = Color(0xFF94A3B8)
+                                )
+                                Surface(
+                                    color = Color(0xFF38BDF8).copy(alpha = 0.16f),
+                                    shape = RoundedCornerShape(4.dp)
+                                ) {
+                                    Text(
+                                        text = "q10 ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(lastPt.q10), decimals)}",
+                                        modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 8.5.sp,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        color = Color(0xFF38BDF8),
+                                        maxLines = 1
+                                    )
+                                }
+                            } else {
+                                for (g in 0..4) {
+                                    val v = maxPrice - (maxPrice - minPrice) * (g / 4.0)
+                                    Text(
+                                        text = PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(v), decimals),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 9.5.sp,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = Color(0xFF94A3B8)
+                                    )
+                                }
                             }
                         }
                     }

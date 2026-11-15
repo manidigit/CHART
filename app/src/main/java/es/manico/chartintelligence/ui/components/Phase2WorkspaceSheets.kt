@@ -439,7 +439,7 @@ fun CandleExportButtonsRow(
     timeframe: String,
     hasCandles: Boolean,
     onExportCsvToUri: (Uri) -> Unit,
-    onExportJsonToUri: (Uri) -> Unit,
+    @Suppress("UNUSED_PARAMETER") onExportJsonToUri: (Uri) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     val financialPalette = LocalFinancialPalette.current
@@ -450,12 +450,6 @@ fun CandleExportButtonsRow(
         contract = ActivityResultContracts.CreateDocument("text/csv")
     ) { uri ->
         if (uri != null) onExportCsvToUri(uri)
-    }
-
-    val jsonLauncher = rememberLauncherForActivityResult(
-        contract = ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) onExportJsonToUri(uri)
     }
 
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
@@ -469,7 +463,7 @@ fun CandleExportButtonsRow(
                 shape = RoundedCornerShape(8.dp),
                 border = BorderStroke(1.dp, financialPalette.cardBorder),
                 modifier = Modifier
-                    .weight(1f)
+                    .fillMaxWidth()
                     .heightIn(min = 48.dp)
                     .testTag("export_candles_csv_button")
             ) {
@@ -481,29 +475,6 @@ fun CandleExportButtonsRow(
                 Spacer(modifier = Modifier.width(6.dp))
                 Text(
                     text = "Export CSV",
-                    style = MaterialTheme.typography.labelMedium,
-                    fontFamily = JetBrainsMonoFontFamily
-                )
-            }
-
-            OutlinedButton(
-                onClick = { jsonLauncher.launch("${safeSym}_${safeTf}.json") },
-                enabled = hasCandles,
-                shape = RoundedCornerShape(8.dp),
-                border = BorderStroke(1.dp, financialPalette.cardBorder),
-                modifier = Modifier
-                    .weight(1f)
-                    .heightIn(min = 48.dp)
-                    .testTag("export_candles_json_button")
-            ) {
-                Icon(
-                    imageVector = Icons.Outlined.Download,
-                    contentDescription = "Export JSON",
-                    modifier = Modifier.size(16.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "Export JSON",
                     style = MaterialTheme.typography.labelMedium,
                     fontFamily = JetBrainsMonoFontFamily
                 )

@@ -340,7 +340,8 @@ fun ChartIntelligenceApp(
                             onTranslateSelectedDrawing = mainViewModel::translateSelectedDrawing,
                             onDeleteSelectedDrawing = mainViewModel::deleteSelectedDrawingOnActiveTab,
                             onClearAllDrawings = mainViewModel::clearAllDrawingsOnActiveTab,
-                            lowerTimeframeCandlesProvider = mainViewModel::getLowerTimeframeCandlesForActiveTab
+                            lowerTimeframeCandlesProvider = mainViewModel::getLowerTimeframeCandlesForActiveTab,
+                            higherTimeframeCandlesProvider = mainViewModel::getHigherTimeframeCandlesForActiveTab
                         )
 
                         WorkspaceScreen.PREDICTION -> ForecastLabScreen(

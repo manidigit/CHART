@@ -2976,8 +2976,10 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun applyForecastAndOpenChart() {
         val active = _uiState.value.activeTab ?: return
         val prefs = _uiState.value.chartPreferences
+        val nextShow = !active.showFutureProjection
         _uiState.update { state ->
-            val nextStack = if (state.currentScreen != WorkspaceScreen.CHART_VIEW) {
+            val nextScreen = if (nextShow) WorkspaceScreen.CHART_VIEW else state.currentScreen
+            val nextStack = if (nextShow && state.currentScreen != WorkspaceScreen.CHART_VIEW) {
                 (state.screenBackStack + state.currentScreen).takeLast(6)
             } else {
                 state.screenBackStack
@@ -2986,15 +2988,15 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 openTabs = state.openTabs.map { tab ->
                     if (tab.tabId == active.tabId) {
                         tab.copy(
-                            showFutureProjection = true,
-                            scrollOffsetFromRight = 0,
+                            showFutureProjection = nextShow,
+                            scrollOffsetFromRight = if (nextShow) 0 else tab.scrollOffsetFromRight,
                             forecastHorizonBars = prefs.forecastHorizonBars,
                             forecastRenderMode = prefs.forecastRenderMode,
                             selectedForecastModelId = prefs.selectedForecastModelId
                         )
                     } else tab
                 },
-                currentScreen = WorkspaceScreen.CHART_VIEW,
+                currentScreen = nextScreen,
                 screenBackStack = nextStack
             )
         }
