@@ -411,4 +411,7 @@
     <string name="forecast_path_stats_title">آمار رویدادهای مسیر و سانسور زمانی</string>
     <string name="forecast_sensitivity_title">جدول حساسیت ۳×۳ فرهنگ رویدادها</string>
     <string name="forecast_stability_title">پایداری پیش‌بینی نسبت به اجرای قبل</string>
+    <string name="forecast_model_selector_label">مدل پیش‌بینی چارت</string>
+    <string name="forecast_oos_gate_title">دروازه انتخاب مدل Out-of-Sample</string>
+    <string name="forecast_comparison_title">مقایسه زنده مسیر مدل‌ها</string>
 </resources>

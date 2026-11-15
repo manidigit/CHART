@@ -2267,6 +2267,15 @@ document.addEventListener('click', async (e) => {
     savePreferences();
     saveOpenTabsToStorage();
     renderApp();
+  } else if (action === 'set-forecast-model' && activeTab) {
+    const modelId = String(el.getAttribute('data-model-id') || el.value || 'AUTO');
+    activeTab.selectedForecastModelId = modelId;
+    state.chartPreferences.selectedForecastModelId = modelId;
+    activeTab._indicatorCache = {};
+    savePreferences();
+    saveOpenTabsToStorage();
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'select-smc-scenario' && activeTab) {
     const scId = String(el.getAttribute('data-scenario-id') || 'SCENARIO_A');
     activeTab.selectedScenarioId = scId;
@@ -3292,6 +3301,11 @@ async function pullWorkspaceOnFocusIfNeeded() {
 
 window.addEventListener('focus', () => {
   pullWorkspaceOnFocusIfNeeded();
+});
+
+window.addEventListener('ci-forecast-worker-updated', () => {
+  renderApp();
+  redrawActiveCanvas();
 });
 
 document.addEventListener('visibilitychange', () => {

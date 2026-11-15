@@ -2954,6 +2954,25 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleDebouncedCloudSync()
     }
 
+    fun setForecastModel(modelId: String) {
+        val cleanId = modelId.trim().ifBlank { "AUTO" }
+        val nextPrefs = preferenceCoordinator.updateForecastPreferences(
+            current = _uiState.value.chartPreferences,
+            selectedModelId = cleanId
+        )
+        val activeId = _uiState.value.activeTab?.tabId
+        _uiState.update { state ->
+            state.copy(
+                chartPreferences = nextPrefs,
+                openTabs = state.openTabs.map { tab ->
+                    if (activeId == null || tab.tabId == activeId) tab.copy(selectedForecastModelId = cleanId) else tab
+                }
+            )
+        }
+        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
+        scheduleDebouncedCloudSync()
+    }
+
     fun applyForecastAndOpenChart() {
         val active = _uiState.value.activeTab ?: return
         val prefs = _uiState.value.chartPreferences
@@ -2970,7 +2989,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             showFutureProjection = true,
                             scrollOffsetFromRight = 0,
                             forecastHorizonBars = prefs.forecastHorizonBars,
-                            forecastRenderMode = prefs.forecastRenderMode
+                            forecastRenderMode = prefs.forecastRenderMode,
+                            selectedForecastModelId = prefs.selectedForecastModelId
                         )
                     } else tab
                 },
@@ -3010,6 +3030,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         }
         val mode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(active.forecastRenderMode.ifBlank { prefs.forecastRenderMode })
         val horizon = if (active.forecastHorizonBars in 10..60) active.forecastHorizonBars else prefs.forecastHorizonBars.coerceIn(10, 60)
+        val activeModelId = active.selectedForecastModelId.ifBlank { prefs.selectedForecastModelId }
         val higherTf = es.manico.chartintelligence.forecast.ForecastV130Analyzer.resolveHigherTimeframe(active.timeframe)
         val lowerInfo = es.manico.chartintelligence.forecast.resolveLowerTimeframeInfo(active.timeframe)
 
@@ -3037,7 +3058,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     higherTimeframe = higherTf,
                     higherTimeframeCandles = higherCandles,
                     lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
-                    lowerTimeframeCandles = lowerCandles
+                    lowerTimeframeCandles = lowerCandles,
+                    selectedModelId = activeModelId
                 )
             }
             val appended = forecastLedgerStore.appendFromForecast(result)

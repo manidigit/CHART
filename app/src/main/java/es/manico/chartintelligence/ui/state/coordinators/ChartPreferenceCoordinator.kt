@@ -154,7 +154,8 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
         renderMode: String? = null,
         horizonBars: Int? = null,
         pluginConfigJson: String? = null,
-        workerUrl: String? = null
+        workerUrl: String? = null,
+        selectedModelId: String? = null
     ): ChartPreferences {
         val next = current.copy(
             forecastRenderMode = renderMode?.let {
@@ -165,6 +166,7 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
             } ?: current.forecastHorizonBars,
             forecastPluginConfigJson = pluginConfigJson ?: current.forecastPluginConfigJson,
             forecastWorkerUrl = workerUrl ?: current.forecastWorkerUrl,
+            selectedForecastModelId = selectedModelId?.trim()?.ifBlank { "AUTO" } ?: current.selectedForecastModelId,
             preferencesUpdatedAtMs = System.currentTimeMillis()
         )
         repository.saveChartPreferences(next)

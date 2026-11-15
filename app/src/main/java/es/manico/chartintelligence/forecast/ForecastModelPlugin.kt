@@ -10,7 +10,13 @@ import kotlin.math.sqrt
 data class PluginPrediction(
     val modelId: String,
     val meanReturns: DoubleArray,
-    val sigmas: DoubleArray
+    val sigmas: DoubleArray,
+    val status: ModelExecutionStatus = ModelExecutionStatus.SUCCESS,
+    val reason: String = "",
+    val isApproximation: Boolean = false,
+    val isCalibratedInterval: Boolean = true,
+    val directQuantiles: DirectQuantiles? = null,
+    val modelVersion: String = "1.0.0"
 )
 
 interface ForecastModelPlugin {
@@ -21,6 +27,9 @@ interface ForecastModelPlugin {
     val defaultEnabled: Boolean
     val defaultWeight: Double
     val defaultParams: Map<String, Double>
+    val isApproximation: Boolean get() = false
+    val isCalibratedInterval: Boolean get() = true
+    val modelVersion: String get() = "1.0.0"
 
     fun predict(
         features: ExtractedForecastFeatures,

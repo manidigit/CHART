@@ -24,10 +24,12 @@ import es.manico.chartintelligence.forecast.ForecastModelPlugin
 import es.manico.chartintelligence.forecast.ForecastModelRegistry
 import es.manico.chartintelligence.forecast.ForecastRenderMode
 import es.manico.chartintelligence.forecast.ForecastStatus
+import es.manico.chartintelligence.forecast.ModelExecutionStatus
 import es.manico.chartintelligence.forecast.NoEdgeGateState
 import es.manico.chartintelligence.forecast.OodStatus
 import es.manico.chartintelligence.forecast.PluginPrediction
 import es.manico.chartintelligence.forecast.RemoteWorkerStatus
+import es.manico.chartintelligence.forecast.SelectionMode
 import es.manico.chartintelligence.ui.screens.ForecastLabScreen
 import es.manico.chartintelligence.ui.theme.ChartIntelligenceTheme
 import org.junit.Assert.assertEquals
@@ -378,21 +380,24 @@ class Phase4ForecastTest {
             symbolCode = "SPOTBRENT",
             timeframe = "M15",
             horizonBars = 10,
-            skipWalkForward = true
+            skipWalkForward = true,
+            selectedModelId = "smc_kmedoids"
         )
         val res20 = ForecastEngine.project(
             candles = bars,
             symbolCode = "SPOTBRENT",
             timeframe = "M15",
             horizonBars = 20,
-            skipWalkForward = true
+            skipWalkForward = true,
+            selectedModelId = "smc_kmedoids"
         )
         val res60 = ForecastEngine.project(
             candles = bars,
             symbolCode = "SPOTBRENT",
             timeframe = "M15",
             horizonBars = 60,
-            skipWalkForward = true
+            skipWalkForward = true,
+            selectedModelId = "smc_kmedoids"
         )
 
         assertEquals(3, res10.smcScenarios.size)
@@ -503,5 +508,223 @@ class Phase4ForecastTest {
             assertEquals(first4.last().close, h1Bar0.close, 1e-6)
         }
     }
+
+    @Test
+    fun forecastEngine_pred12_causalAntiLeakageCutoffInvariant() {
+        val fullBars = generateBars(170, "M15")
+        val prefixBars = fullBars.subList(0, 120)
+        val altBars = fullBars.subList(0, 120).toMutableList()
+        for (i in 120 until fullBars.size) {
+            val b = fullBars[i]
+            val spike = b.close.multiply(BigDecimal.valueOf(1.25))
+            altBars.add(
+                CandleValidatorAlgorithm.sanitizeAndValidate(
+                    rawOpenTimeMillis = b.openTimeUtcMillis,
+                    timeframe = "M15",
+                    open = spike,
+                    high = spike.multiply(BigDecimal.valueOf(1.02)),
+                    low = spike.multiply(BigDecimal.valueOf(0.98)),
+                    close = spike,
+                    volume = b.volume
+                )!!
+            )
+        }
+
+        val resPrefix = ForecastEngine.project(
+            candles = prefixBars,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 20,
+            skipWalkForward = true
+        )
+        val resSubPrefix = ForecastEngine.project(
+            candles = altBars.subList(0, 120),
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 20,
+            skipWalkForward = true
+        )
+        assertEquals(resPrefix.inputHash, resSubPrefix.inputHash)
+        for (tr in resPrefix.modelTrajectories) {
+            assertTrue(tr.trainingEndUtcMs <= prefixBars.last().openTimeUtcMillis)
+        }
+        for (i in 0 until 20) {
+            assertEquals(resPrefix.points[i].q50, resSubPrefix.points[i].q50, 1e-9)
+        }
+    }
+
+    @Test
+    fun forecastEngine_pred13_tftEnforcesStrictLowDataSkipWithoutFlatFallback() {
+        val bars70 = generateBars(70, "M15")
+        val res70 = ForecastEngine.project(
+            candles = bars70,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 15,
+            skipWalkForward = true,
+            selectedModelId = "native_quantile_attention_approx"
+        )
+        val tft70 = res70.modelTrajectories.firstOrNull { it.modelId == "native_quantile_attention_approx" }
+        assertNotNull(tft70)
+        assertEquals(ModelExecutionStatus.SKIPPED_LOW_DATA, tft70!!.status)
+        assertTrue(tft70.points.isEmpty())
+        assertTrue(tft70.isApproximation)
+        assertFalse(tft70.isCalibratedInterval)
+        assertTrue(tft70.reason.contains("90"))
+
+        val bars120 = generateBars(120, "M15")
+        val res120 = ForecastEngine.project(
+            candles = bars120,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 15,
+            skipWalkForward = true,
+            selectedModelId = "native_quantile_attention_approx"
+        )
+        val tft120 = res120.modelTrajectories.firstOrNull { it.modelId == "native_quantile_attention_approx" }
+        assertNotNull(tft120)
+        assertEquals(ModelExecutionStatus.SUCCESS, tft120!!.status)
+        assertEquals(15, tft120.points.size)
+        assertTrue(tft120.isApproximation)
+        assertFalse(tft120.isCalibratedInterval)
+    }
+
+    @Test
+    fun forecastEngine_pred14_failingPluginIsExposedExplicitlyWithoutMasking() {
+        val brokenPlugin = object : ForecastModelPlugin {
+            override val id = "broken_test_plugin"
+            override val name = "Broken Test Plugin"
+            override val family = "CUSTOM"
+            override val description = "Throws intentionally to verify non-masking"
+            override val defaultEnabled = true
+            override val defaultWeight = 0.20
+            override val defaultParams = emptyMap<String, Double>()
+            override fun predict(features: ExtractedForecastFeatures, horizon: Int, params: Map<String, Double>): PluginPrediction {
+                throw IllegalStateException("Synthetic model exception")
+            }
+        }
+        val registry = ForecastModelRegistry().register(brokenPlugin)
+        val bars = generateBars(110, "M15")
+        val res = ForecastEngine.project(
+            candles = bars,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 15,
+            registry = registry,
+            skipWalkForward = false
+        )
+        val brokenTraj = res.modelTrajectories.firstOrNull { it.modelId == "broken_test_plugin" }
+        assertNotNull(brokenTraj)
+        assertEquals(ModelExecutionStatus.FAILED, brokenTraj!!.status)
+        assertTrue(brokenTraj.points.isEmpty())
+        assertTrue(brokenTraj.reason.contains("Synthetic model exception"))
+
+        val brokenBench = res.walkForward?.modelBenchmarks?.firstOrNull { it.modelId == "broken_test_plugin" }
+        assertNotNull(brokenBench)
+        assertEquals(ModelExecutionStatus.FAILED, brokenBench!!.status)
+    }
+
+    @Test
+    fun forecastEngine_pred15_oosWinnerGateBlocksUnprovenDefaultAndAllowsManualOverride() {
+        // Pure random-walk-like bars where no model reliably beats naive persistence by >=1.5% across >=5 windows
+        val start = 1783296000000L
+        var prev = 100.0
+        var seed = 42L
+        val rwBars = (0 until 125).map { i ->
+            seed = (seed * 1664525L + 1013904223L) and 0xFFFFFFFFL
+            val u = (seed.toDouble() / 4294967296.0) - 0.5
+            val c = prev * exp(u * 0.008)
+            val o = prev
+            val h = max(o, c) * 1.001
+            val l = min(o, c) * 0.999
+            prev = c
+            CandleValidatorAlgorithm.sanitizeAndValidate(
+                rawOpenTimeMillis = start + i * 900_000L,
+                timeframe = "M15",
+                open = BigDecimal.valueOf(o),
+                high = BigDecimal.valueOf(h),
+                low = BigDecimal.valueOf(l),
+                close = BigDecimal.valueOf(c),
+                volume = BigDecimal.valueOf(400.0)
+            )!!
+        }
+
+        val autoRes = ForecastEngine.project(
+            candles = rwBars,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 10,
+            skipWalkForward = false,
+            selectedModelId = "AUTO"
+        )
+        assertNotNull(autoRes.walkForward)
+        if (autoRes.walkForward!!.winnerModelId == null) {
+            assertEquals(SelectionMode.NO_CLEAR_WINNER_BASELINE, autoRes.selectionMode)
+            assertEquals("naive_persistence", autoRes.selectedChartModelId)
+        } else {
+            assertEquals(SelectionMode.AUTO_OOS_BEST, autoRes.selectionMode)
+            assertEquals(autoRes.walkForward!!.winnerModelId, autoRes.selectedChartModelId)
+        }
+
+        val manualRes = ForecastEngine.project(
+            candles = rwBars,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 10,
+            skipWalkForward = false,
+            selectedModelId = "native_arima_diff"
+        )
+        assertEquals(SelectionMode.MANUAL_OVERRIDE, manualRes.selectionMode)
+        assertEquals("native_arima_diff", manualRes.selectedChartModelId)
+    }
+
+    @Test
+    fun forecastEngine_pred16_allFourNewNativeModelsPreserveHorizonPrefixInvariance() {
+        val bars = generateBars(160, "M15")
+        val modelIds = listOf(
+            "native_arima_diff",
+            "native_prophet_decomp",
+            "native_seq_recurrent_approx",
+            "native_quantile_attention_approx"
+        )
+        for (mId in modelIds) {
+            val r10 = ForecastEngine.project(
+                candles = bars,
+                symbolCode = "SPOTBRENT",
+                timeframe = "M15",
+                horizonBars = 10,
+                skipWalkForward = true,
+                selectedModelId = mId
+            )
+            val r20 = ForecastEngine.project(
+                candles = bars,
+                symbolCode = "SPOTBRENT",
+                timeframe = "M15",
+                horizonBars = 20,
+                skipWalkForward = true,
+                selectedModelId = mId
+            )
+            val r60 = ForecastEngine.project(
+                candles = bars,
+                symbolCode = "SPOTBRENT",
+                timeframe = "M15",
+                horizonBars = 60,
+                skipWalkForward = true,
+                selectedModelId = mId
+            )
+            assertEquals("Expected $mId selected on 10", mId, r10.selectedChartModelId)
+            assertEquals("Expected $mId selected on 20", mId, r20.selectedChartModelId)
+            assertEquals("Expected $mId selected on 60", mId, r60.selectedChartModelId)
+            for (i in 0 until 10) {
+                assertEquals("$mId q50 mismatch at step $i (10 vs 60)", r10.points[i].q50, r60.points[i].q50, 1e-8)
+                assertEquals("$mId q10 mismatch at step $i (10 vs 60)", r10.points[i].q10, r60.points[i].q10, 1e-8)
+                assertEquals("$mId q90 mismatch at step $i (10 vs 60)", r10.points[i].q90, r60.points[i].q90, 1e-8)
+            }
+            for (i in 0 until 20) {
+                assertEquals("$mId q50 mismatch at step $i (20 vs 60)", r20.points[i].q50, r60.points[i].q50, 1e-8)
+            }
+        }
+    }
 }
+
 

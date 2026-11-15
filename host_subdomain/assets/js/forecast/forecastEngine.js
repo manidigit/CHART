@@ -1,6 +1,9 @@
 import {
   CONTRACT_VERSION,
+  EXECUTION_RUNTIME,
   FORECAST_STATUS,
+  MODEL_EXECUTION_STATUS,
+  SELECTION_MODE,
   SPEC_VERSION,
   advanceFutureTimestamps,
   canonicalJson,
@@ -12,7 +15,11 @@ import {
 } from './forecastContract.js?v=1.43.0';
 import { extractForecastFeatures } from './featureExtractor.js?v=1.43.0';
 import { defaultForecastRegistry, ForecastModelRegistry } from './modelRegistry.js?v=1.43.0';
-import { evaluateWalkForward } from './walkForwardEvaluator.js?v=1.43.0';
+import {
+  buildPriceTrajectoryFromPrediction,
+  evaluateWalkForward,
+  selectOosChartWinner,
+} from './walkForwardEvaluator.js?v=1.43.0';
 import {
   computeForecastStability,
   computeOodAndUncertainty,
@@ -940,6 +947,77 @@ export class SMCPredictionEngine {
  * SMC FVG/POC/VAH/VAL/EQH/EQL Magnet Warping + 15m Bayesian Self-Correction) with
  * Quantile Fan Monotonicity, 5-Leaf Event Tree, MTF Coordination, and SHA-256 Ledger.
  */
+const WALK_FORWARD_CACHE = new Map();
+
+function buildSmcCausalTrajectoryForWindow(trainSlice, evalHorizon, timeframe, symbolCode = '') {
+  if (!Array.isArray(trainSlice) || trainSlice.length < 24) return null;
+  const smc = new SMCPredictionEngine(30, CANONICAL_SMC_HORIZON, timeframe);
+  const ctx = smc.extractMultiTimeframeFeatures(trainSlice, timeframe);
+  const lastMs = Number(trainSlice[trainSlice.length - 1]?.openTimeUtcMs || trainSlice[trainSlice.length - 1]?.open_time_utc_ms || Date.now());
+  const ts = advanceFutureTimestamps(lastMs, timeframe, CANONICAL_SMC_HORIZON, symbolCode);
+  const scs = smc.generateScenarios(trainSlice, ctx, ts, { disableLowerTfAnchor: true });
+  if (!scs || scs.length === 0) return null;
+  const primary = scs[0];
+  const lastClose = Number(trainSlice[trainSlice.length - 1].close);
+  const atr = smc.calculateATR(trainSlice, 14);
+  const out = new Array(evalHorizon);
+  for (let h = 0; h < evalHorizon; h++) {
+    const closes = scs.map((s) => Number(s.candles[h]?.close || primary.candles[h].close)).sort((a, b) => a - b);
+    const med = Number(primary.candles[h].close);
+    const halfSpread = Math.max(atr * 0.6 * Math.sqrt((h + 1) * 0.4), (closes[closes.length - 1] - closes[0]) * 0.45);
+    out[h] = enforceMonotonicQuantiles(
+      {
+        q10: Math.min(closes[0] - atr * 0.25, med - 1.28155 * halfSpread * 0.65),
+        q25: med - 0.67449 * halfSpread * 0.65,
+        q50: med,
+        q75: med + 0.67449 * halfSpread * 0.65,
+        q90: Math.max(closes[closes.length - 1] + atr * 0.25, med + 1.28155 * halfSpread * 0.65),
+      },
+      lastClose * 0.01
+    );
+  }
+  return out;
+}
+
+function buildForecastPointsFromQuantileTrajectory(trajSteps, canonicalTimestamps, features, horizonBars, atr) {
+  const out = new Array(horizonBars);
+  let prevClose = features.lastClose;
+  const avgVol =
+    features.candles.slice(-20).reduce((s, c) => s + Math.max(1, Number(c.volume || 500)), 0) /
+    Math.max(1, Math.min(20, features.candles.length));
+
+  for (let h = 0; h < horizonBars; h++) {
+    const qStep = trajSteps[h];
+    const openP = prevClose;
+    const closeP = qStep.q50;
+    const bodyAbs = Math.abs(closeP - openP);
+    const wickPad = Math.max(atr * 0.16, bodyAbs * 0.35);
+    const highP = Math.max(openP, closeP) + wickPad;
+    const lowP = Math.max(features.lastClose * 0.02, Math.min(openP, closeP) - wickPad);
+    prevClose = closeP;
+    out[h] = {
+      stepAhead: h + 1,
+      openTimeUtcMs: canonicalTimestamps[h],
+      open: Number(openP.toFixed(6)),
+      high: Number(highP.toFixed(6)),
+      low: Number(lowP.toFixed(6)),
+      close: Number(closeP.toFixed(6)),
+      volume: Math.round(avgVol * (0.85 + 0.25 * Math.abs(Math.sin(h * 0.9)))),
+      q10: qStep.q10,
+      q25: qStep.q25,
+      q50: qStep.q50,
+      q75: qStep.q75,
+      q90: qStep.q90,
+      upperBand: qStep.q90,
+      lowerBand: qStep.q10,
+      pctChangeFromLast: ((qStep.q50 - features.lastClose) / features.lastClose) * 100,
+      rejectionWick: false,
+      wavePhase: bodyAbs >= atr * 0.35 ? 'IMPULSE' : 'CONSOLIDATION',
+    };
+  }
+  return out;
+}
+
 export class ForecastEngine {
   static project(candles = [], options = {}) {
     const symbolCode = String(options.symbolCode || 'UNKNOWN').toUpperCase();
@@ -954,6 +1032,7 @@ export class ForecastEngine {
     const higherTimeframeCandles = Array.isArray(options.higherTimeframeCandles) ? options.higherTimeframeCandles : [];
     const previousForecast = options.previousForecast || null;
     const selectedScenarioId = String(options.selectedScenarioId || '');
+    const requestedModelId = String(options.selectedModelId || 'AUTO');
 
     const readiness = validateDataReadiness(candles, minBars);
     if (!readiness.ready) {
@@ -980,6 +1059,10 @@ export class ForecastEngine {
         activeScenarioId: 'SCENARIO_A',
         bayesianLiveReport: null,
         modelContributions: [],
+        modelTrajectories: [],
+        selectedChartModelId: 'naive_persistence',
+        selectionMode: SELECTION_MODE.NO_CLEAR_WINNER_BASELINE,
+        selectionReason: readiness.issues[0] || 'Insufficient valid candles',
         walkForward: {
           evaluatedWindows: 0,
           evalHorizon: 5,
@@ -1012,14 +1095,33 @@ export class ForecastEngine {
             (x) => Boolean(x.plugin)
           );
 
-    const walkForward =
-      options.skipWalkForward === true
-        ? null
-        : evaluateWalkForward(candles, registry, {
-            minTrainBars: Math.max(24, Math.min(36, Math.floor(candles.length * 0.55))),
-            evalHorizon: 5,
-            maxWindows: Number(options.maxWalkForwardWindows || 10),
-          });
+    let walkForward = null;
+    if (options.skipWalkForward !== true) {
+      const wfKey = canonicalJson({
+        symbolCode,
+        timeframe,
+        len: candles.length,
+        lastMs: features.lastOpenMs,
+        lastClose: Number(features.lastClose.toFixed(6)),
+        maxW: Number(options.maxWalkForwardWindows || 8),
+        plugins: registry.serializeConfig(),
+      });
+      if (options.bypassWalkForwardCache !== true && WALK_FORWARD_CACHE.has(wfKey)) {
+        walkForward = WALK_FORWARD_CACHE.get(wfKey);
+      } else {
+        walkForward = evaluateWalkForward(candles, registry, {
+          minTrainBars: Math.max(24, Math.min(36, Math.floor(candles.length * 0.55))),
+          evalHorizon: 5,
+          maxWindows: Number(options.maxWalkForwardWindows || 8),
+          smcEvaluator: (trainSlice, evalH) => buildSmcCausalTrajectoryForWindow(trainSlice, evalH, timeframe, symbolCode),
+        });
+        if (WALK_FORWARD_CACHE.size > 48) {
+          const firstKey = WALK_FORWARD_CACHE.keys().next().value;
+          WALK_FORWARD_CACHE.delete(firstKey);
+        }
+        WALK_FORWARD_CACHE.set(wfKey, walkForward);
+      }
+    }
 
     const benchById = new Map();
     if (walkForward?.modelBenchmarks) {
@@ -1029,43 +1131,122 @@ export class ForecastEngine {
     const rawWeights = effectivePlugins.map(({ plugin, config }) => {
       const baseW = Math.max(0.01, Number(config.weight || 0.1));
       const b = benchById.get(plugin.id);
-      if (b && Number.isFinite(b.mae) && b.mae > 0 && walkForward?.naiveMetrics?.mae > 0) {
+      if (b && b.status === MODEL_EXECUTION_STATUS.SUCCESS && Number.isFinite(b.mae) && b.mae > 0 && walkForward?.naiveMetrics?.mae > 0) {
         const skillFactor = Math.max(0.55, Math.min(1.45, walkForward.naiveMetrics.mae / b.mae));
         return baseW * (0.7 + 0.3 * skillFactor);
       }
       return baseW;
     });
-    const wSum = rawWeights.reduce((a, b) => a + b, 0) || 1;
+
+    const canonicalTimestamps = advanceFutureTimestamps(
+      features.lastOpenMs,
+      timeframe,
+      CANONICAL_SMC_HORIZON,
+      symbolCode
+    );
+    const futureTimestamps = canonicalTimestamps.slice(0, horizonBars);
+    const featuresWithTs = { ...features, futureTimestamps: canonicalTimestamps };
 
     const modelOutputs = [];
     const modelContributions = [];
-    const ensMeanReturns = new Array(horizonBars).fill(0);
-    const aleatoricVarSteps = new Array(horizonBars).fill(0);
-    const epistemicDispSteps = new Array(horizonBars).fill(0);
+    const modelTrajectories = [];
+    const ensMeanReturns = new Array(CANONICAL_SMC_HORIZON).fill(0);
+    const aleatoricVarSteps = new Array(CANONICAL_SMC_HORIZON).fill(0);
+    const epistemicDispSteps = new Array(CANONICAL_SMC_HORIZON).fill(0);
+    const trainStartMs = Number(features.candles[0]?.openTimeUtcMs || 0);
+    const trainEndMs = features.lastOpenMs;
 
+    let totalSuccessWeight = 0;
+    const rawPreds = [];
     for (let idx = 0; idx < effectivePlugins.length; idx++) {
       const { plugin, config } = effectivePlugins[idx];
-      const normW = rawWeights[idx] / wSum;
-      const pred = plugin.predict(features, horizonBars, config.params || {});
-      modelOutputs.push({ plugin, normW, pred });
+      let pred;
+      try {
+        pred = plugin.predict(featuresWithTs, CANONICAL_SMC_HORIZON, config.params || {});
+      } catch (err) {
+        pred = {
+          modelId: plugin.id,
+          status: MODEL_EXECUTION_STATUS.FAILED,
+          reason: String(err?.message || err),
+          meanReturns: [],
+          sigmas: [],
+        };
+      }
+      const st = pred?.status || MODEL_EXECUTION_STATUS.SUCCESS;
+      const valid =
+        st === MODEL_EXECUTION_STATUS.SUCCESS &&
+        Array.isArray(pred?.meanReturns) &&
+        pred.meanReturns.length >= CANONICAL_SMC_HORIZON;
+      if (valid) totalSuccessWeight += rawWeights[idx];
+      rawPreds.push({ plugin, config, pred, st, valid, rawW: rawWeights[idx] });
+    }
+    const safeSuccessWeightSum = totalSuccessWeight > 0 ? totalSuccessWeight : 1;
 
-      let cumMean = 0;
-      for (let h = 0; h < horizonBars; h++) {
+    for (const item of rawPreds) {
+      const { plugin, pred, st, valid, rawW } = item;
+      const normW = valid ? rawW / safeSuccessWeightSum : 0;
+
+      if (!valid) {
+        modelTrajectories.push({
+          modelId: plugin.id,
+          modelName: plugin.name,
+          family: plugin.family,
+          modelVersion: pred?.modelVersion || plugin.modelVersion || '1.0.0',
+          executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
+          isApproximation: Boolean(pred?.isApproximation ?? plugin.isApproximation),
+          isCalibratedInterval: Boolean(pred?.isCalibratedInterval ?? plugin.isCalibratedInterval ?? true),
+          status: st === MODEL_EXECUTION_STATUS.SKIPPED_LOW_DATA ? st : MODEL_EXECUTION_STATUS.FAILED,
+          reason: pred?.reason || 'Model unavailable on current input window',
+          trainingStartUtcMs: trainStartMs,
+          trainingEndUtcMs: trainEndMs,
+          trainingSampleCount: features.barCount,
+          points: [],
+        });
+        continue;
+      }
+
+      modelOutputs.push({ plugin, normW, pred });
+      const canonTraj = buildPriceTrajectoryFromPrediction(features.lastClose, pred, CANONICAL_SMC_HORIZON);
+      const slicedPoints = buildForecastPointsFromQuantileTrajectory(
+        canonTraj.slice(0, horizonBars),
+        futureTimestamps,
+        features,
+        horizonBars,
+        features.atr14
+      );
+
+      modelTrajectories.push({
+        modelId: plugin.id,
+        modelName: plugin.name,
+        family: plugin.family,
+        modelVersion: pred?.modelVersion || plugin.modelVersion || '1.0.0',
+        executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
+        isApproximation: Boolean(pred?.isApproximation ?? plugin.isApproximation),
+        isCalibratedInterval: Boolean(pred?.isCalibratedInterval ?? plugin.isCalibratedInterval ?? true),
+        status: MODEL_EXECUTION_STATUS.SUCCESS,
+        reason: '',
+        trainingStartUtcMs: trainStartMs,
+        trainingEndUtcMs: trainEndMs,
+        trainingSampleCount: features.barCount,
+        points: slicedPoints,
+        meta: pred.meta || {},
+      });
+
+      for (let h = 0; h < CANONICAL_SMC_HORIZON; h++) {
         const mr = Number(pred.meanReturns[h] || 0);
         const sg = Math.max(1e-5, Number(pred.sigmas[h] || features.ewmaSigma));
-        cumMean += mr;
         ensMeanReturns[h] += normW * mr;
         aleatoricVarSteps[h] += normW * (sg * sg);
       }
 
-      const terminalPrice = features.lastClose * Math.exp(cumMean);
+      const terminalPt = slicedPoints[slicedPoints.length - 1];
       modelContributions.push({
         modelId: plugin.id,
         modelName: plugin.name,
         family: plugin.family,
         weight: Number(normW.toFixed(4)),
-        terminalPrice,
-        terminalPctChange: ((terminalPrice - features.lastClose) / features.lastClose) * 100,
+        terminalPrice: terminalPt.q50,
+        terminalPctChange: terminalPt.pctChangeFromLast,
         meta: pred.meta || {},
       });
     }
@@ -1089,14 +1270,6 @@ export class ForecastEngine {
       totalEpistemicDispVar,
       walkForward?.effectiveSampleSize
     );
-
-    const canonicalTimestamps = advanceFutureTimestamps(
-      features.lastOpenMs,
-      timeframe,
-      CANONICAL_SMC_HORIZON,
-      symbolCode
-    );
-    const futureTimestamps = canonicalTimestamps.slice(0, horizonBars);
 
     // Run SMC Historical Analog + K-Medoids 3-Scenario Engine at canonical horizon (60) for prefix invariance
     const smcEngine = new SMCPredictionEngine(30, CANONICAL_SMC_HORIZON, timeframe);
@@ -1230,7 +1403,8 @@ export class ForecastEngine {
       smcScenarios.find((s) => s.id === selectedScenarioId) || smcScenarios[0];
     const activeScenarioId = activeScenario ? activeScenario.id : 'SCENARIO_A';
 
-    const points = [];
+    // Build SMCPredictionEngine points (preserved completely)
+    const smcPoints = [];
     let cumVar = 0;
     const epiFactorPerStep =
       1 / Math.max(6, Number(walkForward?.effectiveSampleSize || features.barCount / 4)) +
@@ -1266,7 +1440,7 @@ export class ForecastEngine {
       const highP = Math.max(openP, closeP, Number(scCandle.high));
       const lowP = Math.max(features.lastClose * 0.02, Math.min(openP, closeP, Number(scCandle.low)));
 
-      points.push({
+      smcPoints.push({
         stepAhead: h + 1,
         openTimeUtcMs: futureTimestamps[h],
         open: openP,
@@ -1288,6 +1462,76 @@ export class ForecastEngine {
         primaryMagnetPrice: activeScenario.primaryMagnetPrice,
       });
     }
+
+    // Add SMCPredictionEngine and Ensemble as explicit trajectories for fair comparison
+    modelTrajectories.push({
+      modelId: 'smc_kmedoids',
+      modelName: 'SMC K-Medoids Analogs',
+      family: 'PATTERN_SMC',
+      modelVersion: '1.0.0',
+      executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
+      isApproximation: false,
+      isCalibratedInterval: true,
+      status: MODEL_EXECUTION_STATUS.SUCCESS,
+      reason: '',
+      trainingStartUtcMs: trainStartMs,
+      trainingEndUtcMs: trainEndMs,
+      trainingSampleCount: features.barCount,
+      points: smcPoints,
+    });
+
+    const ensCanonTraj = buildPriceTrajectoryFromPrediction(
+      features.lastClose,
+      {
+        meanReturns: ensMeanReturns.slice(0, horizonBars),
+        sigmas: aleatoricVarSteps.slice(0, horizonBars).map((v, idx) =>
+          Math.sqrt(Math.max(1e-10, v * (1 + 0.35 * epiFactorPerStep) + epistemicDispSteps[idx])) *
+          uncertainty.spreadMultiplierApplied
+        ),
+      },
+      horizonBars
+    );
+    const ensPoints = buildForecastPointsFromQuantileTrajectory(
+      ensCanonTraj,
+      futureTimestamps,
+      features,
+      horizonBars,
+      features.atr14
+    );
+    modelTrajectories.push({
+      modelId: 'ensemble',
+      modelName: 'Calibrated Ensemble',
+      family: 'ENSEMBLE',
+      modelVersion: '1.0.0',
+      executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
+      isApproximation: false,
+      isCalibratedInterval: true,
+      status: MODEL_EXECUTION_STATUS.SUCCESS,
+      reason: '',
+      trainingStartUtcMs: trainStartMs,
+      trainingEndUtcMs: trainEndMs,
+      trainingSampleCount: features.barCount,
+      points: ensPoints,
+    });
+
+    // Determine active points[] via honest OOS Winner Gate (or explicit manual override / skipWalkForward fast path)
+    let selection;
+    if (options.skipWalkForward === true && (!requestedModelId || requestedModelId.toUpperCase() === 'AUTO')) {
+      selection = {
+        selectionMode: SELECTION_MODE.SMC_STRUCTURAL_DEFAULT,
+        selectedModelId: 'smc_kmedoids',
+        winnerModelId: null,
+        reason: 'Fast chart mode (walk-forward bypassed by caller); displaying SMC structural projection.',
+      };
+    } else {
+      selection = selectOosChartWinner(walkForward, modelTrajectories, requestedModelId);
+    }
+
+    const chosenTrajectory =
+      modelTrajectories.find(
+        (t) => t.modelId === selection.selectedModelId && t.status === MODEL_EXECUTION_STATUS.SUCCESS && t.points.length === horizonBars
+      ) || modelTrajectories.find((t) => t.modelId === 'smc_kmedoids');
+    const points = chosenTrajectory ? chosenTrajectory.points : smcPoints;
 
     const lastPt = points[points.length - 1];
     const { scenarios, keyZones, eventDictionary } = detectKeyZonesAndEventTree(features, points, horizonBars);
@@ -1361,9 +1605,91 @@ export class ForecastEngine {
       points,
       scenarios,
       modelContributions,
+      modelTrajectories,
+      selectedChartModelId: selection.selectedModelId,
+      selectionMode: selection.selectionMode,
+      selectionReason: selection.reason,
       walkForward,
       summary,
       inputHash,
     };
   }
+
+  /**
+   * Merges optional Python/FastAPI worker results (ARIMA statsmodels, Prophet, PyTorch LSTM, PyTorch TFT)
+   * cleanly into an existing native ForecastResult without breaking offline fallback.
+   */
+  static applyRemoteWorkerResponse(baseResult, workerWrap, requestedModelId = 'AUTO') {
+    if (!baseResult || !workerWrap) return baseResult;
+    const updatedRemote = {
+      status: workerWrap.status || baseResult.remoteWorker?.status,
+      configured: Boolean(workerWrap.configured),
+      url: String(workerWrap.url || baseResult.remoteWorker?.url || ''),
+      error: workerWrap.error || '',
+    };
+    const data = workerWrap.data;
+    if (!data || !Array.isArray(data.modelTrajectories)) {
+      return { ...baseResult, remoteWorker: updatedRemote };
+    }
+
+    const mergedTrajs = [...(baseResult.modelTrajectories || [])];
+    for (const wt of data.modelTrajectories) {
+      if (!wt || !wt.modelId) continue;
+      const idx = mergedTrajs.findIndex((t) => t.modelId === wt.modelId);
+      if (idx >= 0) mergedTrajs[idx] = wt;
+      else mergedTrajs.push(wt);
+    }
+
+    const mergedWf = baseResult.walkForward
+      ? {
+          ...baseResult.walkForward,
+          modelBenchmarks: [...(baseResult.walkForward.modelBenchmarks || [])],
+        }
+      : null;
+    if (mergedWf && Array.isArray(data.modelBenchmarks)) {
+      for (const wb of data.modelBenchmarks) {
+        if (!wb || !wb.modelId) continue;
+        const idx = mergedWf.modelBenchmarks.findIndex((b) => b.modelId === wb.modelId);
+        if (idx >= 0) mergedWf.modelBenchmarks[idx] = wb;
+        else mergedWf.modelBenchmarks.push(wb);
+      }
+    }
+
+    const selection = selectOosChartWinner(mergedWf, mergedTrajs, requestedModelId);
+    const chosen = mergedTrajs.find(
+      (t) =>
+        t.modelId === selection.selectedModelId &&
+        t.status === MODEL_EXECUTION_STATUS.SUCCESS &&
+        Array.isArray(t.points) &&
+        t.points.length === baseResult.horizonBars
+    );
+
+    const nextPoints = chosen ? chosen.points : baseResult.points;
+    const lastPt = nextPoints[nextPoints.length - 1];
+    const nextSummary = lastPt
+      ? {
+          ...baseResult.summary,
+          terminalQ10: lastPt.q10,
+          terminalQ25: lastPt.q25,
+          terminalQ50: lastPt.q50,
+          terminalQ75: lastPt.q75,
+          terminalQ90: lastPt.q90,
+          medianPctChange: lastPt.pctChangeFromLast,
+          corridorWidthPct: ((lastPt.q90 - lastPt.q10) / baseResult.anchorClose) * 100,
+        }
+      : baseResult.summary;
+
+    return {
+      ...baseResult,
+      remoteWorker: updatedRemote,
+      modelTrajectories: mergedTrajs,
+      walkForward: mergedWf,
+      selectedChartModelId: selection.selectedModelId,
+      selectionMode: selection.selectionMode,
+      selectionReason: selection.reason,
+      points: nextPoints,
+      summary: nextSummary,
+    };
+  }
 }
+

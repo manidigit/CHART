@@ -127,6 +127,7 @@ export const DEFAULT_PREFS = {
   forecastHorizonBars: 30,
   forecastPluginConfig: null,
   forecastWorkerUrl: '',
+  selectedForecastModelId: 'AUTO',
   pitchforkVariant: 'original',
   indicatorCustomColors: {},
   preferencesUpdatedAtMs: 0,

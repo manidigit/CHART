@@ -5,19 +5,34 @@ import {
   ArimaEtsModel,
   GaussianProcessModel,
 } from './models/statisticalModels.js?v=1.43.0';
+import {
+  NativeArimaDiffModel,
+  NativeProphetDecompModel,
+  NativeSequenceRecurrentModel,
+  NativeQuantileAttentionModel,
+} from './models/advancedNativeModels.js?v=1.43.0';
 import { REMOTE_WORKER_STATUS } from './forecastContract.js?v=1.43.0';
 
 /**
- * Metadata-only specification for the optional self-hosted Python DL inference worker.
- * Never fabricates deep-learning predictions locally; reports honest UNCONFIGURED status
+ * Metadata-only specification for the optional self-hosted Python inference worker.
+ * Never fabricates deep-learning predictions locally; reports honest UNCONFIGURED/LOCAL_STATISTICAL_ONLY status
  * unless an external worker URL is explicitly provided and responds.
  */
 export const REMOTE_DL_WORKER_SPEC = Object.freeze({
   id: 'remote_dl_worker',
-  name: 'Remote Deep-Learning Worker (Optional)',
-  supportedModels: ['Chronos-2 (Apache 2.0)', 'TimesFM 2.5', 'N-HiTS'],
+  name: 'Remote Python/FastAPI Worker (Optional)',
+  supportedModels: [
+    'statsmodels ARIMA',
+    'Prophet',
+    'PyTorch LSTM (MC Dropout)',
+    'PyTorch Forecasting TFT',
+    'Chronos-2 (Apache 2.0)',
+    'TimesFM 2.5',
+    'N-HiTS',
+  ],
   excludedModels: ['TimesFM 3.0'],
   endpointPath: '/forecast/infer',
+  healthPath: '/health',
 });
 
 /**
@@ -39,6 +54,10 @@ export class ForecastModelRegistry {
       GarchVolatilityModel,
       ArimaEtsModel,
       GaussianProcessModel,
+      NativeArimaDiffModel,
+      NativeProphetDecompModel,
+      NativeSequenceRecurrentModel,
+      NativeQuantileAttentionModel,
     ].forEach((plugin) => this.register(plugin));
   }
 

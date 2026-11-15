@@ -52,21 +52,41 @@ import androidx.compose.ui.unit.sp
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
 import es.manico.chartintelligence.data.model.CandleBar
+import es.manico.chartintelligence.forecast.ExecutionRuntime
 import es.manico.chartintelligence.forecast.ForecastLedgerEntry
 import es.manico.chartintelligence.forecast.ForecastPluginState
 import es.manico.chartintelligence.forecast.ForecastRenderMode
 import es.manico.chartintelligence.forecast.ForecastResult
 import es.manico.chartintelligence.forecast.ForecastScenario
 import es.manico.chartintelligence.forecast.ModelContribution
+import es.manico.chartintelligence.forecast.ModelExecutionStatus
+import es.manico.chartintelligence.forecast.ModelTrajectory
+import es.manico.chartintelligence.forecast.SelectionMode
 import es.manico.chartintelligence.forecast.WalkForwardReport
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import java.math.BigDecimal
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
+
+private val MODEL_OVERLAY_COLORS: Map<String, Color> = mapOf(
+    "smc_kmedoids" to Color(0xFFF59E0B),
+    "naive_persistence" to Color(0xFF94A3B8),
+    "native_arima_diff" to Color(0xFF38BDF8),
+    "native_prophet_decomp" to Color(0xFF22C55E),
+    "native_seq_recurrent_approx" to Color(0xFFEC4899),
+    "native_quantile_attention_approx" to Color(0xFFA855F7),
+    "ensemble" to Color(0xFF14B8A6),
+    "py_arima" to Color(0xFF0EA5E9),
+    "py_prophet" to Color(0xFF10B981),
+    "py_lstm_mc" to Color(0xFFF43F5E),
+    "py_tft" to Color(0xFF8B5CF6)
+)
 
 @Composable
 fun ForecastMiniFanCanvas(
@@ -120,12 +140,27 @@ fun ForecastMiniFanCanvas(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = stringResource(R.string.forecast_fan_title),
-                    style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Column(modifier = Modifier.weight(1f).padding(end = 6.dp)) {
+                    Text(
+                        text = stringResource(R.string.forecast_fan_title),
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    if (result != null) {
+                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                            Text(
+                                text = "Active: ${result.selectedChartModelId} (${result.selectionMode.name})",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                color = MODEL_OVERLAY_COLORS[result.selectedChartModelId] ?: Color(0xFF94A3B8),
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                        }
+                    }
+                }
                 if (result?.summary != null && pts.isNotEmpty()) {
                     val lastQ50 = pts.last().q50
                     val lastPct = pts.last().pctChangeFromLast
@@ -265,11 +300,41 @@ fun ForecastMiniFanCanvas(
                                     }
                                 }
 
+                                val overlayIds = setOf(
+                                    "smc_kmedoids",
+                                    "native_arima_diff",
+                                    "native_prophet_decomp",
+                                    "native_seq_recurrent_approx",
+                                    "native_quantile_attention_approx",
+                                    "py_arima",
+                                    "py_prophet",
+                                    "py_lstm_mc",
+                                    "py_tft"
+                                )
+                                val overlayTrajs = result?.modelTrajectories.orEmpty().filter {
+                                    it.status == ModelExecutionStatus.SUCCESS &&
+                                        it.points.size >= pts.size &&
+                                        it.modelId != result?.selectedChartModelId &&
+                                        it.modelId in overlayIds
+                                }
+                                val compDash = PathEffect.dashPathEffect(floatArrayOf(3f, 4f), 0f)
+                                overlayTrajs.forEach { tr ->
+                                    val trColor = MODEL_OVERLAY_COLORS[tr.modelId] ?: Color(0xFF64748B)
+                                    val trPath = Path().apply {
+                                        moveTo(anchorX, anchorY)
+                                        for (i in pts.indices) {
+                                            lineTo(xOf(hist.size + i), yOf(tr.points[i].q50))
+                                        }
+                                    }
+                                    drawPath(trPath, trColor.copy(alpha = 0.65f), style = Stroke(width = 1.35f, pathEffect = compDash))
+                                }
+
+                                val activeMedColor = MODEL_OVERLAY_COLORS[result?.selectedChartModelId] ?: Color(0xFFF59E0B)
                                 val medPath = Path().apply {
                                     moveTo(anchorX, anchorY)
                                     pts.forEachIndexed { i, p -> lineTo(xOf(hist.size + i), yOf(p.q50)) }
                                 }
-                                drawPath(medPath, Color(0xFFF59E0B), style = Stroke(width = 2.0f, pathEffect = dash))
+                                drawPath(medPath, activeMedColor, style = Stroke(width = 2.1f, pathEffect = dash))
                             }
                         }
 
@@ -714,32 +779,50 @@ fun WalkForwardBenchmarkTable(
                         }
                     }
 
-                    Column(
+                    Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                            .horizontalScroll(rememberScrollState())
                     ) {
-                        Row(
+                        Column(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .background(MaterialTheme.colorScheme.background)
-                                .padding(horizontal = 8.dp, vertical = 6.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween
+                                .width(560.dp)
+                                .clip(RoundedCornerShape(8.dp))
+                                .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
                         ) {
-                            Text("Model", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1.4f))
-                            Text("MAE%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.7f))
-                            Text("Dir%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.7f))
-                            Text("Cov80", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.7f))
-                            Text("CRPS", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.8f))
-                        }
-                        report.ensembleMetrics?.let { ens ->
-                            HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.6f))
-                            BenchmarkMetricRow(ens, highlight = true, isEven = false)
-                        }
-                        report.modelBenchmarks.forEachIndexed { idx, m ->
-                            HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.4f))
-                            BenchmarkMetricRow(m, highlight = false, isEven = idx % 2 == 1)
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .background(MaterialTheme.colorScheme.background)
+                                    .padding(horizontal = 8.dp, vertical = 6.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text("Model / Runtime", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1.7f))
+                                Text("Status", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(1.0f))
+                                Text("MAE%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.65f))
+                                Text("SafeMAPE", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.75f))
+                                Text("Dir%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.6f))
+                                Text("Cov80", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.6f))
+                                Text("Width%", style = MaterialTheme.typography.labelSmall, fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.weight(0.7f))
+                            }
+                            report.ensembleMetrics?.let { ens ->
+                                HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.6f))
+                                BenchmarkMetricRow(
+                                    summary = ens,
+                                    highlight = true,
+                                    isWinner = ens.modelId == report.winnerModelId,
+                                    isEven = false
+                                )
+                            }
+                            report.modelBenchmarks.forEachIndexed { idx, m ->
+                                HorizontalDivider(color = palette.cardBorder.copy(alpha = 0.4f))
+                                BenchmarkMetricRow(
+                                    summary = m,
+                                    highlight = false,
+                                    isWinner = m.modelId == report.winnerModelId,
+                                    isEven = idx % 2 == 1
+                                )
+                            }
                         }
                     }
                 }
@@ -752,14 +835,29 @@ fun WalkForwardBenchmarkTable(
 private fun BenchmarkMetricRow(
     summary: es.manico.chartintelligence.forecast.ModelWalkForwardSummary,
     highlight: Boolean,
+    isWinner: Boolean = false,
     isEven: Boolean = false
 ) {
-    val color = if (highlight) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
-    val weight = if (highlight) FontWeight.Bold else FontWeight.Medium
+    val palette = LocalFinancialPalette.current
+    val isOk = summary.status == ModelExecutionStatus.SUCCESS && summary.windows > 0
+    val color = when {
+        !isOk -> palette.bearCandle
+        isWinner -> palette.bullCandle
+        highlight -> MaterialTheme.colorScheme.primary
+        else -> MaterialTheme.colorScheme.onSurface
+    }
+    val weight = if (highlight || isWinner) FontWeight.Bold else FontWeight.Medium
     val rowBg = when {
-        highlight -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
+        highlight || isWinner -> MaterialTheme.colorScheme.primary.copy(alpha = 0.08f)
         isEven -> MaterialTheme.colorScheme.background.copy(alpha = 0.45f)
         else -> Color.Transparent
+    }
+    val runtimeTag = if (summary.isApproximation) "${summary.executionRuntime.name} · APPROX" else summary.executionRuntime.name
+    val statusText = when {
+        isOk && isWinner -> "WINNER ★"
+        isOk -> "OK"
+        summary.status == ModelExecutionStatus.SKIPPED_LOW_DATA -> "SKIPPED"
+        else -> "FAILED"
     }
     Row(
         modifier = Modifier
@@ -769,47 +867,288 @@ private fun BenchmarkMetricRow(
         horizontalArrangement = Arrangement.SpaceBetween,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        Column(modifier = Modifier.weight(1.7f).padding(end = 4.dp)) {
+            Text(
+                text = summary.modelName,
+                style = MaterialTheme.typography.labelSmall,
+                fontWeight = weight,
+                color = MaterialTheme.colorScheme.onSurface,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = runtimeTag,
+                style = MaterialTheme.typography.labelSmall,
+                fontSize = 9.sp,
+                fontFamily = JetBrainsMonoFontFamily,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+        }
         Text(
-            text = summary.modelName,
+            text = statusText,
             style = MaterialTheme.typography.labelSmall,
-            fontWeight = weight,
+            fontSize = 10.sp,
+            fontFamily = JetBrainsMonoFontFamily,
+            fontWeight = FontWeight.Bold,
             color = color,
             maxLines = 1,
             overflow = TextOverflow.Ellipsis,
-            modifier = Modifier.weight(1.4f)
+            modifier = Modifier.weight(1.0f)
         )
         Text(
-            text = String.format(Locale.US, "%.2f", summary.maePct),
+            text = if (isOk) String.format(Locale.US, "%.2f", summary.maePct) else "—",
             style = MaterialTheme.typography.labelSmall,
             fontFamily = JetBrainsMonoFontFamily,
             fontWeight = weight,
-            color = color,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(0.65f)
+        )
+        Text(
+            text = if (isOk && summary.safeMapePct != null) String.format(Locale.US, "%.2f%%", summary.safeMapePct) else "—",
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = JetBrainsMonoFontFamily,
+            fontWeight = weight,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(0.75f)
+        )
+        Text(
+            text = if (isOk) String.format(Locale.US, "%.0f%%", summary.directionalAccuracyPct) else "—",
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = JetBrainsMonoFontFamily,
+            fontWeight = weight,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(0.6f)
+        )
+        Text(
+            text = if (isOk) String.format(Locale.US, "%.0f%%", summary.coverage80Pct) else "—",
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = JetBrainsMonoFontFamily,
+            fontWeight = weight,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(0.6f)
+        )
+        Text(
+            text = if (isOk && summary.avgIntervalWidthPct != null) String.format(Locale.US, "%.2f%%", summary.avgIntervalWidthPct) else "—",
+            style = MaterialTheme.typography.labelSmall,
+            fontFamily = JetBrainsMonoFontFamily,
+            fontWeight = weight,
+            color = MaterialTheme.colorScheme.onSurface,
             modifier = Modifier.weight(0.7f)
         )
-        Text(
-            text = String.format(Locale.US, "%.0f%%", summary.directionalAccuracyPct),
-            style = MaterialTheme.typography.labelSmall,
-            fontFamily = JetBrainsMonoFontFamily,
-            fontWeight = weight,
-            color = color,
-            modifier = Modifier.weight(0.7f)
-        )
-        Text(
-            text = String.format(Locale.US, "%.0f%%", summary.coverage80Pct),
-            style = MaterialTheme.typography.labelSmall,
-            fontFamily = JetBrainsMonoFontFamily,
-            fontWeight = weight,
-            color = color,
-            modifier = Modifier.weight(0.7f)
-        )
-        Text(
-            text = String.format(Locale.US, "%.3f", summary.crps),
-            style = MaterialTheme.typography.labelSmall,
-            fontFamily = JetBrainsMonoFontFamily,
-            fontWeight = weight,
-            color = color,
-            modifier = Modifier.weight(0.8f)
-        )
+    }
+}
+
+@Composable
+fun OosWinnerGateCard(
+    result: ForecastResult,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalFinancialPalette.current
+    val isNoWinner = result.selectionMode == SelectionMode.NO_CLEAR_WINNER_BASELINE
+    val accentColor = if (isNoWinner) Color(0xFFF59E0B) else Color(0xFF38BDF8)
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("forecast_oos_winner_gate_card"),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, accentColor.copy(alpha = 0.50f))
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.forecast_oos_gate_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f).padding(end = 6.dp)
+                )
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Surface(
+                        color = accentColor.copy(alpha = 0.16f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = "${result.selectedChartModelId} · ${result.selectionMode.name}",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = accentColor,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
+                }
+            }
+            if (result.selectionReason.isNotBlank()) {
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Text(
+                        text = result.selectionReason,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ModelTrajectoryComparisonCard(
+    result: ForecastResult,
+    decimals: Int,
+    onSelectModelId: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val palette = LocalFinancialPalette.current
+    val trajectories = result.modelTrajectories
+    if (trajectories.isEmpty()) return
+    val okCount = trajectories.count { it.status == ModelExecutionStatus.SUCCESS }
+
+    Card(
+        modifier = modifier
+            .fillMaxWidth()
+            .testTag("forecast_model_comparison_card"),
+        shape = RoundedCornerShape(10.dp),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+        border = BorderStroke(1.dp, palette.cardBorder)
+    ) {
+        Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = stringResource(R.string.forecast_comparison_title),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.weight(1f).padding(end = 6.dp)
+                )
+                CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                    Surface(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                        shape = RoundedCornerShape(6.dp)
+                    ) {
+                        Text(
+                            text = "$okCount/${trajectories.size} Active",
+                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                            style = MaterialTheme.typography.labelSmall,
+                            fontSize = 10.sp,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                    }
+                }
+            }
+
+            CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    trajectories.forEach { tr ->
+                        val col = MODEL_OVERLAY_COLORS[tr.modelId] ?: MaterialTheme.colorScheme.primary
+                        val isSelected = tr.modelId == result.selectedChartModelId
+                        val lastPt = tr.points.lastOrNull()
+                        val isSuccess = tr.status == ModelExecutionStatus.SUCCESS && lastPt != null
+                        Surface(
+                            modifier = Modifier
+                                .width(156.dp)
+                                .minimumInteractiveComponentSize()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable(enabled = isSuccess) { onSelectModelId(tr.modelId) }
+                                .testTag("forecast_compare_tile_${tr.modelId}"),
+                            shape = RoundedCornerShape(8.dp),
+                            color = MaterialTheme.colorScheme.background,
+                            border = BorderStroke(
+                                width = if (isSelected) 1.5.dp else 1.dp,
+                                color = if (isSelected) col else palette.cardBorder
+                            )
+                        ) {
+                            Column(
+                                modifier = Modifier.padding(8.dp),
+                                verticalArrangement = Arrangement.spacedBy(3.dp)
+                            ) {
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Text(
+                                        text = tr.modelName,
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = col,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f).padding(end = 4.dp)
+                                    )
+                                    if (tr.isApproximation) {
+                                        Surface(
+                                            color = Color(0xFFF59E0B).copy(alpha = 0.16f),
+                                            shape = RoundedCornerShape(4.dp)
+                                        ) {
+                                            Text(
+                                                text = "APPROX",
+                                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp),
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontSize = 8.5.sp,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                color = Color(0xFFF59E0B)
+                                            )
+                                        }
+                                    }
+                                }
+                                if (isSuccess && lastPt != null) {
+                                    val sign = if (lastPt.pctChangeFromLast >= 0.0) "+" else ""
+                                    Text(
+                                        text = "${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(lastPt.q50), decimals)} ($sign${String.format(Locale.US, "%.2f", lastPt.pctChangeFromLast)}%)",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontSize = 11.sp,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                } else {
+                                    Text(
+                                        text = "${tr.status.name}: ${tr.reason}".trim(),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
+                                        fontFamily = JetBrainsMonoFontFamily,
+                                        color = palette.bearCandle,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                                Text(
+                                    text = "${tr.executionRuntime.name} · ${if (tr.isCalibratedInterval) "Calibrated" else "Uncalibrated"}",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontSize = 9.sp,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

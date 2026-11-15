@@ -60,6 +60,7 @@ data class ChartTabState(
     val showFutureProjection: Boolean = false,
     val forecastRenderMode: String = "HYBRID",
     val forecastHorizonBars: Int = 30,
+    val selectedForecastModelId: String = "AUTO",
     val pitchforkVariant: String = "original",
     val activeDrawingTool: DrawingTool = DrawingTool.CURSOR,
     val activeDrawingColorHex: String = "FF2962FF",

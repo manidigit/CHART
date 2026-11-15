@@ -895,6 +895,99 @@ class SMCPredictionEngine(
 
 object ForecastEngine {
 
+    private val WALK_FORWARD_CACHE = object : LinkedHashMap<String, WalkForwardReport>(48, 0.75f, true) {
+        override fun removeEldestEntry(eldest: MutableMap.MutableEntry<String, WalkForwardReport>?): Boolean = size > 48
+    }
+
+    private fun buildForecastPointsFromQuantileTrajectory(
+        traj: List<WalkForwardEvaluator.QuantileStep>,
+        timestamps: LongArray,
+        features: ExtractedForecastFeatures,
+        horizonBars: Int
+    ): List<ForecastPoint> {
+        val out = ArrayList<ForecastPoint>(horizonBars)
+        var prevClose = features.lastClose
+        val atr = max(1e-6, features.atr14)
+        for (h in 0 until horizonBars) {
+            val qStep = traj[h]
+            val openP = prevClose
+            val closeP = qStep.q50
+            val bodyAbs = abs(closeP - openP)
+            val wickPad = max(atr * 0.16, bodyAbs * 0.25)
+            val highP = max(max(openP, closeP) + wickPad * 0.55, qStep.q75.coerceAtMost(max(openP, closeP) + atr * 0.65))
+            val lowP = max(
+                features.lastClose * 0.02,
+                min(min(openP, closeP) - wickPad * 0.55, qStep.q25.coerceAtLeast(min(openP, closeP) - atr * 0.65))
+            )
+            out.add(
+                ForecastPoint(
+                    stepAhead = h + 1,
+                    openTimeUtcMs = timestamps[h],
+                    open = openP,
+                    high = highP,
+                    low = lowP,
+                    close = closeP,
+                    q10 = qStep.q10,
+                    q25 = qStep.q25,
+                    q50 = qStep.q50,
+                    q75 = qStep.q75,
+                    q90 = qStep.q90,
+                    pctChangeFromLast = ((qStep.q50 - features.lastClose) / features.lastClose) * 100.0,
+                    volume = 0.0,
+                    rejectionWick = false,
+                    wavePhase = if (bodyAbs >= atr * 0.35) "IMPULSE" else "CONSOLIDATION"
+                )
+            )
+            prevClose = closeP
+        }
+        return out
+    }
+
+    private fun buildSmcCausalTrajectoryForWindow(
+        trainClean: List<CleanOhlcBar>,
+        evalH: Int,
+        timeframe: String,
+        symbolCode: String
+    ): List<WalkForwardEvaluator.QuantileStep>? {
+        if (trainClean.size < 24) return null
+        val bars = trainClean.map { b ->
+            CandleBar(
+                openTimeUtcMillis = b.openTimeUtcMs,
+                openTimeUtcIso = "",
+                open = BigDecimal.valueOf(b.open),
+                high = BigDecimal.valueOf(b.high),
+                low = BigDecimal.valueOf(b.low),
+                close = BigDecimal.valueOf(b.close),
+                volume = BigDecimal.valueOf(b.volume)
+            )
+        }
+        val engine = SMCPredictionEngine(30, CANONICAL_SMC_HORIZON, timeframe)
+        val smcState = engine.extractMultiTimeframeFeatures(bars, timeframe)
+        val futureTs = ForecastCalendarHelper.advanceFutureTimestamps(
+            bars.last().openTimeUtcMillis,
+            timeframe,
+            CANONICAL_SMC_HORIZON,
+            symbolCode
+        )
+        val scenarios = engine.generateScenarios(bars, smcState, futureTs)
+        val dom = scenarios.firstOrNull() ?: return null
+        val atr = engine.calculateATR(bars, 14)
+        val lastClose = bars.last().close.toDouble()
+        return (0 until evalH).map { h ->
+            val med = dom.candles.getOrNull(h)?.close ?: lastClose
+            val spread = max(atr * 0.65 * sqrt((h + 1) * 0.45), med * 0.002 * sqrt((h + 1).toDouble()))
+            val q = ForecastCalendarHelper.enforceMonotonicQuantiles(
+                med - 1.28155 * spread,
+                med - 0.67449 * spread,
+                med,
+                med + 0.67449 * spread,
+                med + 1.28155 * spread,
+                lastClose * 0.02
+            )
+            WalkForwardEvaluator.QuantileStep(q[0], q[1], q[2], q[3], q[4])
+        }
+    }
+
     fun project(
         candles: List<CandleBar>,
         symbolCode: String,
@@ -911,7 +1004,9 @@ object ForecastEngine {
         selectedScenarioId: String = "SCENARIO_A",
         lowerTimeframe: String = "",
         lowerTimeframeCandles: List<CandleBar> = emptyList(),
-        disableLowerTfAnchor: Boolean = false
+        disableLowerTfAnchor: Boolean = false,
+        selectedModelId: String = "AUTO",
+        bypassWalkForwardCache: Boolean = false
     ): ForecastResult {
         val cleanSymbol = symbolCode.trim().uppercase(Locale.US)
         val cleanTf = timeframe.trim().uppercase(Locale.US)
@@ -922,6 +1017,7 @@ object ForecastEngine {
         } else {
             RemoteWorkerStatus.UNCONFIGURED
         }
+        val requestedModelId = selectedModelId.trim().ifBlank { "AUTO" }
 
         val readiness = ForecastFeatureExtractor.validateReadiness(candles, minBars)
         if (!readiness.ready) {
@@ -948,7 +1044,11 @@ object ForecastEngine {
                     null, null, emptyList(), 0.0
                 ),
                 summary = null,
-                inputHash = ForecastSha256.sha256Hex("$cleanSymbol|$cleanTf|EMPTY")
+                inputHash = ForecastSha256.sha256Hex("$cleanSymbol|$cleanTf|EMPTY"),
+                selectedChartModelId = "naive_persistence",
+                selectionMode = SelectionMode.NO_CLEAR_WINNER_BASELINE,
+                selectionReason = readiness.issues.firstOrNull() ?: "Insufficient valid candles",
+                remoteWorkerUrl = workerUrl.trim()
             )
         }
 
@@ -956,50 +1056,124 @@ object ForecastEngine {
             ?: return project(
                 emptyList(), cleanSymbol, cleanTf, horizon, renderMode, registry, workerUrl,
                 skipWalkForward, minBars, higherTimeframe, higherTimeframeCandles, previousForecast,
-                selectedScenarioId, lowerTimeframe, lowerTimeframeCandles, disableLowerTfAnchor
+                selectedScenarioId, lowerTimeframe, lowerTimeframeCandles, disableLowerTfAnchor,
+                requestedModelId, bypassWalkForwardCache
             )
 
         val enabled = registry.getEnabled().ifEmpty {
             listOf(Triple(NaivePersistenceModel(), 1.0, emptyMap()))
         }
 
-        val wfReport = if (skipWalkForward) null else WalkForwardEvaluator.evaluate(
-            candles = candles,
-            registry = registry,
-            minTrainBars = max(24, min(36, (candles.size * 0.55).toInt())),
-            evalHorizon = 5,
-            maxWindows = 10
-        )
+        val wfReport: WalkForwardReport? = if (skipWalkForward) null else {
+            val wfKey = "$cleanSymbol|$cleanTf|${candles.size}|${candles.first().openTimeUtcMillis}|${features.lastOpenMs}|${features.lastClose}|${registry.serializeToJson()}"
+            val cached = if (bypassWalkForwardCache) null else synchronized(WALK_FORWARD_CACHE) { WALK_FORWARD_CACHE[wfKey] }
+            cached ?: WalkForwardEvaluator.evaluate(
+                candles = candles,
+                registry = registry,
+                minTrainBars = max(24, min(36, (candles.size * 0.55).toInt())),
+                evalHorizon = 5,
+                maxWindows = 10,
+                smcEvaluator = { trainSlice, evalH ->
+                    buildSmcCausalTrajectoryForWindow(trainSlice, evalH, cleanTf, cleanSymbol)
+                }
+            ).also { rep ->
+                synchronized(WALK_FORWARD_CACHE) { WALK_FORWARD_CACHE[wfKey] = rep }
+            }
+        }
 
         val benchById = wfReport?.modelBenchmarks?.associateBy { it.modelId } ?: emptyMap()
         val rawWeights = enabled.map { (plugin, baseW, _) ->
             val b = benchById[plugin.id]
             val naiveMae = wfReport?.naiveMetrics?.mae ?: 0.0
-            if (b != null && b.mae > 0.0 && naiveMae > 0.0) {
+            if (b != null && b.status == ModelExecutionStatus.SUCCESS && b.mae > 0.0 && naiveMae > 0.0) {
                 val skill = (naiveMae / b.mae).coerceIn(0.55, 1.45)
                 baseW * (0.7 + 0.3 * skill)
             } else {
                 baseW
             }
         }
-        val wSum = rawWeights.sum().let { if (it > 0.0) it else 1.0 }
 
-        val predictions = ArrayList<Triple<ForecastModelPlugin, Double, PluginPrediction>>(enabled.size)
+        val canonicalTimestamps = ForecastCalendarHelper.advanceFutureTimestamps(
+            features.lastOpenMs,
+            cleanTf,
+            CANONICAL_SMC_HORIZON,
+            cleanSymbol
+        )
+        val timestamps = canonicalTimestamps.take(horizon).toLongArray()
+        val trainStartMs = features.candles.firstOrNull()?.openTimeUtcMs ?: 0L
+        val trainEndMs = features.lastOpenMs
+
+        data class RawPluginEval(
+            val plugin: ForecastModelPlugin,
+            val rawW: Double,
+            val pred: PluginPrediction,
+            val valid: Boolean
+        )
+
+        val rawEvals = ArrayList<RawPluginEval>(enabled.size)
+        var validWeightSum = 0.0
+        for (i in enabled.indices) {
+            val (plugin, _, params) = enabled[i]
+            val pred = try {
+                plugin.predict(features, CANONICAL_SMC_HORIZON, params)
+            } catch (t: Throwable) {
+                PluginPrediction(
+                    modelId = plugin.id,
+                    meanReturns = DoubleArray(0),
+                    sigmas = DoubleArray(0),
+                    status = ModelExecutionStatus.FAILED,
+                    reason = t.message ?: "Model execution error",
+                    isApproximation = plugin.isApproximation,
+                    isCalibratedInterval = plugin.isCalibratedInterval,
+                    modelVersion = plugin.modelVersion
+                )
+            }
+            val valid = pred.status == ModelExecutionStatus.SUCCESS && pred.meanReturns.size >= CANONICAL_SMC_HORIZON
+            if (valid) validWeightSum += rawWeights[i]
+            rawEvals.add(RawPluginEval(plugin, rawWeights[i], pred, valid))
+        }
+        val safeW = if (validWeightSum > 0.0) validWeightSum else 1.0
+
+        val validPredictions = ArrayList<Pair<Double, PluginPrediction>>()
         val contributions = ArrayList<ModelContribution>(enabled.size)
+        val modelTrajectories = ArrayList<ModelTrajectory>(enabled.size + 2)
         val ensMeanReturns = DoubleArray(horizon)
         val aleatoricVarSteps = DoubleArray(horizon)
         val epistemicDispSteps = DoubleArray(horizon)
 
-        for (i in enabled.indices) {
-            val (plugin, _, params) = enabled[i]
-            val normW = rawWeights[i] / wSum
-            val pred = plugin.predict(features, horizon, params)
-            predictions.add(Triple(plugin, normW, pred))
+        for (ev in rawEvals) {
+            val normW = if (ev.valid) ev.rawW / safeW else 0.0
+            if (!ev.valid) {
+                val st = if (ev.pred.status == ModelExecutionStatus.SKIPPED_LOW_DATA) {
+                    ModelExecutionStatus.SKIPPED_LOW_DATA
+                } else {
+                    ModelExecutionStatus.FAILED
+                }
+                modelTrajectories.add(
+                    ModelTrajectory(
+                        modelId = ev.plugin.id,
+                        modelName = ev.plugin.name,
+                        family = ev.plugin.family,
+                        modelVersion = ev.pred.modelVersion,
+                        executionRuntime = ExecutionRuntime.NATIVE_KOTLIN,
+                        isApproximation = ev.pred.isApproximation || ev.plugin.isApproximation,
+                        isCalibratedInterval = ev.pred.isCalibratedInterval && ev.plugin.isCalibratedInterval,
+                        status = st,
+                        reason = ev.pred.reason.ifBlank { "Model unavailable on current input window" },
+                        trainingStartUtcMs = trainStartMs,
+                        trainingEndUtcMs = trainEndMs,
+                        trainingSampleCount = features.barCount,
+                        points = emptyList()
+                    )
+                )
+                continue
+            }
 
+            validPredictions.add(normW to ev.pred)
             var cumMean = 0.0
             for (h in 0 until horizon) {
-                val mr = pred.meanReturns[h]
-                val sg = max(1e-5, pred.sigmas[h])
+                val mr = ev.pred.meanReturns[h]
+                val sg = max(1e-5, ev.pred.sigmas.getOrElse(h) { features.ewmaSigma })
                 cumMean += mr
                 ensMeanReturns[h] += normW * mr
                 aleatoricVarSteps[h] += normW * (sg * sg)
@@ -1007,12 +1181,37 @@ object ForecastEngine {
             val terminalPrice = features.lastClose * exp(cumMean)
             contributions.add(
                 ModelContribution(
-                    modelId = plugin.id,
-                    modelName = plugin.name,
-                    family = plugin.family,
+                    modelId = ev.plugin.id,
+                    modelName = ev.plugin.name,
+                    family = ev.plugin.family,
                     weight = (round(normW * 10_000.0) / 10_000.0),
                     terminalPrice = terminalPrice,
                     terminalPctChange = ((terminalPrice - features.lastClose) / features.lastClose) * 100.0
+                )
+            )
+
+            val qTraj = WalkForwardEvaluator.buildTrajectory(
+                features.lastClose,
+                ev.pred.meanReturns,
+                ev.pred.sigmas,
+                ev.pred.directQuantiles,
+                horizon
+            )
+            modelTrajectories.add(
+                ModelTrajectory(
+                    modelId = ev.plugin.id,
+                    modelName = ev.plugin.name,
+                    family = ev.plugin.family,
+                    modelVersion = ev.pred.modelVersion,
+                    executionRuntime = ExecutionRuntime.NATIVE_KOTLIN,
+                    isApproximation = ev.pred.isApproximation || ev.plugin.isApproximation,
+                    isCalibratedInterval = ev.pred.isCalibratedInterval && ev.plugin.isCalibratedInterval,
+                    status = ModelExecutionStatus.SUCCESS,
+                    reason = "",
+                    trainingStartUtcMs = trainStartMs,
+                    trainingEndUtcMs = trainEndMs,
+                    trainingSampleCount = features.barCount,
+                    points = buildForecastPointsFromQuantileTrajectory(qTraj, timestamps, features, horizon)
                 )
             )
         }
@@ -1022,7 +1221,7 @@ object ForecastEngine {
         var totalEpistemicDispVar = 0.0
         for (h in 0 until horizon) {
             var dispVar = 0.0
-            for ((_, normW, pred) in predictions) {
+            for ((normW, pred) in validPredictions) {
                 val diff = pred.meanReturns[h] - ensMeanReturns[h]
                 dispVar += normW * diff * diff
             }
@@ -1037,14 +1236,6 @@ object ForecastEngine {
             epistemicDispVar = totalEpistemicDispVar,
             effectiveSampleSize = wfReport?.effectiveSampleSize
         )
-
-        val canonicalTimestamps = ForecastCalendarHelper.advanceFutureTimestamps(
-            features.lastOpenMs,
-            cleanTf,
-            CANONICAL_SMC_HORIZON,
-            cleanSymbol
-        )
-        val timestamps = canonicalTimestamps.take(horizon).toLongArray()
 
         // Run SMC Historical Analog + K-Medoids 3-Scenario Engine at canonical horizon (60) for prefix invariance
         val cleanCandleBars = candles.takeLast(180)
@@ -1161,7 +1352,7 @@ object ForecastEngine {
         val activeScenario = smcScenarios.firstOrNull { it.id == selectedScenarioId } ?: smcScenarios.first()
         val activeScenarioId = activeScenario.id
 
-        val points = ArrayList<ForecastPoint>(horizon)
+        val smcPoints = ArrayList<ForecastPoint>(horizon)
         var cumVar = 0.0
         val epiFactorPerStep =
             (1.0 / max(6.0, wfReport?.effectiveSampleSize ?: max(6.0, features.barCount / 4.0))) +
@@ -1200,7 +1391,7 @@ object ForecastEngine {
             val highP = max(max(openP, closeP), scCandle.high)
             val lowP = max(features.lastClose * 0.02, min(min(openP, closeP), scCandle.low))
 
-            points.add(
+            smcPoints.add(
                 ForecastPoint(
                     stepAhead = h + 1,
                     openTimeUtcMs = timestamps[h],
@@ -1223,10 +1414,66 @@ object ForecastEngine {
             )
         }
 
-        val lastPt = points.last()
-        val (scenarios, keyZones, eventDictionary) = ForecastV130Analyzer.detectKeyZonesAndEventTree(features, points, horizon)
+        modelTrajectories.add(
+            ModelTrajectory(
+                modelId = "smc_kmedoids",
+                modelName = "SMC K-Medoids Analogs",
+                family = "PATTERN_SMC",
+                modelVersion = "1.0.0",
+                executionRuntime = ExecutionRuntime.NATIVE_KOTLIN,
+                isApproximation = false,
+                isCalibratedInterval = true,
+                status = ModelExecutionStatus.SUCCESS,
+                reason = "",
+                trainingStartUtcMs = trainStartMs,
+                trainingEndUtcMs = trainEndMs,
+                trainingSampleCount = features.barCount,
+                points = smcPoints
+            )
+        )
+
+        val ensSigmas = DoubleArray(horizon) { idx ->
+            sqrt(max(1e-10, aleatoricVarSteps[idx] * (1.0 + 0.35 * epiFactorPerStep) + epistemicDispSteps[idx])) *
+                uncertainty.spreadMultiplierApplied
+        }
+        val ensQTraj = WalkForwardEvaluator.buildTrajectory(features.lastClose, ensMeanReturns, ensSigmas, null, horizon)
+        modelTrajectories.add(
+            ModelTrajectory(
+                modelId = "ensemble",
+                modelName = "Calibrated Ensemble",
+                family = "ENSEMBLE",
+                modelVersion = "1.0.0",
+                executionRuntime = ExecutionRuntime.NATIVE_KOTLIN,
+                isApproximation = false,
+                isCalibratedInterval = true,
+                status = ModelExecutionStatus.SUCCESS,
+                reason = "",
+                trainingStartUtcMs = trainStartMs,
+                trainingEndUtcMs = trainEndMs,
+                trainingSampleCount = features.barCount,
+                points = buildForecastPointsFromQuantileTrajectory(ensQTraj, timestamps, features, horizon)
+            )
+        )
+
+        val decision = if (skipWalkForward && requestedModelId.equals("AUTO", ignoreCase = true)) {
+            OosSelectionDecision(
+                selectionMode = SelectionMode.SMC_STRUCTURAL_DEFAULT,
+                selectedModelId = "smc_kmedoids",
+                winnerModelId = null,
+                reason = "Fast chart mode (walk-forward bypassed); displaying SMC structural projection."
+            )
+        } else {
+            WalkForwardEvaluator.selectOosChartWinner(wfReport, modelTrajectories, requestedModelId)
+        }
+
+        val chosenPoints = modelTrajectories.firstOrNull {
+            it.modelId == decision.selectedModelId && it.status == ModelExecutionStatus.SUCCESS && it.points.size == horizon
+        }?.points ?: smcPoints
+
+        val lastPt = chosenPoints.last()
+        val (scenarios, keyZones, eventDictionary) = ForecastV130Analyzer.detectKeyZonesAndEventTree(features, chosenPoints, horizon)
         val mtfCoordination = ForecastV130Analyzer.coordinateMultiTimeframe(
-            independentPoints = points,
+            independentPoints = chosenPoints,
             independentScenarios = scenarios,
             anchorClose = features.lastClose,
             timeframe = cleanTf,
@@ -1283,7 +1530,7 @@ object ForecastEngine {
                 realizedVolRatio = features.realizedVolRatio,
                 driftZ = features.driftZ
             ),
-            points = points,
+            points = chosenPoints,
             scenarios = scenarios,
             modelContributions = contributions,
             walkForward = wfReport,
@@ -1298,7 +1545,72 @@ object ForecastEngine {
             smcContext = smcState.context,
             smcScenarios = smcScenarios,
             activeScenarioId = activeScenarioId,
-            bayesianLiveReport = bayesianLiveReport
+            bayesianLiveReport = bayesianLiveReport,
+            modelTrajectories = modelTrajectories,
+            selectedChartModelId = decision.selectedModelId,
+            selectionMode = decision.selectionMode,
+            selectionReason = decision.reason,
+            remoteWorkerUrl = workerUrl.trim()
+        )
+    }
+
+    fun applyRemoteWorkerResponse(
+        baseResult: ForecastResult,
+        workerWrap: RemoteWorkerResponseWrap,
+        requestedModelId: String = "AUTO"
+    ): ForecastResult {
+        if (workerWrap.trajectories.isEmpty()) {
+            return baseResult.copy(
+                remoteWorkerStatus = workerWrap.status,
+                remoteWorkerUrl = workerWrap.url,
+                remoteWorkerError = workerWrap.error
+            )
+        }
+        val mergedTrajs = baseResult.modelTrajectories.toMutableList()
+        for (wt in workerWrap.trajectories) {
+            val idx = mergedTrajs.indexOfFirst { it.modelId == wt.modelId }
+            if (idx >= 0) mergedTrajs[idx] = wt else mergedTrajs.add(wt)
+        }
+        val mergedWf = baseResult.walkForward?.let { wf ->
+            if (workerWrap.benchmarks.isEmpty()) wf
+            else {
+                val mb = wf.modelBenchmarks.toMutableList()
+                for (wb in workerWrap.benchmarks) {
+                    val idx = mb.indexOfFirst { it.modelId == wb.modelId }
+                    if (idx >= 0) mb[idx] = wb else mb.add(wb)
+                }
+                wf.copy(modelBenchmarks = mb)
+            }
+        }
+        val decision = WalkForwardEvaluator.selectOosChartWinner(mergedWf, mergedTrajs, requestedModelId)
+        val chosenPts = mergedTrajs.firstOrNull {
+            it.modelId == decision.selectedModelId && it.status == ModelExecutionStatus.SUCCESS && it.points.size == baseResult.horizonBars
+        }?.points ?: baseResult.points
+
+        val lastPt = chosenPts.lastOrNull()
+        val nextSummary = if (lastPt != null && baseResult.summary != null) {
+            baseResult.summary.copy(
+                terminalQ10 = lastPt.q10,
+                terminalQ25 = lastPt.q25,
+                terminalQ50 = lastPt.q50,
+                terminalQ75 = lastPt.q75,
+                terminalQ90 = lastPt.q90,
+                medianPctChange = lastPt.pctChangeFromLast,
+                corridorWidthPct = ((lastPt.q90 - lastPt.q10) / baseResult.anchorClose) * 100.0
+            )
+        } else baseResult.summary
+
+        return baseResult.copy(
+            remoteWorkerStatus = workerWrap.status,
+            remoteWorkerUrl = workerWrap.url,
+            remoteWorkerError = workerWrap.error,
+            modelTrajectories = mergedTrajs,
+            walkForward = mergedWf,
+            selectedChartModelId = decision.selectedModelId,
+            selectionMode = decision.selectionMode,
+            selectionReason = decision.reason,
+            points = chosenPts,
+            summary = nextSummary
         )
     }
 }

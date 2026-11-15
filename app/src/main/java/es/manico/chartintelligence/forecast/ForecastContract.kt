@@ -74,6 +74,57 @@ enum class ForecastEvaluationOutcome {
     INCOMPLETE_DATA
 }
 
+enum class ModelExecutionStatus {
+    SUCCESS,
+    SKIPPED_LOW_DATA,
+    FAILED
+}
+
+enum class ExecutionRuntime {
+    NATIVE_JS,
+    NATIVE_KOTLIN,
+    NATIVE_PHP,
+    PYTHON_WORKER
+}
+
+enum class SelectionMode {
+    AUTO_OOS_BEST,
+    MANUAL_OVERRIDE,
+    NO_CLEAR_WINNER_BASELINE,
+    SMC_STRUCTURAL_DEFAULT
+}
+
+data class DirectQuantiles(
+    val q10: DoubleArray,
+    val q25: DoubleArray,
+    val q50: DoubleArray,
+    val q75: DoubleArray,
+    val q90: DoubleArray
+)
+
+data class PerHorizonMetric(
+    val stepAhead: Int,
+    val mae: Double,
+    val rmse: Double,
+    val coverage80Pct: Double
+)
+
+data class ModelTrajectory(
+    val modelId: String,
+    val modelName: String,
+    val family: String,
+    val modelVersion: String = "1.0.0",
+    val executionRuntime: ExecutionRuntime = ExecutionRuntime.NATIVE_KOTLIN,
+    val isApproximation: Boolean = false,
+    val isCalibratedInterval: Boolean = true,
+    val status: ModelExecutionStatus = ModelExecutionStatus.SUCCESS,
+    val reason: String = "",
+    val trainingStartUtcMs: Long = 0L,
+    val trainingEndUtcMs: Long = 0L,
+    val trainingSampleCount: Int = 0,
+    val points: List<ForecastPoint> = emptyList()
+)
+
 data class ForecastPoint(
     val stepAhead: Int,
     val openTimeUtcMs: Long,
@@ -276,7 +327,16 @@ data class ModelWalkForwardSummary(
     val directionalAccuracyPct: Double,
     val pinballLoss: Double,
     val coverage80Pct: Double,
-    val crps: Double
+    val crps: Double,
+    val executionRuntime: ExecutionRuntime = ExecutionRuntime.NATIVE_KOTLIN,
+    val isApproximation: Boolean = false,
+    val isCalibratedInterval: Boolean = true,
+    val status: ModelExecutionStatus = ModelExecutionStatus.SUCCESS,
+    val reason: String = "",
+    val safeMapePct: Double? = null,
+    val safeMapeValidCount: Int = 0,
+    val avgIntervalWidthPct: Double? = null,
+    val perHorizonMetrics: List<PerHorizonMetric> = emptyList()
 )
 
 data class WalkForwardReport(
@@ -293,7 +353,10 @@ data class WalkForwardReport(
     val effectiveSampleSize: Double = 0.0,
     val ambiguousOutcomeCount: Int = 0,
     val ambiguousRatePct: Double = 0.0,
-    val pathEventStats: PathEventStats? = null
+    val pathEventStats: PathEventStats? = null,
+    val winnerModelId: String? = null,
+    val selectionMode: SelectionMode = SelectionMode.NO_CLEAR_WINNER_BASELINE,
+    val selectionReason: String = ""
 )
 
 data class DataReadinessReport(
@@ -395,7 +458,13 @@ data class ForecastResult(
     val smcContext: SmcMarketContext? = null,
     val smcScenarios: List<SmcProjectedScenario> = emptyList(),
     val activeScenarioId: String = "SCENARIO_A",
-    val bayesianLiveReport: BayesianLiveUpdateReport? = null
+    val bayesianLiveReport: BayesianLiveUpdateReport? = null,
+    val modelTrajectories: List<ModelTrajectory> = emptyList(),
+    val selectedChartModelId: String = "smc_kmedoids",
+    val selectionMode: SelectionMode = SelectionMode.SMC_STRUCTURAL_DEFAULT,
+    val selectionReason: String = "",
+    val remoteWorkerUrl: String = "",
+    val remoteWorkerError: String = ""
 )
 
 object ForecastSha256 {

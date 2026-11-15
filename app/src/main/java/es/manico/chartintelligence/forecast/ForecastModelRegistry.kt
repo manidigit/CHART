@@ -24,7 +24,11 @@ class ForecastModelRegistry {
             KalmanMomentumModel(),
             GarchVolatilityModel(),
             ArimaEtsModel(),
-            GaussianProcessModel()
+            GaussianProcessModel(),
+            NativeArimaDiffModel(),
+            NativeProphetDecompModel(),
+            NativeSequenceRecurrentModel(),
+            NativeQuantileAttentionModel()
         ).forEach { register(it) }
     }
 

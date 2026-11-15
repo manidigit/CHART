@@ -2,18 +2,35 @@ import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 import {
   RENDER_MODES,
   FORECAST_STATUS,
+  MODEL_EXECUTION_STATUS,
   NO_EDGE_GATE_STATE,
   OOD_STATUS,
   LIFECYCLE_STATUS,
   EVALUATION_OUTCOME,
+  SELECTION_MODE,
   normalizeRenderMode,
   clampHorizonBars,
 } from '../forecast/forecastContract.js?v=1.43.0';
 import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=1.43.0';
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.43.0';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.43.0';
+import { ForecastWorkerClient } from '../forecast/forecastWorkerClient.js?v=1.43.0';
 import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.43.0';
 import { renderSymbolBadge } from './watchlistView.js?v=1.43.0';
+
+const MODEL_OVERLAY_COLORS = {
+  smc_kmedoids: '#F59E0B',
+  naive_persistence: '#94A3B8',
+  native_arima_diff: '#38BDF8',
+  native_prophet_decomp: '#22C55E',
+  native_seq_recurrent_approx: '#EC4899',
+  native_quantile_attention_approx: '#A855F7',
+  ensemble: '#14B8A6',
+  py_arima: '#0EA5E9',
+  py_prophet: '#10B981',
+  py_lstm_mc: '#F43F5E',
+  py_tft: '#8B5CF6',
+};
 
 export function resolveHigherTimeframe(tf = 'M15') {
   const norm = String(tf || 'M15').toUpperCase();
@@ -55,6 +72,7 @@ export function buildForecastForTab(activeTab) {
   const lastStored = state._prevForecastByKey[cacheKey] || null;
 
   const selectedScenarioId = activeTab.selectedScenarioId || prefs.selectedScenarioId || 'SCENARIO_A';
+  const selectedModelId = String(activeTab.selectedForecastModelId || prefs.selectedForecastModelId || 'AUTO');
   const lastBar = candles.length > 0 ? candles[candles.length - 1] : null;
   const firstBar = candles.length > 0 ? candles[0] : null;
   const lastHigherBar = higherCandles.length > 0 ? higherCandles[higherCandles.length - 1] : null;
@@ -76,20 +94,25 @@ export function buildForecastForTab(activeTab) {
     horizonBars,
     renderMode,
     selectedScenarioId,
+    selectedModelId,
     workerUrl,
     JSON.stringify(prefs.forecastPluginConfig || null),
   ].join('|');
+
+  if (!state._workerForecastByKey) state._workerForecastByKey = {};
+  if (!state._workerPendingKeys) state._workerPendingKeys = {};
 
   if (state._forecastBuildMemo && state._forecastBuildMemo.key === memoKey) {
     return state._forecastBuildMemo.value;
   }
 
-  const result = ForecastEngine.project(candles, {
+  let result = ForecastEngine.project(candles, {
     symbolCode: activeTab.symbolCode,
     timeframe: activeTab.timeframe,
     horizonBars,
     renderMode,
     selectedScenarioId,
+    selectedModelId,
     registry: defaultForecastRegistry,
     workerUrl,
     higherTimeframe: higherTf,
@@ -101,6 +124,35 @@ export function buildForecastForTab(activeTab) {
         ? lastStored
         : null,
   });
+
+  if (workerUrl && result && result.status !== FORECAST_STATUS.DATA_NOT_READY) {
+    const cachedWorker = state._workerForecastByKey[result.inputHash];
+    if (cachedWorker) {
+      result = ForecastEngine.applyRemoteWorkerResponse(result, cachedWorker, selectedModelId);
+    } else if (!state._workerPendingKeys[result.inputHash]) {
+      state._workerPendingKeys[result.inputHash] = true;
+      ForecastWorkerClient.infer(workerUrl, {
+        symbolCode: activeTab.symbolCode,
+        timeframe: activeTab.timeframe,
+        horizonBars,
+        candles,
+        inputHash: result.inputHash,
+      })
+        .then((workerWrap) => {
+          delete state._workerPendingKeys[result.inputHash];
+          if (workerWrap) {
+            state._workerForecastByKey[result.inputHash] = workerWrap;
+            state._forecastBuildMemo = null;
+            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
+              window.dispatchEvent(new CustomEvent('ci-forecast-worker-updated'));
+            }
+          }
+        })
+        .catch(() => {
+          delete state._workerPendingKeys[result.inputHash];
+        });
+    }
+  }
 
   if (result && result.status !== FORECAST_STATUS.DATA_NOT_READY) {
     if (!lastStored || lastStored.inputHash !== result.inputHash) {
@@ -311,9 +363,36 @@ export function renderForecastStudioFanCanvas(
       });
     }
 
-    // Median q50 line
-    ctx.strokeStyle = useCoord ? '#A855F7' : '#F59E0B';
-    ctx.lineWidth = 2;
+    // Overlay q50 comparison trajectories from all competing successful models
+    const trajs = Array.isArray(forecast?.modelTrajectories) ? forecast.modelTrajectories : [];
+    const overlayModels = trajs.filter(
+      (t) =>
+        t.status === MODEL_EXECUTION_STATUS.SUCCESS &&
+        Array.isArray(t.points) &&
+        t.points.length >= pts.length &&
+        t.modelId !== forecast.selectedChartModelId &&
+        ['smc_kmedoids', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_prophet', 'py_lstm_mc', 'py_tft'].includes(t.modelId)
+    );
+    overlayModels.forEach((tr) => {
+      const col = MODEL_OVERLAY_COLORS[tr.modelId] || '#64748B';
+      ctx.save();
+      ctx.strokeStyle = col;
+      ctx.globalAlpha = 0.65;
+      ctx.lineWidth = 1.3;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(xOf(hist.length - 1), yOf(Number(hist[hist.length - 1].close)));
+      for (let idx = 0; idx < pts.length; idx++) {
+        ctx.lineTo(xOf(hist.length + idx), yOf(Number(tr.points[idx].q50)));
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    });
+
+    // Active Median q50 line
+    ctx.strokeStyle = useCoord ? '#A855F7' : (MODEL_OVERLAY_COLORS[forecast?.selectedChartModelId] || '#F59E0B');
+    ctx.lineWidth = 2.2;
     ctx.setLineDash([5, 3]);
     ctx.beginPath();
     ctx.moveTo(xOf(hist.length - 1), yOf(Number(hist[hist.length - 1].close)));
@@ -451,6 +530,30 @@ export function renderForecastStudioView(activeTab, i18n) {
     panelHtml = renderLedgerPanel(decimals, isFa);
   }
 
+  const requestedModelId = String(
+    (activeTab && activeTab.selectedForecastModelId) || state.chartPreferences.selectedForecastModelId || 'AUTO'
+  );
+  const modelChoices = [
+    { id: 'AUTO', label: isFa ? 'خودکار (بهترین OOS)' : 'Auto (OOS Winner)' },
+    { id: 'smc_kmedoids', label: 'SMC K-Medoids' },
+    { id: 'native_arima_diff', label: 'ARIMA(p,d,q)' },
+    { id: 'native_prophet_decomp', label: isFa ? 'Prophet (تقریبی)' : 'Prophet (Approx)' },
+    { id: 'native_seq_recurrent_approx', label: isFa ? 'Recurrent MC (تقریبی)' : 'Recurrent MC (Approx)' },
+    { id: 'native_quantile_attention_approx', label: isFa ? 'TFT Attention (تقریبی)' : 'TFT Attention (Approx)' },
+    { id: 'naive_persistence', label: 'Naive Baseline' },
+    { id: 'ensemble', label: 'Ensemble' },
+  ];
+  const remoteTrajs = (fc?.modelTrajectories || []).filter((t) => String(t.modelId || '').startsWith('py_'));
+  for (const rt of remoteTrajs) {
+    modelChoices.push({ id: rt.modelId, label: `${rt.modelName} (Python)` });
+  }
+  const modelButtons = modelChoices
+    .map(
+      (m) =>
+        `<button type="button" class="chip ${requestedModelId === m.id ? 'active' : ''}" data-action="set-forecast-model" data-model-id="${escapeHtml(m.id)}">${escapeHtml(m.label)}</button>`
+    )
+    .join('');
+
   return `
     <section class="ci-forecast-studio">
       <div class="ci-fc-header">
@@ -479,6 +582,10 @@ export function renderForecastStudioView(activeTab, i18n) {
         </div>
 
         <div class="ci-fc-controls-row">
+          <div class="ci-fc-control-group">
+            <span class="ci-fc-ctrl-label">${isFa ? 'مدل پیش‌بینی چارت:' : 'Chart Model:'}</span>
+            <div class="chip-group">${modelButtons}</div>
+          </div>
           <div class="ci-fc-control-group">
             <span class="ci-fc-ctrl-label">${isFa ? 'افق پیش‌بینی (کندل):' : 'Horizon (bars):'}</span>
             <div class="chip-group">${horizonButtons}</div>
@@ -736,13 +843,64 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     )
     .join('');
 
+  const isNoWinner = fc.selectionMode === SELECTION_MODE.NO_CLEAR_WINNER_BASELINE;
+  const winnerBannerHtml = `
+    <div class="ci-fc-card" style="margin-bottom:12px;border-color:${isNoWinner ? 'rgba(245,158,11,0.55)' : 'rgba(56,189,248,0.45)'};">
+      <div class="row-between" style="flex-wrap:wrap;gap:8px;">
+        <div>
+          <strong style="font-size:13px;">${isFa ? 'دروازه انتخاب مدل بر اساس ارزیابی Out-of-Sample (OOS Winner Gate)' : 'Out-of-Sample Model Selection Gate'}</strong>
+          <div style="font-size:11.5px;color:var(--text-muted);margin-top:3px;" class="ltr-num">
+            ${escapeHtml(fc.selectionReason || '')}
+          </div>
+        </div>
+        <span class="ci-fc-status-badge ${isNoWinner ? 'ci-fc-badge-provisional' : 'ci-fc-badge-valid'} ltr-num">
+          ${escapeHtml(fc.selectedChartModelId || 'naive_persistence')} · ${escapeHtml(fc.selectionMode || '')}
+        </span>
+      </div>
+    </div>
+  `;
+
+  const comparisonChipsHtml = Array.isArray(fc.modelTrajectories) && fc.modelTrajectories.length > 0
+    ? `
+      <div class="ci-fc-card" style="margin-bottom:12px;">
+        <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:6px;">
+          <strong style="font-size:12.5px;">${isFa ? 'مقایسه زنده مسیر مدل‌ها روی چارت (مستقل و بدون Fallback جعلی)' : 'Model Trajectory Comparison (Honest Status & Runtime Badge)'}</strong>
+          <span class="ci-fc-family-tag ltr-num">${fc.modelTrajectories.filter((t) => t.status === MODEL_EXECUTION_STATUS.SUCCESS).length}/${fc.modelTrajectories.length} Active</span>
+        </div>
+        <div class="ci-fc-ladder-grid ltr-num">
+          ${fc.modelTrajectories
+            .map((t) => {
+              const col = MODEL_OVERLAY_COLORS[t.modelId] || 'var(--accent)';
+              const lastP = t.points?.[t.points.length - 1];
+              const isSelected = t.modelId === fc.selectedChartModelId;
+              const statusTxt =
+                t.status === MODEL_EXECUTION_STATUS.SUCCESS && lastP
+                  ? `${PriceFormatter.formatPrice(lastP.q50, decimals)} (${lastP.pctChangeFromLast >= 0 ? '+' : ''}${Number(lastP.pctChangeFromLast || 0).toFixed(2)}%)`
+                  : `${t.status}: ${t.reason || ''}`;
+              return `
+                <div class="ci-fc-mini-stat" style="border-color:${isSelected ? col : 'var(--border)'};${isSelected ? 'box-shadow:0 0 0 1px ' + col + ';' : ''}">
+                  <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
+                    <span style="font-size:10.5px;font-weight:700;color:${col};">${escapeHtml(t.modelName)}</span>
+                    ${t.isApproximation ? '<span class="ci-fc-family-tag" style="font-size:9px;padding:1px 4px;">APPROX</span>' : ''}
+                  </div>
+                  <strong style="font-size:11px;color:${t.status === MODEL_EXECUTION_STATUS.SUCCESS ? 'var(--text-strong)' : 'var(--bear)'};">${escapeHtml(statusTxt)}</strong>
+                  <div style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(t.executionRuntime || 'NATIVE_JS')} · ${t.isCalibratedInterval ? 'Calibrated' : 'Uncalibrated'}</div>
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+      </div>
+    `
+    : '';
+
   return `
     <div class="ci-fc-canvas-wrap ci-fc-card">
       <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
         <div>
-          <strong style="font-size:13.5px;">${isFa ? 'نمای مخروط عدم‌قطعیت (q10..q90) + نواحی کلیدی + کندل سایه‌ای' : 'Probabilistic Quantile Fan (q10..q90), Key Zones & Ghost Trajectory'}</strong>
+          <strong style="font-size:13.5px;">${isFa ? 'نمای مخروط عدم‌قطعیت (q10..q90) + نواحی کلیدی + کندل سایه‌ای' : 'Probabilistic Quantile Fan (q10..q90), Key Zones & Multi-Model Overlay'}</strong>
           <div style="font-size:11px;color:var(--text-muted);" class="ltr-num">
-            ${escapeHtml(fc.contractVersion)} · spec v${escapeHtml(fc.specVersion || '1.3.0')} · Anchor ${PriceFormatter.formatPrice(fc.anchorClose, decimals)} · EWMA σ ${fc.featuresSummary.ewmaSigmaPct.toFixed(3)}% · Layer: ${coordView.toUpperCase()}
+            ${escapeHtml(fc.contractVersion)} · spec v${escapeHtml(fc.specVersion || '1.3.0')} · Active: ${escapeHtml(fc.selectedChartModelId || 'AUTO')} · Anchor ${PriceFormatter.formatPrice(fc.anchorClose, decimals)} · EWMA σ ${fc.featuresSummary.ewmaSigmaPct.toFixed(3)}% · Layer: ${coordView.toUpperCase()}
           </div>
         </div>
         <span style="font-size:11px;color:var(--text-muted);" class="ltr-num">
@@ -752,6 +910,8 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
       <canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas"></canvas>
     </div>
 
+    ${winnerBannerHtml}
+    ${comparisonChipsHtml}
     ${bayesianBannerHtml}
     ${smcScenariosHtml}
     ${edgeBannerHtml}
@@ -861,16 +1021,26 @@ function renderBacktestPanel(fc, decimals, isFa) {
   const rows = [wf.ensembleMetrics, ...(wf.modelBenchmarks || [])]
     .map((m) => {
       const isEns = m.modelId === 'ensemble';
+      const isWinner = m.modelId === wf.winnerModelId;
+      const st = m.status || MODEL_EXECUTION_STATUS.SUCCESS;
+      const isOk = st === MODEL_EXECUTION_STATUS.SUCCESS && m.evaluatedWindows > 0;
+      const badgeTxt = m.isApproximation ? `${m.executionRuntime || 'NATIVE_JS'} · APPROX` : (m.executionRuntime || 'NATIVE_JS');
+      const statusReason = isOk
+        ? (isWinner ? 'WINNER ★' : 'OK')
+        : `${st}${m.reason ? ': ' + m.reason : ''}`;
       return `
-        <tr class="${isEns ? 'ci-fc-row-highlight' : ''}">
-          <td><strong>${escapeHtml(m.modelName)}</strong></td>
+        <tr class="${isEns || isWinner ? 'ci-fc-row-highlight' : ''}">
+          <td><strong>${escapeHtml(m.modelName)}</strong><div style="font-size:10px;color:var(--text-muted);" class="ltr-num">${escapeHtml(badgeTxt)}</div></td>
           <td class="ltr-num">${escapeHtml(m.family)}</td>
-          <td class="ltr-num">${Number(m.mae ?? 0).toFixed(decimals >= 3 ? 4 : 3)} (${Number(m.maePct ?? 0).toFixed(2)}%)</td>
-          <td class="ltr-num">${Number(m.rmse ?? 0).toFixed(decimals >= 3 ? 4 : 3)}</td>
-          <td class="ltr-num">${Number(m.directionalAccuracyPct ?? 0).toFixed(1)}%</td>
-          <td class="ltr-num">${Number(m.coverage80Pct ?? 0).toFixed(1)}%</td>
-          <td class="ltr-num">${Number(m.pinballLoss ?? 0).toFixed(4)}</td>
-          <td class="ltr-num">${Number(m.crps ?? 0).toFixed(4)}</td>
+          <td class="ltr-num" style="color:${isOk ? (isWinner ? 'var(--bull)' : 'var(--text-main)') : 'var(--bear)'};font-size:11px;">${escapeHtml(statusReason)}</td>
+          <td class="ltr-num">${isOk ? `${Number(m.mae ?? 0).toFixed(decimals >= 3 ? 4 : 3)} (${Number(m.maePct ?? 0).toFixed(2)}%)` : '—'}</td>
+          <td class="ltr-num">${isOk ? Number(m.rmse ?? 0).toFixed(decimals >= 3 ? 4 : 3) : '—'}</td>
+          <td class="ltr-num">${isOk && m.safeMapePct != null ? `${Number(m.safeMapePct).toFixed(2)}%` : '—'}</td>
+          <td class="ltr-num">${isOk ? `${Number(m.directionalAccuracyPct ?? 0).toFixed(1)}%` : '—'}</td>
+          <td class="ltr-num">${isOk ? `${Number(m.coverage80Pct ?? 0).toFixed(1)}%` : '—'}</td>
+          <td class="ltr-num">${isOk && m.avgIntervalWidthPct != null ? `${Number(m.avgIntervalWidthPct).toFixed(2)}%` : '—'}</td>
+          <td class="ltr-num">${isOk ? Number(m.pinballLoss ?? 0).toFixed(4) : '—'}</td>
+          <td class="ltr-num">${isOk ? Number(m.crps ?? 0).toFixed(4) : '—'}</td>
         </tr>
       `;
     })
@@ -938,12 +1108,15 @@ function renderBacktestPanel(fc, decimals, isFa) {
       <table class="ci-fc-table">
         <thead>
           <tr>
-            <th>Model</th>
+            <th>Model / Runtime</th>
             <th>Family</th>
+            <th>Status</th>
             <th>MAE</th>
             <th>RMSE</th>
+            <th>Safe-MAPE</th>
             <th>Dir Acc</th>
             <th>80% Cov</th>
+            <th>Width%</th>
             <th>Pinball</th>
             <th>CRPS</th>
           </tr>

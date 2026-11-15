@@ -411,4 +411,7 @@
     <string name="forecast_path_stats_title">Path Event Stats &amp; Censoring</string>
     <string name="forecast_sensitivity_title">Event Dictionary 3x3 Sensitivity Grid</string>
     <string name="forecast_stability_title">Forecast Stability vs Prior Run</string>
+    <string name="forecast_model_selector_label">Chart Model</string>
+    <string name="forecast_oos_gate_title">Out-of-Sample Model Selection Gate</string>
+    <string name="forecast_comparison_title">Model Trajectory Comparison</string>
 </resources>

@@ -111,6 +111,7 @@ data class ChartPreferences(
     val forecastHorizonBars: Int = 30,
     val forecastPluginConfigJson: String = "",
     val forecastWorkerUrl: String = "",
+    val selectedForecastModelId: String = "AUTO",
 
     // Unified Cross-Platform Indicator Toggles & Chart Pane State (Synced across Web & Android)
     val showVolume: Boolean = true,

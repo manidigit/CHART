@@ -368,7 +368,8 @@ fun ChartIntelligenceApp(
                             lowerTimeframeCandlesProvider = mainViewModel::getLowerTimeframeCandlesForActiveTab,
                             lifecycleEvents = state.forecastLifecycleEvents,
                             lifecycleVerifyResult = state.forecastLifecycleVerifyResult,
-                            onEvaluateMaturedOutcomes = mainViewModel::evaluateMaturedForecastOutcomes
+                            onEvaluateMaturedOutcomes = mainViewModel::evaluateMaturedForecastOutcomes,
+                            onSelectModelId = mainViewModel::setForecastModel
                         )
 
                         WorkspaceScreen.SETTINGS -> SettingsScreen(

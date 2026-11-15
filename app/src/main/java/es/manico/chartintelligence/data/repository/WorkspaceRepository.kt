@@ -584,6 +584,7 @@ class WorkspaceRepository(context: Context) {
                 forecastHorizonBars = obj.optInt("forecastHorizonBars", 30).coerceIn(10, 60),
                 forecastPluginConfigJson = obj.optString("forecastPluginConfigJson", ""),
                 forecastWorkerUrl = obj.optString("forecastWorkerUrl", ""),
+                selectedForecastModelId = obj.optString("selectedForecastModelId", "AUTO").ifBlank { "AUTO" },
                 showVolume = obj.optBoolean("showVolume", true),
                 volumePaneRatio = obj.optDouble("volumePaneRatio", 0.22).toFloat().coerceIn(0.12f, 0.35f),
                 showSma20 = obj.optBoolean("showSma20", false),
@@ -719,6 +720,7 @@ class WorkspaceRepository(context: Context) {
         obj.put("forecastHorizonBars", prefsObj.forecastHorizonBars.coerceIn(10, 60))
         obj.put("forecastPluginConfigJson", prefsObj.forecastPluginConfigJson)
         obj.put("forecastWorkerUrl", prefsObj.forecastWorkerUrl)
+        obj.put("selectedForecastModelId", prefsObj.selectedForecastModelId)
         obj.put("showVolume", prefsObj.showVolume)
         obj.put("volumePaneRatio", prefsObj.volumePaneRatio.coerceIn(0.12f, 0.35f).toDouble())
         obj.put("showSma20", prefsObj.showSma20)
@@ -2122,6 +2124,7 @@ class WorkspaceRepository(context: Context) {
                         forecastHorizonBars = es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(
                             obj.optInt("forecastHorizonBars", curPrefs.forecastHorizonBars)
                         ),
+                        selectedForecastModelId = obj.optString("selectedForecastModelId", curPrefs.selectedForecastModelId).ifBlank { "AUTO" },
                         pitchforkVariant = obj.optString("pitchforkVariant", "original"),
                         isLogScale = obj.optBoolean("isLogScale", false),
                         activeDrawingColorHex = normalizeAndroidHex(
@@ -2191,6 +2194,7 @@ class WorkspaceRepository(context: Context) {
                 .put("showFutureProjection", t.showFutureProjection)
                 .put("forecastRenderMode", t.forecastRenderMode)
                 .put("forecastHorizonBars", t.forecastHorizonBars)
+                .put("selectedForecastModelId", t.selectedForecastModelId)
                 .put("pitchforkVariant", t.pitchforkVariant)
                 .put("isLogScale", t.isLogScale)
                 .put("activeDrawingColorHex", t.activeDrawingColorHex)
@@ -2292,6 +2296,7 @@ class WorkspaceRepository(context: Context) {
             .put("forecastHorizonBars", preferences.forecastHorizonBars)
             .put("forecastPluginConfigJson", preferences.forecastPluginConfigJson)
             .put("forecastWorkerUrl", preferences.forecastWorkerUrl)
+            .put("selectedForecastModelId", preferences.selectedForecastModelId)
             .put("showVolume", refTab?.showVolume ?: preferences.showVolume)
             .put("volumePaneRatio", (refTab?.volumePaneRatio ?: preferences.volumePaneRatio).toDouble())
             .put("showSma20", refTab?.showSma20 ?: preferences.showSma20)
@@ -2382,6 +2387,7 @@ class WorkspaceRepository(context: Context) {
                 .put("showFutureProjection", t.showFutureProjection)
                 .put("forecastRenderMode", t.forecastRenderMode)
                 .put("forecastHorizonBars", t.forecastHorizonBars)
+                .put("selectedForecastModelId", t.selectedForecastModelId)
                 .put("pitchforkVariant", t.pitchforkVariant)
                 .put("isLogScale", t.isLogScale)
                 .put("activeDrawingColorHex", t.activeDrawingColorHex)
@@ -2592,6 +2598,7 @@ class WorkspaceRepository(context: Context) {
                     ),
                     forecastPluginConfigJson = prefsJson.optString("forecastPluginConfigJson", cur.forecastPluginConfigJson),
                     forecastWorkerUrl = prefsJson.optString("forecastWorkerUrl", cur.forecastWorkerUrl),
+                    selectedForecastModelId = prefsJson.optString("selectedForecastModelId", cur.selectedForecastModelId).ifBlank { "AUTO" },
                     showVolume = resolveIndBool("showVolume", cur.showVolume),
                     volumePaneRatio = prefsJson.optDouble(
                         "volumePaneRatio",
@@ -2744,6 +2751,7 @@ class WorkspaceRepository(context: Context) {
                             forecastHorizonBars = es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(
                                 obj.optInt("forecastHorizonBars", curPrefs.forecastHorizonBars)
                             ),
+                            selectedForecastModelId = obj.optString("selectedForecastModelId", curPrefs.selectedForecastModelId).ifBlank { "AUTO" },
                             pitchforkVariant = obj.optString("pitchforkVariant", curPrefs.pitchforkVariant),
                             isLogScale = obj.optBoolean("isLogScale", curPrefs.logarithmicScaleDefault),
                             activeDrawingColorHex = normalizeAndroidHex(

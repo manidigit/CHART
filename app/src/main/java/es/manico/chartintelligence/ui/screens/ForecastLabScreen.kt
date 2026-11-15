@@ -77,6 +77,7 @@ import es.manico.chartintelligence.forecast.ForecastRenderMode
 import es.manico.chartintelligence.forecast.ForecastResult
 import es.manico.chartintelligence.forecast.ForecastStatus
 import es.manico.chartintelligence.forecast.ForecastV130Analyzer
+import es.manico.chartintelligence.forecast.ForecastWorkerClient
 import es.manico.chartintelligence.forecast.LedgerVerifyResult
 import es.manico.chartintelligence.forecast.LifecycleVerifyResult
 import es.manico.chartintelligence.forecast.RemoteWorkerStatus
@@ -89,9 +90,11 @@ import es.manico.chartintelligence.ui.components.ForecastScenarioCard
 import es.manico.chartintelligence.ui.components.HashLedgerEntryCard
 import es.manico.chartintelligence.ui.components.KeyPriceZonesSection
 import es.manico.chartintelligence.ui.components.LifecycleEventLogCard
+import es.manico.chartintelligence.ui.components.ModelTrajectoryComparisonCard
 import es.manico.chartintelligence.ui.components.MtfCoordinationCard
 import es.manico.chartintelligence.ui.components.NoEdgeAndOodHeaderBadges
 import es.manico.chartintelligence.ui.components.NoEdgeWarningBanner
+import es.manico.chartintelligence.ui.components.OosWinnerGateCard
 import es.manico.chartintelligence.ui.components.PathEventAndSensitivityCard
 import es.manico.chartintelligence.ui.components.SmcClusteredScenariosCard
 import es.manico.chartintelligence.ui.components.UncertaintyBreakdownCard
@@ -105,6 +108,16 @@ import java.math.BigDecimal
 import java.util.Locale
 
 private val FORECAST_HORIZON_PRESETS = listOf(10, 15, 20, 30, 45, 60)
+private val FORECAST_MODEL_CHIPS = listOf(
+    "AUTO" to "Auto (OOS)",
+    "smc_kmedoids" to "SMC K-Medoids",
+    "native_arima_diff" to "ARIMA",
+    "native_prophet_decomp" to "Prophet (Approx)",
+    "native_seq_recurrent_approx" to "Recurrent MC",
+    "native_quantile_attention_approx" to "TFT (Approx)",
+    "naive_persistence" to "Naive",
+    "ensemble" to "Ensemble"
+)
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
@@ -134,7 +147,8 @@ fun ForecastLabScreen(
     lowerTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() },
     lifecycleEvents: List<ForecastLifecycleEvent> = emptyList(),
     lifecycleVerifyResult: LifecycleVerifyResult = LifecycleVerifyResult(true, 0, -1, "Empty lifecycle log"),
-    onEvaluateMaturedOutcomes: () -> Unit = {}
+    onEvaluateMaturedOutcomes: () -> Unit = {},
+    onSelectModelId: (String) -> Unit = {}
 ) {
     BackHandler(onBack = onBackToWatchlist)
 
@@ -153,6 +167,9 @@ fun ForecastLabScreen(
     val activeHorizon = remember(activeTab?.forecastHorizonBars, preferences.forecastHorizonBars) {
         val h = activeTab?.forecastHorizonBars ?: preferences.forecastHorizonBars
         if (h in 10..60) h else 30
+    }
+    val activeSelectedModelId = remember(activeTab?.selectedForecastModelId, preferences.selectedForecastModelId) {
+        (activeTab?.selectedForecastModelId ?: preferences.selectedForecastModelId).ifBlank { "AUTO" }
     }
 
     val registry = remember(preferences.forecastPluginConfigJson) {
@@ -189,6 +206,7 @@ fun ForecastLabScreen(
         activeTab?.timeframe,
         activeHorizon,
         activeRenderMode,
+        activeSelectedModelId,
         selectedScenarioId,
         preferences.forecastPluginConfigJson,
         preferences.forecastWorkerUrl
@@ -201,7 +219,7 @@ fun ForecastLabScreen(
         isComputingForecast = true
         val runKey = "${activeTab.symbolCode}|${activeTab.timeframe}|$activeHorizon|$selectedScenarioId"
         val prev = previousRunMap[runKey]
-        val computed = withContext(Dispatchers.Default) {
+        var computed = withContext(Dispatchers.Default) {
             ForecastEngine.project(
                 candles = candles,
                 symbolCode = activeTab.symbolCode,
@@ -216,7 +234,8 @@ fun ForecastLabScreen(
                 lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
                 lowerTimeframeCandles = lowerCandles,
                 previousForecast = prev,
-                selectedScenarioId = selectedScenarioId
+                selectedScenarioId = selectedScenarioId,
+                selectedModelId = activeSelectedModelId
             )
         }
         if (computed.status != ForecastStatus.DATA_NOT_READY && computed.inputHash != prev?.inputHash) {
@@ -224,6 +243,20 @@ fun ForecastLabScreen(
         }
         forecastResult = computed
         isComputingForecast = false
+
+        val workerUrl = preferences.forecastWorkerUrl.trim()
+        if (workerUrl.isNotEmpty() && computed.status != ForecastStatus.DATA_NOT_READY) {
+            val workerWrap = ForecastWorkerClient.infer(
+                workerUrl = workerUrl,
+                symbolCode = activeTab.symbolCode,
+                timeframe = activeTab.timeframe,
+                horizonBars = activeHorizon,
+                candles = candles,
+                inputHash = computed.inputHash
+            )
+            computed = ForecastEngine.applyRemoteWorkerResponse(computed, workerWrap, activeSelectedModelId)
+            forecastResult = computed
+        }
     }
 
     val currentForecast = forecastResult
@@ -380,6 +413,35 @@ fun ForecastLabScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "${stringResource(R.string.forecast_model_selector_label)}:",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                val remoteChoices = currentForecast?.modelTrajectories.orEmpty()
+                                    .filter { it.modelId.startsWith("py_") }
+                                    .map { it.modelId to "${it.modelName} (Py)" }
+                                for ((mId, mLabel) in (FORECAST_MODEL_CHIPS + remoteChoices)) {
+                                    FilterChip(
+                                        selected = activeSelectedModelId.equals(mId, ignoreCase = true),
+                                        onClick = { onSelectModelId(mId) },
+                                        label = {
+                                            Text(mLabel, fontSize = 11.sp)
+                                        },
+                                        modifier = Modifier
+                                            .bentoInteractive()
+                                            .testTag("forecast_model_chip_${mId.lowercase()}")
+                                    )
+                                }
+                            }
 
                             Row(
                                 modifier = Modifier
@@ -552,6 +614,14 @@ fun ForecastLabScreen(
                                     }
                                 }
                             } else {
+                                OosWinnerGateCard(result = currentForecast)
+
+                                ModelTrajectoryComparisonCard(
+                                    result = currentForecast,
+                                    decimals = decimals,
+                                    onSelectModelId = onSelectModelId
+                                )
+
                                 BayesianLiveSelfCorrectionCard(result = currentForecast)
 
                                 SmcClusteredScenariosCard(

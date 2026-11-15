@@ -3,6 +3,8 @@ declare(strict_types=1);
 
 namespace ChartIntelligence\Forecast;
 
+require_once __DIR__ . '/NativeModelsPhp.php';
+
 final class ForecastEnginePhp
 {
     public const CONTRACT_VERSION = 'forecast-contract/v1';
@@ -102,8 +104,14 @@ final class ForecastEnginePhp
         ];
     }
 
-    public static function project(array $candles, string $symbolCode, string $timeframe, int $horizonBars = 30, string $workerUrl = ''): array
-    {
+    public static function project(
+        array $candles,
+        string $symbolCode,
+        string $timeframe,
+        int $horizonBars = 30,
+        string $workerUrl = '',
+        string $selectedModelId = 'AUTO'
+    ): array {
         $horizon = max(10, min(60, $horizonBars));
         $clean = [];
         foreach ($candles as $c) {
@@ -112,12 +120,14 @@ final class ForecastEnginePhp
             $l = (float) ($c['low'] ?? 0);
             $cl = (float) ($c['close'] ?? 0);
             $ms = (int) ($c['open_time_utc_ms'] ?? ($c['openTimeUtcMs'] ?? 0));
+            $vol = max(1.0, (float) ($c['volume'] ?? 100.0));
             if ($o > 0 && $cl > 0 && is_finite($cl)) {
                 $clean[] = [
                     'open' => $o,
                     'high' => max($h, $o, $cl),
                     'low' => max(1e-8, min($l, $o, $cl)),
                     'close' => $cl,
+                    'volume' => $vol,
                     'open_time_utc_ms' => $ms,
                 ];
             }
@@ -221,53 +231,179 @@ final class ForecastEnginePhp
             ];
         }
 
-        // Quick chronological walk-forward audit (5-bar eval horizon)
-        $evalH = 5;
-        $minTrain = max(24, min(36, (int) floor($n * 0.55)));
-        $windows = 0;
-        $ensAbs = 0.0;
-        $naiveAbs = 0.0;
-        $ensCov = 0;
-        $ptCount = 0;
-        if ($n >= $minTrain + $evalH + 2) {
-            $stride = max(1, (int) floor(($n - $evalH - $minTrain) / 8));
-            for ($origin = $minTrain; $origin <= $n - $evalH && $windows < 8; $origin += $stride) {
-                $windows++;
-                $base = $slice[$origin - 1]['close'];
-                $subRet = [];
-                for ($j = 1; $j < $origin; $j++) {
-                    $subRet[] = log($slice[$j]['close'] / $slice[$j - 1]['close']);
+        $auditCandles = count($clean) > 240 ? array_slice($clean, -240) : $clean;
+        $audit = NativeModelsPhp::runAllAndAudit($auditCandles, $timeframe, $horizon, $selectedModelId);
+
+        $modelTrajectories = $audit['modelTrajectories'];
+        $modelBenchmarks = $audit['modelBenchmarks'];
+        $selectedChartModelId = $audit['selectedChartModelId'];
+        $selectionMode = $audit['selectionMode'];
+        $selectionReason = $audit['selectionReason'];
+        $winnerModelId = $audit['winnerModelId'];
+
+        // Include PHP statistical GARCH(1,1) baseline alongside the 4 native models
+        $modelTrajectories[] = [
+            'modelId' => 'php_garch_statistical',
+            'modelName' => 'EWMA + GARCH(1,1) Statistical',
+            'family' => 'ECONOMETRIC',
+            'executionRuntime' => 'NATIVE_PHP',
+            'isApproximation' => false,
+            'isCalibratedInterval' => true,
+            'status' => 'SUCCESS',
+            'reason' => '',
+            'trainingStartUtcMs' => (int) ($auditCandles[0]['open_time_utc_ms'] ?? 0),
+            'trainingEndUtcMs' => $lastMs,
+            'trainingSampleCount' => count($auditCandles),
+            'points' => $points,
+        ];
+
+        $inputHash = hash('sha256', self::canonicalJson([
+            'symbolCode' => strtoupper($symbolCode),
+            'timeframe' => strtoupper($timeframe),
+            'horizonBars' => $horizon,
+            'lastOpenMs' => $lastMs,
+            'lastClose' => $lastClose,
+        ]));
+
+        // Optional non-blocking remote Python worker enrichment
+        $remoteWorker = self::probeRemoteWorker($workerUrl, [
+            'contractVersion' => self::CONTRACT_VERSION,
+            'symbolCode' => strtoupper($symbolCode),
+            'timeframe' => strtoupper($timeframe),
+            'horizonBars' => $horizon,
+            'inputHash' => $inputHash,
+            'candles' => $auditCandles,
+        ]);
+        if (($remoteWorker['status'] ?? '') === 'CONNECTED' && is_array($remoteWorker['response'] ?? null)) {
+            $resp = $remoteWorker['response'];
+            foreach (($resp['modelTrajectories'] ?? []) as $wt) {
+                if (!is_array($wt) || empty($wt['modelId'])) {
+                    continue;
                 }
-                $subMean = array_sum(array_slice($subRet, -12)) / max(1, min(12, count($subRet)));
-                $subVar = 0.0;
-                foreach ($subRet as $sr) {
-                    $subVar += $sr * $sr;
-                }
-                $subSig = max(1e-5, sqrt($subVar / max(1, count($subRet))));
-                for ($h = 1; $h <= $evalH; $h++) {
-                    $actual = $slice[$origin + $h - 1]['close'];
-                    $pred = $base * exp($subMean * 0.5 * $h);
-                    $sH = $subSig * sqrt($h);
-                    $lo = $pred * exp(-1.28155 * $sH);
-                    $hi = $pred * exp(1.28155 * $sH);
-                    $ensAbs += abs($actual - $pred);
-                    $naiveAbs += abs($actual - $base);
-                    if ($actual >= $lo && $actual <= $hi) {
-                        $ensCov++;
+                $replaced = false;
+                foreach ($modelTrajectories as $idx => $existingT) {
+                    if (($existingT['modelId'] ?? '') === $wt['modelId']) {
+                        $modelTrajectories[$idx] = $wt;
+                        $replaced = true;
+                        break;
                     }
-                    $ptCount++;
                 }
+                if (!$replaced) {
+                    $modelTrajectories[] = $wt;
+                }
+            }
+            foreach (($resp['modelBenchmarks'] ?? []) as $wb) {
+                if (!is_array($wb) || empty($wb['modelId'])) {
+                    continue;
+                }
+                $replaced = false;
+                foreach ($modelBenchmarks as $idx => $existingB) {
+                    if (($existingB['modelId'] ?? '') === $wb['modelId']) {
+                        $modelBenchmarks[$idx] = $wb;
+                        $replaced = true;
+                        break;
+                    }
+                }
+                if (!$replaced) {
+                    $modelBenchmarks[] = $wb;
+                }
+            }
+            $reselect = NativeModelsPhp::selectWinnerAndPoints($modelTrajectories, $modelBenchmarks, $selectedModelId, $horizon);
+            $selectedChartModelId = $reselect['selectedChartModelId'];
+            $selectionMode = $reselect['selectionMode'];
+            $selectionReason = $reselect['selectionReason'];
+            $winnerModelId = $reselect['winnerModelId'];
+            if (!empty($reselect['chosenPoints'])) {
+                $points = $reselect['chosenPoints'];
+            }
+        } else {
+            $reselect = NativeModelsPhp::selectWinnerAndPoints($modelTrajectories, $modelBenchmarks, $selectedModelId, $horizon);
+            $selectedChartModelId = $reselect['selectedChartModelId'];
+            $selectionMode = $reselect['selectionMode'];
+            $selectionReason = $reselect['selectionReason'];
+            $winnerModelId = $reselect['winnerModelId'];
+            if (!empty($reselect['chosenPoints'])) {
+                $points = $reselect['chosenPoints'];
             }
         }
 
-        $ensMae = $ptCount > 0 ? ($ensAbs / $ptCount) : 0.0;
-        $naiveMae = $ptCount > 0 ? ($naiveAbs / $ptCount) : 0.0;
-        $covPct = $ptCount > 0 ? (($ensCov / $ptCount) * 100.0) : 0.0;
-        $impPct = $naiveMae > 1e-9 ? ((($naiveMae - $ensMae) / $naiveMae) * 100.0) : 0.0;
-        $skillScore = $naiveMae > 1e-9 ? (($naiveMae - $ensMae) / $naiveMae) : 0.0;
-        $nEff = $n > 0 ? round($n / max(1.0, $evalH * 0.65), 2) : 0.0;
-        $passed = $windows >= 5 && $ensMae <= ($naiveMae * 1.015) && $covPct >= 50.0 && $covPct <= 98.0;
-        $status = $passed ? 'VALID' : 'PROVISIONAL';
+        // Synchronize walk-forward headline summary from genuine audited benchmarks
+        $naiveBench = $audit['naiveBench'];
+        $bestEvalBench = null;
+        foreach ($modelBenchmarks as $b) {
+            if (($b['modelId'] ?? '') === $selectedChartModelId && ($b['status'] ?? '') === 'SUCCESS' && (int) ($b['windows'] ?? 0) > 0) {
+                $bestEvalBench = $b;
+                break;
+            }
+        }
+        if ($bestEvalBench === null && $winnerModelId !== null) {
+            foreach ($modelBenchmarks as $b) {
+                if (($b['modelId'] ?? '') === $winnerModelId && ($b['status'] ?? '') === 'SUCCESS') {
+                    $bestEvalBench = $b;
+                    break;
+                }
+            }
+        }
+        if ($naiveBench !== null && $bestEvalBench !== null && (int) ($bestEvalBench['windows'] ?? 0) > 0) {
+            $windows = (int) $bestEvalBench['windows'];
+            $ensMae = (float) $bestEvalBench['mae'];
+            $naiveMae = (float) ($naiveBench['mae'] ?? $ensMae);
+            $covPct = (float) $bestEvalBench['coverage80Pct'];
+            $impPct = $naiveMae > 1e-9 ? ((($naiveMae - $ensMae) / $naiveMae) * 100.0) : 0.0;
+            $skillScore = $naiveMae > 1e-9 ? (($naiveMae - $ensMae) / $naiveMae) : 0.0;
+            $nEff = count($auditCandles) > 0 ? round(count($auditCandles) / max(1.0, 5 * 0.65), 2) : 0.0;
+            $passed = $winnerModelId !== null && $windows >= 5;
+            $status = $passed ? 'VALID' : 'PROVISIONAL';
+            $evalH = 5;
+        } else {
+            // Fall back to statistical GARCH audit window metrics
+            $evalH = 5;
+            $minTrain = max(24, min(36, (int) floor($n * 0.55)));
+            $windows = 0;
+            $ensAbs = 0.0;
+            $naiveAbs = 0.0;
+            $ensCov = 0;
+            $ptCount = 0;
+            if ($n >= $minTrain + $evalH + 2) {
+                $stride = max(1, (int) floor(($n - $evalH - $minTrain) / 8));
+                for ($origin = $minTrain; $origin <= $n - $evalH && $windows < 8; $origin += $stride) {
+                    $windows++;
+                    $base = $slice[$origin - 1]['close'];
+                    $subRet = [];
+                    for ($j = 1; $j < $origin; $j++) {
+                        $subRet[] = log($slice[$j]['close'] / $slice[$j - 1]['close']);
+                    }
+                    $subMean = array_sum(array_slice($subRet, -12)) / max(1, min(12, count($subRet)));
+                    $subVar = 0.0;
+                    foreach ($subRet as $sr) {
+                        $subVar += $sr * $sr;
+                    }
+                    $subSig = max(1e-5, sqrt($subVar / max(1, count($subRet))));
+                    for ($h = 1; $h <= $evalH; $h++) {
+                        $actual = $slice[$origin + $h - 1]['close'];
+                        $pred = $base * exp($subMean * 0.5 * $h);
+                        $sH = $subSig * sqrt($h);
+                        $lo = $pred * exp(-1.28155 * $sH);
+                        $hi = $pred * exp(1.28155 * $sH);
+                        $ensAbs += abs($actual - $pred);
+                        $naiveAbs += abs($actual - $base);
+                        if ($actual >= $lo && $actual <= $hi) {
+                            $ensCov++;
+                        }
+                        $ptCount++;
+                    }
+                }
+            }
+
+            $ensMae = $ptCount > 0 ? ($ensAbs / $ptCount) : 0.0;
+            $naiveMae = $ptCount > 0 ? ($naiveAbs / $ptCount) : 0.0;
+            $covPct = $ptCount > 0 ? (($ensCov / $ptCount) * 100.0) : 0.0;
+            $impPct = $naiveMae > 1e-9 ? ((($naiveMae - $ensMae) / $naiveMae) * 100.0) : 0.0;
+            $skillScore = $naiveMae > 1e-9 ? (($naiveMae - $ensMae) / $naiveMae) : 0.0;
+            $nEff = $n > 0 ? round($n / max(1.0, $evalH * 0.65), 2) : 0.0;
+            $passed = $windows >= 5 && $ensMae <= ($naiveMae * 1.015) && $covPct >= 50.0 && $covPct <= 98.0;
+            $status = $passed ? 'VALID' : 'PROVISIONAL';
+        }
 
         $lastPt = $points[count($points) - 1];
         $cumSigmaTerm = sqrt(max(1e-9, $cumVar));
@@ -311,14 +447,6 @@ final class ForecastEnginePhp
         $pBreakBull = round($remBreak * $bullShare, 3);
         $pBreakBear = round(max(0.0, 1.0 - $pNoTouch - $pReaction - $pReclaim - $pBreakBull), 3);
 
-        $inputHash = hash('sha256', self::canonicalJson([
-            'symbolCode' => strtoupper($symbolCode),
-            'timeframe' => strtoupper($timeframe),
-            'horizonBars' => $horizon,
-            'lastOpenMs' => $lastMs,
-            'lastClose' => $lastClose,
-        ]));
-
         return [
             'contractVersion' => self::CONTRACT_VERSION,
             'specVersion' => '1.3.0',
@@ -329,7 +457,11 @@ final class ForecastEnginePhp
             'anchorOpenTimeUtcMs' => $lastMs,
             'anchorClose' => $lastClose,
             'regime' => abs($cappedDrift) > $uncondSigma * 0.18 ? ($cappedDrift > 0 ? 'TRENDING_UP' : 'TRENDING_DOWN') : 'RANGING',
-            'remoteWorker' => self::probeRemoteWorker($workerUrl, []),
+            'remoteWorker' => $remoteWorker,
+            'selectedChartModelId' => $selectedChartModelId,
+            'selectionMode' => $selectionMode,
+            'selectionReason' => $selectionReason,
+            'modelTrajectories' => $modelTrajectories,
             'uncertainty' => [
                 'aleatoricPct' => $aleatoricPct,
                 'epistemicPct' => $epistemicPct,
@@ -476,13 +608,20 @@ final class ForecastEnginePhp
                 'ensembleMae' => round($ensMae, 6),
                 'naiveMae' => round($naiveMae, 6),
                 'coverage80Pct' => round($covPct, 2),
+                'winnerModelId' => $winnerModelId,
+                'selectionMode' => $selectionMode,
+                'selectionReason' => $selectionReason,
+                'modelBenchmarks' => $modelBenchmarks,
             ],
             'summary' => [
+                'terminalStep' => (int) ($lastPt['stepAhead'] ?? $horizon),
                 'terminalQ10' => $lastPt['q10'],
                 'terminalQ25' => $lastPt['q25'],
                 'terminalQ50' => $lastPt['q50'],
                 'terminalQ75' => $lastPt['q75'],
                 'terminalQ90' => $lastPt['q90'],
+                'medianPctChange' => $lastClose > 0 ? round(((($lastPt['q50'] - $lastClose) / $lastClose) * 100.0), 4) : 0.0,
+                'corridorWidthPct' => $lastClose > 0 ? round(((($lastPt['q90'] - $lastPt['q10']) / $lastClose) * 100.0), 4) : 0.0,
             ],
             'inputHash' => $inputHash,
         ];

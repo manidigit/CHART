@@ -167,13 +167,14 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       const horizonBars = clampHorizonBars(tab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
       const renderMode = normalizeRenderMode(tab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.HYBRID);
       const selectedScenarioId = tab.selectedScenarioId || prefs.selectedScenarioId || 'SCENARIO_A';
+      const selectedModelId = String(tab.selectedForecastModelId || prefs.selectedForecastModelId || 'AUTO');
       if (prefs.forecastPluginConfig) {
         defaultForecastRegistry.applyConfig(prefs.forecastPluginConfig);
       }
       const lowerInfo = resolveLowerTimeframeInfo(tf);
       const lowerCandles = lowerInfo ? getCachedOrAggregatedCandles(symCode, prov, lowerInfo.timeframe) : [];
       const lowerLast = lowerCandles.length > 0 ? lowerCandles[lowerCandles.length - 1] : null;
-      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${candles.length}_${lowerCandles.length}_${lowerLast?.close || 0}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
+      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${selectedModelId}_${candles.length}_${lowerCandles.length}_${lowerLast?.close || 0}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
       if (cache.futureProjKey !== fKey || !cache.futureProjectionResult) {
         cache.futureProjKey = fKey;
         cache.futureProjectionResult = ForecastEngine.project(candles, {
@@ -182,10 +183,11 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
           horizonBars,
           renderMode,
           selectedScenarioId,
+          selectedModelId,
           registry: defaultForecastRegistry,
           lowerTimeframe: lowerInfo ? lowerInfo.timeframe : '',
           lowerTimeframeCandles: lowerCandles,
-          skipWalkForward: true,
+          skipWalkForward: false,
         });
       }
       return cache.futureProjectionResult.points || [];
@@ -1350,9 +1352,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.closePath();
     ctx.fill();
 
+    const activeModelTag = fullFcResult?.selectedChartModelId
+      ? ` · ${fullFcResult.selectedChartModelId}`
+      : '';
     ctx.fillStyle = textColor;
     ctx.font = '10.5px "Inter", system-ui, sans-serif';
-    ctx.fillText(`(${activeRenderMode} · q10–q90)`, futCenterX, subY);
+    ctx.fillText(`(${activeRenderMode}${activeModelTag} · q10–q90)`, futCenterX, subY);
 
     ctx.restore();
   }

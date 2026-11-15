@@ -281,15 +281,16 @@ if ($action === 'append_lifecycle_event') {
     exit;
 }
 
-$symbolCode = strtoupper(trim((string) ($payload['symbol'] ?? 'SPOTBRENT')));
+$symbolCode = strtoupper(trim((string) ($payload['symbol'] ?? ($payload['symbolCode'] ?? 'SPOTBRENT'))));
 $timeframe = strtoupper(trim((string) ($payload['timeframe'] ?? 'M15')));
-$horizonBars = max(10, min(60, (int) ($payload['horizon_bars'] ?? 30)));
-$workerUrl = trim((string) ($payload['worker_url'] ?? ''));
+$horizonBars = max(10, min(60, (int) ($payload['horizon_bars'] ?? ($payload['horizonBars'] ?? 30))));
+$workerUrl = trim((string) ($payload['worker_url'] ?? ($payload['workerUrl'] ?? '')));
+$selectedModelId = trim((string) ($payload['selected_model_id'] ?? ($payload['selectedModelId'] ?? 'AUTO')));
 
 $candles = is_array($payload['candles'] ?? null) ? $payload['candles'] : [];
 if (empty($candles) && $pdo !== null) {
     try {
-        $cStmt = $pdo->prepare("SELECT open_time_utc_ms, open_price AS open, high_price AS high, low_price AS low, close_price AS close, volume FROM candles WHERE symbol_code = :s AND timeframe = :tf ORDER BY open_time_utc_ms DESC LIMIT 200");
+        $cStmt = $pdo->prepare("SELECT open_time_utc_ms, open_price AS open, high_price AS high, low_price AS low, close_price AS close, volume FROM candles WHERE symbol_code = :s AND timeframe = :tf ORDER BY open_time_utc_ms DESC LIMIT 240");
         $cStmt->execute([':s' => $symbolCode, ':tf' => $timeframe]);
         $fetched = $cStmt->fetchAll() ?: [];
         $candles = array_reverse($fetched);
@@ -299,7 +300,14 @@ if (empty($candles) && $pdo !== null) {
 $clientEntry = is_array($payload['client_forecast'] ?? null) ? $payload['client_forecast'] : null;
 $forecast = $action === 'append_client_forecast' && $clientEntry !== null
     ? $clientEntry
-    : ForecastEnginePhp::project($candles, $symbolCode, $timeframe, $horizonBars, $workerUrl);
+    : ForecastEnginePhp::project($candles, $symbolCode, $timeframe, $horizonBars, $workerUrl, $selectedModelId);
+
+if ($action === 'infer') {
+    ApiEnvelope::sendSuccess([
+        'forecast' => $forecast,
+    ], ($forecast['status'] ?? '') === 'DATA_NOT_READY' ? 'forecast_data_not_ready' : 'forecast_inferred');
+    exit;
+}
 
 if (($forecast['status'] ?? '') === 'DATA_NOT_READY') {
     ApiEnvelope::sendSuccess([

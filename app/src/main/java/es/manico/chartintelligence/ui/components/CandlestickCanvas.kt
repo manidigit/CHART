@@ -390,6 +390,9 @@ fun CandlestickCanvas(
     val lowerCandles = remember(lowerInfo, candles) {
         if (lowerInfo != null) lowerTimeframeCandlesProvider(lowerInfo.timeframe) else emptyList()
     }
+    val activeSelectedModelId = remember(tab.selectedForecastModelId, preferences.selectedForecastModelId) {
+        tab.selectedForecastModelId.ifBlank { preferences.selectedForecastModelId }.ifBlank { "AUTO" }
+    }
     val futureProjectionResult = remember(
         candles,
         lowerCandles,
@@ -399,6 +402,7 @@ fun CandlestickCanvas(
         effectiveScrollOffset,
         activeForecastHorizon,
         activeForecastRenderMode,
+        activeSelectedModelId,
         preferences.forecastPluginConfigJson,
         preferences.forecastWorkerUrl
     ) {
@@ -415,9 +419,10 @@ fun CandlestickCanvas(
                 renderMode = activeForecastRenderMode,
                 registry = registry,
                 workerUrl = preferences.forecastWorkerUrl,
-                skipWalkForward = true,
+                skipWalkForward = false,
                 lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
-                lowerTimeframeCandles = lowerCandles
+                lowerTimeframeCandles = lowerCandles,
+                selectedModelId = activeSelectedModelId
             )
         }
     }
@@ -2249,8 +2254,9 @@ fun CandlestickCanvas(
                             )
                         }
                         if (tab.showFutureProjection && futureProjectedCandles.isNotEmpty()) {
+                            val activeModelTag = futureProjectionResult?.selectedChartModelId ?: "smc_kmedoids"
                             Text(
-                                text = "🔮 +${futureProjectedCandles.size} (${activeForecastRenderMode.key})",
+                                text = "🔮 +${futureProjectedCandles.size} (${activeForecastRenderMode.key} · $activeModelTag)",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
@@ -2836,8 +2842,9 @@ fun CandlestickCanvas(
                             fontSize = 10.sp,
                             color = Color(0xFFF8FAFC)
                         )
+                        val activeModelTag = futureProjectionResult?.selectedChartModelId ?: "smc_kmedoids"
                         Text(
-                            text = "Statistical Projection (+${futureProjectedCandles.size} bars · ${activeForecastRenderMode.key}) →",
+                            text = "Statistical Projection (+${futureProjectedCandles.size} bars · ${activeForecastRenderMode.key} · $activeModelTag) →",
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 9.sp,
                             fontFamily = JetBrainsMonoFontFamily,
