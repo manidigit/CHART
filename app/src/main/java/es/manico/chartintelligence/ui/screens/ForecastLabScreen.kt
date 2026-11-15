@@ -73,6 +73,7 @@ import es.manico.chartintelligence.forecast.LedgerVerifyResult
 import es.manico.chartintelligence.forecast.LifecycleVerifyResult
 import es.manico.chartintelligence.forecast.RemoteWorkerStatus
 import es.manico.chartintelligence.ui.components.AssetSymbolBadge
+import es.manico.chartintelligence.ui.components.BayesianLiveSelfCorrectionCard
 import es.manico.chartintelligence.ui.components.ForecastMiniFanCanvas
 import es.manico.chartintelligence.ui.components.ForecastModelPluginCard
 import es.manico.chartintelligence.ui.components.ForecastScenarioCard
@@ -83,6 +84,7 @@ import es.manico.chartintelligence.ui.components.MtfCoordinationCard
 import es.manico.chartintelligence.ui.components.NoEdgeAndOodHeaderBadges
 import es.manico.chartintelligence.ui.components.NoEdgeWarningBanner
 import es.manico.chartintelligence.ui.components.PathEventAndSensitivityCard
+import es.manico.chartintelligence.ui.components.SmcClusteredScenariosCard
 import es.manico.chartintelligence.ui.components.UncertaintyBreakdownCard
 import es.manico.chartintelligence.ui.components.WalkForwardBenchmarkTable
 import es.manico.chartintelligence.ui.theme.BentoCard
@@ -130,6 +132,7 @@ fun ForecastLabScreen(
     var showSymbolSheet by rememberSaveable { mutableStateOf(false) }
     var selectedSubTab by rememberSaveable { mutableIntStateOf(0) }
     var coordMode by rememberSaveable { mutableStateOf("independent") }
+    var selectedScenarioId by rememberSaveable { mutableStateOf("SCENARIO_A") }
     var workerUrlDraft by remember(preferences.forecastWorkerUrl) {
         mutableStateOf(preferences.forecastWorkerUrl)
     }
@@ -166,12 +169,13 @@ fun ForecastLabScreen(
         activeTab?.timeframe,
         activeHorizon,
         activeRenderMode,
+        selectedScenarioId,
         preferences.forecastPluginConfigJson,
         preferences.forecastWorkerUrl
     ) {
         if (activeTab == null) null
         else {
-            val runKey = "${activeTab.symbolCode}|${activeTab.timeframe}|$activeHorizon"
+            val runKey = "${activeTab.symbolCode}|${activeTab.timeframe}|$activeHorizon|$selectedScenarioId"
             val prev = previousRunMap[runKey]
             val res = ForecastEngine.project(
                 candles = candles,
@@ -184,7 +188,8 @@ fun ForecastLabScreen(
                 skipWalkForward = false,
                 higherTimeframe = higherTf,
                 higherTimeframeCandles = higherCandles,
-                previousForecast = prev
+                previousForecast = prev,
+                selectedScenarioId = selectedScenarioId
             )
             if (res.status != ForecastStatus.DATA_NOT_READY && res.inputHash != prev?.inputHash) {
                 previousRunMap[runKey] = res
@@ -483,6 +488,15 @@ fun ForecastLabScreen(
                                     }
                                 }
                             } else {
+                                BayesianLiveSelfCorrectionCard(result = forecastResult)
+
+                                SmcClusteredScenariosCard(
+                                    result = forecastResult,
+                                    decimals = decimals,
+                                    selectedScenarioId = forecastResult.activeScenarioId,
+                                    onSelectScenario = { selectedScenarioId = it }
+                                )
+
                                 forecastResult.noEdgeGate?.let { gate ->
                                     NoEdgeWarningBanner(noEdgeGate = gate)
                                 }

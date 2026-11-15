@@ -2258,6 +2258,15 @@ document.addEventListener('click', async (e) => {
     savePreferences();
     saveOpenTabsToStorage();
     renderApp();
+  } else if (action === 'select-smc-scenario' && activeTab) {
+    const scId = String(el.getAttribute('data-scenario-id') || 'SCENARIO_A');
+    activeTab.selectedScenarioId = scId;
+    state.chartPreferences.selectedScenarioId = scId;
+    activeTab._indicatorCache = {};
+    savePreferences();
+    saveOpenTabsToStorage();
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'apply-forecast-to-chart' && activeTab) {
     const nextState = !activeTab.showFutureProjection;
     activeTab.showFutureProjection = nextState;

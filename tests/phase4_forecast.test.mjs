@@ -300,3 +300,35 @@ test('PRED-08: v1.3.0 Append-only lifecycle log evaluates matured forecasts & pr
   assert.equal(ledger.loadEntries().length, 1, 'Original run entry must never be mutated/deleted');
 });
 
+test('PRED-09: SMCPredictionEngine Historical Analogs, K-Medoids 3-Scenario Clustering, ATR Wave Geometry & Bayesian Live Re-Anchoring', () => {
+  const candles = buildSyntheticCandles(150, 'M15');
+  const res = ForecastEngine.project(candles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    horizonBars: 20,
+  });
+
+  assert.equal(res.smcScenarios.length, 3, 'Must produce 3 clustered K-Medoids scenarios (SCENARIO_A, B, C)');
+  const probSum = res.smcScenarios.reduce((s, sc) => s + sc.probability, 0);
+  assert.ok(Math.abs(probSum - 1.0) <= 0.03, `Scenario probabilities must sum to ~1.0, got ${probSum}`);
+  assert.ok(res.bayesianLiveReport, 'Bayesian live verification report must be present');
+  assert.ok(res.bayesianLiveReport.accuracyScoreLastStep >= 0 && res.bayesianLiveReport.accuracyScoreLastStep <= 100);
+
+  // Verify non-flatlining ATR-calibrated candle bodies and non-linear wave structure
+  let maxConsecutiveSameColor = 0;
+  let curRun = 0;
+  let lastSign = 0;
+  for (let i = 0; i < res.points.length; i++) {
+    const p = res.points[i];
+    const body = Math.abs(p.close - p.open);
+    assert.ok(body >= res.featuresSummary.atr14 * 0.14, `Future candle ${i + 1} body must not flatline`);
+    assert.ok(p.volume > 0, 'Dynamic volume must be projected');
+    const sign = p.close >= p.open ? 1 : -1;
+    curRun = sign === lastSign ? curRun + 1 : 1;
+    lastSign = sign;
+    if (curRun > maxConsecutiveSameColor) maxConsecutiveSameColor = curRun;
+  }
+  assert.ok(maxConsecutiveSameColor <= 5, 'Wave generator must never produce 10 straight-line candles');
+});
+
+

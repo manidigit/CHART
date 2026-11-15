@@ -86,7 +86,46 @@ data class ForecastPoint(
     val q50: Double,
     val q75: Double,
     val q90: Double,
-    val pctChangeFromLast: Double
+    val pctChangeFromLast: Double,
+    val volume: Double = 0.0,
+    val rejectionWick: Boolean = false,
+    val wavePhase: String = "IMPULSE",
+    val pullbackPrice: Double = 0.0,
+    val primaryMagnetPrice: Double = 0.0
+)
+
+data class SmcProjectedScenario(
+    val id: String,
+    val clusterType: String,
+    val bias: String,
+    val name: String,
+    val nameEn: String,
+    val probability: Double,
+    val candles: List<ForecastPoint>,
+    val pullbackPrice: Double,
+    val primaryMagnetPrice: Double,
+    val targetPrice: Double,
+    val invalidationPrice: Double,
+    val stepIndex: Int = 0
+)
+
+data class SmcMarketContext(
+    val htfTrendBias: Double,
+    val poc: Double,
+    val vah: Double,
+    val valPrice: Double,
+    val ema20: Double,
+    val unmitigatedFvgCount: Int,
+    val eqHighCount: Int,
+    val eqLowCount: Int
+)
+
+data class BayesianLiveUpdateReport(
+    val updatedScenarios: List<SmcProjectedScenario>,
+    val accuracyScoreLastStep: Int,
+    val dominantScenarioId: String,
+    val statusMessageFa: String,
+    val statusMessageEn: String
 )
 
 data class ForecastScenario(
@@ -352,7 +391,11 @@ data class ForecastResult(
     val keyZones: List<KeyPriceZone> = emptyList(),
     val eventDictionary: EventDictionarySpec? = null,
     val mtfCoordination: MtfCoordinationReport? = null,
-    val stability: ForecastStabilityReport? = null
+    val stability: ForecastStabilityReport? = null,
+    val smcContext: SmcMarketContext? = null,
+    val smcScenarios: List<SmcProjectedScenario> = emptyList(),
+    val activeScenarioId: String = "SCENARIO_A",
+    val bayesianLiveReport: BayesianLiveUpdateReport? = null
 )
 
 object ForecastSha256 {

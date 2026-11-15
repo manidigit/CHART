@@ -675,13 +675,13 @@ object Phase2IndicatorsAlgorithm {
         if (candles.size < 4) return emptyList()
         val effectiveHorizon = max(10, min(60, horizon))
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(timeframe)
-        val win = candles.takeLast(min(60, candles.size))
+        val win = candles.takeLast(min(120, candles.size))
         val n = win.size
         val baseBar = win.last()
         val baseClose = baseBar.close.toDouble()
         if (baseClose <= 0.0) return emptyList()
 
-        // 1. Compute local ATR(14) & body scale
+        // 1. Compute local ATR(14) & 30-bar average body/wick ratios
         var trSum = 0.0
         var trCount = 0
         val atrStart = max(1, n - 14)
@@ -694,80 +694,142 @@ object Phase2IndicatorsAlgorithm {
             trCount++
         }
         val fallbackRange = (baseBar.high.toDouble() - baseBar.low.toDouble()).coerceAtLeast(baseClose * 0.0015)
-        val atr = (if (trCount > 0) trSum / trCount else fallbackRange).coerceAtLeast(baseClose * 0.0008)
+        val atr = (if (trCount > 0) trSum / trCount else fallbackRange).coerceAtLeast(baseClose * 0.0012)
 
-        // 2. Fit Holt Double Exponential Smoothing (alpha = 0.36, beta = 0.18)
-        val alpha = 0.36
-        val beta = 0.18
-        var level = win[0].close.toDouble()
-        var trend = (win[min(1, n - 1)].close.toDouble() - win[0].close.toDouble())
-        val detrended = DoubleArray(n)
-        for (i in 1 until n) {
-            val c = win[i].close.toDouble()
-            val prevLevel = level
-            level = alpha * c + (1.0 - alpha) * (level + trend)
-            trend = beta * (level - prevLevel) + (1.0 - beta) * trend
-            detrended[i] = c - level
+        val ratioCount = min(30, max(1, n - 1))
+        var bodyRatioSum = 0.0
+        var upperWickSum = 0.0
+        var lowerWickSum = 0.0
+        for (i in (n - ratioCount) until n) {
+            val cur = win[i]
+            val hi = cur.high.toDouble()
+            val lo = cur.low.toDouble()
+            val op = cur.open.toDouble()
+            val cl = cur.close.toDouble()
+            val rng = max(hi - lo, baseClose * 0.0005)
+            bodyRatioSum += abs(cl - op) / rng
+            upperWickSum += (hi - max(op, cl)) / rng
+            lowerWickSum += (min(op, cl) - lo) / rng
         }
-        val clampedSlope = trend.coerceIn(-atr * 0.32, atr * 0.32)
+        val avgBodyRatio = (bodyRatioSum / ratioCount).coerceIn(0.38, 0.74)
+        val avgUpperWickRatio = (upperWickSum / ratioCount).coerceIn(0.15, 0.48)
+        val avgLowerWickRatio = (lowerWickSum / ratioCount).coerceIn(0.15, 0.48)
 
-        // 3. Extract 2-harmonic Fourier cycle coefficients (periods P1 = 9.5, P2 = 19.0)
-        val p1 = 9.5
-        val p2 = 19.0
-        var a1 = 0.0
-        var b1 = 0.0
-        var a2 = 0.0
-        var b2 = 0.0
-        for (i in 0 until n) {
-            val r = detrended[i]
-            val ang1 = (2.0 * Math.PI * i) / p1
-            val ang2 = (2.0 * Math.PI * i) / p2
-            a1 += r * kotlin.math.cos(ang1)
-            b1 += r * kotlin.math.sin(ang1)
-            a2 += r * kotlin.math.cos(ang2)
-            b2 += r * kotlin.math.sin(ang2)
-        }
-        a1 = (2.0 / n) * a1
-        b1 = (2.0 / n) * b1
-        a2 = (2.0 / n) * a2
-        b2 = (2.0 / n) * b2
-
-        fun evalWave(idx: Double): Double {
-            val ang1 = (2.0 * Math.PI * idx) / p1
-            val ang2 = (2.0 * Math.PI * idx) / p2
-            val rawWave = a1 * kotlin.math.cos(ang1) + b1 * kotlin.math.sin(ang1) +
-                0.65 * (a2 * kotlin.math.cos(ang2) + b2 * kotlin.math.sin(ang2))
-            return rawWave.coerceIn(-atr * 1.8, atr * 1.8)
+        // 2. SMC (BOS/CHoCH, FVG, EQH/EQL) + Volume Profile (POC/VAH/VAL) + EMA20
+        val smc = PriceFormatterAlgorithm.detectSmcMarketStructures(win, 3)
+        val vp = PriceFormatterAlgorithm.computeVolumeProfile(
+            win,
+            24,
+            0.70
+        )
+        val ema20List = PriceFormatterAlgorithm.computeEmaValues(
+            win.map { it.close.toDouble() },
+            min(20, max(5, n - 2))
+        )
+        val ema20 = ema20List.lastOrNull() ?: baseClose
+        val lastBos = smc.structures.lastOrNull()
+        val dominantDir = when {
+            lastBos != null -> if (lastBos.direction >= 0) 1.0 else -1.0
+            baseClose >= ema20 -> 1.0
+            else -> -1.0
         }
 
+        val poc = vp?.pocPrice ?: ema20
+        val vah = vp?.vahPrice ?: (baseClose + 2.2 * atr)
+        val valPrice = vp?.valPrice ?: (baseClose - 2.2 * atr)
+
+        // Step A: Pullback / Mitigation Target (FVG / POC / EMA20)
+        val pullbackTarget = if (dominantDir > 0.0) {
+            val lowerFvg = smc.fvgs.filter { it.top < baseClose && (baseClose - (it.top + it.bottom) * 0.5) <= 3.5 * atr }
+                .maxByOrNull { it.top }
+            when {
+                lowerFvg != null -> (lowerFvg.top + lowerFvg.bottom) * 0.5
+                baseClose > ema20 + 0.4 * atr -> min(baseClose - 0.85 * atr, max(ema20, poc))
+                else -> baseClose - 0.75 * atr
+            }
+        } else {
+            val upperFvg = smc.fvgs.filter { it.bottom > baseClose && ((it.top + it.bottom) * 0.5 - baseClose) <= 3.5 * atr }
+                .minByOrNull { it.bottom }
+            when {
+                upperFvg != null -> (upperFvg.top + upperFvg.bottom) * 0.5
+                baseClose < ema20 - 0.4 * atr -> max(baseClose + 0.85 * atr, min(ema20, poc))
+                else -> baseClose + 0.75 * atr
+            }
+        }
+
+        // Step B: Primary Liquidity Magnet (EQH/EQL / VAH/VAL)
+        val primaryMagnet = if (dominantDir > 0.0) {
+            val aboveEqh = smc.equalLevels.filter { it.type == "EQH" && it.price > baseClose + 0.8 * atr && it.price <= baseClose + 5.5 * atr }
+                .minByOrNull { it.price }
+            when {
+                aboveEqh != null -> aboveEqh.price
+                vah > baseClose + 1.1 * atr -> vah
+                else -> baseClose + 3.5 * atr
+            }
+        } else {
+            val belowEql = smc.equalLevels.filter { it.type == "EQL" && it.price < baseClose - 0.8 * atr && it.price >= baseClose - 5.5 * atr }
+                .maxByOrNull { it.price }
+            when {
+                belowEql != null -> belowEql.price
+                valPrice < baseClose - 1.1 * atr -> valPrice
+                else -> baseClose - 3.5 * atr
+            }
+        }
+
+        val pullbackBars = min(4, max(3, (effectiveHorizon * 0.2).toInt()))
         val out = ArrayList<FutureProjectedCandle>(effectiveHorizon)
         var prevClose = baseClose
-        var cumTrend = 0.0
-        val baseWave = evalWave((n - 1).toDouble())
-        val phaseSeed = (baseBar.openTimeUtcMillis % 997L).toDouble() * 0.013
 
         for (step in 1..effectiveHorizon) {
-            val damp = Math.pow(0.95, step.toDouble())
-            cumTrend += clampedSlope * damp
-            val waveNow = evalWave((n - 1 + step).toDouble()) - baseWave
-            val harmonicSwing = kotlin.math.sin(step * 0.68 + phaseSeed) * atr * 0.42
-            val targetClose = (baseClose + cumTrend + waveNow * 0.55 + harmonicSwing).coerceAtLeast(baseClose * 0.25)
+            val open = prevClose
+            val isPullbackPhase = step <= pullbackBars
+            val signedBody: Double
 
-            val rawDelta = targetClose - prevClose
-            val minBody = atr * 0.22
-            val adjClose = if (abs(rawDelta) < minBody) {
-                val dir = if (kotlin.math.sin(step * 1.15 + phaseSeed) >= 0.0) 1.0 else -1.0
-                (prevClose + dir * minBody).coerceAtLeast(baseClose * 0.25)
+            if (isPullbackPhase) {
+                val remPullback = max(1, pullbackBars - step + 1)
+                val gapToPullback = pullbackTarget - open
+                val stepPull = gapToPullback / remPullback.toDouble()
+                val bodyMag = (abs(stepPull) + atr * 0.22).coerceIn(atr * 0.35, atr * 0.85)
+                val pullSign = if (gapToPullback >= 0.0) 1.0 else -1.0
+                signedBody = if (step == pullbackBars) -dominantDir * atr * 0.32 else pullSign * bodyMag
             } else {
-                targetClose
+                val waveIdx = (step - pullbackBars - 1) % 4
+                val isRetraceBar = waveIdx == 2
+                val remBars = max(2, effectiveHorizon - step + 1)
+                val magnetDrift = (primaryMagnet - open) / remBars.toDouble()
+
+                signedBody = if (isRetraceBar) {
+                    val retraceScale = 0.34 + 0.18 * abs(kotlin.math.sin(step * 1.3 + n))
+                    -dominantDir * atr * retraceScale
+                } else {
+                    val impulseScale = 0.74 + 0.42 * abs(kotlin.math.cos(step * 0.85 + (n % 5)))
+                    val rawStep = magnetDrift * 0.55 + dominantDir * atr * impulseScale * avgBodyRatio
+                    val mag = abs(rawStep).coerceIn(atr * 0.52 * avgBodyRatio, atr * 1.38)
+                    (if (rawStep >= 0.0) 1.0 else -1.0) * mag
+                }
             }
 
-            val open = prevClose
-            val close = adjClose
-            val upperWick = atr * (0.28 + 0.24 * abs(kotlin.math.sin(step * 1.7 + phaseSeed)))
-            val lowerWick = atr * (0.28 + 0.24 * abs(kotlin.math.cos(step * 1.3 + phaseSeed)))
-            val high = max(open, close) + upperWick
-            val low = max(baseClose * 0.1, min(open, close) - lowerWick)
+            val close = max(baseClose * 0.1, open + signedBody)
+            val bodyAbs = abs(close - open)
+            val upperWick = max(
+                atr * 0.16,
+                bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.35 * abs(kotlin.math.cos(step * 0.9)))
+            )
+            val lowerWick = max(
+                atr * 0.16,
+                bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.35 * abs(kotlin.math.sin(step * 1.1)))
+            )
+
+            var high = max(open, close) + upperWick
+            var low = max(baseClose * 0.1, min(open, close) - lowerWick)
+
+            if (abs(low - pullbackTarget) <= atr * 0.35 || abs(low - poc) <= atr * 0.32 || abs(low - valPrice) <= atr * 0.35) {
+                low = max(baseClose * 0.1, low - atr * 0.36)
+            }
+            if (abs(high - vah) <= atr * 0.35 || abs(high - primaryMagnet) <= atr * 0.35) {
+                high += atr * 0.36
+            }
+
             val pct = ((close - baseClose) / baseClose) * 100.0
             val bandHalf = atr * kotlin.math.sqrt(step.toDouble()) * 0.85
 

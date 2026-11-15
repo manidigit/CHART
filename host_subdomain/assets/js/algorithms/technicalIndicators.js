@@ -1127,10 +1127,12 @@ export const TechnicalIndicators = {
    * Combines Holt-Linear trend + damped AR(2) mean-reversion + Fourier dominant harmonic cycle
    * + deterministic synthetic OHLC body/wick synthesis and sqrt(h)*ATR confidence bands.
    */
-  computeFutureCandlestickProjection(candles = [], timeframe = 'M15', horizon = 30) {
+  computeFutureCandlestickProjection(candles = [], timeframe = 'M15', horizon = 30, options = {}) {
     if (!Array.isArray(candles) || candles.length < 10) return [];
-    const hCount = Math.max(10, Math.min(60, Math.round(horizon || 30)));
-    const lookback = Math.min(candles.length, 96);
+    const hCount = Math.max(10, Math.min(60, Math.round(horizon || options.numFutureCandles || 30)));
+    const volatilityMultiplier = Math.max(0.35, Math.min(2.5, Number(options.volatilityMultiplier || 1.0)));
+    const scenarioMode = String(options.scenarioMode || 'auto_smc');
+    const lookback = Math.min(candles.length, 120);
     const window = candles.slice(candles.length - lookback);
     const n = window.length;
     const closes = window.map((c) => Number(c.close || 0));
@@ -1138,123 +1140,219 @@ export const TechnicalIndicators = {
     const lastClose = closes[n - 1];
     if (!isFinite(lastClose) || lastClose <= 0) return [];
 
-    // 1. ATR(14) & average body/wick ratios
+    // 1. ATR(14) & 30-candle average body-to-wick ratios + average volume
     let trSum = 0;
-    let bodyRatioSum = 0;
-    let upperWickSum = 0;
-    let lowerWickSum = 0;
-    const atrCount = Math.min(24, n - 1);
-    for (let i = n - atrCount; i < n; i++) {
+    const atrPeriod = Math.min(14, n - 1);
+    for (let i = n - atrPeriod; i < n; i++) {
       const cur = window[i];
       const prevC = Number(window[i - 1].close || 0);
       const hi = Number(cur.high || 0);
       const lo = Number(cur.low || 0);
-      const op = Number(cur.open || 0);
-      const cl = Number(cur.close || 0);
       const tr = Math.max(hi - lo, Math.abs(hi - prevC), Math.abs(lo - prevC));
       trSum += tr;
+    }
+    const rawAtr = Math.max(trSum / Math.max(1, atrPeriod), lastClose * 0.0012);
+    const atr = rawAtr * volatilityMultiplier;
+
+    const ratioCount = Math.min(30, n - 1);
+    let bodyRatioSum = 0;
+    let upperWickSum = 0;
+    let lowerWickSum = 0;
+    let volSum = 0;
+    for (let i = n - ratioCount; i < n; i++) {
+      const cur = window[i];
+      const hi = Number(cur.high || 0);
+      const lo = Number(cur.low || 0);
+      const op = Number(cur.open || 0);
+      const cl = Number(cur.close || 0);
       const rng = Math.max(hi - lo, lastClose * 0.0005);
       bodyRatioSum += Math.abs(cl - op) / rng;
       upperWickSum += (hi - Math.max(op, cl)) / rng;
       lowerWickSum += (Math.min(op, cl) - lo) / rng;
+      volSum += Math.max(1, Number(cur.volume || 100));
     }
-    const atr = Math.max(trSum / Math.max(1, atrCount), lastClose * 0.0012);
-    const avgBodyRatio = Math.max(0.32, Math.min(0.72, bodyRatioSum / Math.max(1, atrCount)));
-    const avgUpperWickRatio = Math.max(0.12, Math.min(0.45, upperWickSum / Math.max(1, atrCount)));
-    const avgLowerWickRatio = Math.max(0.12, Math.min(0.45, lowerWickSum / Math.max(1, atrCount)));
+    const avgBodyRatio = Math.max(0.38, Math.min(0.74, bodyRatioSum / Math.max(1, ratioCount)));
+    const avgUpperWickRatio = Math.max(0.15, Math.min(0.48, upperWickSum / Math.max(1, ratioCount)));
+    const avgLowerWickRatio = Math.max(0.15, Math.min(0.48, lowerWickSum / Math.max(1, ratioCount)));
+    const avgVolume = Math.max(10, volSum / Math.max(1, ratioCount));
 
-    // 2. Holt Damped Linear Trend on closes
-    const alpha = 0.36;
-    const beta = 0.18;
-    const phi = 0.92;
-    let level = closes[0];
-    let trend = closes.length >= 2 ? closes[1] - closes[0] : 0;
-    for (let i = 1; i < n; i++) {
-      const prevLevel = level;
-      level = alpha * closes[i] + (1 - alpha) * (level + phi * trend);
-      trend = beta * (level - prevLevel) + (1 - beta) * phi * trend;
+    // 2. Compute SMC (BOS/CHoCH, Unmitigated FVG, EQH/EQL), Volume Profile (POC/VAH/VAL), EMA20, Bollinger
+    const smc = this.detectMarketStructureSmc(window, 3);
+    const vp = this.computeVolumeProfile(window, 24, 0.70, 'TICK_SYNTHETIC');
+    const ema20Arr = this.computeEma(window, Math.min(20, Math.max(5, n - 2)));
+    const bbArr = this.computeBollingerBands(window, Math.min(20, Math.max(5, n - 2)), 2.0);
+    const ema20 = Number(ema20Arr[n - 1] ?? lastClose);
+    const lastBb = bbArr[n - 1] || { upper: lastClose + 2 * atr, lower: lastClose - 2 * atr, middle: ema20 };
+    const bbSpan = Math.max(1e-6, Number(lastBb.upper) - Number(lastBb.lower));
+    const bbPercentB = (lastClose - Number(lastBb.lower)) / bbSpan;
+
+    // Determine dominant structural bias from BOS/CHoCH + EMA20 slope
+    const lastBos =
+      smc.bosChochEvents && smc.bosChochEvents.length > 0
+        ? smc.bosChochEvents[smc.bosChochEvents.length - 1]
+        : null;
+    let dominantDir = 1;
+    if (scenarioMode === 'bullish_continuation') {
+      dominantDir = 1;
+    } else if (scenarioMode === 'bearish_reversal') {
+      dominantDir = -1;
+    } else if (lastBos) {
+      dominantDir = lastBos.direction >= 0 ? 1 : -1;
+    } else {
+      dominantDir = lastClose >= ema20 ? 1 : -1;
     }
-    const clampedTrend = Math.max(-atr * 0.45, Math.min(atr * 0.45, trend));
 
-    // 3. Extract 2 dominant Fourier harmonic components from detrended residuals
-    const residuals = new Array(n);
-    const slopeTotal = (closes[n - 1] - closes[0]) / Math.max(1, n - 1);
-    for (let i = 0; i < n; i++) {
-      residuals[i] = closes[i] - (closes[0] + slopeTotal * i);
-    }
-    const candidatePeriods = [8, 12, 16, 20, 24, 32];
-    let bestP1 = 14;
-    let bestAmp1 = 0;
-    let bestPhase1 = 0;
-    let bestP2 = 24;
-    let bestAmp2 = 0;
-    let bestPhase2 = 0;
+    const unmitigatedFvgs = (smc.fvgZones || []).filter((z) => !z.mitigated);
+    const eqHighs = (smc.liquidityLevels || []).filter((l) => l.kind === 'EQH').map((l) => Number(l.price));
+    const eqLows = (smc.liquidityLevels || []).filter((l) => l.kind === 'EQL').map((l) => Number(l.price));
+    const poc = Number(vp?.pocPrice || ema20 || lastClose);
+    const vah = Number(vp?.vahPrice || lastClose + 2.2 * atr);
+    const val = Number(vp?.valPrice || lastClose - 2.2 * atr);
 
-    for (const p of candidatePeriods) {
-      if (p >= n) continue;
-      let re = 0;
-      let im = 0;
-      const omega = (2 * Math.PI) / p;
-      for (let t = 0; t < n; t++) {
-        re += residuals[t] * Math.cos(omega * t);
-        im -= residuals[t] * Math.sin(omega * t);
+    // Step A (Pullback / Mitigation Target for first 3 to 5 predicted bars):
+    // Selects nearest unmitigated FVG, EMA 20, or Volume Profile POC when price is impulsive or near Bollinger Band edge
+    let pullbackTarget = poc;
+    if (dominantDir > 0) {
+      const lowerFvgs = unmitigatedFvgs
+        .filter((f) => f.top < lastClose && lastClose - f.midpoint <= 3.5 * atr)
+        .sort((a, b) => b.top - a.top);
+      if (lowerFvgs.length > 0) {
+        pullbackTarget = lowerFvgs[0].midpoint;
+      } else if (bbPercentB > 0.72 || lastClose > ema20 + 0.4 * atr) {
+        pullbackTarget = Math.min(lastClose - 0.85 * atr, Math.max(ema20, poc));
+      } else {
+        pullbackTarget = lastClose - 0.75 * atr;
       }
-      re *= 2 / n;
-      im *= 2 / n;
-      const amp = Math.hypot(re, im);
-      const phase = Math.atan2(-im, re);
-      if (amp > bestAmp1) {
-        bestP2 = bestP1;
-        bestAmp2 = bestAmp1;
-        bestPhase2 = bestPhase1;
-        bestP1 = p;
-        bestAmp1 = amp;
-        bestPhase1 = phase;
-      } else if (amp > bestAmp2) {
-        bestP2 = p;
-        bestAmp2 = amp;
-        bestPhase2 = phase;
+    } else {
+      const upperFvgs = unmitigatedFvgs
+        .filter((f) => f.bottom > lastClose && f.midpoint - lastClose <= 3.5 * atr)
+        .sort((a, b) => a.bottom - b.bottom);
+      if (upperFvgs.length > 0) {
+        pullbackTarget = upperFvgs[0].midpoint;
+      } else if (bbPercentB < 0.28 || lastClose < ema20 - 0.4 * atr) {
+        pullbackTarget = Math.max(lastClose + 0.85 * atr, Math.min(ema20, poc));
+      } else {
+        pullbackTarget = lastClose + 0.75 * atr;
       }
     }
-    const capAmp1 = Math.min(bestAmp1, atr * 1.35);
-    const capAmp2 = Math.min(bestAmp2, atr * 0.85);
-    const omega1 = (2 * Math.PI) / bestP1;
-    const omega2 = (2 * Math.PI) / bestP2;
-    const baseOsc =
-      capAmp1 * Math.cos(omega1 * (n - 1) + bestPhase1) +
-      capAmp2 * Math.cos(omega2 * (n - 1) + bestPhase2);
 
+    // Step B (Primary Liquidity Magnet for subsequent impulse bars):
+    // Accelerates in direction of BOS/CHoCH bias toward nearest EQH/EQL, VAH/VAL, or opposing unmitigated FVG
+    let primaryMagnet = dominantDir > 0 ? Math.max(vah, lastClose + 3.2 * atr) : Math.min(val, lastClose - 3.2 * atr);
+    if (dominantDir > 0) {
+      const aboveEqh = eqHighs.filter((p) => p > lastClose + 0.8 * atr).sort((a, b) => a - b);
+      const aboveFvg = unmitigatedFvgs.filter((f) => f.bottom > lastClose + 0.8 * atr).sort((a, b) => a.bottom - b.bottom);
+      if (aboveEqh.length > 0 && aboveEqh[0] <= lastClose + 5.5 * atr) {
+        primaryMagnet = aboveEqh[0];
+      } else if (vah > lastClose + 1.1 * atr) {
+        primaryMagnet = vah;
+      } else if (aboveFvg.length > 0 && aboveFvg[0].midpoint <= lastClose + 5.5 * atr) {
+        primaryMagnet = aboveFvg[0].midpoint;
+      } else {
+        primaryMagnet = lastClose + 3.5 * atr;
+      }
+    } else {
+      const belowEql = eqLows.filter((p) => p < lastClose - 0.8 * atr).sort((a, b) => b - a);
+      const belowFvg = unmitigatedFvgs.filter((f) => f.top < lastClose - 0.8 * atr).sort((a, b) => b.top - a.top);
+      if (belowEql.length > 0 && belowEql[0] >= lastClose - 5.5 * atr) {
+        primaryMagnet = belowEql[0];
+      } else if (val < lastClose - 1.1 * atr) {
+        primaryMagnet = val;
+      } else if (belowFvg.length > 0 && belowFvg[0].midpoint >= lastClose - 5.5 * atr) {
+        primaryMagnet = belowFvg[0].midpoint;
+      } else {
+        primaryMagnet = lastClose - 3.5 * atr;
+      }
+    }
+
+    const pullbackBars = Math.min(4, Math.max(3, Math.round(hCount * 0.2)));
     const stepMs = PriceFormatter.stepMilliseconds(timeframe);
     const lastOpenMs = Number(
       lastCandle.open_time_utc_ms || (lastCandle.openTimeSec ? lastCandle.openTimeSec * 1000 : Date.now())
     );
     const out = [];
     let prevProjectedClose = lastClose;
-    let phiSum = 0;
-    let phiPower = 1;
 
     for (let k = 1; k <= hCount; k++) {
-      phiPower *= phi;
-      phiSum += phiPower;
-      const trendOffset = clampedTrend * phiSum;
-      const tFuture = n - 1 + k;
-      const oscRaw =
-        capAmp1 * Math.cos(omega1 * tFuture + bestPhase1) +
-        capAmp2 * Math.cos(omega2 * tFuture + bestPhase2) -
-        baseOsc;
-      const microWave = atr * 0.28 * Math.sin(k * 1.15 + (n % 7));
-      const targetClose = Math.max(lastClose * 0.05, lastClose + trendOffset + oscRaw * 0.65 + microWave);
       const openP = prevProjectedClose;
-      const closeP = targetClose;
-      const rawBody = Math.abs(closeP - openP);
-      const minBody = atr * 0.22 * avgBodyRatio;
-      const adjClose =
-        rawBody < minBody ? (closeP >= openP ? openP + minBody : openP - minBody) : closeP;
-      const effRange = Math.max(Math.abs(adjClose - openP) / avgBodyRatio, atr * 0.65);
-      const upperWick = effRange * avgUpperWickRatio * (0.85 + 0.3 * Math.abs(Math.cos(k * 0.9)));
-      const lowerWick = effRange * avgLowerWickRatio * (0.85 + 0.3 * Math.abs(Math.sin(k * 1.1)));
-      const highP = Math.max(openP, adjClose) + upperWick;
-      const lowP = Math.max(lastClose * 0.02, Math.min(openP, adjClose) - lowerWick);
+      const isPullbackPhase = k <= pullbackBars;
+      let signedBody = 0;
+      let isImpulseBar = false;
+
+      if (isPullbackPhase) {
+        // Step A: Pullback / mitigation wave toward FVG / POC / EMA20
+        const remPullback = Math.max(1, pullbackBars - k + 1);
+        const gapToPullback = pullbackTarget - openP;
+        const stepPull = gapToPullback / remPullback;
+        const bodyMag = Math.max(atr * 0.35, Math.min(atr * 0.85, Math.abs(stepPull) + atr * 0.22));
+        const pullSign = gapToPullback >= 0 ? 1 : -1;
+        signedBody = k === pullbackBars ? -dominantDir * atr * 0.32 : pullSign * bodyMag;
+        isImpulseBar = false;
+      } else {
+        // Step B: 2-step-forward, 1-step-back fractal wave toward Primary Liquidity Magnet
+        const waveIdx = (k - pullbackBars - 1) % 4;
+        const isRetraceBar = waveIdx === 2; // 2 impulse bars, 1 consolidation/pullback bar, 1 continuation bar
+        const remBars = Math.max(2, hCount - k + 1);
+        const distToMagnet = primaryMagnet - openP;
+        const magnetDrift = distToMagnet / remBars;
+
+        if (isRetraceBar) {
+          // 1-step-back consolidation/pullback candle (0.32x - 0.58x ATR body)
+          const retraceScale = 0.34 + 0.18 * Math.abs(Math.sin(k * 1.3 + n));
+          signedBody = -dominantDir * atr * retraceScale;
+          isImpulseBar = false;
+        } else {
+          // 2-step-forward strong impulse candle (0.72x - 1.35x ATR body)
+          const impulseScale = 0.74 + 0.42 * Math.abs(Math.cos(k * 0.85 + (n % 5)));
+          const rawStep = magnetDrift * 0.55 + dominantDir * atr * impulseScale * avgBodyRatio;
+          const minImpulse = atr * 0.52 * avgBodyRatio;
+          const maxImpulse = atr * 1.38;
+          const mag = Math.max(minImpulse, Math.min(maxImpulse, Math.abs(rawStep)));
+          signedBody = (rawStep >= 0 ? 1 : -1) * mag;
+          isImpulseBar = true;
+        }
+      }
+
+      const adjClose = Math.max(lastClose * 0.05, openP + signedBody);
+      const bodyAbs = Math.abs(adjClose - openP);
+
+      // Base upper & lower wicks scaled so total candle range is 0.5x - 1.8x ATR(14)
+      let upperWick = Math.max(
+        atr * 0.16,
+        bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.35 * Math.abs(Math.cos(k * 0.9)))
+      );
+      let lowerWick = Math.max(
+        atr * 0.16,
+        bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.35 * Math.abs(Math.sin(k * 1.1)))
+      );
+
+      let highP = Math.max(openP, adjClose) + upperWick;
+      let lowP = Math.max(lastClose * 0.02, Math.min(openP, adjClose) - lowerWick);
+
+      // Rule 4: Pronounced Rejection Wicks at Key Levels (FVG, POC, VAH, VAL, EQH/EQL)
+      let rejectionWick = false;
+      if (
+        Math.abs(lowP - pullbackTarget) <= atr * 0.35 ||
+        Math.abs(lowP - poc) <= atr * 0.32 ||
+        Math.abs(lowP - val) <= atr * 0.35
+      ) {
+        lowP = Math.max(lastClose * 0.02, lowP - atr * 0.36);
+        rejectionWick = true;
+      }
+      if (
+        Math.abs(highP - vah) <= atr * 0.35 ||
+        Math.abs(highP - primaryMagnet) <= atr * 0.35
+      ) {
+        highP += atr * 0.36;
+        rejectionWick = true;
+      }
+
+      // Rule 5: Dynamic Volume Projection (1.2x - 1.8x on impulse, 0.5x - 0.8x on pullback)
+      const volMult = isImpulseBar
+        ? 1.25 + 0.50 * Math.abs(Math.sin(k * 0.95 + 1.2))
+        : 0.52 + 0.26 * Math.abs(Math.cos(k * 1.15 + 0.5));
+      const projectedVolume = Math.round(avgVolume * volMult);
+
       const bandHalf = atr * 0.85 * Math.sqrt(k);
       const pctChange = ((adjClose - lastClose) / lastClose) * 100;
 
@@ -1267,9 +1365,14 @@ export const TechnicalIndicators = {
         high: highP,
         low: lowP,
         close: adjClose,
+        volume: projectedVolume,
         pctChangeFromLast: pctChange,
         upperBand: adjClose + bandHalf,
         lowerBand: Math.max(lastClose * 0.02, adjClose - bandHalf),
+        pullbackTarget,
+        primaryMagnet,
+        rejectionWick,
+        wavePhase: isPullbackPhase ? 'MITIGATION_PULLBACK' : isImpulseBar ? 'IMPULSE' : 'CONSOLIDATION',
       });
       prevProjectedClose = adjClose;
     }

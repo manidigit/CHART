@@ -166,10 +166,11 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       const prefs = state.chartPreferences || {};
       const horizonBars = clampHorizonBars(tab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
       const renderMode = normalizeRenderMode(tab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.HYBRID);
+      const selectedScenarioId = tab.selectedScenarioId || prefs.selectedScenarioId || 'SCENARIO_A';
       if (prefs.forecastPluginConfig) {
         defaultForecastRegistry.applyConfig(prefs.forecastPluginConfig);
       }
-      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${candles.length}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
+      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${candles.length}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
       if (cache.futureProjKey !== fKey || !cache.futureProjectionResult) {
         cache.futureProjKey = fKey;
         cache.futureProjectionResult = ForecastEngine.project(candles, {
@@ -177,12 +178,14 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
           timeframe: tf,
           horizonBars,
           renderMode,
+          selectedScenarioId,
           registry: defaultForecastRegistry,
           skipWalkForward: true,
         });
       }
       return cache.futureProjectionResult.points || [];
     },
+    getFutureProjectionResult: () => cache.futureProjectionResult || null,
     getVolumeProfile: (visible, startIdx, endIdx) => {
       const spec = getInstrumentSpec(symCode, prov);
       const vKey = `${startIdx}_${endIdx}_${spec.volumeType}`;
@@ -1211,12 +1214,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fill();
     }
 
-    // Ghosted future candlesticks (GHOST_CANDLES or HYBRID)
+    // Ghosted future candlesticks (GHOST_CANDLES or HYBRID) - Realistic Bull/Bear SMC Medoid Candles
     if (showGhost) {
-      const ghostWickCol = isDark ? 'rgba(167, 150, 212, 0.58)' : 'rgba(124, 105, 172, 0.58)';
-      const ghostBullBody = isDark ? 'rgba(167, 150, 212, 0.62)' : 'rgba(124, 105, 172, 0.62)';
-      const ghostBearBody = isDark ? 'rgba(122, 108, 162, 0.46)' : 'rgba(100, 86, 145, 0.46)';
-
       futureProj.forEach((fp, kIdx) => {
         const x = idxToX(visible.length + kIdx);
         const highY = priceToY(fp.high);
@@ -1224,9 +1223,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         const openY = priceToY(fp.open);
         const closeY = priceToY(fp.close);
         const isBull = fp.close >= fp.open;
+        const baseCol = isBull ? bullColor : bearColor;
 
-        ctx.strokeStyle = ghostWickCol;
-        ctx.lineWidth = 1.1;
+        ctx.strokeStyle = hexToRgba(baseCol, fp.rejectionWick ? 0.92 : 0.78);
+        ctx.lineWidth = fp.rejectionWick ? 1.5 : 1.15;
         ctx.beginPath();
         ctx.moveTo(x, highY);
         ctx.lineTo(x, lowY);
@@ -1234,8 +1234,38 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
         const topY = Math.min(openY, closeY);
         const bodyH = Math.max(2, Math.abs(closeY - openY));
-        ctx.fillStyle = isBull ? ghostBullBody : ghostBearBody;
+        ctx.fillStyle = hexToRgba(baseCol, activeRenderMode === RENDER_MODES.HYBRID ? 0.65 : 0.78);
         ctx.fillRect(x - bodyW / 2, topY, bodyW, bodyH);
+      });
+    }
+
+    // Alternative SMC Scenarios (SCENARIO_B & SCENARIO_C) dashed paths
+    const fullFcResult = indCache.getFutureProjectionResult && indCache.getFutureProjectionResult();
+    if (fullFcResult && Array.isArray(fullFcResult.smcScenarios)) {
+      const altColors = ['#38BDF8', '#A855F7'];
+      const altScenarios = fullFcResult.smcScenarios.filter((s) => s.id !== fullFcResult.activeScenarioId);
+      altScenarios.forEach((altSc, aIdx) => {
+        if (!Array.isArray(altSc.candles) || altSc.candles.length === 0) return;
+        const col = altColors[aIdx % altColors.length];
+        ctx.save();
+        ctx.strokeStyle = col;
+        ctx.globalAlpha = 0.65;
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(anchorX, anchorY);
+        altSc.candles.forEach((ac, kIdx) => {
+          ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(ac.close)));
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+        const lastAlt = altSc.candles[altSc.candles.length - 1];
+        const lx = Math.min(chartW - 64, idxToX(visible.length + altSc.candles.length - 1) - 24);
+        const ly = priceToY(Number(lastAlt.close)) - 4;
+        ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+        ctx.fillStyle = col;
+        ctx.fillText(`${altSc.id.replace('SCENARIO_', 'Alt ')} (${Math.round(altSc.probability * 100)}%)`, lx, ly);
+        ctx.restore();
       });
     }
 
@@ -1357,6 +1387,17 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         const x = idxToX(idx);
         const isBull = Number(c.close) >= Number(c.open);
         ctx.fillStyle = isBull ? bullColor + '77' : bearColor + '77';
+        ctx.fillRect(x - bodyW / 2, volTopY + volPaneH - barH, bodyW, barH);
+      });
+
+      // Dynamic Projected Volume Bars for Future Candles
+      futureProj.forEach((fp, kIdx) => {
+        const v = Number(fp.volume || 0);
+        if (v <= 0) return;
+        const barH = Math.max(2, Math.min(volAvailH, (v / maxVol) * volAvailH));
+        const x = idxToX(visible.length + kIdx);
+        const isBull = Number(fp.close) >= Number(fp.open);
+        ctx.fillStyle = isBull ? bullColor + '48' : bearColor + '48';
         ctx.fillRect(x - bodyW / 2, volTopY + volPaneH - barH, bodyW, barH);
       });
 

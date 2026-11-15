@@ -1337,7 +1337,7 @@ fun CandlestickCanvas(
                             if (activeForecastRenderMode == ForecastRenderMode.GHOST_CANDLES ||
                                 activeForecastRenderMode == ForecastRenderMode.HYBRID
                             ) {
-                                val candleAlpha = if (activeForecastRenderMode == ForecastRenderMode.HYBRID) 0.52f else 0.72f
+                                val candleAlpha = if (activeForecastRenderMode == ForecastRenderMode.HYBRID) 0.65f else 0.78f
                                 futureProjectedCandles.forEachIndexed { fIdx, fc ->
                                     val fCenterX = (visibleSlice.size + fIdx + 0.5f) * slotW
                                     val fHighY = priceToY(fc.high)
@@ -1345,17 +1345,14 @@ fun CandlestickCanvas(
                                     val fOpenY = priceToY(fc.open)
                                     val fCloseY = priceToY(fc.close)
                                     val isFutureBull = fc.close >= fc.open
-                                    val wickCol = Color(0xFF9F8FD4).copy(alpha = candleAlpha)
-                                    val bodyCol = if (isFutureBull) {
-                                        Color(0xFFA796D4).copy(alpha = candleAlpha)
-                                    } else {
-                                        Color(0xFF726498).copy(alpha = candleAlpha * 0.85f)
-                                    }
+                                    val baseCol = if (isFutureBull) bullColor else bearColor
+                                    val wickCol = baseCol.copy(alpha = if (fc.rejectionWick) 0.92f else 0.78f)
+                                    val bodyCol = baseCol.copy(alpha = candleAlpha)
                                     drawLine(
                                         color = wickCol,
                                         start = Offset(fCenterX, fHighY),
                                         end = Offset(fCenterX, fLowY),
-                                        strokeWidth = 1.2f
+                                        strokeWidth = if (fc.rejectionWick) 1.55f else 1.2f
                                     )
                                     val topY = min(fOpenY, fCloseY)
                                     val botY = max(fOpenY, fCloseY)
@@ -1368,6 +1365,26 @@ fun CandlestickCanvas(
                                 }
                             }
 
+                            // Alternative SMC Scenarios (SCENARIO_B & SCENARIO_C) dashed paths
+                            val altColors = listOf(Color(0xFF38BDF8), Color(0xFFA855F7))
+                            val altScenarios = futureProjectionResult?.smcScenarios.orEmpty()
+                                .filter { it.id != futureProjectionResult?.activeScenarioId }
+                            altScenarios.forEachIndexed { aIdx, altSc ->
+                                if (altSc.candles.isNotEmpty()) {
+                                    val altPath = obtainPath()
+                                    altPath.moveTo(anchorX, anchorCloseY)
+                                    altSc.candles.forEachIndexed { fIdx, ac ->
+                                        val x = (visibleSlice.size + fIdx + 0.5f) * slotW
+                                        altPath.lineTo(x, priceToY(ac.close))
+                                    }
+                                    drawPath(
+                                        path = altPath,
+                                        color = altColors[aIdx % altColors.size].copy(alpha = 0.68f),
+                                        style = Stroke(width = 1.4f, pathEffect = futureDashEffect)
+                                    )
+                                }
+                            }
+
                             val medianPath = obtainPath()
                             medianPath.moveTo(anchorX, anchorCloseY)
                             futureProjectedCandles.forEachIndexed { fIdx, pt ->
@@ -1376,7 +1393,7 @@ fun CandlestickCanvas(
                             }
                             drawPath(
                                 path = medianPath,
-                                color = Color(0xFFC4B5FD),
+                                color = Color(0xFFF59E0B),
                                 style = Stroke(width = 2.0f, pathEffect = futureDashEffect)
                             )
                         }
@@ -1735,6 +1752,23 @@ fun CandlestickCanvas(
                                         bullColor.copy(alpha = 0.44f)
                                     } else {
                                         bearColor.copy(alpha = 0.44f)
+                                    }
+                                    drawRect(
+                                        color = volColor,
+                                        topLeft = Offset(centerX - bodyW / 2f, vBot - barH),
+                                        size = Size(bodyW, barH)
+                                    )
+                                }
+                            }
+                            futureProjectedCandles.forEachIndexed { fIdx, fc ->
+                                val volFrac = (fc.volume / maxVolume).toFloat().coerceIn(0f, 1f)
+                                if (volFrac > 0f) {
+                                    val centerX = (visibleSlice.size + fIdx + 0.5f) * slotW
+                                    val barH = (usableVolH * volFrac).coerceAtLeast(1.5f)
+                                    val volColor = if (fc.close >= fc.open) {
+                                        bullColor.copy(alpha = 0.28f)
+                                    } else {
+                                        bearColor.copy(alpha = 0.28f)
                                     }
                                     drawRect(
                                         color = volColor,

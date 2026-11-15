@@ -49,11 +49,13 @@ export function buildForecastForTab(activeTab) {
   const cacheKey = `${activeTab.symbolCode}_${activeTab.timeframe}_${horizonBars}`;
   const lastStored = state._prevForecastByKey[cacheKey] || null;
 
+  const selectedScenarioId = activeTab.selectedScenarioId || prefs.selectedScenarioId || 'SCENARIO_A';
   const result = ForecastEngine.project(candles, {
     symbolCode: activeTab.symbolCode,
     timeframe: activeTab.timeframe,
     horizonBars,
     renderMode,
+    selectedScenarioId,
     registry: defaultForecastRegistry,
     workerUrl,
     higherTimeframe: higherTf,
@@ -226,27 +228,45 @@ export function renderForecastStudioFanCanvas(
       ctx.fill();
     }
 
-    // Ghost OHLC candles (GHOST_CANDLES or HYBRID)
+    // Ghost OHLC candles (GHOST_CANDLES or HYBRID) - Realistic Bull/Bear SMC Medoid Candles
     if (mode === RENDER_MODES.GHOST_CANDLES || mode === RENDER_MODES.HYBRID) {
       pts.forEach((p, idx) => {
         const x = xOf(hist.length + idx);
         const bull = p.close >= p.open;
-        ctx.strokeStyle = isDark ? 'rgba(167, 150, 212, 0.62)' : 'rgba(124, 105, 172, 0.6)';
-        ctx.lineWidth = 1;
+        const baseCol = bull ? 'rgba(38, 166, 154, 0.78)' : 'rgba(239, 83, 80, 0.78)';
+        ctx.strokeStyle = bull ? 'rgba(38, 166, 154, 0.90)' : 'rgba(239, 83, 80, 0.90)';
+        ctx.lineWidth = p.rejectionWick ? 1.5 : 1.15;
         ctx.beginPath();
         ctx.moveTo(x, yOf(p.high));
         ctx.lineTo(x, yOf(p.low));
         ctx.stroke();
         const oY = yOf(p.open);
         const cY = yOf(p.close);
-        ctx.fillStyle = bull
-          ? isDark
-            ? 'rgba(167, 150, 212, 0.68)'
-            : 'rgba(124, 105, 172, 0.64)'
-          : isDark
-            ? 'rgba(122, 108, 162, 0.45)'
-            : 'rgba(100, 86, 145, 0.45)';
+        ctx.fillStyle = baseCol;
         ctx.fillRect(x - bodyW / 2, Math.min(oY, cY), bodyW, Math.max(2, Math.abs(cY - oY)));
+      });
+    }
+
+    // Alternative SMC Scenarios (SCENARIO_B & SCENARIO_C) dashed paths
+    if (Array.isArray(forecast?.smcScenarios)) {
+      const altCols = ['#38BDF8', '#A855F7'];
+      const altList = forecast.smcScenarios.filter((s) => s.id !== forecast.activeScenarioId);
+      altList.forEach((altSc, aIdx) => {
+        if (!Array.isArray(altSc.candles) || altSc.candles.length === 0) return;
+        const col = altCols[aIdx % altCols.length];
+        ctx.save();
+        ctx.strokeStyle = col;
+        ctx.globalAlpha = 0.68;
+        ctx.lineWidth = 1.4;
+        ctx.setLineDash([3, 4]);
+        ctx.beginPath();
+        ctx.moveTo(xOf(hist.length - 1), yOf(Number(hist[hist.length - 1].close)));
+        altSc.candles.forEach((ac, idx) => {
+          ctx.lineTo(xOf(hist.length + idx), yOf(Number(ac.close)));
+        });
+        ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.restore();
       });
     }
 
@@ -567,6 +587,70 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
       ? `<div class="ci-fc-warning-banner ltr-num">⊘ NO_EDGE_DETECTED (${escapeHtml(edgeGate.gateState)}): ${edgeGate.reasons.map(escapeHtml).join(' | ')}</div>`
       : '';
 
+  const bayes = fc.bayesianLiveReport;
+  const bayesianBannerHtml = bayes
+    ? `
+      <div class="ci-fc-card" style="margin-bottom:12px;border-color:rgba(38,166,154,0.45);">
+        <div class="row-between" style="flex-wrap:wrap;gap:8px;">
+          <div>
+            <strong style="font-size:13px;color:var(--bull);">
+              ${isFa ? 'حلقه خوداصلاحی بیزین زنده ۱۵ دقیقه‌ای (Bayesian Live-Tracker & Re-Anchoring)' : 'Live 15m Bayesian Self-Correction & Re-Anchoring Engine'}
+            </strong>
+            <div style="font-size:11.5px;color:var(--text-main);margin-top:4px;">
+              ${escapeHtml(isFa ? bayes.statusMessageFa : bayes.statusMessageEn)}
+            </div>
+          </div>
+          <span class="ci-fc-prob-pill ltr-num" style="background:rgba(38,166,154,0.18);color:var(--bull);">
+            Accuracy: ${bayes.accuracyScoreLastStep}% · Active: ${escapeHtml(fc.activeScenarioId || bayes.dominantScenarioId)}
+          </span>
+        </div>
+      </div>
+    `
+    : '';
+
+  const smcScenariosHtml = Array.isArray(fc.smcScenarios) && fc.smcScenarios.length > 0
+    ? `
+      <div class="ci-fc-card" style="margin-bottom:12px;">
+        <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+          <strong style="font-size:13px;">${isFa ? '۳ سناریوی خوشه‌بندی‌شده همزاد تاریخی (k-NN + K-Medoids + SMC Gravity)' : '3 Clustered Historical Analog Scenarios (k-NN + K-Medoids + SMC Gravity)'}</strong>
+          <span class="ci-fc-family-tag ltr-num">HTF Bias: ${fc.smcContext?.htfTrendBias >= 0 ? '+' : ''}${fc.smcContext?.htfTrendBias ?? 0} · POC: ${PriceFormatter.formatPrice(fc.smcContext?.vp?.poc || fc.anchorClose, decimals)}</span>
+        </div>
+        <div class="ci-fc-grid-3">
+          ${fc.smcScenarios
+            .map((sc) => {
+              const isAct = (fc.activeScenarioId || 'SCENARIO_A') === sc.id;
+              const col = sc.bias === 'bull' ? 'var(--bull)' : sc.bias === 'bear' ? 'var(--bear)' : 'var(--gold)';
+              const borderCol = isAct ? col : 'var(--border)';
+              const pct = Math.round(Number(sc.probability || 0) * 100);
+              return `
+                <div class="ci-fc-card" style="border-color:${borderCol};${isAct ? 'box-shadow:0 0 0 1px ' + col + ';' : ''}">
+                  <div class="row-between" style="margin-bottom:6px;gap:6px;">
+                    <strong style="color:${col};font-size:12.5px;">${escapeHtml(sc.id)} — ${escapeHtml(isFa ? sc.name : sc.nameEn)}</strong>
+                    <span class="ci-fc-prob-pill ltr-num">${pct}%</span>
+                  </div>
+                  <div class="ltr-num" style="font-size:11.5px;display:flex;flex-direction:column;gap:4px;">
+                    <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'ناحیه پولبک (FVG/POC)' : 'Step A Pullback (FVG/POC)'}</span><strong>${PriceFormatter.formatPrice(sc.pullbackPrice, decimals)}</strong></div>
+                    <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'هدف نهایی (Target)' : 'Step B Target (VAH/VAL)'}</span><strong>${PriceFormatter.formatPrice(sc.targetPrice, decimals)}</strong></div>
+                    <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'حد ابطال (Invalidation)' : 'Invalidation (±1.8 ATR)'}</span><strong>${PriceFormatter.formatPrice(sc.invalidationPrice, decimals)}</strong></div>
+                  </div>
+                  <button
+                    type="button"
+                    class="btn btn-sm ${isAct ? 'btn-primary' : ''}"
+                    style="width:100%;margin-top:8px;"
+                    data-action="select-smc-scenario"
+                    data-scenario-id="${escapeHtml(sc.id)}"
+                  >
+                    ${isAct ? (isFa ? '✓ سناریوی فعال روی چارت' : '✓ Active Scenario on Chart') : isFa ? 'نمایش کندل‌های این سناریو' : 'Activate Scenario Candles'}
+                  </button>
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+      </div>
+    `
+    : '';
+
   const scenariosHtml = (fc.scenarios || [])
     .map((sc) => {
       const borderCol =
@@ -655,6 +739,8 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
       <canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas"></canvas>
     </div>
 
+    ${bayesianBannerHtml}
+    ${smcScenariosHtml}
     ${edgeBannerHtml}
     ${uncertaintyCardHtml}
     ${mtfBannerHtml}
