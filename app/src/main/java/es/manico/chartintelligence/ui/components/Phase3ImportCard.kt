@@ -50,6 +50,8 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.data.model.SymbolConfig
@@ -282,7 +284,9 @@ fun Phase3ImportCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = stringResource(R.string.settings_import_upload_btn),
-                        maxLines = 1
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
 
@@ -303,7 +307,9 @@ fun Phase3ImportCard(
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = stringResource(R.string.settings_manual_ohlc_btn),
-                        maxLines = 1
+                        textAlign = TextAlign.Center,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
                     )
                 }
             }

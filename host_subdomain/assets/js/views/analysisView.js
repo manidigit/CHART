@@ -89,9 +89,9 @@ export function renderPredictionModal(activeTab, i18n) {
 
   const selectorBar = `
     <div class="row-between" style="margin-bottom: 14px; gap: 10px; flex-wrap: wrap;">
-      <div style="display: flex; align-items: center; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; max-width: 100%;">
         ${renderSymbolBadge(activeCode, 28)}
-        <select class="input-field ltr-num" style="width: auto; min-width: 210px; min-height: 34px; padding: 4px 10px; font-weight: 700;" data-action="select-prediction-symbol">
+        <select class="input-field ltr-num" style="width: auto; min-width: min(200px, 100%); max-width: 100%; flex: 1 1 160px; min-height: 34px; padding: 4px 10px; font-weight: 700;" data-action="select-prediction-symbol">
           ${symbolOptions}
         </select>
       </div>
@@ -182,7 +182,7 @@ export function renderPredictionModal(activeTab, i18n) {
         <div style="position: relative; height: 8px; background: linear-gradient(90deg, rgba(38,166,154,0.35), rgba(245,158,11,0.35), rgba(239,83,80,0.35)); border-radius: 4px; margin: 10px 0 14px 0;">
           <div title="Close: ${PriceFormatter.formatPrice(stats.lastClose, dec)}" style="position: absolute; left: ${pricePosPct}%; top: -4px; width: 14px; height: 16px; margin-left: -7px; border-radius: 3px; background: var(--primary); border: 2px solid #fff;"></div>
         </div>
-        <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center;" class="ltr-num">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(82px, 100%), 1fr)); gap: 6px; text-align: center;" class="ltr-num">
           <div style="padding: 6px; background: var(--bg); border-radius: 4px; border: 1px solid var(--border);">
             <div style="font-size: 10px; color: var(--bull);">S2</div>
             <strong style="font-size: 12px;">${PriceFormatter.formatPrice(stats.s2, dec)}</strong>
@@ -263,7 +263,7 @@ export function renderPredictionModal(activeTab, i18n) {
                 </button>
               </div>
             </div>
-            <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 6px; text-align: center;" class="ltr-num">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(80px, 100%), 1fr)); gap: 6px; text-align: center;" class="ltr-num">
               ${steps
                 .map((fp) => {
                   const pct = Number(fp.pctChangeFromLast || 0);
@@ -286,7 +286,7 @@ export function renderPredictionModal(activeTab, i18n) {
       <!-- 24-Bar Key Volatility & Sentiment -->
       <div class="card-subtle">
         <div style="font-size: 12px; font-weight: 700; color: var(--text); margin-bottom: 8px;">${i18n.t('analysis_key_stats')} (24 Bars)</div>
-        <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;" class="ltr-num">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(115px, 100%), 1fr)); gap: 8px;" class="ltr-num">
           <div>
             <div style="font-size: 10.5px; color: var(--text-muted);">High / Low</div>
             <strong style="font-size: 12px;">${PriceFormatter.formatPrice(stats.periodHigh, dec)} / ${PriceFormatter.formatPrice(stats.periodLow, dec)}</strong>
@@ -308,7 +308,7 @@ export function renderPredictionModal(activeTab, i18n) {
 
   return `
     <div class="modal-backdrop" data-action="close-modal-backdrop">
-      <div class="modal-card">
+      <div class="modal-card" dir="${i18n.getCurrentLanguage() === 'fa' ? 'rtl' : 'ltr'}">
         <div class="tv-modal-header">
           <div class="tv-modal-title">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>

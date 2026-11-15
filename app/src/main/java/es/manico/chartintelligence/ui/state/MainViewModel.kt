@@ -138,6 +138,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     val uiState: StateFlow<Phase1UiState> = _uiState.asStateFlow()
 
     private var autoSyncJob: kotlinx.coroutines.Job? = null
+    private val timeframeSyncJobs = mutableMapOf<String, kotlinx.coroutines.Job>()
     private val lastAutoSyncAtMs = java.util.concurrent.ConcurrentHashMap<String, Long>()
     @Volatile
     private var lastCloudPullCheckAtMs: Long = 0L
@@ -1088,7 +1089,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val targetSymbol = _uiState.value.symbols.firstOrNull { it.symbolCode == active.symbolCode } ?: return
         val minRequiredBars = minBarsForTimeframe(normalizedTf)
         val needsFullBackfill = immediateCandles.size < minRequiredBars
-        viewModelScope.launch {
+        timeframeSyncJobs[active.tabId]?.cancel()
+        timeframeSyncJobs[active.tabId] = viewModelScope.launch {
             val (syncedSymbol, mergedCandles) = repository.syncSymbolUpToNow(
                 symbol = targetSymbol,
                 requestedTimeframe = normalizedTf,

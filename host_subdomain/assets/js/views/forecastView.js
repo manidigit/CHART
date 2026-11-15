@@ -50,6 +50,31 @@ export function buildForecastForTab(activeTab) {
   const lastStored = state._prevForecastByKey[cacheKey] || null;
 
   const selectedScenarioId = activeTab.selectedScenarioId || prefs.selectedScenarioId || 'SCENARIO_A';
+  const lastBar = candles.length > 0 ? candles[candles.length - 1] : null;
+  const firstBar = candles.length > 0 ? candles[0] : null;
+  const lastHigherBar = higherCandles.length > 0 ? higherCandles[higherCandles.length - 1] : null;
+  const memoKey = [
+    activeTab.symbolCode,
+    activeTab.provider,
+    activeTab.timeframe,
+    candles.length,
+    firstBar?.open_time_utc_ms || 0,
+    lastBar?.open_time_utc_ms || 0,
+    lastBar?.close || 0,
+    higherTf,
+    higherCandles.length,
+    lastHigherBar?.open_time_utc_ms || 0,
+    horizonBars,
+    renderMode,
+    selectedScenarioId,
+    workerUrl,
+    JSON.stringify(prefs.forecastPluginConfig || null),
+  ].join('|');
+
+  if (state._forecastBuildMemo && state._forecastBuildMemo.key === memoKey) {
+    return state._forecastBuildMemo.value;
+  }
+
   const result = ForecastEngine.project(candles, {
     symbolCode: activeTab.symbolCode,
     timeframe: activeTab.timeframe,
@@ -72,10 +97,15 @@ export function buildForecastForTab(activeTab) {
     }
   }
 
-  return {
+  const built = {
     candles,
     result,
   };
+  state._forecastBuildMemo = {
+    key: memoKey,
+    value: built,
+  };
+  return built;
 }
 
 export function renderForecastStudioFanCanvas(
@@ -433,7 +463,7 @@ export function renderForecastStudioView(activeTab, i18n) {
     <section class="ci-forecast-studio">
       <div class="ci-fc-header">
         <div class="ci-fc-title-row">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             ${renderSymbolBadge(activeCode, 30)}
             <select class="input-field ltr-num ci-fc-sym-select" data-action="select-prediction-symbol">
               ${symbolOptions}
@@ -443,7 +473,7 @@ export function renderForecastStudioView(activeTab, i18n) {
             ${oodBadge}
             ${fc && fc.regime ? `<span class="ci-fc-regime-badge ltr-num">${escapeHtml(fc.regime)}</span>` : ''}
           </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             <button
               type="button"
               class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary' : ''}"
@@ -826,8 +856,8 @@ function renderModelsPanel(fc, decimals, isFa) {
             : 'Optional external Python inference worker bridge (Chronos-2 Apache 2.0 / TimesFM 2.5 / N-HiTS). Never simulates DL weights when unconfigured.'
         }
       </p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;">
-        <input type="url" class="input-field ltr-num" id="ci-forecast-worker-url" style="flex:1;min-width:220px;" placeholder="https://worker.example.com" value="${escapeHtml(workerUrl)}" />
+      <div style="display:flex;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
+        <input type="url" class="input-field ltr-num" id="ci-forecast-worker-url" style="flex:1 1 200px;min-width:min(200px, 100%);max-width:100%;" placeholder="https://worker.example.com" value="${escapeHtml(workerUrl)}" />
         <button type="button" class="btn btn-sm btn-primary" data-action="save-forecast-worker-url">${isFa ? 'ذخیره آدرس Worker' : 'Save Worker URL'}</button>
       </div>
     </div>

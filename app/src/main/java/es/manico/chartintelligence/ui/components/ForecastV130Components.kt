@@ -32,6 +32,7 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -142,7 +143,12 @@ fun NoEdgeWarningBanner(
                     text = stringResource(R.string.forecast_no_edge_warning_title),
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
-                    color = accent
+                    color = accent,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
                 )
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     Text(
@@ -194,7 +200,12 @@ fun UncertaintyBreakdownCard(
                 Text(
                     text = stringResource(R.string.forecast_uncertainty_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
                 )
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     Surface(color = oodColor.copy(alpha = 0.16f), shape = RoundedCornerShape(4.dp)) {
@@ -236,19 +247,21 @@ fun UncertaintyBreakdownCard(
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
                         text = "Aleatoric ${(uncertainty.aleatoricShare * 100.0).roundToInt()}% (${String.format(Locale.US, "%.2f", uncertainty.aleatoricPct)}%)",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = JetBrainsMonoFontFamily,
-                        color = Color(0xFF38BDF8)
+                        color = Color(0xFF38BDF8),
+                        modifier = Modifier.weight(1f)
                     )
                     Text(
                         text = "Epistemic ${(uncertainty.epistemicShare * 100.0).roundToInt()}% (${String.format(Locale.US, "%.2f", uncertainty.epistemicPct)}%)",
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = JetBrainsMonoFontFamily,
-                        color = oodColor
+                        color = oodColor,
+                        modifier = Modifier.weight(1f)
                     )
                 }
                 Text(
@@ -317,7 +330,12 @@ fun MtfCoordinationCard(
                 Text(
                     text = stringResource(R.string.forecast_mtf_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
                 )
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     Surface(color = alignColor.copy(alpha = 0.16f), shape = RoundedCornerShape(4.dp)) {
@@ -406,7 +424,12 @@ fun KeyPriceZonesSection(
                                 style = MaterialTheme.typography.labelMedium,
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                color = accent
+                                color = accent,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp)
                             )
                             Text(
                                 text = "Strength ${(z.strength * 100.0).roundToInt()}%",
@@ -596,7 +619,12 @@ fun LifecycleEventLogCard(
                 Text(
                     text = stringResource(R.string.forecast_lifecycle_title),
                     style = MaterialTheme.typography.titleSmall,
-                    fontWeight = FontWeight.Bold
+                    fontWeight = FontWeight.Bold,
+                    maxLines = 2,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier
+                        .weight(1f)
+                        .padding(end = 8.dp)
                 )
                 Surface(
                     color = (if (verifyResult.valid) palette.bullCandle else palette.bearCandle).copy(alpha = 0.16f),
@@ -654,7 +682,12 @@ fun LifecycleEventLogCard(
                                     text = "#${ev.seq} · ${ev.symbolCode} ${ev.timeframe} +${ev.horizonStep}b · ${ev.lifecycleStatus.name}",
                                     style = MaterialTheme.typography.labelSmall,
                                     fontFamily = JetBrainsMonoFontFamily,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp)
                                 )
                                 Text(
                                     text = ev.evaluationOutcome.name,

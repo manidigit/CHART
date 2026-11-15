@@ -40,6 +40,10 @@ const {
     resetIndicatorColorsToDefault,
     getIndicatorColorPalette
 } = await import('../host_subdomain/assets/js/core/store.js');
+const { renderTopHeaderBar } = await import('../host_subdomain/assets/js/views/headerView.js');
+const { renderSettingsModal } = await import('../host_subdomain/assets/js/views/settingsView.js');
+const { buildForecastForTab } = await import('../host_subdomain/assets/js/views/forecastView.js');
+const { syncSymbolNow } = await import('../host_subdomain/assets/js/services/apiService.js');
 
 test('PAR-01: resolvePriceBasis returns CFD Feed for SPOTBRENT on tvdatafeed', () => {
     assert.equal(resolvePriceBasis('SPOTBRENT', 'tvdatafeed'), 'CFD Feed');
@@ -469,5 +473,119 @@ test('COLOR-PARITY: hex normalization, universal palette, custom indicator color
     assert.equal(state.chartPreferences.trendColor, '#F59E0B');
 });
 
+test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamlined Forecast topbar, forecast memoization, and D1 sync safety', async () => {
+    const mockI18n = {
+        getCurrentLanguage: () => 'fa',
+        t: (k) => k
+    };
 
+    // 1. Default watchlist explorer mode must be by_symbol
+    assert.equal(state.sourceExplorerMode, 'by_symbol');
 
+    // 2. Settings modal uses dir="rtl" in Persian and renders by_symbol chip before by_source
+    const prevModal = state.activeModal;
+    const prevSettingsTab = state.settingsTab;
+    try {
+        state.activeModal = 'settings';
+        state.settingsTab = 'watchlist';
+        const settingsHtml = renderSettingsModal(mockI18n);
+        assert.ok(settingsHtml.includes('dir="rtl"'));
+        const idxSym = settingsHtml.indexOf('data-mode="by_symbol"');
+        const idxSrc = settingsHtml.indexOf('data-mode="by_source"');
+        assert.ok(idxSym > -1 && idxSrc > -1 && idxSym < idxSrc, 'by_symbol mode must appear before by_source');
+    } finally {
+        state.activeModal = prevModal;
+        state.settingsTab = prevSettingsTab;
+    }
+
+    // 3. Top header bar omits duplicate tabs / timeframe / indicators when in Forecast Studio
+    const prevWorkspace = state.activeWorkspaceView;
+    const sampleTab = {
+        tabId: 'tab_SPOTBRENT_M15',
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        decimals: 2,
+        candles: []
+    };
+    try {
+        state.activeWorkspaceView = 'forecast';
+        const fcHeaderHtml = renderTopHeaderBar(sampleTab, mockI18n);
+        assert.ok(fcHeaderHtml.includes('tv-ws-header-pill'), 'Forecast pill must be present in topbar');
+        assert.ok(fcHeaderHtml.includes('data-action="set-workspace-view"'), 'Back to Chart action must be present');
+        assert.equal(fcHeaderHtml.includes('tv-open-tabs-strip'), false, 'Duplicate open tabs strip must be omitted in forecast view');
+        assert.equal(fcHeaderHtml.includes('data-action="set-timeframe"'), false, 'Duplicate timeframe buttons must be omitted in forecast view');
+        assert.equal(fcHeaderHtml.includes('data-modal="indicators"'), false, 'Indicators button must be omitted in forecast view');
+
+        state.activeWorkspaceView = 'chart';
+        const chartHeaderHtml = renderTopHeaderBar(sampleTab, mockI18n);
+        assert.ok(chartHeaderHtml.includes('tv-open-tabs-strip'));
+        assert.ok(chartHeaderHtml.includes('data-action="set-timeframe"'));
+        assert.ok(chartHeaderHtml.includes('data-modal="indicators"'));
+    } finally {
+        state.activeWorkspaceView = prevWorkspace;
+    }
+
+    // 4. buildForecastForTab memoizes repeated calls with identical inputs and recomputes on timeframe change
+    const mon1330 = Date.parse('2026-07-13T13:30:00Z');
+    const m15Step = 15 * 60_000;
+    const candles = Array.from({ length: 60 }, (_, i) => {
+        const o = 75 + Math.sin(i * 0.25) * 0.8 + i * 0.03;
+        return {
+            open_time_utc_ms: mon1330 + i * m15Step,
+            open: o,
+            high: o + 0.35,
+            low: o - 0.3,
+            close: o + 0.12,
+            volume: 400 + i * 5
+        };
+    });
+    const fcTab = {
+        tabId: 'tab_fc_test',
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        decimals: 2,
+        candles
+    };
+    state._forecastBuildMemo = null;
+    const built1 = buildForecastForTab(fcTab);
+    const built2 = buildForecastForTab(fcTab);
+    assert.strictEqual(built1, built2, 'Identical inputs must return memoized forecast bundle');
+    assert.strictEqual(built1.result, built2.result, 'Identical inputs must return identical forecast result');
+
+    const builtH1 = buildForecastForTab({ ...fcTab, timeframe: 'H1' });
+    assert.notStrictEqual(builtH1, built1, 'Changing timeframe must recompute forecast');
+
+    // 5. syncSymbolNow works on D1 without ReferenceError (m15Bars defined safely)
+    const d1Now = Math.floor(Date.now() / 86_400_000) * 86_400_000;
+    const mockD1Candles = Array.from({ length: 40 }, (_, i) => ({
+        open_time_utc_ms: d1Now - (39 - i) * 86_400_000,
+        open_time_utc_iso: new Date(d1Now - (39 - i) * 86_400_000).toISOString(),
+        open: 70 + i * 0.1,
+        high: 71 + i * 0.1,
+        low: 69.5 + i * 0.1,
+        close: 70.5 + i * 0.1,
+        volume: 1000
+    }));
+    const origFetch = globalThis.fetch;
+    globalThis.fetch = async () => ({
+        ok: true,
+        status: 200,
+        json: async () => ({
+            ok: true,
+            data: {
+                candles: mockD1Candles,
+                sync_meta: { sync_mode: 'DELTA_SYNC', fetched_new_bars: 1, provider_status: 'READY' }
+            }
+        })
+    });
+    try {
+        await syncSymbolNow('SPOTBRENT', 'D1', null, false, true);
+        const brent = state.symbols.find((s) => s.symbolCode === 'SPOTBRENT');
+        assert.equal(brent.timeframe, 'D1');
+        assert.equal(brent.syncError, false);
+    } finally {
+        globalThis.fetch = origFetch;
+    }
+});

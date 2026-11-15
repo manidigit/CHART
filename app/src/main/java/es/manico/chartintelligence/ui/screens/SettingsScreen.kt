@@ -76,6 +76,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
@@ -282,6 +283,9 @@ fun SettingsScreen(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Row(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(8.dp)
                             ) {
@@ -291,18 +295,22 @@ fun SettingsScreen(
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(20.dp)
                                 )
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
                                     Text(
                                         text = stringResource(R.string.settings_group_account),
                                         style = MaterialTheme.typography.titleSmall,
                                         fontWeight = FontWeight.Bold,
-                                        color = MaterialTheme.colorScheme.onSurface
+                                        color = MaterialTheme.colorScheme.onSurface,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                     Text(
                                         text = ownerUsername.ifBlank { ownerEmail },
                                         style = MaterialTheme.typography.labelSmall,
                                         fontFamily = JetBrainsMonoFontFamily,
                                         color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
                                         modifier = Modifier.testTag("top_bar_user_badge")
                                     )
                                 }
@@ -522,7 +530,10 @@ fun SettingsScreen(
                             Text(
                                 text = stringResource(R.string.settings_live_preview_title),
                                 style = MaterialTheme.typography.labelSmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp)
                             )
                             Row(
                                 horizontalArrangement = Arrangement.spacedBy(10.dp),
@@ -613,7 +624,10 @@ fun SettingsScreen(
                                 text = if (currentLanguage == AppLanguage.FA) "↺ بازنشانی تمامی تنظیمات و رنگ‌ها به حالت اولیه (Reset)" else "↺ Reset All Colors, Line Widths & Settings to Default",
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
-                                color = MaterialTheme.colorScheme.error
+                                color = MaterialTheme.colorScheme.error,
+                                textAlign = TextAlign.Center,
+                                maxLines = 2,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -702,8 +716,8 @@ fun SettingsScreen(
                             horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
                             val modes = listOf(
-                                "by_source" to (if (isFa) "۱. بر اساس منبع" else "1. By Source"),
-                                "by_symbol" to (if (isFa) "۲. بر اساس نماد" else "2. By Symbol")
+                                "by_symbol" to (if (isFa) "۱. بر اساس نماد" else "1. By Symbol"),
+                                "by_source" to (if (isFa) "۲. بر اساس منبع" else "2. By Source")
                             )
                             for ((modeKey, modeTitle) in modes) {
                                 val isModeSelected = explorerMode == modeKey
@@ -1164,7 +1178,9 @@ fun SettingsScreen(
                                             verticalAlignment = Alignment.CenterVertically
                                         ) {
                                             Row(
-                                                modifier = Modifier.weight(1f),
+                                                modifier = Modifier
+                                                    .weight(1f)
+                                                    .padding(end = 8.dp),
                                                 verticalAlignment = Alignment.CenterVertically,
                                                 horizontalArrangement = Arrangement.spacedBy(10.dp)
                                             ) {
@@ -1180,70 +1196,77 @@ fun SettingsScreen(
                                                         text = displayTitle,
                                                         style = MaterialTheme.typography.bodyMedium,
                                                         fontWeight = FontWeight.Bold,
-                                                        color = MaterialTheme.colorScheme.onSurface
+                                                        color = MaterialTheme.colorScheme.onSurface,
+                                                        maxLines = 2,
+                                                        overflow = TextOverflow.Ellipsis
                                                     )
                                                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                                         Text(
                                                             text = "${symbol.symbolCode} · ${symbol.activeProvider.badgeLabel} · ${symbol.storedCandleCount} bars · ${symbol.lastSyncMode}",
                                                             style = MaterialTheme.typography.labelSmall,
                                                             fontFamily = JetBrainsMonoFontFamily,
-                                                            color = MaterialTheme.colorScheme.primary
+                                                            color = MaterialTheme.colorScheme.primary,
+                                                            maxLines = 2,
+                                                            overflow = TextOverflow.Ellipsis
                                                         )
                                                     }
                                                 }
                                             }
 
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            Switch(
+                                                checked = symbol.inWatchlist,
+                                                onCheckedChange = { checked ->
+                                                    onToggleSymbolInWatchlist(symbol.symbolCode, checked)
+                                                },
+                                                modifier = Modifier.testTag("toggle_watchlist_${symbol.symbolCode.lowercase()}")
+                                            )
+                                        }
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            OutlinedButton(
+                                                onClick = { providerModalSymbolCode = symbol.symbolCode },
+                                                shape = RoundedCornerShape(6.dp),
+                                                border = BorderStroke(1.dp, financialPalette.cardBorder),
+                                                contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                modifier = Modifier
+                                                    .height(32.dp)
+                                                    .testTag("change_provider_${symbol.symbolCode.lowercase()}")
                                             ) {
-                                                OutlinedButton(
-                                                    onClick = { providerModalSymbolCode = symbol.symbolCode },
-                                                    shape = RoundedCornerShape(6.dp),
-                                                    border = BorderStroke(1.dp, financialPalette.cardBorder),
-                                                    contentPadding = PaddingValues(horizontal = 8.dp, vertical = 4.dp),
+                                                Icon(
+                                                    imageVector = Icons.Outlined.Tune,
+                                                    contentDescription = stringResource(R.string.settings_change_provider),
+                                                    modifier = Modifier.size(14.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text(
+                                                    text = symbol.activeProvider.badgeLabel,
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    maxLines = 1,
+                                                    overflow = TextOverflow.Ellipsis
+                                                )
+                                            }
+
+                                            if (symbol.isCustom) {
+                                                IconButton(
+                                                    onClick = { onDeleteSymbol(symbol.symbolCode) },
                                                     modifier = Modifier
-                                                        .height(32.dp)
-                                                        .testTag("change_provider_${symbol.symbolCode.lowercase()}")
+                                                        .size(32.dp)
+                                                        .testTag("delete_symbol_${symbol.symbolCode.lowercase()}")
                                                 ) {
                                                     Icon(
-                                                        imageVector = Icons.Outlined.Tune,
-                                                        contentDescription = stringResource(R.string.settings_change_provider),
-                                                        modifier = Modifier.size(14.dp)
-                                                    )
-                                                    Spacer(modifier = Modifier.width(4.dp))
-                                                    Text(
-                                                        text = symbol.activeProvider.badgeLabel,
-                                                        style = MaterialTheme.typography.labelSmall,
-                                                        fontFamily = JetBrainsMonoFontFamily
+                                                        imageVector = Icons.Outlined.Delete,
+                                                        contentDescription = stringResource(R.string.action_delete_symbol),
+                                                        tint = MaterialTheme.colorScheme.error,
+                                                        modifier = Modifier.size(18.dp)
                                                     )
                                                 }
-
-                                                Switch(
-                                                    checked = symbol.inWatchlist,
-                                                    onCheckedChange = { checked ->
-                                                        onToggleSymbolInWatchlist(symbol.symbolCode, checked)
-                                                    },
-                                                    modifier = Modifier.testTag("toggle_watchlist_${symbol.symbolCode.lowercase()}")
-                                                )
-
-                                                if (symbol.isCustom) {
-                                                    IconButton(
-                                                        onClick = { onDeleteSymbol(symbol.symbolCode) },
-                                                        modifier = Modifier
-                                                            .size(32.dp)
-                                                            .testTag("delete_symbol_${symbol.symbolCode.lowercase()}")
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Outlined.Delete,
-                                                            contentDescription = stringResource(R.string.action_delete_symbol),
-                                                            tint = MaterialTheme.colorScheme.error,
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                    }
-                                                }
+                                            }
                                         }
-                                    }
                                 }
                             }
                         }
@@ -1278,7 +1301,10 @@ fun SettingsScreen(
                             Text(
                                 text = stringResource(R.string.settings_group_params),
                                 style = MaterialTheme.typography.titleSmall,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .padding(end = 8.dp)
                             )
                             OutlinedButton(
                                 onClick = onResetAlgoParams,
@@ -1307,7 +1333,10 @@ fun SettingsScreen(
                                 Text(
                                     text = stringResource(R.string.settings_param_fetch_limit),
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp)
                                 )
                                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                     Text(
@@ -1347,7 +1376,10 @@ fun SettingsScreen(
                                 Text(
                                     text = stringResource(R.string.settings_param_zoom_step),
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp)
                                 )
                                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                     Text(
@@ -1385,7 +1417,10 @@ fun SettingsScreen(
                                 Text(
                                     text = stringResource(R.string.settings_param_touch_tolerance),
                                     style = MaterialTheme.typography.bodySmall,
-                                    fontWeight = FontWeight.SemiBold
+                                    fontWeight = FontWeight.SemiBold,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp)
                                 )
                                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                     Text(
@@ -1784,7 +1819,9 @@ fun SettingsScreen(
                                         Text(
                                             text = stringResource(R.string.server_status_db_candles),
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         val candleStr = systemStatus?.totalCandles?.let { if (it > 0) it.toString() else "5,000+" } ?: "5,000+"
                                         Text(
@@ -1792,7 +1829,9 @@ fun SettingsScreen(
                                             style = MaterialTheme.typography.bodyMedium,
                                             fontWeight = FontWeight.Bold,
                                             fontFamily = JetBrainsMonoFontFamily,
-                                            color = financialPalette.bullCandle
+                                            color = financialPalette.bullCandle,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -1807,7 +1846,9 @@ fun SettingsScreen(
                                         Text(
                                             text = stringResource(R.string.server_status_server_utc),
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         val utcStr = systemStatus?.serverTimeUtc?.takeIf { it.isNotBlank() }?.let {
                                             if (it.length >= 19) it.substring(11, 19) + " UTC" else it
@@ -1817,7 +1858,9 @@ fun SettingsScreen(
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.SemiBold,
                                             fontFamily = JetBrainsMonoFontFamily,
-                                            color = MaterialTheme.colorScheme.onSurface
+                                            color = MaterialTheme.colorScheme.onSurface,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -1832,7 +1875,9 @@ fun SettingsScreen(
                                         Text(
                                             text = stringResource(R.string.server_status_cloud_sync),
                                             style = MaterialTheme.typography.labelSmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                         val syncStr = lastWorkspaceSyncedAt ?: stringResource(R.string.server_status_local_synced)
                                         Text(
@@ -1840,7 +1885,9 @@ fun SettingsScreen(
                                             style = MaterialTheme.typography.labelSmall,
                                             fontWeight = FontWeight.SemiBold,
                                             fontFamily = JetBrainsMonoFontFamily,
-                                            color = MaterialTheme.colorScheme.primary
+                                            color = MaterialTheme.colorScheme.primary,
+                                            maxLines = 2,
+                                            overflow = TextOverflow.Ellipsis
                                         )
                                     }
                                 }
@@ -1967,7 +2014,12 @@ fun SettingsScreen(
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(if (isFa) "🔒 غیرفعال در این نسخه (فقط TradingView)" else "🔒 Disabled in Current Release (TradingView Only)")
+                                Text(
+                                    text = if (isFa) "🔒 غیرفعال در این نسخه (فقط TradingView)" else "🔒 Disabled in Current Release (TradingView Only)",
+                                    textAlign = TextAlign.Center,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
                         }
                     }

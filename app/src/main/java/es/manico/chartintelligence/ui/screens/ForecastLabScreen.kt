@@ -9,6 +9,8 @@ import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -26,6 +28,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedButton
@@ -38,6 +41,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -52,9 +56,13 @@ import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import es.manico.chartintelligence.R
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
 import es.manico.chartintelligence.data.model.CandleBar
@@ -97,7 +105,7 @@ import java.util.Locale
 
 private val FORECAST_HORIZON_PRESETS = listOf(10, 15, 20, 30, 45, 60)
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun ForecastLabScreen(
     activeTab: ChartTabState?,
@@ -162,7 +170,10 @@ fun ForecastLabScreen(
     }
     val previousRunMap = remember { mutableMapOf<String, ForecastResult>() }
 
-    val forecastResult = remember(
+    var forecastResult by remember { mutableStateOf<ForecastResult?>(null) }
+    var isComputingForecast by remember { mutableStateOf(false) }
+
+    LaunchedEffect(
         candles,
         higherCandles,
         activeTab?.symbolCode,
@@ -173,11 +184,16 @@ fun ForecastLabScreen(
         preferences.forecastPluginConfigJson,
         preferences.forecastWorkerUrl
     ) {
-        if (activeTab == null) null
-        else {
-            val runKey = "${activeTab.symbolCode}|${activeTab.timeframe}|$activeHorizon|$selectedScenarioId"
-            val prev = previousRunMap[runKey]
-            val res = ForecastEngine.project(
+        if (activeTab == null) {
+            forecastResult = null
+            isComputingForecast = false
+            return@LaunchedEffect
+        }
+        isComputingForecast = true
+        val runKey = "${activeTab.symbolCode}|${activeTab.timeframe}|$activeHorizon|$selectedScenarioId"
+        val prev = previousRunMap[runKey]
+        val computed = withContext(Dispatchers.Default) {
+            ForecastEngine.project(
                 candles = candles,
                 symbolCode = activeTab.symbolCode,
                 timeframe = activeTab.timeframe,
@@ -191,12 +207,15 @@ fun ForecastLabScreen(
                 previousForecast = prev,
                 selectedScenarioId = selectedScenarioId
             )
-            if (res.status != ForecastStatus.DATA_NOT_READY && res.inputHash != prev?.inputHash) {
-                previousRunMap[runKey] = res
-            }
-            res
         }
+        if (computed.status != ForecastStatus.DATA_NOT_READY && computed.inputHash != prev?.inputHash) {
+            previousRunMap[runKey] = computed
+        }
+        forecastResult = computed
+        isComputingForecast = false
     }
+
+    val currentForecast = forecastResult
 
     Column(
         modifier = modifier
@@ -220,26 +239,33 @@ fun ForecastLabScreen(
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
-                    Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Column(
+                        modifier = Modifier
+                            .weight(1f)
+                            .padding(end = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    ) {
                         Text(
                             text = stringResource(R.string.nav_forecast_lab),
                             style = MaterialTheme.typography.titleMedium,
                             fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
+                            color = MaterialTheme.colorScheme.onSurface,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        if (forecastResult != null) {
-                            Row(
+                        if (currentForecast != null) {
+                            FlowRow(
                                 horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                val statusColor = when (forecastResult.status) {
+                                val statusColor = when (currentForecast.status) {
                                     ForecastStatus.VALID -> palette.bullCandle
                                     ForecastStatus.PROVISIONAL -> Color(0xFFF59E0B)
                                     ForecastStatus.DATA_NOT_READY -> MaterialTheme.colorScheme.onSurfaceVariant
                                 }
                                 Surface(color = statusColor.copy(alpha = 0.16f), shape = RoundedCornerShape(4.dp)) {
                                     Text(
-                                        text = forecastResult.status.name,
+                                        text = currentForecast.status.name,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 10.sp,
@@ -250,7 +276,7 @@ fun ForecastLabScreen(
                                 }
                                 Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), shape = RoundedCornerShape(4.dp)) {
                                     Text(
-                                        text = forecastResult.regime.name,
+                                        text = currentForecast.regime.name,
                                         modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                         style = MaterialTheme.typography.labelSmall,
                                         fontSize = 10.sp,
@@ -259,7 +285,7 @@ fun ForecastLabScreen(
                                     )
                                 }
                             }
-                            NoEdgeAndOodHeaderBadges(result = forecastResult)
+                            NoEdgeAndOodHeaderBadges(result = currentForecast)
                         }
                     }
 
@@ -281,11 +307,20 @@ fun ForecastLabScreen(
                                 text = "${activeTab.symbolCode} ▾",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = FontWeight.Bold
+                                fontWeight = FontWeight.Bold,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
                 }
+            }
+            if (isComputingForecast) {
+                LinearProgressIndicator(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(2.dp)
+                )
             }
 
             // Bento Controls Tile: Timeframe + Horizon + Render Mode + Actions
@@ -388,7 +423,10 @@ fun ForecastLabScreen(
                                             stringResource(R.string.forecast_apply_chart_btn)
                                         },
                                         style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                                 OutlinedButton(
@@ -403,7 +441,10 @@ fun ForecastLabScreen(
                                     Text(
                                         text = stringResource(R.string.forecast_record_snapshot_btn),
                                         style = MaterialTheme.typography.labelMedium,
-                                        fontWeight = FontWeight.Bold
+                                        fontWeight = FontWeight.Bold,
+                                        textAlign = TextAlign.Center,
+                                        maxLines = 2,
+                                        overflow = TextOverflow.Ellipsis
                                     )
                                 }
                             }
@@ -443,7 +484,7 @@ fun ForecastLabScreen(
                     .padding(12.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
-                if (activeTab == null || forecastResult == null) {
+                if (activeTab == null || currentForecast == null) {
                     Card(
                         modifier = Modifier.fillMaxWidth(),
                         shape = RoundedCornerShape(10.dp),
@@ -451,7 +492,11 @@ fun ForecastLabScreen(
                         border = BorderStroke(1.dp, palette.cardBorder)
                     ) {
                         Text(
-                            text = stringResource(R.string.chart_state_empty),
+                            text = if (isComputingForecast && activeTab != null) {
+                                "${activeTab.symbolCode} (${activeTab.timeframe})..."
+                            } else {
+                                stringResource(R.string.chart_state_empty)
+                            },
                             modifier = Modifier.padding(16.dp),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
@@ -463,12 +508,12 @@ fun ForecastLabScreen(
                         0 -> {
                             ForecastMiniFanCanvas(
                                 candles = candles,
-                                result = forecastResult,
+                                result = currentForecast,
                                 decimals = decimals,
                                 coordMode = coordMode
                             )
 
-                            if (!forecastResult.readiness.ready) {
+                            if (!currentForecast.readiness.ready) {
                                 Card(
                                     modifier = Modifier.fillMaxWidth(),
                                     shape = RoundedCornerShape(10.dp),
@@ -482,26 +527,26 @@ fun ForecastLabScreen(
                                             fontWeight = FontWeight.Bold,
                                             color = Color(0xFFF59E0B)
                                         )
-                                        for (issue in forecastResult.readiness.issues) {
+                                        for (issue in currentForecast.readiness.issues) {
                                             Text(issue, style = MaterialTheme.typography.bodySmall)
                                         }
                                     }
                                 }
                             } else {
-                                BayesianLiveSelfCorrectionCard(result = forecastResult)
+                                BayesianLiveSelfCorrectionCard(result = currentForecast)
 
                                 SmcClusteredScenariosCard(
-                                    result = forecastResult,
+                                    result = currentForecast,
                                     decimals = decimals,
-                                    selectedScenarioId = forecastResult.activeScenarioId,
+                                    selectedScenarioId = currentForecast.activeScenarioId,
                                     onSelectScenario = { selectedScenarioId = it }
                                 )
 
-                                forecastResult.noEdgeGate?.let { gate ->
+                                currentForecast.noEdgeGate?.let { gate ->
                                     NoEdgeWarningBanner(noEdgeGate = gate)
                                 }
 
-                                forecastResult.featuresSummary?.let { fs ->
+                                currentForecast.featuresSummary?.let { fs ->
                                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                                         Column(
                                             modifier = Modifier.fillMaxWidth(),
@@ -553,14 +598,14 @@ fun ForecastLabScreen(
                                     }
                                 }
 
-                                forecastResult.uncertainty?.let { unc ->
+                                currentForecast.uncertainty?.let { unc ->
                                     UncertaintyBreakdownCard(
                                         uncertainty = unc,
-                                        stability = forecastResult.stability
+                                        stability = currentForecast.stability
                                     )
                                 }
 
-                                forecastResult.mtfCoordination?.let { mtf ->
+                                currentForecast.mtfCoordination?.let { mtf ->
                                     MtfCoordinationCard(
                                         mtf = mtf,
                                         coordMode = coordMode,
@@ -568,15 +613,15 @@ fun ForecastLabScreen(
                                     )
                                 }
 
-                                for (sc in forecastResult.scenarios) {
+                                for (sc in currentForecast.scenarios) {
                                     ForecastScenarioCard(
                                         scenario = sc,
                                         decimals = decimals,
                                         onPlotScenario = {
-                                            val sum = forecastResult.summary
+                                            val sum = currentForecast.summary
                                             if (sum != null) {
                                                 onPlotReferenceLevelsToChart(
-                                                    BigDecimal.valueOf(forecastResult.anchorClose),
+                                                    BigDecimal.valueOf(currentForecast.anchorClose),
                                                     BigDecimal.valueOf(sum.terminalQ75),
                                                     BigDecimal.valueOf(sum.terminalQ90),
                                                     BigDecimal.valueOf(sum.terminalQ25),
@@ -588,7 +633,7 @@ fun ForecastLabScreen(
                                 }
 
                                 KeyPriceZonesSection(
-                                    zones = forecastResult.keyZones,
+                                    zones = currentForecast.keyZones,
                                     decimals = decimals
                                 )
                             }
@@ -604,7 +649,10 @@ fun ForecastLabScreen(
                                 Text(
                                     text = stringResource(R.string.forecast_models_header),
                                     style = MaterialTheme.typography.titleSmall,
-                                    fontWeight = FontWeight.Bold
+                                    fontWeight = FontWeight.Bold,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .padding(end = 8.dp)
                                 )
                                 OutlinedButton(
                                     onClick = onResetModelPlugins,
@@ -616,7 +664,7 @@ fun ForecastLabScreen(
                                 }
                             }
 
-                            val contribMap = forecastResult.modelContributions.associateBy { it.modelId }
+                            val contribMap = currentForecast.modelContributions.associateBy { it.modelId }
                             for (plugin in pluginStates) {
                                 ForecastModelPluginCard(
                                     plugin = plugin,
@@ -645,17 +693,20 @@ fun ForecastLabScreen(
                                         Text(
                                             text = stringResource(R.string.forecast_worker_title),
                                             style = MaterialTheme.typography.titleSmall,
-                                            fontWeight = FontWeight.Bold
+                                            fontWeight = FontWeight.Bold,
+                                            modifier = Modifier
+                                                .weight(1f)
+                                                .padding(end = 8.dp)
                                         )
                                         Surface(
                                             color = Color(0xFF38BDF8).copy(alpha = 0.14f),
                                             shape = RoundedCornerShape(4.dp)
                                         ) {
                                             Text(
-                                                text = if (forecastResult.remoteWorkerStatus == RemoteWorkerStatus.LOCAL_STATISTICAL_ONLY) {
+                                                text = if (currentForecast.remoteWorkerStatus == RemoteWorkerStatus.LOCAL_STATISTICAL_ONLY) {
                                                     "LOCAL_STATISTICAL_ONLY"
                                                 } else {
-                                                    forecastResult.remoteWorkerStatus.name
+                                                    currentForecast.remoteWorkerStatus.name
                                                 },
                                                 modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                                                 style = MaterialTheme.typography.labelSmall,
@@ -696,10 +747,10 @@ fun ForecastLabScreen(
 
                         // TAB 2: PURGED WALK-FORWARD BENCHMARK & SENSITIVITY GRID
                         2 -> {
-                            WalkForwardBenchmarkTable(report = forecastResult.walkForward)
+                            WalkForwardBenchmarkTable(report = currentForecast.walkForward)
                             PathEventAndSensitivityCard(
-                                walkForward = forecastResult.walkForward,
-                                eventDictionary = forecastResult.eventDictionary
+                                walkForward = currentForecast.walkForward,
+                                eventDictionary = currentForecast.eventDictionary
                             )
                         }
 

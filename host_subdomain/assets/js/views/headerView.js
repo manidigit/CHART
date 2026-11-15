@@ -138,9 +138,26 @@ export function renderTopHeaderBar(activeTab, i18n) {
     })
     .join('');
 
-  return `
-    <header class="tv-topbar" dir="ltr">
-      <div class="tv-topbar-left">
+  const isForecastView = state.activeWorkspaceView === 'forecast';
+  const leftControlsHtml = isForecastView
+    ? `
+        <div class="tv-brand">
+          <div class="tv-logo">
+            <img src="./assets/img/app_icon_32.png" alt="CI" class="tv-brand-logo-img" />
+          </div>
+        </div>
+        <span class="tv-ws-header-pill">${isFa ? 'آزمایشگاه پیش‌بینی و سناریو' : 'Forecast Studio'}</span>
+        <button
+          type="button"
+          class="tv-tool-btn"
+          data-action="set-workspace-view"
+          data-view="chart"
+          title="${isFa ? 'بازگشت به چارت اصلی' : 'Back to Chart'}"
+        >
+          <span>← ${isFa ? 'بازگشت به چارت' : 'Back to Chart'}</span>
+        </button>
+      `
+    : `
         <div class="tv-brand">
           <div class="tv-logo">
             <img src="./assets/img/app_icon_32.png" alt="CI" class="tv-brand-logo-img" />
@@ -194,9 +211,19 @@ export function renderTopHeaderBar(activeTab, i18n) {
               : ''
           }
         </button>
+      `;
+
+  return `
+    <header class="tv-topbar" dir="ltr">
+      <div class="tv-topbar-left">
+        ${leftControlsHtml}
       </div>
 
       <div class="tv-topbar-right">
+        ${
+          isForecastView
+            ? ''
+            : `
         <button
           type="button"
           class="tv-tool-btn tv-mobile-only-btn ${state.mobileSheet === 'tools' ? 'active' : ''}"
@@ -216,6 +243,8 @@ export function renderTopHeaderBar(activeTab, i18n) {
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
         </button>
+        `
+        }
 
         <span
           class="ltr-num"
@@ -457,9 +486,9 @@ export function renderIndicatorsModal(activeTab, i18n) {
     <div class="modal-backdrop" data-action="close-modal-backdrop">
       <div class="modal-card" style="max-width: 580px; max-height: 86vh; display: flex; flex-direction: column;" dir="${isFa ? 'rtl' : 'ltr'}">
         <div class="tv-modal-header">
-          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
-            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
-            <span>${isFa ? 'اندیکاتورها، رنگ‌بندی مستقل و اسیلاتورها' : 'Indicators, Independent Colors & Oscillators'}</span>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap; min-width: 0; flex: 1;">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2.2" style="flex-shrink: 0;"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+            <span style="min-width: 0;">${isFa ? 'اندیکاتورها، رنگ‌بندی مستقل و اسیلاتورها' : 'Indicators, Independent Colors & Oscillators'}</span>
             <span class="badge badge-live" style="font-size: 10px; padding: 2px 7px;">
               ${
                 Object.keys(state.chartPreferences.indicatorCustomColors || {}).length > 0
@@ -472,7 +501,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
               }
             </span>
           </div>
-          <div style="display: flex; align-items: center; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 6px; flex-shrink: 0;">
             <button type="button" class="btn btn-sm" data-action="reset-indicator-colors" title="${isFa ? 'بازگردانی رنگ اندیکاتورها به حالت پیش‌فرض' : 'Reset indicator colors to default'}" style="font-size: 11px; padding: 3px 8px;">↺ ${isFa ? 'پیش‌فرض رنگ‌ها' : 'Reset Colors'}</button>
             <button class="btn btn-sm btn-icon" data-action="close-modal">✕</button>
           </div>
@@ -578,7 +607,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('ichimoku', pal.ichimoku, 'Ichimoku Cloud (9, 26, 52, 26)', isFa ? 'ابر ایچیموکو با تنکانسن، کیجونسن و ابر سنکو' : 'Tenkan, Kijun, Senkou Span A/B cloud & Chikou Span', activeTab.showIchimoku, 'toggle-ichimoku', '☁')}
           <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
             <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای اجزای ایچیموکو:' : 'Ichimoku Component Colors:'}</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 6px;">
               ${renderColorRow('ichimokuTenkan', pal.ichimokuTenkan, 'Tenkan-sen (تنکان‌سن)', 'TEN')}
               ${renderColorRow('ichimokuKijun', pal.ichimokuKijun, 'Kijun-sen (کیجون‌سن)', 'KIJ')}
               ${renderColorRow('ichimokuCloud', pal.ichimokuCloud, 'Cloud Span A/B (ابر)', 'CLOUD')}
@@ -601,7 +630,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('smcStructure', pal.smcStructure, 'BOS / CHoCH & EQH / EQL', isFa ? 'تشخیص خودکار شکست ساختار و نقدینگی سقف/کف برابر' : 'Auto Market Structure Breaks (BOS/CHoCH) & Equal Highs/Lows liquidity pools', activeTab.showSmcStructure, 'toggle-smc-structure', 'BOS')}
           <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
             <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای مؤلفه‌های BOS / CHoCH / EQH / EQL:' : 'Distinct SMC Component Colors:'}</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 6px;">
               ${renderColorRow('smcBullBos', pal.smcBullBos, isFa ? 'شکست صعودی (Bullish BOS)' : 'Bullish BOS', 'BOS↑')}
               ${renderColorRow('smcBearBos', pal.smcBearBos, isFa ? 'شکست نزولی (Bearish BOS)' : 'Bearish BOS', 'BOS↓')}
               ${renderColorRow('smcBullChoch', pal.smcBullChoch, isFa ? 'تغییر کاراکتر صعودی' : 'Bullish CHoCH', 'CHO↑')}
@@ -621,7 +650,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('fvg', pal.fvg, 'Fair Value Gaps (FVG / Imbalance)', isFa ? 'باکس گپ‌های ارزش منصفانه صعودی و نزولی تسویه‌نشده' : 'Highlight unmitigated 3-candle Bullish & Bearish Fair Value Gaps', activeTab.showFvg, 'toggle-fvg', '▭FVG')}
           <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
             <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای باکس‌های FVG صعودی و نزولی:' : 'FVG Component Colors:'}</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 6px;">
               ${renderColorRow('fvgBull', pal.fvgBull, isFa ? 'FVG صعودی (Bullish)' : 'Bullish FVG', 'FVG↑')}
               ${renderColorRow('fvgBear', pal.fvgBear, isFa ? 'FVG نزولی (Bearish)' : 'Bearish FVG', 'FVG↓')}
             </div>
@@ -646,7 +675,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('macd', pal.macd, 'MACD (12, 26, 9)', isFa ? 'خطوط مکدی، سیگنال و هیستوگرام مومنتوم در پنل پایین' : 'MACD Line, Signal Line, and Momentum Histogram sub-pane', activeTab.showMacd, 'toggle-macd', 'MACD')}
           <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
             <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای اجزای MACD:' : 'MACD Component Colors:'}</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 6px;">
               ${renderColorRow('macdLine', pal.macdLine, 'MACD Line', 'MACD')}
               ${renderColorRow('macdSignal', pal.macdSignal, 'Signal Line', 'SIG')}
               ${renderColorRow('macdHistBull', pal.macdHistBull, 'Histogram Bull (+)', 'HIST+')}
@@ -663,7 +692,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('adx14', pal.adx14, 'ADX / DMI (14)', isFa ? 'شاخص قدرت روند و جهت حرکتی (+DI / -DI / ADX) با خط مرجع ۲۵' : 'Directional Movement Index (+DI / -DI) & ADX trend strength (Ref 25)', activeTab.showAdx14, 'toggle-adx14', 'ADX')}
           <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
             <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای اجزای ADX / DMI:' : 'ADX / DMI Component Colors:'}</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 6px;">
               ${renderColorRow('adxLine', pal.adxLine, 'ADX Line', 'ADX')}
               ${renderColorRow('plusDi', pal.plusDi, '+DI Line', '+DI')}
               ${renderColorRow('minusDi', pal.minusDi, '-DI Line', '-DI')}
@@ -677,7 +706,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
           ${renderToggleRow('stoch14', pal.stoch14, 'Stochastic (14, 3, 3)', isFa ? 'اسیلاتور استوکاستیک کند (%K / %D) با سطوح اشباع ۲۰ و ۸۰' : 'Slow Stochastic Oscillator (%K / %D) with 20/80 thresholds', activeTab.showStoch14, 'toggle-stoch14', '%K%D')}
           <div class="card-subtle" style="padding: 8px 10px; margin-top: -3px; border-top: 1px dashed var(--border);">
             <div style="font-size: 11.5px; font-weight: 700; color: var(--text-strong); margin-bottom: 6px;">${isFa ? 'رنگ‌بندی مجزای اجزای Stochastic:' : 'Stochastic Component Colors:'}</div>
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px;">
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(180px, 100%), 1fr)); gap: 6px;">
               ${renderColorRow('stochK', pal.stochK, '%K Line', '%K')}
               ${renderColorRow('stochD', pal.stochD, '%D Line', '%D')}
             </div>

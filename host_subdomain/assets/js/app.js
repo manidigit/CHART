@@ -1978,6 +1978,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'set-timeframe' && activeTab) {
     const newTf = el.getAttribute('data-tf') || 'M15';
+    const tfReqSeq = (activeTab._tfSwitchSeq = (activeTab._tfSwitchSeq || 0) + 1);
     activeTab.timeframe = newTf;
     activeTab.chartId = `${activeTab.symbolCode}_${newTf}`;
     activeTab.selectedRangePreset = null;
@@ -1991,15 +1992,15 @@ document.addEventListener('click', async (e) => {
     }
     saveOpenTabsToStorage();
     renderApp();
-    redrawActiveCanvas();
     const needsFullBackfill = !activeTab.candles || activeTab.candles.length < 30;
     await syncSymbolNow(activeTab.symbolCode, newTf, () => {
+      if (activeTab._tfSwitchSeq !== tfReqSeq || activeTab.timeframe !== newTf) return;
       activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
       renderApp();
-      redrawActiveCanvas();
     }, needsFullBackfill);
   } else if (action === 'set-date-range' && activeTab) {
     const rk = el.getAttribute('data-range') || 'All';
+    const rangeReqSeq = (activeTab._tfSwitchSeq = (activeTab._tfSwitchSeq || 0) + 1);
     activeTab.selectedRangePreset = rk;
     activeTab.scrollOffset = 0;
     activeTab.priceScaleFactor = 1.0;
@@ -2029,11 +2030,11 @@ document.addEventListener('click', async (e) => {
     activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
     saveOpenTabsToStorage();
     renderApp();
-    redrawActiveCanvas();
 
     const needsFullBackfill = !activeTab.candles || activeTab.candles.length < 30;
     if (tfChanged || needsFullBackfill) {
       await syncSymbolNow(activeTab.symbolCode, targetTf, () => {
+        if (activeTab._tfSwitchSeq !== rangeReqSeq || activeTab.timeframe !== targetTf) return;
         activeTab.candles = getCachedOrAggregatedCandles(
           activeTab.symbolCode,
           activeTab.provider,
@@ -2042,7 +2043,6 @@ document.addEventListener('click', async (e) => {
         activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
         saveOpenTabsToStorage();
         renderApp();
-        redrawActiveCanvas();
       }, needsFullBackfill);
     }
   } else if (action === 'set-chart-type' && activeTab) {
@@ -2649,7 +2649,7 @@ document.addEventListener('click', async (e) => {
     saveSymbolsToStorage();
     renderApp();
   } else if (action === 'set-explorer-mode') {
-    state.sourceExplorerMode = el.getAttribute('data-mode') || 'by_source';
+    state.sourceExplorerMode = el.getAttribute('data-mode') || 'by_symbol';
     renderApp();
   } else if (action === 'select-explorer-provider') {
     const reqProv = el.getAttribute('data-provider') || 'tvdatafeed';

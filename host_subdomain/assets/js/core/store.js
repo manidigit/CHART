@@ -1088,7 +1088,7 @@ export const state = {
   isWorkspaceSyncing: false,
   lastWorkspaceSyncedAt: null,
 
-  sourceExplorerMode: 'by_source',
+  sourceExplorerMode: 'by_symbol',
   selectedExplorerProvider: 'tvdatafeed',
   symbolExplorerSearchQuery: '',
   settingsSourceCategory: 'ALL',

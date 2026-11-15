@@ -1197,6 +1197,8 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
   const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
   if (!sym) return;
 
+  const syncSeq = (sym._syncSeq = (sym._syncSeq || 0) + 1);
+  sym._activeSyncCount = (sym._activeSyncCount || 0) + 1;
   sym.isSyncing = true;
   sym.syncError = false;
   sym.syncErrorMessage = '';
@@ -1254,79 +1256,89 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
       }
     }
 
+    const isLatestSync = sym._syncSeq === syncSeq;
     const activeCandles =
       syncedByTf[effectiveTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, effectiveTf);
+    const m15Bars =
+      syncedByTf['M15'] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, 'M15') || [];
 
-    const nowMs = Date.now();
-    sym.timeframe = effectiveTf;
-    sym.candles = activeCandles;
-    sym.providerStatus = (activeMeta && activeMeta.provider_status) || (activeSyncOk ? 'READY' : 'ERROR');
-    sym.priceBasis =
-      (activeMeta && activeMeta.price_basis) || resolvePriceBasis(symbolCode, sym.activeProvider);
-    sym.instrumentSpec =
-      (activeMeta && activeMeta.instrument_spec) || getInstrumentSpec(symbolCode, sym.activeProvider);
-    if (activeMeta) {
-      sym.lastSyncMode = activeMeta.sync_mode || 'NONE';
-      sym.fetchedNewBars = Number(activeMeta.fetched_new_bars || 0);
-      if (activeMeta.gap_summary) {
-        sym.gapSummary = activeMeta.gap_summary;
+    if (isLatestSync) {
+      const nowMs = Date.now();
+      sym.timeframe = effectiveTf;
+      sym.candles = activeCandles;
+      sym.providerStatus = (activeMeta && activeMeta.provider_status) || (activeSyncOk ? 'READY' : 'ERROR');
+      sym.priceBasis =
+        (activeMeta && activeMeta.price_basis) || resolvePriceBasis(symbolCode, sym.activeProvider);
+      sym.instrumentSpec =
+        (activeMeta && activeMeta.instrument_spec) || getInstrumentSpec(symbolCode, sym.activeProvider);
+      if (activeMeta) {
+        sym.lastSyncMode = activeMeta.sync_mode || 'NONE';
+        sym.fetchedNewBars = Number(activeMeta.fetched_new_bars || 0);
+        if (activeMeta.gap_summary) {
+          sym.gapSummary = activeMeta.gap_summary;
+        }
       }
-    }
-    const latestQuoteBar =
-      effectiveTf === 'D1' && m15Bars.length > 0
-        ? m15Bars[m15Bars.length - 1]
-        : activeCandles[activeCandles.length - 1];
+      const latestQuoteBar =
+        effectiveTf === 'D1' && m15Bars.length > 0
+          ? m15Bars[m15Bars.length - 1]
+          : activeCandles[activeCandles.length - 1];
 
-    if (latestQuoteBar) {
-      sym.lastClose = Number(latestQuoteBar.close);
-      const activeLastBar = activeCandles[activeCandles.length - 1] || latestQuoteBar;
-      sym.lastCandleUtc = activeLastBar.open_time_utc_iso || latestQuoteBar.open_time_utc_iso;
-      sym.lastCandleCloseMs =
-        Number(activeLastBar.open_time_utc_ms || 0) + PriceFormatter.stepMilliseconds(effectiveTf);
-    }
+      if (latestQuoteBar) {
+        sym.lastClose = Number(latestQuoteBar.close);
+        const activeLastBar = activeCandles[activeCandles.length - 1] || latestQuoteBar;
+        sym.lastCandleUtc = activeLastBar.open_time_utc_iso || latestQuoteBar.open_time_utc_iso;
+        sym.lastCandleCloseMs =
+          Number(activeLastBar.open_time_utc_ms || 0) + PriceFormatter.stepMilliseconds(effectiveTf);
+      }
 
-    if (activeSyncOk) {
-      sym.lastSuccessfulFetchMs = nowMs;
-      sym.syncError = false;
-      sym.syncErrorMessage = '';
-      sym.connectionStatus = PriceFormatter.isMarketOpen(nowMs, symbolCode) ? 'LIVE' : 'CLOSED';
-    } else {
-      sym.syncError = true;
-      sym.syncErrorMessage = activeErrMsg || sym.providerStatus || 'Sync failed';
-      sym.connectionStatus = activeCandles.length > 0 ? 'STALE' : 'ERROR';
-    }
+      if (activeSyncOk) {
+        sym.lastSuccessfulFetchMs = nowMs;
+        sym.syncError = false;
+        sym.syncErrorMessage = '';
+        sym.connectionStatus = PriceFormatter.isMarketOpen(nowMs, symbolCode) ? 'LIVE' : 'CLOSED';
+      } else {
+        sym.syncError = true;
+        sym.syncErrorMessage = activeErrMsg || sym.providerStatus || 'Sync failed';
+        sym.connectionStatus = activeCandles.length > 0 ? 'STALE' : 'ERROR';
+      }
 
-    for (const tab of state.openTabs) {
-      if (tab.symbolCode === symbolCode) {
-        const tabTf =
-          sym.activeProvider === 'eia_brent_spot'
-            ? 'D1'
-            : sym.activeProvider === 'stooq' && tab.timeframe !== 'W1'
+      for (const tab of state.openTabs) {
+        if (tab.symbolCode === symbolCode) {
+          const tabTf =
+            sym.activeProvider === 'eia_brent_spot'
               ? 'D1'
-              : tab.timeframe;
-        tab.provider = sym.activeProvider;
-        tab.providerStatus = sym.providerStatus;
-        tab.connectionStatus = sym.connectionStatus;
-        tab.lastSuccessfulFetchMs = sym.lastSuccessfulFetchMs;
-        tab.lastCandleCloseMs = sym.lastCandleCloseMs;
-        tab.syncErrorMessage = sym.syncErrorMessage;
-        tab.gapSummary = sym.gapSummary || null;
-        tab.timeframe = tabTf;
-        tab.candles =
-          syncedByTf[tabTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tabTf);
+              : sym.activeProvider === 'stooq' && tab.timeframe !== 'W1'
+                ? 'D1'
+                : tab.timeframe;
+          tab.provider = sym.activeProvider;
+          tab.providerStatus = sym.providerStatus;
+          tab.connectionStatus = sym.connectionStatus;
+          tab.lastSuccessfulFetchMs = sym.lastSuccessfulFetchMs;
+          tab.lastCandleCloseMs = sym.lastCandleCloseMs;
+          tab.syncErrorMessage = sym.syncErrorMessage;
+          tab.gapSummary = sym.gapSummary || null;
+          tab.timeframe = tabTf;
+          tab.candles =
+            syncedByTf[tabTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tabTf);
+        }
       }
-    }
 
-    if (!backgroundOnly) {
-      saveSymbolsToStorage();
+      if (!backgroundOnly) {
+        saveSymbolsToStorage();
+      }
     }
   } catch (err) {
-    sym.syncError = true;
-    sym.syncErrorMessage = (err && err.message) || 'Sync failed';
-    sym.connectionStatus = sym.candles && sym.candles.length > 0 ? 'STALE' : 'ERROR';
+    if (sym._syncSeq === syncSeq) {
+      sym.syncError = true;
+      sym.syncErrorMessage = (err && err.message) || 'Sync failed';
+      sym.connectionStatus = sym.candles && sym.candles.length > 0 ? 'STALE' : 'ERROR';
+    }
   } finally {
-    sym.isSyncing = false;
-    if (!backgroundOnly && typeof renderCallback === 'function') renderCallback();
+    sym._activeSyncCount = Math.max(0, (sym._activeSyncCount || 1) - 1);
+    sym.isSyncing = sym._activeSyncCount > 0;
+    if (!backgroundOnly && sym._syncSeq === syncSeq && typeof renderCallback === 'function') {
+      renderCallback();
+    }
   }
 }
 

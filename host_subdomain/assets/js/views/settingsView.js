@@ -41,7 +41,7 @@ export function renderSettingsModal(i18n) {
             ? 'chart'
             : 'account';
 
-  const explorerMode = state.sourceExplorerMode || 'by_source';
+  const explorerMode = state.sourceExplorerMode || 'by_symbol';
   const activeMethodId = 'tvdatafeed';
   const activeMethod =
     PROVIDER_METHODS_CATALOG.find((m) => m.providerId === activeMethodId) || PROVIDER_METHODS_CATALOG[0];
@@ -109,7 +109,7 @@ export function renderSettingsModal(i18n) {
         <div style="font-size: 11.5px; color: var(--text); line-height: 1.5; margin-bottom: 6px;">
           ${isFa ? activeMethod.formulaFa : activeMethod.formulaEn}
         </div>
-        <div class="ltr-num" style="font-size: 10px; color: var(--text-muted);">
+        <div class="ltr-num" style="font-size: 10px; color: var(--text-muted); overflow-wrap: anywhere;">
           DB Key: <code>${activeMethod.storageKeyRule}</code>
         </div>
       </div>
@@ -233,7 +233,7 @@ export function renderSettingsModal(i18n) {
           <div class="tv-settings-symbol-actions">
             <select
               class="input-field ltr-num"
-              style="width: 185px; min-height: 28px; padding: 2px 6px; font-size: 11px;"
+              style="width: auto; max-width: 100%; min-width: 110px; flex: 1 1 135px; min-height: 28px; padding: 2px 6px; font-size: 11px;"
               data-action="select-provider-dropdown"
               data-symbol="${safeCode}"
               title="${isFa ? 'منبع فعال: TradingView (سایر منابع برای توسعه آینده رزرو شده‌اند)' : 'Active Source: TradingView (Other sources reserved for future versions)'}"
@@ -435,14 +435,14 @@ export function renderSettingsModal(i18n) {
           : ''
       }
       <form id="backup-export-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; margin-bottom: 10px;">
-        <input id="backup-export-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1; min-width: 180px; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'عبارت عبور پشتیبان (حداقل ۸ کاراکتر)' : 'Backup passphrase (min 8 chars)'}" required autocomplete="off" />
+        <input id="backup-export-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1 1 150px; min-width: min(170px, 100%); max-width: 100%; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'عبارت عبور پشتیبان (حداقل ۸ کاراکتر)' : 'Backup passphrase (min 8 chars)'}" required autocomplete="off" />
         <button type="submit" class="btn btn-sm btn-primary">
           🔒 ${i18n.t('settings_backup_export_btn') || (isFa ? 'دانلود پشتیبان (.cibak.json)' : 'Export Backup (.cibak.json)')}
         </button>
       </form>
       <form id="backup-restore-form" style="display: flex; gap: 8px; flex-wrap: wrap; align-items: center; padding-top: 8px; border-top: 1px dashed var(--border);">
-        <input id="backup-restore-file" type="file" accept=".json,.cibak.json,application/json" class="input-field" style="flex: 1; min-width: 180px; font-size: 11px; padding: 4px;" required />
-        <input id="backup-restore-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1; min-width: 160px; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'رمز فایل پشتیبان' : 'Restore passphrase'}" required autocomplete="off" />
+        <input id="backup-restore-file" type="file" accept=".json,.cibak.json,application/json" class="input-field" style="flex: 1 1 150px; min-width: min(170px, 100%); max-width: 100%; font-size: 11px; padding: 4px;" required />
+        <input id="backup-restore-passphrase" type="password" minlength="8" class="input-field ltr-num" style="flex: 1 1 140px; min-width: min(150px, 100%); max-width: 100%; height: 32px; font-size: 11.5px;" placeholder="${isFa ? 'رمز فایل پشتیبان' : 'Restore passphrase'}" required autocomplete="off" />
         <button type="submit" class="btn btn-sm">
           🔓 ${i18n.t('settings_backup_restore_btn') || (isFa ? 'بازیابی نسخه پشتیبان' : 'Restore Backup')}
         </button>
@@ -468,7 +468,7 @@ export function renderSettingsModal(i18n) {
             : 'In this version, the unified TradingView (tvdatafeed) engine is the sole active data source (no API key required). External provider API keys are preserved in disabled state for future releases.'
         }
       </div>
-      <form id="settings-byok-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 8px;">
+      <form id="settings-byok-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(200px, 100%), 1fr)); gap: 8px;">
         <div>
           <label style="display: block; font-size: 10.5px; color: var(--text-muted); margin-bottom: 3px;">🔒 Twelve Data API Key (${isFa ? 'توسعه آینده' : 'Future Release'})</label>
           <input id="byok-twelve-data" type="password" class="input-field ltr-num" style="height: 30px; font-size: 11.5px; cursor: not-allowed;" placeholder="Disabled — Future Version" value="${escapeHtml(localByok.twelveDataApiKey || '')}" autocomplete="off" disabled />
@@ -531,7 +531,7 @@ export function renderSettingsModal(i18n) {
             ? `<div class="ltr-num" style="font-size: 11px; padding: 6px 10px; border-radius: 6px; margin-bottom: 8px; background: rgba(41,98,255,0.12); border: 1px solid var(--primary); color: var(--text-strong);">${escapeHtml(state.importStatusMessage)}</div>`
             : ''
         }
-        <form id="historical-import-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(145px, 1fr)); gap: 8px; margin-bottom: 10px;">
+        <form id="historical-import-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(135px, 100%), 1fr)); gap: 8px; margin-bottom: 10px;">
           <div>
             <label style="display: block; font-size: 10px; color: var(--text-muted); margin-bottom: 2px;">Symbol</label>
             <select id="historical-import-symbol" class="input-field ltr-num" style="height: 32px; font-size: 11.5px;">${importSymbolOptions}</select>
@@ -565,18 +565,18 @@ export function renderSettingsModal(i18n) {
             </select>
           </div>
           <div style="grid-column: 1 / -1; display: flex; gap: 8px; flex-wrap: wrap; align-items: center;">
-            <input id="historical-import-file" type="file" accept=".csv,.xls,.json,.txt,text/csv,application/vnd.ms-excel,application/json" class="input-field" style="flex: 1; min-width: 200px; font-size: 11px; padding: 4px;" required />
+            <input id="historical-import-file" type="file" accept=".csv,.xls,.json,.txt,text/csv,application/vnd.ms-excel,application/json" class="input-field" style="flex: 1 1 160px; min-width: min(170px, 100%); max-width: 100%; font-size: 11px; padding: 4px;" required />
             <button type="submit" class="btn btn-sm btn-primary" data-testid="upload_historical_import_btn">
               📥 ${i18n.t('settings_import_upload_btn') || (isFa ? 'پردازش و ورود فایل' : 'Import File')}
             </button>
           </div>
         </form>
 
-        <form id="manual-ohlc-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 6px; padding-top: 8px; border-top: 1px dashed var(--border); margin-bottom: 10px;">
+        <form id="manual-ohlc-form" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100px, 100%), 1fr)); gap: 6px; padding-top: 8px; border-top: 1px dashed var(--border); margin-bottom: 10px;">
           <div style="grid-column: 1 / -1; font-size: 11px; font-weight: 700; color: var(--text-strong);">
             ${i18n.t('settings_manual_ohlc_title') || (isFa ? 'ثبت / اصلاح دستی یک کندل (Manual OHLC Entry)' : 'Manual OHLC Entry / Correction')}
           </div>
-          <input id="manual-ohlc-datetime" type="text" class="input-field ltr-num" style="grid-column: span 2; height: 30px; font-size: 11px;" placeholder="2026-11-13 or 2026-11-13 14:00" required />
+          <input id="manual-ohlc-datetime" type="text" class="input-field ltr-num" style="grid-column: 1 / -1; height: 30px; font-size: 11px;" placeholder="2026-11-13 or 2026-11-13 14:00" required />
           <input id="manual-ohlc-open" type="number" step="any" class="input-field ltr-num" style="height: 30px; font-size: 11px;" placeholder="Open" required />
           <input id="manual-ohlc-high" type="number" step="any" class="input-field ltr-num" style="height: 30px; font-size: 11px;" placeholder="High" required />
           <input id="manual-ohlc-low" type="number" step="any" class="input-field ltr-num" style="height: 30px; font-size: 11px;" placeholder="Low" required />
@@ -613,19 +613,19 @@ export function renderSettingsModal(i18n) {
           <div class="chip-group">
             <button
               type="button"
-              class="chip ${explorerMode === 'by_source' ? 'active' : ''}"
-              data-action="set-explorer-mode"
-              data-mode="by_source"
-            >
-              ${isFa ? 'بر اساس منبع' : 'By Source'}
-            </button>
-            <button
-              type="button"
               class="chip ${explorerMode === 'by_symbol' ? 'active' : ''}"
               data-action="set-explorer-mode"
               data-mode="by_symbol"
             >
               ${isFa ? 'بر اساس نماد' : 'By Symbol'}
+            </button>
+            <button
+              type="button"
+              class="chip ${explorerMode === 'by_source' ? 'active' : ''}"
+              data-action="set-explorer-mode"
+              data-mode="by_source"
+            >
+              ${isFa ? 'بر اساس منبع' : 'By Source'}
             </button>
           </div>
         </div>
@@ -665,17 +665,17 @@ export function renderSettingsModal(i18n) {
                   <label class="tv-combo-label" for="settings-symbol-search-input">
                     ${isFa ? 'جستجو و افزودن نماد' : 'Search & Add Symbol'}
                   </label>
-                  <div style="display: flex; gap: 6px; align-items: center;">
+                  <div style="display: flex; gap: 6px; align-items: center; flex-wrap: wrap; min-width: 0; width: 100%;">
                     <input
                       id="settings-symbol-search-input"
                       type="text"
                       class="input-field"
-                      style="flex: 1; min-width: 120px; min-height: 34px; font-size: 12px;"
+                      style="flex: 1 1 140px; min-width: 0; min-height: 34px; font-size: 12px;"
                       placeholder="${isFa ? 'جستجوی کد یا نام نماد...' : 'Search symbol code or name...'}"
                       value="${escapeHtml(state.symbolExplorerSearchQuery || '')}"
                       data-action="search-explorer-symbol"
                     />
-                    <button type="button" class="btn btn-primary" style="min-height: 34px;" data-action="open-add-symbol-modal">
+                    <button type="button" class="btn btn-primary" style="min-height: 34px; flex-shrink: 0;" data-action="open-add-symbol-modal">
                       + ${i18n.t('settings_add_custom_symbol')}
                     </button>
                   </div>
@@ -723,8 +723,8 @@ export function renderSettingsModal(i18n) {
           </button>
         </div>
 
-        <div class="row-between" style="gap: 18px; flex-wrap: wrap; align-items: flex-start;">
-          <div style="flex: 1; min-width: 240px; display: flex; flex-direction: column; gap: 10px;">
+        <div class="row-between" style="gap: 14px; flex-wrap: wrap; align-items: flex-start;">
+          <div style="flex: 1 1 220px; min-width: 0; max-width: 100%; display: flex; flex-direction: column; gap: 10px;">
             ${colorRows
               .map(
                 (row) => {
@@ -732,7 +732,7 @@ export function renderSettingsModal(i18n) {
                   return `
                 <div class="row-between" style="gap: 10px; flex-wrap: wrap;">
                   <span style="font-size: 12px; font-weight: 600; color: var(--text);">${row.label}</span>
-                  <div class="color-picker-row" style="display: flex; align-items: center; gap: 6px;">
+                  <div class="color-picker-row" style="display: flex; align-items: center; gap: 6px; flex-wrap: wrap; min-width: 0; max-width: 100%;">
                     ${row.palette
                       .map(
                         (c) =>
@@ -756,7 +756,7 @@ export function renderSettingsModal(i18n) {
               .join('')}
           </div>
 
-          <div style="background: #131722; border: 1px solid #2A2E39; border-radius: 8px; padding: 12px 18px; min-width: 145px; text-align: center;">
+          <div style="background: #131722; border: 1px solid #2A2E39; border-radius: 8px; padding: 12px 16px; min-width: 125px; max-width: 100%; text-align: center;">
             <div class="ltr-num" style="font-size: 10px; color: #787B86; margin-bottom: 6px; font-weight: 700;">LIVE PREVIEW</div>
             <svg width="110" height="84" viewBox="0 0 110 84" style="display: block; margin: 0 auto;">
               <line x1="82" y1="4" x2="82" y2="80" stroke="${p.vLineColor || '#A855F7'}" stroke-width="1.2" stroke-dasharray="3 3"/>
@@ -971,8 +971,8 @@ export function renderSettingsModal(i18n) {
 
         <form id="settings-email-form" style="margin-bottom: 12px;">
           <label class="tv-input-label">${i18n.t('label_recovery_email')}</label>
-          <div style="display: flex; gap: 8px;">
-            <input class="input-field ltr-num" type="email" name="recovery_email" placeholder="${i18n.t('label_recovery_email')}" value="${escapeHtml(state.ownerEmail || '')}" required />
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <input class="input-field ltr-num" style="flex: 1 1 160px; min-width: 0;" type="email" name="recovery_email" placeholder="${i18n.t('label_recovery_email')}" value="${escapeHtml(state.ownerEmail || '')}" required />
             <button type="submit" class="btn btn-sm btn-primary" style="flex-shrink: 0;">
               ${i18n.t('action_save_email')}
             </button>
@@ -981,8 +981,8 @@ export function renderSettingsModal(i18n) {
 
         <form id="settings-password-form">
           <label class="tv-input-label">${i18n.t('settings_new_password')}</label>
-          <div style="display: flex; gap: 8px;">
-            <input class="input-field" type="password" name="new_password" placeholder="${i18n.t('settings_new_password')}" required />
+          <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+            <input class="input-field" style="flex: 1 1 160px; min-width: 0;" type="password" name="new_password" placeholder="${i18n.t('settings_new_password')}" required />
             <button type="submit" class="btn btn-sm" style="flex-shrink: 0;">
               ${i18n.t('settings_change_password')}
             </button>
@@ -1006,7 +1006,7 @@ export function renderSettingsModal(i18n) {
 
   return `
     <div class="modal-backdrop" data-action="close-modal-backdrop">
-      <div class="modal-card">
+      <div class="modal-card" dir="${isFa ? 'rtl' : 'ltr'}">
         <div class="tv-modal-header">
           <div class="tv-modal-title">
             <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--primary)" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
