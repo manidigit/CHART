@@ -339,7 +339,8 @@ fun ChartIntelligenceApp(
                             onSelectDrawing = mainViewModel::selectDrawingOnActiveTab,
                             onTranslateSelectedDrawing = mainViewModel::translateSelectedDrawing,
                             onDeleteSelectedDrawing = mainViewModel::deleteSelectedDrawingOnActiveTab,
-                            onClearAllDrawings = mainViewModel::clearAllDrawingsOnActiveTab
+                            onClearAllDrawings = mainViewModel::clearAllDrawingsOnActiveTab,
+                            lowerTimeframeCandlesProvider = mainViewModel::getLowerTimeframeCandlesForActiveTab
                         )
 
                         WorkspaceScreen.PREDICTION -> ForecastLabScreen(
@@ -364,6 +365,7 @@ fun ChartIntelligenceApp(
                             onApplyForecastToChart = mainViewModel::applyForecastAndOpenChart,
                             onBackToWatchlist = mainViewModel::navigateBack,
                             higherTimeframeCandlesProvider = mainViewModel::getHigherTimeframeCandlesForActiveTab,
+                            lowerTimeframeCandlesProvider = mainViewModel::getLowerTimeframeCandlesForActiveTab,
                             lifecycleEvents = state.forecastLifecycleEvents,
                             lifecycleVerifyResult = state.forecastLifecycleVerifyResult,
                             onEvaluateMaturedOutcomes = mainViewModel::evaluateMaturedForecastOutcomes

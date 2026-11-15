@@ -80,6 +80,7 @@ import es.manico.chartintelligence.forecast.ForecastV130Analyzer
 import es.manico.chartintelligence.forecast.LedgerVerifyResult
 import es.manico.chartintelligence.forecast.LifecycleVerifyResult
 import es.manico.chartintelligence.forecast.RemoteWorkerStatus
+import es.manico.chartintelligence.forecast.resolveLowerTimeframeInfo
 import es.manico.chartintelligence.ui.components.AssetSymbolBadge
 import es.manico.chartintelligence.ui.components.BayesianLiveSelfCorrectionCard
 import es.manico.chartintelligence.ui.components.ForecastMiniFanCanvas
@@ -130,6 +131,7 @@ fun ForecastLabScreen(
     onBackToWatchlist: () -> Unit,
     modifier: Modifier = Modifier,
     higherTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() },
+    lowerTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() },
     lifecycleEvents: List<ForecastLifecycleEvent> = emptyList(),
     lifecycleVerifyResult: LifecycleVerifyResult = LifecycleVerifyResult(true, 0, -1, "Empty lifecycle log"),
     onEvaluateMaturedOutcomes: () -> Unit = {}
@@ -168,6 +170,12 @@ fun ForecastLabScreen(
     val higherCandles = remember(higherTf, candles) {
         if (higherTf.isNotBlank()) higherTimeframeCandlesProvider(higherTf) else emptyList()
     }
+    val lowerInfo = remember(activeTab?.timeframe) {
+        resolveLowerTimeframeInfo(activeTab?.timeframe.orEmpty())
+    }
+    val lowerCandles = remember(lowerInfo, candles) {
+        if (lowerInfo != null) lowerTimeframeCandlesProvider(lowerInfo.timeframe) else emptyList()
+    }
     val previousRunMap = remember { mutableMapOf<String, ForecastResult>() }
 
     var forecastResult by remember { mutableStateOf<ForecastResult?>(null) }
@@ -176,6 +184,7 @@ fun ForecastLabScreen(
     LaunchedEffect(
         candles,
         higherCandles,
+        lowerCandles,
         activeTab?.symbolCode,
         activeTab?.timeframe,
         activeHorizon,
@@ -204,6 +213,8 @@ fun ForecastLabScreen(
                 skipWalkForward = false,
                 higherTimeframe = higherTf,
                 higherTimeframeCandles = higherCandles,
+                lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
+                lowerTimeframeCandles = lowerCandles,
                 previousForecast = prev,
                 selectedScenarioId = selectedScenarioId
             )
@@ -229,88 +240,120 @@ fun ForecastLabScreen(
                 .fillMaxSize()
                 .widthIn(max = 760.dp)
         ) {
-            // Top Studio Header
+            // Top Studio Header (Symbol + Timeframes consolidated at top)
             CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                Row(
+                Column(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(MaterialTheme.colorScheme.surface)
-                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .padding(end = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text(
-                            text = stringResource(R.string.nav_forecast_lab),
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface,
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                        if (currentForecast != null) {
-                            FlowRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalArrangement = Arrangement.spacedBy(4.dp)
-                            ) {
-                                val statusColor = when (currentForecast.status) {
-                                    ForecastStatus.VALID -> palette.bullCandle
-                                    ForecastStatus.PROVISIONAL -> Color(0xFFF59E0B)
-                                    ForecastStatus.DATA_NOT_READY -> MaterialTheme.colorScheme.onSurfaceVariant
+                        Column(
+                            modifier = Modifier
+                                .weight(1f)
+                                .padding(end = 10.dp),
+                            verticalArrangement = Arrangement.spacedBy(2.dp)
+                        ) {
+                            Text(
+                                text = stringResource(R.string.nav_forecast_lab),
+                                style = MaterialTheme.typography.titleMedium,
+                                fontWeight = FontWeight.Bold,
+                                color = MaterialTheme.colorScheme.onSurface,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
+                            )
+                            if (currentForecast != null) {
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    val statusColor = when (currentForecast.status) {
+                                        ForecastStatus.VALID -> palette.bullCandle
+                                        ForecastStatus.PROVISIONAL -> Color(0xFFF59E0B)
+                                        ForecastStatus.DATA_NOT_READY -> MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+                                    Surface(color = statusColor.copy(alpha = 0.16f), shape = RoundedCornerShape(4.dp)) {
+                                        Text(
+                                            text = currentForecast.status.name,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 10.sp,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontWeight = FontWeight.Bold,
+                                            color = statusColor
+                                        )
+                                    }
+                                    Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), shape = RoundedCornerShape(4.dp)) {
+                                        Text(
+                                            text = currentForecast.regime.name,
+                                            modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
+                                            style = MaterialTheme.typography.labelSmall,
+                                            fontSize = 10.sp,
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
                                 }
-                                Surface(color = statusColor.copy(alpha = 0.16f), shape = RoundedCornerShape(4.dp)) {
-                                    Text(
-                                        text = currentForecast.status.name,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
-                                        fontFamily = JetBrainsMonoFontFamily,
-                                        fontWeight = FontWeight.Bold,
-                                        color = statusColor
-                                    )
-                                }
-                                Surface(color = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f), shape = RoundedCornerShape(4.dp)) {
-                                    Text(
-                                        text = currentForecast.regime.name,
-                                        modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 10.sp,
-                                        fontFamily = JetBrainsMonoFontFamily,
-                                        color = MaterialTheme.colorScheme.primary
-                                    )
-                                }
+                                NoEdgeAndOodHeaderBadges(result = currentForecast)
                             }
-                            NoEdgeAndOodHeaderBadges(result = currentForecast)
+                        }
+
+                        if (activeTab != null) {
+                            Row(
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(8.dp))
+                                    .background(MaterialTheme.colorScheme.background)
+                                    .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                    .minimumInteractiveComponentSize()
+                                    .clickable { showSymbolSheet = true }
+                                    .padding(horizontal = 10.dp, vertical = 6.dp)
+                                    .testTag("forecast_symbol_selector"),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                AssetSymbolBadge(symbolCode = activeTab.symbolCode, sizeDp = 18.dp)
+                                Text(
+                                    text = "${activeTab.symbolCode} ▾",
+                                    style = MaterialTheme.typography.labelLarge,
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
                         }
                     }
 
                     if (activeTab != null) {
                         Row(
                             modifier = Modifier
-                                .clip(RoundedCornerShape(8.dp))
-                                .background(MaterialTheme.colorScheme.background)
-                                .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
-                                .minimumInteractiveComponentSize()
-                                .clickable { showSymbolSheet = true }
-                                .padding(horizontal = 10.dp, vertical = 6.dp)
-                                .testTag("forecast_symbol_selector"),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            AssetSymbolBadge(symbolCode = activeTab.symbolCode, sizeDp = 18.dp)
-                            Text(
-                                text = "${activeTab.symbolCode} ▾",
-                                style = MaterialTheme.typography.labelLarge,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+                            for (tf in activeTab.allowedTimeframes) {
+                                FilterChip(
+                                    selected = activeTab.timeframe.equals(tf, ignoreCase = true),
+                                    onClick = { onSelectTimeframe(tf) },
+                                    label = {
+                                        Text(
+                                            PriceFormatterAlgorithm.displayTimeframeLabel(tf),
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            fontSize = 11.sp
+                                        )
+                                    },
+                                    modifier = Modifier
+                                        .bentoInteractive()
+                                        .testTag("forecast_tf_chip_${tf.lowercase()}")
+                                )
+                            }
                         }
                     }
                 }
@@ -323,7 +366,7 @@ fun ForecastLabScreen(
                 )
             }
 
-            // Bento Controls Tile: Timeframe + Horizon + Render Mode + Actions
+            // Bento Controls Tile: Horizon + Render Mode + Actions
             if (activeTab != null) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                     BentoCard(
@@ -337,30 +380,6 @@ fun ForecastLabScreen(
                             modifier = Modifier.fillMaxWidth(),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Row(
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .horizontalScroll(rememberScrollState()),
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                for (tf in activeTab.allowedTimeframes) {
-                                    FilterChip(
-                                        selected = activeTab.timeframe.equals(tf, ignoreCase = true),
-                                        onClick = { onSelectTimeframe(tf) },
-                                        label = {
-                                            Text(
-                                                PriceFormatterAlgorithm.displayTimeframeLabel(tf),
-                                                fontFamily = JetBrainsMonoFontFamily,
-                                                fontSize = 11.sp
-                                            )
-                                        },
-                                        modifier = Modifier
-                                            .bentoInteractive()
-                                            .testTag("forecast_tf_chip_${tf.lowercase()}")
-                                    )
-                                }
-                            }
 
                             Row(
                                 modifier = Modifier

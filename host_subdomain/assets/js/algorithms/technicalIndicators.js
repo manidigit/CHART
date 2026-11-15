@@ -1265,65 +1265,165 @@ export const TechnicalIndicators = {
       }
     }
 
-    const pullbackBars = Math.min(4, Math.max(3, Math.round(hCount * 0.2)));
+    const canonicalHorizon = 60;
+    const tfNorm = String(timeframe || 'M15').trim().toUpperCase();
+    const pullbackBars = tfNorm === 'M15' ? 3 : tfNorm === 'M30' ? 2 : 1;
     const stepMs = PriceFormatter.stepMilliseconds(timeframe);
     const lastOpenMs = Number(
       lastCandle.open_time_utc_ms || (lastCandle.openTimeSec ? lastCandle.openTimeSec * 1000 : Date.now())
     );
+    const maxPullAtr = pullbackBars === 1 ? 0.62 : 1.35;
+    const clampedPullback = Math.max(
+      lastClose - maxPullAtr * atr,
+      Math.min(lastClose + maxPullAtr * atr, pullbackTarget)
+    );
+    const clampedMagnet =
+      dominantDir > 0
+        ? Math.max(lastClose + 1.6 * atr, Math.min(lastClose + 5.2 * atr, primaryMagnet))
+        : Math.min(lastClose - 1.6 * atr, Math.max(lastClose - 5.2 * atr, primaryMagnet));
+
     const out = [];
     let prevProjectedClose = lastClose;
+    let waveMode = 'PULLBACK';
+    let legBars = 0;
+    let legStart = lastClose;
+    let sweepCount = 0;
+    let corrLen = 4;
+    let corrTarget = lastClose;
+    let consLen = 3;
+    let consMid = lastClose;
+    let consecDir = 0;
+    let lastDir = 0;
 
-    for (let k = 1; k <= hCount; k++) {
+    for (let k = 1; k <= canonicalHorizon; k++) {
       const openP = prevProjectedClose;
-      const isPullbackPhase = k <= pullbackBars;
-      let signedBody = 0;
-      let isImpulseBar = false;
+      const maxEnvAtr = 1.10 * Math.sqrt(k + 5);
+      const totalExcAtr = ((openP - lastClose) * dominantDir) / Math.max(atr, 1e-6);
+      const damp = Math.max(0.18, Math.min(1.0, 1.0 - Math.max(0, totalExcAtr) / (maxEnvAtr * 1.04)));
 
-      if (isPullbackPhase) {
-        // Step A: Pullback / mitigation wave toward FVG / POC / EMA20
-        const remPullback = Math.max(1, pullbackBars - k + 1);
-        const gapToPullback = pullbackTarget - openP;
-        const stepPull = gapToPullback / remPullback;
-        const bodyMag = Math.max(atr * 0.35, Math.min(atr * 0.85, Math.abs(stepPull) + atr * 0.22));
-        const pullSign = gapToPullback >= 0 ? 1 : -1;
-        signedBody = k === pullbackBars ? -dominantDir * atr * 0.32 : pullSign * bodyMag;
-        isImpulseBar = false;
-      } else {
-        // Step B: 2-step-forward, 1-step-back fractal wave toward Primary Liquidity Magnet
-        const waveIdx = (k - pullbackBars - 1) % 4;
-        const isRetraceBar = waveIdx === 2; // 2 impulse bars, 1 consolidation/pullback bar, 1 continuation bar
-        const remBars = Math.max(2, hCount - k + 1);
-        const distToMagnet = primaryMagnet - openP;
-        const magnetDrift = distToMagnet / remBars;
-
-        if (isRetraceBar) {
-          // 1-step-back consolidation/pullback candle (0.32x - 0.58x ATR body)
-          const retraceScale = 0.34 + 0.18 * Math.abs(Math.sin(k * 1.3 + n));
-          signedBody = -dominantDir * atr * retraceScale;
-          isImpulseBar = false;
-        } else {
-          // 2-step-forward strong impulse candle (0.72x - 1.35x ATR body)
-          const impulseScale = 0.74 + 0.42 * Math.abs(Math.cos(k * 0.85 + (n % 5)));
-          const rawStep = magnetDrift * 0.55 + dominantDir * atr * impulseScale * avgBodyRatio;
-          const minImpulse = atr * 0.52 * avgBodyRatio;
-          const maxImpulse = atr * 1.38;
-          const mag = Math.max(minImpulse, Math.min(maxImpulse, Math.abs(rawStep)));
-          signedBody = (rawStep >= 0 ? 1 : -1) * mag;
-          isImpulseBar = true;
+      if (waveMode === 'PULLBACK' && k > pullbackBars) {
+        waveMode = 'IMPULSE';
+        legBars = 0;
+        legStart = openP;
+      } else if (waveMode === 'IMPULSE') {
+        const legGainAtr = ((openP - legStart) * dominantDir) / Math.max(atr, 1e-6);
+        const activeTarget =
+          sweepCount === 0
+            ? clampedMagnet
+            : lastClose + dominantDir * atr * Math.min(maxEnvAtr * 0.9, 3.0 + sweepCount * 1.55);
+        const hitTarget = (openP - activeTarget) * dominantDir >= -0.25 * atr && legBars >= 4;
+        const overext = legGainAtr >= 2.15 + 0.35 * (sweepCount % 2) || legBars >= 8 || totalExcAtr >= maxEnvAtr * 0.80;
+        if (hitTarget || overext) {
+          waveMode = 'CORRECTION';
+          corrLen = 4 + ((k + sweepCount) % 3);
+          corrTarget = openP - (openP - legStart) * (0.42 + 0.10 * (sweepCount % 2));
+          legBars = 0;
+          sweepCount += 1;
+        }
+      } else if (waveMode === 'CORRECTION') {
+        const reached = (openP - corrTarget) * (-dominantDir) >= -0.15 * atr && legBars >= 2;
+        if (legBars >= corrLen || reached) {
+          if (k >= 14 && sweepCount % 2 === 1) {
+            waveMode = 'CONSOLIDATION';
+            consLen = 3 + (sweepCount % 2);
+            consMid = openP;
+            legBars = 0;
+          } else {
+            waveMode = 'IMPULSE';
+            legStart = openP;
+            legBars = 0;
+          }
+        }
+      } else if (waveMode === 'CONSOLIDATION') {
+        if (legBars >= consLen) {
+          if (k < 48 && totalExcAtr < maxEnvAtr * 0.78) {
+            waveMode = 'IMPULSE';
+            legStart = openP;
+            legBars = 0;
+          } else {
+            consMid = openP;
+            legBars = 0;
+          }
         }
       }
 
-      const adjClose = Math.max(lastClose * 0.05, openP + signedBody);
+      let signedBody = 0;
+      let candlePhase = waveMode;
+
+      if (waveMode === 'PULLBACK') {
+        if (pullbackBars === 1) {
+          signedBody = dominantDir * atr * 0.22;
+        } else if (k === pullbackBars) {
+          signedBody = dominantDir * atr * 0.24;
+        } else {
+          const remPull = Math.max(1, pullbackBars - k + 1);
+          const gap = (clampedPullback - openP) / remPull;
+          const mag = Math.max(atr * 0.24, Math.min(atr * 0.58, Math.abs(gap) * 0.85 + atr * 0.16));
+          signedBody = (gap >= 0 ? 1 : -1) * mag;
+        }
+        candlePhase = 'MITIGATION_PULLBACK';
+      } else if (waveMode === 'IMPULSE') {
+        if (consecDir >= 3 && lastDir === dominantDir) {
+          signedBody = -dominantDir * atr * (0.24 + 0.18 * Math.abs(Math.sin(k * 1.25 + n)));
+          candlePhase = 'CONSOLIDATION';
+        } else {
+          const impulseScale = 0.38 + 0.30 * avgBodyRatio + 0.24 * Math.abs(Math.cos(k * 0.85 + (n % 5)));
+          const mag = Math.max(atr * 0.24, Math.min(atr * 1.15, atr * impulseScale * damp));
+          signedBody = dominantDir * mag;
+          candlePhase = 'IMPULSE';
+        }
+      } else if (waveMode === 'CORRECTION') {
+        if (consecDir >= 3 && lastDir === -dominantDir) {
+          signedBody = dominantDir * atr * (0.20 + 0.14 * Math.abs(Math.cos(k * 1.1)));
+        } else {
+          const remCorr = Math.max(1, corrLen - legBars);
+          const gap = Math.abs(corrTarget - openP) / remCorr;
+          const mag = Math.max(atr * 0.22, Math.min(atr * 0.72, gap * 0.75 + atr * 0.16));
+          signedBody = -dominantDir * mag;
+        }
+        candlePhase = 'CONSOLIDATION';
+      } else {
+        const pullToMid = (consMid - openP) * 0.30;
+        const osc = (legBars % 2 === 0 ? -dominantDir : dominantDir) * atr * 0.30;
+        let comb = pullToMid + osc;
+        let sgn = comb >= 0 ? 1 : -1;
+        if (consecDir >= 3 && sgn === lastDir) sgn = -lastDir;
+        signedBody = sgn * Math.max(atr * 0.20, Math.min(atr * 0.48, Math.abs(comb)));
+        candlePhase = 'CONSOLIDATION';
+      }
+
+      let adjClose = Math.max(lastClose * 0.05, openP + signedBody);
+      if (Math.abs(adjClose - openP) < atr * 0.18) {
+        adjClose = openP + (adjClose >= openP ? 1 : -1) * atr * 0.20;
+      }
+      const nextExcAtr = ((adjClose - lastClose) * dominantDir) / Math.max(atr, 1e-6);
+      if (nextExcAtr > maxEnvAtr) {
+        adjClose = Math.max(lastClose * 0.05, openP - dominantDir * atr * 0.24);
+      }
+      if (consecDir >= 4 && (adjClose >= openP ? 1 : -1) === lastDir) {
+        adjClose = Math.max(lastClose * 0.05, openP - lastDir * atr * (0.24 + 0.14 * Math.abs(Math.cos(k * 1.15))));
+      }
+
+      const curSgn = adjClose >= openP ? 1 : -1;
+      consecDir = curSgn === lastDir ? consecDir + 1 : 1;
+      lastDir = curSgn;
+
       const bodyAbs = Math.abs(adjClose - openP);
 
-      // Base upper & lower wicks scaled so total candle range is 0.5x - 1.8x ATR(14)
-      let upperWick = Math.max(
-        atr * 0.16,
-        bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.35 * Math.abs(Math.cos(k * 0.9)))
+      // Base upper & lower wicks scaled so total candle range stays realistic
+      const upperWick = Math.min(
+        atr * 0.78,
+        Math.max(
+          atr * 0.14,
+          bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.30 * Math.abs(Math.cos(k * 0.9)))
+        )
       );
-      let lowerWick = Math.max(
-        atr * 0.16,
-        bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.35 * Math.abs(Math.sin(k * 1.1)))
+      const lowerWick = Math.min(
+        atr * 0.78,
+        Math.max(
+          atr * 0.14,
+          bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.30 * Math.abs(Math.sin(k * 1.1)))
+        )
       );
 
       let highP = Math.max(openP, adjClose) + upperWick;
@@ -1332,25 +1432,25 @@ export const TechnicalIndicators = {
       // Rule 4: Pronounced Rejection Wicks at Key Levels (FVG, POC, VAH, VAL, EQH/EQL)
       let rejectionWick = false;
       if (
-        Math.abs(lowP - pullbackTarget) <= atr * 0.35 ||
-        Math.abs(lowP - poc) <= atr * 0.32 ||
-        Math.abs(lowP - val) <= atr * 0.35
+        Math.abs(lowP - clampedPullback) <= atr * 0.30 ||
+        Math.abs(lowP - poc) <= atr * 0.30 ||
+        Math.abs(lowP - val) <= atr * 0.30
       ) {
-        lowP = Math.max(lastClose * 0.02, lowP - atr * 0.36);
+        lowP = Math.max(lastClose * 0.02, lowP - atr * 0.26);
         rejectionWick = true;
       }
       if (
-        Math.abs(highP - vah) <= atr * 0.35 ||
-        Math.abs(highP - primaryMagnet) <= atr * 0.35
+        Math.abs(highP - vah) <= atr * 0.30 ||
+        Math.abs(highP - clampedMagnet) <= atr * 0.30
       ) {
-        highP += atr * 0.36;
+        highP += atr * 0.26;
         rejectionWick = true;
       }
 
-      // Rule 5: Dynamic Volume Projection (1.2x - 1.8x on impulse, 0.5x - 0.8x on pullback)
+      const isImpulseBar = candlePhase === 'IMPULSE';
       const volMult = isImpulseBar
-        ? 1.25 + 0.50 * Math.abs(Math.sin(k * 0.95 + 1.2))
-        : 0.52 + 0.26 * Math.abs(Math.cos(k * 1.15 + 0.5));
+        ? 1.22 + 0.48 * Math.abs(Math.sin(k * 0.95 + 1.2))
+        : 0.54 + 0.26 * Math.abs(Math.cos(k * 1.15 + 0.5));
       const projectedVolume = Math.round(avgVolume * volMult);
 
       const bandHalf = atr * 0.85 * Math.sqrt(k);
@@ -1369,14 +1469,15 @@ export const TechnicalIndicators = {
         pctChangeFromLast: pctChange,
         upperBand: adjClose + bandHalf,
         lowerBand: Math.max(lastClose * 0.02, adjClose - bandHalf),
-        pullbackTarget,
-        primaryMagnet,
+        pullbackTarget: clampedPullback,
+        primaryMagnet: clampedMagnet,
         rejectionWick,
-        wavePhase: isPullbackPhase ? 'MITIGATION_PULLBACK' : isImpulseBar ? 'IMPULSE' : 'CONSOLIDATION',
+        wavePhase: candlePhase,
       });
       prevProjectedClose = adjClose;
+      legBars += 1;
     }
 
-    return out;
+    return out.slice(0, hCount);
   },
 };

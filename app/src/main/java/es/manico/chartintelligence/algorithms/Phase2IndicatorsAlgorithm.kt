@@ -776,58 +776,172 @@ object Phase2IndicatorsAlgorithm {
             }
         }
 
-        val pullbackBars = min(4, max(3, (effectiveHorizon * 0.2).toInt()))
-        val out = ArrayList<FutureProjectedCandle>(effectiveHorizon)
+        val canonicalHorizon = 60
+        val tfNorm = timeframe.trim().uppercase()
+        val pullbackBars = when (tfNorm) {
+            "M15" -> 3
+            "M30" -> 2
+            else -> 1
+        }
+        val maxPullAtr = if (pullbackBars == 1) 0.62 else 1.35
+        val clampedPullback = pullbackTarget.coerceIn(baseClose - maxPullAtr * atr, baseClose + maxPullAtr * atr)
+        val clampedMagnet = if (dominantDir > 0.0) {
+            primaryMagnet.coerceIn(baseClose + 1.6 * atr, baseClose + 5.2 * atr)
+        } else {
+            primaryMagnet.coerceIn(baseClose - 5.2 * atr, baseClose - 1.6 * atr)
+        }
+
+        val out = ArrayList<FutureProjectedCandle>(canonicalHorizon)
         var prevClose = baseClose
+        var waveMode = "PULLBACK"
+        var legBars = 0
+        var legStart = baseClose
+        var sweepCount = 0
+        var corrLen = 4
+        var corrTarget = baseClose
+        var consLen = 3
+        var consMid = baseClose
+        var consecDir = 0
+        var lastDir = 0
 
-        for (step in 1..effectiveHorizon) {
+        for (step in 1..canonicalHorizon) {
             val open = prevClose
-            val isPullbackPhase = step <= pullbackBars
-            val signedBody: Double
+            val maxEnvAtr = 1.10 * kotlin.math.sqrt((step + 5).toDouble())
+            val totalExcAtr = ((open - baseClose) * dominantDir) / max(atr, 1e-6)
+            val damp = (1.0 - max(0.0, totalExcAtr) / (maxEnvAtr * 1.04)).coerceIn(0.18, 1.0)
 
-            if (isPullbackPhase) {
-                val remPullback = max(1, pullbackBars - step + 1)
-                val gapToPullback = pullbackTarget - open
-                val stepPull = gapToPullback / remPullback.toDouble()
-                val bodyMag = (abs(stepPull) + atr * 0.22).coerceIn(atr * 0.35, atr * 0.85)
-                val pullSign = if (gapToPullback >= 0.0) 1.0 else -1.0
-                signedBody = if (step == pullbackBars) -dominantDir * atr * 0.32 else pullSign * bodyMag
-            } else {
-                val waveIdx = (step - pullbackBars - 1) % 4
-                val isRetraceBar = waveIdx == 2
-                val remBars = max(2, effectiveHorizon - step + 1)
-                val magnetDrift = (primaryMagnet - open) / remBars.toDouble()
-
-                signedBody = if (isRetraceBar) {
-                    val retraceScale = 0.34 + 0.18 * abs(kotlin.math.sin(step * 1.3 + n))
-                    -dominantDir * atr * retraceScale
+            if (waveMode == "PULLBACK" && step > pullbackBars) {
+                waveMode = "IMPULSE"
+                legBars = 0
+                legStart = open
+            } else if (waveMode == "IMPULSE") {
+                val legGainAtr = ((open - legStart) * dominantDir) / max(atr, 1e-6)
+                val activeTarget = if (sweepCount == 0) {
+                    clampedMagnet
                 } else {
-                    val impulseScale = 0.74 + 0.42 * abs(kotlin.math.cos(step * 0.85 + (n % 5)))
-                    val rawStep = magnetDrift * 0.55 + dominantDir * atr * impulseScale * avgBodyRatio
-                    val mag = abs(rawStep).coerceIn(atr * 0.52 * avgBodyRatio, atr * 1.38)
-                    (if (rawStep >= 0.0) 1.0 else -1.0) * mag
+                    baseClose + dominantDir * atr * min(maxEnvAtr * 0.9, 3.0 + sweepCount * 1.55)
+                }
+                val hitTarget = (open - activeTarget) * dominantDir >= -0.25 * atr && legBars >= 4
+                val overext = legGainAtr >= 2.15 + 0.35 * (sweepCount % 2) ||
+                    legBars >= 8 ||
+                    totalExcAtr >= maxEnvAtr * 0.80
+                if (hitTarget || overext) {
+                    waveMode = "CORRECTION"
+                    corrLen = 4 + ((step + sweepCount) % 3)
+                    corrTarget = open - (open - legStart) * (0.42 + 0.10 * (sweepCount % 2))
+                    legBars = 0
+                    sweepCount += 1
+                }
+            } else if (waveMode == "CORRECTION") {
+                val reached = (open - corrTarget) * (-dominantDir) >= -0.15 * atr && legBars >= 2
+                if (legBars >= corrLen || reached) {
+                    if (step >= 14 && sweepCount % 2 == 1) {
+                        waveMode = "CONSOLIDATION"
+                        consLen = 3 + (sweepCount % 2)
+                        consMid = open
+                        legBars = 0
+                    } else {
+                        waveMode = "IMPULSE"
+                        legStart = open
+                        legBars = 0
+                    }
+                }
+            } else if (waveMode == "CONSOLIDATION") {
+                if (legBars >= consLen) {
+                    if (step < 48 && totalExcAtr < maxEnvAtr * 0.78) {
+                        waveMode = "IMPULSE"
+                        legStart = open
+                        legBars = 0
+                    } else {
+                        consMid = open
+                        legBars = 0
+                    }
                 }
             }
 
-            val close = max(baseClose * 0.1, open + signedBody)
+            val signedBody: Double = when (waveMode) {
+                "PULLBACK" -> {
+                    when {
+                        pullbackBars == 1 -> dominantDir * atr * 0.22
+                        step == pullbackBars -> dominantDir * atr * 0.24
+                        else -> {
+                            val remPullback = max(1, pullbackBars - step + 1)
+                            val gapToPullback = (clampedPullback - open) / remPullback.toDouble()
+                            val bodyMag = (abs(gapToPullback) * 0.85 + atr * 0.16).coerceIn(atr * 0.24, atr * 0.58)
+                            val pullSign = if (gapToPullback >= 0.0) 1.0 else -1.0
+                            pullSign * bodyMag
+                        }
+                    }
+                }
+                "IMPULSE" -> {
+                    if (consecDir >= 3 && lastDir == dominantDir.toInt()) {
+                        -dominantDir * atr * (0.24 + 0.18 * abs(kotlin.math.sin(step * 1.25 + n)))
+                    } else {
+                        val impulseScale = 0.38 + 0.30 * avgBodyRatio + 0.24 * abs(kotlin.math.cos(step * 0.85 + (n % 5)))
+                        val mag = (atr * impulseScale * damp).coerceIn(atr * 0.24, atr * 1.15)
+                        dominantDir * mag
+                    }
+                }
+                "CORRECTION" -> {
+                    if (consecDir >= 3 && lastDir == (-dominantDir).toInt()) {
+                        dominantDir * atr * (0.20 + 0.14 * abs(kotlin.math.cos(step * 1.1)))
+                    } else {
+                        val remCorr = max(1, corrLen - legBars)
+                        val gap = abs(corrTarget - open) / remCorr.toDouble()
+                        val mag = (gap * 0.75 + atr * 0.16).coerceIn(atr * 0.22, atr * 0.72)
+                        -dominantDir * mag
+                    }
+                }
+                else -> {
+                    val pullToMid = (consMid - open) * 0.30
+                    val osc = (if (legBars % 2 == 0) -dominantDir else dominantDir) * atr * 0.30
+                    val comb = pullToMid + osc
+                    var sgn = if (comb >= 0.0) 1 else -1
+                    if (consecDir >= 3 && sgn == lastDir) sgn = -lastDir
+                    sgn * abs(comb).coerceIn(atr * 0.20, atr * 0.48)
+                }
+            }
+
+            var close = max(baseClose * 0.05, open + signedBody)
+            if (abs(close - open) < atr * 0.18) {
+                close = open + (if (close >= open) 1.0 else -1.0) * atr * 0.20
+            }
+            val nextExcAtr = ((close - baseClose) * dominantDir) / max(atr, 1e-6)
+            if (nextExcAtr > maxEnvAtr) {
+                close = max(baseClose * 0.05, open - dominantDir * atr * 0.24)
+            }
+            if (consecDir >= 4 && (if (close >= open) 1 else -1) == lastDir) {
+                close = max(baseClose * 0.05, open - lastDir * atr * (0.24 + 0.14 * abs(kotlin.math.cos(step * 1.15))))
+            }
+
+            val curSgn = if (close >= open) 1 else -1
+            consecDir = if (curSgn == lastDir) consecDir + 1 else 1
+            lastDir = curSgn
+
             val bodyAbs = abs(close - open)
-            val upperWick = max(
-                atr * 0.16,
-                bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.35 * abs(kotlin.math.cos(step * 0.9)))
+            val upperWick = min(
+                atr * 0.78,
+                max(
+                    atr * 0.14,
+                    bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.30 * abs(kotlin.math.cos(step * 0.9)))
+                )
             )
-            val lowerWick = max(
-                atr * 0.16,
-                bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.35 * abs(kotlin.math.sin(step * 1.1)))
+            val lowerWick = min(
+                atr * 0.78,
+                max(
+                    atr * 0.14,
+                    bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.30 * abs(kotlin.math.sin(step * 1.1)))
+                )
             )
 
             var high = max(open, close) + upperWick
-            var low = max(baseClose * 0.1, min(open, close) - lowerWick)
+            var low = max(baseClose * 0.02, min(open, close) - lowerWick)
 
-            if (abs(low - pullbackTarget) <= atr * 0.35 || abs(low - poc) <= atr * 0.32 || abs(low - valPrice) <= atr * 0.35) {
-                low = max(baseClose * 0.1, low - atr * 0.36)
+            if (abs(low - clampedPullback) <= atr * 0.30 || abs(low - poc) <= atr * 0.30 || abs(low - valPrice) <= atr * 0.30) {
+                low = max(baseClose * 0.02, low - atr * 0.26)
             }
-            if (abs(high - vah) <= atr * 0.35 || abs(high - primaryMagnet) <= atr * 0.35) {
-                high += atr * 0.36
+            if (abs(high - vah) <= atr * 0.30 || abs(high - clampedMagnet) <= atr * 0.30) {
+                high += atr * 0.26
             }
 
             val pct = ((close - baseClose) / baseClose) * 100.0
@@ -843,11 +957,12 @@ object Phase2IndicatorsAlgorithm {
                     close = close,
                     pctChangeFromAnchor = pct,
                     upperBand = close + bandHalf,
-                    lowerBand = max(baseClose * 0.1, close - bandHalf)
+                    lowerBand = max(baseClose * 0.02, close - bandHalf)
                 )
             )
             prevClose = close
+            legBars += 1
         }
-        return out
+        return out.take(effectiveHorizon)
     }
 }

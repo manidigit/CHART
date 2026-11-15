@@ -434,7 +434,8 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showPsar, pal.psar, 'PSAR', 'toggle-psar');
   pushPill(activeTab.showIchimoku, pal.ichimoku, 'Ichimoku', 'toggle-ichimoku');
   pushPill(activeTab.showOverlayMacd, pal.overlayMacd, 'MACD Overlay', 'toggle-overlay-macd');
-  pushPill(activeTab.showFutureProjection, pal.futureProjection, 'Future Proj (+30)', 'toggle-future-projection');
+  const futH = Math.max(10, Math.min(60, Number(activeTab.forecastHorizonBars || state.chartPreferences?.forecastHorizonBars || 30)));
+  pushPill(activeTab.showFutureProjection, pal.futureProjection, `Future Proj (+${futH})`, 'toggle-future-projection');
   pushPill(activeTab.showSmcStructure, pal.smcStructure, 'SMC (BOS)', 'toggle-smc-structure');
   pushPill(activeTab.showFvg, pal.fvg, 'FVG', 'toggle-fvg');
   pushPill(activeTab.showKillzones, pal.killzones, 'Killzones', 'toggle-killzones');
@@ -2276,24 +2277,17 @@ document.addEventListener('click', async (e) => {
     renderApp();
     redrawActiveCanvas();
   } else if (action === 'apply-forecast-to-chart' && activeTab) {
-    const nextState = !activeTab.showFutureProjection;
-    activeTab.showFutureProjection = nextState;
-    if (nextState) {
-      activeTab.scrollOffset = 0;
-      state.activeWorkspaceView = 'chart';
-    }
+    activeTab.showFutureProjection = true;
+    activeTab.scrollOffset = 0;
+    state.activeWorkspaceView = 'chart';
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     saveOpenTabsToStorage();
     renderApp();
     redrawActiveCanvas();
     showFloatingToast(
-      nextState
-        ? i18n.getCurrentLanguage() === 'fa'
-          ? 'پیش‌بینی روی چارت فعال شد ✓'
-          : 'Forecast overlay applied to chart ✓'
-        : i18n.getCurrentLanguage() === 'fa'
-          ? 'پیش‌بینی از روی چارت برداشته شد'
-          : 'Forecast overlay removed from chart'
+      i18n.getCurrentLanguage() === 'fa'
+        ? 'پیش‌بینی روی چارت فعال شد ✓'
+        : 'Forecast overlay applied to chart ✓'
     );
   } else if (action === 'view-forecast-on-chart' && activeTab) {
     activeTab.showFutureProjection = true;

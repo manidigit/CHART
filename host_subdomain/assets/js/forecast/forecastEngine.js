@@ -21,6 +21,11 @@ import {
   evaluateNoEdgeGate,
 } from './forecastV130Analyzer.js?v=1.43.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.43.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
+
+function PriceFormatterStepMs(tf) {
+  return PriceFormatter.stepMilliseconds(tf);
+}
 
 /**
  * CHART INTELLIGENCE — Scenario-Based Future Candle Projection Engine
@@ -31,10 +36,23 @@ import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.43
  * 4. SMC Liquidity Magnet Warping (Pullback to FVG / POC / EMA20 -> Impulse to VAH / VAL / EQH / EQL)
  * 5. Live 15m Bayesian Probability & Re-Anchoring Engine (`evaluateAndUpdateLive`)
  */
+export const CANONICAL_SMC_HORIZON = 60;
+
+export function resolveLowerTimeframeInfo(timeframe = 'M15') {
+  const tf = String(timeframe || 'M15').trim().toUpperCase();
+  if (tf === 'M30') return { timeframe: 'M15', ratio: 2 };
+  if (tf === 'H1') return { timeframe: 'M15', ratio: 4 };
+  if (tf === 'H4') return { timeframe: 'H1', ratio: 4 };
+  if (tf === 'D1') return { timeframe: 'H4', ratio: 6 };
+  return null;
+}
+
 export class SMCPredictionEngine {
-  constructor(windowSize = 30, horizon = 20) {
+  constructor(windowSize = 30, horizon = 20, timeframe = 'M15') {
     this.windowSize = Math.max(12, Number(windowSize || 30));
-    this.horizon = Math.max(10, Number(horizon || 20));
+    this.horizon = Math.max(10, Math.min(CANONICAL_SMC_HORIZON, Number(horizon || 20)));
+    this.canonicalHorizon = CANONICAL_SMC_HORIZON;
+    this.timeframe = String(timeframe || 'M15').trim().toUpperCase();
     this.topKAnalogs = 45;
   }
 
@@ -118,12 +136,16 @@ export class SMCPredictionEngine {
       (lastClose - Number(lastBb.lower)) / Math.max(1e-6, Number(lastBb.upper) - Number(lastBb.lower));
     const rsi14 = Number(rsiArr[rsiArr.length - 1] ?? 50);
 
-    // Multi-timeframe trend alignment score (-1 to +1 across 15m, 1H, 4H, 1D equivalents)
+    // Multi-timeframe trend alignment score (-1 to +1) using true timeframe ratios
+    const tfNorm = String(timeframe || this.timeframe || 'M15').trim().toUpperCase();
+    const midGroup = tfNorm === 'M30' ? 2 : tfNorm === 'H1' ? 4 : tfNorm === 'H4' ? 6 : tfNorm === 'D1' || tfNorm === 'W1' ? 5 : 4;
+    const macroGroup = tfNorm === 'M30' ? 8 : tfNorm === 'H1' ? 24 : tfNorm === 'H4' ? 30 : tfNorm === 'D1' || tfNorm === 'W1' ? 20 : 16;
+
     const lastBos =
       smc.bosChochEvents && smc.bosChochEvents.length > 0
         ? smc.bosChochEvents[smc.bosChochEvents.length - 1]
         : null;
-    const score15m = (lastClose >= ema20 ? 0.5 : -0.5) + (lastBos ? (lastBos.direction >= 0 ? 0.5 : -0.5) : 0);
+    const scoreBase = (lastClose >= ema20 ? 0.5 : -0.5) + (lastBos ? (lastBos.direction >= 0 ? 0.5 : -0.5) : 0);
 
     const aggregateCandles = (src, groupSize) => {
       if (src.length < groupSize * 3) return [];
@@ -150,7 +172,7 @@ export class SMCPredictionEngine {
     };
 
     const computeTfScore = (tfCandles) => {
-      if (tfCandles.length < 6) return score15m;
+      if (tfCandles.length < 5) return scoreBase;
       const emaArr = TechnicalIndicators.computeEma(tfCandles, Math.min(20, Math.max(4, tfCandles.length - 1)));
       const emaVal = Number(emaArr[emaArr.length - 1] ?? tfCandles[tfCandles.length - 1].close);
       const cl = Number(tfCandles[tfCandles.length - 1].close);
@@ -160,9 +182,9 @@ export class SMCPredictionEngine {
       return 0.5 * emaSign + 0.5 * structSign;
     };
 
-    const score1h = computeTfScore(aggregateCandles(recentSlice, 4));
-    const score4h = computeTfScore(aggregateCandles(recentSlice, 16));
-    const htfTrendBias = Math.max(-1, Math.min(1, Number((0.40 * score15m + 0.35 * score1h + 0.25 * score4h).toFixed(3))));
+    const scoreMid = computeTfScore(aggregateCandles(recentSlice, midGroup));
+    const scoreMacro = computeTfScore(aggregateCandles(recentSlice, macroGroup));
+    const htfTrendBias = Math.max(-1, Math.min(1, Number((0.40 * scoreBase + 0.35 * scoreMid + 0.25 * scoreMacro).toFixed(3))));
 
     const unmitigatedFVGs = (smc.fvgZones || [])
       .filter((z) => !z.mitigated)
@@ -227,14 +249,17 @@ export class SMCPredictionEngine {
 
   /**
    * 3. Search historical analogs in past candle history (k-NN Historical Analog)
+   * Horizon-invariant: uses fixed core lookahead depth independent of requested horizon
+   * so +10, +20, and +60 projections always match on the exact same historical analogs.
    */
   findHistoricalAnalogs(allHistory, currentAtr) {
     const effWindow = Math.min(this.windowSize, Math.max(10, Math.floor(allHistory.length * 0.35)));
+    const coreAnalogLen = Math.min(20, Math.max(10, Math.floor(allHistory.length * 0.22)));
     const currentWindow = allHistory.slice(-effWindow);
     const currentVec = this.extractNormalizedShape(currentWindow, currentAtr);
     const analogs = [];
 
-    const maxSearchIdx = allHistory.length - effWindow - this.horizon - 2;
+    const maxSearchIdx = allHistory.length - effWindow - coreAnalogLen - 2;
     const step = maxSearchIdx > 180 ? 2 : 1;
 
     for (let i = 15; i <= maxSearchIdx; i += step) {
@@ -249,52 +274,63 @@ export class SMCPredictionEngine {
       }
       dist = Math.sqrt(dist);
 
-      const futureWindow = allHistory.slice(i + effWindow, i + effWindow + this.horizon);
-      if (futureWindow.length === this.horizon) {
-        analogs.push({ futureWindow, pastAtr, distance: dist });
+      const futureEnd = Math.min(allHistory.length, i + effWindow + this.canonicalHorizon);
+      const futureWindow = allHistory.slice(i + effWindow, futureEnd);
+      if (futureWindow.length >= coreAnalogLen) {
+        analogs.push({ futureWindow, pastAtr, distance: dist, coreEvalLen: Math.min(14, coreAnalogLen) });
       }
     }
 
-    // Supplement with deterministic fractal wave templates when history is shorter than full analog search depth
+    // Supplement with deterministic multi-wave fractal templates when history is shorter than full depth
     if (analogs.length < 9) {
       const lastCandle = allHistory[allHistory.length - 1];
       const baseP = Number(lastCandle.close || 100);
       const baseVol = Math.max(50, Number(lastCandle.volume || 500));
       const syntheticProfiles = [
-        { dir: 1, pull: -0.45, drift: 0.24, dist: 0.45 },
-        { dir: 1, pull: -0.30, drift: 0.32, dist: 0.55 },
-        { dir: -1, pull: 0.45, drift: -0.24, dist: 0.52 },
-        { dir: -1, pull: 0.30, drift: -0.32, dist: 0.62 },
-        { dir: 0, pull: -0.25, drift: 0.02, dist: 0.58 },
-        { dir: 0, pull: 0.25, drift: -0.02, dist: 0.64 },
+        { dir: 1, pull: -0.42, dist: 0.45 },
+        { dir: 1, pull: -0.28, dist: 0.55 },
+        { dir: -1, pull: 0.42, dist: 0.52 },
+        { dir: -1, pull: 0.28, dist: 0.62 },
+        { dir: 0, pull: -0.24, dist: 0.58 },
+        { dir: 0, pull: 0.24, dist: 0.64 },
       ];
       for (let sIdx = 0; sIdx < syntheticProfiles.length; sIdx++) {
         const prof = syntheticProfiles[sIdx];
         const fw = [];
         let p = baseP;
-        for (let h = 0; h < this.horizon; h++) {
+        for (let h = 0; h < this.canonicalHorizon; h++) {
+          const cyclePos = h >= 3 ? (h - 3) % 14 : -1;
           const isPull = h < 3;
-          const waveMod = (h - 3) % 4 === 2 ? -0.42 : 0.78;
-          const stepDelta = isPull
-            ? prof.pull * currentAtr * 0.45
-            : prof.dir !== 0
-              ? prof.dir * currentAtr * waveMod * 0.55
-              : Math.sin((h + sIdx) * 1.1) * currentAtr * 0.42;
+          const isCorrWave = cyclePos >= 8 && cyclePos <= 12;
+          const isMicroDip = cyclePos === 3 || cyclePos === 6;
+          let stepDelta;
+          if (isPull) {
+            stepDelta = prof.pull * currentAtr * 0.42;
+          } else if (prof.dir === 0) {
+            stepDelta = Math.sin((h + sIdx) * 0.85) * currentAtr * 0.42;
+          } else if (isCorrWave) {
+            stepDelta = -prof.dir * currentAtr * (0.28 + 0.16 * Math.abs(Math.sin(h * 0.9)));
+          } else if (isMicroDip) {
+            stepDelta = -prof.dir * currentAtr * 0.30;
+          } else {
+            const damp = 1 / (1 + h * 0.025);
+            stepDelta = prof.dir * currentAtr * (0.38 + 0.18 * Math.abs(Math.cos(h * 0.8))) * damp;
+          }
           const op = p;
-          const cl = op + stepDelta;
-          const hi = Math.max(op, cl) + currentAtr * (0.24 + 0.15 * Math.abs(Math.cos(h + sIdx)));
-          const lo = Math.min(op, cl) - currentAtr * (0.24 + 0.15 * Math.abs(Math.sin(h + sIdx)));
+          const cl = Math.max(baseP * 0.1, op + stepDelta);
+          const hi = Math.max(op, cl) + currentAtr * (0.22 + 0.14 * Math.abs(Math.cos(h + sIdx)));
+          const lo = Math.max(baseP * 0.05, Math.min(op, cl) - currentAtr * (0.22 + 0.14 * Math.abs(Math.sin(h + sIdx))));
           fw.push({
             time: Math.floor(Number(lastCandle.open_time_utc_ms || Date.now()) / 1000) + (h + 1) * 900,
             open: op,
             high: hi,
             low: lo,
             close: cl,
-            volume: Math.round(baseVol * (waveMod > 0 ? 1.35 : 0.68)),
+            volume: Math.round(baseVol * (isCorrWave || isMicroDip ? 0.68 : 1.28)),
           });
           p = cl;
         }
-        analogs.push({ futureWindow: fw, pastAtr: currentAtr, distance: prof.dist + sIdx * 0.05 });
+        analogs.push({ futureWindow: fw, pastAtr: currentAtr, distance: prof.dist + sIdx * 0.05, coreEvalLen: 14 });
       }
     }
 
@@ -315,8 +351,9 @@ export class SMCPredictionEngine {
     const rangingGroup = [];
 
     for (const item of analogs) {
+      const evalIdx = Math.min((item.coreEvalLen || 14) - 1, item.futureWindow.length - 1);
       const startP = Number(item.futureWindow[0]?.open || lastCandle.close);
-      const endP = Number(item.futureWindow[item.futureWindow.length - 1]?.close || startP);
+      const endP = Number(item.futureWindow[evalIdx]?.close || startP);
       const netMoveInAtr = (endP - startP) / Math.max(item.pastAtr, 0.0001);
 
       if (netMoveInAtr > 0.65) bullishGroup.push(item);
@@ -357,6 +394,8 @@ export class SMCPredictionEngine {
     const p2 = Number(Math.max(0.01, 1 - p0 - p1).toFixed(2));
     const normProbs = [p0, p1, p2];
 
+    const targetOutHorizon = Math.min(this.horizon, futureTimestamps.length > 0 ? futureTimestamps.length : this.horizon);
+
     return rawCounts.map((cluster, idx) => {
       const probability = normProbs[idx];
       const representative =
@@ -377,15 +416,18 @@ export class SMCPredictionEngine {
         cluster.type
       );
 
-      const projectedCandles = this.buildRealisticCandles(
+      // Generate canonical 60-bar trajectory, then slice to targetOutHorizon for exact prefix invariance
+      const canonicalCandles = this.buildRealisticCandles(
         representative.futureWindow,
         representative.pastAtr,
         lastCandle,
         currentAtr,
         smcContext,
         cluster.type,
-        futureTimestamps
+        futureTimestamps,
+        this.canonicalHorizon
       );
+      const projectedCandles = canonicalCandles.slice(0, targetOutHorizon);
 
       const finalClose = projectedCandles[projectedCandles.length - 1].close;
       const lastCloseVal = Number(lastCandle.close);
@@ -425,7 +467,8 @@ export class SMCPredictionEngine {
   }
 
   /**
-   * 5. Build realistic future candles calibrated to current ATR(14) + SMC FVG/POC Pullback & VAH/VAL/EQH/EQL Magnet
+   * 5. Build realistic multi-wave future candles calibrated to ATR(14), SMC FVG/POC/VAH/VAL/EQH/EQL,
+   * genuine impulse -> correction -> consolidation swings, and sqrt(t) volatility diffusion bounds.
    */
   buildRealisticCandles(
     templateCandles,
@@ -434,7 +477,8 @@ export class SMCPredictionEngine {
     currentAtr,
     smc,
     direction,
-    futureTimestamps = []
+    futureTimestamps = [],
+    totalBars = this.canonicalHorizon
   ) {
     const result = [];
     const scale = currentAtr / Math.max(templateAtr, 0.0001);
@@ -442,62 +486,228 @@ export class SMCPredictionEngine {
     const anchorOpenMs = Number(
       anchorCandle.open_time_utc_ms || (anchorCandle.openTimeSec ? anchorCandle.openTimeSec * 1000 : Date.now())
     );
+    const tfNorm = String(smc?.timeframe || this.timeframe || 'M15').toUpperCase();
+    const stepMsFallback = PriceFormatterStepMs(tfNorm);
     const avgVol = Math.max(10, Number(smc?.avgVolume || anchorCandle.volume || 250));
     const avgBodyRatio = Number(smc?.avgBodyRatio || 0.55);
     const avgUpperWickRatio = Number(smc?.avgUpperWickRatio || 0.25);
     const avgLowerWickRatio = Number(smc?.avgLowerWickRatio || 0.25);
 
-    const pullbackMagnet = this.findNearestPullbackLevel(anchorClose, currentAtr, smc, direction);
-    const targetMagnet = this.findPrimaryTargetLevel(anchorClose, currentAtr, smc, direction);
-    const pullbackSteps = Math.min(4, Math.max(3, Math.round(templateCandles.length * 0.2)));
+    const rawPullbackMagnet = this.findNearestPullbackLevel(anchorClose, currentAtr, smc, direction);
+    const rawTargetMagnet = this.findPrimaryTargetLevel(anchorClose, currentAtr, smc, direction);
+    const pullbackSteps = tfNorm === 'M15' ? 3 : tfNorm === 'M30' ? 2 : 1;
+
+    // Clamp initial pullback distance realistically so higher timeframes don't plunge excessively on bar 1
+    const maxPullAtr = pullbackSteps === 1 ? 0.62 : 1.35;
+    const pullbackMagnet = Math.max(
+      anchorClose - maxPullAtr * currentAtr,
+      Math.min(anchorClose + maxPullAtr * currentAtr, rawPullbackMagnet)
+    );
+    const targetMagnet =
+      direction === 'BULL'
+        ? Math.max(anchorClose + 1.6 * currentAtr, Math.min(anchorClose + 5.2 * currentAtr, rawTargetMagnet))
+        : direction === 'BEAR'
+          ? Math.min(anchorClose - 1.6 * currentAtr, Math.max(anchorClose - 5.2 * currentAtr, rawTargetMagnet))
+          : Number(smc?.vp?.poc || anchorClose);
+
+    const poc = Number(smc?.vp?.poc || anchorClose);
+    const vah = Number(smc?.vp?.vah || anchorClose + 2 * currentAtr);
+    const val = Number(smc?.vp?.val || anchorClose - 2 * currentAtr);
+    const pocAnchor = Math.max(anchorClose - 1.5 * currentAtr, Math.min(anchorClose + 1.5 * currentAtr, poc));
 
     let prevClose = anchorClose;
     let consecutiveSameDir = 0;
     let lastDirSign = 0;
+    let waveMode = direction === 'RANGE' ? 'RANGE' : 'PULLBACK';
+    let legBars = 0;
+    let legStart = anchorClose;
+    let sweepCount = 0;
+    let corrLen = 4;
+    let corrTarget = anchorClose;
+    let consLen = 3;
+    let consMid = anchorClose;
 
-    for (let i = 0; i < templateCandles.length; i++) {
-      const tpl = templateCandles[i] || templateCandles[templateCandles.length - 1];
-      const tplBody = (Number(tpl.close) - Number(tpl.open)) * scale;
+    const tplLen = Math.max(1, templateCandles.length);
+    const mainDir = direction === 'BULL' ? 1 : direction === 'BEAR' ? -1 : 0;
+
+    for (let i = 0; i < totalBars; i++) {
+      // If horizon extends past analog length, replay damped mirrored/cycled template swings cleanly
+      const tplIdx = i < tplLen ? i : (i - tplLen) % tplLen;
+      const mirrorSign = i < tplLen ? 1 : ((Math.floor(i / tplLen) % 2 === 1) ? -0.65 : 0.75);
+      const tpl = templateCandles[tplIdx] || templateCandles[tplLen - 1];
+      const tplBody = (Number(tpl.close) - Number(tpl.open)) * scale * mirrorSign;
       const tplUpperWick = (Number(tpl.high) - Math.max(Number(tpl.open), Number(tpl.close))) * scale;
       const tplLowerWick = (Math.min(Number(tpl.open), Number(tpl.close)) - Number(tpl.low)) * scale;
 
-      const isPullbackPhase = i < pullbackSteps && direction !== 'RANGE';
-      const activeMagnet = isPullbackPhase ? pullbackMagnet : targetMagnet;
-      const magnetWeight = isPullbackPhase ? 0.28 : direction === 'RANGE' ? 0.22 : 0.16;
-      const magnetPull = (activeMagnet - prevClose) * magnetWeight;
-
       const open = prevClose;
-      const wavePhaseIdx = (i - pullbackSteps) % 4;
-      const isFractalPullbackBar = !isPullbackPhase && direction !== 'RANGE' && wavePhaseIdx === 2;
+      const maxEnvAtr = 1.10 * Math.sqrt(i + 6);
+      const totalExcursionAtr = mainDir !== 0 ? ((prevClose - anchorClose) * mainDir) / Math.max(currentAtr, 1e-6) : 0;
+      const excursionDamp = Math.max(0.18, Math.min(1.0, 1.0 - Math.max(0, totalExcursionAtr) / (maxEnvAtr * 1.04)));
 
-      let rawBodyDelta = tplBody * 0.58 + magnetPull;
+      // State transitions before computing candle i
+      if (waveMode === 'PULLBACK' && i >= pullbackSteps) {
+        waveMode = 'IMPULSE';
+        legBars = 0;
+        legStart = prevClose;
+      } else if (waveMode === 'IMPULSE') {
+        const legGainAtr = ((prevClose - legStart) * mainDir) / Math.max(currentAtr, 1e-6);
+        const legTarget =
+          sweepCount === 0
+            ? targetMagnet
+            : anchorClose + mainDir * currentAtr * Math.min(maxEnvAtr * 0.90, 3.0 + sweepCount * 1.55);
+        const hitTarget = (prevClose - legTarget) * mainDir >= -0.25 * currentAtr && legBars >= 4;
+        const overextended =
+          legGainAtr >= 2.15 + 0.35 * (sweepCount % 2) ||
+          legBars >= 8 ||
+          totalExcursionAtr >= maxEnvAtr * 0.80;
 
-      // Enforce 2-step-forward, 1-step-back fractal wave structure (never 10 straight-line candles)
-      if (isPullbackPhase) {
-        const pullDir = pullbackMagnet <= prevClose ? -1 : 1;
-        const bodyMag = Math.max(currentAtr * 0.28, Math.min(currentAtr * 0.85, Math.abs(rawBodyDelta) + currentAtr * 0.16));
-        rawBodyDelta = pullDir * bodyMag;
-      } else if (isFractalPullbackBar || consecutiveSameDir >= 3) {
-        const counterDir = direction === 'BULL' ? -1 : direction === 'BEAR' ? 1 : -lastDirSign || -1;
-        const retraceMag = currentAtr * (0.32 + 0.20 * Math.abs(Math.sin((i + 1) * 1.3)));
-        rawBodyDelta = counterDir * retraceMag;
-      } else if (direction === 'BULL' || direction === 'BEAR') {
-        const mainDir = direction === 'BULL' ? 1 : -1;
-        const impulseMag = Math.max(
-          currentAtr * 0.52 * avgBodyRatio,
-          Math.min(currentAtr * 1.35, Math.abs(rawBodyDelta) + currentAtr * (0.34 + 0.25 * Math.abs(Math.cos(i * 0.9))))
-        );
-        rawBodyDelta = mainDir * impulseMag;
+        if (hitTarget || overextended) {
+          waveMode = 'CORRECTION';
+          corrLen = 4 + ((i + sweepCount) % 3); // 4..6 bar realistic pullback
+          const retraceFrac = 0.42 + 0.10 * (sweepCount % 2);
+          corrTarget = prevClose - (prevClose - legStart) * retraceFrac;
+          legBars = 0;
+          sweepCount += 1;
+        }
+      } else if (waveMode === 'CORRECTION') {
+        const reachedCorr = (prevClose - corrTarget) * (-mainDir) >= -0.15 * currentAtr && legBars >= 2;
+        if (legBars >= corrLen || reachedCorr) {
+          if (i >= 14 && sweepCount % 2 === 1) {
+            waveMode = 'CONSOLIDATION';
+            consLen = 3 + (sweepCount % 2);
+            consMid = prevClose;
+            legBars = 0;
+          } else {
+            waveMode = 'IMPULSE';
+            legStart = prevClose;
+            legBars = 0;
+          }
+        }
+      } else if (waveMode === 'CONSOLIDATION') {
+        if (legBars >= consLen) {
+          if (i < 48 && totalExcursionAtr < maxEnvAtr * 0.78) {
+            waveMode = 'IMPULSE';
+            legStart = prevClose;
+            legBars = 0;
+          } else {
+            // Late horizon stays balanced around outer equilibrium
+            consMid = prevClose;
+            legBars = 0;
+          }
+        }
+      }
+
+      let rawBodyDelta = 0;
+      let candleCategory = waveMode;
+
+      if (direction === 'RANGE' || waveMode === 'RANGE') {
+        const pullToPoc = (pocAnchor - prevClose) * 0.24;
+        const cycle = Math.sin((i + 1) * 0.92 + 0.4) * currentAtr * 0.44;
+        const blended = pullToPoc + cycle * 0.72 + tplBody * 0.28;
+        let dirSign = blended >= 0 ? 1 : -1;
+        if (consecutiveSameDir >= 3 && dirSign === lastDirSign) {
+          dirSign = -lastDirSign;
+        }
+        const exc = (prevClose - pocAnchor) / Math.max(currentAtr, 1e-6);
+        if (Math.abs(exc) > 1.55) {
+          dirSign = exc > 0 ? -1 : 1;
+        }
+        const mag = Math.max(currentAtr * 0.20, Math.min(currentAtr * 0.68, Math.abs(blended) + currentAtr * 0.14));
+        rawBodyDelta = dirSign * mag;
+        candleCategory = 'CONSOLIDATION';
+      } else if (waveMode === 'PULLBACK') {
+        const remPull = Math.max(1, pullbackSteps - i);
+        const gapToPull = (pullbackMagnet - prevClose) / remPull;
+        if (pullbackSteps === 1) {
+          // Higher TF (H1+): shallow test/reclaim bar instead of deep dump
+          const biasAdj = (smc?.htfTrendBias || 0) * mainDir >= 0.1 ? 0.18 : -0.26;
+          rawBodyDelta = mainDir * currentAtr * biasAdj + tplBody * 0.25;
+          if (Math.abs(rawBodyDelta) < currentAtr * 0.20) {
+            rawBodyDelta = mainDir * (biasAdj >= 0 ? 1 : -1) * currentAtr * 0.24;
+          }
+        } else {
+          const isFinalPull = i === pullbackSteps - 1;
+          if (isFinalPull) {
+            // Final mitigation bar slows and hints reclaim in mainDir
+            rawBodyDelta = mainDir * currentAtr * (0.24 + 0.12 * Math.abs(Math.cos(i)));
+          } else {
+            const pullDir = pullbackMagnet <= prevClose ? -1 : 1;
+            const bodyMag = Math.max(
+              currentAtr * 0.24,
+              Math.min(currentAtr * 0.58, Math.abs(gapToPull) * 0.85 + Math.abs(tplBody) * 0.25 + currentAtr * 0.12)
+            );
+            rawBodyDelta = pullDir * bodyMag;
+          }
+        }
+        candleCategory = 'MITIGATION_PULLBACK';
+      } else if (waveMode === 'IMPULSE') {
+        const legTarget =
+          sweepCount === 0
+            ? targetMagnet
+            : anchorClose + mainDir * currentAtr * Math.min(maxEnvAtr * 0.90, 3.0 + sweepCount * 1.55);
+        const magnetPull = (legTarget - prevClose) * 0.14;
+        const isMicroCounter =
+          (consecutiveSameDir >= 3 && lastDirSign === mainDir) ||
+          (legBars > 1 && tplBody * mainDir < -0.32 * currentAtr && consecutiveSameDir >= 2 && lastDirSign === mainDir);
+
+        if (isMicroCounter) {
+          const counterMag = currentAtr * (0.24 + 0.18 * Math.abs(Math.sin((i + 1) * 1.25)));
+          rawBodyDelta = -mainDir * counterMag;
+          candleCategory = 'CONSOLIDATION';
+        } else {
+          const tplAlign = Math.max(-0.15 * currentAtr, tplBody * mainDir * 0.42);
+          const baseImp = currentAtr * (0.34 + 0.30 * avgBodyRatio + 0.22 * Math.abs(Math.cos(i * 0.85)));
+          const impulseMag = Math.max(
+            currentAtr * 0.24,
+            Math.min(currentAtr * 1.15, (baseImp + tplAlign + Math.max(0, magnetPull * mainDir)) * excursionDamp)
+          );
+          rawBodyDelta = mainDir * impulseMag;
+          candleCategory = 'IMPULSE';
+        }
+      } else if (waveMode === 'CORRECTION') {
+        const remCorr = Math.max(1, corrLen - legBars);
+        const pullStep = (corrTarget - prevClose) / remCorr;
+        const isReliefPause = consecutiveSameDir >= 3 && lastDirSign === -mainDir;
+        if (isReliefPause) {
+          rawBodyDelta = mainDir * currentAtr * (0.20 + 0.14 * Math.abs(Math.cos(i * 1.1)));
+        } else {
+          const corrMag = Math.max(
+            currentAtr * 0.22,
+            Math.min(currentAtr * 0.72, Math.abs(pullStep) * 0.75 + Math.abs(tplBody) * 0.25 + currentAtr * 0.14)
+          );
+          rawBodyDelta = -mainDir * corrMag;
+        }
+        candleCategory = 'CONSOLIDATION';
       } else {
-        // RANGE around POC
-        const rangeWave = Math.sin((i + 1) * 1.15) * currentAtr * 0.42 + magnetPull;
-        const mag = Math.max(currentAtr * 0.22, Math.min(currentAtr * 0.78, Math.abs(rangeWave)));
-        rawBodyDelta = (rangeWave >= 0 ? 1 : -1) * mag;
+        // CONSOLIDATION box
+        const pullToMid = (consMid - prevClose) * 0.32;
+        const boxOsc = (legBars % 2 === 0 ? -mainDir : mainDir) * currentAtr * (0.26 + 0.14 * Math.abs(Math.sin(i * 1.3)));
+        let combined = pullToMid + boxOsc * 0.78 + tplBody * 0.22;
+        let sgn = combined >= 0 ? 1 : -1;
+        if (consecutiveSameDir >= 3 && sgn === lastDirSign) sgn = -lastDirSign;
+        rawBodyDelta = sgn * Math.max(currentAtr * 0.20, Math.min(currentAtr * 0.48, Math.abs(combined)));
+        candleCategory = 'CONSOLIDATION';
       }
 
       let close = Math.max(anchorClose * 0.05, open + rawBodyDelta);
       if (Math.abs(close - open) < currentAtr * 0.18) {
-        close = open + (close >= open ? 1 : -1) * currentAtr * 0.22;
+        close = open + (close >= open ? 1 : -1) * currentAtr * 0.20;
+      }
+
+      // Guard cumulative diffusion envelope strictly
+      const nextExcAtr = mainDir !== 0 ? ((close - anchorClose) * mainDir) / Math.max(currentAtr, 1e-6) : 0;
+      if (mainDir !== 0 && nextExcAtr > maxEnvAtr) {
+        const cappedTarget = anchorClose + mainDir * maxEnvAtr * currentAtr;
+        close = Math.max(anchorClose * 0.05, open - mainDir * currentAtr * 0.26);
+        if (close > cappedTarget && mainDir > 0) close = Math.min(open - currentAtr * 0.20, cappedTarget);
+      }
+
+      // Hard universal cap on consecutive same-color candles across phase boundaries
+      if (consecutiveSameDir >= 4 && (close >= open ? 1 : -1) === lastDirSign) {
+        close = Math.max(
+          anchorClose * 0.05,
+          open - lastDirSign * currentAtr * (0.24 + 0.14 * Math.abs(Math.cos((i + 1) * 1.15)))
+        );
       }
 
       const curSign = close >= open ? 1 : -1;
@@ -510,47 +720,57 @@ export class SMCPredictionEngine {
 
       const bodyAbs = Math.abs(close - open);
       const baseUpperWick = Math.max(
-        tplUpperWick * 0.65,
-        currentAtr * 0.16,
-        bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.3 * Math.abs(Math.cos((i + 1) * 0.85)))
+        tplUpperWick * 0.58,
+        currentAtr * 0.14,
+        bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.28 * Math.abs(Math.cos((i + 1) * 0.85)))
       );
       const baseLowerWick = Math.max(
-        tplLowerWick * 0.65,
-        currentAtr * 0.16,
-        bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.3 * Math.abs(Math.sin((i + 1) * 1.05)))
+        tplLowerWick * 0.58,
+        currentAtr * 0.14,
+        bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.28 * Math.abs(Math.sin((i + 1) * 1.05)))
       );
 
-      let high = Math.max(open, close) + Math.min(currentAtr * 0.85, baseUpperWick);
-      let low = Math.max(anchorClose * 0.02, Math.min(open, close) - Math.min(currentAtr * 0.85, baseLowerWick));
+      let high = Math.max(open, close) + Math.min(currentAtr * 0.78, baseUpperWick);
+      let low = Math.max(anchorClose * 0.02, Math.min(open, close) - Math.min(currentAtr * 0.78, baseLowerWick));
 
       // Pronounced Rejection Wick at FVG, POC, VAH, VAL, or EQH/EQL boundaries
       let rejectionWick = false;
-      const poc = Number(smc?.vp?.poc || anchorClose);
-      const vah = Number(smc?.vp?.vah || anchorClose + 2 * currentAtr);
-      const val = Number(smc?.vp?.val || anchorClose - 2 * currentAtr);
+      if (waveMode === 'PULLBACK' && pullbackSteps === 1 && direction === 'BULL') {
+        const testLow = Math.max(anchorClose * 0.02, Math.min(low, pullbackMagnet - currentAtr * 0.12));
+        if (testLow < low && open - testLow <= currentAtr * 0.78) {
+          low = testLow;
+          rejectionWick = true;
+        }
+      } else if (waveMode === 'PULLBACK' && pullbackSteps === 1 && direction === 'BEAR') {
+        const testHigh = Math.max(high, pullbackMagnet + currentAtr * 0.12);
+        if (testHigh > high && testHigh - open <= currentAtr * 0.78) {
+          high = testHigh;
+          rejectionWick = true;
+        }
+      }
 
       if (
-        Math.abs(low - poc) < currentAtr * 0.35 ||
-        Math.abs(low - pullbackMagnet) < currentAtr * 0.35 ||
-        Math.abs(low - val) < currentAtr * 0.35
+        Math.abs(low - poc) < currentAtr * 0.30 ||
+        Math.abs(low - pullbackMagnet) < currentAtr * 0.30 ||
+        Math.abs(low - val) < currentAtr * 0.30
       ) {
-        low = Math.max(anchorClose * 0.02, low - currentAtr * 0.35);
+        low = Math.max(anchorClose * 0.02, low - currentAtr * 0.26);
         rejectionWick = true;
       }
       if (
-        Math.abs(high - vah) < currentAtr * 0.35 ||
-        Math.abs(high - targetMagnet) < currentAtr * 0.35
+        Math.abs(high - vah) < currentAtr * 0.30 ||
+        Math.abs(high - targetMagnet) < currentAtr * 0.30
       ) {
-        high += currentAtr * 0.35;
+        high += currentAtr * 0.26;
         rejectionWick = true;
       }
 
-      // Dynamic Volume Projection: 1.2x-1.8x on impulse, 0.5x-0.8x on pullback/consolidation
-      const isImpulseCandle = !isPullbackPhase && !isFractalPullbackBar && direction !== 'RANGE';
+      // Dynamic Volume Projection: 1.2x-1.75x on impulse, 0.52x-0.82x on pullback/consolidation
+      const isImpulseCandle = candleCategory === 'IMPULSE';
       const volMultiplier = isImpulseCandle
-        ? 1.24 + 0.52 * Math.abs(Math.sin((i + 1) * 0.9 + 0.7))
-        : 0.52 + 0.26 * Math.abs(Math.cos((i + 1) * 1.1 + 0.4));
-      const openTimeMs = futureTimestamps[i] || anchorOpenMs + (i + 1) * 15 * 60 * 1000;
+        ? 1.22 + 0.48 * Math.abs(Math.sin((i + 1) * 0.9 + 0.7))
+        : 0.54 + 0.26 * Math.abs(Math.cos((i + 1) * 1.1 + 0.4));
+      const openTimeMs = futureTimestamps[i] || anchorOpenMs + (i + 1) * stepMsFallback;
 
       result.push({
         time: Math.floor(openTimeMs / 1000),
@@ -561,10 +781,11 @@ export class SMCPredictionEngine {
         close: Number(close.toFixed(4)),
         volume: Math.round(avgVol * volMultiplier),
         rejectionWick,
-        wavePhase: isPullbackPhase ? 'MITIGATION_PULLBACK' : isImpulseCandle ? 'IMPULSE' : 'CONSOLIDATION',
+        wavePhase: candleCategory,
       });
 
       prevClose = close;
+      legBars += 1;
     }
 
     return result;
@@ -579,9 +800,9 @@ export class SMCPredictionEngine {
         .filter((f) => f.top < price && price - (f.top + f.bottom) / 2 <= 3.5 * atr)
         .sort((a, b) => b.top - a.top)[0];
       if (lowerFvg) return (lowerFvg.top + lowerFvg.bottom) / 2;
-      if ( poc < price && price - poc <= 2.5 * atr) return poc;
+      if (poc < price && price - poc <= 2.5 * atr) return poc;
       if (ema20 < price && price - ema20 <= 2.5 * atr) return ema20;
-      return price - 0.78 * atr;
+      return price - 0.65 * atr;
     }
     if (dir === 'BEAR') {
       const upperFvg = fvgs
@@ -590,7 +811,7 @@ export class SMCPredictionEngine {
       if (upperFvg) return (upperFvg.top + upperFvg.bottom) / 2;
       if (poc > price && poc - price <= 2.5 * atr) return poc;
       if (ema20 > price && ema20 - price <= 2.5 * atr) return ema20;
-      return price + 0.78 * atr;
+      return price + 0.65 * atr;
     }
     return poc;
   }
@@ -660,11 +881,12 @@ export class SMCPredictionEngine {
       const unnormalizedProb = priorProb * likelihood;
       totalPosterior += unnormalizedProb;
 
-      // Re-Anchor remaining candles to actualClose with smooth decay toward targetPrice
+      // Re-Anchor remaining candles to actualClose with canonical horizon decay
       const priceShift = actualClose - Number(predictedCandle.close);
+      const decaySpan = Math.max(this.canonicalHorizon || CANONICAL_SMC_HORIZON, sc.candles.length);
       const reAnchoredCandles = sc.candles.map((c, cIdx) => {
         if (cIdx <= idx) return c;
-        const decay = 1 - (cIdx - idx) / Math.max(1, sc.candles.length);
+        const decay = Math.max(0.05, 1 - (cIdx - idx) / decaySpan);
         const shift = priceShift * decay;
         const op = cIdx === idx + 1 ? actualClose : Number(c.open) + shift;
         const cl = Number(c.close) + shift;
@@ -795,7 +1017,7 @@ export class ForecastEngine {
         ? null
         : evaluateWalkForward(candles, registry, {
             minTrainBars: Math.max(24, Math.min(36, Math.floor(candles.length * 0.55))),
-            evalHorizon: Math.min(8, Math.max(3, Math.floor(horizonBars / 5))),
+            evalHorizon: 5,
             maxWindows: Number(options.maxWalkForwardWindows || 10),
           });
 
@@ -868,12 +1090,126 @@ export class ForecastEngine {
       walkForward?.effectiveSampleSize
     );
 
-    const futureTimestamps = advanceFutureTimestamps(features.lastOpenMs, timeframe, horizonBars, symbolCode);
+    const canonicalTimestamps = advanceFutureTimestamps(
+      features.lastOpenMs,
+      timeframe,
+      CANONICAL_SMC_HORIZON,
+      symbolCode
+    );
+    const futureTimestamps = canonicalTimestamps.slice(0, horizonBars);
 
-    // Run SMC Historical Analog + K-Medoids 3-Scenario Engine
-    const smcEngine = new SMCPredictionEngine(30, horizonBars);
+    // Run SMC Historical Analog + K-Medoids 3-Scenario Engine at canonical horizon (60) for prefix invariance
+    const smcEngine = new SMCPredictionEngine(30, CANONICAL_SMC_HORIZON, timeframe);
     const smcContext = smcEngine.extractMultiTimeframeFeatures(features.candles, timeframe);
-    let smcScenarios = smcEngine.generateScenarios(features.candles, smcContext, futureTimestamps, options);
+    let canonicalScenarios = smcEngine.generateScenarios(
+      features.candles,
+      smcContext,
+      canonicalTimestamps,
+      options
+    );
+
+    // Cross-Timeframe Lower-TF Sub-Bar Anchoring (e.g. M15 first 4..12 bars anchor H1 bar 1..3)
+    const lowerInfo = resolveLowerTimeframeInfo(timeframe);
+    const lowerCandlesRaw = Array.isArray(options.lowerTimeframeCandles) ? options.lowerTimeframeCandles : [];
+    if (
+      options.disableLowerTfAnchor !== true &&
+      lowerInfo &&
+      lowerCandlesRaw.length >= 24
+    ) {
+      const ltfFeatures = extractForecastFeatures(lowerCandlesRaw, 180);
+      if (ltfFeatures && ltfFeatures.candles.length >= 24) {
+        const closeDiff = Math.abs(ltfFeatures.lastClose - features.lastClose);
+        const stepMs = PriceFormatterStepMs(timeframe);
+        const timeDiff = Math.abs(features.lastOpenMs - ltfFeatures.lastOpenMs);
+        if (
+          closeDiff <= Math.max(features.atr14 * 0.45, features.lastClose * 0.006) &&
+          timeDiff <= stepMs * 2
+        ) {
+          const ltfTimestamps = advanceFutureTimestamps(
+            ltfFeatures.lastOpenMs,
+            lowerInfo.timeframe,
+            CANONICAL_SMC_HORIZON,
+            symbolCode
+          );
+          const ltfEngine = new SMCPredictionEngine(30, CANONICAL_SMC_HORIZON, lowerInfo.timeframe);
+          const ltfCtx = ltfEngine.extractMultiTimeframeFeatures(ltfFeatures.candles, lowerInfo.timeframe);
+          const ltfScenarios = ltfEngine.generateScenarios(ltfFeatures.candles, ltfCtx, ltfTimestamps, {
+            ...options,
+            disableLowerTfAnchor: true,
+          });
+          const overlapBars = Math.min(3, Math.floor(CANONICAL_SMC_HORIZON / lowerInfo.ratio));
+          if (overlapBars >= 1) {
+            canonicalScenarios = canonicalScenarios.map((htfSc) => {
+              const matchingLtf =
+                ltfScenarios.find((l) => l.clusterType === htfSc.clusterType) || ltfScenarios[0];
+              if (!matchingLtf || matchingLtf.candles.length < overlapBars * lowerInfo.ratio) return htfSc;
+
+              const updatedCandles = htfSc.candles.map((c) => ({ ...c }));
+              for (let ob = 0; ob < overlapBars; ob++) {
+                const subSlice = matchingLtf.candles.slice(ob * lowerInfo.ratio, (ob + 1) * lowerInfo.ratio);
+                const subOpen = ob === 0 ? features.lastClose : updatedCandles[ob - 1].close;
+                const shiftFromLtf = ob === 0 ? features.lastClose - Number(subSlice[0].open) : 0;
+                let hi = subOpen;
+                let lo = subOpen;
+                let volSum = 0;
+                let anyRej = false;
+                for (const sc of subSlice) {
+                  hi = Math.max(hi, Number(sc.high) + shiftFromLtf);
+                  lo = Math.min(lo, Number(sc.low) + shiftFromLtf);
+                  volSum += Number(sc.volume || 0);
+                  if (sc.rejectionWick) anyRej = true;
+                }
+                const subClose = Number(subSlice[subSlice.length - 1].close) + shiftFromLtf;
+                updatedCandles[ob] = {
+                  ...updatedCandles[ob],
+                  open: Number(subOpen.toFixed(4)),
+                  high: Number(Math.max(subOpen, subClose, hi).toFixed(4)),
+                  low: Number(Math.max(features.lastClose * 0.02, Math.min(subOpen, subClose, lo)).toFixed(4)),
+                  close: Number(subClose.toFixed(4)),
+                  volume: Math.round(volSum),
+                  rejectionWick: anyRej,
+                  wavePhase: subSlice[subSlice.length - 1].wavePhase || updatedCandles[ob].wavePhase,
+                };
+              }
+
+              // Smoothly rebase bars [overlapBars .. CANONICAL_SMC_HORIZON-1] from anchored close
+              const origAnchorClose = Number(htfSc.candles[overlapBars - 1].close);
+              const newAnchorClose = Number(updatedCandles[overlapBars - 1].close);
+              const rebaseDelta = newAnchorClose - origAnchorClose;
+              for (let k = overlapBars; k < updatedCandles.length; k++) {
+                const decay = Math.max(0.15, 1 - (k - (overlapBars - 1)) / 24);
+                const sh = rebaseDelta * decay;
+                const op = k === overlapBars ? newAnchorClose : Number(htfSc.candles[k].open) + sh;
+                const cl = Number(htfSc.candles[k].close) + sh;
+                updatedCandles[k] = {
+                  ...htfSc.candles[k],
+                  open: Number(op.toFixed(4)),
+                  high: Number(Math.max(op, cl, Number(htfSc.candles[k].high) + sh).toFixed(4)),
+                  low: Number(Math.max(features.lastClose * 0.02, Math.min(op, cl, Number(htfSc.candles[k].low) + sh)).toFixed(4)),
+                  close: Number(cl.toFixed(4)),
+                };
+              }
+
+              return {
+                ...htfSc,
+                candles: updatedCandles,
+                targetPrice: updatedCandles[updatedCandles.length - 1].close,
+              };
+            });
+          }
+        }
+      }
+    }
+
+    // Slice canonical scenarios cleanly to requested horizonBars
+    let smcScenarios = canonicalScenarios.map((sc) => {
+      const sliced = sc.candles.slice(0, horizonBars);
+      return {
+        ...sc,
+        candles: sliced,
+        targetPrice: Number(sliced[sliced.length - 1].close.toFixed(4)),
+      };
+    });
 
     // Evaluate live Bayesian self-correction on latest closed bar (T-1 -> T0 verification)
     let bayesianLiveReport = null;
@@ -883,7 +1219,9 @@ export class ForecastEngine {
     } else if (features.candles.length >= 16) {
       const priorSlice = features.candles.slice(0, -1);
       const priorSmcCtx = smcEngine.extractMultiTimeframeFeatures(priorSlice, timeframe);
-      const priorScenarios = smcEngine.generateScenarios(priorSlice, priorSmcCtx, futureTimestamps, options);
+      const priorScenarios = smcEngine
+        .generateScenarios(priorSlice, priorSmcCtx, canonicalTimestamps, options)
+        .map((sc) => ({ ...sc, candles: sc.candles.slice(0, horizonBars) }));
       const latestClosed = features.candles[features.candles.length - 1];
       bayesianLiveReport = smcEngine.evaluateAndUpdateLive(priorScenarios, latestClosed, features.atr14);
     }
@@ -894,10 +1232,12 @@ export class ForecastEngine {
 
     const points = [];
     let cumVar = 0;
-    const epiPerStep = uncertainty.epistemicCumVar / Math.max(1, horizonBars);
+    const epiFactorPerStep =
+      1 / Math.max(6, Number(walkForward?.effectiveSampleSize || features.barCount / 4)) +
+      (uncertainty.oodStatus === 'EXTREME' ? 0.48 : uncertainty.oodStatus === 'ELEVATED' ? 0.20 : 0);
 
     for (let h = 0; h < horizonBars; h++) {
-      cumVar += aleatoricVarSteps[h] + epistemicDispSteps[h] + epiPerStep * 0.35;
+      cumVar += aleatoricVarSteps[h] * (1 + 0.35 * epiFactorPerStep) + epistemicDispSteps[h];
       const cumSigma = Math.sqrt(cumVar) * (1 + 0.008 * h) * uncertainty.spreadMultiplierApplied;
 
       const scCandle = activeScenario.candles[h];

@@ -2957,9 +2957,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     fun applyForecastAndOpenChart() {
         val active = _uiState.value.activeTab ?: return
         val prefs = _uiState.value.chartPreferences
-        val nextShow = !active.showFutureProjection
         _uiState.update { state ->
-            val nextStack = if (nextShow && state.currentScreen != WorkspaceScreen.CHART_VIEW) {
+            val nextStack = if (state.currentScreen != WorkspaceScreen.CHART_VIEW) {
                 (state.screenBackStack + state.currentScreen).takeLast(6)
             } else {
                 state.screenBackStack
@@ -2968,14 +2967,14 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 openTabs = state.openTabs.map { tab ->
                     if (tab.tabId == active.tabId) {
                         tab.copy(
-                            showFutureProjection = nextShow,
-                            scrollOffsetFromRight = if (nextShow) 0 else tab.scrollOffsetFromRight,
+                            showFutureProjection = true,
+                            scrollOffsetFromRight = 0,
                             forecastHorizonBars = prefs.forecastHorizonBars,
                             forecastRenderMode = prefs.forecastRenderMode
                         )
                     } else tab
                 },
-                currentScreen = if (nextShow) WorkspaceScreen.CHART_VIEW else state.currentScreen,
+                currentScreen = WorkspaceScreen.CHART_VIEW,
                 screenBackStack = nextStack
             )
         }
@@ -2984,6 +2983,16 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun getHigherTimeframeCandlesForActiveTab(timeframe: String): List<CandleBar> {
+        val active = _uiState.value.activeTab ?: return emptyList()
+        if (timeframe.isBlank()) return emptyList()
+        return repository.getCachedOrAggregatedCandles(
+            symbolCode = active.symbolCode,
+            provider = active.provider,
+            timeframe = timeframe
+        )
+    }
+
+    fun getLowerTimeframeCandlesForActiveTab(timeframe: String): List<CandleBar> {
         val active = _uiState.value.activeTab ?: return emptyList()
         if (timeframe.isBlank()) return emptyList()
         return repository.getCachedOrAggregatedCandles(
@@ -3002,11 +3011,17 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         val mode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(active.forecastRenderMode.ifBlank { prefs.forecastRenderMode })
         val horizon = if (active.forecastHorizonBars in 10..60) active.forecastHorizonBars else prefs.forecastHorizonBars.coerceIn(10, 60)
         val higherTf = es.manico.chartintelligence.forecast.ForecastV130Analyzer.resolveHigherTimeframe(active.timeframe)
+        val lowerInfo = es.manico.chartintelligence.forecast.resolveLowerTimeframeInfo(active.timeframe)
 
         viewModelScope.launch {
             val higherCandles = withContext(Dispatchers.Default) {
                 if (higherTf.isNotBlank()) {
                     repository.getCachedOrAggregatedCandles(active.symbolCode, active.provider, higherTf)
+                } else emptyList()
+            }
+            val lowerCandles = withContext(Dispatchers.Default) {
+                if (lowerInfo != null) {
+                    repository.getCachedOrAggregatedCandles(active.symbolCode, active.provider, lowerInfo.timeframe)
                 } else emptyList()
             }
             val result = withContext(Dispatchers.Default) {
@@ -3020,7 +3035,9 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                     workerUrl = prefs.forecastWorkerUrl,
                     skipWalkForward = false,
                     higherTimeframe = higherTf,
-                    higherTimeframeCandles = higherCandles
+                    higherTimeframeCandles = higherCandles,
+                    lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
+                    lowerTimeframeCandles = lowerCandles
                 )
             }
             val appended = forecastLedgerStore.appendFromForecast(result)

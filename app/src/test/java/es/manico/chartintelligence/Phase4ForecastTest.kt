@@ -8,6 +8,7 @@ import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
 import es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm
+import es.manico.chartintelligence.algorithms.Phase2IndicatorsAlgorithm
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
@@ -346,6 +347,8 @@ class Phase4ForecastTest {
         composeTestRule.waitForIdle()
 
         composeTestRule.onNodeWithTag("forecast_lab_screen").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("forecast_symbol_selector").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("forecast_tf_chip_m15").assertIsDisplayed()
         composeTestRule.onNodeWithTag("forecast_mini_fan_card").assertIsDisplayed()
         composeTestRule.onNodeWithTag("forecast_apply_to_chart_btn").assertIsDisplayed()
         composeTestRule.onNodeWithTag("forecast_uncertainty_card").performScrollTo().assertIsDisplayed()
@@ -366,4 +369,139 @@ class Phase4ForecastTest {
         composeTestRule.onNodeWithTag("forecast_refresh_ledger_btn").performScrollTo().assertIsDisplayed()
         composeTestRule.onNodeWithTag("forecast_lifecycle_evaluate_btn").performScrollTo().assertIsDisplayed()
     }
+
+    @Test
+    fun forecastEngine_preservesHorizonPrefixInvarianceAndRealistic60BarWaves() {
+        val bars = generateBars(160, "M15")
+        val res10 = ForecastEngine.project(
+            candles = bars,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 10,
+            skipWalkForward = true
+        )
+        val res20 = ForecastEngine.project(
+            candles = bars,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 20,
+            skipWalkForward = true
+        )
+        val res60 = ForecastEngine.project(
+            candles = bars,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 60,
+            skipWalkForward = true
+        )
+
+        assertEquals(3, res10.smcScenarios.size)
+        for (sIdx in 0 until 3) {
+            val s10 = res10.smcScenarios[sIdx]
+            val s20 = res20.smcScenarios[sIdx]
+            val s60 = res60.smcScenarios[sIdx]
+            assertEquals(s10.id, s20.id)
+            assertEquals(s10.id, s60.id)
+            assertEquals(s10.clusterType, s20.clusterType)
+            assertEquals(s10.clusterType, s60.clusterType)
+            assertEquals(s10.probability, s20.probability, 1e-9)
+            assertEquals(s10.probability, s60.probability, 1e-9)
+            for (i in 0 until 10) {
+                assertEquals(s10.candles[i].open, s20.candles[i].open, 1e-9)
+                assertEquals(s10.candles[i].close, s20.candles[i].close, 1e-9)
+                assertEquals(s10.candles[i].high, s20.candles[i].high, 1e-9)
+                assertEquals(s10.candles[i].low, s20.candles[i].low, 1e-9)
+                assertEquals(s10.candles[i].open, s60.candles[i].open, 1e-9)
+                assertEquals(s10.candles[i].close, s60.candles[i].close, 1e-9)
+                assertEquals(s10.candles[i].high, s60.candles[i].high, 1e-9)
+                assertEquals(s10.candles[i].low, s60.candles[i].low, 1e-9)
+            }
+        }
+        for (i in 0 until 10) {
+            assertEquals(res10.points[i].q50, res60.points[i].q50, 1e-9)
+            assertEquals(res10.points[i].q10, res60.points[i].q10, 1e-9)
+            assertEquals(res10.points[i].q90, res60.points[i].q90, 1e-9)
+        }
+        for (i in 0 until 20) {
+            assertEquals(res20.points[i].q50, res60.points[i].q50, 1e-9)
+        }
+
+        var bullCount = 0
+        var bearCount = 0
+        var maxConsec = 0
+        var curRun = 0
+        var prevSign = 0
+        for (p in res60.points) {
+            val sign = if (p.close >= p.open) 1 else -1
+            if (sign > 0) bullCount += 1 else bearCount += 1
+            curRun = if (sign == prevSign) curRun + 1 else 1
+            prevSign = sign
+            if (curRun > maxConsec) maxConsec = curRun
+        }
+        assertTrue("Expected oscillating waves (bull=$bullCount, bear=$bearCount)", bullCount >= 12 && bearCount >= 12)
+        assertTrue("Expected <=5 consecutive same-color bars (got $maxConsec)", maxConsec <= 5)
+        val atr = res60.featuresSummary!!.atr14
+        for (sc in res60.smcScenarios) {
+            assertTrue(abs(sc.targetPrice - res60.anchorClose) <= atr * 12.5)
+        }
+
+        val p10 = Phase2IndicatorsAlgorithm.computeFutureCandlestickProjection(bars, "M15", 10)
+        val p60 = Phase2IndicatorsAlgorithm.computeFutureCandlestickProjection(bars, "M15", 60)
+        assertEquals(10, p10.size)
+        assertEquals(60, p60.size)
+        for (i in 0 until 10) {
+            assertEquals(p10[i].open, p60[i].open, 1e-9)
+            assertEquals(p10[i].close, p60[i].close, 1e-9)
+            assertEquals(p10[i].high, p60[i].high, 1e-9)
+            assertEquals(p10[i].low, p60[i].low, 1e-9)
+        }
+    }
+
+    @Test
+    fun forecastEngine_crossTimeframeM15AndH1FirstBarMatchesRollup() {
+        val m15Bars = generateBars(160, "M15")
+        val h1Bars = (0 until m15Bars.size step 4).map { idx ->
+            val chunk = m15Bars.subList(idx, idx + 4)
+            CandleValidatorAlgorithm.sanitizeAndValidate(
+                rawOpenTimeMillis = chunk.first().openTimeUtcMillis,
+                timeframe = "H1",
+                open = chunk.first().open,
+                high = chunk.maxOf { it.high },
+                low = chunk.minOf { it.low },
+                close = chunk.last().close,
+                volume = chunk.fold(BigDecimal.ZERO) { acc, b -> acc.add(b.volume) }
+            )!!
+        }
+
+        val m15Res = ForecastEngine.project(
+            candles = m15Bars,
+            symbolCode = "SPOTBRENT",
+            timeframe = "M15",
+            horizonBars = 16,
+            skipWalkForward = true
+        )
+        val h1Res = ForecastEngine.project(
+            candles = h1Bars,
+            symbolCode = "SPOTBRENT",
+            timeframe = "H1",
+            horizonBars = 10,
+            skipWalkForward = true,
+            lowerTimeframe = "M15",
+            lowerTimeframeCandles = m15Bars
+        )
+
+        for (h1Sc in h1Res.smcScenarios) {
+            val m15Sc = m15Res.smcScenarios.firstOrNull { it.clusterType == h1Sc.clusterType }
+                ?: m15Res.smcScenarios.first()
+            val first4 = m15Sc.candles.take(4)
+            val rollupHigh = first4.maxOf { it.high }
+            val rollupLow = first4.minOf { it.low }
+            val h1Bar0 = h1Sc.candles.first()
+            assertEquals(first4.first().open, h1Bar0.open, 1e-6)
+            assertEquals(rollupHigh, h1Bar0.high, 1e-6)
+            assertEquals(rollupLow, h1Bar0.low, 1e-6)
+            assertEquals(first4.last().close, h1Bar0.close, 1e-6)
+        }
+    }
 }
+

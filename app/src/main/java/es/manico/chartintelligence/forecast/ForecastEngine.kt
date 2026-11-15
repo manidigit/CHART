@@ -1,6 +1,7 @@
 package es.manico.chartintelligence.forecast
 
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
+import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
 import es.manico.chartintelligence.data.model.CandleBar
 import java.math.BigDecimal
 import java.util.Locale
@@ -24,10 +25,27 @@ import kotlin.math.sqrt
  * 4. SMC Liquidity Magnet Warping (FVG / POC / VAH / VAL / EQH / EQL)
  * 5. Live 15m Bayesian Probability & Re-Anchoring Engine (`evaluateAndUpdateLive`)
  */
+
+const val CANONICAL_SMC_HORIZON = 60
+
+data class LowerTimeframeInfo(val timeframe: String, val ratio: Int)
+
+fun resolveLowerTimeframeInfo(timeframe: String): LowerTimeframeInfo? {
+    return when (timeframe.trim().uppercase(Locale.US)) {
+        "M30" -> LowerTimeframeInfo("M15", 2)
+        "H1" -> LowerTimeframeInfo("M15", 4)
+        "H4" -> LowerTimeframeInfo("H1", 4)
+        "D1" -> LowerTimeframeInfo("H4", 6)
+        else -> null
+    }
+}
+
 class SMCPredictionEngine(
     private val windowSize: Int = 30,
-    private val horizon: Int = 20
+    private val horizon: Int = 20,
+    private val engineTimeframe: String = "M15"
 ) {
+    private val canonicalHorizon: Int = CANONICAL_SMC_HORIZON
     private val topKAnalogs: Int = 45
 
     data class FvgBox(
@@ -46,13 +64,15 @@ class SMCPredictionEngine(
         val avgVolume: Double,
         val avgBodyRatio: Double,
         val avgUpperWickRatio: Double,
-        val avgLowerWickRatio: Double
+        val avgLowerWickRatio: Double,
+        val timeframe: String = "M15"
     )
 
     data class AnalogItem(
         val futureWindow: List<CandleBar>,
         val pastAtr: Double,
-        val distance: Double
+        val distance: Double,
+        val coreEvalLen: Int = 14
     )
 
     fun calculateATR(candles: List<CandleBar>, period: Int = 14): Double {
@@ -113,8 +133,24 @@ class SMCPredictionEngine(
         )
         val ema20 = ema20List.lastOrNull() ?: lastClose
 
+        val tfNorm = timeframe.ifBlank { engineTimeframe }.trim().uppercase(Locale.US)
+        val midGroup = when (tfNorm) {
+            "M30" -> 2
+            "H1" -> 4
+            "H4" -> 6
+            "D1", "W1" -> 5
+            else -> 4
+        }
+        val macroGroup = when (tfNorm) {
+            "M30" -> 8
+            "H1" -> 24
+            "H4" -> 30
+            "D1", "W1" -> 20
+            else -> 16
+        }
+
         val lastBos = smc.structures.lastOrNull()
-        val score15m = (if (lastClose >= ema20) 0.5 else -0.5) +
+        val scoreBase = (if (lastClose >= ema20) 0.5 else -0.5) +
             (if (lastBos != null) (if (lastBos.direction >= 0) 0.5 else -0.5) else 0.0)
 
         fun aggregateCandles(src: List<CandleBar>, groupSize: Int): List<CandleBar> {
@@ -143,7 +179,7 @@ class SMCPredictionEngine(
         }
 
         fun computeTfScore(tfCandles: List<CandleBar>): Double {
-            if (tfCandles.size < 6) return score15m
+            if (tfCandles.size < 5) return scoreBase
             val eArr = PriceFormatterAlgorithm.computeEmaValues(
                 tfCandles.map { it.close.toDouble() },
                 min(20, max(4, tfCandles.size - 1))
@@ -156,9 +192,9 @@ class SMCPredictionEngine(
             return 0.5 * emaSign + 0.5 * structSign
         }
 
-        val score1h = computeTfScore(aggregateCandles(recentSlice, 4))
-        val score4h = computeTfScore(aggregateCandles(recentSlice, 16))
-        val htfTrendBias = ((0.40 * score15m + 0.35 * score1h + 0.25 * score4h) * 1000.0).roundToInt() / 1000.0
+        val scoreMid = computeTfScore(aggregateCandles(recentSlice, midGroup))
+        val scoreMacro = computeTfScore(aggregateCandles(recentSlice, macroGroup))
+        val htfTrendBias = ((0.40 * scoreBase + 0.35 * scoreMid + 0.25 * scoreMacro) * 1000.0).roundToInt() / 1000.0
 
         val unmitigatedFVGs = smc.fvgs.map { f ->
             FvgBox(
@@ -194,7 +230,8 @@ class SMCPredictionEngine(
             avgVolume = avgVolume,
             avgBodyRatio = (bodyRatioSum / ratioCount).coerceIn(0.38, 0.74),
             avgUpperWickRatio = (upperWickSum / ratioCount).coerceIn(0.15, 0.46),
-            avgLowerWickRatio = (lowerWickSum / ratioCount).coerceIn(0.15, 0.46)
+            avgLowerWickRatio = (lowerWickSum / ratioCount).coerceIn(0.15, 0.46),
+            timeframe = tfNorm
         )
     }
 
@@ -217,11 +254,12 @@ class SMCPredictionEngine(
 
     fun findHistoricalAnalogs(allHistory: List<CandleBar>, currentAtr: Double): List<AnalogItem> {
         val effWindow = min(windowSize, max(10, (allHistory.size * 0.35).toInt()))
+        val coreAnalogLen = min(20, max(10, (allHistory.size * 0.22).toInt()))
         val currentWindow = allHistory.takeLast(effWindow)
         val currentVec = extractNormalizedShape(currentWindow, currentAtr)
         val analogs = ArrayList<AnalogItem>()
 
-        val maxSearchIdx = allHistory.size - effWindow - horizon - 2
+        val maxSearchIdx = allHistory.size - effWindow - coreAnalogLen - 2
         val step = if (maxSearchIdx > 180) 2 else 1
 
         var i = 15
@@ -238,9 +276,17 @@ class SMCPredictionEngine(
             }
             dist = sqrt(dist)
 
-            val futureWindow = allHistory.subList(i + effWindow, i + effWindow + horizon)
-            if (futureWindow.size == horizon) {
-                analogs.add(AnalogItem(futureWindow = futureWindow, pastAtr = pastAtr, distance = dist))
+            val futureEnd = min(allHistory.size, i + effWindow + canonicalHorizon)
+            val futureWindow = allHistory.subList(i + effWindow, futureEnd)
+            if (futureWindow.size >= coreAnalogLen) {
+                analogs.add(
+                    AnalogItem(
+                        futureWindow = futureWindow,
+                        pastAtr = pastAtr,
+                        distance = dist,
+                        coreEvalLen = min(14, coreAnalogLen)
+                    )
+                )
             }
             i += step
         }
@@ -250,29 +296,36 @@ class SMCPredictionEngine(
             val baseP = lastCandle.close.toDouble()
             val baseVol = max(50.0, lastCandle.volume.toDouble())
             val syntheticProfiles = listOf(
-                Triple(1, -0.45, 0.45),
-                Triple(1, -0.30, 0.55),
-                Triple(-1, 0.45, 0.52),
-                Triple(-1, 0.30, 0.62),
-                Triple(0, -0.25, 0.58),
-                Triple(0, 0.25, 0.64)
+                Triple(1, -0.42, 0.45),
+                Triple(1, -0.28, 0.55),
+                Triple(-1, 0.42, 0.52),
+                Triple(-1, 0.28, 0.62),
+                Triple(0, -0.24, 0.58),
+                Triple(0, 0.24, 0.64)
             )
             syntheticProfiles.forEachIndexed { sIdx, (dir, pull, baseDist) ->
-                val fw = ArrayList<CandleBar>(horizon)
+                val fw = ArrayList<CandleBar>(canonicalHorizon)
                 var p = baseP
-                for (h in 0 until horizon) {
+                for (h in 0 until canonicalHorizon) {
+                    val cyclePos = if (h >= 3) (h - 3) % 14 else -1
                     val isPull = h < 3
-                    val waveMod = if ((h - 3) % 4 == 2) -0.42 else 0.78
+                    val isCorrWave = cyclePos in 8..12
+                    val isMicroDip = cyclePos == 3 || cyclePos == 6
                     val stepDelta = when {
-                        isPull -> pull * currentAtr * 0.45
-                        dir != 0 -> dir * currentAtr * waveMod * 0.55
-                        else -> sin((h + sIdx) * 1.1) * currentAtr * 0.42
+                        isPull -> pull * currentAtr * 0.42
+                        dir == 0 -> sin((h + sIdx) * 0.85) * currentAtr * 0.42
+                        isCorrWave -> -dir * currentAtr * (0.28 + 0.16 * abs(sin(h * 0.9)))
+                        isMicroDip -> -dir * currentAtr * 0.30
+                        else -> {
+                            val damp = 1.0 / (1.0 + h * 0.025)
+                            dir * currentAtr * (0.38 + 0.18 * abs(cos(h * 0.8))) * damp
+                        }
                     }
                     val op = p
-                    val cl = op + stepDelta
-                    val hi = max(op, cl) + currentAtr * (0.24 + 0.15 * abs(cos((h + sIdx).toDouble())))
-                    val lo = min(op, cl) - currentAtr * (0.24 + 0.15 * abs(sin((h + sIdx).toDouble())))
-                    val vol = (baseVol * (if (waveMod > 0) 1.35 else 0.68)).roundToInt()
+                    val cl = max(baseP * 0.1, op + stepDelta)
+                    val hi = max(op, cl) + currentAtr * (0.22 + 0.14 * abs(cos((h + sIdx).toDouble())))
+                    val lo = max(baseP * 0.05, min(op, cl) - currentAtr * (0.22 + 0.14 * abs(sin((h + sIdx).toDouble()))))
+                    val vol = (baseVol * (if (isCorrWave || isMicroDip) 0.68 else 1.28)).roundToInt()
                     fw.add(
                         CandleBar(
                             openTimeUtcMillis = lastCandle.openTimeUtcMillis + (h + 1) * 900_000L,
@@ -286,7 +339,7 @@ class SMCPredictionEngine(
                     )
                     p = cl
                 }
-                analogs.add(AnalogItem(futureWindow = fw, pastAtr = currentAtr, distance = baseDist + sIdx * 0.05))
+                analogs.add(AnalogItem(futureWindow = fw, pastAtr = currentAtr, distance = baseDist + sIdx * 0.05, coreEvalLen = 14))
             }
         }
 
@@ -308,8 +361,9 @@ class SMCPredictionEngine(
         val rangingGroup = ArrayList<AnalogItem>()
 
         for (item in analogs) {
+            val evalIdx = min(item.coreEvalLen - 1, item.futureWindow.lastIndex)
             val startP = item.futureWindow.first().open.toDouble()
-            val endP = item.futureWindow.last().close.toDouble()
+            val endP = item.futureWindow[evalIdx].close.toDouble()
             val netMoveInAtr = (endP - startP) / max(item.pastAtr, 0.0001)
             when {
                 netMoveInAtr > 0.65 -> bullishGroup.add(item)
@@ -333,6 +387,7 @@ class SMCPredictionEngine(
         val p2 = (max(0.01, 1.0 - p0 - p1) * 100.0).roundToInt() / 100.0
         val normProbs = listOf(p0, p1, p2)
         val scenarioIds = listOf("SCENARIO_A", "SCENARIO_B", "SCENARIO_C")
+        val targetOutHorizon = min(horizon, if (futureTimestamps.isNotEmpty()) futureTimestamps.size else horizon)
 
         return rawCounts.mapIndexed { idx, cluster ->
             val representative = if (cluster.group.isNotEmpty()) {
@@ -343,15 +398,17 @@ class SMCPredictionEngine(
 
             val pullbackPrice = findNearestPullbackLevel(lastCloseVal, currentAtr, smcState, cluster.type)
             val primaryTarget = findPrimaryTargetLevel(lastCloseVal, currentAtr, smcState, cluster.type)
-            val projectedCandles = buildRealisticCandles(
+            val canonicalCandles = buildRealisticCandles(
                 templateCandles = representative.futureWindow,
                 templateAtr = representative.pastAtr,
                 anchorCandle = lastCandle,
                 currentAtr = currentAtr,
                 smc = smcState,
                 direction = cluster.type,
-                futureTimestamps = futureTimestamps
+                futureTimestamps = futureTimestamps,
+                totalBars = canonicalHorizon
             )
+            val projectedCandles = canonicalCandles.take(targetOutHorizon)
             val finalClose = projectedCandles.last().close
 
             SmcProjectedScenario(
@@ -394,71 +451,225 @@ class SMCPredictionEngine(
         currentAtr: Double,
         smc: FullSmcState,
         direction: String,
-        futureTimestamps: LongArray
+        futureTimestamps: LongArray,
+        totalBars: Int = canonicalHorizon
     ): List<ForecastPoint> {
-        val result = ArrayList<ForecastPoint>(templateCandles.size)
+        val result = ArrayList<ForecastPoint>(totalBars)
         val scale = currentAtr / max(templateAtr, 0.0001)
         val anchorClose = anchorCandle.close.toDouble()
+        val tfNorm = smc.timeframe.ifBlank { engineTimeframe }.uppercase(Locale.US)
+        val stepMsFallback = UtcTimeAnchorAlgorithm.timeframeStepMillis(tfNorm)
         val avgVol = smc.avgVolume
         val avgBodyRatio = smc.avgBodyRatio
         val avgUpperWickRatio = smc.avgUpperWickRatio
         val avgLowerWickRatio = smc.avgLowerWickRatio
 
-        val pullbackMagnet = findNearestPullbackLevel(anchorClose, currentAtr, smc, direction)
-        val targetMagnet = findPrimaryTargetLevel(anchorClose, currentAtr, smc, direction)
-        val pullbackSteps = min(4, max(3, (templateCandles.size * 0.2).roundToInt()))
+        val rawPullbackMagnet = findNearestPullbackLevel(anchorClose, currentAtr, smc, direction)
+        val rawTargetMagnet = findPrimaryTargetLevel(anchorClose, currentAtr, smc, direction)
+        val pullbackSteps = when (tfNorm) {
+            "M15" -> 3
+            "M30" -> 2
+            else -> 1
+        }
+
+        val maxPullAtr = if (pullbackSteps == 1) 0.62 else 1.35
+        val pullbackMagnet = rawPullbackMagnet.coerceIn(anchorClose - maxPullAtr * currentAtr, anchorClose + maxPullAtr * currentAtr)
+        val targetMagnet = when (direction) {
+            "BULL" -> rawTargetMagnet.coerceIn(anchorClose + 1.6 * currentAtr, anchorClose + 5.2 * currentAtr)
+            "BEAR" -> rawTargetMagnet.coerceIn(anchorClose - 5.2 * currentAtr, anchorClose - 1.6 * currentAtr)
+            else -> smc.context.poc
+        }
+
+        val poc = smc.context.poc
+        val vah = smc.context.vah
+        val valPrice = smc.context.valPrice
+        val pocAnchor = poc.coerceIn(anchorClose - 1.5 * currentAtr, anchorClose + 1.5 * currentAtr)
 
         var prevClose = anchorClose
         var consecutiveSameDir = 0
         var lastDirSign = 0
+        var waveMode = if (direction == "RANGE") "RANGE" else "PULLBACK"
+        var legBars = 0
+        var legStart = anchorClose
+        var sweepCount = 0
+        var corrLen = 4
+        var corrTarget = anchorClose
+        var consLen = 3
+        var consMid = anchorClose
 
-        for (i in templateCandles.indices) {
-            val tpl = templateCandles[i]
-            val tplBody = (tpl.close.toDouble() - tpl.open.toDouble()) * scale
+        val tplLen = max(1, templateCandles.size)
+        val mainDir = when (direction) {
+            "BULL" -> 1.0
+            "BEAR" -> -1.0
+            else -> 0.0
+        }
+
+        for (i in 0 until totalBars) {
+            val tplIdx = if (i < tplLen) i else (i - tplLen) % tplLen
+            val mirrorSign = if (i < tplLen) 1.0 else if ((i / tplLen) % 2 == 1) -0.65 else 0.75
+            val tpl = templateCandles[tplIdx]
+            val tplBody = (tpl.close.toDouble() - tpl.open.toDouble()) * scale * mirrorSign
             val tplUpperWick = (tpl.high.toDouble() - max(tpl.open.toDouble(), tpl.close.toDouble())) * scale
             val tplLowerWick = (min(tpl.open.toDouble(), tpl.close.toDouble()) - tpl.low.toDouble()) * scale
 
-            val isPullbackPhase = i < pullbackSteps && direction != "RANGE"
-            val activeMagnet = if (isPullbackPhase) pullbackMagnet else targetMagnet
-            val magnetWeight = when {
-                isPullbackPhase -> 0.28
-                direction == "RANGE" -> 0.22
-                else -> 0.16
-            }
-            val magnetPull = (activeMagnet - prevClose) * magnetWeight
-
             val open = prevClose
-            val wavePhaseIdx = (i - pullbackSteps) % 4
-            val isFractalPullbackBar = !isPullbackPhase && direction != "RANGE" && wavePhaseIdx == 2
+            val maxEnvAtr = 1.10 * sqrt((i + 6).toDouble())
+            val totalExcursionAtr = if (mainDir != 0.0) ((prevClose - anchorClose) * mainDir) / max(currentAtr, 1e-6) else 0.0
+            val excursionDamp = (1.0 - max(0.0, totalExcursionAtr) / (maxEnvAtr * 1.04)).coerceIn(0.18, 1.0)
 
-            var rawBodyDelta = tplBody * 0.58 + magnetPull
-
-            if (isPullbackPhase) {
-                val pullDir = if (pullbackMagnet <= prevClose) -1.0 else 1.0
-                val bodyMag = (abs(rawBodyDelta) + currentAtr * 0.16).coerceIn(currentAtr * 0.28, currentAtr * 0.85)
-                rawBodyDelta = pullDir * bodyMag
-            } else if (isFractalPullbackBar || consecutiveSameDir >= 3) {
-                val counterDir = when (direction) {
-                    "BULL" -> -1.0
-                    "BEAR" -> 1.0
-                    else -> if (lastDirSign != 0) -lastDirSign.toDouble() else -1.0
+            if (waveMode == "PULLBACK" && i >= pullbackSteps) {
+                waveMode = "IMPULSE"
+                legBars = 0
+                legStart = prevClose
+            } else if (waveMode == "IMPULSE") {
+                val legGainAtr = ((prevClose - legStart) * mainDir) / max(currentAtr, 1e-6)
+                val legTarget = if (sweepCount == 0) {
+                    targetMagnet
+                } else {
+                    anchorClose + mainDir * currentAtr * min(maxEnvAtr * 0.90, 3.0 + sweepCount * 1.55)
                 }
-                val retraceMag = currentAtr * (0.32 + 0.20 * abs(sin((i + 1) * 1.3)))
-                rawBodyDelta = counterDir * retraceMag
-            } else if (direction == "BULL" || direction == "BEAR") {
-                val mainDir = if (direction == "BULL") 1.0 else -1.0
-                val impulseMag = (abs(rawBodyDelta) + currentAtr * (0.34 + 0.25 * abs(cos(i * 0.9))))
-                    .coerceIn(currentAtr * 0.52 * avgBodyRatio, currentAtr * 1.35)
-                rawBodyDelta = mainDir * impulseMag
-            } else {
-                val rangeWave = sin((i + 1) * 1.15) * currentAtr * 0.42 + magnetPull
-                val mag = abs(rangeWave).coerceIn(currentAtr * 0.22, currentAtr * 0.78)
-                rawBodyDelta = (if (rangeWave >= 0.0) 1.0 else -1.0) * mag
+                val hitTarget = (prevClose - legTarget) * mainDir >= -0.25 * currentAtr && legBars >= 4
+                val overextended = legGainAtr >= 2.15 + 0.35 * (sweepCount % 2) ||
+                    legBars >= 8 ||
+                    totalExcursionAtr >= maxEnvAtr * 0.80
+
+                if (hitTarget || overextended) {
+                    waveMode = "CORRECTION"
+                    corrLen = 4 + ((i + sweepCount) % 3)
+                    val retraceFrac = 0.42 + 0.10 * (sweepCount % 2)
+                    corrTarget = prevClose - (prevClose - legStart) * retraceFrac
+                    legBars = 0
+                    sweepCount += 1
+                }
+            } else if (waveMode == "CORRECTION") {
+                val reachedCorr = (prevClose - corrTarget) * (-mainDir) >= -0.15 * currentAtr && legBars >= 2
+                if (legBars >= corrLen || reachedCorr) {
+                    if (i >= 14 && sweepCount % 2 == 1) {
+                        waveMode = "CONSOLIDATION"
+                        consLen = 3 + (sweepCount % 2)
+                        consMid = prevClose
+                        legBars = 0
+                    } else {
+                        waveMode = "IMPULSE"
+                        legStart = prevClose
+                        legBars = 0
+                    }
+                }
+            } else if (waveMode == "CONSOLIDATION") {
+                if (legBars >= consLen) {
+                    if (i < 48 && totalExcursionAtr < maxEnvAtr * 0.78) {
+                        waveMode = "IMPULSE"
+                        legStart = prevClose
+                        legBars = 0
+                    } else {
+                        consMid = prevClose
+                        legBars = 0
+                    }
+                }
+            }
+
+            val rawBodyDelta: Double
+            val candleCategory: String
+
+            when {
+                direction == "RANGE" || waveMode == "RANGE" -> {
+                    val pullToPoc = (pocAnchor - prevClose) * 0.24
+                    val cycle = sin((i + 1) * 0.92 + 0.4) * currentAtr * 0.44
+                    val blended = pullToPoc + cycle * 0.72 + tplBody * 0.28
+                    var dirSign = if (blended >= 0.0) 1 else -1
+                    if (consecutiveSameDir >= 3 && dirSign == lastDirSign) {
+                        dirSign = -lastDirSign
+                    }
+                    val exc = (prevClose - pocAnchor) / max(currentAtr, 1e-6)
+                    if (abs(exc) > 1.55) {
+                        dirSign = if (exc > 0.0) -1 else 1
+                    }
+                    val mag = (abs(blended) + currentAtr * 0.14).coerceIn(currentAtr * 0.20, currentAtr * 0.68)
+                    rawBodyDelta = dirSign * mag
+                    candleCategory = "CONSOLIDATION"
+                }
+                waveMode == "PULLBACK" -> {
+                    val remPull = max(1, pullbackSteps - i)
+                    val gapToPull = (pullbackMagnet - prevClose) / remPull.toDouble()
+                    rawBodyDelta = if (pullbackSteps == 1) {
+                        val biasAdj = if (smc.context.htfTrendBias * mainDir >= 0.1) 0.18 else -0.26
+                        val d = mainDir * currentAtr * biasAdj + tplBody * 0.25
+                        if (abs(d) < currentAtr * 0.20) {
+                            mainDir * (if (biasAdj >= 0.0) 1.0 else -1.0) * currentAtr * 0.24
+                        } else d
+                    } else if (i == pullbackSteps - 1) {
+                        mainDir * currentAtr * (0.24 + 0.12 * abs(cos(i.toDouble())))
+                    } else {
+                        val pullDir = if (pullbackMagnet <= prevClose) -1.0 else 1.0
+                        val bodyMag = (abs(gapToPull) * 0.85 + abs(tplBody) * 0.25 + currentAtr * 0.12)
+                            .coerceIn(currentAtr * 0.24, currentAtr * 0.58)
+                        pullDir * bodyMag
+                    }
+                    candleCategory = "MITIGATION_PULLBACK"
+                }
+                waveMode == "IMPULSE" -> {
+                    val legTarget = if (sweepCount == 0) {
+                        targetMagnet
+                    } else {
+                        anchorClose + mainDir * currentAtr * min(maxEnvAtr * 0.90, 3.0 + sweepCount * 1.55)
+                    }
+                    val magnetPull = (legTarget - prevClose) * 0.14
+                    val isMicroCounter = (consecutiveSameDir >= 3 && lastDirSign == mainDir.toInt()) ||
+                        (legBars > 1 && tplBody * mainDir < -0.32 * currentAtr && consecutiveSameDir >= 2 && lastDirSign == mainDir.toInt())
+                    if (isMicroCounter) {
+                        val counterMag = currentAtr * (0.24 + 0.18 * abs(sin((i + 1) * 1.25)))
+                        rawBodyDelta = -mainDir * counterMag
+                        candleCategory = "CONSOLIDATION"
+                    } else {
+                        val tplAlign = max(-0.15 * currentAtr, tplBody * mainDir * 0.42)
+                        val baseImp = currentAtr * (0.34 + 0.30 * avgBodyRatio + 0.22 * abs(cos(i * 0.85)))
+                        val impulseMag = ((baseImp + tplAlign + max(0.0, magnetPull * mainDir)) * excursionDamp)
+                            .coerceIn(currentAtr * 0.24, currentAtr * 1.15)
+                        rawBodyDelta = mainDir * impulseMag
+                        candleCategory = "IMPULSE"
+                    }
+                }
+                waveMode == "CORRECTION" -> {
+                    val remCorr = max(1, corrLen - legBars)
+                    val pullStep = (corrTarget - prevClose) / remCorr.toDouble()
+                    rawBodyDelta = if (consecutiveSameDir >= 3 && lastDirSign == (-mainDir).toInt()) {
+                        mainDir * currentAtr * (0.20 + 0.14 * abs(cos(i * 1.1)))
+                    } else {
+                        val corrMag = (abs(pullStep) * 0.75 + abs(tplBody) * 0.25 + currentAtr * 0.14)
+                            .coerceIn(currentAtr * 0.22, currentAtr * 0.72)
+                        -mainDir * corrMag
+                    }
+                    candleCategory = "CONSOLIDATION"
+                }
+                else -> {
+                    val pullToMid = (consMid - prevClose) * 0.32
+                    val boxOsc = (if (legBars % 2 == 0) -mainDir else mainDir) * currentAtr *
+                        (0.26 + 0.14 * abs(sin(i * 1.3)))
+                    val combined = pullToMid + boxOsc * 0.78 + tplBody * 0.22
+                    var sgn = if (combined >= 0.0) 1 else -1
+                    if (consecutiveSameDir >= 3 && sgn == lastDirSign) sgn = -lastDirSign
+                    rawBodyDelta = sgn * abs(combined).coerceIn(currentAtr * 0.20, currentAtr * 0.48)
+                    candleCategory = "CONSOLIDATION"
+                }
             }
 
             var close = max(anchorClose * 0.05, open + rawBodyDelta)
             if (abs(close - open) < currentAtr * 0.18) {
-                close = open + (if (close >= open) 1.0 else -1.0) * currentAtr * 0.22
+                close = open + (if (close >= open) 1.0 else -1.0) * currentAtr * 0.20
+            }
+
+            val nextExcAtr = if (mainDir != 0.0) ((close - anchorClose) * mainDir) / max(currentAtr, 1e-6) else 0.0
+            if (mainDir != 0.0 && nextExcAtr > maxEnvAtr) {
+                val cappedTarget = anchorClose + mainDir * maxEnvAtr * currentAtr
+                close = max(anchorClose * 0.05, open - mainDir * currentAtr * 0.26)
+                if (close > cappedTarget && mainDir > 0.0) close = min(open - currentAtr * 0.20, cappedTarget)
+            }
+
+            if (consecutiveSameDir >= 4 && (if (close >= open) 1 else -1) == lastDirSign) {
+                close = max(
+                    anchorClose * 0.05,
+                    open - lastDirSign * currentAtr * (0.24 + 0.14 * abs(cos((i + 1) * 1.15)))
+                )
             }
 
             val curSign = if (close >= open) 1 else -1
@@ -471,44 +682,54 @@ class SMCPredictionEngine(
 
             val bodyAbs = abs(close - open)
             val baseUpperWick = max(
-                max(tplUpperWick * 0.65, currentAtr * 0.16),
-                bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.3 * abs(cos((i + 1) * 0.85)))
+                max(tplUpperWick * 0.58, currentAtr * 0.14),
+                bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.28 * abs(cos((i + 1) * 0.85)))
             )
             val baseLowerWick = max(
-                max(tplLowerWick * 0.65, currentAtr * 0.16),
-                bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.3 * abs(sin((i + 1) * 1.05)))
+                max(tplLowerWick * 0.58, currentAtr * 0.14),
+                bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.28 * abs(sin((i + 1) * 1.05)))
             )
 
-            var high = max(open, close) + min(currentAtr * 0.85, baseUpperWick)
-            var low = max(anchorClose * 0.02, min(open, close) - min(currentAtr * 0.85, baseLowerWick))
+            var high = max(open, close) + min(currentAtr * 0.78, baseUpperWick)
+            var low = max(anchorClose * 0.02, min(open, close) - min(currentAtr * 0.78, baseLowerWick))
 
             var rejectionWick = false
-            val poc = smc.context.poc
-            val vah = smc.context.vah
-            val valPrice = smc.context.valPrice
-
-            if (abs(low - poc) < currentAtr * 0.35 ||
-                abs(low - pullbackMagnet) < currentAtr * 0.35 ||
-                abs(low - valPrice) < currentAtr * 0.35
-            ) {
-                low = max(anchorClose * 0.02, low - currentAtr * 0.35)
-                rejectionWick = true
-            }
-            if (abs(high - vah) < currentAtr * 0.35 ||
-                abs(high - targetMagnet) < currentAtr * 0.35
-            ) {
-                high += currentAtr * 0.35
-                rejectionWick = true
+            if (waveMode == "PULLBACK" && pullbackSteps == 1 && direction == "BULL") {
+                val testLow = max(anchorClose * 0.02, min(low, pullbackMagnet - currentAtr * 0.12))
+                if (testLow < low && open - testLow <= currentAtr * 0.78) {
+                    low = testLow
+                    rejectionWick = true
+                }
+            } else if (waveMode == "PULLBACK" && pullbackSteps == 1 && direction == "BEAR") {
+                val testHigh = max(high, pullbackMagnet + currentAtr * 0.12)
+                if (testHigh > high && testHigh - open <= currentAtr * 0.78) {
+                    high = testHigh
+                    rejectionWick = true
+                }
             }
 
-            val isImpulseCandle = !isPullbackPhase && !isFractalPullbackBar && direction != "RANGE"
+            if (abs(low - poc) < currentAtr * 0.30 ||
+                abs(low - pullbackMagnet) < currentAtr * 0.30 ||
+                abs(low - valPrice) < currentAtr * 0.30
+            ) {
+                low = max(anchorClose * 0.02, low - currentAtr * 0.26)
+                rejectionWick = true
+            }
+            if (abs(high - vah) < currentAtr * 0.30 ||
+                abs(high - targetMagnet) < currentAtr * 0.30
+            ) {
+                high += currentAtr * 0.26
+                rejectionWick = true
+            }
+
+            val isImpulseCandle = candleCategory == "IMPULSE"
             val volMultiplier = if (isImpulseCandle) {
-                1.24 + 0.52 * abs(sin((i + 1) * 0.9 + 0.7))
+                1.22 + 0.48 * abs(sin((i + 1) * 0.9 + 0.7))
             } else {
-                0.52 + 0.26 * abs(cos((i + 1) * 1.1 + 0.4))
+                0.54 + 0.26 * abs(cos((i + 1) * 1.1 + 0.4))
             }
             val openTimeMs = futureTimestamps.getOrElse(i) {
-                anchorCandle.openTimeUtcMillis + (i + 1) * 900_000L
+                anchorCandle.openTimeUtcMillis + (i + 1) * stepMsFallback
             }
             val bandHalf = currentAtr * 0.85 * sqrt((i + 1).toDouble())
             val q = ForecastCalendarHelper.enforceMonotonicQuantiles(
@@ -536,16 +757,13 @@ class SMCPredictionEngine(
                     pctChangeFromLast = ((close - anchorClose) / anchorClose) * 100.0,
                     volume = round(avgVol * volMultiplier),
                     rejectionWick = rejectionWick,
-                    wavePhase = when {
-                        isPullbackPhase -> "MITIGATION_PULLBACK"
-                        isImpulseCandle -> "IMPULSE"
-                        else -> "CONSOLIDATION"
-                    },
+                    wavePhase = candleCategory,
                     pullbackPrice = pullbackMagnet,
                     primaryMagnetPrice = targetMagnet
                 )
             )
             prevClose = close
+            legBars += 1
         }
 
         return result
@@ -561,7 +779,7 @@ class SMCPredictionEngine(
             if (lowerFvg != null) return lowerFvg.midpoint
             if (poc < price && (price - poc) <= 2.5 * atr) return poc
             if (ema20 < price && (price - ema20) <= 2.5 * atr) return ema20
-            return price - 0.78 * atr
+            return price - 0.65 * atr
         }
         if (dir == "BEAR") {
             val upperFvg = smc.unmitigatedFVGs
@@ -570,7 +788,7 @@ class SMCPredictionEngine(
             if (upperFvg != null) return upperFvg.midpoint
             if (poc > price && (poc - price) <= 2.5 * atr) return poc
             if (ema20 > price && (ema20 - price) <= 2.5 * atr) return ema20
-            return price + 0.78 * atr
+            return price + 0.65 * atr
         }
         return poc
     }
@@ -636,10 +854,11 @@ class SMCPredictionEngine(
             totalPosterior += unnormProb
 
             val priceShift = actualClose - predictedCandle.close
+            val decaySpan = max(canonicalHorizon, sc.candles.size).toDouble()
             val reAnchoredCandles = sc.candles.mapIndexed { cIdx, c ->
                 if (cIdx <= idx) c
                 else {
-                    val decay = 1.0 - (cIdx - idx).toDouble() / max(1, sc.candles.size).toDouble()
+                    val decay = max(0.05, 1.0 - (cIdx - idx).toDouble() / decaySpan)
                     val shift = priceShift * decay
                     val op = if (cIdx == idx + 1) actualClose else c.open + shift
                     val cl = c.close + shift
@@ -689,7 +908,10 @@ object ForecastEngine {
         higherTimeframe: String = "",
         higherTimeframeCandles: List<CandleBar> = emptyList(),
         previousForecast: ForecastResult? = null,
-        selectedScenarioId: String = "SCENARIO_A"
+        selectedScenarioId: String = "SCENARIO_A",
+        lowerTimeframe: String = "",
+        lowerTimeframeCandles: List<CandleBar> = emptyList(),
+        disableLowerTfAnchor: Boolean = false
     ): ForecastResult {
         val cleanSymbol = symbolCode.trim().uppercase(Locale.US)
         val cleanTf = timeframe.trim().uppercase(Locale.US)
@@ -733,7 +955,8 @@ object ForecastEngine {
         val features = ForecastFeatureExtractor.extract(candles, 180)
             ?: return project(
                 emptyList(), cleanSymbol, cleanTf, horizon, renderMode, registry, workerUrl,
-                skipWalkForward, minBars, higherTimeframe, higherTimeframeCandles, previousForecast, selectedScenarioId
+                skipWalkForward, minBars, higherTimeframe, higherTimeframeCandles, previousForecast,
+                selectedScenarioId, lowerTimeframe, lowerTimeframeCandles, disableLowerTfAnchor
             )
 
         val enabled = registry.getEnabled().ifEmpty {
@@ -744,7 +967,7 @@ object ForecastEngine {
             candles = candles,
             registry = registry,
             minTrainBars = max(24, min(36, (candles.size * 0.55).toInt())),
-            evalHorizon = min(8, max(3, horizon / 5)),
+            evalHorizon = 5,
             maxWindows = 10
         )
 
@@ -815,18 +1038,123 @@ object ForecastEngine {
             effectiveSampleSize = wfReport?.effectiveSampleSize
         )
 
-        val timestamps = ForecastCalendarHelper.advanceFutureTimestamps(features.lastOpenMs, cleanTf, horizon, cleanSymbol)
+        val canonicalTimestamps = ForecastCalendarHelper.advanceFutureTimestamps(
+            features.lastOpenMs,
+            cleanTf,
+            CANONICAL_SMC_HORIZON,
+            cleanSymbol
+        )
+        val timestamps = canonicalTimestamps.take(horizon).toLongArray()
 
-        // Run SMC Historical Analog + K-Medoids 3-Scenario Engine
+        // Run SMC Historical Analog + K-Medoids 3-Scenario Engine at canonical horizon (60) for prefix invariance
         val cleanCandleBars = candles.takeLast(180)
-        val smcEngine = SMCPredictionEngine(30, horizon)
+        val smcEngine = SMCPredictionEngine(30, CANONICAL_SMC_HORIZON, cleanTf)
         val smcState = smcEngine.extractMultiTimeframeFeatures(cleanCandleBars, cleanTf)
-        val smcScenarios = smcEngine.generateScenarios(cleanCandleBars, smcState, timestamps)
+        var canonicalScenarios = smcEngine.generateScenarios(cleanCandleBars, smcState, canonicalTimestamps)
+
+        // Cross-Timeframe Lower-TF Sub-Bar Anchoring (e.g. M15 bars 1..12 anchor H1 bars 1..3)
+        val lowerInfo = resolveLowerTimeframeInfo(cleanTf)
+        if (!disableLowerTfAnchor && lowerInfo != null && lowerTimeframeCandles.size >= 24) {
+            val ltfFeatures = ForecastFeatureExtractor.extract(lowerTimeframeCandles, 180)
+            val ltfBars = lowerTimeframeCandles.takeLast(180)
+            if (ltfFeatures != null && ltfBars.size >= 24) {
+                val closeDiff = abs(ltfFeatures.lastClose - features.lastClose)
+                val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(cleanTf)
+                val timeDiff = abs(features.lastOpenMs - ltfFeatures.lastOpenMs)
+                if (closeDiff <= max(features.atr14 * 0.45, features.lastClose * 0.006) && timeDiff <= stepMs * 2L) {
+                    val ltfTimestamps = ForecastCalendarHelper.advanceFutureTimestamps(
+                        ltfFeatures.lastOpenMs,
+                        lowerInfo.timeframe,
+                        CANONICAL_SMC_HORIZON,
+                        cleanSymbol
+                    )
+                    val ltfEngine = SMCPredictionEngine(30, CANONICAL_SMC_HORIZON, lowerInfo.timeframe)
+                    val ltfState = ltfEngine.extractMultiTimeframeFeatures(ltfBars, lowerInfo.timeframe)
+                    val ltfScenarios = ltfEngine.generateScenarios(ltfBars, ltfState, ltfTimestamps)
+                    val overlapBars = min(3, CANONICAL_SMC_HORIZON / lowerInfo.ratio)
+                    if (overlapBars >= 1) {
+                        canonicalScenarios = canonicalScenarios.map { htfSc ->
+                            val matchingLtf = ltfScenarios.firstOrNull { it.clusterType == htfSc.clusterType }
+                                ?: ltfScenarios.first()
+                            if (matchingLtf.candles.size < overlapBars * lowerInfo.ratio) {
+                                htfSc
+                            } else {
+                                val updatedCandles = htfSc.candles.toMutableList()
+                                for (ob in 0 until overlapBars) {
+                                    val subSlice = matchingLtf.candles.subList(
+                                        ob * lowerInfo.ratio,
+                                        (ob + 1) * lowerInfo.ratio
+                                    )
+                                    val subOpen = if (ob == 0) features.lastClose else updatedCandles[ob - 1].close
+                                    val shiftFromLtf = if (ob == 0) features.lastClose - subSlice.first().open else 0.0
+                                    var hi = subOpen
+                                    var lo = subOpen
+                                    var volSum = 0.0
+                                    var anyRej = false
+                                    for (sc in subSlice) {
+                                        hi = max(hi, sc.high + shiftFromLtf)
+                                        lo = min(lo, sc.low + shiftFromLtf)
+                                        volSum += sc.volume
+                                        if (sc.rejectionWick) anyRej = true
+                                    }
+                                    val subClose = subSlice.last().close + shiftFromLtf
+                                    val adjHigh = max(max(subOpen, subClose), hi)
+                                    val adjLow = max(features.lastClose * 0.02, min(min(subOpen, subClose), lo))
+                                    updatedCandles[ob] = updatedCandles[ob].copy(
+                                        open = subOpen,
+                                        high = adjHigh,
+                                        low = adjLow,
+                                        close = subClose,
+                                        q50 = subClose,
+                                        volume = round(volSum),
+                                        rejectionWick = anyRej,
+                                        wavePhase = subSlice.last().wavePhase
+                                    )
+                                }
+                                val origAnchorClose = htfSc.candles[overlapBars - 1].close
+                                val newAnchorClose = updatedCandles[overlapBars - 1].close
+                                val rebaseDelta = newAnchorClose - origAnchorClose
+                                for (k in overlapBars until updatedCandles.size) {
+                                    val decay = max(0.15, 1.0 - (k - (overlapBars - 1)).toDouble() / 24.0)
+                                    val sh = rebaseDelta * decay
+                                    val origC = htfSc.candles[k]
+                                    val op = if (k == overlapBars) newAnchorClose else origC.open + sh
+                                    val cl = origC.close + sh
+                                    val hi = max(max(op, cl), origC.high + sh)
+                                    val lo = max(features.lastClose * 0.02, min(min(op, cl), origC.low + sh))
+                                    updatedCandles[k] = origC.copy(
+                                        open = op,
+                                        high = hi,
+                                        low = lo,
+                                        close = cl,
+                                        q50 = cl
+                                    )
+                                }
+                                htfSc.copy(
+                                    candles = updatedCandles,
+                                    targetPrice = updatedCandles.last().close
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        val smcScenarios = canonicalScenarios.map { sc ->
+            val sliced = sc.candles.take(horizon)
+            sc.copy(
+                candles = sliced,
+                targetPrice = sliced.last().close
+            )
+        }
 
         val bayesianLiveReport = if (cleanCandleBars.size >= 16) {
             val priorSlice = cleanCandleBars.dropLast(1)
             val priorState = smcEngine.extractMultiTimeframeFeatures(priorSlice, cleanTf)
-            val priorScenarios = smcEngine.generateScenarios(priorSlice, priorState, timestamps)
+            val priorScenarios = smcEngine
+                .generateScenarios(priorSlice, priorState, canonicalTimestamps)
+                .map { it.copy(candles = it.candles.take(horizon)) }
             smcEngine.evaluateAndUpdateLive(priorScenarios, cleanCandleBars.last(), features.atr14)
         } else null
 
@@ -835,10 +1163,16 @@ object ForecastEngine {
 
         val points = ArrayList<ForecastPoint>(horizon)
         var cumVar = 0.0
-        val epiPerStep = uncertainty.epistemicCumVar / max(1, horizon)
+        val epiFactorPerStep =
+            (1.0 / max(6.0, wfReport?.effectiveSampleSize ?: max(6.0, features.barCount / 4.0))) +
+                when (uncertainty.oodStatus) {
+                    OodStatus.EXTREME -> 0.48
+                    OodStatus.ELEVATED -> 0.20
+                    else -> 0.0
+                }
 
         for (h in 0 until horizon) {
-            cumVar += aleatoricVarSteps[h] + epistemicDispSteps[h] + epiPerStep * 0.35
+            cumVar += aleatoricVarSteps[h] * (1.0 + 0.35 * epiFactorPerStep) + epistemicDispSteps[h]
             val cumSigma = sqrt(cumVar) * (1.0 + 0.008 * h) * uncertainty.spreadMultiplierApplied
 
             val scCandle = activeScenario.candles[h]

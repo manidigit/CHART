@@ -11,7 +11,7 @@ import {
 } from '../forecast/forecastContract.js?v=1.43.0';
 import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=1.43.0';
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.43.0';
-import { ForecastEngine } from '../forecast/forecastEngine.js?v=1.43.0';
+import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.43.0';
 import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.43.0';
 import { renderSymbolBadge } from './watchlistView.js?v=1.43.0';
 
@@ -44,6 +44,11 @@ export function buildForecastForTab(activeTab) {
   const higherCandles = higherTf
     ? getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, higherTf)
     : [];
+  const lowerInfo = resolveLowerTimeframeInfo(activeTab.timeframe);
+  const lowerTf = lowerInfo ? lowerInfo.timeframe : '';
+  const lowerCandles = lowerTf
+    ? getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, lowerTf)
+    : [];
 
   if (!state._prevForecastByKey) state._prevForecastByKey = {};
   const cacheKey = `${activeTab.symbolCode}_${activeTab.timeframe}_${horizonBars}`;
@@ -53,6 +58,7 @@ export function buildForecastForTab(activeTab) {
   const lastBar = candles.length > 0 ? candles[candles.length - 1] : null;
   const firstBar = candles.length > 0 ? candles[0] : null;
   const lastHigherBar = higherCandles.length > 0 ? higherCandles[higherCandles.length - 1] : null;
+  const lastLowerBar = lowerCandles.length > 0 ? lowerCandles[lowerCandles.length - 1] : null;
   const memoKey = [
     activeTab.symbolCode,
     activeTab.provider,
@@ -64,6 +70,9 @@ export function buildForecastForTab(activeTab) {
     higherTf,
     higherCandles.length,
     lastHigherBar?.open_time_utc_ms || 0,
+    lowerTf,
+    lowerCandles.length,
+    lastLowerBar?.open_time_utc_ms || 0,
     horizonBars,
     renderMode,
     selectedScenarioId,
@@ -85,6 +94,8 @@ export function buildForecastForTab(activeTab) {
     workerUrl,
     higherTimeframe: higherTf,
     higherTimeframeCandles: higherCandles,
+    lowerTimeframe: lowerTf,
+    lowerTimeframeCandles: lowerCandles,
     previousForecast:
       lastStored && lastStored.inputHash !== undefined
         ? lastStored
@@ -361,25 +372,6 @@ export function renderForecastStudioView(activeTab, i18n) {
   const built = buildForecastForTab(activeTab);
   const fc = built ? built.result : null;
   state._lastForecastResult = fc;
-
-  const symbolOptions = watchlist
-    .map(
-      (s) =>
-        `<option value="${escapeHtml(s.symbolCode)}" ${activeCode === s.symbolCode ? 'selected' : ''}>${escapeHtml(s.symbolCode)} — ${escapeHtml(s.customTitle || s.symbolCode)}</option>`
-    )
-    .join('');
-
-  const allowedTfs =
-    activeTab && (activeTab.provider === 'eia_brent_spot' || activeTab.provider === 'stooq')
-      ? ['D1', 'W1']
-      : ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'];
-  const tfButtons = allowedTfs
-    .map((tf) => {
-      const isAct = activeTab && activeTab.timeframe === tf;
-      return `<button type="button" class="chip ltr-num ${isAct ? 'active' : ''}" data-action="set-timeframe" data-tf="${tf}">${PriceFormatter.displayTimeframeLabel(tf)}</button>`;
-    })
-    .join('');
-
   const horizons = [10, 15, 20, 30, 45, 60];
   const horizonButtons = horizons
     .map(
@@ -464,10 +456,8 @@ export function renderForecastStudioView(activeTab, i18n) {
       <div class="ci-fc-header">
         <div class="ci-fc-title-row">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
-            ${renderSymbolBadge(activeCode, 30)}
-            <select class="input-field ltr-num ci-fc-sym-select" data-action="select-prediction-symbol">
-              ${symbolOptions}
-            </select>
+            ${renderSymbolBadge(activeCode, 28)}
+            <span class="ltr-num" style="font-weight:800;font-size:14px;color:var(--text-strong);">${escapeHtml(activeCode)}</span>
             <span class="ci-fc-status-badge ${statusBadgeClass} ltr-num">${statusLabel}</span>
             ${edgeBadge}
             ${oodBadge}
@@ -476,26 +466,19 @@ export function renderForecastStudioView(activeTab, i18n) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             <button
               type="button"
-              class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary' : ''}"
+              class="btn btn-sm btn-primary"
               data-action="apply-forecast-to-chart"
-              title="${activeTab?.showFutureProjection ? (isFa ? 'برای حذف پیش‌بینی از روی چارت کلیک کنید' : 'Click to remove forecast overlay from chart') : (isFa ? 'برای نمایش پیش‌بینی روی چارت کلیک کنید' : 'Click to project forecast onto chart')}"
+              title="${isFa ? 'اعمال پیش‌بینی روی چارت و بازگشت به نمای چارت' : 'Apply forecast to chart and switch to Chart view'}"
             >
-              ${activeTab?.showFutureProjection ? (isFa ? '✓ نمایش روی چارت فعال (حذف)' : '✓ Applied to Chart (Hide)') : isFa ? 'اعمال روی چارت و مشاهده' : 'Apply & View on Chart'}
+              ${activeTab?.showFutureProjection ? (isFa ? '✓ اعمال روی چارت و مشاهده' : '✓ Apply & View on Chart') : isFa ? 'اعمال روی چارت و مشاهده' : 'Apply & View on Chart'}
             </button>
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
               ${isFa ? 'ثبت در دفتر کل + همگام‌سازی' : 'Record & Sync Snapshot'}
-            </button>
-            <button type="button" class="btn btn-sm" data-action="set-workspace-view" data-view="chart">
-              ${isFa ? 'بازگشت به چارت' : 'Back to Chart'}
             </button>
           </div>
         </div>
 
         <div class="ci-fc-controls-row">
-          <div class="ci-fc-control-group">
-            <span class="ci-fc-ctrl-label">${isFa ? 'تایم‌فریم:' : 'Timeframe:'}</span>
-            <div class="chip-group">${tfButtons}</div>
-          </div>
           <div class="ci-fc-control-group">
             <span class="ci-fc-ctrl-label">${isFa ? 'افق پیش‌بینی (کندل):' : 'Horizon (bars):'}</span>
             <div class="chip-group">${horizonButtons}</div>

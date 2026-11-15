@@ -1,8 +1,8 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.43.0';
 import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.43.0';
-import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.43.0';
-import { ForecastEngine } from '../forecast/forecastEngine.js?v=1.43.0';
+import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba, getCachedOrAggregatedCandles } from '../core/store.js?v=1.43.0';
+import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.43.0';
 import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.43.0';
 import { RENDER_MODES, normalizeRenderMode, clampHorizonBars } from '../forecast/forecastContract.js?v=1.43.0';
 
@@ -170,7 +170,10 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       if (prefs.forecastPluginConfig) {
         defaultForecastRegistry.applyConfig(prefs.forecastPluginConfig);
       }
-      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${candles.length}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
+      const lowerInfo = resolveLowerTimeframeInfo(tf);
+      const lowerCandles = lowerInfo ? getCachedOrAggregatedCandles(symCode, prov, lowerInfo.timeframe) : [];
+      const lowerLast = lowerCandles.length > 0 ? lowerCandles[lowerCandles.length - 1] : null;
+      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${candles.length}_${lowerCandles.length}_${lowerLast?.close || 0}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
       if (cache.futureProjKey !== fKey || !cache.futureProjectionResult) {
         cache.futureProjKey = fKey;
         cache.futureProjectionResult = ForecastEngine.project(candles, {
@@ -180,6 +183,8 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
           renderMode,
           selectedScenarioId,
           registry: defaultForecastRegistry,
+          lowerTimeframe: lowerInfo ? lowerInfo.timeframe : '',
+          lowerTimeframeCandles: lowerCandles,
           skipWalkForward: true,
         });
       }

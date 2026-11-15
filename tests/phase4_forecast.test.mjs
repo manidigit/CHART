@@ -36,6 +36,7 @@ const { ForecastModelRegistry, REMOTE_DL_WORKER_SPEC } = await import(
 );
 const { ForecastLedger } = await import('../host_subdomain/assets/js/forecast/forecastLedger.js');
 const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+const { TechnicalIndicators } = await import('../host_subdomain/assets/js/algorithms/technicalIndicators.js');
 
 function buildSyntheticCandles(count = 110, timeframe = 'M15') {
   const stepMs = timeframe === 'D1' ? 86_400_000 : timeframe === 'H1' ? 3_600_000 : 900_000;
@@ -330,5 +331,143 @@ test('PRED-09: SMCPredictionEngine Historical Analogs, K-Medoids 3-Scenario Clus
   }
   assert.ok(maxConsecutiveSameColor <= 5, 'Wave generator must never produce 10 straight-line candles');
 });
+
+test('PRED-10: Horizon Prefix Invariance (+10 vs +20 vs +60) and +60-bar Multi-Wave Realistic Envelope', () => {
+  const candles = buildSyntheticCandles(160, 'M15');
+  const res10 = ForecastEngine.project(candles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    horizonBars: 10,
+    skipWalkForward: true,
+  });
+  const res20 = ForecastEngine.project(candles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    horizonBars: 20,
+    skipWalkForward: true,
+  });
+  const res60 = ForecastEngine.project(candles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    horizonBars: 60,
+    skipWalkForward: true,
+  });
+
+  // 1. Exact first-10-bar prefix invariance across points and all 3 SMC scenarios
+  for (let sIdx = 0; sIdx < 3; sIdx++) {
+    const s10 = res10.smcScenarios[sIdx];
+    const s20 = res20.smcScenarios[sIdx];
+    const s60 = res60.smcScenarios[sIdx];
+    assert.equal(s10.id, s20.id);
+    assert.equal(s10.id, s60.id);
+    assert.equal(s10.clusterType, s20.clusterType);
+    assert.equal(s10.clusterType, s60.clusterType);
+    assert.equal(s10.probability, s20.probability);
+    assert.equal(s10.probability, s60.probability);
+    for (let i = 0; i < 10; i++) {
+      assert.ok(Math.abs(s10.candles[i].open - s20.candles[i].open) < 1e-9);
+      assert.ok(Math.abs(s10.candles[i].close - s20.candles[i].close) < 1e-9);
+      assert.ok(Math.abs(s10.candles[i].high - s20.candles[i].high) < 1e-9);
+      assert.ok(Math.abs(s10.candles[i].low - s20.candles[i].low) < 1e-9);
+      assert.ok(Math.abs(s10.candles[i].open - s60.candles[i].open) < 1e-9);
+      assert.ok(Math.abs(s10.candles[i].close - s60.candles[i].close) < 1e-9);
+      assert.ok(Math.abs(s10.candles[i].high - s60.candles[i].high) < 1e-9);
+      assert.ok(Math.abs(s10.candles[i].low - s60.candles[i].low) < 1e-9);
+    }
+  }
+  for (let i = 0; i < 10; i++) {
+    assert.ok(Math.abs(res10.points[i].q50 - res20.points[i].q50) < 1e-9);
+    assert.ok(Math.abs(res10.points[i].q50 - res60.points[i].q50) < 1e-9);
+    assert.ok(Math.abs(res10.points[i].q10 - res60.points[i].q10) < 1e-9);
+    assert.ok(Math.abs(res10.points[i].q90 - res60.points[i].q90) < 1e-9);
+  }
+  for (let i = 0; i < 20; i++) {
+    assert.ok(Math.abs(res20.points[i].q50 - res60.points[i].q50) < 1e-9);
+  }
+
+  // 2. +60-bar projection must have multi-bar waves (both bullish & bearish bars) and bounded ATR excursion
+  let bullCount = 0;
+  let bearCount = 0;
+  let maxConsec = 0;
+  let curRun = 0;
+  let prevSign = 0;
+  for (const p of res60.points) {
+    const sign = p.close >= p.open ? 1 : -1;
+    if (sign > 0) bullCount += 1;
+    else bearCount += 1;
+    curRun = sign === prevSign ? curRun + 1 : 1;
+    prevSign = sign;
+    if (curRun > maxConsec) maxConsec = curRun;
+  }
+  assert.ok(bullCount >= 12 && bearCount >= 12, `60-bar forecast must oscillate with real pullbacks (bull=${bullCount}, bear=${bearCount})`);
+  assert.ok(maxConsec <= 5, `60-bar forecast must not march linearly (maxConsec=${maxConsec})`);
+  const atr = res60.featuresSummary.atr14;
+  for (const sc of res60.smcScenarios) {
+    const netExc = Math.abs(sc.targetPrice - res60.anchorClose);
+    assert.ok(netExc <= atr * 12.5, `Scenario ${sc.id} terminal excursion ${netExc} exceeded 12.5*ATR (${atr * 12.5})`);
+  }
+
+  // 3. TechnicalIndicators.computeFutureCandlestickProjection also preserves prefix invariance
+  const ti10 = TechnicalIndicators.computeFutureCandlestickProjection(candles, 'M15', 10);
+  const ti30 = TechnicalIndicators.computeFutureCandlestickProjection(candles, 'M15', 30);
+  const ti60 = TechnicalIndicators.computeFutureCandlestickProjection(candles, 'M15', 60);
+  assert.equal(ti10.length, 10);
+  assert.equal(ti30.length, 30);
+  assert.equal(ti60.length, 60);
+  for (let i = 0; i < 10; i++) {
+    assert.ok(Math.abs(ti10[i].open - ti60[i].open) < 1e-9);
+    assert.ok(Math.abs(ti10[i].close - ti60[i].close) < 1e-9);
+    assert.ok(Math.abs(ti10[i].high - ti60[i].high) < 1e-9);
+    assert.ok(Math.abs(ti10[i].low - ti60[i].low) < 1e-9);
+  }
+});
+
+test('PRED-11: Cross-Timeframe M15 <-> H1 Sub-Bar Rollup Consistency', () => {
+  // Build 160 M15 bars (40 complete aligned 1H blocks)
+  const m15Bars = buildSyntheticCandles(160, 'M15');
+  const h1Bars = [];
+  for (let i = 0; i < m15Bars.length; i += 4) {
+    const chunk = m15Bars.slice(i, i + 4);
+    h1Bars.push({
+      open_time_utc_ms: chunk[0].open_time_utc_ms,
+      open: chunk[0].open,
+      high: Math.max(...chunk.map((b) => b.high)),
+      low: Math.min(...chunk.map((b) => b.low)),
+      close: chunk[3].close,
+      volume: chunk.reduce((s, b) => s + b.volume, 0),
+    });
+  }
+
+  const m15Res = ForecastEngine.project(m15Bars, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    horizonBars: 16,
+    skipWalkForward: true,
+  });
+  const h1Res = ForecastEngine.project(h1Bars, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'H1',
+    horizonBars: 10,
+    skipWalkForward: true,
+    lowerTimeframe: 'M15',
+    lowerTimeframeCandles: m15Bars,
+  });
+
+  // Every H1 scenario's first candle must exactly equal the OHLC rollup of the first 4 M15 candles of the matching cluster
+  for (const h1Sc of h1Res.smcScenarios) {
+    const m15Sc = m15Res.smcScenarios.find((s) => s.clusterType === h1Sc.clusterType) || m15Res.smcScenarios[0];
+    const first4 = m15Sc.candles.slice(0, 4);
+    const rollupHigh = Math.max(...first4.map((c) => c.high));
+    const rollupLow = Math.min(...first4.map((c) => c.low));
+    const rollupClose = first4[3].close;
+    const h1Bar0 = h1Sc.candles[0];
+
+    assert.ok(Math.abs(h1Bar0.open - first4[0].open) < 1e-6, 'H1 bar 0 open must match M15 bar 0 open');
+    assert.ok(Math.abs(h1Bar0.high - rollupHigh) < 1e-6, 'H1 bar 0 high must match max of M15 bars 0..3');
+    assert.ok(Math.abs(h1Bar0.low - rollupLow) < 1e-6, 'H1 bar 0 low must match min of M15 bars 0..3');
+    assert.ok(Math.abs(h1Bar0.close - rollupClose) < 1e-6, 'H1 bar 0 close must match M15 bar 3 close');
+  }
+});
+
 
 

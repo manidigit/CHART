@@ -211,7 +211,8 @@ fun ChartViewScreen(
     onTranslateSelectedDrawing: (Long, BigDecimal) -> Unit,
     onDeleteSelectedDrawing: () -> Unit,
     onClearAllDrawings: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lowerTimeframeCandlesProvider: (String) -> List<es.manico.chartintelligence.data.model.CandleBar> = { emptyList() }
 ) {
     BackHandler(onBack = onBackToWatchlist)
     val palette = LocalFinancialPalette.current
@@ -578,7 +579,8 @@ fun ChartViewScreen(
                     onSelectDrawing = onSelectDrawing,
                     onTranslateSelectedDrawing = onTranslateSelectedDrawing,
                     onRetrySync = { onSyncActiveSymbolNow(activeTab.symbolCode) },
-                    modifier = Modifier.fillMaxSize()
+                    modifier = Modifier.fillMaxSize(),
+                    lowerTimeframeCandlesProvider = lowerTimeframeCandlesProvider
                 )
 
                 // Floating Quick Drawing Bar only when a drawing tool or line is actively selected on canvas
@@ -1130,7 +1132,9 @@ fun ChartViewScreen(
                                                     )
                                                 ),
                                                 StudyRowSpec("overlayMacd", "MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", preferences.overlayMacdColor, activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button", "ılı"),
-                                                StudyRowSpec("futureProjection", "Future Candlesticks (30 Bars)", "30-Period Future Projection (h≥10)", preferences.futureProjectionColor, activeTab.showFutureProjection, onToggleFutureProjection, "chart_future_projection_toggle_button", "🔮")
+                                                (if (activeTab.forecastHorizonBars in 10..60) activeTab.forecastHorizonBars else preferences.forecastHorizonBars.coerceIn(10, 60)).let { futBarsLabel ->
+                                                    StudyRowSpec("futureProjection", "Future Candlesticks ($futBarsLabel Bars)", "$futBarsLabel-Period Future Projection (h≥10)", preferences.futureProjectionColor, activeTab.showFutureProjection, onToggleFutureProjection, "chart_future_projection_toggle_button", "🔮")
+                                                }
                                             )
                                         ),
                                         IndicatorFamilySection(

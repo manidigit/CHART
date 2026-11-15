@@ -42,7 +42,7 @@ const {
 } = await import('../host_subdomain/assets/js/core/store.js');
 const { renderTopHeaderBar } = await import('../host_subdomain/assets/js/views/headerView.js');
 const { renderSettingsModal } = await import('../host_subdomain/assets/js/views/settingsView.js');
-const { buildForecastForTab } = await import('../host_subdomain/assets/js/views/forecastView.js');
+const { buildForecastForTab, renderForecastStudioView } = await import('../host_subdomain/assets/js/views/forecastView.js');
 const { syncSymbolNow } = await import('../host_subdomain/assets/js/services/apiService.js');
 
 test('PAR-01: resolvePriceBasis returns CFD Feed for SPOTBRENT on tvdatafeed', () => {
@@ -498,7 +498,7 @@ test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamline
         state.settingsTab = prevSettingsTab;
     }
 
-    // 3. Top header bar omits duplicate tabs / timeframe / indicators when in Forecast Studio
+    // 3. Top header bar keeps open symbol tabs + timeframes in Forecast Studio, omits Back to Chart & chart-only buttons, and Forecast card avoids duplicate symbol/timeframe rows
     const prevWorkspace = state.activeWorkspaceView;
     const sampleTab = {
         tabId: 'tab_SPOTBRENT_M15',
@@ -506,16 +506,24 @@ test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamline
         provider: 'tvdatafeed',
         timeframe: 'M15',
         decimals: 2,
+        showFutureProjection: true,
         candles: []
     };
     try {
         state.activeWorkspaceView = 'forecast';
         const fcHeaderHtml = renderTopHeaderBar(sampleTab, mockI18n);
         assert.ok(fcHeaderHtml.includes('tv-ws-header-pill'), 'Forecast pill must be present in topbar');
-        assert.ok(fcHeaderHtml.includes('data-action="set-workspace-view"'), 'Back to Chart action must be present');
-        assert.equal(fcHeaderHtml.includes('tv-open-tabs-strip'), false, 'Duplicate open tabs strip must be omitted in forecast view');
-        assert.equal(fcHeaderHtml.includes('data-action="set-timeframe"'), false, 'Duplicate timeframe buttons must be omitted in forecast view');
+        assert.ok(fcHeaderHtml.includes('tv-open-tabs-strip'), 'Symbol tabs strip must be kept in Forecast topbar');
+        assert.ok(fcHeaderHtml.includes('data-action="set-timeframe"'), 'Timeframe buttons must be kept in Forecast topbar');
+        assert.equal(fcHeaderHtml.includes('data-action="set-workspace-view"'), false, 'Redundant Back to Chart button must be removed from topbar');
+        assert.equal(fcHeaderHtml.includes('data-action="set-chart-type"'), false, 'Chart type buttons must be omitted in forecast view');
         assert.equal(fcHeaderHtml.includes('data-modal="indicators"'), false, 'Indicators button must be omitted in forecast view');
+
+        const fcStudioHtml = renderForecastStudioView(sampleTab, mockI18n);
+        assert.equal(fcStudioHtml.includes('data-action="select-prediction-symbol"'), false, 'Duplicate lower symbol dropdown must be removed');
+        assert.equal(fcStudioHtml.includes('data-action="set-timeframe"'), false, 'Duplicate lower timeframe chips must be removed');
+        assert.equal(fcStudioHtml.includes('data-action="set-workspace-view"'), false, 'Redundant Back to Chart button must be removed from Forecast studio');
+        assert.ok(fcStudioHtml.includes('data-action="apply-forecast-to-chart"'), 'Apply & View on Chart button must be present');
 
         state.activeWorkspaceView = 'chart';
         const chartHeaderHtml = renderTopHeaderBar(sampleTab, mockI18n);

@@ -62,6 +62,7 @@ import es.manico.chartintelligence.algorithms.DrawingGeometryAlgorithm
 import es.manico.chartintelligence.algorithms.Phase2IndicatorsAlgorithm
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
 import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
+import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartDrawing
 import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
@@ -70,6 +71,7 @@ import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.forecast.ForecastEngine
 import es.manico.chartintelligence.forecast.ForecastModelRegistry
 import es.manico.chartintelligence.forecast.ForecastRenderMode
+import es.manico.chartintelligence.forecast.resolveLowerTimeframeInfo
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 import java.math.BigDecimal
@@ -112,7 +114,8 @@ fun CandlestickCanvas(
     onSelectDrawing: (String?) -> Unit,
     onTranslateSelectedDrawing: (Long, BigDecimal) -> Unit,
     onRetrySync: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    lowerTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() }
 ) {
     val financialPalette = LocalFinancialPalette.current
     val density = LocalDensity.current
@@ -381,8 +384,15 @@ fun CandlestickCanvas(
     val activeForecastHorizon = remember(tab.forecastHorizonBars, preferences.forecastHorizonBars) {
         if (tab.forecastHorizonBars in 10..60) tab.forecastHorizonBars else preferences.forecastHorizonBars.coerceIn(10, 60)
     }
+    val lowerInfo = remember(tab.timeframe) {
+        resolveLowerTimeframeInfo(tab.timeframe)
+    }
+    val lowerCandles = remember(lowerInfo, candles) {
+        if (lowerInfo != null) lowerTimeframeCandlesProvider(lowerInfo.timeframe) else emptyList()
+    }
     val futureProjectionResult = remember(
         candles,
+        lowerCandles,
         tab.symbolCode,
         tab.timeframe,
         tab.showFutureProjection,
@@ -405,7 +415,9 @@ fun CandlestickCanvas(
                 renderMode = activeForecastRenderMode,
                 registry = registry,
                 workerUrl = preferences.forecastWorkerUrl,
-                skipWalkForward = true
+                skipWalkForward = true,
+                lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
+                lowerTimeframeCandles = lowerCandles
             )
         }
     }

@@ -146,16 +146,28 @@ export function renderTopHeaderBar(activeTab, i18n) {
             <img src="./assets/img/app_icon_32.png" alt="CI" class="tv-brand-logo-img" />
           </div>
         </div>
+
+        <!-- Multi-Tab Chart Bar (Symbol selector at top of screen) -->
+        <div class="tv-open-tabs-strip" role="tablist" aria-label="Open Chart Tabs">
+          ${openTabsHtml}
+          <button
+            type="button"
+            class="tv-tab-add-btn"
+            data-action="focus-watchlist-search"
+            title="${isFa ? 'جستجو و باز کردن نماد جدید در تب موازی' : 'Search & open symbol in parallel tab'}"
+          >+</button>
+        </div>
+
+        <div class="tv-divider"></div>
+
+        <!-- Unified Candle Timeframes Group (15m, 30m, 1h, 4h, 1D, 1W) -->
+        <div class="tv-toolbar-group" title="Candle Timeframes">
+          ${tfButtons}
+        </div>
+
+        <div class="tv-divider"></div>
+
         <span class="tv-ws-header-pill">${isFa ? 'آزمایشگاه پیش‌بینی و سناریو' : 'Forecast Studio'}</span>
-        <button
-          type="button"
-          class="tv-tool-btn"
-          data-action="set-workspace-view"
-          data-view="chart"
-          title="${isFa ? 'بازگشت به چارت اصلی' : 'Back to Chart'}"
-        >
-          <span>← ${isFa ? 'بازگشت به چارت' : 'Back to Chart'}</span>
-        </button>
       `
     : `
         <div class="tv-brand">
