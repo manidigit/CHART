@@ -341,10 +341,14 @@ export function renderTopHeaderBar(activeTab, i18n) {
 
         <span
           class="tv-status-dot-wrap ltr-num"
+          style="display: inline-flex; align-items: center; justify-content: center; width: 24px; height: 28px; flex-shrink: 0;"
           title="${statusTooltip}"
           aria-label="${statusTooltip}"
         >
-          <span class="${statusDotClass}" style="--status-color: ${statusDotColor};"></span>
+          <span
+            class="${statusDotClass}"
+            style="--status-color: ${statusDotColor}; width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: ${statusDotColor}; box-shadow: 0 0 6px ${statusDotColor};"
+          ></span>
         </span>
 
         <button class="tv-tool-btn ltr-num" data-action="export-candles-csv" title="${i18n.t('action_export_csv') || 'Export CSV'}">

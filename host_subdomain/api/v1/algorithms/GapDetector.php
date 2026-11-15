@@ -101,7 +101,17 @@ final class GapDetector
             }
 
             $cal = UtcTimeAnchor::getSessionCalendar($symbolCode);
-            $threshold = (($tf === 'D1' || $tf === 'W1') && $cal !== UtcTimeAnchor::CALENDAR_CRYPTO_24_7) ? 2 : 1;
+            $threshold = 1;
+            if ($cal !== UtcTimeAnchor::CALENDAR_CRYPTO_24_7) {
+                if ($tf === 'D1' || $tf === 'W1') {
+                    $threshold = 3;
+                } elseif ($tf === 'H4') {
+                    $threshold = 6;
+                } elseif ($tf === 'H1') {
+                    $entersSettlementBreak = !self::isTradingSlotExpected($curMs - $stepMs, $tf, $symbolCode);
+                    $threshold = $entersSettlementBreak ? 4 : 1;
+                }
+            }
 
             if ($expectedMissing >= $threshold) {
                 $missingTotal += $expectedMissing;

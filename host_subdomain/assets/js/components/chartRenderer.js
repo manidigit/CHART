@@ -174,7 +174,10 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       const lowerInfo = resolveLowerTimeframeInfo(tf);
       const lowerCandles = lowerInfo ? getCachedOrAggregatedCandles(symCode, prov, lowerInfo.timeframe) : [];
       const lowerLast = lowerCandles.length > 0 ? lowerCandles[lowerCandles.length - 1] : null;
-      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${selectedModelId}_${candles.length}_${lowerCandles.length}_${lowerLast?.close || 0}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
+      const higherTf = tf === 'M15' ? 'H1' : tf === 'M30' ? 'H4' : tf === 'H1' ? 'H4' : tf === 'H4' ? 'D1' : tf === 'D1' ? 'W1' : '';
+      const higherCandles = higherTf ? getCachedOrAggregatedCandles(symCode, prov, higherTf) : [];
+      const higherLast = higherCandles.length > 0 ? higherCandles[higherCandles.length - 1] : null;
+      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${selectedModelId}_${candles.length}_${lowerCandles.length}_${lowerLast?.close || 0}_${higherCandles.length}_${higherLast?.close || 0}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
       if (cache.futureProjKey !== fKey || !cache.futureProjectionResult) {
         cache.futureProjKey = fKey;
         cache.futureProjectionResult = ForecastEngine.project(candles, {
@@ -185,6 +188,8 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
           selectedScenarioId,
           selectedModelId,
           registry: defaultForecastRegistry,
+          higherTimeframe: higherTf,
+          higherTimeframeCandles: higherCandles,
           lowerTimeframe: lowerInfo ? lowerInfo.timeframe : '',
           lowerTimeframeCandles: lowerCandles,
           skipWalkForward: false,

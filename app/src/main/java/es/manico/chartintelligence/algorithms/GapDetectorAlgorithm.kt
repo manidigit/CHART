@@ -90,10 +90,19 @@ object GapDetectorAlgorithm {
                 }
             }
 
-            // Allow single bank holiday tolerance on D1/W1 non-crypto feeds
-            val threshold = if (normTf in setOf("D1", "W1") &&
-                UtcTimeAnchorAlgorithm.getSessionCalendar(symbolCode) != SessionCalendar.CRYPTO_24_7
-            ) 2 else 1
+            // Allow exchange holiday / early close tolerance on D1/W1/H4/H1 non-crypto feeds
+            val cal = UtcTimeAnchorAlgorithm.getSessionCalendar(symbolCode)
+            val threshold = if (cal != SessionCalendar.CRYPTO_24_7) {
+                when (normTf) {
+                    "D1", "1D", "D", "W1", "1W", "W" -> 3
+                    "H4", "4H" -> 6
+                    "H1", "1H" -> {
+                        val entersSettlementBreak = !isTradingSlotExpected(curOpen - stepMs, normTf, symbolCode)
+                        if (entersSettlementBreak) 4 else 1
+                    }
+                    else -> 1
+                }
+            } else 1
 
             if (missingInWindow >= threshold) {
                 gaps.add(

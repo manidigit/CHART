@@ -121,9 +121,13 @@ export class SMCPredictionEngine {
     const volumeRatio5to20 = (vol5Sum / Math.max(1, v5Count)) / avgVolume;
 
     // SMC (BOS/CHoCH, FVG boxes, EQH/EQL), Volume Profile (POC/VAH/VAL), EMA20, Bollinger, RSI14
+    const tfNorm = String(timeframe || this.timeframe || 'M15').trim().toUpperCase();
     const recentSlice = candles.slice(-Math.min(n, 140));
+    const vpWindowLen =
+      tfNorm === 'M15' ? 80 : tfNorm === 'M30' ? 64 : tfNorm === 'H1' ? 54 : tfNorm === 'H4' ? 38 : 30;
+    const vpSlice = candles.slice(-Math.min(n, vpWindowLen));
     const smc = TechnicalIndicators.detectMarketStructureSmc(recentSlice, 3);
-    const vpRaw = TechnicalIndicators.computeVolumeProfile(recentSlice, 24, 0.70, 'TICK_SYNTHETIC');
+    const vpRaw = TechnicalIndicators.computeVolumeProfile(vpSlice, 24, 0.70, 'TICK_SYNTHETIC');
     const ema20Arr = TechnicalIndicators.computeEma(recentSlice, Math.min(20, Math.max(5, recentSlice.length - 2)));
     const bbArr = TechnicalIndicators.computeBollingerBands(
       recentSlice,
@@ -144,7 +148,6 @@ export class SMCPredictionEngine {
     const rsi14 = Number(rsiArr[rsiArr.length - 1] ?? 50);
 
     // Multi-timeframe trend alignment score (-1 to +1) using true timeframe ratios
-    const tfNorm = String(timeframe || this.timeframe || 'M15').trim().toUpperCase();
     const midGroup = tfNorm === 'M30' ? 2 : tfNorm === 'H1' ? 4 : tfNorm === 'H4' ? 6 : tfNorm === 'D1' || tfNorm === 'W1' ? 5 : 4;
     const macroGroup = tfNorm === 'M30' ? 8 : tfNorm === 'H1' ? 24 : tfNorm === 'H4' ? 30 : tfNorm === 'D1' || tfNorm === 'W1' ? 20 : 16;
 
@@ -203,10 +206,22 @@ export class SMCPredictionEngine {
         mitigated: Boolean(z.mitigated),
       }));
 
+    const rawPoc = Number(vpRaw?.pocPrice || ema20 || lastClose);
+    const clampedPoc = Math.max(lastClose - 3.5 * atr, Math.min(lastClose + 3.5 * atr, rawPoc));
     const vp = {
-      poc: Number(vpRaw?.pocPrice || ema20 || lastClose),
-      vah: Number(vpRaw?.vahPrice || lastClose + 2.2 * atr),
-      val: Number(vpRaw?.valPrice || lastClose - 2.2 * atr),
+      poc: Number(clampedPoc.toFixed(4)),
+      vah: Number(
+        Math.max(
+          clampedPoc + 0.5 * atr,
+          Math.min(lastClose + 4.5 * atr, Number(vpRaw?.vahPrice || lastClose + 2.2 * atr))
+        ).toFixed(4)
+      ),
+      val: Number(
+        Math.min(
+          clampedPoc - 0.5 * atr,
+          Math.max(lastClose - 4.5 * atr, Number(vpRaw?.valPrice || lastClose - 2.2 * atr))
+        ).toFixed(4)
+      ),
     };
 
     const equalHighs = (smc.liquidityLevels || [])
@@ -1281,7 +1296,9 @@ export class ForecastEngine {
       options
     );
 
-    // Cross-Timeframe Lower-TF Sub-Bar Anchoring (e.g. M15 first 4..12 bars anchor H1 bar 1..3)
+    // Cross-Timeframe Lower-TF Sub-Bar Anchoring & Scenario Direction Synchronization
+    // Guarantees that overlapping hours (e.g. M15 bars 1..40 <-> H1 bars 1..10, or H1 bars 1..40 <-> H4 bars 1..10)
+    // share the exact same Primary (SCENARIO_A) directional bias and exact OHLCV sub-bar rollup.
     const lowerInfo = resolveLowerTimeframeInfo(timeframe);
     const lowerCandlesRaw = Array.isArray(options.lowerTimeframeCandles) ? options.lowerTimeframeCandles : [];
     if (
@@ -1295,8 +1312,8 @@ export class ForecastEngine {
         const stepMs = PriceFormatterStepMs(timeframe);
         const timeDiff = Math.abs(features.lastOpenMs - ltfFeatures.lastOpenMs);
         if (
-          closeDiff <= Math.max(features.atr14 * 0.45, features.lastClose * 0.006) &&
-          timeDiff <= stepMs * 2
+          closeDiff <= Math.max(features.atr14 * 0.85, features.lastClose * 0.012) &&
+          timeDiff <= stepMs * 4
         ) {
           const ltfTimestamps = advanceFutureTimestamps(
             ltfFeatures.lastOpenMs,
@@ -1310,12 +1327,32 @@ export class ForecastEngine {
             ...options,
             disableLowerTfAnchor: true,
           });
-          const overlapBars = Math.min(3, Math.floor(CANONICAL_SMC_HORIZON / lowerInfo.ratio));
+          const overlapBars = Math.min(10, Math.floor(CANONICAL_SMC_HORIZON / lowerInfo.ratio));
           if (overlapBars >= 1) {
-            canonicalScenarios = canonicalScenarios.map((htfSc) => {
-              const matchingLtf =
-                ltfScenarios.find((l) => l.clusterType === htfSc.clusterType) || ltfScenarios[0];
-              if (!matchingLtf || matchingLtf.candles.length < overlapBars * lowerInfo.ratio) return htfSc;
+            const scenarioIds = ['SCENARIO_A', 'SCENARIO_B', 'SCENARIO_C'];
+            const alignedOrder = ltfScenarios.map((ltfSc) => {
+              return canonicalScenarios.find((h) => h.clusterType === ltfSc.clusterType) || canonicalScenarios[0];
+            });
+            const rawBlendedWeights = alignedOrder.map((htfSc, idx) => {
+              const ltfProb = Number(ltfScenarios[idx]?.probability || 0.33);
+              const htfProb = Number(htfSc?.probability || 0.33);
+              return Math.max(0.05, 0.58 * ltfProb + 0.42 * htfProb);
+            });
+            const wSum = rawBlendedWeights.reduce((a, b) => a + b, 0) || 1;
+            const p0 = Number((rawBlendedWeights[0] / wSum).toFixed(2));
+            const p1 = Number((rawBlendedWeights[1] / wSum).toFixed(2));
+            const p2 = Number(Math.max(0.01, 1 - p0 - p1).toFixed(2));
+            const blendedProbs = [p0, p1, p2];
+
+            canonicalScenarios = alignedOrder.map((htfSc, idx) => {
+              const matchingLtf = ltfScenarios[idx] || ltfScenarios[0];
+              if (!matchingLtf || matchingLtf.candles.length < overlapBars * lowerInfo.ratio) {
+                return {
+                  ...htfSc,
+                  id: scenarioIds[idx],
+                  probability: blendedProbs[idx],
+                };
+              }
 
               const updatedCandles = htfSc.candles.map((c) => ({ ...c }));
               for (let ob = 0; ob < overlapBars; ob++) {
@@ -1350,7 +1387,7 @@ export class ForecastEngine {
               const newAnchorClose = Number(updatedCandles[overlapBars - 1].close);
               const rebaseDelta = newAnchorClose - origAnchorClose;
               for (let k = overlapBars; k < updatedCandles.length; k++) {
-                const decay = Math.max(0.15, 1 - (k - (overlapBars - 1)) / 24);
+                const decay = Math.max(0.25, 1 - (k - (overlapBars - 1)) / 36);
                 const sh = rebaseDelta * decay;
                 const op = k === overlapBars ? newAnchorClose : Number(htfSc.candles[k].open) + sh;
                 const cl = Number(htfSc.candles[k].close) + sh;
@@ -1365,6 +1402,8 @@ export class ForecastEngine {
 
               return {
                 ...htfSc,
+                id: scenarioIds[idx],
+                probability: blendedProbs[idx],
                 candles: updatedCandles,
                 targetPrice: updatedCandles[updatedCandles.length - 1].close,
               };

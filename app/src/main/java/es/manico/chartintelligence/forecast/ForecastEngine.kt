@@ -120,10 +120,19 @@ class SMCPredictionEngine(
         }
         val avgVolume = max(10.0, vol20Sum / max(1, v20Count).toDouble())
 
+        val tfNorm = timeframe.ifBlank { engineTimeframe }.trim().uppercase(Locale.US)
         val recentSlice = candles.takeLast(min(n, 140))
+        val vpWindowLen = when (tfNorm) {
+            "M15" -> 80
+            "M30" -> 64
+            "H1" -> 54
+            "H4" -> 38
+            else -> 30
+        }
+        val vpSlice = candles.takeLast(min(n, vpWindowLen))
         val smc = PriceFormatterAlgorithm.detectSmcMarketStructures(recentSlice, 3)
         val vpRaw = PriceFormatterAlgorithm.computeVolumeProfile(
-            recentSlice,
+            vpSlice,
             24,
             0.70
         )
@@ -132,8 +141,6 @@ class SMCPredictionEngine(
             min(20, max(5, recentSlice.size - 2))
         )
         val ema20 = ema20List.lastOrNull() ?: lastClose
-
-        val tfNorm = timeframe.ifBlank { engineTimeframe }.trim().uppercase(Locale.US)
         val midGroup = when (tfNorm) {
             "M30" -> 2
             "H1" -> 4
@@ -1252,7 +1259,7 @@ object ForecastEngine {
                 val closeDiff = abs(ltfFeatures.lastClose - features.lastClose)
                 val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(cleanTf)
                 val timeDiff = abs(features.lastOpenMs - ltfFeatures.lastOpenMs)
-                if (closeDiff <= max(features.atr14 * 0.45, features.lastClose * 0.006) && timeDiff <= stepMs * 2L) {
+                if (closeDiff <= max(features.atr14 * 0.85, features.lastClose * 0.012) && timeDiff <= stepMs * 4L) {
                     val ltfTimestamps = ForecastCalendarHelper.advanceFutureTimestamps(
                         ltfFeatures.lastOpenMs,
                         lowerInfo.timeframe,
@@ -1262,13 +1269,31 @@ object ForecastEngine {
                     val ltfEngine = SMCPredictionEngine(30, CANONICAL_SMC_HORIZON, lowerInfo.timeframe)
                     val ltfState = ltfEngine.extractMultiTimeframeFeatures(ltfBars, lowerInfo.timeframe)
                     val ltfScenarios = ltfEngine.generateScenarios(ltfBars, ltfState, ltfTimestamps)
-                    val overlapBars = min(3, CANONICAL_SMC_HORIZON / lowerInfo.ratio)
+                    val overlapBars = min(10, CANONICAL_SMC_HORIZON / lowerInfo.ratio)
                     if (overlapBars >= 1) {
-                        canonicalScenarios = canonicalScenarios.map { htfSc ->
-                            val matchingLtf = ltfScenarios.firstOrNull { it.clusterType == htfSc.clusterType }
-                                ?: ltfScenarios.first()
+                        val scenarioIds = listOf("SCENARIO_A", "SCENARIO_B", "SCENARIO_C")
+                        val alignedOrder = ltfScenarios.map { ltfSc ->
+                            canonicalScenarios.firstOrNull { it.clusterType == ltfSc.clusterType }
+                                ?: canonicalScenarios.first()
+                        }
+                        val rawBlendedWeights = alignedOrder.mapIndexed { idx, htfSc ->
+                            val ltfProb = ltfScenarios.getOrNull(idx)?.probability ?: 0.33
+                            val htfProb = htfSc.probability
+                            max(0.05, 0.58 * ltfProb + 0.42 * htfProb)
+                        }
+                        val wSum = rawBlendedWeights.sum().coerceAtLeast(1e-6)
+                        val p0 = round((rawBlendedWeights[0] / wSum) * 100.0) / 100.0
+                        val p1 = round((rawBlendedWeights[1] / wSum) * 100.0) / 100.0
+                        val p2 = max(0.01, round((1.0 - p0 - p1) * 100.0) / 100.0)
+                        val blendedProbs = listOf(p0, p1, p2)
+
+                        canonicalScenarios = alignedOrder.mapIndexed { idx, htfSc ->
+                            val matchingLtf = ltfScenarios.getOrNull(idx) ?: ltfScenarios.first()
                             if (matchingLtf.candles.size < overlapBars * lowerInfo.ratio) {
-                                htfSc
+                                htfSc.copy(
+                                    id = scenarioIds.getOrElse(idx) { htfSc.id },
+                                    probability = blendedProbs.getOrElse(idx) { htfSc.probability }
+                                )
                             } else {
                                 val updatedCandles = htfSc.candles.toMutableList()
                                 for (ob in 0 until overlapBars) {
@@ -1306,7 +1331,7 @@ object ForecastEngine {
                                 val newAnchorClose = updatedCandles[overlapBars - 1].close
                                 val rebaseDelta = newAnchorClose - origAnchorClose
                                 for (k in overlapBars until updatedCandles.size) {
-                                    val decay = max(0.15, 1.0 - (k - (overlapBars - 1)).toDouble() / 24.0)
+                                    val decay = max(0.25, 1.0 - (k - (overlapBars - 1)).toDouble() / 36.0)
                                     val sh = rebaseDelta * decay
                                     val origC = htfSc.candles[k]
                                     val op = if (k == overlapBars) newAnchorClose else origC.open + sh
@@ -1322,6 +1347,8 @@ object ForecastEngine {
                                     )
                                 }
                                 htfSc.copy(
+                                    id = scenarioIds.getOrElse(idx) { htfSc.id },
+                                    probability = blendedProbs.getOrElse(idx) { htfSc.probability },
                                     candles = updatedCandles,
                                     targetPrice = updatedCandles.last().close
                                 )

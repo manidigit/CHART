@@ -63,7 +63,17 @@ export const GapDetector = {
       }
 
       const cal = PriceFormatter.getSessionCalendar(symbolCode);
-      const threshold = (tf === 'D1' || tf === 'W1') && cal !== 'CRYPTO_24_7' ? 2 : 1;
+      let threshold = 1;
+      if (cal !== 'CRYPTO_24_7') {
+        if (tf === 'D1' || tf === 'W1') {
+          threshold = 3;
+        } else if (tf === 'H4') {
+          threshold = 6;
+        } else if (tf === 'H1') {
+          const entersSettlementBreak = !this.isTradingSlotExpected(curMs - stepMs, tf, symbolCode);
+          threshold = entersSettlementBreak ? 4 : 1;
+        }
+      }
 
       if (expectedMissing >= threshold) {
         missingTotal += expectedMissing;
