@@ -626,8 +626,16 @@ export function renderApp() {
       );
     }
 
+    const isForecastMode = state.activeWorkspaceView === 'forecast';
+    const prevWindowScrollY = isForecastMode && typeof window !== 'undefined' ? window.scrollY || 0 : 0;
+    if (typeof document !== 'undefined') {
+      document.documentElement?.classList?.toggle('is-forecast-scroll', isForecastMode);
+      document.body?.classList?.toggle('is-forecast-scroll', isForecastMode);
+    }
+
     const scrollPositions = {};
     const scrollSelectors = [
+      '.forecast-workspace',
       '.tv-wl-list',
       '.watchlist-container',
       '.tv-symbol-details-pane',
@@ -649,14 +657,14 @@ export function renderApp() {
     });
 
     root.innerHTML = `
-      <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
+      <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''} ${isForecastMode ? 'is-forecast-view' : ''}">
         ${renderTopHeaderBar(activeTab, i18n)}
 
         <div class="tv-main-area">
-          ${state.activeWorkspaceView === 'forecast' ? '' : renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
+          ${isForecastMode ? '' : renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
 
           ${
-            state.activeWorkspaceView === 'forecast'
+            isForecastMode
               ? `<main class="forecast-workspace">${renderForecastStudioView(activeTab, i18n)}</main>`
               : `<main class="chart-workspace">
                   <div class="chart-canvas-box">
@@ -690,6 +698,9 @@ export function renderApp() {
         element.scrollLeft = scrollPositions[sel].left;
       }
     });
+    if (isForecastMode && prevWindowScrollY > 0 && typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
+      window.scrollTo({ top: prevWindowScrollY, behavior: 'instant' });
+    }
 
     window.__CI_APP_MOUNTED__ = true;
   } catch (err) {
@@ -2298,17 +2309,24 @@ document.addEventListener('click', async (e) => {
     renderApp();
     redrawActiveCanvas();
   } else if (action === 'apply-forecast-to-chart' && activeTab) {
-    activeTab.showFutureProjection = true;
-    activeTab.scrollOffset = 0;
-    state.activeWorkspaceView = 'chart';
+    const nextState = !activeTab.showFutureProjection;
+    activeTab.showFutureProjection = nextState;
+    if (nextState) {
+      activeTab.scrollOffset = 0;
+      state.activeWorkspaceView = 'chart';
+    }
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     saveOpenTabsToStorage();
     renderApp();
     redrawActiveCanvas();
     showFloatingToast(
-      i18n.getCurrentLanguage() === 'fa'
-        ? 'پیش‌بینی روی چارت فعال شد ✓'
-        : 'Forecast overlay applied to chart ✓'
+      nextState
+        ? i18n.getCurrentLanguage() === 'fa'
+          ? 'پیش‌بینی روی چارت فعال شد ✓'
+          : 'Forecast overlay applied to chart ✓'
+        : i18n.getCurrentLanguage() === 'fa'
+          ? 'نمایش پیش‌بینی روی چارت غیرفعال شد'
+          : 'Forecast overlay removed from chart'
     );
   } else if (action === 'view-forecast-on-chart' && activeTab) {
     activeTab.showFutureProjection = true;

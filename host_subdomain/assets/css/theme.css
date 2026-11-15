@@ -2444,17 +2444,54 @@ body.theme-light .tv-ind-badge-tag-sm {
   white-space: nowrap;
 }
 
+/* Standard document-level scrolling when Forecast Studio is active (enables Firefox/browser full-page screenshot tools) */
+html.is-forecast-scroll,
+body.is-forecast-scroll {
+  height: auto !important;
+  min-height: 100vh;
+  overflow-y: auto !important;
+  overflow-x: hidden !important;
+}
+
+html.is-forecast-scroll #app,
+html.is-forecast-scroll #app-root,
+body.is-forecast-scroll #app,
+body.is-forecast-scroll #app-root,
+.tv-app-shell.is-forecast-view {
+  width: 100%;
+  height: auto !important;
+  min-height: 100vh;
+  overflow: visible !important;
+}
+
+.tv-app-shell.is-forecast-view .tv-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 60;
+}
+
+.tv-app-shell.is-forecast-view .tv-main-area {
+  overflow: visible !important;
+  min-height: calc(100vh - 40px);
+}
+
+.tv-app-shell.is-forecast-view .forecast-workspace {
+  overflow-y: visible !important;
+  overflow-x: hidden;
+  height: auto !important;
+}
+
 .forecast-workspace {
   flex: 1;
   min-width: 0;
   overflow-y: auto;
   overflow-x: hidden;
   background: var(--bg-deep);
-  padding: 14px 18px;
+  padding: 16px 20px 32px;
 }
 
 .ci-forecast-studio {
-  max-width: 1160px;
+  max-width: 1180px;
   width: 100%;
   min-width: 0;
   margin: 0 auto;
@@ -2483,6 +2520,24 @@ body.theme-light .tv-ind-badge-tag-sm {
   gap: 10px;
   min-width: 0;
   max-width: 100%;
+  padding-bottom: 10px;
+  border-bottom: 1px solid var(--border);
+}
+
+.ci-fc-apply-btn {
+  font-weight: 700;
+  transition: all 0.15s ease;
+}
+
+.ci-fc-apply-btn:not(.is-checked) {
+  background: var(--bg);
+  color: var(--text-strong);
+  border: 1px solid var(--border);
+}
+
+.ci-fc-apply-btn:not(.is-checked):hover {
+  border-color: var(--primary);
+  color: var(--primary);
 }
 
 .ci-fc-sym-select {
@@ -2500,6 +2555,8 @@ body.theme-light .tv-ind-badge-tag-sm {
   font-weight: 800;
   padding: 3px 9px;
   border-radius: 999px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ci-fc-badge-valid {
@@ -2530,13 +2587,25 @@ body.theme-light .tv-ind-badge-tag-sm {
   background: rgba(56, 189, 248, 0.12);
   color: var(--primary);
   border: 1px solid rgba(56, 189, 248, 0.28);
+  white-space: nowrap;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+}
+
+.ci-fc-approx-tag {
+  font-size: 9px;
+  padding: 1px 5px;
+  letter-spacing: 0.3px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .ci-fc-controls-row {
   display: flex;
   align-items: center;
   flex-wrap: wrap;
-  gap: 14px;
+  gap: 10px 18px;
 }
 
 .ci-fc-control-group {
@@ -2548,10 +2617,17 @@ body.theme-light .tv-ind-badge-tag-sm {
   max-width: 100%;
 }
 
+.ci-fc-control-group-full {
+  flex: 1 1 100%;
+  padding-bottom: 6px;
+  border-bottom: 1px dashed var(--border);
+}
+
 .ci-fc-ctrl-label {
   font-size: 11.5px;
   font-weight: 700;
   color: var(--text-muted);
+  white-space: nowrap;
 }
 
 .ci-fc-subtabs-bar {
@@ -2589,6 +2665,13 @@ body.theme-light .tv-ind-badge-tag-sm {
   max-width: 100%;
 }
 
+.ci-fc-scenario-card {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  height: 100%;
+}
+
 .ci-fc-card.is-disabled {
   opacity: 0.62;
 }
@@ -2614,15 +2697,52 @@ body.theme-light .tv-ind-badge-tag-sm {
 
 .ci-fc-grid-3 {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(240px, 100%), 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(300px, 100%), 1fr));
   gap: 12px;
   margin-bottom: 12px;
+  align-items: stretch;
+}
+
+.ci-fc-event-tree-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(210px, 100%), 1fr));
+  gap: 10px;
+  align-items: stretch;
 }
 
 .ci-fc-grid-2 {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(min(260px, 100%), 1fr));
   gap: 12px;
+  align-items: stretch;
+}
+
+.ci-fc-models-comparison-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(176px, 100%), 1fr));
+  gap: 10px;
+  align-items: stretch;
+}
+
+.ci-fc-model-card {
+  text-align: left !important;
+  justify-content: space-between;
+  padding: 10px 12px !important;
+  gap: 6px !important;
+}
+
+.ci-fc-model-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.ci-fc-model-card-title {
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 1.3;
+  min-width: 0;
 }
 
 .ci-fc-ladder-grid {

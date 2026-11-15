@@ -527,6 +527,12 @@ test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamline
         assert.equal(fcStudioHtml.includes('data-action="set-timeframe"'), false, 'Duplicate lower timeframe chips must be removed');
         assert.equal(fcStudioHtml.includes('data-action="set-workspace-view"'), false, 'Redundant Back to Chart button must be removed from Forecast studio');
         assert.ok(fcStudioHtml.includes('data-action="apply-forecast-to-chart"'), 'Apply & View on Chart button must be present');
+        assert.ok(fcStudioHtml.includes('aria-pressed="true"') && fcStudioHtml.includes('is-checked'), 'Apply & View on Chart button must show checked state when showFutureProjection is true');
+
+        sampleTab.showFutureProjection = false;
+        const fcStudioUncheckedHtml = renderForecastStudioView(sampleTab, mockI18n);
+        assert.ok(fcStudioUncheckedHtml.includes('aria-pressed="false"') && !fcStudioUncheckedHtml.includes('is-checked'), 'Apply & View on Chart button must show unchecked state when showFutureProjection is false');
+        sampleTab.showFutureProjection = true;
 
         state.activeWorkspaceView = 'chart';
         const chartHeaderHtml = renderTopHeaderBar(sampleTab, mockI18n);

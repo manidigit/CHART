@@ -233,7 +233,7 @@ export function renderForecastStudioFanCanvas(
   maxP += padPrice;
 
   const padL = 14;
-  const padR = 72;
+  const padR = 112;
   const padT = 20;
   const padB = 26;
   const plotW = Math.max(100, w - padL - padR);
@@ -244,10 +244,26 @@ export function renderForecastStudioFanCanvas(
   const xOf = (idx) => padL + (idx + 0.5) * slotW;
   const yOf = (price) => padT + ((maxP - price) / Math.max(1e-8, maxP - minP)) * plotH;
 
-  // Horizontal grid + Y labels
+  const lastPtForAxis = pts.length > 0 ? pts[pts.length - 1] : null;
+  let q90Y = lastPtForAxis ? Math.max(padT + 10, Math.min(padT + plotH - 34, yOf(lastPtForAxis.q90))) : null;
+  let q50Y = lastPtForAxis ? Math.max(padT + 25, Math.min(padT + plotH - 19, yOf(lastPtForAxis.q50))) : null;
+  let q10Y = lastPtForAxis ? Math.max(padT + 40, Math.min(padT + plotH - 4, yOf(lastPtForAxis.q10))) : null;
+  if (lastPtForAxis) {
+    if (q50Y - q90Y < 15) q50Y = Math.min(padT + plotH - 18, q90Y + 15);
+    if (q10Y - q50Y < 15) q10Y = Math.min(padT + plotH - 3, q50Y + 15);
+    if (q50Y - q90Y < 15) q90Y = Math.max(padT + 10, q50Y - 15);
+  }
+
+  // Right price axis separator line
   ctx.strokeStyle = gridCol;
   ctx.lineWidth = 1;
-  ctx.font = '600 10.5px "JetBrains Mono", monospace';
+  ctx.beginPath();
+  ctx.moveTo(w - padR, padT);
+  ctx.lineTo(w - padR, padT + plotH);
+  ctx.stroke();
+
+  // Horizontal grid + Y labels (placed in right gutter, skipping any tick that would collide with q90/q50/q10 badges)
+  ctx.font = '600 10px "JetBrains Mono", monospace';
   ctx.textAlign = 'left';
   for (let g = 0; g <= 4; g++) {
     const frac = g / 4;
@@ -257,8 +273,13 @@ export function renderForecastStudioFanCanvas(
     ctx.moveTo(padL, py);
     ctx.lineTo(w - padR, py);
     ctx.stroke();
-    ctx.fillStyle = textCol;
-    ctx.fillText(PriceFormatter.formatPrice(pv, decimals), w - padR + 6, py + 3);
+    const collidesWithQuantile =
+      lastPtForAxis &&
+      (Math.abs(py - q90Y) < 13 || Math.abs(py - q50Y) < 13 || Math.abs(py - q10Y) < 13);
+    if (!collidesWithQuantile) {
+      ctx.fillStyle = textCol;
+      ctx.fillText(PriceFormatter.formatPrice(pv, decimals), w - padR + 8, py + 3);
+    }
   }
 
   // Key Price Zones horizontal shaded bands (v1.3.0)
@@ -410,26 +431,39 @@ export function renderForecastStudioFanCanvas(
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Terminal quantile badges
+    // Terminal quantile badges drawn cleanly in the right-hand gutter (outside candlestick area)
     const lastPt = pts[pts.length - 1];
-    ctx.font = '700 10px "JetBrains Mono", monospace';
-    ctx.fillStyle = useCoord ? '#C084FC' : '#38BDF8';
-    ctx.fillText(
+    const gutterX = w - padR + 6;
+    const drawGutterBadge = (labelTxt, yPos, fgCol, bgCol) => {
+      ctx.save();
+      ctx.font = '700 10px "JetBrains Mono", monospace';
+      const tw = ctx.measureText(labelTxt).width;
+      const bw = Math.min(padR - 10, tw + 10);
+      const bh = 15;
+      ctx.fillStyle = bgCol;
+      ctx.fillRect(gutterX, yPos - 10, bw, bh);
+      ctx.fillStyle = fgCol;
+      ctx.textAlign = 'left';
+      ctx.fillText(labelTxt, gutterX + 5, yPos + 1);
+      ctx.restore();
+    };
+    drawGutterBadge(
       `q90 ${PriceFormatter.formatPrice(lastPt.q90, decimals)}`,
-      Math.max(padL, xOf(totalSlots - 1) - 62),
-      Math.max(padT + 10, yOf(lastPt.q90) - 4)
+      q90Y,
+      useCoord ? '#C084FC' : '#0284C7',
+      isDark ? 'rgba(56, 189, 248, 0.14)' : 'rgba(2, 132, 199, 0.11)'
     );
-    ctx.fillStyle = useCoord ? '#A855F7' : '#F59E0B';
-    ctx.fillText(
+    drawGutterBadge(
       `q50 ${PriceFormatter.formatPrice(lastPt.q50, decimals)}`,
-      Math.max(padL, xOf(totalSlots - 1) - 62),
-      yOf(lastPt.q50) - 4
+      q50Y,
+      useCoord ? '#9333EA' : '#D97706',
+      isDark ? 'rgba(245, 158, 11, 0.18)' : 'rgba(245, 158, 11, 0.14)'
     );
-    ctx.fillStyle = useCoord ? '#C084FC' : '#38BDF8';
-    ctx.fillText(
+    drawGutterBadge(
       `q10 ${PriceFormatter.formatPrice(lastPt.q10, decimals)}`,
-      Math.max(padL, xOf(totalSlots - 1) - 62),
-      Math.min(padT + plotH - 4, yOf(lastPt.q10) + 12)
+      q10Y,
+      useCoord ? '#C084FC' : '#0284C7',
+      isDark ? 'rgba(56, 189, 248, 0.14)' : 'rgba(2, 132, 199, 0.11)'
     );
   }
 }
@@ -569,11 +603,28 @@ export function renderForecastStudioView(activeTab, i18n) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             <button
               type="button"
-              class="btn btn-sm btn-primary"
+              class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary ci-fc-apply-btn is-checked' : 'ci-fc-apply-btn'}"
               data-action="apply-forecast-to-chart"
-              title="${isFa ? 'اعمال پیش‌بینی روی چارت و بازگشت به نمای چارت' : 'Apply forecast to chart and switch to Chart view'}"
+              aria-pressed="${activeTab?.showFutureProjection ? 'true' : 'false'}"
+              title="${
+                activeTab?.showFutureProjection
+                  ? isFa
+                    ? 'کلیک برای برداشتن تیک و مخفی کردن پیش‌بینی روی چارت'
+                    : 'Click to untick and hide forecast overlay on chart'
+                  : isFa
+                    ? 'اعمال پیش‌بینی روی چارت و بازگشت به نمای چارت'
+                    : 'Apply forecast to chart and switch to Chart view'
+              }"
             >
-              ${activeTab?.showFutureProjection ? (isFa ? '✓ اعمال روی چارت و مشاهده' : '✓ Apply & View on Chart') : isFa ? 'اعمال روی چارت و مشاهده' : 'Apply & View on Chart'}
+              ${
+                activeTab?.showFutureProjection
+                  ? isFa
+                    ? '✓ نمایش روی چارت فعال است (لغو تیک)'
+                    : '✓ Apply & View on Chart'
+                  : isFa
+                    ? '☐ اعمال روی چارت و مشاهده'
+                    : '☐ Apply & View on Chart'
+              }
             </button>
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
               ${isFa ? 'ثبت در دفتر کل + همگام‌سازی' : 'Record & Sync Snapshot'}
@@ -582,7 +633,7 @@ export function renderForecastStudioView(activeTab, i18n) {
         </div>
 
         <div class="ci-fc-controls-row">
-          <div class="ci-fc-control-group">
+          <div class="ci-fc-control-group ci-fc-control-group-full">
             <span class="ci-fc-ctrl-label">${isFa ? 'مدل پیش‌بینی چارت:' : 'Chart Model:'}</span>
             <div class="chip-group">${modelButtons}</div>
           </div>
@@ -743,12 +794,12 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
               const borderCol = isAct ? col : 'var(--border)';
               const pct = Math.round(Number(sc.probability || 0) * 100);
               return `
-                <div class="ci-fc-card" style="border-color:${borderCol};${isAct ? 'box-shadow:0 0 0 1px ' + col + ';' : ''}">
-                  <div class="row-between" style="margin-bottom:6px;gap:6px;">
-                    <strong style="color:${col};font-size:12.5px;">${escapeHtml(sc.id)} — ${escapeHtml(isFa ? sc.name : sc.nameEn)}</strong>
+                <div class="ci-fc-card ci-fc-scenario-card" style="border-color:${borderCol};${isAct ? 'box-shadow:0 0 0 1px ' + col + ';' : ''}">
+                  <div class="row-between" style="margin-bottom:8px;gap:8px;align-items:flex-start;">
+                    <strong style="color:${col};font-size:12.5px;line-height:1.35;">${escapeHtml(sc.id)} — ${escapeHtml(isFa ? sc.name : sc.nameEn)}</strong>
                     <span class="ci-fc-prob-pill ltr-num">${pct}%</span>
                   </div>
-                  <div class="ltr-num" style="font-size:11.5px;display:flex;flex-direction:column;gap:4px;">
+                  <div class="ltr-num" style="font-size:11.5px;display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">
                     <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'ناحیه پولبک (FVG/POC)' : 'Step A Pullback (FVG/POC)'}</span><strong>${PriceFormatter.formatPrice(sc.pullbackPrice, decimals)}</strong></div>
                     <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'هدف نهایی (Target)' : 'Step B Target (VAH/VAL)'}</span><strong>${PriceFormatter.formatPrice(sc.targetPrice, decimals)}</strong></div>
                     <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'حد ابطال (Invalidation)' : 'Invalidation (±1.8 ATR)'}</span><strong>${PriceFormatter.formatPrice(sc.invalidationPrice, decimals)}</strong></div>
@@ -756,7 +807,7 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
                   <button
                     type="button"
                     class="btn btn-sm ${isAct ? 'btn-primary' : ''}"
-                    style="width:100%;margin-top:8px;"
+                    style="width:100%;margin-top:auto;"
                     data-action="select-smc-scenario"
                     data-scenario-id="${escapeHtml(sc.id)}"
                   >
@@ -782,21 +833,21 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
       const accentCol = sc.bias === 'bull' ? 'var(--bull)' : sc.bias === 'bear' ? 'var(--bear)' : 'var(--gold)';
       const probPct = (Number(sc.probability || 0) * 100).toFixed(1);
       return `
-        <div class="ci-fc-card" style="border-color:${borderCol};">
-          <div class="row-between" style="margin-bottom:6px;gap:6px;">
-            <strong style="color:${accentCol};font-size:12.5px;">${escapeHtml(sc.label)}</strong>
+        <div class="ci-fc-card ci-fc-scenario-card" style="border-color:${borderCol};">
+          <div class="row-between" style="margin-bottom:6px;gap:8px;align-items:flex-start;">
+            <strong style="color:${accentCol};font-size:12.5px;line-height:1.35;">${escapeHtml(sc.label)}</strong>
             <span class="ci-fc-prob-pill ltr-num">${probPct}%</span>
           </div>
-          <div style="margin-bottom:6px;display:flex;gap:6px;flex-wrap:wrap;" class="ltr-num">
+          <div style="margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap;" class="ltr-num">
             <span class="ci-fc-family-tag">${escapeHtml(sc.parentBranch || 'TREE')}</span>
             ${sc.lowSampleWarning ? `<span class="ci-fc-low-sample-tag">LOW_SAMPLE</span>` : ''}
           </div>
-          <div class="ltr-num" style="font-size:11.5px;display:flex;flex-direction:column;gap:4px;">
+          <div class="ltr-num" style="font-size:11.5px;display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
             <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'مرجع میانی (Target)' : 'Statistical Target'}</span><strong>${PriceFormatter.formatPrice(sc.targetPrice, decimals)}</strong></div>
             <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'مرز کوانتایل بیرونی' : 'Outer Quantile Bound'}</span><strong>${PriceFormatter.formatPrice(sc.extremePrice, decimals)}</strong></div>
             <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'مرجع تغییر ساختار' : 'Structure Pivot Ref'}</span><strong>${PriceFormatter.formatPrice(sc.invalidationReference, decimals)}</strong></div>
           </div>
-          <div class="ci-fc-condition-box ltr-num">
+          <div class="ci-fc-condition-box ltr-num" style="flex:1;margin-bottom:10px;">
             <div><span style="color:var(--text-muted);">Trigger:</span> ${escapeHtml(sc.entryCondition || '-')}</div>
             <div><span style="color:var(--text-muted);">Event:</span> ${escapeHtml(sc.intermediateEvent || '-')}</div>
             <div><span style="color:var(--text-muted);">Invalidation:</span> ${escapeHtml(sc.invalidationCondition || '-')}</div>
@@ -804,7 +855,7 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
           <button
             type="button"
             class="btn btn-sm"
-            style="width:100%;margin-top:8px;"
+            style="width:100%;margin-top:auto;"
             data-action="project-scenario-levels"
             data-bias="${escapeHtml(sc.bias)}"
             data-entry="${fc.anchorClose}"
@@ -867,7 +918,7 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
           <strong style="font-size:12.5px;">${isFa ? 'مقایسه زنده مسیر مدل‌ها روی چارت (مستقل و بدون Fallback جعلی)' : 'Model Trajectory Comparison (Honest Status & Runtime Badge)'}</strong>
           <span class="ci-fc-family-tag ltr-num">${fc.modelTrajectories.filter((t) => t.status === MODEL_EXECUTION_STATUS.SUCCESS).length}/${fc.modelTrajectories.length} Active</span>
         </div>
-        <div class="ci-fc-ladder-grid ltr-num">
+        <div class="ci-fc-models-comparison-grid ltr-num">
           ${fc.modelTrajectories
             .map((t) => {
               const col = MODEL_OVERLAY_COLORS[t.modelId] || 'var(--accent)';
@@ -878,12 +929,12 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
                   ? `${PriceFormatter.formatPrice(lastP.q50, decimals)} (${lastP.pctChangeFromLast >= 0 ? '+' : ''}${Number(lastP.pctChangeFromLast || 0).toFixed(2)}%)`
                   : `${t.status}: ${t.reason || ''}`;
               return `
-                <div class="ci-fc-mini-stat" style="border-color:${isSelected ? col : 'var(--border)'};${isSelected ? 'box-shadow:0 0 0 1px ' + col + ';' : ''}">
-                  <div style="display:flex;align-items:center;justify-content:space-between;gap:4px;">
-                    <span style="font-size:10.5px;font-weight:700;color:${col};">${escapeHtml(t.modelName)}</span>
-                    ${t.isApproximation ? '<span class="ci-fc-family-tag" style="font-size:9px;padding:1px 4px;">APPROX</span>' : ''}
+                <div class="ci-fc-mini-stat ci-fc-model-card" style="border-color:${isSelected ? col : 'var(--border)'};${isSelected ? 'box-shadow:0 0 0 1px ' + col + ';' : ''}">
+                  <div class="ci-fc-model-card-head">
+                    <span class="ci-fc-model-card-title" style="color:${col};">${escapeHtml(t.modelName)}</span>
+                    ${t.isApproximation ? '<span class="ci-fc-family-tag ci-fc-approx-tag">APPROX</span>' : ''}
                   </div>
-                  <strong style="font-size:11px;color:${t.status === MODEL_EXECUTION_STATUS.SUCCESS ? 'var(--text-strong)' : 'var(--bear)'};">${escapeHtml(statusTxt)}</strong>
+                  <strong style="font-size:11.5px;color:${t.status === MODEL_EXECUTION_STATUS.SUCCESS ? 'var(--text-strong)' : 'var(--bear)'};">${escapeHtml(statusTxt)}</strong>
                   <div style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(t.executionRuntime || 'NATIVE_JS')} · ${t.isCalibratedInterval ? 'Calibrated' : 'Uncalibrated'}</div>
                 </div>
               `;
@@ -918,7 +969,13 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     ${uncertaintyCardHtml}
     ${mtfBannerHtml}
 
-    <div class="ci-fc-grid-3">${scenariosHtml}</div>
+    <div class="ci-fc-card" style="margin-bottom:12px;">
+      <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <strong style="font-size:13px;">${isFa ? 'درخت رخداد ۵ شاخه‌ای و سطوح مرجع آماری (Event Tree)' : '5-Branch Probabilistic Event Tree & Structural Reference Bands'}</strong>
+        <span class="ci-fc-family-tag ltr-num">5 Exhaustive Scenarios (ΣP = 100%)</span>
+      </div>
+      <div class="ci-fc-event-tree-grid">${scenariosHtml}</div>
+    </div>
 
     ${keyZonesHtml ? `<div class="ci-fc-grid-2" style="margin-bottom:12px;">${keyZonesHtml}</div>` : ''}
 
