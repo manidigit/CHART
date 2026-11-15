@@ -88,6 +88,28 @@ private val MODEL_OVERLAY_COLORS: Map<String, Color> = mapOf(
     "py_tft" to Color(0xFF8B5CF6)
 )
 
+private fun formatLabModelName(modelId: String): String = when (modelId) {
+    "naive_persistence" -> "Baseline (Naive)"
+    "smc_kmedoids" -> "SMC K-Medoids"
+    "ensemble" -> "Ensemble"
+    "native_arima_diff" -> "ARIMA(p,d,q)"
+    "native_prophet_decomp" -> "Prophet Approx"
+    "native_seq_recurrent_approx" -> "Recurrent Approx"
+    "native_quantile_attention_approx" -> "TFT Attn Approx"
+    "py_arima", "py_arima_statsmodels" -> "ARIMA (Py)"
+    "py_prophet" -> "Prophet (Py)"
+    "py_lstm_mc", "py_lstm_torch" -> "LSTM (Py)"
+    "py_tft", "py_tft_torch" -> "TFT (Py)"
+    else -> modelId
+}
+
+private fun formatLabSelectionMode(mode: SelectionMode): String = when (mode) {
+    SelectionMode.AUTO_OOS_BEST -> "OOS Winner"
+    SelectionMode.MANUAL_OVERRIDE -> "Manual"
+    SelectionMode.NO_CLEAR_WINNER_BASELINE -> "No OOS Edge"
+    SelectionMode.SMC_STRUCTURAL_DEFAULT -> "SMC Default"
+}
+
 @Composable
 fun ForecastMiniFanCanvas(
     candles: List<CandleBar>,
@@ -150,7 +172,7 @@ fun ForecastMiniFanCanvas(
                     if (result != null) {
                         CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
                             Text(
-                                text = "Active: ${result.selectedChartModelId} (${result.selectionMode.name})",
+                                text = "Active: ${formatLabModelName(result.selectedChartModelId)} (${formatLabSelectionMode(result.selectionMode)})",
                                 style = MaterialTheme.typography.labelSmall,
                                 fontSize = 10.sp,
                                 fontFamily = JetBrainsMonoFontFamily,
@@ -286,17 +308,19 @@ fun ForecastMiniFanCanvas(
                                     }
                                 }
 
-                                val altCols = listOf(Color(0xFF38BDF8), Color(0xFFA855F7))
-                                val altScenarios = result?.smcScenarios.orEmpty().filter { it.id != result?.activeScenarioId }
-                                altScenarios.forEachIndexed { aIdx, altSc ->
-                                    if (altSc.candles.isNotEmpty()) {
-                                        val altPath = Path().apply {
-                                            moveTo(anchorX, anchorY)
-                                            altSc.candles.forEachIndexed { i, ac ->
-                                                lineTo(xOf(hist.size + i), yOf(ac.close))
+                                if (result?.selectedChartModelId == "smc_kmedoids") {
+                                    val altCols = listOf(Color(0xFF38BDF8), Color(0xFFA855F7))
+                                    val altScenarios = result.smcScenarios.filter { it.id != result.activeScenarioId }
+                                    altScenarios.forEachIndexed { aIdx, altSc ->
+                                        if (altSc.candles.isNotEmpty()) {
+                                            val altPath = Path().apply {
+                                                moveTo(anchorX, anchorY)
+                                                altSc.candles.forEachIndexed { i, ac ->
+                                                    lineTo(xOf(hist.size + i), yOf(ac.close))
+                                                }
                                             }
+                                            drawPath(altPath, altCols[aIdx % altCols.size].copy(alpha = 0.68f), style = Stroke(width = 1.4f, pathEffect = dash))
                                         }
-                                        drawPath(altPath, altCols[aIdx % altCols.size].copy(alpha = 0.68f), style = Stroke(width = 1.4f, pathEffect = dash))
                                     }
                                 }
 
@@ -975,7 +999,7 @@ fun OosWinnerGateCard(
                         shape = RoundedCornerShape(6.dp)
                     ) {
                         Text(
-                            text = "${result.selectedChartModelId} · ${result.selectionMode.name}",
+                            text = "${formatLabModelName(result.selectedChartModelId)} · ${formatLabSelectionMode(result.selectionMode)}",
                             modifier = Modifier.padding(horizontal = 6.dp, vertical = 2.dp),
                             style = MaterialTheme.typography.labelSmall,
                             fontSize = 10.sp,

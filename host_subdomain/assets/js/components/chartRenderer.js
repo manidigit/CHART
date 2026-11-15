@@ -266,7 +266,14 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
   const rightAxisW = 78;
   const bottomAxisH = 26;
-  const topPad = 16;
+  let topPad = 16;
+  if (typeof canvas?.parentElement?.querySelector === 'function') {
+    const ohlcOverlay = canvas.parentElement.querySelector('.tv-ohlc-overlay');
+    const ohlcRect = ohlcOverlay?.getBoundingClientRect?.();
+    if (ohlcRect && ohlcRect.height > 0) {
+      topPad = Math.min(Math.round(h * 0.28), Math.max(16, Math.round(ohlcRect.height + 14)));
+    }
+  }
   const totalChartH = Math.max(120, h - topPad - bottomAxisH);
 
   // Active sub-panes below main Price Pane
@@ -345,8 +352,9 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const midPrice = (rawMax + rawMin) / 2.0 + (isAutoY ? 0 : Number(tab.verticalPriceOffset || 0.0));
   const halfRange = (baseRange * scaleFactor) / 2.0;
   const pad = halfRange * 0.16;
+  const topPadScale = futureProj.length > 0 ? halfRange * 0.30 : pad;
   const minP = Math.max(isLog ? 0.000001 : -Infinity, midPrice - halfRange - pad);
-  const maxP = midPrice + halfRange + pad;
+  const maxP = midPrice + halfRange + topPadScale;
 
   const toScaleVal = (p) => (isLog ? Math.log(Math.max(Number(p), 0.000001)) : Number(p));
   const fromScaleVal = (s) => (isLog ? Math.exp(s) : s);
@@ -435,35 +443,55 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.fillText(tick.text, lblX, topPad + totalChartH + 17);
   }
 
-  // Future Projection X-Axis Milestone Labels (+5, +10, +15, +20, +25, +30 with signed % change)
+  // Future Projection X-Axis Milestone Labels (+5, +10, +15, +20, +25, +30..+60 with precise signed % change)
   if (futureProj.length > 0) {
-    const milestones = [5, 10, 15, 20, 25, 30];
+    const milestones = [5, 10, 15, 20, 25, 30, 40, 50, 60].filter((s) => s <= futureProj.length);
+    if (!milestones.includes(futureProj.length)) {
+      milestones.push(futureProj.length);
+    }
+    let lastDrawnRightX = pastRightLimitX + 2;
     for (const stepNum of milestones) {
       const fp = futureProj[stepNum - 1];
       if (!fp) continue;
       const fx = idxToX(visible.length + stepNum - 1);
-      if (fx > chartW - 8) continue;
+      if (fx > chartW) continue;
+
+      const stepLbl = `+${stepNum}`;
+      const pctVal = Number(fp.pctChangeFromLast || 0);
+      const pctDigits = Math.abs(pctVal) < 10 ? 2 : 1;
+      const pctLbl = stepNum === 5 ? '(Future)' : `${pctVal >= 0 ? '+' : ''}${pctVal.toFixed(pctDigits)}%`;
 
       ctx.save();
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      const sw = ctx.measureText(stepLbl).width;
+      ctx.font = '9px "JetBrains Mono", monospace';
+      const pw = ctx.measureText(pctLbl).width;
+      const lblMaxW = Math.max(sw, pw);
+
+      const boxCenterX = Math.max(
+        pastRightLimitX + lblMaxW / 2 + 4,
+        Math.min(chartW - lblMaxW / 2 - 3, fx)
+      );
+      const boxLeftX = boxCenterX - lblMaxW / 2;
+      if (boxLeftX < lastDrawnRightX + 4 && stepNum !== futureProj.length) {
+        ctx.restore();
+        continue;
+      }
+
       ctx.strokeStyle = gridColor;
       ctx.beginPath();
       ctx.moveTo(fx, topPad);
       ctx.lineTo(fx, topPad + totalChartH);
       ctx.stroke();
 
-      const stepLbl = `+${stepNum}`;
-      const pctVal = Number(fp.pctChangeFromLast || 0);
-      const pctLbl = stepNum === 5 ? '(Future)' : `${pctVal >= 0 ? '+' : ''}${pctVal.toFixed(0)}%`;
-
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
       ctx.fillStyle = '#F59E0B';
-      const sw = ctx.measureText(stepLbl).width;
-      ctx.fillText(stepLbl, fx - sw / 2, topPad + totalChartH + 11);
+      ctx.fillText(stepLbl, boxCenterX - sw / 2, topPad + totalChartH + 11);
 
       ctx.font = '9px "JetBrains Mono", monospace';
       ctx.fillStyle = stepNum === 5 ? textColor : pctVal >= 0 ? '#D1D4DC' : bearColor;
-      const pw = ctx.measureText(pctLbl).width;
-      ctx.fillText(pctLbl, fx - pw / 2, topPad + totalChartH + 22);
+      ctx.fillText(pctLbl, boxCenterX - pw / 2, topPad + totalChartH + 22);
+      lastDrawnRightX = boxCenterX + lblMaxW / 2;
       ctx.restore();
     }
   }
@@ -536,10 +564,14 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
 
   // 1. Session / Visible Range Volume Profile (VRVP — POC / VAH / VAL)
+  let estVolBadgeReservedBottom = 0;
   if (tab.showVolumeProfile && visible.length >= 5) {
     const vp = indCache.getVolumeProfile(visible, startIdx, endIdx);
     if (vp && Array.isArray(vp.bins)) {
-      const maxProfileW = Math.min(130, chartW * 0.22);
+      const maxProfileW = futureProj.length > 0
+        ? Math.min(82, Math.max(40, (chartW - pastRightLimitX) * 0.34))
+        : Math.min(130, chartW * 0.22);
+      const barAlphaScale = futureProj.length > 0 ? 0.65 : 1.0;
       for (const bin of vp.bins) {
         const yTop = priceToY(bin.high);
         const yBot = priceToY(bin.low);
@@ -552,17 +584,17 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         const rightX = chartW - 2;
 
         ctx.fillStyle = bin.isPoc
-          ? hexToRgba(indPal.vrvpPoc, 0.50)
+          ? hexToRgba(indPal.vrvpPoc, 0.42 * barAlphaScale)
           : bin.inValueArea
-            ? 'rgba(38, 166, 154, 0.28)'
-            : 'rgba(148, 163, 184, 0.15)';
+            ? `rgba(38, 166, 154, ${(0.24 * barAlphaScale).toFixed(2)})`
+            : `rgba(148, 163, 184, ${(0.14 * barAlphaScale).toFixed(2)})`;
         ctx.fillRect(rightX - totalW, Math.min(yTop, yBot), bullW, barH);
 
         ctx.fillStyle = bin.isPoc
-          ? hexToRgba(indPal.vrvpPoc, 0.65)
+          ? hexToRgba(indPal.vrvpPoc, 0.54 * barAlphaScale)
           : bin.inValueArea
-            ? 'rgba(239, 83, 80, 0.28)'
-            : 'rgba(148, 163, 184, 0.20)';
+            ? `rgba(239, 83, 80, ${(0.24 * barAlphaScale).toFixed(2)})`
+            : `rgba(148, 163, 184, ${(0.18 * barAlphaScale).toFixed(2)})`;
         ctx.fillRect(rightX - bearW, Math.min(yTop, yBot), bearW, barH);
       }
 
@@ -600,8 +632,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           'Est. Vol Profile';
         ctx.font = '600 9.5px "JetBrains Mono", sans-serif';
         const estW = ctx.measureText(estLabel).width + 12;
-        const estX = Math.max(8, chartW - estW - 8);
-        const estY = topPad + 6;
+        const estX = Math.max(8, chartW - estW - 6);
+        const estY = futureProj.length > 0 ? topPad + chartH - 22 : topPad + 6;
+        if (futureProj.length > 0) {
+          estVolBadgeReservedBottom = 24;
+        }
         ctx.fillStyle = isDark ? hexToRgba(indPal.vrvpPoc, 0.16) : hexToRgba(indPal.vrvpPoc, 0.2);
         ctx.strokeStyle = hexToRgba(indPal.vrvpPoc, 0.55);
         ctx.lineWidth = 1;
@@ -619,6 +654,16 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   // 2. Smart Money Concepts (SMC): Fair Value Gaps (FVG) & Market Structure (BOS / CHoCH / EQH / EQL)
   if ((tab.showFvg || tab.showSmcStructure) && candles.length >= 10) {
     const smc = indCache.getSmc();
+    const placedSmcLabels = [];
+    const tryReserveSmcBadge = (bx, by, bw, bh) => {
+      for (const prev of placedSmcLabels) {
+        const overlapX = !(bx + bw + 3 < prev.x || prev.x + prev.w + 3 < bx);
+        const overlapY = !(by + bh + 2 < prev.y || prev.y + prev.h + 2 < by);
+        if (overlapX && overlapY) return false;
+      }
+      placedSmcLabels.push({ x: bx, y: by, w: bw, h: bh });
+      return true;
+    };
 
     if (tab.showFvg && Array.isArray(smc.fvgs)) {
       for (const fvg of smc.fvgs) {
@@ -641,10 +686,17 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         ctx.lineWidth = 1;
         ctx.strokeRect(x1, topY, x2 - x1, boxH);
 
-        if (x2 - x1 >= 26 && boxH >= 10) {
-          ctx.fillStyle = fvgColor;
+        if (x2 - x1 >= 30 && boxH >= 12) {
           ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
-          ctx.fillText('FVG', x1 + 4, topY + Math.min(boxH - 2, 10));
+          const tw = ctx.measureText('FVG').width;
+          const bx = x1 + 3;
+          const by = topY + 2;
+          if (tryReserveSmcBadge(bx, by, tw + 6, 11)) {
+            ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.80)' : 'rgba(255, 255, 255, 0.84)';
+            ctx.fillRect(bx, by, tw + 6, 11);
+            ctx.fillStyle = fvgColor;
+            ctx.fillText('FVG', bx + 3, by + 8.5);
+          }
         }
       }
     }
@@ -677,11 +729,19 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           const label = st.type;
           ctx.font = 'bold 9px "JetBrains Mono", monospace';
           const tw = ctx.measureText(label).width;
-          ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.88)' : 'rgba(255, 255, 255, 0.90)';
-          const badgeY = st.direction === 1 ? y - 14 : y + 4;
-          ctx.fillRect(midX - tw / 2 - 3, badgeY, tw + 6, 11);
-          ctx.fillStyle = col;
-          ctx.fillText(label, midX - tw / 2, badgeY + 8.5);
+          const bx = midX - tw / 2 - 3;
+          let badgeY = st.direction === 1 ? y - 14 : y + 4;
+          let placed = tryReserveSmcBadge(bx, badgeY, tw + 6, 11);
+          if (!placed) {
+            badgeY = st.direction === 1 ? y + 4 : y - 14;
+            placed = tryReserveSmcBadge(bx, badgeY, tw + 6, 11);
+          }
+          if (placed) {
+            ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.88)' : 'rgba(255, 255, 255, 0.90)';
+            ctx.fillRect(bx, badgeY, tw + 6, 11);
+            ctx.fillStyle = col;
+            ctx.fillText(label, bx + 3, badgeY + 8.5);
+          }
         }
       }
 
@@ -1133,46 +1193,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // Render Right-Docked Horizontal Level Labels (POC, VAH, VAL, P, R1, R2, S1, S2) with vertical collision-avoidance
-  if (rightLevelLabels.length > 0) {
-    rightLevelLabels.sort((a, b) => a.y - b.y);
-    const minGap = 13;
-    for (let i = 1; i < rightLevelLabels.length; i++) {
-      if (rightLevelLabels[i].y - rightLevelLabels[i - 1].y < minGap) {
-        rightLevelLabels[i].y = rightLevelLabels[i - 1].y + minGap;
-      }
-    }
-    const maxY = topPad + chartH - 8;
-    if (rightLevelLabels[rightLevelLabels.length - 1].y > maxY) {
-      rightLevelLabels[rightLevelLabels.length - 1].y = maxY;
-      for (let i = rightLevelLabels.length - 2; i >= 0; i--) {
-        if (rightLevelLabels[i + 1].y - rightLevelLabels[i].y < minGap) {
-          rightLevelLabels[i].y = Math.max(topPad + 10, rightLevelLabels[i + 1].y - minGap);
-        }
-      }
-    }
-    ctx.save();
-    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-    for (const item of rightLevelLabels) {
-      const tw = ctx.measureText(item.text).width;
-      const boxW = tw + 8;
-      const boxH = 12;
-      const boxX = chartW - boxW - 4;
-      const boxY = item.y - boxH + 2;
-      ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.90)' : 'rgba(255, 255, 255, 0.92)';
-      ctx.strokeStyle = hexToRgba(item.color, 0.55);
-      ctx.lineWidth = 1;
-      ctx.beginPath();
-      if (ctx.roundRect) ctx.roundRect(boxX, boxY, boxW, boxH, 3);
-      else ctx.rect(boxX, boxY, boxW, boxH);
-      ctx.fill();
-      ctx.stroke();
-      ctx.fillStyle = item.color;
-      ctx.fillText(item.text, boxX + 4, boxY + 9.2);
-    }
-    ctx.restore();
-  }
-
   // Phase 4 (SPEC-PRED-01): Probabilistic Future Projection (HYBRID | FAN_CHART | GHOST_CANDLES)
   if (futureProj.length > 0) {
     const dividerX = visible.length * slotW;
@@ -1246,10 +1266,23 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       });
     }
 
-    // Alternative SMC Scenarios (SCENARIO_B & SCENARIO_C) dashed paths
+    // Alternative SMC Scenarios (SCENARIO_B & SCENARIO_C) dashed paths — only when smc_kmedoids is active
     const fullFcResult = indCache.getFutureProjectionResult && indCache.getFutureProjectionResult();
-    if (fullFcResult && Array.isArray(fullFcResult.smcScenarios)) {
+    if (
+      fullFcResult &&
+      fullFcResult.selectedChartModelId === 'smc_kmedoids' &&
+      Array.isArray(fullFcResult.smcScenarios)
+    ) {
       const altColors = ['#38BDF8', '#A855F7'];
+      const primarySc = fullFcResult.smcScenarios.find((s) => s.id === fullFcResult.activeScenarioId);
+      if (primarySc && Number.isFinite(Number(primarySc.probability))) {
+        const lastFp = futureProj[futureProj.length - 1];
+        queueRightLevelLabel(
+          priceToY(Number(lastFp?.q50 ?? lastFp?.close ?? lastActual.close)),
+          `Primary (${Math.round(primarySc.probability * 100)}%)`,
+          '#F59E0B'
+        );
+      }
       const altScenarios = fullFcResult.smcScenarios.filter((s) => s.id !== fullFcResult.activeScenarioId);
       altScenarios.forEach((altSc, aIdx) => {
         if (!Array.isArray(altSc.candles) || altSc.candles.length === 0) return;
@@ -1266,13 +1299,14 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         });
         ctx.stroke();
         ctx.setLineDash([]);
-        const lastAlt = altSc.candles[altSc.candles.length - 1];
-        const lx = Math.min(chartW - 64, idxToX(visible.length + altSc.candles.length - 1) - 24);
-        const ly = priceToY(Number(lastAlt.close)) - 4;
-        ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
-        ctx.fillStyle = col;
-        ctx.fillText(`${altSc.id.replace('SCENARIO_', 'Alt ')} (${Math.round(altSc.probability * 100)}%)`, lx, ly);
         ctx.restore();
+
+        const lastAlt = altSc.candles[altSc.candles.length - 1];
+        queueRightLevelLabel(
+          priceToY(Number(lastAlt.close)),
+          `${altSc.id.replace('SCENARIO_', 'Alt ')} (${Math.round(altSc.probability * 100)}%)`,
+          col
+        );
       });
     }
 
@@ -1298,10 +1332,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.stroke();
     ctx.setLineDash([]);
 
-    // Top Header Banner: PAST (Actual Data) <- | -> Probabilistic Projection
-    const headerY = topPad + 22;
-    const arrowY = topPad + 30;
-    const subY = topPad + 43;
+    // Top Header Banner: PAST (Actual Data) <- | -> Forecast Horizon
+    const headerY = topPad + 16;
+    const arrowY = topPad + 24;
+    const subY = topPad + 37;
 
     const leftSpan = Math.max(60, dividerX - 16);
     const pastCenterX = dividerX / 2;
@@ -1352,13 +1386,83 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.closePath();
     ctx.fill();
 
-    const activeModelTag = fullFcResult?.selectedChartModelId
-      ? ` · ${fullFcResult.selectedChartModelId}`
+    const modelNameMap = {
+      naive_persistence: 'Baseline (Naive)',
+      smc_kmedoids: 'SMC K-Medoids',
+      ensemble: 'Ensemble',
+      native_arima_diff: 'ARIMA(p,d,q)',
+      native_prophet_decomp: 'Prophet Approx',
+      native_seq_recurrent_approx: 'Recurrent Approx',
+      native_quantile_attention_approx: 'TFT Attn Approx',
+      py_arima_statsmodels: 'ARIMA (Py)',
+      py_prophet: 'Prophet (Py)',
+      py_lstm_torch: 'LSTM (Py)',
+      py_tft_torch: 'TFT (Py)',
+    };
+    const modeLabelMap = {
+      AUTO_OOS_BEST: 'OOS Winner',
+      MANUAL_OVERRIDE: 'Manual',
+      NO_CLEAR_WINNER_BASELINE: 'No OOS Edge',
+      SMC_STRUCTURAL_DEFAULT: 'SMC Default',
+    };
+    const activeModelLabel = fullFcResult?.selectedChartModelId
+      ? (modelNameMap[fullFcResult.selectedChartModelId] || fullFcResult.selectedChartModelId)
       : '';
+    const activeModeTag = fullFcResult?.selectionMode
+      ? (modeLabelMap[fullFcResult.selectionMode] || '')
+      : '';
+    const bannerSubtitle = [activeRenderMode, activeModelLabel, activeModeTag, 'q10–q90']
+      .filter(Boolean)
+      .join(' · ');
     ctx.fillStyle = textColor;
-    ctx.font = '10.5px "Inter", system-ui, sans-serif';
-    ctx.fillText(`(${activeRenderMode}${activeModelTag} · q10–q90)`, futCenterX, subY);
+    ctx.font = '10px "Inter", system-ui, sans-serif';
+    ctx.fillText(`(${bannerSubtitle})`, futCenterX, subY, Math.max(80, chartW - dividerX - 14));
 
+    ctx.restore();
+  }
+
+  // Render Unified Right-Docked Horizontal & Scenario Labels (VAH, POC, VAL, Pivots, Alt A/B/C) with collision-avoidance
+  if (rightLevelLabels.length > 0) {
+    rightLevelLabels.sort((a, b) => a.y - b.y);
+    const minGap = 14;
+    const minTopY = topPad + (futureProj.length > 0 ? 48 : 12);
+    for (let i = 0; i < rightLevelLabels.length; i++) {
+      if (rightLevelLabels[i].y < minTopY) {
+        rightLevelLabels[i].y = minTopY;
+      }
+      if (i > 0 && rightLevelLabels[i].y - rightLevelLabels[i - 1].y < minGap) {
+        rightLevelLabels[i].y = rightLevelLabels[i - 1].y + minGap;
+      }
+    }
+    const maxY = topPad + chartH - 8 - estVolBadgeReservedBottom;
+    if (rightLevelLabels[rightLevelLabels.length - 1].y > maxY) {
+      rightLevelLabels[rightLevelLabels.length - 1].y = maxY;
+      for (let i = rightLevelLabels.length - 2; i >= 0; i--) {
+        if (rightLevelLabels[i + 1].y - rightLevelLabels[i].y < minGap) {
+          rightLevelLabels[i].y = Math.max(minTopY, rightLevelLabels[i + 1].y - minGap);
+        }
+      }
+    }
+    ctx.save();
+    ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+    ctx.textAlign = 'left';
+    for (const item of rightLevelLabels) {
+      const tw = ctx.measureText(item.text).width;
+      const boxW = tw + 8;
+      const boxH = 12;
+      const boxX = chartW - boxW - 4;
+      const boxY = item.y - boxH + 2;
+      ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.92)' : 'rgba(255, 255, 255, 0.94)';
+      ctx.strokeStyle = hexToRgba(item.color, 0.65);
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(boxX, boxY, boxW, boxH, 3);
+      else ctx.rect(boxX, boxY, boxW, boxH);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = item.color;
+      ctx.fillText(item.text, boxX + 4, boxY + 9.2);
+    }
     ctx.restore();
   }
 
@@ -1415,16 +1519,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fillText(PriceFormatter.formatVolume(maxVol), chartW + 6, volTopY + 12);
       ctx.fillText(PriceFormatter.formatVolume(maxVol / 2), chartW + 6, volTopY + volPaneH / 2 + 4);
 
-      const refVolCandle =
-        tab.hoverIndex !== null && visible[tab.hoverIndex]
-          ? visible[tab.hoverIndex]
-          : visible[visible.length - 1];
-      ctx.fillStyle = isDark ? '#D1D4DC' : '#131722';
-      ctx.fillText(
-        `Vol: ${PriceFormatter.formatVolume(refVolCandle.volume)}`,
-        10,
-        volTopY + 13
-      );
+      ctx.fillStyle = textColor;
+      ctx.fillText('Volume', 10, volTopY + 13);
     }
   }
 
