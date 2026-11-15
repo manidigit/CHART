@@ -498,7 +498,7 @@ test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamline
         state.settingsTab = prevSettingsTab;
     }
 
-    // 3. Top header bar keeps open symbol tabs + timeframes in Forecast Studio, omits Back to Chart & chart-only buttons, and Forecast card avoids duplicate symbol/timeframe rows
+    // 3. Top header bar keeps open symbol tabs + timeframes + unified workspace nav in both Chart and Forecast views, omits JSON export button, uses compact blinking status dot, and Forecast card avoids duplicate symbol/timeframe rows
     const prevWorkspace = state.activeWorkspaceView;
     const sampleTab = {
         tabId: 'tab_SPOTBRENT_M15',
@@ -512,10 +512,13 @@ test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamline
     try {
         state.activeWorkspaceView = 'forecast';
         const fcHeaderHtml = renderTopHeaderBar(sampleTab, mockI18n);
-        assert.ok(fcHeaderHtml.includes('tv-ws-header-pill'), 'Forecast pill must be present in topbar');
         assert.ok(fcHeaderHtml.includes('tv-open-tabs-strip'), 'Symbol tabs strip must be kept in Forecast topbar');
         assert.ok(fcHeaderHtml.includes('data-action="set-timeframe"'), 'Timeframe buttons must be kept in Forecast topbar');
-        assert.equal(fcHeaderHtml.includes('data-action="set-workspace-view"'), false, 'Redundant Back to Chart button must be removed from topbar');
+        assert.ok(fcHeaderHtml.includes('data-action="set-workspace-view"'), 'Unified topbar workspace nav must be present in Forecast view');
+        assert.ok(fcHeaderHtml.includes('data-action="open-active-symbol-overview"'), 'Performance/Overview button must be in topbar');
+        assert.ok(fcHeaderHtml.includes('data-modal="settings"'), 'Settings button must be in topbar');
+        assert.equal(fcHeaderHtml.includes('data-action="export-candles-json"'), false, 'JSON export button must be removed from topbar');
+        assert.ok(fcHeaderHtml.includes('ci-status-dot'), 'Compact blinking status dot must be rendered in topbar');
         assert.equal(fcHeaderHtml.includes('data-action="set-chart-type"'), false, 'Chart type buttons must be omitted in forecast view');
         assert.equal(fcHeaderHtml.includes('data-modal="indicators"'), false, 'Indicators button must be omitted in forecast view');
 
@@ -530,9 +533,25 @@ test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamline
         assert.ok(chartHeaderHtml.includes('tv-open-tabs-strip'));
         assert.ok(chartHeaderHtml.includes('data-action="set-timeframe"'));
         assert.ok(chartHeaderHtml.includes('data-modal="indicators"'));
+        assert.ok(chartHeaderHtml.includes('data-action="set-workspace-view"'));
+        assert.equal(chartHeaderHtml.includes('data-action="export-candles-json"'), false, 'JSON export button must be removed from chart topbar');
     } finally {
         state.activeWorkspaceView = prevWorkspace;
     }
+
+    // 3b. SPOTBRENT daily settlement break (17:00-20:00 NY / 21:00-00:00 UTC in EDT) must not produce false gap warnings
+    const brentPreBreak = Date.parse('2026-08-18T20:30:00Z'); // 16:30 EDT
+    const brentPostBreak = Date.parse('2026-08-19T00:00:00Z'); // 20:00 EDT
+    const brentBars = [
+        { open_time_utc_ms: brentPreBreak, open: 98, high: 98.5, low: 97.8, close: 98.2, volume: 300 },
+        { open_time_utc_ms: brentPreBreak + 15 * 60_000, open: 98.2, high: 98.6, low: 98.0, close: 98.4, volume: 320 },
+        { open_time_utc_ms: brentPostBreak, open: 98.4, high: 98.9, low: 98.1, close: 98.7, volume: 410 },
+        { open_time_utc_ms: brentPostBreak + 15 * 60_000, open: 98.7, high: 99.0, low: 98.5, close: 98.8, volume: 390 },
+    ];
+    const { GapDetector } = await import('../host_subdomain/assets/js/algorithms/gapDetector.js');
+    const brentGapReport = GapDetector.detectGaps(brentBars, 'M15', 'SPOTBRENT');
+    assert.equal(brentGapReport.gaps_found, 0, 'SPOTBRENT 17:00-20:00 NY daily break must not be counted as a gap');
+    assert.equal(brentGapReport.status, 'CLEAN');
 
     // 4. buildForecastForTab memoizes repeated calls with identical inputs and recomputes on timeframe change
     const mon1330 = Date.parse('2026-07-13T13:30:00Z');

@@ -133,6 +133,20 @@ class Phase2AlgorithmsTest {
         assertEquals(3, gapReport.totalMissingBars)
         assertEquals("DEGRADED", gapReport.status)
         assertTrue(gapReport.integrityRatio < 1.0)
+
+        // SPOTBRENT daily settlement break (17:00–20:00 NY = 21:00–00:00 UTC in EDT) must produce 0 false gaps
+        val brentPreBreak = Instant.parse("2026-08-18T20:30:00Z").toEpochMilli()
+        val brentPostBreak = Instant.parse("2026-08-19T00:00:00Z").toEpochMilli()
+        val brentBars = listOf(
+            makeBar(brentPreBreak, "M15", 98.0, 98.5, 97.8, 98.2),
+            makeBar(brentPreBreak + m15Step, "M15", 98.2, 98.6, 98.0, 98.4),
+            makeBar(brentPostBreak, "M15", 98.4, 98.9, 98.1, 98.7),
+            makeBar(brentPostBreak + m15Step, "M15", 98.7, 99.0, 98.5, 98.8)
+        )
+        val brentReport = GapDetectorAlgorithm.detectGaps(brentBars, "M15", "SPOTBRENT")
+        assertEquals("CLEAN", brentReport.status)
+        assertEquals(0, brentReport.gapCount)
+        assertEquals(0, brentReport.totalMissingBars)
     }
 
     @Test

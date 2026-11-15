@@ -261,7 +261,8 @@ final class UtcTimeAnchor
 
     public static function isOtcWeekendClosed(int $epochMs, string $symbolCode = 'XAUUSD'): bool
     {
-        $cal = self::getSessionCalendar($symbolCode);
+        $code = strtoupper(trim($symbolCode));
+        $cal = self::getSessionCalendar($code);
         if ($cal === self::CALENDAR_CRYPTO_24_7) {
             return false;
         }
@@ -269,6 +270,14 @@ final class UtcTimeAnchor
         if ($cal === self::CALENDAR_US_EQUITIES) {
             return !self::isUsEquitySessionOpen($sec);
         }
+        $isBrent = ($code === 'SPOTBRENT' || $code === 'BRENT_FUTURES');
+        $isCmeRollover = (
+            $code === 'USOIL'
+            || $code === 'XAUUSD'
+            || $code === 'XAGUSD'
+            || str_starts_with($code, 'XAU')
+            || str_starts_with($code, 'XAG')
+        );
         try {
             $nyTz = new \DateTimeZone('America/New_York');
             $dtNy = (new \DateTimeImmutable('@' . $sec))->setTimezone($nyTz);
@@ -278,10 +287,16 @@ final class UtcTimeAnchor
                 return true;
             }
             if ($dowNy === 7) {
-                return $hourNy < 17;
+                return $hourNy < ($isBrent ? 18 : 17);
             }
             if ($dowNy === 5) {
                 return $hourNy >= 17;
+            }
+            if ($isBrent && $hourNy >= 17 && $hourNy < 20) {
+                return true;
+            }
+            if ($isCmeRollover && $hourNy === 17) {
+                return true;
             }
             return false;
         } catch (\Throwable) {
@@ -291,7 +306,7 @@ final class UtcTimeAnchor
                 return true;
             }
             if ($dow === 7) {
-                return $hour < 22;
+                return $hour < ($isBrent ? 23 : 22);
             }
             if ($dow === 5) {
                 return $hour >= 22;

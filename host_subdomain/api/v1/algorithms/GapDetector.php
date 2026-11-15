@@ -100,7 +100,10 @@ final class GapDetector
                 $expectedMissing = max(1, (int) round($rawSteps * $ratio));
             }
 
-            if ($expectedMissing > 0) {
+            $cal = UtcTimeAnchor::getSessionCalendar($symbolCode);
+            $threshold = (($tf === 'D1' || $tf === 'W1') && $cal !== UtcTimeAnchor::CALENDAR_CRYPTO_24_7) ? 2 : 1;
+
+            if ($expectedMissing >= $threshold) {
                 $missingTotal += $expectedMissing;
                 $gapStart = $prevMs + $stepMs;
                 $gapEnd = $curMs - $stepMs;

@@ -69,34 +69,48 @@ export function renderTopHeaderBar(activeTab, i18n) {
   const errNote = sym && sym.syncErrorMessage ? ` · ${sym.syncErrorMessage}` : '';
 
   let statusDotColor = 'var(--text-muted)';
+  let statusDotClass = 'ci-status-dot ci-status-closed';
   let statusText = i18n.t('status_never_synced');
   if (sym && sym.isSyncing) {
     statusDotColor = 'var(--gold)';
+    statusDotClass = 'ci-status-dot ci-status-syncing';
     statusText = i18n.t('chart_status_syncing');
   } else if (sym && sym.providerStatus === 'API_KEY_REQUIRED') {
     statusDotColor = 'var(--gold)';
+    statusDotClass = 'ci-status-dot ci-status-syncing';
     statusText = isFa ? 'نیاز به کلید API' : 'API Key Needed';
   } else if (connStatus === 'ERROR' || (sym && sym.syncError && connStatus !== 'STALE')) {
     statusDotColor = 'var(--bear)';
+    statusDotClass = 'ci-status-dot ci-status-closed';
     statusText = i18n.t('chart_status_error');
   } else if (connStatus === 'STALE') {
     statusDotColor = 'var(--gold)';
+    statusDotClass = 'ci-status-dot ci-status-syncing';
     statusText = i18n.t('chart_status_stale') || i18n.t('chart_status_cached');
   } else if (connStatus === 'CLOSED' || (sym && !PriceFormatter.isMarketOpen(Date.now(), sym.symbolCode) && lastCloseMs > 0)) {
-    statusDotColor = 'var(--text-muted)';
+    statusDotColor = 'var(--bear)';
+    statusDotClass = 'ci-status-dot ci-status-closed';
     statusText = i18n.t('chart_status_market_closed');
   } else if (connStatus === 'CACHED') {
     statusDotColor = 'var(--gold)';
+    statusDotClass = 'ci-status-dot ci-status-syncing';
     statusText = i18n.t('chart_status_cached');
   } else if (connStatus === 'LIVE' && PriceFormatter.isMarketOpen(Date.now(), sym ? sym.symbolCode : 'XAUUSD')) {
     statusDotColor = 'var(--bull)';
+    statusDotClass = 'ci-status-dot ci-status-live';
     statusText = i18n.t('chart_status_live');
   }
 
   const statusTooltip = escapeHtml(
-    `${sym ? sym.activeProvider : ''} · ${connStatus} · Fetch: ${fetchTimeStr} · BarClose: ${closeTimeStr}${errNote}`
+    `${statusText} · ${sym ? sym.activeProvider : ''} · ${connStatus} · Fetch: ${fetchTimeStr} · BarClose: ${closeTimeStr}${errNote}`
   );
   const indicatorsLabel = isFa ? 'اندیکاتورها' : 'Indicators';
+  const chartNavLabel = isFa ? 'چارت' : 'Chart';
+  const forecastNavLabel = isFa ? 'پیش‌بینی' : 'Forecast';
+  const performanceNavLabel = isFa ? 'عملکرد' : 'Performance';
+  const watchlistNavLabel = isFa ? 'واچ‌لیست' : 'Watchlist';
+  const settingsNavLabel = isFa ? 'تنظیمات' : 'Settings';
+
   const activeCode = sym ? sym.symbolCode : 'SPOTBRENT';
   const openTabsList =
     Array.isArray(state.openTabs) && state.openTabs.length > 0
@@ -139,6 +153,67 @@ export function renderTopHeaderBar(activeTab, i18n) {
     .join('');
 
   const isForecastView = state.activeWorkspaceView === 'forecast';
+  const isSettingsActive = state.activeModal === 'settings';
+  const isOverviewActive = !isSettingsActive && Boolean(state.symbolOverviewCode);
+  const isWatchlistActive =
+    !isSettingsActive &&
+    !isOverviewActive &&
+    !isForecastView &&
+    Boolean(state.isSideDrawerOpen);
+
+  const topWorkspaceNavHtml = `
+        <div class="tv-toolbar-group tv-top-nav-group" role="navigation" aria-label="Workspace Navigation">
+          <button
+            type="button"
+            class="tv-tool-btn ${!isForecastView && !isOverviewActive && !isSettingsActive ? 'active' : ''}"
+            data-action="set-workspace-view"
+            data-view="chart"
+            title="${chartNavLabel}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4v16"/><rect x="6" y="8" width="6" height="8" rx="1"/><path d="M17 3v18"/><rect x="14" y="7" width="6" height="9" rx="1"/></svg>
+            <span>${chartNavLabel}</span>
+          </button>
+          <button
+            type="button"
+            class="tv-tool-btn ${isForecastView ? 'active' : ''}"
+            data-action="set-workspace-view"
+            data-view="forecast"
+            title="${i18n.t('nav_forecast_lab') || forecastNavLabel}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
+            <span>${forecastNavLabel}</span>
+          </button>
+          <button
+            type="button"
+            class="tv-tool-btn ${isOverviewActive ? 'active' : ''}"
+            data-action="open-active-symbol-overview"
+            title="${i18n.t('symbol_overview_seasonals') || performanceNavLabel}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M18 20V10"/><path d="M12 20V4"/><path d="M6 20v-6"/></svg>
+            <span>${performanceNavLabel}</span>
+          </button>
+          <button
+            type="button"
+            class="tv-tool-btn ${isWatchlistActive ? 'active' : ''}"
+            data-action="toggle-right-panel"
+            title="${i18n.t('nav_watchlist') || watchlistNavLabel}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="15" y1="3" x2="15" y2="21"/><line x1="7" y1="8" x2="12" y2="8"/><line x1="7" y1="12" x2="12" y2="12"/><line x1="7" y1="16" x2="12" y2="16"/></svg>
+            <span>${watchlistNavLabel}</span>
+          </button>
+          <button
+            type="button"
+            class="tv-tool-btn ${isSettingsActive ? 'active' : ''}"
+            data-action="open-modal"
+            data-modal="settings"
+            title="${i18n.t('nav_settings') || settingsNavLabel}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+            <span>${settingsNavLabel}</span>
+          </button>
+        </div>
+  `;
+
   const leftControlsHtml = isForecastView
     ? `
         <div class="tv-brand">
@@ -167,7 +242,9 @@ export function renderTopHeaderBar(activeTab, i18n) {
 
         <div class="tv-divider"></div>
 
-        <span class="tv-ws-header-pill">${isFa ? 'آزمایشگاه پیش‌بینی و سناریو' : 'Forecast Studio'}</span>
+        ${topWorkspaceNavHtml}
+
+        <span class="tv-ws-header-pill" style="display: none;">${isFa ? 'آزمایشگاه پیش‌بینی و سناریو' : 'Forecast Studio'}</span>
       `
     : `
         <div class="tv-brand">
@@ -223,6 +300,10 @@ export function renderTopHeaderBar(activeTab, i18n) {
               : ''
           }
         </button>
+
+        <div class="tv-divider"></div>
+
+        ${topWorkspaceNavHtml}
       `;
 
   return `
@@ -259,20 +340,15 @@ export function renderTopHeaderBar(activeTab, i18n) {
         }
 
         <span
-          class="ltr-num"
+          class="tv-status-dot-wrap ltr-num"
           title="${statusTooltip}"
-          style="display: inline-flex; align-items: center; gap: 5px; padding: 0 6px; font-size: 11px; color: ${statusDotColor}; font-weight: 600;"
+          aria-label="${statusTooltip}"
         >
-          <span style="width: 7px; height: 7px; border-radius: 50%; background: ${statusDotColor}; display: inline-block;"></span>
-          <span>${escapeHtml(statusText)}</span>
+          <span class="${statusDotClass}" style="--status-color: ${statusDotColor};"></span>
         </span>
 
         <button class="tv-tool-btn ltr-num" data-action="export-candles-csv" title="${i18n.t('action_export_csv') || 'Export CSV'}">
           CSV
-        </button>
-
-        <button class="tv-tool-btn ltr-num" data-action="export-candles-json" title="${i18n.t('action_export_json') || 'Export JSON'}">
-          JSON
         </button>
 
         <button class="tv-tool-btn" data-action="take-chart-snapshot" title="${i18n.t('action_take_snapshot')}">

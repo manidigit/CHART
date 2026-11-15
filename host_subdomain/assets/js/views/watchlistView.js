@@ -1436,7 +1436,6 @@ export function renderSymbolOverviewModal(i18n) {
             </div>
             <div style="display: flex; align-items: center; gap: 4px;">
               <button class="btn btn-sm ltr-num" data-action="export-candles-csv" data-symbol="${sym.symbolCode}" title="Export CSV">CSV</button>
-              <button class="btn btn-sm ltr-num" data-action="export-candles-json" data-symbol="${sym.symbolCode}" title="Export JSON">JSON</button>
               <button class="btn btn-sm btn-primary" data-action="open-chart" data-symbol="${sym.symbolCode}" title="${i18n.t('action_open_chart_view')}">
                 <span>⛶ ${i18n.t('action_open_chart_view')}</span>
               </button>

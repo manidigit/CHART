@@ -56,6 +56,7 @@ import {
   appendForecastLifecycleEventOnServer,
 } from './services/apiService.js?v=1.43.0';
 import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.43.0';
+import { GapDetector } from './algorithms/gapDetector.js?v=1.43.0';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.43.0';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.43.0';
 import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.43.0';
@@ -450,7 +451,14 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showCmf20, pal.cmf20, 'CMF 20', 'toggle-cmf20');
   pushPill(activeTab.showRoc12, pal.roc12, 'ROC 12', 'toggle-roc12');
 
-  const gapInfo = activeTab.gapSummary || (sym && sym.gapSummary) || null;
+  const gapInfo =
+    activeTab.candles && activeTab.candles.length >= 2
+      ? GapDetector.detectGaps(activeTab.candles, activeTab.timeframe, activeTab.symbolCode)
+      : activeTab.gapSummary || (sym && sym.gapSummary) || null;
+  activeTab.gapSummary = gapInfo;
+  if (sym && sym.timeframe === activeTab.timeframe) {
+    sym.gapSummary = gapInfo;
+  }
   const gapCount = gapInfo ? Number(gapInfo.gaps_found ?? gapInfo.gap_count ?? 0) : 0;
   if (gapCount > 0) {
     indPills.push(
@@ -659,8 +667,6 @@ export function renderApp() {
                 </main>
                 ${renderRightSplitPanel(activeTab, i18n)}`
           }
-
-          ${renderRightIconRail(i18n)}
         </div>
 
         ${renderSettingsModal(i18n)}
@@ -2233,7 +2239,13 @@ document.addEventListener('click', async (e) => {
     const targetView = el.getAttribute('data-view') === 'forecast' ? 'forecast' : 'chart';
     state.activeWorkspaceView = targetView;
     state.activeModal = null;
+    state.symbolOverviewCode = null;
     renderApp();
+    if (targetView === 'forecast' && activeTab) {
+      fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe).then(() => renderApp()).catch(() => {});
+    } else {
+      redrawActiveCanvas();
+    }
   } else if (action === 'toggle-forecast-studio') {
     state.activeWorkspaceView = state.activeWorkspaceView === 'forecast' ? 'chart' : 'forecast';
     state.activeModal = null;

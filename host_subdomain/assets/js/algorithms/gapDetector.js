@@ -62,7 +62,10 @@ export const GapDetector = {
         expectedMissing = Math.max(1, Math.round(rawSteps * ratio));
       }
 
-      if (expectedMissing > 0) {
+      const cal = PriceFormatter.getSessionCalendar(symbolCode);
+      const threshold = (tf === 'D1' || tf === 'W1') && cal !== 'CRYPTO_24_7' ? 2 : 1;
+
+      if (expectedMissing >= threshold) {
         missingTotal += expectedMissing;
         const gapStart = prevMs + stepMs;
         const gapEnd = curMs - stepMs;

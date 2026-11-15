@@ -440,16 +440,24 @@ object UtcTimeAnchorAlgorithm {
      * - OTC_FX_METALS: closed Friday >= 17:00 America/New_York, Saturday all day, Sunday < 17:00 America/New_York (DST-aware)
      */
     fun isOtcWeekendClosed(epochMillis: Long, symbolCode: String = "XAUUSD"): Boolean {
-        return when (getSessionCalendar(symbolCode)) {
+        val code = symbolCode.trim().uppercase()
+        return when (getSessionCalendar(code)) {
             SessionCalendar.CRYPTO_24_7 -> false
             SessionCalendar.US_EQUITIES -> !isUsEquitySessionOpen(epochMillis)
             SessionCalendar.OTC_FX_METALS -> {
+                val isBrent = code == "SPOTBRENT" || code == "BRENT_FUTURES"
+                val isCmeRollover = code == "USOIL" || code == "XAUUSD" || code == "XAGUSD" ||
+                    code.startsWith("XAU") || code.startsWith("XAG")
                 val nyZdt = ZonedDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), nyZone)
                 when (nyZdt.dayOfWeek) {
                     DayOfWeek.SATURDAY -> true
-                    DayOfWeek.SUNDAY -> nyZdt.hour < 17
+                    DayOfWeek.SUNDAY -> nyZdt.hour < if (isBrent) 18 else 17
                     DayOfWeek.FRIDAY -> nyZdt.hour >= 17
-                    else -> false
+                    else -> when {
+                        isBrent && nyZdt.hour in 17..19 -> true
+                        isCmeRollover && nyZdt.hour == 17 -> true
+                        else -> false
+                    }
                 }
             }
         }

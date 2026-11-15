@@ -487,7 +487,8 @@ export const PriceFormatter = {
   },
 
   isMarketOpen(epochMs = Date.now(), symbolCode = 'XAUUSD') {
-    const cal = this.getSessionCalendar(symbolCode);
+    const code = String(symbolCode || 'XAUUSD').trim().toUpperCase();
+    const cal = this.getSessionCalendar(code);
     if (cal === 'CRYPTO_24_7') return true;
     const ny = this._getNewYorkParts(epochMs);
     if (cal === 'US_EQUITIES') {
@@ -495,9 +496,18 @@ export const PriceFormatter = {
       const mins = ny.hour * 60 + ny.minute;
       return mins >= 9 * 60 + 30 && mins < 16 * 60;
     }
+    const isBrent = code === 'SPOTBRENT' || code === 'BRENT_FUTURES';
+    const isCmeRollover =
+      code === 'USOIL' ||
+      code === 'XAUUSD' ||
+      code === 'XAGUSD' ||
+      code.startsWith('XAU') ||
+      code.startsWith('XAG');
     if (ny.weekday === 'Sat') return false;
-    if (ny.weekday === 'Sun') return ny.hour >= 17;
     if (ny.weekday === 'Fri') return ny.hour < 17;
+    if (ny.weekday === 'Sun') return ny.hour >= (isBrent ? 18 : 17);
+    if (isBrent && ny.hour >= 17 && ny.hour < 20) return false;
+    if (isCmeRollover && ny.hour === 17) return false;
     return true;
   },
 
