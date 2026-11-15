@@ -15,7 +15,7 @@
 | **02 — Architecture & Design** | [ARCHITECTURE.md](./02-architecture/ARCHITECTURE.md) | Single unified system architecture: Android (Kotlin/Compose) + Web (Vanilla ES6) + PHP REST API + MariaDB, 7 data providers, 22 canonical symbols, Workspace JSON sync contract, DB-First Delta Sync, BYOK isolation |
 | | [DESIGN_WORKSPACE_SPEC.md](./02-architecture/DESIGN_WORKSPACE_SPEC.md) | TradingView Pro desktop & mobile workspace layout, 5-layer chart hierarchy, Z-index stacking, gesture precedence, responsive tokens (`#131722` / `#26A69A` / `#EF5350`), and chart attribution policy |
 | | [INFRASTRUCTURE_INVENTORY.md](./02-architecture/INFRASTRUCTURE_INVENTORY.md) | Verified cPanel shared hosting inventory (`chart.manico.es`, `MariaDB 10.6.28`, `Apache 2.4.69`), 8 GitHub Secrets registry, backup risk (`jetbackup5d: down`), and Section 5 verification gates |
-| | [SECURITY.md](./02-architecture/SECURITY.md) | Security policy, secret isolation, prepared PDO statements, personal authentication, and responsible disclosure |
+| | [SECURITY.md](./02-architecture/SECURITY.md) | Security policy, secret isolation, prepared PDO statements, personal authentication, and responsible disclosure |\n| | [FORECASTING_ALGORITHM_REFERENCE.md](./02-architecture/FORECASTING_ALGORITHM_REFERENCE.md) | Curated review of upstream ARIMA, Prophet, LSTM, Monte Carlo Dropout, and TFT experiments; evaluation leakage, interval-calibration requirements, and CHART integration boundaries |
 | **03 — Roadmap & Issues** | [OPEN_ISSUES.md](./03-roadmap-and-issues/OPEN_ISSUES.md) | **Active Backlog & Verification Tracker**: Only genuinely unresolved bugs/partial implementations verified in code, unverified server checks, and pre-Phase 4 open design questions |
 | | [ROADMAP_BACKLOG.md](./03-roadmap-and-issues/ROADMAP_BACKLOG.md) | **Truthful Feature Status**: Verified Shipped Core (Phase 1 + Phase 2 Core) vs Remaining Phase 2 Backlog (drawing tools, indicators, live external feeds) vs Phases 3–6 |
 | **04 — Development & Ops** | [PROJECT_GUIDE.md](./04-development/PROJECT_GUIDE.md) | Comprehensive developer guide, truthful Code-vs-Spec verification matrix, file layout, secrets mapping, and CI/CD pipeline (`build-apk.yml`) |
@@ -31,9 +31,9 @@
    Read [`OPEN_ISSUES.md`](./03-roadmap-and-issues/OPEN_ISSUES.md) and [`ROADMAP_BACKLOG.md`](./03-roadmap-and-issues/ROADMAP_BACKLOG.md) first, then follow [`AGENTS.md`](./04-development/AGENTS.md) and [`ARCHITECTURE.md`](./02-architecture/ARCHITECTURE.md).
 2. **Checking Product Rules, Formulas, or Prediction Contracts:**  
    Read [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./01-product/CHART_INTELLIGENCE_MASTER_SPEC.md).
-3. **Working on UI Layout or Mobile/Web Ergonomics:**  
+4. **Working on UI Layout or Mobile/Web Ergonomics:**  
    Read [`DESIGN_WORKSPACE_SPEC.md`](./02-architecture/DESIGN_WORKSPACE_SPEC.md) + Section 1 of [`AGENTS.md`](./04-development/AGENTS.md).
-4. **Deploying, Debugging cPanel, or Touching Workflows:**  
+5. **Deploying, Debugging cPanel, or Touching Workflows:**  
    Read [`INFRASTRUCTURE_INVENTORY.md`](./02-architecture/INFRASTRUCTURE_INVENTORY.md) + [`SECURITY.md`](./02-architecture/SECURITY.md) + [`PROJECT_GUIDE.md`](./04-development/PROJECT_GUIDE.md).
 
 ---
