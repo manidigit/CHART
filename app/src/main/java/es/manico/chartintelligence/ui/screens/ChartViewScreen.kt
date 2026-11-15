@@ -1018,6 +1018,13 @@ fun ChartViewScreen(
                                         }
                                     }
 
+                                    data class SubComponentColorSpec(
+                                        val colorKey: String,
+                                        val title: String,
+                                        val color: Color,
+                                        val badge: String = "──"
+                                    )
+
                                     data class StudyRowSpec(
                                         val colorKey: String,
                                         val title: String,
@@ -1026,7 +1033,8 @@ fun ChartViewScreen(
                                         val checked: Boolean,
                                         val onToggle: () -> Unit,
                                         val testTag: String,
-                                        val badge: String = "──"
+                                        val badge: String = "──",
+                                        val subColors: List<SubComponentColorSpec> = emptyList()
                                     )
 
                                     data class IndicatorFamilySection(
@@ -1101,7 +1109,22 @@ fun ChartViewScreen(
                                             specs = listOf(
                                                 StudyRowSpec("supertrend", "Supertrend (10, 3)", "ATR Dynamic Trend Ribbon", preferences.supertrendColor, activeTab.showSupertrend, onToggleSupertrend, "chart_supertrend_toggle_button", "▲▼"),
                                                 StudyRowSpec("psar", "Parabolic SAR (0.02, 0.20)", "Trailing Acceleration Stop & Reverse Dots", preferences.psarColor, activeTab.showPsar, onTogglePsar, "chart_psar_toggle_button", "•••"),
-                                                StudyRowSpec("ichimoku", "Ichimoku Cloud (9,26,52)", "Tenkan, Kijun, Kumo Cloud & Chikou", preferences.ichimokuColor, activeTab.showIchimoku, onToggleIchimoku, "chart_ichimoku_toggle_button", "☁"),
+                                                StudyRowSpec(
+                                                    colorKey = "ichimoku",
+                                                    title = "Ichimoku Cloud (9,26,52)",
+                                                    subtitle = "Tenkan, Kijun, Kumo Cloud & Chikou",
+                                                    color = preferences.ichimokuColor,
+                                                    checked = activeTab.showIchimoku,
+                                                    onToggle = onToggleIchimoku,
+                                                    testTag = "chart_ichimoku_toggle_button",
+                                                    badge = "☁",
+                                                    subColors = listOf(
+                                                        SubComponentColorSpec("ichimokuTenkan", "Tenkan-sen", preferences.ichimokuTenkanColor, "TS"),
+                                                        SubComponentColorSpec("ichimokuKijun", "Kijun-sen", preferences.ichimokuKijunColor, "KS"),
+                                                        SubComponentColorSpec("ichimokuCloud", "Kumo Cloud", preferences.ichimokuCloudColor, "☁"),
+                                                        SubComponentColorSpec("ichimokuChikou", "Chikou Span", preferences.ichimokuChikouColor, "CS")
+                                                    )
+                                                ),
                                                 StudyRowSpec("overlayMacd", "MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", preferences.overlayMacdColor, activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button", "ılı"),
                                                 StudyRowSpec("futureProjection", "Future Candlesticks (30 Bars)", "30-Period Future Projection (h≥10)", preferences.futureProjectionColor, activeTab.showFutureProjection, onToggleFutureProjection, "chart_future_projection_toggle_button", "🔮")
                                             )
@@ -1115,8 +1138,38 @@ fun ChartViewScreen(
                                             activeColor = preferences.smcStructureColor,
                                             paletteOpts = listOf("#EC4899", "#F43F5E", "#D946EF", "#A855F7", "#14B8A6", "#38BDF8", "#F59E0B", "#22C55E"),
                                             specs = listOf(
-                                                StudyRowSpec("smcStructure", "BOS / CHoCH & EQH / EQL", "Break of Structure, Change of Character & Equal Highs/Lows", preferences.smcStructureColor, activeTab.showSmcStructure, onToggleSmcStructure, "chart_smc_toggle_button", "BOS"),
-                                                StudyRowSpec("fvg", "FVG / Imbalance Zones", "3-Candle Bullish & Bearish Fair Value Gaps", preferences.fvgColor, activeTab.showFvg, onToggleFvg, "chart_fvg_toggle_button", "▭"),
+                                                StudyRowSpec(
+                                                    colorKey = "smcStructure",
+                                                    title = "BOS / CHoCH & EQH / EQL",
+                                                    subtitle = "Break of Structure, Change of Character & Equal Highs/Lows",
+                                                    color = preferences.smcStructureColor,
+                                                    checked = activeTab.showSmcStructure,
+                                                    onToggle = onToggleSmcStructure,
+                                                    testTag = "chart_smc_toggle_button",
+                                                    badge = "BOS",
+                                                    subColors = listOf(
+                                                        SubComponentColorSpec("smcBullBos", "Bull BOS", preferences.smcBullBosColor, "BOS↑"),
+                                                        SubComponentColorSpec("smcBearBos", "Bear BOS", preferences.smcBearBosColor, "BOS↓"),
+                                                        SubComponentColorSpec("smcBullChoch", "Bull CHoCH", preferences.smcBullChochColor, "CH↑"),
+                                                        SubComponentColorSpec("smcBearChoch", "Bear CHoCH", preferences.smcBearChochColor, "CH↓"),
+                                                        SubComponentColorSpec("smcEqh", "EQH", preferences.smcEqhColor, "EQH"),
+                                                        SubComponentColorSpec("smcEql", "EQL", preferences.smcEqlColor, "EQL")
+                                                    )
+                                                ),
+                                                StudyRowSpec(
+                                                    colorKey = "fvg",
+                                                    title = "FVG / Imbalance Zones",
+                                                    subtitle = "3-Candle Bullish & Bearish Fair Value Gaps",
+                                                    color = preferences.fvgColor,
+                                                    checked = activeTab.showFvg,
+                                                    onToggle = onToggleFvg,
+                                                    testTag = "chart_fvg_toggle_button",
+                                                    badge = "▭",
+                                                    subColors = listOf(
+                                                        SubComponentColorSpec("fvgBull", "Bullish FVG", preferences.fvgBullColor, "FVG+"),
+                                                        SubComponentColorSpec("fvgBear", "Bearish FVG", preferences.fvgBearColor, "FVG-")
+                                                    )
+                                                ),
                                                 StudyRowSpec("killzones", "Session Killzones (UTC)", "Asia / London / NY & Overlap Highlights", preferences.killzonesColor, activeTab.showKillzones, onToggleKillzones, "chart_killzones_toggle_button", "🕒")
                                             )
                                         )
@@ -1275,6 +1328,56 @@ fun ChartViewScreen(
                                                         )
                                                     }
 
+                                                    // Sub-component color chips row if indicator has sub-components
+                                                    if (spec.subColors.isNotEmpty()) {
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .horizontalScroll(rememberScrollState())
+                                                                .padding(start = 8.dp, bottom = 4.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text(
+                                                                text = "اجزاء:",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontSize = 11.sp,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                            for (sub in spec.subColors) {
+                                                                val isSubActive = activeColorPickerKey == sub.colorKey
+                                                                Row(
+                                                                    modifier = Modifier
+                                                                        .clip(RoundedCornerShape(6.dp))
+                                                                        .background(if (isSubActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
+                                                                        .border(1.dp, if (isSubActive) MaterialTheme.colorScheme.primary else palette.cardBorder, RoundedCornerShape(6.dp))
+                                                                        .clickable {
+                                                                            activeColorPickerKey = if (activeColorPickerKey == sub.colorKey) null else sub.colorKey
+                                                                        }
+                                                                        .padding(horizontal = 7.dp, vertical = 4.dp)
+                                                                        .testTag("ind_color_badge_${sub.colorKey}"),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                                ) {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(8.dp)
+                                                                            .clip(CircleShape)
+                                                                            .background(sub.color)
+                                                                    )
+                                                                    Text(
+                                                                        text = sub.title,
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        fontSize = 10.sp,
+                                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                                        fontWeight = if (isSubActive) FontWeight.Bold else FontWeight.Normal,
+                                                                        color = MaterialTheme.colorScheme.onSurface
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
                                                     // Per-indicator expandable color palette
                                                     if (activeColorPickerKey == spec.colorKey) {
                                                         Row(
@@ -1311,6 +1414,48 @@ fun ChartViewScreen(
                                                                         }
                                                                         .testTag("ind_custom_color_${spec.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
                                                                 )
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Sub-component expandable color palette
+                                                    for (sub in spec.subColors) {
+                                                        if (activeColorPickerKey == sub.colorKey) {
+                                                            Row(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(MaterialTheme.colorScheme.background)
+                                                                    .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                                                    .horizontalScroll(rememberScrollState())
+                                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Text(
+                                                                    text = "رنگ ${sub.title}:",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                                for (hexOpt in universalPaletteOpts) {
+                                                                    val swColor = try {
+                                                                        Color(android.graphics.Color.parseColor(hexOpt))
+                                                                    } catch (_: Exception) {
+                                                                        sub.color
+                                                                    }
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(22.dp)
+                                                                            .clip(CircleShape)
+                                                                            .background(swColor)
+                                                                            .border(1.dp, palette.cardBorder, CircleShape)
+                                                                            .clickable {
+                                                                                onUpdateIndicatorFamilyColor(sub.colorKey, hexOpt)
+                                                                            }
+                                                                            .testTag("ind_custom_color_${sub.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
+                                                                    )
+                                                                }
                                                             }
                                                         }
                                                     }
@@ -1548,10 +1693,52 @@ fun ChartViewScreen(
 
                                             val oscSpecs = listOf(
                                                 StudyRowSpec("rsi14", "RSI 14", "Relative Strength Index (30 / 70 Levels)", preferences.rsi14Color, activeTab.showRsi14, onToggleRsi14, "chart_rsi14_toggle_button", "RSI"),
-                                                StudyRowSpec("macd", "MACD (12, 26, 9)", "Momentum Histogram + MACD / Signal", preferences.macdColor, activeTab.showMacd, onToggleMacd, "chart_macd_toggle_button", "MACD"),
+                                                StudyRowSpec(
+                                                    colorKey = "macd",
+                                                    title = "MACD (12, 26, 9)",
+                                                    subtitle = "Momentum Histogram + MACD / Signal",
+                                                    color = preferences.macdColor,
+                                                    checked = activeTab.showMacd,
+                                                    onToggle = onToggleMacd,
+                                                    testTag = "chart_macd_toggle_button",
+                                                    badge = "MACD",
+                                                    subColors = listOf(
+                                                        SubComponentColorSpec("macdLine", "MACD Line", preferences.macdLineColor, "MACD"),
+                                                        SubComponentColorSpec("macdSignal", "Signal Line", preferences.macdSignalColor, "SIG"),
+                                                        SubComponentColorSpec("macdHistBull", "Hist Bull", preferences.macdHistBullColor, "H+"),
+                                                        SubComponentColorSpec("macdHistBear", "Hist Bear", preferences.macdHistBearColor, "H-")
+                                                    )
+                                                ),
                                                 StudyRowSpec("atr14", "ATR 14", "Wilder's Average True Range Volatility", preferences.atr14Color, activeTab.showAtr14, onToggleAtr14, "chart_atr14_toggle_button", "ATR"),
-                                                StudyRowSpec("adx14", "ADX / DMI (14)", "Trend Strength & Directional Index (Ref 25)", preferences.adx14Color, activeTab.showAdx14, onToggleAdx14, "chart_adx14_toggle_button", "ADX"),
-                                                StudyRowSpec("stoch14", "Stochastic (14, 3, 3)", "Slow %K / %D Oscillator (20 / 80)", preferences.stoch14Color, activeTab.showStoch14, onToggleStoch14, "chart_stoch14_toggle_button", "%K%D"),
+                                                StudyRowSpec(
+                                                    colorKey = "adx14",
+                                                    title = "ADX / DMI (14)",
+                                                    subtitle = "Trend Strength & Directional Index (Ref 25)",
+                                                    color = preferences.adx14Color,
+                                                    checked = activeTab.showAdx14,
+                                                    onToggle = onToggleAdx14,
+                                                    testTag = "chart_adx14_toggle_button",
+                                                    badge = "ADX",
+                                                    subColors = listOf(
+                                                        SubComponentColorSpec("adxLine", "ADX Trend", preferences.adxLineColor, "ADX"),
+                                                        SubComponentColorSpec("plusDi", "+DI Bullish", preferences.plusDiColor, "+DI"),
+                                                        SubComponentColorSpec("minusDi", "-DI Bearish", preferences.minusDiColor, "-DI")
+                                                    )
+                                                ),
+                                                StudyRowSpec(
+                                                    colorKey = "stoch14",
+                                                    title = "Stochastic (14, 3, 3)",
+                                                    subtitle = "Slow %K / %D Oscillator (20 / 80)",
+                                                    color = preferences.stoch14Color,
+                                                    checked = activeTab.showStoch14,
+                                                    onToggle = onToggleStoch14,
+                                                    testTag = "chart_stoch14_toggle_button",
+                                                    badge = "%K%D",
+                                                    subColors = listOf(
+                                                        SubComponentColorSpec("stochK", "%K Fast", preferences.stochKColor, "%K"),
+                                                        SubComponentColorSpec("stochD", "%D Slow", preferences.stochDColor, "%D")
+                                                    )
+                                                ),
                                                 StudyRowSpec("cci20", "CCI (20)", "Commodity Channel Index (±100 Bands)", preferences.cci20Color, activeTab.showCci20, onToggleCci20, "chart_cci20_toggle_button", "CCI"),
                                                 StudyRowSpec("willr14", "Williams %R (14)", "Momentum Oscillator (-20 / -80)", preferences.willr14Color, activeTab.showWillR14, onToggleWillR14, "chart_willr14_toggle_button", "%R"),
                                                 StudyRowSpec("obv", "OBV", "On-Balance Volume Cumulative Flow", preferences.obvColor, activeTab.showObv, onToggleObv, "chart_obv_toggle_button", "OBV"),
@@ -1628,6 +1815,56 @@ fun ChartViewScreen(
                                                         )
                                                     }
 
+                                                    // Sub-component color chips row if oscillator has sub-components
+                                                    if (spec.subColors.isNotEmpty()) {
+                                                        Row(
+                                                            modifier = Modifier
+                                                                .fillMaxWidth()
+                                                                .horizontalScroll(rememberScrollState())
+                                                                .padding(start = 8.dp, bottom = 4.dp),
+                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                            verticalAlignment = Alignment.CenterVertically
+                                                        ) {
+                                                            Text(
+                                                                text = "اجزاء:",
+                                                                style = MaterialTheme.typography.labelSmall,
+                                                                fontSize = 11.sp,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                            for (sub in spec.subColors) {
+                                                                val isSubActive = activeColorPickerKey == sub.colorKey
+                                                                Row(
+                                                                    modifier = Modifier
+                                                                        .clip(RoundedCornerShape(6.dp))
+                                                                        .background(if (isSubActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
+                                                                        .border(1.dp, if (isSubActive) MaterialTheme.colorScheme.primary else palette.cardBorder, RoundedCornerShape(6.dp))
+                                                                        .clickable {
+                                                                            activeColorPickerKey = if (activeColorPickerKey == sub.colorKey) null else sub.colorKey
+                                                                        }
+                                                                        .padding(horizontal = 7.dp, vertical = 4.dp)
+                                                                        .testTag("ind_color_badge_${sub.colorKey}"),
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                                ) {
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(8.dp)
+                                                                            .clip(CircleShape)
+                                                                            .background(sub.color)
+                                                                    )
+                                                                    Text(
+                                                                        text = sub.title,
+                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                        fontSize = 10.sp,
+                                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                                        fontWeight = if (isSubActive) FontWeight.Bold else FontWeight.Normal,
+                                                                        color = MaterialTheme.colorScheme.onSurface
+                                                                    )
+                                                                }
+                                                            }
+                                                        }
+                                                    }
+
                                                     if (activeColorPickerKey == spec.colorKey) {
                                                         Row(
                                                             modifier = Modifier
@@ -1663,6 +1900,48 @@ fun ChartViewScreen(
                                                                         }
                                                                         .testTag("ind_custom_color_${spec.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
                                                                 )
+                                                            }
+                                                        }
+                                                    }
+
+                                                    // Sub-component expandable color palette
+                                                    for (sub in spec.subColors) {
+                                                        if (activeColorPickerKey == sub.colorKey) {
+                                                            Row(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .clip(RoundedCornerShape(8.dp))
+                                                                    .background(MaterialTheme.colorScheme.background)
+                                                                    .border(1.dp, palette.cardBorder, RoundedCornerShape(8.dp))
+                                                                    .horizontalScroll(rememberScrollState())
+                                                                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                                verticalAlignment = Alignment.CenterVertically
+                                                            ) {
+                                                                Text(
+                                                                    text = "رنگ ${sub.title}:",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.onSurface
+                                                                )
+                                                                for (hexOpt in universalPaletteOpts) {
+                                                                    val swColor = try {
+                                                                        Color(android.graphics.Color.parseColor(hexOpt))
+                                                                    } catch (_: Exception) {
+                                                                        sub.color
+                                                                    }
+                                                                    Box(
+                                                                        modifier = Modifier
+                                                                            .size(22.dp)
+                                                                            .clip(CircleShape)
+                                                                            .background(swColor)
+                                                                            .border(1.dp, palette.cardBorder, CircleShape)
+                                                                            .clickable {
+                                                                                onUpdateIndicatorFamilyColor(sub.colorKey, hexOpt)
+                                                                            }
+                                                                            .testTag("ind_custom_color_${sub.colorKey}_${hexOpt.removePrefix("#").lowercase()}")
+                                                                    )
+                                                                }
                                                             }
                                                         }
                                                     }
