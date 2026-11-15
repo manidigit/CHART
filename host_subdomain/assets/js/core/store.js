@@ -1122,8 +1122,19 @@ export function savePreferences(skipCloudSync = false) {
   if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
+let suspendFocusPullUntilMs = 0;
+
+export function suspendFocusPull(durationMs = 6000) {
+  suspendFocusPullUntilMs = Math.max(suspendFocusPullUntilMs, Date.now() + durationMs);
+}
+
+export function isFocusPullSuspended() {
+  return Date.now() < suspendFocusPullUntilMs;
+}
+
 export function setIndicatorCustomColor(indKey, rawHex, skipCloudSync = false) {
   if (!indKey) return;
+  suspendFocusPull(8000);
   const fallback = DEFAULT_INDICATOR_COLORS[indKey] || '#2962FF';
   const cleanHex = normalizeHexForWeb(rawHex, fallback);
   if (!state.chartPreferences.indicatorCustomColors || typeof state.chartPreferences.indicatorCustomColors !== 'object') {
@@ -1143,6 +1154,7 @@ export function setIndicatorCustomColor(indKey, rawHex, skipCloudSync = false) {
 }
 
 export function resetIndicatorColorsToDefault() {
+  suspendFocusPull(8000);
   state.chartPreferences.indicatorCustomColors = {};
   state.chartPreferences.indMaFamilyColorHex = 'FF2962FF';
   state.chartPreferences.indBandsFamilyColorHex = 'FFA855F7';

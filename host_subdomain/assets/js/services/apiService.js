@@ -638,14 +638,22 @@ export async function downloadWorkspaceSync() {
         if (p.pickerVibrations !== undefined && p.pickerVibrates === undefined) mappedPrefs.pickerVibrates = Boolean(p.pickerVibrations);
         if (p.showPickerScrollMagnifiers !== undefined && p.showScrollMagnifier === undefined) mappedPrefs.showScrollMagnifier = Boolean(p.showPickerScrollMagnifiers);
 
+        const localColorCount = Object.keys(localCustomColors).length;
+        const remoteColorCount = Object.keys(remoteCustomColors).length;
+
         if (isLocalNewer) {
           mappedPrefs.indicatorCustomColors = localCustomColors;
           mappedPrefs.preferencesUpdatedAtMs = localUpdatedAt;
-        } else if (remoteUpdatedAt > 0 && p.indicatorCustomColors && typeof p.indicatorCustomColors === 'object') {
-          mappedPrefs.indicatorCustomColors = remoteCustomColors;
-          mappedPrefs.preferencesUpdatedAtMs = remoteUpdatedAt;
+        } else if (remoteColorCount > 0) {
+          mappedPrefs.indicatorCustomColors = remoteUpdatedAt > localUpdatedAt
+            ? remoteCustomColors
+            : { ...remoteCustomColors, ...localCustomColors };
+          mappedPrefs.preferencesUpdatedAtMs = Math.max(localUpdatedAt, remoteUpdatedAt);
+        } else if (localColorCount > 0) {
+          mappedPrefs.indicatorCustomColors = localCustomColors;
+          mappedPrefs.preferencesUpdatedAtMs = Math.max(localUpdatedAt, remoteUpdatedAt);
         } else {
-          mappedPrefs.indicatorCustomColors = { ...localCustomColors, ...remoteCustomColors };
+          mappedPrefs.indicatorCustomColors = {};
           mappedPrefs.preferencesUpdatedAtMs = Math.max(localUpdatedAt, remoteUpdatedAt);
         }
 

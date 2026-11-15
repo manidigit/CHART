@@ -27,6 +27,7 @@ import {
   setIndicatorCustomColor,
   resetIndicatorColorsToDefault,
   isProviderEnabled,
+  isFocusPullSuspended,
 } from './core/store.js?v=1.42.0';
 import {
   syncServerAuthStatus,
@@ -3161,6 +3162,7 @@ let lastFocusWorkspacePullMs = 0;
 
 async function pullWorkspaceOnFocusIfNeeded() {
   if (!state.isAuthenticated || state.isWorkspaceSyncing) return;
+  if (state.activeModal === 'indicators' || isFocusPullSuspended()) return;
   const nowMs = Date.now();
   if (nowMs - lastFocusWorkspacePullMs < 4000) return;
   lastFocusWorkspacePullMs = nowMs;
