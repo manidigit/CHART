@@ -624,7 +624,7 @@ fun SettingsScreen(
                 // GROUP 4: Watchlist & Symbols — Dual-Mode Source & Symbol Explorer (v1.31.0)
                 // =========================================================================
                 if (activeSettingsTab == "watchlist") {
-                var explorerMode by rememberSaveable { mutableStateOf("by_source") }
+                var explorerMode by rememberSaveable { mutableStateOf("by_symbol") }
                 var selectedExplorerProvider by rememberSaveable { mutableStateOf(ProviderId.TVDATAFEED) }
                 var selectedMarketCategory by rememberSaveable { mutableStateOf("ALL") }
                 var isFormulaExpanded by rememberSaveable { mutableStateOf(false) }
@@ -1242,39 +1242,13 @@ fun SettingsScreen(
                                                         )
                                                     }
                                                 }
-                                            }
-                                        }
-
-                                        FlowRow(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            for (prov in symbol.allowedProviders) {
-                                                val isProvEnabled = prov.isEnabled
-                                                val isActive = isProvEnabled && symbol.activeProvider == prov
-                                                FilterChip(
-                                                    selected = isActive,
-                                                    enabled = isProvEnabled,
-                                                    onClick = {
-                                                        if (isProvEnabled) {
-                                                            onSelectProviderForSymbol(symbol.symbolCode, prov)
-                                                        }
-                                                    },
-                                                    label = {
-                                                        Text(
-                                                            text = if (isProvEnabled) prov.badgeLabel else "🔒 ${prov.badgeLabel}",
-                                                            style = MaterialTheme.typography.labelSmall,
-                                                            fontFamily = JetBrainsMonoFontFamily
-                                                        )
-                                                    }
-                                                )
-                                            }
                                         }
                                     }
                                 }
                             }
                         }
                     }
+                }
                 }
                 }
 

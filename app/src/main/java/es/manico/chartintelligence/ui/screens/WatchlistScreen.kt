@@ -147,6 +147,7 @@ fun WatchlistScreen(
     var showAddSymbolSheet by rememberSaveable { mutableStateOf(false) }
     var customCode by rememberSaveable { mutableStateOf("") }
     var customName by rememberSaveable { mutableStateOf("") }
+    val isFa = currentLanguage == es.manico.chartintelligence.i18n.AppLanguage.FA
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedCategory by rememberSaveable { mutableStateOf("ALL") }
     var overviewSymbolCode by rememberSaveable { mutableStateOf<String?>(null) }
@@ -484,16 +485,15 @@ fun WatchlistScreen(
                                                         .background(financialPalette.bullCandle)
                                                 )
                                                 Text(
-                                                    text = "دیدبان هوشمند بازار (Smart Watchlist)",
+                                                    text = if (isFa) "دیدبان هوشمند بازار" else "Smart Watchlist",
                                                     style = MaterialTheme.typography.labelSmall,
                                                     fontWeight = FontWeight.Bold,
                                                     color = MaterialTheme.colorScheme.primary
                                                 )
                                             }
                                             Text(
-                                                text = "${watchlistSymbols.size} نماد معاملاتی فعال",
+                                                text = "${watchlistSymbols.size} " + (if (isFa) "نماد معاملاتی فعال" else "Active Symbols"),
                                                 style = MaterialTheme.typography.titleMedium,
-                                                fontFamily = JetBrainsMonoFontFamily,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.onSurface
                                             )
@@ -502,9 +502,8 @@ fun WatchlistScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = "▲ $bullishCount صعودی",
+                                                    text = "▲ $bullishCount " + (if (isFa) "صعودی" else "Bullish"),
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    fontFamily = JetBrainsMonoFontFamily,
                                                     fontWeight = FontWeight.SemiBold,
                                                     color = financialPalette.bullCandle
                                                 )
@@ -513,37 +512,36 @@ fun WatchlistScreen(
                                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                                 )
                                                 Text(
-                                                    text = "▼ $bearishCount نزولی",
+                                                    text = "▼ $bearishCount " + (if (isFa) "نزولی" else "Bearish"),
                                                     style = MaterialTheme.typography.labelSmall,
-                                                    fontFamily = JetBrainsMonoFontFamily,
                                                     fontWeight = FontWeight.SemiBold,
                                                     color = financialPalette.bearCandle
                                                 )
                                             }
                                         }
 
-                                        // Interactive Bento Sync Pill
+                                        // Compact Sync Button
                                         Row(
                                             modifier = Modifier
-                                                .clip(RoundedCornerShape(12.dp))
-                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
-                                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
+                                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(8.dp))
                                                 .bentoInteractive(onClick = onSyncAllNow)
-                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                                .padding(horizontal = 10.dp, vertical = 6.dp)
                                                 .testTag("watchlist_bento_sync_button"),
                                             verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
                                         ) {
                                             Icon(
                                                 imageVector = Icons.Outlined.Refresh,
                                                 contentDescription = "Sync All",
                                                 tint = MaterialTheme.colorScheme.primary,
                                                 modifier = Modifier
-                                                    .size(16.dp)
+                                                    .size(14.dp)
                                                     .let { if (isSyncingAll) it.then(Modifier.rotate(syncRotation)) else it }
                                             )
                                             Text(
-                                                text = if (isSyncingAll) "همگام‌سازی..." else "به‌روزرسانی",
+                                                text = if (isSyncingAll) (if (isFa) "همگام‌سازی…" else "Syncing…") else (if (isFa) "به‌روزرسانی" else "Refresh"),
                                                 style = MaterialTheme.typography.labelSmall,
                                                 fontWeight = FontWeight.Bold,
                                                 color = MaterialTheme.colorScheme.primary
@@ -559,16 +557,16 @@ fun WatchlistScreen(
                                 ) {
                                     // Cell 1: Top Gainer Leader
                                     BentoStatCell(
-                                        title = "برترین بازده ۲۴ساعته",
+                                        title = if (isFa) "برترین بازده ۲۴ساعته" else "24h Top Gainer",
                                         value = topGainer?.symbolCode ?: "—",
                                         subtitle = topGainer?.let { tg ->
                                             if (tg.prevClose != null && tg.lastClose != null) {
                                                 val p = PriceFormatterAlgorithm.formatSignedPercentChange(tg.prevClose!!, tg.lastClose!!)
-                                                "افزایش $p"
+                                                "\u200E$p " + (if (isFa) "افزایش" else "Gain")
                                             } else {
-                                                "داده در دسترس نیست"
+                                                if (isFa) "داده در دسترس نیست" else "No Data"
                                             }
-                                        } ?: "داده در دسترس نیست",
+                                        } ?: (if (isFa) "داده در دسترس نیست" else "No Data"),
                                         accentColor = financialPalette.bullCandle,
                                         modifier = Modifier.weight(1f),
                                         icon = {
@@ -587,9 +585,9 @@ fun WatchlistScreen(
 
                                     // Cell 2: Open Workspace Tabs Quick Jump
                                     BentoStatCell(
-                                        title = "چارت‌های باز همزمان",
-                                        value = "${openTabs.size} تب",
-                                        subtitle = openTabs.firstOrNull()?.symbolCode ?: "کلیک برای مشاهده",
+                                        title = if (isFa) "چارت‌های باز همزمان" else "Active Charts",
+                                        value = "${openTabs.size} " + (if (isFa) "تب" else "Tabs"),
+                                        subtitle = openTabs.firstOrNull()?.symbolCode ?: (if (isFa) "کلیک برای مشاهده" else "Click to View"),
                                         accentColor = MaterialTheme.colorScheme.primary,
                                         modifier = Modifier.weight(1f),
                                         icon = {
@@ -629,18 +627,23 @@ fun WatchlistScreen(
                                 state = dismissState,
                                 enableDismissFromStartToEnd = false,
                                 backgroundContent = {
-                                    Box(
-                                        modifier = Modifier
-                                            .fillMaxSize()
-                                            .background(financialPalette.bearCandle.copy(alpha = 0.24f))
-                                            .padding(horizontal = 16.dp),
-                                        contentAlignment = Alignment.CenterEnd
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Outlined.DeleteOutline,
-                                            contentDescription = stringResource(R.string.action_delete_symbol),
-                                            tint = financialPalette.bearCandle
-                                        )
+                                    val isSwiping = dismissState.targetValue == SwipeToDismissBoxValue.EndToStart || dismissState.progress > 0.05f
+                                    if (isSwiping) {
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxSize()
+                                                .padding(horizontal = 12.dp, vertical = 4.dp)
+                                                .clip(RoundedCornerShape(10.dp))
+                                                .background(financialPalette.bearCandle.copy(alpha = 0.85f))
+                                                .padding(horizontal = 16.dp),
+                                            contentAlignment = Alignment.CenterEnd
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.DeleteOutline,
+                                                contentDescription = stringResource(R.string.action_delete_symbol),
+                                                tint = Color.White
+                                            )
+                                        }
                                     }
                                 }
                             ) {

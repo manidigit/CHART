@@ -4,6 +4,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.widget.Toast
 import androidx.activity.compose.BackHandler
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -52,6 +53,7 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -1206,7 +1208,7 @@ fun ChartViewScreen(
                                                             .background(section.activeColor)
                                                     )
                                                     Text(
-                                                        text = section.titleFa,
+                                                        text = "\u200F" + section.titleFa,
                                                         style = MaterialTheme.typography.titleSmall,
                                                         color = MaterialTheme.colorScheme.onSurface,
                                                         fontWeight = FontWeight.Bold
@@ -1329,51 +1331,93 @@ fun ChartViewScreen(
                                                         )
                                                     }
 
-                                                    // Sub-component color chips row if indicator has sub-components
+                                                    // Sub-component structured 2-column grid (Web Parity)
                                                     if (spec.subColors.isNotEmpty()) {
-                                                        Row(
+                                                        Surface(
                                                             modifier = Modifier
                                                                 .fillMaxWidth()
-                                                                .horizontalScroll(rememberScrollState())
-                                                                .padding(start = 8.dp, bottom = 4.dp),
-                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                            verticalAlignment = Alignment.CenterVertically
+                                                                .padding(vertical = 4.dp),
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            color = MaterialTheme.colorScheme.background,
+                                                            border = BorderStroke(1.dp, palette.cardBorder)
                                                         ) {
-                                                            Text(
-                                                                text = "اجزاء:",
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                fontSize = 11.sp,
-                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                            )
-                                                            for (sub in spec.subColors) {
-                                                                val isSubActive = activeColorPickerKey == sub.colorKey
-                                                                Row(
-                                                                    modifier = Modifier
-                                                                        .clip(RoundedCornerShape(6.dp))
-                                                                        .background(if (isSubActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
-                                                                        .border(1.dp, if (isSubActive) MaterialTheme.colorScheme.primary else palette.cardBorder, RoundedCornerShape(6.dp))
-                                                                        .clickable {
-                                                                            activeColorPickerKey = if (activeColorPickerKey == sub.colorKey) null else sub.colorKey
+                                                            Column(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(8.dp),
+                                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "رنگ‌بندی مجزای اجزاء:",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                                for (pair in spec.subColors.chunked(2)) {
+                                                                    Row(
+                                                                        modifier = Modifier.fillMaxWidth(),
+                                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                                    ) {
+                                                                        for (sub in pair) {
+                                                                            val isSubActive = activeColorPickerKey == sub.colorKey
+                                                                            Row(
+                                                                                modifier = Modifier
+                                                                                    .weight(1f)
+                                                                                    .clip(RoundedCornerShape(6.dp))
+                                                                                    .background(
+                                                                                        if (isSubActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                                                                        else MaterialTheme.colorScheme.surface
+                                                                                    )
+                                                                                    .border(
+                                                                                        1.dp,
+                                                                                        if (isSubActive) MaterialTheme.colorScheme.primary else palette.cardBorder,
+                                                                                        RoundedCornerShape(6.dp)
+                                                                                    )
+                                                                                    .clickable {
+                                                                                        activeColorPickerKey = if (activeColorPickerKey == sub.colorKey) null else sub.colorKey
+                                                                                    }
+                                                                                    .padding(horizontal = 7.dp, vertical = 6.dp)
+                                                                                    .testTag("ind_color_badge_${sub.colorKey}"),
+                                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                                            ) {
+                                                                                Box(
+                                                                                    modifier = Modifier
+                                                                                        .size(11.dp)
+                                                                                        .clip(CircleShape)
+                                                                                        .background(sub.color)
+                                                                                        .border(1.dp, palette.cardBorder, CircleShape)
+                                                                                )
+                                                                                Box(
+                                                                                    modifier = Modifier
+                                                                                        .clip(RoundedCornerShape(3.dp))
+                                                                                        .background(sub.color.copy(alpha = 0.16f))
+                                                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                                ) {
+                                                                                    Text(
+                                                                                        text = sub.badge,
+                                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                                        fontSize = 9.sp,
+                                                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                                                        fontWeight = FontWeight.Bold,
+                                                                                        color = MaterialTheme.colorScheme.onSurface
+                                                                                    )
+                                                                                }
+                                                                                Text(
+                                                                                    text = sub.title,
+                                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                                    fontSize = 10.5.sp,
+                                                                                    maxLines = 1,
+                                                                                    overflow = TextOverflow.Ellipsis,
+                                                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                                                    modifier = Modifier.weight(1f)
+                                                                                )
+                                                                            }
                                                                         }
-                                                                        .padding(horizontal = 7.dp, vertical = 4.dp)
-                                                                        .testTag("ind_color_badge_${sub.colorKey}"),
-                                                                    verticalAlignment = Alignment.CenterVertically,
-                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                                ) {
-                                                                    Box(
-                                                                        modifier = Modifier
-                                                                            .size(8.dp)
-                                                                            .clip(CircleShape)
-                                                                            .background(sub.color)
-                                                                    )
-                                                                    Text(
-                                                                        text = sub.title,
-                                                                        style = MaterialTheme.typography.labelSmall,
-                                                                        fontSize = 10.sp,
-                                                                        fontFamily = JetBrainsMonoFontFamily,
-                                                                        fontWeight = if (isSubActive) FontWeight.Bold else FontWeight.Normal,
-                                                                        color = MaterialTheme.colorScheme.onSurface
-                                                                    )
+                                                                        if (pair.size == 1) {
+                                                                            Spacer(modifier = Modifier.weight(1f))
+                                                                        }
+                                                                    }
                                                                 }
                                                             }
                                                         }
@@ -1622,7 +1666,7 @@ fun ChartViewScreen(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 Text(
-                                                    text = "۶. پنل‌های پایینی همگام (حجم و اسیلاتورها)",
+                                                    text = "\u200F۶. پنل‌های پایینی همگام (حجم و اسیلاتورها)",
                                                     style = MaterialTheme.typography.titleSmall,
                                                     color = MaterialTheme.colorScheme.onSurface,
                                                     fontWeight = FontWeight.Bold
@@ -1816,51 +1860,93 @@ fun ChartViewScreen(
                                                         )
                                                     }
 
-                                                    // Sub-component color chips row if oscillator has sub-components
+                                                    // Sub-component structured 2-column grid (Web Parity)
                                                     if (spec.subColors.isNotEmpty()) {
-                                                        Row(
+                                                        Surface(
                                                             modifier = Modifier
                                                                 .fillMaxWidth()
-                                                                .horizontalScroll(rememberScrollState())
-                                                                .padding(start = 8.dp, bottom = 4.dp),
-                                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                            verticalAlignment = Alignment.CenterVertically
+                                                                .padding(vertical = 4.dp),
+                                                            shape = RoundedCornerShape(8.dp),
+                                                            color = MaterialTheme.colorScheme.background,
+                                                            border = BorderStroke(1.dp, palette.cardBorder)
                                                         ) {
-                                                            Text(
-                                                                text = "اجزاء:",
-                                                                style = MaterialTheme.typography.labelSmall,
-                                                                fontSize = 11.sp,
-                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                                            )
-                                                            for (sub in spec.subColors) {
-                                                                val isSubActive = activeColorPickerKey == sub.colorKey
-                                                                Row(
-                                                                    modifier = Modifier
-                                                                        .clip(RoundedCornerShape(6.dp))
-                                                                        .background(if (isSubActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f) else MaterialTheme.colorScheme.background)
-                                                                        .border(1.dp, if (isSubActive) MaterialTheme.colorScheme.primary else palette.cardBorder, RoundedCornerShape(6.dp))
-                                                                        .clickable {
-                                                                            activeColorPickerKey = if (activeColorPickerKey == sub.colorKey) null else sub.colorKey
+                                                            Column(
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .padding(8.dp),
+                                                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "رنگ‌بندی مجزای اجزاء:",
+                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                    fontWeight = FontWeight.Bold,
+                                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                                )
+                                                                for (pair in spec.subColors.chunked(2)) {
+                                                                    Row(
+                                                                        modifier = Modifier.fillMaxWidth(),
+                                                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                                    ) {
+                                                                        for (sub in pair) {
+                                                                            val isSubActive = activeColorPickerKey == sub.colorKey
+                                                                            Row(
+                                                                                modifier = Modifier
+                                                                                    .weight(1f)
+                                                                                    .clip(RoundedCornerShape(6.dp))
+                                                                                    .background(
+                                                                                        if (isSubActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+                                                                                        else MaterialTheme.colorScheme.surface
+                                                                                    )
+                                                                                    .border(
+                                                                                        1.dp,
+                                                                                        if (isSubActive) MaterialTheme.colorScheme.primary else palette.cardBorder,
+                                                                                        RoundedCornerShape(6.dp)
+                                                                                    )
+                                                                                    .clickable {
+                                                                                        activeColorPickerKey = if (activeColorPickerKey == sub.colorKey) null else sub.colorKey
+                                                                                    }
+                                                                                    .padding(horizontal = 7.dp, vertical = 6.dp)
+                                                                                    .testTag("ind_color_badge_${sub.colorKey}"),
+                                                                                verticalAlignment = Alignment.CenterVertically,
+                                                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                                                            ) {
+                                                                                Box(
+                                                                                    modifier = Modifier
+                                                                                        .size(11.dp)
+                                                                                        .clip(CircleShape)
+                                                                                        .background(sub.color)
+                                                                                        .border(1.dp, palette.cardBorder, CircleShape)
+                                                                                )
+                                                                                Box(
+                                                                                    modifier = Modifier
+                                                                                        .clip(RoundedCornerShape(3.dp))
+                                                                                        .background(sub.color.copy(alpha = 0.16f))
+                                                                                        .padding(horizontal = 4.dp, vertical = 1.dp)
+                                                                                ) {
+                                                                                    Text(
+                                                                                        text = sub.badge,
+                                                                                        style = MaterialTheme.typography.labelSmall,
+                                                                                        fontSize = 9.sp,
+                                                                                        fontFamily = JetBrainsMonoFontFamily,
+                                                                                        fontWeight = FontWeight.Bold,
+                                                                                        color = MaterialTheme.colorScheme.onSurface
+                                                                                    )
+                                                                                }
+                                                                                Text(
+                                                                                    text = sub.title,
+                                                                                    style = MaterialTheme.typography.labelSmall,
+                                                                                    fontSize = 10.5.sp,
+                                                                                    maxLines = 1,
+                                                                                    overflow = TextOverflow.Ellipsis,
+                                                                                    color = MaterialTheme.colorScheme.onSurface,
+                                                                                    modifier = Modifier.weight(1f)
+                                                                                )
+                                                                            }
                                                                         }
-                                                                        .padding(horizontal = 7.dp, vertical = 4.dp)
-                                                                        .testTag("ind_color_badge_${sub.colorKey}"),
-                                                                    verticalAlignment = Alignment.CenterVertically,
-                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
-                                                                ) {
-                                                                    Box(
-                                                                        modifier = Modifier
-                                                                            .size(8.dp)
-                                                                            .clip(CircleShape)
-                                                                            .background(sub.color)
-                                                                    )
-                                                                    Text(
-                                                                        text = sub.title,
-                                                                        style = MaterialTheme.typography.labelSmall,
-                                                                        fontSize = 10.sp,
-                                                                        fontFamily = JetBrainsMonoFontFamily,
-                                                                        fontWeight = if (isSubActive) FontWeight.Bold else FontWeight.Normal,
-                                                                        color = MaterialTheme.colorScheme.onSurface
-                                                                    )
+                                                                        if (pair.size == 1) {
+                                                                            Spacer(modifier = Modifier.weight(1f))
+                                                                        }
+                                                                    }
                                                                 }
                                                             }
                                                         }

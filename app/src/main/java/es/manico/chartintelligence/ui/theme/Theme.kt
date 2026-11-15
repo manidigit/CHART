@@ -58,35 +58,13 @@ private val LightColorScheme = lightColorScheme(
 @Composable
 fun ChartIntelligenceTheme(
     darkTheme: Boolean = true,
-    dynamicColor: Boolean = true,
+    dynamicColor: Boolean = false,
     language: AppLanguage = AppLanguage.FA,
     content: @Composable () -> Unit
 ) {
-    val context = LocalContext.current
-    val colorScheme = when {
-        dynamicColor && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S -> {
-            if (darkTheme) {
-                val dyn = dynamicDarkColorScheme(context)
-                // Harmonize dynamic color with high-contrast trading surfaces and financial tokens
-                DarkColorScheme.copy(
-                    primary = dyn.primary,
-                    secondary = dyn.secondary,
-                    primaryContainer = dyn.primaryContainer,
-                    secondaryContainer = dyn.secondaryContainer
-                )
-            } else {
-                val dyn = dynamicLightColorScheme(context)
-                LightColorScheme.copy(
-                    primary = dyn.primary,
-                    secondary = dyn.secondary,
-                    primaryContainer = dyn.primaryContainer,
-                    secondaryContainer = dyn.secondaryContainer
-                )
-            }
-        }
-        darkTheme -> DarkColorScheme
-        else -> LightColorScheme
-    }
+    // Professional Financial Trading System: Enforce high-precision TradingView neutral/dark surfaces
+    // and never inherit device wallpaper pastel colors that degrade financial readability.
+    val colorScheme = if (darkTheme) DarkColorScheme else LightColorScheme
 
     val financialPalette = if (darkTheme) DarkFinancialPalette else LightFinancialPalette
 

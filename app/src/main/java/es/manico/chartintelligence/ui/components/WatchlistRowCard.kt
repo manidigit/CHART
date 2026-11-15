@@ -99,12 +99,12 @@ fun WatchlistRowCard(
             modifier = modifier
                 .fillMaxWidth()
                 .padding(horizontal = 12.dp, vertical = 4.dp)
-                .clip(RoundedCornerShape(16.dp))
+                .clip(RoundedCornerShape(10.dp))
                 .background(bentoCardBrush(isDark))
                 .border(
                     width = 1.dp,
                     brush = bentoBorderBrush(isDark),
-                    shape = RoundedCornerShape(16.dp)
+                    shape = RoundedCornerShape(10.dp)
                 )
                 .bentoInteractive(onClick = onOpenChartClick)
                 .testTag("watchlist_card_${symbol.symbolCode.lowercase()}")

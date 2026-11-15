@@ -43,24 +43,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
 // ==========================================
-// Bento Grid Standard Shapes
+// Bento Grid Standard Professional Shapes (TradingView Fintech Precision)
 // ==========================================
-val BentoHeroShape = RoundedCornerShape(22.dp)
-val BentoCardShape = RoundedCornerShape(18.dp)
-val BentoSubCellShape = RoundedCornerShape(14.dp)
-val BentoPillShape = RoundedCornerShape(12.dp)
-val BentoBadgeShape = RoundedCornerShape(8.dp)
+val BentoHeroShape = RoundedCornerShape(12.dp)
+val BentoCardShape = RoundedCornerShape(10.dp)
+val BentoSubCellShape = RoundedCornerShape(8.dp)
+val BentoPillShape = RoundedCornerShape(6.dp)
+val BentoBadgeShape = RoundedCornerShape(4.dp)
 
 // ==========================================
-// Bento Glassmorphism & Gradient Brushes
+// Bento Solid High-Precision Trading Surfaces & Brushes
 // ==========================================
 @Composable
 fun bentoCardBrush(isDark: Boolean): Brush {
     return if (isDark) {
         Brush.linearGradient(
             colors = listOf(
-                Color(0xFF222634).copy(alpha = 0.92f),
-                Color(0xFF1A1D27).copy(alpha = 0.98f)
+                Color(0xFF1E222D),
+                Color(0xFF181B24)
             )
         )
     } else {
@@ -78,22 +78,22 @@ fun bentoBorderBrush(isDark: Boolean, isAccented: Boolean = false): Brush {
     return if (isAccented) {
         Brush.linearGradient(
             colors = listOf(
-                MaterialTheme.colorScheme.primary.copy(alpha = 0.70f),
-                MaterialTheme.colorScheme.secondary.copy(alpha = 0.35f)
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.60f),
+                MaterialTheme.colorScheme.primary.copy(alpha = 0.25f)
             )
         )
     } else if (isDark) {
         Brush.linearGradient(
             colors = listOf(
-                Color(0xFF384054).copy(alpha = 0.45f),
-                Color(0xFF202430).copy(alpha = 0.25f)
+                Color(0xFF2A2E39),
+                Color(0xFF242731)
             )
         )
     } else {
         Brush.linearGradient(
             colors = listOf(
-                Color(0xFFE2E8F0),
-                Color(0xFFCBD5E1)
+                Color(0xFFE0E3EB),
+                Color(0xFFD1D4DC)
             )
         )
     }
@@ -101,25 +101,19 @@ fun bentoBorderBrush(isDark: Boolean, isAccented: Boolean = false): Brush {
 
 @Composable
 fun bentoHeroBrush(isDark: Boolean): Brush {
-    val primary = MaterialTheme.colorScheme.primary
-    val secondary = MaterialTheme.colorScheme.secondary
     return if (isDark) {
-        Brush.radialGradient(
+        Brush.linearGradient(
             colors = listOf(
-                primary.copy(alpha = 0.18f),
-                secondary.copy(alpha = 0.08f),
-                Color(0xFF171A24).copy(alpha = 0.95f)
-            ),
-            radius = 650f
+                Color(0xFF1E2330),
+                Color(0xFF161922)
+            )
         )
     } else {
-        Brush.radialGradient(
+        Brush.linearGradient(
             colors = listOf(
-                primary.copy(alpha = 0.12f),
-                secondary.copy(alpha = 0.05f),
-                Color(0xFFFFFFFF)
-            ),
-            radius = 650f
+                Color(0xFFFFFFFF),
+                Color(0xFFF1F5F9)
+            )
         )
     }
 }
@@ -221,9 +215,9 @@ fun BentoHeroCard(
         .fillMaxWidth()
         .clip(BentoHeroShape)
         .background(heroBrush)
-        .border(width = 1.5.dp, brush = borderBrush, shape = BentoHeroShape)
+        .border(width = 1.dp, brush = borderBrush, shape = BentoHeroShape)
         .bentoInteractive(onClick = onClick)
-        .padding(18.dp)
+        .padding(12.dp)
 
     val tagMod = if (testTag != null) baseMod.testTag(testTag) else baseMod
 
@@ -245,7 +239,7 @@ fun BentoStatCell(
     BentoCard(
         modifier = modifier,
         shape = BentoSubCellShape,
-        contentPadding = 12.dp,
+        contentPadding = 10.dp,
         onClick = onClick,
         testTag = testTag
     ) {
