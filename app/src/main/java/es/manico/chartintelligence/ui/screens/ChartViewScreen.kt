@@ -55,6 +55,7 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
+import es.manico.chartintelligence.ui.theme.bentoInteractive
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
@@ -628,11 +629,11 @@ fun ChartViewScreen(
                     // 1. Current Symbol -> Opens Watchlist Symbol Switcher
                     Row(
                         modifier = Modifier
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.background)
-                            .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
-                            .clickable { activeSheet = ChartControlSheet.SYMBOL_PICKER }
+                            .height(36.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .border(1.dp, palette.cardBorder, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .bentoInteractive { activeSheet = ChartControlSheet.SYMBOL_PICKER }
                             .padding(horizontal = 10.dp)
                             .testTag("chart_bottom_symbol_button"),
                         verticalAlignment = Alignment.CenterVertically,
@@ -654,11 +655,11 @@ fun ChartViewScreen(
                     // 2. Current Timeframe -> Opens Timeframe Selector
                     Box(
                         modifier = Modifier
-                            .height(34.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .height(36.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                             .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
-                            .border(1.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(6.dp))
-                            .clickable { activeSheet = ChartControlSheet.TIMEFRAME_PICKER }
+                            .border(1.dp, MaterialTheme.colorScheme.primary, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .bentoInteractive { activeSheet = ChartControlSheet.TIMEFRAME_PICKER }
                             .padding(horizontal = 12.dp)
                             .testTag("chart_bottom_timeframe_button"),
                         contentAlignment = Alignment.Center
@@ -676,18 +677,18 @@ fun ChartViewScreen(
                     val isDrawActive = activeTab.activeDrawingTool != DrawingTool.CURSOR || !activeTab.isDrawingDockCollapsed
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .size(38.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                             .background(
                                 if (isDrawActive) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                                else MaterialTheme.colorScheme.background
+                                else MaterialTheme.colorScheme.surfaceContainerHigh
                             )
                             .border(
                                 1.dp,
                                 if (isDrawActive) MaterialTheme.colorScheme.primary else palette.cardBorder,
-                                RoundedCornerShape(6.dp)
+                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
                             )
-                            .clickable(onClick = onToggleDrawingDockCollapsed)
+                            .bentoInteractive(onClick = onToggleDrawingDockCollapsed)
                             .testTag("draw_dock_collapse_button"),
                         contentAlignment = Alignment.Center
                     ) {
@@ -714,18 +715,18 @@ fun ChartViewScreen(
                     val hasActiveIndicator = hasOverlayIndicator || activeTab.showVolume
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(6.dp))
+                            .size(38.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
                             .background(
                                 if (hasOverlayIndicator) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
-                                else MaterialTheme.colorScheme.background
+                                else MaterialTheme.colorScheme.surfaceContainerHigh
                             )
                             .border(
                                 1.dp,
                                 if (hasOverlayIndicator) MaterialTheme.colorScheme.primary else palette.cardBorder,
-                                RoundedCornerShape(6.dp)
+                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
                             )
-                            .clickable { activeSheet = ChartControlSheet.INDICATORS }
+                            .bentoInteractive { activeSheet = ChartControlSheet.INDICATORS }
                             .testTag("chart_bottom_indicators_button"),
                         contentAlignment = Alignment.Center
                     ) {
@@ -740,11 +741,11 @@ fun ChartViewScreen(
                     // 5. More Button (Three Dots) -> Opens Chart Type, Date Range, Auto Scale, Sync
                     Box(
                         modifier = Modifier
-                            .size(36.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(MaterialTheme.colorScheme.background)
-                            .border(1.dp, palette.cardBorder, RoundedCornerShape(6.dp))
-                            .clickable { activeSheet = ChartControlSheet.MORE_OPTIONS }
+                            .size(38.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .border(1.dp, palette.cardBorder, androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .bentoInteractive { activeSheet = ChartControlSheet.MORE_OPTIONS }
                             .testTag("chart_bottom_more_button"),
                         contentAlignment = Alignment.Center
                     ) {

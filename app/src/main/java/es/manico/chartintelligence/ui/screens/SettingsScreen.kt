@@ -87,6 +87,7 @@ import es.manico.chartintelligence.i18n.AppLanguage
 import es.manico.chartintelligence.ui.components.LanguageThemeSelector
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
+import es.manico.chartintelligence.ui.theme.bentoInteractive
 import kotlin.math.roundToInt
 
 @OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
@@ -203,21 +204,21 @@ fun SettingsScreen(
                     for ((tabKey, tabLabel) in settingsTabs) {
                         val isSelected = activeSettingsTab == tabKey
                         Surface(
-                            shape = RoundedCornerShape(8.dp),
-                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.background,
+                            shape = androidx.compose.foundation.shape.RoundedCornerShape(12.dp),
+                            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surfaceContainerHigh,
                             border = BorderStroke(
                                 1.dp,
                                 if (isSelected) MaterialTheme.colorScheme.primary else financialPalette.cardBorder
                             ),
                             modifier = Modifier
-                                .heightIn(min = 34.dp)
-                                .clip(RoundedCornerShape(8.dp))
-                                .clickable { activeSettingsTab = tabKey }
+                                .heightIn(min = 38.dp)
+                                .clip(androidx.compose.foundation.shape.RoundedCornerShape(12.dp))
+                                .bentoInteractive { activeSettingsTab = tabKey }
                                 .testTag("settings_tab_$tabKey")
                         ) {
                             Box(
                                 contentAlignment = Alignment.Center,
-                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                modifier = Modifier.padding(horizontal = 14.dp, vertical = 8.dp)
                             ) {
                                 Text(
                                     text = tabLabel,
@@ -265,7 +266,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("settings_group_account"),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {
@@ -393,7 +394,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("settings_group_about"),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {
@@ -443,7 +444,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("settings_group_appearance"),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {
@@ -634,7 +635,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("settings_group_sources"),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {
@@ -1285,7 +1286,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("settings_group_params"),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {
@@ -1610,7 +1611,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("settings_group_notifications"),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {
@@ -1694,7 +1695,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("settings_server_health_card"),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {
@@ -1911,7 +1912,7 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag("settings_byok_card"),
-                    shape = RoundedCornerShape(10.dp),
+                    shape = RoundedCornerShape(16.dp),
                     colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
                     border = BorderStroke(1.dp, financialPalette.cardBorder)
                 ) {

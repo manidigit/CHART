@@ -11,6 +11,11 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.FormatListBulleted
 import androidx.compose.material.icons.automirrored.outlined.TrendingUp
@@ -71,6 +76,7 @@ fun ChartIntelligenceApp(
         language = state.language
     ) {
         val financialPalette = LocalFinancialPalette.current
+        val haptic = androidx.compose.ui.platform.LocalHapticFeedback.current
 
         Scaffold(
             modifier = Modifier.fillMaxSize(),
@@ -84,14 +90,17 @@ fun ChartIntelligenceApp(
                             color = financialPalette.cardBorder
                         )
                         NavigationBar(
-                            containerColor = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 0.dp,
+                            modifier = Modifier.clip(
+                                RoundedCornerShape(topStart = 20.dp, topEnd = 20.dp)
+                            ),
+                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                            tonalElevation = 3.dp,
                             windowInsets = NavigationBarDefaults.windowInsets
                         ) {
                             val navColors = NavigationBarItemDefaults.colors(
                                 selectedIconColor = MaterialTheme.colorScheme.primary,
                                 selectedTextColor = MaterialTheme.colorScheme.primary,
-                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.14f),
+                                indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
                                 unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
                                 unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -99,7 +108,10 @@ fun ChartIntelligenceApp(
                             // 1. Watchlist
                             NavigationBarItem(
                                 selected = state.currentScreen == WorkspaceScreen.WATCHLIST,
-                                onClick = { mainViewModel.navigateTo(WorkspaceScreen.WATCHLIST) },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    mainViewModel.navigateTo(WorkspaceScreen.WATCHLIST)
+                                },
                                 colors = navColors,
                                 icon = {
                                     BadgedBox(
@@ -123,7 +135,8 @@ fun ChartIntelligenceApp(
                                 label = {
                                     Text(
                                         text = stringResource(R.string.nav_watchlist),
-                                        style = MaterialTheme.typography.labelSmall
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (state.currentScreen == WorkspaceScreen.WATCHLIST) FontWeight.Bold else FontWeight.Medium
                                     )
                                 },
                                 modifier = Modifier.testTag("nav_watchlist_item")
@@ -132,7 +145,10 @@ fun ChartIntelligenceApp(
                             // 2. Chart
                             NavigationBarItem(
                                 selected = state.currentScreen == WorkspaceScreen.CHART_VIEW,
-                                onClick = { mainViewModel.navigateTo(WorkspaceScreen.CHART_VIEW) },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    mainViewModel.navigateTo(WorkspaceScreen.CHART_VIEW)
+                                },
                                 colors = navColors,
                                 icon = {
                                     Icon(
@@ -143,7 +159,8 @@ fun ChartIntelligenceApp(
                                 label = {
                                     Text(
                                         text = stringResource(R.string.nav_chart_view),
-                                        style = MaterialTheme.typography.labelSmall
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (state.currentScreen == WorkspaceScreen.CHART_VIEW) FontWeight.Bold else FontWeight.Medium
                                     )
                                 },
                                 modifier = Modifier.testTag("nav_chart_view_item")
@@ -152,7 +169,10 @@ fun ChartIntelligenceApp(
                             // 3. Forecast Lab
                             NavigationBarItem(
                                 selected = state.currentScreen == WorkspaceScreen.PREDICTION,
-                                onClick = { mainViewModel.navigateTo(WorkspaceScreen.PREDICTION) },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    mainViewModel.navigateTo(WorkspaceScreen.PREDICTION)
+                                },
                                 colors = navColors,
                                 icon = {
                                     Icon(
@@ -163,7 +183,8 @@ fun ChartIntelligenceApp(
                                 label = {
                                     Text(
                                         text = stringResource(R.string.nav_forecast_lab),
-                                        style = MaterialTheme.typography.labelSmall
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (state.currentScreen == WorkspaceScreen.PREDICTION) FontWeight.Bold else FontWeight.Medium
                                     )
                                 },
                                 modifier = Modifier.testTag("nav_prediction_item")
@@ -172,7 +193,10 @@ fun ChartIntelligenceApp(
                             // 4. Settings
                             NavigationBarItem(
                                 selected = state.currentScreen == WorkspaceScreen.SETTINGS,
-                                onClick = { mainViewModel.navigateTo(WorkspaceScreen.SETTINGS) },
+                                onClick = {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    mainViewModel.navigateTo(WorkspaceScreen.SETTINGS)
+                                },
                                 colors = navColors,
                                 icon = {
                                     Icon(
@@ -183,7 +207,8 @@ fun ChartIntelligenceApp(
                                 label = {
                                     Text(
                                         text = stringResource(R.string.nav_settings),
-                                        style = MaterialTheme.typography.labelSmall
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = if (state.currentScreen == WorkspaceScreen.SETTINGS) androidx.compose.ui.text.font.FontWeight.Bold else androidx.compose.ui.text.font.FontWeight.Medium
                                     )
                                 },
                                 modifier = Modifier.testTag("nav_settings_item")

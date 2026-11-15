@@ -17,6 +17,10 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import es.manico.chartintelligence.ui.theme.bentoBorderBrush
+import es.manico.chartintelligence.ui.theme.bentoCardBrush
+import es.manico.chartintelligence.ui.theme.bentoInteractive
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -88,23 +92,32 @@ fun WatchlistRowCard(
         "+0.00 (+0.00%)"
     }
 
+    val isDark = MaterialTheme.colorScheme.background.red < 0.5f
+
     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-        Column(
+        Box(
             modifier = modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.colorScheme.background)
-                .clickable(onClick = onOpenChartClick)
+                .padding(horizontal = 12.dp, vertical = 4.dp)
+                .clip(RoundedCornerShape(16.dp))
+                .background(bentoCardBrush(isDark))
+                .border(
+                    width = 1.dp,
+                    brush = bentoBorderBrush(isDark),
+                    shape = RoundedCornerShape(16.dp)
+                )
+                .bentoInteractive(onClick = onOpenChartClick)
                 .testTag("watchlist_card_${symbol.symbolCode.lowercase()}")
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .heightIn(min = 60.dp)
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
+                    .heightIn(min = 64.dp)
+                    .padding(horizontal = 14.dp, vertical = 10.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                // Left: Circular Asset Icon Badge (unless hideLogos == true) + Middle Column (Symbol Code + Full Name)
+                // Left: Circular Asset Icon Badge + Symbol Code & Display Name
                 Row(
                     modifier = Modifier.weight(1f),
                     verticalAlignment = Alignment.CenterVertically
@@ -112,9 +125,8 @@ fun WatchlistRowCard(
                     if (!hideLogos) {
                         AssetSymbolBadge(
                             symbolCode = symbol.symbolCode,
-                            sizeDp = 36.dp
+                            sizeDp = 38.dp
                         )
-
                         Spacer(modifier = Modifier.width(12.dp))
                     }
 
@@ -135,16 +147,18 @@ fun WatchlistRowCard(
                             if (onOpenOverviewClick != null) {
                                 Box(
                                     modifier = Modifier
-                                        .clip(CircleShape)
+                                        .clip(androidx.compose.foundation.shape.RoundedCornerShape(6.dp))
                                         .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.14f))
                                         .clickable(onClick = onOpenOverviewClick)
-                                        .padding(horizontal = 6.dp, vertical = 1.dp)
+                                        .padding(horizontal = 6.dp, vertical = 2.dp)
                                         .testTag("watchlist_overview_${symbol.symbolCode.lowercase()}")
                                 ) {
                                     Text(
-                                        text = "Overview",
+                                        text = "Intel",
                                         style = MaterialTheme.typography.labelSmall,
+                                        fontSize = 10.sp,
                                         fontFamily = JetBrainsMonoFontFamily,
+                                        fontWeight = FontWeight.Bold,
                                         color = MaterialTheme.colorScheme.primary
                                     )
                                 }
@@ -161,12 +175,13 @@ fun WatchlistRowCard(
                     }
                 }
 
-                Spacer(modifier = Modifier.width(12.dp))
+                Spacer(modifier = Modifier.width(10.dp))
 
-                // Right Column (Strictly Right-Aligned, Tabular Monospace): Price + Change & %
+                // Right: Monospace Price & Styled Bento Pill for Change %
                 Column(
-                    modifier = Modifier.widthIn(min = 104.dp),
-                    horizontalAlignment = Alignment.End
+                    modifier = Modifier.widthIn(min = 108.dp),
+                    horizontalAlignment = Alignment.End,
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
                         text = PriceFormatterAlgorithm.formatPrice(lastClose, symbol.decimals),
@@ -178,22 +193,28 @@ fun WatchlistRowCard(
                         maxLines = 1,
                         softWrap = false
                     )
-                    Spacer(modifier = Modifier.height(2.dp))
-                    Text(
-                        text = changeLine,
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = JetBrainsMonoFontFamily,
-                        fontWeight = FontWeight.SemiBold,
-                        color = changeColor,
-                        textAlign = TextAlign.End,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Ellipsis
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(8.dp))
+                            .background(changeColor.copy(alpha = 0.14f))
+                            .padding(horizontal = 8.dp, vertical = 2.dp)
+                    ) {
+                        Text(
+                            text = changeLine,
+                            style = MaterialTheme.typography.labelSmall,
+                            fontFamily = JetBrainsMonoFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            color = changeColor,
+                            textAlign = TextAlign.End,
+                            maxLines = 1,
+                            softWrap = false,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
                 }
 
                 if (onMoveUpClick != null || onMoveDownClick != null) {
-                    Spacer(modifier = Modifier.width(8.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
                         verticalArrangement = Arrangement.spacedBy(2.dp)
@@ -201,16 +222,16 @@ fun WatchlistRowCard(
                         if (onMoveUpClick != null) {
                             Box(
                                 modifier = Modifier
-                                    .size(22.dp)
+                                    .size(24.dp)
                                     .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                                     .clickable(onClick = onMoveUpClick)
                                     .testTag("watchlist_move_up_${symbol.symbolCode.lowercase()}"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = "▲",
-                                    fontSize = 8.sp,
+                                    fontSize = 9.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -218,16 +239,16 @@ fun WatchlistRowCard(
                         if (onMoveDownClick != null) {
                             Box(
                                 modifier = Modifier
-                                    .size(22.dp)
+                                    .size(24.dp)
                                     .clip(CircleShape)
-                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f))
                                     .clickable(onClick = onMoveDownClick)
                                     .testTag("watchlist_move_down_${symbol.symbolCode.lowercase()}"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = "▼",
-                                    fontSize = 8.sp,
+                                    fontSize = 9.sp,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
                             }
@@ -235,11 +256,6 @@ fun WatchlistRowCard(
                     }
                 }
             }
-
-            HorizontalDivider(
-                thickness = 1.dp,
-                color = financialPalette.cardBorder
-            )
         }
     }
 }

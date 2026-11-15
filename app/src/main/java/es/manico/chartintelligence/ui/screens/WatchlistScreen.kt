@@ -30,12 +30,24 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.tween
+import androidx.compose.ui.draw.rotate
+import es.manico.chartintelligence.ui.theme.BentoHeroCard
+import es.manico.chartintelligence.ui.theme.BentoStatCell
+import es.manico.chartintelligence.ui.theme.bentoInteractive
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.outlined.TrendingUp
 import androidx.compose.material.icons.outlined.Add
+import androidx.compose.material.icons.outlined.CandlestickChart
 import androidx.compose.material.icons.outlined.Close
 import androidx.compose.material.icons.outlined.ContentCopy
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.ExpandMore
+import androidx.compose.material.icons.outlined.Refresh
 import androidx.compose.material.icons.outlined.Search
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -409,6 +421,30 @@ fun WatchlistScreen(
                     }
                 } else {
                     val watchlistListState = rememberLazyListState()
+                    val bullishCount = watchlistSymbols.count { sym ->
+                        val last = sym.lastClose
+                        val prev = sym.prevClose
+                        last != null && prev != null && last >= prev
+                    }
+                    val bearishCount = watchlistSymbols.count { sym ->
+                        val last = sym.lastClose
+                        val prev = sym.prevClose
+                        last != null && prev != null && last < prev
+                    }
+                    val topGainer = watchlistSymbols
+                        .filter { it.lastClose != null && it.prevClose != null && it.prevClose!! > BigDecimal.ZERO }
+                        .maxByOrNull { (it.lastClose!! - it.prevClose!!) / it.prevClose!! }
+
+                    val syncSpinTransition = rememberInfiniteTransition(label = "sync_spin")
+                    val syncRotation by syncSpinTransition.animateFloat(
+                        initialValue = 0f,
+                        targetValue = 360f,
+                        animationSpec = infiniteRepeatable(
+                            animation = tween(900, easing = LinearEasing)
+                        ),
+                        label = "sync_rotation"
+                    )
+
                     LazyColumn(
                         state = watchlistListState,
                         modifier = Modifier
@@ -416,6 +452,165 @@ fun WatchlistScreen(
                             .testTag("watchlist_lazy_column"),
                         contentPadding = PaddingValues(bottom = 16.dp)
                     ) {
+                        item(key = "bento_summary_dashboard") {
+                            Column(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                                verticalArrangement = Arrangement.spacedBy(10.dp)
+                            ) {
+                                // Bento Hero Card: Market Status & 1-Tap Sync
+                                BentoHeroCard(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    testTag = "bento_watchlist_hero"
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Column(
+                                            modifier = Modifier.weight(1f),
+                                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                                        ) {
+                                            Row(
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier
+                                                        .size(8.dp)
+                                                        .clip(CircleShape)
+                                                        .background(financialPalette.bullCandle)
+                                                )
+                                                Text(
+                                                    text = "دیدبان هوشمند بازار (Smart Watchlist)",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.primary
+                                                )
+                                            }
+                                            Text(
+                                                text = "${watchlistSymbols.size} نماد معاملاتی فعال",
+                                                style = MaterialTheme.typography.titleMedium,
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                Text(
+                                                    text = "▲ $bullishCount صعودی",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = financialPalette.bullCandle
+                                                )
+                                                Text(
+                                                    text = "•",
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                                Text(
+                                                    text = "▼ $bearishCount نزولی",
+                                                    style = MaterialTheme.typography.labelSmall,
+                                                    fontFamily = JetBrainsMonoFontFamily,
+                                                    fontWeight = FontWeight.SemiBold,
+                                                    color = financialPalette.bearCandle
+                                                )
+                                            }
+                                        }
+
+                                        // Interactive Bento Sync Pill
+                                        Row(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(12.dp))
+                                                .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.16f))
+                                                .border(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.35f), RoundedCornerShape(12.dp))
+                                                .bentoInteractive(onClick = onSyncAllNow)
+                                                .padding(horizontal = 12.dp, vertical = 8.dp)
+                                                .testTag("watchlist_bento_sync_button"),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Outlined.Refresh,
+                                                contentDescription = "Sync All",
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier
+                                                    .size(16.dp)
+                                                    .let { if (isSyncingAll) it.then(Modifier.rotate(syncRotation)) else it }
+                                            )
+                                            Text(
+                                                text = if (isSyncingAll) "همگام‌سازی..." else "به‌روزرسانی",
+                                                style = MaterialTheme.typography.labelSmall,
+                                                fontWeight = FontWeight.Bold,
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                }
+
+                                // 2-Column Bento Stat Cells Row
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    // Cell 1: Top Gainer Leader
+                                    BentoStatCell(
+                                        title = "برترین بازده ۲۴ساعته",
+                                        value = topGainer?.symbolCode ?: "—",
+                                        subtitle = topGainer?.let { tg ->
+                                            if (tg.prevClose != null && tg.lastClose != null) {
+                                                val p = PriceFormatterAlgorithm.formatSignedPercentChange(tg.prevClose!!, tg.lastClose!!)
+                                                "افزایش $p"
+                                            } else {
+                                                "داده در دسترس نیست"
+                                            }
+                                        } ?: "داده در دسترس نیست",
+                                        accentColor = financialPalette.bullCandle,
+                                        modifier = Modifier.weight(1f),
+                                        icon = {
+                                            Icon(
+                                                imageVector = Icons.AutoMirrored.Outlined.TrendingUp,
+                                                contentDescription = null,
+                                                tint = financialPalette.bullCandle,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            topGainer?.let { onOpenSymbolInChartTab(it) }
+                                        },
+                                        testTag = "bento_top_gainer_cell"
+                                    )
+
+                                    // Cell 2: Open Workspace Tabs Quick Jump
+                                    BentoStatCell(
+                                        title = "چارت‌های باز همزمان",
+                                        value = "${openTabs.size} تب",
+                                        subtitle = openTabs.firstOrNull()?.symbolCode ?: "کلیک برای مشاهده",
+                                        accentColor = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.weight(1f),
+                                        icon = {
+                                            Icon(
+                                                imageVector = Icons.Outlined.CandlestickChart,
+                                                contentDescription = null,
+                                                tint = MaterialTheme.colorScheme.primary,
+                                                modifier = Modifier.size(14.dp)
+                                            )
+                                        },
+                                        onClick = {
+                                            openTabs.firstOrNull()?.let { tab ->
+                                                allSymbols.firstOrNull { it.symbolCode == tab.symbolCode }?.let { onOpenSymbolInChartTab(it) }
+                                            }
+                                        },
+                                        testTag = "bento_open_tabs_cell"
+                                    )
+                                }
+                            }
+                        }
+
                         items(
                             items = filteredWatchlist,
                             key = { it.symbolCode }

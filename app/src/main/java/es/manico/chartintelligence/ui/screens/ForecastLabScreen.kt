@@ -85,6 +85,9 @@ import es.manico.chartintelligence.ui.components.NoEdgeWarningBanner
 import es.manico.chartintelligence.ui.components.PathEventAndSensitivityCard
 import es.manico.chartintelligence.ui.components.UncertaintyBreakdownCard
 import es.manico.chartintelligence.ui.components.WalkForwardBenchmarkTable
+import es.manico.chartintelligence.ui.theme.BentoCard
+import es.manico.chartintelligence.ui.theme.BentoStatCell
+import es.manico.chartintelligence.ui.theme.bentoInteractive
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 import java.math.BigDecimal
@@ -280,111 +283,124 @@ fun ForecastLabScreen(
                 }
             }
 
-            // Filter Chips: Timeframe + Horizon + Render Mode
+            // Bento Controls Tile: Timeframe + Horizon + Render Mode + Actions
             if (activeTab != null) {
                 CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                    Column(
+                    BentoCard(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.72f))
                             .padding(horizontal = 12.dp, vertical = 6.dp),
-                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                        contentPadding = 12.dp,
+                        testTag = "forecast_bento_controls_card"
                     ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            for (tf in activeTab.allowedTimeframes) {
-                                FilterChip(
-                                    selected = activeTab.timeframe.equals(tf, ignoreCase = true),
-                                    onClick = { onSelectTimeframe(tf) },
-                                    label = {
-                                        Text(
-                                            PriceFormatterAlgorithm.displayTimeframeLabel(tf),
-                                            fontFamily = JetBrainsMonoFontFamily,
-                                            fontSize = 11.sp
-                                        )
-                                    },
-                                    modifier = Modifier.testTag("forecast_tf_chip_${tf.lowercase()}")
-                                )
-                            }
-                        }
-
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .horizontalScroll(rememberScrollState()),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            for (hVal in FORECAST_HORIZON_PRESETS) {
-                                FilterChip(
-                                    selected = activeHorizon == hVal,
-                                    onClick = { onSelectHorizonBars(hVal) },
-                                    label = {
-                                        Text("+$hVal", fontFamily = JetBrainsMonoFontFamily, fontSize = 11.sp)
-                                    },
-                                    modifier = Modifier.testTag("forecast_horizon_chip_$hVal")
-                                )
-                            }
-                            for (rm in ForecastRenderMode.entries) {
-                                FilterChip(
-                                    selected = activeRenderMode == rm,
-                                    onClick = { onSelectRenderMode(rm) },
-                                    label = {
-                                        Text(
-                                            when (rm) {
-                                                ForecastRenderMode.HYBRID -> "Hybrid"
-                                                ForecastRenderMode.FAN_CHART -> "Fan"
-                                                ForecastRenderMode.GHOST_CANDLES -> "Ghost"
-                                            },
-                                            fontSize = 11.sp
-                                        )
-                                    },
-                                    modifier = Modifier.testTag("forecast_mode_chip_${rm.key.lowercase()}")
-                                )
-                            }
-                        }
-
-                        Row(
+                        Column(
                             modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val isAppliedOnChart = activeTab?.showFutureProjection == true
-                            Button(
-                                onClick = onApplyForecastToChart,
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .minimumInteractiveComponentSize()
-                                    .testTag("forecast_apply_to_chart_btn"),
-                                shape = RoundedCornerShape(8.dp)
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = if (isAppliedOnChart) {
-                                        "✓ ${stringResource(R.string.forecast_apply_chart_btn)}"
-                                    } else {
-                                        stringResource(R.string.forecast_apply_chart_btn)
-                                    },
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                for (tf in activeTab.allowedTimeframes) {
+                                    FilterChip(
+                                        selected = activeTab.timeframe.equals(tf, ignoreCase = true),
+                                        onClick = { onSelectTimeframe(tf) },
+                                        label = {
+                                            Text(
+                                                PriceFormatterAlgorithm.displayTimeframeLabel(tf),
+                                                fontFamily = JetBrainsMonoFontFamily,
+                                                fontSize = 11.sp
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .bentoInteractive()
+                                            .testTag("forecast_tf_chip_${tf.lowercase()}")
+                                    )
+                                }
                             }
-                            OutlinedButton(
-                                onClick = onRecordSnapshot,
+
+                            Row(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .minimumInteractiveComponentSize()
-                                    .testTag("forecast_record_snapshot_btn"),
-                                shape = RoundedCornerShape(8.dp)
+                                    .fillMaxWidth()
+                                    .horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                verticalAlignment = Alignment.CenterVertically
                             ) {
-                                Text(
-                                    text = stringResource(R.string.forecast_record_snapshot_btn),
-                                    style = MaterialTheme.typography.labelMedium,
-                                    fontWeight = FontWeight.Bold
-                                )
+                                for (hVal in FORECAST_HORIZON_PRESETS) {
+                                    FilterChip(
+                                        selected = activeHorizon == hVal,
+                                        onClick = { onSelectHorizonBars(hVal) },
+                                        label = {
+                                            Text("+$hVal", fontFamily = JetBrainsMonoFontFamily, fontSize = 11.sp)
+                                        },
+                                        modifier = Modifier
+                                            .bentoInteractive()
+                                            .testTag("forecast_horizon_chip_$hVal")
+                                    )
+                                }
+                                for (rm in ForecastRenderMode.entries) {
+                                    FilterChip(
+                                        selected = activeRenderMode == rm,
+                                        onClick = { onSelectRenderMode(rm) },
+                                        label = {
+                                            Text(
+                                                when (rm) {
+                                                    ForecastRenderMode.HYBRID -> "Hybrid"
+                                                    ForecastRenderMode.FAN_CHART -> "Fan"
+                                                    ForecastRenderMode.GHOST_CANDLES -> "Ghost"
+                                                },
+                                                fontSize = 11.sp
+                                            )
+                                        },
+                                        modifier = Modifier
+                                            .bentoInteractive()
+                                            .testTag("forecast_mode_chip_${rm.key.lowercase()}")
+                                    )
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val isAppliedOnChart = activeTab.showFutureProjection
+                                Button(
+                                    onClick = onApplyForecastToChart,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .minimumInteractiveComponentSize()
+                                        .bentoInteractive()
+                                        .testTag("forecast_apply_to_chart_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text(
+                                        text = if (isAppliedOnChart) {
+                                            "✓ ${stringResource(R.string.forecast_apply_chart_btn)}"
+                                        } else {
+                                            stringResource(R.string.forecast_apply_chart_btn)
+                                        },
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = onRecordSnapshot,
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .minimumInteractiveComponentSize()
+                                        .bentoInteractive()
+                                        .testTag("forecast_record_snapshot_btn"),
+                                    shape = RoundedCornerShape(12.dp)
+                                ) {
+                                    Text(
+                                        text = stringResource(R.string.forecast_record_snapshot_btn),
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                }
                             }
                         }
                     }
@@ -473,22 +489,51 @@ fun ForecastLabScreen(
 
                                 forecastResult.featuresSummary?.let { fs ->
                                     CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                                        Card(
+                                        Column(
                                             modifier = Modifier.fillMaxWidth(),
-                                            shape = RoundedCornerShape(10.dp),
-                                            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                                            border = BorderStroke(1.dp, palette.cardBorder)
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
                                         ) {
                                             Row(
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .padding(12.dp),
-                                                horizontalArrangement = Arrangement.SpaceBetween
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
                                             ) {
-                                                TelemetryItem("ATR(14)", "${String.format(Locale.US, "%.2f", fs.atrPct)}%")
-                                                TelemetryItem("EWMA σ", "${String.format(Locale.US, "%.2f", fs.ewmaSigmaPct)}%")
-                                                TelemetryItem("RSI(14)", String.format(Locale.US, "%.1f", fs.rsi14))
-                                                TelemetryItem("VolRatio", String.format(Locale.US, "%.2f", fs.realizedVolRatio))
+                                                BentoStatCell(
+                                                    title = "ATR(14) Volatility",
+                                                    value = "${String.format(Locale.US, "%.2f", fs.atrPct)}%",
+                                                    subtitle = "Normalized ATR",
+                                                    accentColor = palette.warning,
+                                                    modifier = Modifier.weight(1f),
+                                                    testTag = "bento_telemetry_atr"
+                                                )
+                                                BentoStatCell(
+                                                    title = "EWMA Sigma (σ)",
+                                                    value = "${String.format(Locale.US, "%.2f", fs.ewmaSigmaPct)}%",
+                                                    subtitle = "Dynamic variance",
+                                                    accentColor = MaterialTheme.colorScheme.secondary,
+                                                    modifier = Modifier.weight(1f),
+                                                    testTag = "bento_telemetry_ewma"
+                                                )
+                                            }
+                                            Row(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                            ) {
+                                                BentoStatCell(
+                                                    title = "RSI Momentum (14)",
+                                                    value = String.format(Locale.US, "%.1f", fs.rsi14),
+                                                    subtitle = if (fs.rsi14 >= 70f) "Overbought" else if (fs.rsi14 <= 30f) "Oversold" else "Neutral zone",
+                                                    accentColor = if (fs.rsi14 >= 70f) palette.bearCandle else if (fs.rsi14 <= 30f) palette.bullCandle else MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.weight(1f),
+                                                    testTag = "bento_telemetry_rsi"
+                                                )
+                                                BentoStatCell(
+                                                    title = "Realized Vol Ratio",
+                                                    value = String.format(Locale.US, "%.2f", fs.realizedVolRatio),
+                                                    subtitle = if (fs.realizedVolRatio > 1.2f) "High expansion" else "Compression",
+                                                    accentColor = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.weight(1f),
+                                                    testTag = "bento_telemetry_vol"
+                                                )
                                             }
                                         }
                                     }
