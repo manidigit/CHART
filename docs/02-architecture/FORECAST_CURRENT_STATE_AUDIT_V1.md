@@ -1,7 +1,7 @@
 # Forecast Current-State Audit
 
-**Version:** 0.4.0  
-**Status:** Execution-path and worker-contract audit in progress; architecture decisions are intentionally open  
+**Version:** 0.5.0  
+**Status:** Execution-path, data-readiness, ledger-integrity and CI audit in progress; architecture decisions are intentionally open  
 **Audit date:** 16 November 2026  
 **Repository:** `manidigit/CHART`  
 **Inspected ref:** `main` — tree SHA `6dd0d272f67bb2b97a3721e3812f71b57572fc41`  
@@ -394,3 +394,120 @@ This confirms that the deterministic quantile-to-OHLC construction pattern is no
 The three inspected implementations use materially similar construction rules, although exact details and metadata fields differ. The Web JavaScript engine emits quantile forecast points in its inspected builder, while the main chart renderer falls back to deriving OHLC-like bars from quantiles when explicit OHLC is absent.
 
 **Updated conclusion:** The current architecture has a shared conceptual weakness across multiple runtimes: quantile forecasts are being presented as full OHLC candles through deterministic interpolation/derivation. This is not the same as forecasting the joint distribution or path of Open, High, Low and Close. A replacement design must define that distinction explicitly in its output contract.
+
+
+---
+
+## 20. Python model targets and forecast semantics
+
+The four Python model implementations were inspected individually:
+
+- `arima_model.py` fits ARIMA to log closing prices and derives quantile bounds from forecast confidence intervals.
+- `prophet_model.py` fits Prophet to log closing prices and derives five quantiles from its point forecast and interval bounds.
+- `lstm_model.py` trains on log returns, recursively predicts returns, adds stochastic innovations and computes price quantiles from 50 simulated paths.
+- `tft_model.py` configures `log_close` as the target and `log_volume` as an input; its prediction mode is quantiles.
+
+None of these implementations predicts a joint future OHLC distribution. All pass their quantile arrays to the shared deterministic OHLC constructor already documented in §15.2.
+
+### 20.1. Python input sanitization does not implement the product readiness gate
+
+Verified in `python_worker/models/common.py`, `sanitize_candles`:
+
+- It preserves input order; it does not sort by timestamp, reject out-of-order rows, or detect duplicate timestamps.
+- It does not check timeframe spacing or missing-bar gaps.
+- It only explicitly checks positivity and finiteness for Open and Close. High, Low and volume do not receive equivalent finite-value validation.
+- It repairs High/Low using `max` and `min` rather than rejecting malformed OHLC relationships.
+- Missing or zero volume is converted to a positive value (default 100, then minimum 1), which can make absent volume look observed.
+- Invalid rows are silently skipped, with no structured rejection report or count returned to the caller.
+
+**Risk:** The worker can transform, discard or normalize input problems without exposing enough provenance for the caller to distinguish clean market history from repaired or incomplete input. This is materially weaker than the product foundation's explicit Data Readiness Gate and volume-provenance requirements.
+
+### 20.2. Worker request metadata is not round-tripped
+
+The FastAPI request model accepts `contractVersion` and `inputHash`, but `forecast_infer` passes the parsed request to `infer_payload`, whose response is constructed with a hard-coded `forecast-contract/v1` and does not echo `inputHash`. The request's declared contract version is not used to negotiate or validate response compatibility.
+
+This confirms that the version/hash issue in §15.3 is a worker implementation gap, not merely a client-side validation omission.
+
+## 21. Python walk-forward benchmark limitations
+
+Verified in `python_worker/walk_forward.py`:
+
+- The worker uses at most six expanding-window origins by default.
+- Each origin evaluates a five-step horizon by default.
+- The scored target is each future candle's Close, compared with the model's q50; quantile interval metrics are also calculated.
+- The benchmark does not score future Open, High, Low, candle range, intrabar path, swing/event sequence or multi-timeframe structural consistency.
+- The `crps` field is calculated as two times the mean of five quantile pinball losses. It is not a full numerical integration of the predictive CDF.
+- When there are no valid origins, several numeric metrics are returned as zero while status/reason carries the skipped or failed state.
+
+**Interpretation:** This is a small close/quantile diagnostic benchmark, not validation of the product's full path-level OHLC objective. Six windows are insufficient evidence for robust model ranking. Consumers must treat status and sample counts as mandatory, not interpret zero-valued metrics as successful performance.
+
+## 22. Web ledger synchronization and chain-retention defect
+
+The Web synchronization path is now traced beyond the ledger module:
+
+1. `app.js` calls `defaultForecastLedger.appendFromForecast(built.result)`.
+2. It then calls `runForecastOnServer` with action `append_client_forecast` and sends the same `clientForecast` payload.
+3. On API success, it marks the local hash as synced.
+4. The application separately retrieves server entries and lifecycle events through `fetchForecastLedger`.
+5. Lifecycle evaluations are appended locally and sent individually through `appendForecastLifecycleEventOnServer`.
+
+Therefore, the Web ledger is browser-local at the storage-module level, but the application has an explicit API synchronization layer. The earlier wording that Web-to-PHP synchronization was not established is superseded by this verified call-site trace.
+
+### 22.1. Critical local hash-chain retention issue
+
+Verified in `forecastLedger.js`:
+
+- `saveEntries` retains only the last 120 entries.
+- `saveLifecycleEvents` retains only the last 240 events.
+- Both verification functions require the first retained record's previous hash to equal the all-zero genesis hash.
+
+Once either local list exceeds its retention cap, the first retained record normally points to the hash of a record that has just been discarded. The corresponding verifier then reports a broken chain even if no retained record was modified.
+
+**Finding:** The current bounded local retention policy is incompatible with its current genesis-based full-chain verification rule. This is a concrete integrity/retention defect, not merely a design question. A future design must either preserve the complete chain, retain a verifiable checkpoint/anchor, or explicitly verify a segment against a trusted checkpoint. Do not silently treat a truncated suffix as a complete genesis-rooted chain.
+
+## 23. Python worker deployment and CI coverage
+
+### 23.1. Deployment evidence
+
+The repository contains a Python 3.11 Dockerfile that installs `requirements.txt`, copies the worker and starts Uvicorn on port 8080. The worker README documents manual virtual-environment/VPS/Docker-style setup and a configurable Worker URL.
+
+The inspected workflow directory contains `backtest.yml` and `build-apk.yml`; no dedicated Python worker deployment workflow was found in that directory. Repository source therefore establishes a deployable container recipe and manual setup instructions, but does not establish that a production Worker is currently deployed, reachable, or automatically deployed from this repository.
+
+### 23.2. CI test coverage gap
+
+The current `.github/workflows/backtest.yml` runs three Node test files and a Node walk-forward backtest. Its path filters do not include `python_worker/**`, and its commands do not run `pytest` or `unittest`.
+
+Python tests exist in `python_worker/tests/test_worker.py`, but their presence alone does not demonstrate that CI executes them. A Python-only change can therefore avoid triggering the Forecast backtest workflow, and the Python contract tests are not part of the inspected automated test job.
+
+The workflow also creates its backtest input using `scripts/makeSampleData.js`; the generated 960-bar sample is synthetic. This is useful for deterministic regression testing, but it is not evidence of validation on representative historical market regimes or real market data.
+
+No workflow was executed as part of this static source audit. CI pass/fail status and actual production deployment remain unverified.
+
+## 24. Existing chart renderer integration seam
+
+Verified in `host_subdomain/assets/js/components/chartRenderer.js`:
+
+- The main chart obtains forecast points from `ForecastEngine.project` through its indicator/cache layer.
+- Future forecast slots are appended after the visible historical candle slots; the horizontal spacing is shared slot geometry.
+- The renderer extends the price range using future q10/q90 values before computing the vertical price transform.
+- Ghost/Hybrid rendering uses forecast OHLC fields when finite; otherwise it derives Open from the previous median and falls back to q50/q25/q75 for Close/Low/High.
+- The future fan bands and median path are rendered in the existing price pane; no separate chart implementation is required for the current overlay.
+- The current time-axis labels are generated from visible historical candles, while forecast milestones are separately labeled by step number.
+
+**Migration implication:** The existing chart canvas is a viable integration seam, but the new forecast contract must explicitly provide future timestamps and the renderer must be reviewed for session/calendar-aware placement, horizontal scrolling, scale inclusion and true OHLC geometry. The current equal-slot layout and step-number milestones do not by themselves prove calendar/session-correct future placement.
+
+## 25. Updated findings and next verification priorities
+
+| Priority | Finding | Evidence | Required follow-up |
+|---|---|---|---|
+| Critical | Local ledger chain verification breaks after retention truncation | `forecastLedger.js` save caps and genesis-rooted verifiers | Define checkpoint/anchor or retention-compatible verification |
+| Critical | Worker silently repairs/drops input and fabricates positive volume defaults | `python_worker/models/common.py` | Enforce explicit readiness validation and volume provenance |
+| Critical | Current model outputs are close/quantile paths, not joint OHLC forecasts | Four Python model implementations plus common builder | Keep model target and displayed candle semantics distinct |
+| High | Python worker request version/hash metadata is not returned | `python_worker/app.py` | Require explicit contract negotiation and response identity |
+| High | Python walk-forward benchmark is small and close-centric | `python_worker/walk_forward.py` | Do not use as path-level model ranking evidence |
+| High | Python tests are not included in inspected CI workflow or path filters | `backtest.yml`; `python_worker/tests` | Add a dedicated Python CI job in a later approved implementation phase |
+| High | Production Worker deployment is not established by repository evidence | Dockerfile/README; workflow inventory | Verify actual hosting, URL, health and deployment ownership |
+| High | Web ledger sync exists, but local and server identity/conflict policy remains unresolved | `app.js`, `apiService.js`, `forecast.php` | Trace server append idempotency and reconciliation |
+| Medium | Main chart future axis uses appended slots and step milestones | `chartRenderer.js` | Specify timestamp/session mapping and scroll behavior |
+
+The remaining work before migration design is to inspect PHP server-side append idempotency and fallback semantics, complete Android/Web/PHP data-readiness parity, inspect chart interactions/scroll behavior, and then produce the file-level preserve/adapt/replace/retire matrix. No executable code has been modified in this audit.
