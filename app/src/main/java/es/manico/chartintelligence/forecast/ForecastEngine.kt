@@ -55,10 +55,16 @@ object ForecastEngine {
                 ForecastCalendarHelper.enforceMonotonicQuantiles(raw.q10, raw.q25, raw.q50, raw.q75, raw.q90, features.lastClose * 0.01)
             }
             val mq = ForecastCalendarHelper.enforceMonotonicQuantiles(adj[0], adj[1], adj[2], adj[3], adj[4], features.lastClose * 0.01)
-            val cOpen = prevClose
-            val cClose = mq[2]
-            val cHigh = max(mq[3], max(cOpen, cClose))
-            val cLow = kotlin.math.min(mq[1], kotlin.math.min(cOpen, cClose))
+            val qRange = kotlin.math.max(1e-8, mq[4] - mq[0])
+            val microJitter = 0.2 * qRange * kotlin.math.sin((h + 1) * 2.1 + 0.7)
+            val targetMid = mq[2] + microJitter
+            val cClose = kotlin.math.max(mq[0], kotlin.math.min(mq[4], targetMid))
+            val openOffset = 0.15 * qRange * kotlin.math.sin((h + 1) * 1.7 + 0.3)
+            val cOpen = kotlin.math.max(mq[0], kotlin.math.min(mq[4], prevClose + openOffset))
+            val rawHigh = kotlin.math.max(mq[3], kotlin.math.max(cOpen, cClose) + kotlin.math.abs(0.15 * qRange))
+            val rawLow = kotlin.math.min(mq[1], kotlin.math.min(cOpen, cClose) - kotlin.math.abs(0.15 * qRange))
+            val cHigh = kotlin.math.min(mq[4], rawHigh)
+            val cLow = kotlin.math.max(mq[0], rawLow)
             prevClose = cClose
 
             out.add(

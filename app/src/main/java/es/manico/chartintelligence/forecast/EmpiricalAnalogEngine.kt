@@ -221,10 +221,16 @@ class EmpiricalAnalogEngine(
             )
             val openTime = futureTimestamps.getOrElse(step) { 0L }
             val pctChange = ((mq[2] - lastClose) / lastClose) * 100.0
-            val cOpen = prevMedian
-            val cClose = mq[2]
-            val cHigh = max(mq[3], max(cOpen, cClose))
-            val cLow = min(mq[1], min(cOpen, cClose))
+            val qRange = kotlin.math.max(1e-8, mq[4] - mq[0])
+            val microJitter = 0.2 * qRange * kotlin.math.sin((step + 1) * 2.1 + 0.7)
+            val targetMid = mq[2] + microJitter
+            val cClose = kotlin.math.max(mq[0], kotlin.math.min(mq[4], targetMid))
+            val openOffset = 0.15 * qRange * kotlin.math.sin((step + 1) * 1.7 + 0.3)
+            val cOpen = kotlin.math.max(mq[0], kotlin.math.min(mq[4], prevMedian + openOffset))
+            val rawHigh = kotlin.math.max(mq[3], kotlin.math.max(cOpen, cClose) + kotlin.math.abs(0.15 * qRange))
+            val rawLow = kotlin.math.min(mq[1], kotlin.math.min(cOpen, cClose) - kotlin.math.abs(0.15 * qRange))
+            val cHigh = kotlin.math.min(mq[4], rawHigh)
+            val cLow = kotlin.math.max(mq[0], rawLow)
             prevMedian = cClose
 
             points.add(
