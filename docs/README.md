@@ -3,6 +3,8 @@
 > **Unified Index & Single Source of Truth (`docs/`)**  
 > کل مستندات پروژه به‌صورت موضوعی در ۴ پوشه استاندارد دسته‌بندی شده‌اند تا پیگیری نیازمندی‌ها، معماری، خطاهای باز و نقشه راه توسعه بدون تکرار یا ابهام انجام شود.
 
+> **Forecast product authority:** For any new design or redesign of Forecast, start with [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md). This is an independent product-level foundation. Older forecast specifications and existing code are reference material only and must not override this document where their assumptions or decisions conflict. Their implementation status must be verified separately.
+
 ---
 
 ## Directory Structure (`docs/`)
