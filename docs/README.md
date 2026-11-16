@@ -9,6 +9,7 @@
 
 | Category | File | Purpose & Scope |
 |---|---|---|
+| | [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) | **Independent Forecast Product Foundation (v1.0.0)**: Product mission, realistic multi-candle OHLC paths, multi-model chart comparison, snapshots, forecast records, live and historical evaluation, and future model ranking |
 | **01 — Product & Research** | [CHART_INTELLIGENCE_MASTER_SPEC.md](./01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) | **Primary Source of Truth**: Product vision, 14 engineering standards, data quality, 8 core MariaDB tables, API envelope, `forecast-contract/v1`, immutable hash chain, phases 1–6 gates, open-source audits & math formulas |
 | | [FORECAST_ENGINE_V2_SPEC.md](./01-product/FORECAST_ENGINE_V2_SPEC.md) | **Forecast Engine V2 (Rev 2.1) Spec**: Zero-clamping readiness gate, unified embargo ($H+E$), 4-way nested walk-forward, WIS 5Q, Bartlett $N_{\text{eff}}$, conformal scaling, HLN-DM & bootstrap, causal empirical analogs, L2 scenario logit, and 12-sig-fig canonical parity |
 | | [FORECAST_STUDIO_PRODUCT_DIRECTION_V2.md](./01-product/FORECAST_STUDIO_PRODUCT_DIRECTION_V2.md) | **Forecast Studio Product Direction (v2.0)**: Agreed product scope and target architecture; start with one validated model, realistic OHLC forecast candles, strict multi-timeframe consistency, validation, existing-chart integration, and simple forecast history |
@@ -33,8 +34,10 @@
 
 1. **Starting a New Coding Task / Fixing Bugs:**  
    Read [`OPEN_ISSUES.md`](./03-roadmap-and-issues/OPEN_ISSUES.md) and [`ROADMAP_BACKLOG.md`](./03-roadmap-and-issues/ROADMAP_BACKLOG.md) first, then follow [`AGENTS.md`](./04-development/AGENTS.md) and [`ARCHITECTURE.md`](./02-architecture/ARCHITECTURE.md).
-2. **Checking Product Rules, Formulas, or Prediction Contracts:**  
-   Read [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./01-product/CHART_INTELLIGENCE_MASTER_SPEC.md).
+2. **Starting or Redesigning Forecast Product Work:**  
+   Read [`FORECAST_PRODUCT_FOUNDATION_V1.md`](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) first for the independent product mission and output requirements. Then inspect the relevant technical specifications and actual implementation; do not assume older forecast designs are binding.
+3. **Checking Existing Product Rules, Formulas, or Technical Contracts:**  
+   Read [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) and the relevant technical specification.
 4. **Working on UI Layout or Mobile/Web Ergonomics:**  
    Read [`DESIGN_WORKSPACE_SPEC.md`](./02-architecture/DESIGN_WORKSPACE_SPEC.md) + Section 1 of [`AGENTS.md`](./04-development/AGENTS.md).
 5. **Deploying, Debugging cPanel, or Touching Workflows:**  
