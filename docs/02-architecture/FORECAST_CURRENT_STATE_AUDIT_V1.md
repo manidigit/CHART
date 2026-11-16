@@ -1,6 +1,6 @@
 # Forecast Current-State Audit
 
-**Version:** 0.6.0  
+**Version:** 0.7.0  
 **Status:** Execution-path, data-readiness, ledger-integrity, server-persistence and CI audit in progress; architecture decisions are intentionally open  
 **Audit date:** 16 November 2026  
 **Repository:** `manidigit/CHART`  
@@ -572,3 +572,93 @@ The lifecycle POST path computes a database event hash using the latest database
 | Medium | Server local JSON ledger is bounded to 120/240 entries | `saveLocalLedgerEntries` | Apply checkpoint-compatible retention or use a non-truncated archive |
 
 These findings are static source-level risks. Production account topology, actual DB constraints, deployed endpoint behavior and whether the intended ledger is global or user-private remain unverified. No code has been modified.
+
+
+---
+
+## 28. Cross-runtime Data Readiness parity — confirmed divergence
+
+The same conceptual input (historical candles) is not subjected to equivalent readiness rules in the inspected Kotlin, JavaScript, PHP and Python paths.
+
+### 28.1. Kotlin and JavaScript enforce a strict readiness gate
+
+The inspected Kotlin `ForecastFeatureExtractor.validateReadiness` and JavaScript `validateDataReadiness` implementations both check:
+
+- finite, positive OHLC values;
+- valid OHLC geometry (`high >= max(open, close)`, `low <= min(open, close)`, and `high >= low`);
+- finite, non-negative volume;
+- a valid positive candle timestamp;
+- strictly increasing timestamps (duplicates and out-of-order rows are reported);
+- whether the last candle is closed, when that check is enabled;
+- market-calendar gaps when gap enforcement is enabled;
+- horizon-dependent operational minimum sample size.
+
+They do not silently repair corrupted OHLC rows. A readiness failure prevents normal forecast calculation.
+
+### 28.2. PHP and Python use materially weaker sanitizers
+
+The inspected PHP `ForecastEnginePhp::project` and Python `sanitize_candles` paths instead:
+
+- accept a candle primarily based on positive Open and Close plus a finite Close check;
+- do not independently require finite High and Low values;
+- normalize High/Low using `max`/`min` rather than rejecting invalid source geometry;
+- do not validate timestamp presence, strict ordering or duplicates;
+- do not check whether the final candle is closed;
+- do not apply the same calendar-gap validation;
+- use a fixed minimum of 24 candles rather than the Kotlin/JavaScript horizon-dependent operational budget.
+
+Both paths replace missing/zero volume with a positive default (PHP: at least 1, default 100; Python: default 100, then at least 1). Python's Pydantic `CandleIn` also declares `volume=100.0`, so an omitted volume can be converted to a positive value before `sanitize_candles` runs.
+
+**Consequence:** The same market history can be rejected by Kotlin/Web but accepted, altered and forecast by PHP/Python. Missing volume can also be presented to a model as positive volume despite no volume observation being supplied. This is a cross-runtime correctness defect, not merely a documentation difference.
+
+### 28.3. Required design constraint
+
+The replacement system must define one normative readiness contract and one explicit provenance policy for volume and timestamps. A runtime must not silently transform invalid OHLC into plausible OHLC or convert absent volume into observed positive volume. If a degraded mode is intentionally supported, its status and limitations must be explicit in the result.
+
+## 29. Worker endpoint and outbound-request security review
+
+### 29.1. PHP accepts a caller-supplied Worker URL
+
+The PHP Forecast endpoint reads `worker_url` / `workerUrl` from the request payload and passes it to `ForecastEnginePhp::project`. The PHP worker probe accepts any URL matching the `http://` or `https://` scheme, then makes a server-side cURL POST to the supplied host with `/forecast/infer` appended.
+
+No hostname allowlist, DNS/IP-range validation, private/link-local address rejection, redirect policy or explicit egress restriction is visible in the inspected code.
+
+**Security risk — potential SSRF:** If an authenticated caller can submit an arbitrary `worker_url`, and the PHP host can reach internal or metadata services, the endpoint may be used to make server-side requests to destinations not intended by the application. Exploitability depends on deployed network egress, DNS behavior, cURL configuration and the effective caller permissions; those runtime facts were not verified here.
+
+The safe design is a server-controlled Worker endpoint identifier/configuration, not an arbitrary URL accepted from an inference request. If custom endpoints are a deliberate administrator feature, they require strict allowlisting and network-level egress controls.
+
+### 29.2. Python Worker routes have no visible authentication or rate limiting
+
+The inspected FastAPI app exposes `GET /health` and `POST /forecast/infer` without authentication dependencies, API-key checks, authorization scopes or rate limiting in the application code.
+
+**Conditional operational/security risk:** If this optional Worker is deployed on a publicly reachable host, anyone able to reach it may submit inference requests that invoke statsmodels, Prophet, PyTorch LSTM and TFT paths. Resource exhaustion and uncontrolled compute cost must be considered. Actual public exposure and any reverse-proxy protections remain unverified.
+
+### 29.3. Worker contract identity is still not enforced end-to-end
+
+The Python request schema accepts `contractVersion` and `inputHash`, but `infer_payload` returns `forecast-contract/v1` and does not echo the request `inputHash`. The PHP caller merges returned model trajectories after checking only that the response is an array and that model IDs exist; the inspected merge path does not enforce response contract version or input-hash equality.
+
+**Risk:** A response generated for a different or stale input can be accepted into the PHP result unless an upstream mechanism not present in this path prevents it. The response identity must be validated before any trajectory is merged.
+
+## 30. CI trigger coverage — Python-only pushes can bypass the inspected workflow
+
+The inspected `.github/workflows/backtest.yml` push path filter includes JavaScript Forecast files, `src/**`, `scripts/**`, `tests/**` and the workflow itself, but does not include `python_worker/**`.
+
+The workflow also runs Node test files and the JavaScript backtest commands; it does not install Python dependencies or run `pytest`.
+
+**Consequence:** A push to `main` that changes only Python Worker source or tests does not match this workflow's push path filter. Pull requests targeting `main` still trigger the workflow because the pull-request trigger has no corresponding path filter, but that workflow still does not execute Python tests.
+
+This is stronger than simply saying that Python tests are absent from the job: Python-only main-branch pushes can avoid this workflow entirely.
+
+## 31. Updated risk register — data parity and Worker security
+
+| Priority | Finding | Evidence | Required follow-up |
+|---|---|---|---|
+| Critical / security review | Caller-controlled PHP Worker URL creates a potential SSRF path | `forecast.php` accepts `worker_url`; `ForecastEnginePhp::probeRemoteWorker` performs cURL to it | Replace request-supplied URL with server-controlled configuration; verify egress and enforce allowlists |
+| High / conditional exposure | Python Worker inference routes show no application-level auth or rate limit | `python_worker/app.py` | Verify deployment exposure and proxy controls; add authentication, quotas and request limits where needed |
+| Critical | PHP/Python readiness sanitization diverges from Kotlin/JS and silently modifies input | `ForecastEnginePhp.php`, `python_worker/models/common.py`, Kotlin/JS readiness validators | Define and enforce one cross-runtime readiness contract |
+| High | Missing volume becomes positive synthetic/default volume in PHP/Python | PHP sanitizer, Python sanitizer and Pydantic `CandleIn` | Preserve missingness and volume provenance; never represent absent volume as observed volume |
+| High | PHP accepts Worker responses without validating contract version or input hash | `ForecastEnginePhp::probeRemoteWorker` merge path | Reject response unless contract and request identity match |
+| High | Python-only main-branch pushes do not trigger the inspected backtest workflow | `.github/workflows/backtest.yml` push path filter | Include Worker paths and add a Python CI job |
+| High | Python tests are not run by the inspected workflow | Same workflow | Run dependency installation and `pytest` in a dedicated job |
+
+These are static source findings. No live SSRF test, external Worker exposure test, production configuration inspection, CI execution or application runtime test was performed. No executable code has been modified.
