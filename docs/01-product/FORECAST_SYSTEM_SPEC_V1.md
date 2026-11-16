@@ -184,6 +184,8 @@ Forecast paths must be rendered on the existing CHART chart. Replacing the curre
 
 The chart must make the boundary between historical actual candles and future forecast values unmistakable.
 
+The primary product output remains a meaningful future path expressed as complete OHLC candles, as defined by the Product Foundation. However, the system must not force every candidate model into that representation. A model that natively returns close-only values, quantiles, a distribution or another representation may be retained and displayed through an explicitly identified native/derived view when useful for research or comparison. It must not be converted into fabricated OHLC candles and presented as if the model predicted those candles. Such a candidate does not satisfy the full-OHLC output requirement merely because a display adapter can draw candle-like shapes from its output. Whether a scientifically justified transformation can be accepted for a particular model remains an evidence-based decision for a later model-specific review.
+
 For each displayed result, the user must be able to determine:
 - which model and model version produced it;
 - when the forecast was created;
