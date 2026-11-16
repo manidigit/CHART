@@ -1,7 +1,7 @@
 # CHART Forecast — Model Intake and Comparison Framework
 ## چارچوب بررسی، پذیرش و مقایسه مدل‌های پیشنهادی
 
-- **Version:** 1.0.0
+- **Version:** 1.0.1
 - **Date:** 2026-11-17
 - **Status:** Reusable intake protocol; no candidate model is pre-approved
 - **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.2.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.0
@@ -302,6 +302,7 @@ No need to pre-filter candidates by algorithm family. Candidate repositories may
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial repository intake, evidence classification, technical review, licensing, experiment protocol, integration fit and disposition framework |
+| 1.0.1 | 2026-11-17 | Added source-level screening records for Chronos-2, PatchTST, Time-Series-Library and Moirai 2.0 |
 
 
 ---
