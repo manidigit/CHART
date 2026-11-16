@@ -1,6 +1,6 @@
 # Forecast Current-State Audit
 
-**Version:** 0.3.0  
+**Version:** 0.4.0  
 **Status:** Execution-path and worker-contract audit in progress; architecture decisions are intentionally open  
 **Audit date:** 16 November 2026  
 **Repository:** `manidigit/CHART`  
@@ -376,3 +376,21 @@ The web Forecast Studio imports this local ledger. A separate web-to-PHP ledger 
 4. Inspect CI workflow commands and, where feasible, execute the Python and JavaScript Forecast tests.
 5. Document the exact chart rendering API and how future points affect price/time scaling, scrolling and visible candle geometry.
 6. Build the final file-level migration matrix with evidence for each classification.
+
+
+---
+
+## 19. PHP native OHLC construction — third confirmed implementation
+
+Verified in `host_subdomain/api/v1/forecast/NativeModelsPhp.php`, function `pointsFromQuantiles`:
+
+- `open` is the previous step's close.
+- `close` is `q50`.
+- High/low are constructed symmetrically using `(q75 - q25) * 0.28`.
+- The phase is assigned from the sign of close minus open.
+
+This confirms that the deterministic quantile-to-OHLC construction pattern is not limited to Android and Python. It also exists in the PHP native Forecast engine.
+
+The three inspected implementations use materially similar construction rules, although exact details and metadata fields differ. The Web JavaScript engine emits quantile forecast points in its inspected builder, while the main chart renderer falls back to deriving OHLC-like bars from quantiles when explicit OHLC is absent.
+
+**Updated conclusion:** The current architecture has a shared conceptual weakness across multiple runtimes: quantile forecasts are being presented as full OHLC candles through deterministic interpolation/derivation. This is not the same as forecasting the joint distribution or path of Open, High, Low and Close. A replacement design must define that distinction explicitly in its output contract.
