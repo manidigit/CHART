@@ -11,7 +11,7 @@
 
 | Category | File | Purpose & Scope |
 |---|---|---|
-| | [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) | **Independent Forecast Product Foundation (v1.0.0)**: Product mission, realistic multi-candle OHLC paths, multi-model chart comparison, snapshots, forecast records, live and historical evaluation, and future model ranking |
+| | [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) | **Independent Forecast Product Foundation (v1.1.0)**: Product mission, realistic multi-candle OHLC paths, multi-model chart comparison, snapshots, forecast records, live and historical evaluation, and future model ranking |
 | **01 — Product & Research** | [CHART_INTELLIGENCE_MASTER_SPEC.md](./01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) | Existing CHART-wide product and engineering reference. For Forecast product direction, the independent `FORECAST_PRODUCT_FOUNDATION_V1.md` takes precedence. |
 | | [FORECAST_ENGINE_V2_SPEC.md](./01-product/FORECAST_ENGINE_V2_SPEC.md) | **Forecast Engine V2 (Rev 2.1) Spec**: Zero-clamping readiness gate, unified embargo ($H+E$), 4-way nested walk-forward, WIS 5Q, Bartlett $N_{\text{eff}}$, conformal scaling, HLN-DM & bootstrap, causal empirical analogs, L2 scenario logit, and 12-sig-fig canonical parity |
 | | [FORECAST_STUDIO_PRODUCT_DIRECTION_V2.md](./01-product/FORECAST_STUDIO_PRODUCT_DIRECTION_V2.md) | Superseded product-direction draft. Useful historical source; the consolidated `FORECAST_PRODUCT_FOUNDATION_V1.md` is authoritative for product requirements. |
