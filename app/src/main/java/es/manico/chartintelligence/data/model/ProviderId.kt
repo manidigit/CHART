@@ -70,7 +70,7 @@ enum class ProviderId(
             STOOQ -> "EOD Historical"
             LOCAL_CSV -> "Imported Archive"
             else -> when {
-                sym in setOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN") -> "Official Exchange"
+                isStock(sym) -> "Official Exchange"
                 sym in setOf("BTCUSD", "ETHUSD") -> "Spot REST"
                 sym in setOf("SPOTBRENT", "USOIL") -> if (this == YAHOO_FINANCE) "Futures Ref" else "CFD Feed"
                 else -> "Spot Feed"
@@ -79,6 +79,34 @@ enum class ProviderId(
     }
 
     companion object {
+        val STOCK_SYMBOLS_SET = setOf(
+            "NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN",
+            "AVGO", "MU", "INTC", "MRVL", "AMAT", "LRCX", "QCOM", "SMCI", "DELL", "SNDK", "ANET",
+            "PLTR", "ORCL", "CRM", "ADBE", "CRWD", "CSCO", "APP", "NBIS", "CRWV",
+            "SPCX", "RKLB", "GEV", "BE", "IONQ", "RIVN",
+            "JPM", "BAC", "GS", "V", "MA", "BRK.B", "HOOD", "MSTR", "PYPL", "COIN",
+            "WMT", "COST", "DIS", "SBUX", "MCD", "KO",
+            "LLY", "UNH", "PFE", "XOM", "CVX",
+            "TSM", "ASML", "SSNLF", "SKHY", "BABA", "NVO", "TM", "SAP", "HSBC", "2222.SR"
+        )
+
+        fun isStock(symbolCode: String): Boolean {
+            val sym = symbolCode.trim().uppercase()
+            return STOCK_SYMBOLS_SET.contains(sym)
+        }
+
+        fun getAssetClass(symbolCode: String): String {
+            val code = symbolCode.trim().uppercase()
+            return when {
+                code == "XAUUSD" || code == "XAGUSD" || code.contains("XAU") || code.contains("XAG") || code.contains("GOLD") -> "METALS"
+                code == "SPOTBRENT" || code == "USOIL" || code.contains("OIL") || code.contains("BRENT") -> "ENERGY"
+                code == "BTCUSD" || code == "ETHUSD" || code.contains("BTC") || code.contains("ETH") -> "CRYPTO"
+                code == "SPX500USD" || code == "NDQ" || code.contains("SPX") || code.contains("NDX") || code.contains("NAS") -> "INDICES"
+                isStock(code) -> "STOCKS"
+                else -> "FX"
+            }
+        }
+
         fun fromId(id: String?): ProviderId {
             return entries.firstOrNull { it.id.equals(id, ignoreCase = true) } ?: DUKASCOPY
         }
@@ -171,7 +199,64 @@ enum class ProviderId(
                     ProviderSourceSymbolSpec("UBER", "UBER", "سهام اوبر (Uber)", "Uber Technologies, Inc."),
                     ProviderSourceSymbolSpec("NKE", "NKE", "سهام نایکی (Nike)", "Nike, Inc."),
                     ProviderSourceSymbolSpec("IBM", "IBM", "سهام آی‌بی‌ام (IBM)", "International Business Machines"),
-                    ProviderSourceSymbolSpec("SAN", "SAN", "سهام بانک سانتاندر (Santander)", "Banco Santander, S.A.")
+                    ProviderSourceSymbolSpec("SAN", "SAN", "سهام بانک سانتاندر (Santander)", "Banco Santander, S.A."),
+                    ProviderSourceSymbolSpec("AVGO", "AVGO", "سهام برودکام (AVGO)", "Broadcom Inc."),
+                    ProviderSourceSymbolSpec("MU", "MU", "سهام مایکرون (MU)", "Micron Technology"),
+                    ProviderSourceSymbolSpec("INTC", "INTC", "سهام اینتل (INTC)", "Intel Corporation"),
+                    ProviderSourceSymbolSpec("MRVL", "MRVL", "سهام مارول (MRVL)", "Marvell Technology"),
+                    ProviderSourceSymbolSpec("AMAT", "AMAT", "سهام اپلاید متریالز (AMAT)", "Applied Materials"),
+                    ProviderSourceSymbolSpec("LRCX", "LRCX", "سهام لم ریسرچ (LRCX)", "Lam Research"),
+                    ProviderSourceSymbolSpec("QCOM", "QCOM", "سهام کوالکام (QCOM)", "Qualcomm Inc."),
+                    ProviderSourceSymbolSpec("SMCI", "SMCI", "سهام سوپرمیکرو (SMCI)", "Super Micro Computer"),
+                    ProviderSourceSymbolSpec("DELL", "DELL", "سهام دل (DELL)", "Dell Technologies"),
+                    ProviderSourceSymbolSpec("SNDK", "SNDK", "سهام سندیسک (SNDK)", "SanDisk Corporation"),
+                    ProviderSourceSymbolSpec("ANET", "ANET", "سهام آریستا (ANET)", "Arista Networks"),
+                    ProviderSourceSymbolSpec("PLTR", "PLTR", "سهام پالانتیر (PLTR)", "Palantir Technologies"),
+                    ProviderSourceSymbolSpec("ORCL", "ORCL", "سهام اوراکل (ORCL)", "Oracle Corporation"),
+                    ProviderSourceSymbolSpec("CRM", "CRM", "سهام سیلزفورس (CRM)", "Salesforce Inc."),
+                    ProviderSourceSymbolSpec("ADBE", "ADBE", "سهام ادوبی (ADBE)", "Adobe Inc."),
+                    ProviderSourceSymbolSpec("CRWD", "CRWD", "سهام کراوداسترایک (CRWD)", "CrowdStrike"),
+                    ProviderSourceSymbolSpec("CSCO", "CSCO", "سهام سیسکو (CSCO)", "Cisco Systems"),
+                    ProviderSourceSymbolSpec("APP", "APP", "سهام اپلاوین (APP)", "AppLovin Corp."),
+                    ProviderSourceSymbolSpec("NBIS", "NBIS", "سهام نبیوس (NBIS)", "Nebu Group"),
+                    ProviderSourceSymbolSpec("CRWV", "CRWV", "سهام کورویو (CRWV)", "CoreWeave"),
+                    ProviderSourceSymbolSpec("SPCX", "SPCX", "سهام اسپیسایکس (SPCX)", "SpaceX Fund"),
+                    ProviderSourceSymbolSpec("RKLB", "RKLB", "سهام راکت لب (RKLB)", "Rocket Lab USA"),
+                    ProviderSourceSymbolSpec("GEV", "GEV", "سهام جی‌ای ورنووا (GEV)", "GE Vernova"),
+                    ProviderSourceSymbolSpec("BE", "BE", "سهام بلوم انرژی (BE)", "Bloom Energy"),
+                    ProviderSourceSymbolSpec("IONQ", "IONQ", "سهام آیآنکیو (IONQ)", "IonQ Inc."),
+                    ProviderSourceSymbolSpec("RIVN", "RIVN", "سهام ریویان (RIVN)", "Rivian Automotive"),
+                    ProviderSourceSymbolSpec("JPM", "JPM", "سهام جی‌پی مورگان (JPM)", "JPMorgan Chase"),
+                    ProviderSourceSymbolSpec("BAC", "BAC", "سهام بنک آو آمریکا (BAC)", "Bank of America"),
+                    ProviderSourceSymbolSpec("GS", "GS", "سهام گلدمن ساکس (GS)", "Goldman Sachs"),
+                    ProviderSourceSymbolSpec("V", "V", "سهام ویزا (V)", "Visa Inc."),
+                    ProviderSourceSymbolSpec("MA", "MA", "سهام مسترکارت (MA)", "Mastercard Inc."),
+                    ProviderSourceSymbolSpec("BRK.B", "BRK.B", "برکشایر هاتاوی (BRK.B)", "Berkshire Hathaway"),
+                    ProviderSourceSymbolSpec("HOOD", "HOOD", "سهام رابینهود (HOOD)", "Robinhood Markets"),
+                    ProviderSourceSymbolSpec("MSTR", "MSTR", "مایکرواستراتژی (MSTR)", "MicroStrategy"),
+                    ProviderSourceSymbolSpec("PYPL", "PYPL", "پی‌پال (PYPL)", "PayPal Holdings"),
+                    ProviderSourceSymbolSpec("COIN", "COIN", "کوین‌بیس (COIN)", "Coinbase Global"),
+                    ProviderSourceSymbolSpec("WMT", "WMT", "والمارت (WMT)", "Walmart Inc."),
+                    ProviderSourceSymbolSpec("COST", "COST", "کاستکو (COST)", "Costco Wholesale"),
+                    ProviderSourceSymbolSpec("DIS", "DIS", "والت دیزنی (DIS)", "Walt Disney Co."),
+                    ProviderSourceSymbolSpec("SBUX", "SBUX", "استارباکس (SBUX)", "Starbucks Corp."),
+                    ProviderSourceSymbolSpec("MCD", "MCD", "مک‌دونالد (MCD)", "McDonald's Corp."),
+                    ProviderSourceSymbolSpec("KO", "KO", "کوکاکولا (KO)", "Coca-Cola Co."),
+                    ProviderSourceSymbolSpec("LLY", "LLY", "الی لیلی (LLY)", "Eli Lilly and Co."),
+                    ProviderSourceSymbolSpec("UNH", "UNH", "یونایتد هلث (UNH)", "UnitedHealth Group"),
+                    ProviderSourceSymbolSpec("PFE", "PFE", "فایزر (PFE)", "Pfizer Inc."),
+                    ProviderSourceSymbolSpec("XOM", "XOM", "اکسان موبیل (XOM)", "Exxon Mobil"),
+                    ProviderSourceSymbolSpec("CVX", "CVX", "شورون (CVX)", "Chevron Corp."),
+                    ProviderSourceSymbolSpec("TSM", "TSM", "تی‌اس‌ام‌سی (TSM)", "Taiwan Semiconductor"),
+                    ProviderSourceSymbolSpec("ASML", "ASML", "ای‌اس‌ام‌ال (ASML)", "ASML Holding"),
+                    ProviderSourceSymbolSpec("SSNLF", "SSNLF", "سامسونگ الکترونیکس (SSNLF)", "Samsung Electronics"),
+                    ProviderSourceSymbolSpec("SKHY", "SKHY", "اسکی هاینیکس (SKHY)", "SK Hynix"),
+                    ProviderSourceSymbolSpec("BABA", "BABA", "علی‌بابا (BABA)", "Alibaba Group"),
+                    ProviderSourceSymbolSpec("NVO", "NVO", "نوو نوردیسک (NVO)", "Novo Nordisk"),
+                    ProviderSourceSymbolSpec("TM", "TM", "تویوتا موتور (TM)", "Toyota Motor"),
+                    ProviderSourceSymbolSpec("SAP", "SAP", "اس‌آی‌پی (SAP)", "SAP SE"),
+                    ProviderSourceSymbolSpec("HSBC", "HSBC", "اچ‌اس‌بی‌سی (HSBC)", "HSBC Holdings"),
+                    ProviderSourceSymbolSpec("2222.SR", "2222.SR", "سعودی آرامکو (2222.SR)", "Saudi Aramco")
                 )
             ),
             ProviderMethodSpec(
@@ -223,7 +308,64 @@ enum class ProviderId(
                     ProviderSourceSymbolSpec("UBER", "UBER", "سهام اوبر (Uber)", "Uber Technologies, Inc."),
                     ProviderSourceSymbolSpec("NKE", "NKE", "سهام نایکی (Nike)", "Nike, Inc."),
                     ProviderSourceSymbolSpec("IBM", "IBM", "سهام آی‌بی‌ام (IBM)", "International Business Machines"),
-                    ProviderSourceSymbolSpec("SAN", "SAN", "سهام بانک سانتاندر (Santander)", "Banco Santander, S.A.")
+                    ProviderSourceSymbolSpec("SAN", "SAN", "سهام بانک سانتاندر (Santander)", "Banco Santander, S.A."),
+                    ProviderSourceSymbolSpec("AVGO", "AVGO", "سهام برودکام (AVGO)", "Broadcom Inc."),
+                    ProviderSourceSymbolSpec("MU", "MU", "سهام مایکرون (MU)", "Micron Technology"),
+                    ProviderSourceSymbolSpec("INTC", "INTC", "سهام اینتل (INTC)", "Intel Corporation"),
+                    ProviderSourceSymbolSpec("MRVL", "MRVL", "سهام مارول (MRVL)", "Marvell Technology"),
+                    ProviderSourceSymbolSpec("AMAT", "AMAT", "سهام اپلاید متریالز (AMAT)", "Applied Materials"),
+                    ProviderSourceSymbolSpec("LRCX", "LRCX", "سهام لم ریسرچ (LRCX)", "Lam Research"),
+                    ProviderSourceSymbolSpec("QCOM", "QCOM", "سهام کوالکام (QCOM)", "Qualcomm Inc."),
+                    ProviderSourceSymbolSpec("SMCI", "SMCI", "سهام سوپرمیکرو (SMCI)", "Super Micro Computer"),
+                    ProviderSourceSymbolSpec("DELL", "DELL", "سهام دل (DELL)", "Dell Technologies"),
+                    ProviderSourceSymbolSpec("SNDK", "SNDK", "سهام سندیسک (SNDK)", "SanDisk Corporation"),
+                    ProviderSourceSymbolSpec("ANET", "ANET", "سهام آریستا (ANET)", "Arista Networks"),
+                    ProviderSourceSymbolSpec("PLTR", "PLTR", "سهام پالانتیر (PLTR)", "Palantir Technologies"),
+                    ProviderSourceSymbolSpec("ORCL", "ORCL", "سهام اوراکل (ORCL)", "Oracle Corporation"),
+                    ProviderSourceSymbolSpec("CRM", "CRM", "سهام سیلزفورس (CRM)", "Salesforce Inc."),
+                    ProviderSourceSymbolSpec("ADBE", "ADBE", "سهام ادوبی (ADBE)", "Adobe Inc."),
+                    ProviderSourceSymbolSpec("CRWD", "CRWD", "سهام کراوداسترایک (CRWD)", "CrowdStrike"),
+                    ProviderSourceSymbolSpec("CSCO", "CSCO", "سهام سیسکو (CSCO)", "Cisco Systems"),
+                    ProviderSourceSymbolSpec("APP", "APP", "سهام اپلاوین (APP)", "AppLovin Corp."),
+                    ProviderSourceSymbolSpec("NBIS", "NBIS", "سهام نبیوس (NBIS)", "Nebu Group"),
+                    ProviderSourceSymbolSpec("CRWV", "CRWV", "سهام کورویو (CRWV)", "CoreWeave"),
+                    ProviderSourceSymbolSpec("SPCX", "SPCX", "سهام اسپیسایکس (SPCX)", "SpaceX Fund"),
+                    ProviderSourceSymbolSpec("RKLB", "RKLB", "سهام راکت لب (RKLB)", "Rocket Lab USA"),
+                    ProviderSourceSymbolSpec("GEV", "GEV", "سهام جی‌ای ورنووا (GEV)", "GE Vernova"),
+                    ProviderSourceSymbolSpec("BE", "BE", "سهام بلوم انرژی (BE)", "Bloom Energy"),
+                    ProviderSourceSymbolSpec("IONQ", "IONQ", "سهام آیآنکیو (IONQ)", "IonQ Inc."),
+                    ProviderSourceSymbolSpec("RIVN", "RIVN", "سهام ریویان (RIVN)", "Rivian Automotive"),
+                    ProviderSourceSymbolSpec("JPM", "JPM", "سهام جی‌پی مورگان (JPM)", "JPMorgan Chase"),
+                    ProviderSourceSymbolSpec("BAC", "BAC", "سهام بنک آو آمریکا (BAC)", "Bank of America"),
+                    ProviderSourceSymbolSpec("GS", "GS", "سهام گلدمن ساکس (GS)", "Goldman Sachs"),
+                    ProviderSourceSymbolSpec("V", "V", "سهام ویزا (V)", "Visa Inc."),
+                    ProviderSourceSymbolSpec("MA", "MA", "سهام مسترکارت (MA)", "Mastercard Inc."),
+                    ProviderSourceSymbolSpec("BRK.B", "BRK.B", "برکشایر هاتاوی (BRK.B)", "Berkshire Hathaway"),
+                    ProviderSourceSymbolSpec("HOOD", "HOOD", "سهام رابینهود (HOOD)", "Robinhood Markets"),
+                    ProviderSourceSymbolSpec("MSTR", "MSTR", "مایکرواستراتژی (MSTR)", "MicroStrategy"),
+                    ProviderSourceSymbolSpec("PYPL", "PYPL", "پی‌پال (PYPL)", "PayPal Holdings"),
+                    ProviderSourceSymbolSpec("COIN", "COIN", "کوین‌بیس (COIN)", "Coinbase Global"),
+                    ProviderSourceSymbolSpec("WMT", "WMT", "والمارت (WMT)", "Walmart Inc."),
+                    ProviderSourceSymbolSpec("COST", "COST", "کاستکو (COST)", "Costco Wholesale"),
+                    ProviderSourceSymbolSpec("DIS", "DIS", "والت دیزنی (DIS)", "Walt Disney Co."),
+                    ProviderSourceSymbolSpec("SBUX", "SBUX", "استارباکس (SBUX)", "Starbucks Corp."),
+                    ProviderSourceSymbolSpec("MCD", "MCD", "مک‌دونالد (MCD)", "McDonald's Corp."),
+                    ProviderSourceSymbolSpec("KO", "KO", "کوکاکولا (KO)", "Coca-Cola Co."),
+                    ProviderSourceSymbolSpec("LLY", "LLY", "الی لیلی (LLY)", "Eli Lilly and Co."),
+                    ProviderSourceSymbolSpec("UNH", "UNH", "یونایتد هلث (UNH)", "UnitedHealth Group"),
+                    ProviderSourceSymbolSpec("PFE", "PFE", "فایزر (PFE)", "Pfizer Inc."),
+                    ProviderSourceSymbolSpec("XOM", "XOM", "اکسان موبیل (XOM)", "Exxon Mobil"),
+                    ProviderSourceSymbolSpec("CVX", "CVX", "شورون (CVX)", "Chevron Corp."),
+                    ProviderSourceSymbolSpec("TSM", "TSM", "تی‌اس‌ام‌سی (TSM)", "Taiwan Semiconductor"),
+                    ProviderSourceSymbolSpec("ASML", "ASML", "ای‌اس‌ام‌ال (ASML)", "ASML Holding"),
+                    ProviderSourceSymbolSpec("SSNLF", "SSNLF", "سامسونگ الکترونیکس (SSNLF)", "Samsung Electronics"),
+                    ProviderSourceSymbolSpec("SKHY", "SKHY", "اسکی هاینیکس (SKHY)", "SK Hynix"),
+                    ProviderSourceSymbolSpec("BABA", "BABA", "علی‌بابا (BABA)", "Alibaba Group"),
+                    ProviderSourceSymbolSpec("NVO", "NVO", "نوو نوردیسک (NVO)", "Novo Nordisk"),
+                    ProviderSourceSymbolSpec("TM", "TM", "تویوتا موتور (TM)", "Toyota Motor"),
+                    ProviderSourceSymbolSpec("SAP", "SAP", "اس‌آی‌پی (SAP)", "SAP SE"),
+                    ProviderSourceSymbolSpec("HSBC", "HSBC", "اچ‌اس‌بی‌سی (HSBC)", "HSBC Holdings"),
+                    ProviderSourceSymbolSpec("2222.SR", "2222.SR", "سعودی آرامکو (2222.SR)", "Saudi Aramco")
                 )
             ),
             ProviderMethodSpec(

@@ -156,15 +156,7 @@ fun WatchlistScreen(
 
     val filteredWatchlist = watchlistSymbols.filter { sym ->
         val code = sym.symbolCode.uppercase()
-        val matchesCategory = when (selectedCategory) {
-            "METALS" -> code in listOf("XAUUSD", "XAGUSD") || code.contains("XAU") || code.contains("XAG")
-            "ENERGY" -> code in listOf("SPOTBRENT", "BRENT_FUTURES", "USOIL") || code.contains("BRENT") || code.contains("OIL") || code.contains("WTI")
-            "CRYPTO" -> code in listOf("BTCUSD", "ETHUSD") || code.contains("BTC") || code.contains("ETH")
-            "INDICES" -> code in listOf("SPX500USD", "NDQ") || code.contains("SPX") || code.contains("NDQ") || code.contains("NAS")
-            "STOCKS" -> code in listOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN")
-            "FX" -> code in listOf("EURUSD", "GBPUSD", "USDJPY") || code.contains("EUR") || code.contains("GBP") || code.contains("JPY")
-            else -> true
-        }
+        val matchesCategory = if (selectedCategory == "ALL") true else ProviderId.getAssetClass(code) == selectedCategory
         val q = searchQuery.trim().lowercase()
         val matchesQuery = q.isEmpty() ||
             sym.symbolCode.lowercase().contains(q) ||
@@ -292,15 +284,7 @@ fun WatchlistScreen(
                 } else {
                     watchlistSymbols.count { sym ->
                         val code = sym.symbolCode.uppercase()
-                        when (catId) {
-                            "METALS" -> code in listOf("XAUUSD", "XAGUSD") || code.contains("XAU") || code.contains("XAG")
-                            "ENERGY" -> code in listOf("SPOTBRENT", "BRENT_FUTURES", "USOIL") || code.contains("BRENT") || code.contains("OIL") || code.contains("WTI")
-                            "CRYPTO" -> code in listOf("BTCUSD", "ETHUSD") || code.contains("BTC") || code.contains("ETH")
-                            "INDICES" -> code in listOf("SPX500USD", "NDQ") || code.contains("SPX") || code.contains("NDQ") || code.contains("NAS")
-                            "STOCKS" -> code in listOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN")
-                            "FX" -> code in listOf("EURUSD", "GBPUSD", "USDJPY") || code.contains("EUR") || code.contains("GBP") || code.contains("JPY")
-                            else -> true
-                        }
+                        if (catId == "ALL") true else ProviderId.getAssetClass(code) == catId
                     }
                 }
                 Triple(catId, catLabel, count)

@@ -1,5 +1,7 @@
 package es.manico.chartintelligence.ui.components
 
+import es.manico.chartintelligence.data.model.ProviderId
+
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -280,7 +282,7 @@ fun AssetSymbolBadge(
     val isSilver = upper.contains("XAG") || upper.contains("SILVER")
     val isEuro = upper.contains("EUR")
 
-    val isStock = upper in listOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN")
+    val isStock = ProviderId.isStock(upper)
     val isCrypto = upper in listOf("BTCUSD", "ETHUSD")
     val isIndex = upper in listOf("SPX500USD", "NDQ")
 

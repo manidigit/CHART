@@ -2386,13 +2386,5 @@ private fun TradingViewSwitchRow(
 private fun matchesSettingsMarketCategory(symbolCode: String, category: String): Boolean {
     if (category == "ALL") return true
     val code = symbolCode.trim().uppercase()
-    return when (category) {
-        "METALS" -> code in setOf("XAUUSD", "XAGUSD") || code.contains("XAU") || code.contains("XAG")
-        "ENERGY" -> code in setOf("SPOTBRENT", "BRENT_FUTURES", "USOIL") || code.contains("BRENT") || code.contains("OIL") || code.contains("WTI")
-        "CRYPTO" -> code in setOf("BTCUSD", "ETHUSD") || code.contains("BTC") || code.contains("ETH")
-        "INDICES" -> code in setOf("SPX500USD", "NDQ") || code.contains("SPX") || code.contains("NDQ") || code.contains("NAS")
-        "STOCKS" -> code in setOf("NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN")
-        "FX" -> code in setOf("EURUSD", "GBPUSD", "USDJPY") || code.contains("EUR") || code.contains("GBP") || code.contains("JPY")
-        else -> true
-    }
+    return ProviderId.getAssetClass(code) == category
 }

@@ -2,10 +2,6 @@ import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.43.0';
 import { state, getAssetClass, escapeHtml, getInstrumentSpec, getCachedOrAggregatedCandles } from '../core/store.js?v=1.43.0';
 
-const STOCK_SYMBOLS = new Set([
-  'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
-]);
-
 export function getSymbolCategoryKey(symbolCode) {
   const code = String(symbolCode || '').toUpperCase();
   if (code === 'XAUUSD' || code === 'XAGUSD' || code.includes('XAU') || code.includes('XAG') || code.includes('GOLD')) {
@@ -20,10 +16,23 @@ export function getSymbolCategoryKey(symbolCode) {
   if (code === 'SPX500USD' || code === 'NDQ' || code.includes('SPX') || code.includes('NDX') || code.includes('NAS')) {
     return 'INDICES';
   }
-  if (STOCK_SYMBOLS.has(code)) {
+  const ac = getAssetClass(code);
+  if (ac === 'STOCKS') {
     return 'STOCKS';
   }
-  return 'FX';
+  if (ac === 'COMMODITIES') {
+    return 'ENERGY';
+  }
+  if (ac === 'INDICES') {
+    return 'INDICES';
+  }
+  if (ac === 'CRYPTO') {
+    return 'CRYPTO';
+  }
+  if (ac === 'FX') {
+    return 'FX';
+  }
+  return 'STOCKS';
 }
 
 export function getShortCategoryLabel(symbolCode, i18n) {
@@ -114,7 +123,7 @@ export function getAssetBadge(symbolCode) {
       svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 3.5 0 1 0 0 6"/><line x1="8" y1="11" x2="13" y2="11"/><line x1="8" y1="13" x2="13" y2="13"/></svg>`,
     };
   }
-  if (STOCK_SYMBOLS.has(code)) {
+  if (getAssetClass(code) === 'STOCKS') {
     const stockThemes = {
       NVDA: ['#22C55E', 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', 'NV', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 16c4-6 12-6 16 0"/><circle cx="12" cy="12" r="3" fill="#FFFFFF"/></svg>`],
       AMZN: ['#F59E0B', 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)', 'AZ', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M5 16c4 3 10 3 14 0"/><path d="M16 13l3 3-3 3"/></svg>`],
