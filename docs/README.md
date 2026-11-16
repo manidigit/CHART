@@ -3,7 +3,7 @@
 > **Unified Index & Single Source of Truth (`docs/`)**  
 > کل مستندات پروژه به‌صورت موضوعی در ۴ پوشه استاندارد دسته‌بندی شده‌اند تا پیگیری نیازمندی‌ها، معماری، خطاهای باز و نقشه راه توسعه بدون تکرار یا ابهام انجام شود.
 
-> **Forecast product authority:** For any new design or redesign of Forecast, start with [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md). This is an independent product-level foundation. Older forecast specifications and existing code are reference material only and must not override this document where their assumptions or decisions conflict. Their implementation status must be verified separately.
+> **Forecast document authority:** The product mission is governed by [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) v1.2.0; system behavior and lifecycle by [FORECAST_SYSTEM_SPEC_V1.md](./01-product/FORECAST_SYSTEM_SPEC_V1.md) v1.0.0; model-independent verification by [FORECAST_ACCEPTANCE_TEST_PLAN_V1.md](./02-architecture/FORECAST_ACCEPTANCE_TEST_PLAN_V1.md) v1.0.0; candidate repository reviews by [FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md](./01-product/FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md) v1.0.0. The current-state audit is evidence about existing implementation, not a design authority. Historical specifications and code do not override these documents unless explicitly adopted.
 
 ---
 
@@ -11,7 +11,10 @@
 
 | Category | File | Purpose & Scope |
 |---|---|---|
-| | [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) | **Independent Forecast Product Foundation (v1.2.0)**: Product mission, realistic multi-candle OHLC paths, multi-model chart comparison, snapshots, forecast records, live and historical evaluation, and future model ranking |
+| | [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) | **Product Foundation (v1.2.0)**: Product mission, forecast path/OHLC requirements, market context, multi-model comparison, snapshots and evaluation direction |
+| | [FORECAST_SYSTEM_SPEC_V1.md](./01-product/FORECAST_SYSTEM_SPEC_V1.md) | **System Specification (v1.0.0)**: Model-independent system responsibilities, lifecycle, multi-model execution, chart display, comparison, live/replay workflows, states, provenance, security and acceptance gates |
+| | [FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md](./01-product/FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md) | **Model Intake Framework (v1.0.0)**: Evidence-based review of GitHub model repositories, capabilities, output semantics, licensing, reproducibility, controlled experiments and integration fit |
+| | [FORECAST_ACCEPTANCE_TEST_PLAN_V1.md](./02-architecture/FORECAST_ACCEPTANCE_TEST_PLAN_V1.md) | **Acceptance Test Plan (v1.0.0)**: Model-independent test scenarios for readiness, execution, output validation, chart behavior, persistence, evaluation, historical replay, security and cross-platform integrity |
 | | [FORECAST_CURRENT_STATE_AUDIT_V1.md](./02-architecture/FORECAST_CURRENT_STATE_AUDIT_V1.md) | **Forecast implementation, execution-path, data-readiness, ledger-integrity, server-persistence and CI audit (v0.7.0)**: Android/Web/PHP/Python inventory, mechanical OHLC synthesis, worker contract and input-sanitization gaps, local/server ledger synchronization, hash-chain retention, server idempotency/access-scope/persistence risks, cross-runtime readiness divergence, Worker SSRF/exposure risks, chart integration seam and CI trigger coverage |
 | **01 — Product & Research** | [CHART_INTELLIGENCE_MASTER_SPEC.md](./01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) | Existing CHART-wide product and engineering reference. For Forecast product direction, the independent `FORECAST_PRODUCT_FOUNDATION_V1.md` takes precedence. |
 | | [FORECAST_ENGINE_V2_SPEC.md](./01-product/FORECAST_ENGINE_V2_SPEC.md) | Historical technical specification and implementation-status report. Its claims and algorithms are not accepted as current or binding without independent code and test verification. |
