@@ -302,3 +302,80 @@ No need to pre-filter candidates by algorithm family. Candidate repositories may
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial repository intake, evidence classification, technical review, licensing, experiment protocol, integration fit and disposition framework |
+
+
+---
+
+## 15. Initial candidate screening — 2026-11-17
+
+**Status:** Source-level screening only. No model has been executed on CHART market data; no predictive-performance claim is established. Reviewed repository references are the current `main` branch at inspection time. Blob SHAs are recorded below; this is not a substitute for pinning a repository commit before any reproducible experiment.
+
+### 15.1. Primary candidate: Amazon Chronos-2
+
+- Repository: https://github.com/amazon-science/chronos-forecasting
+- Model weights: https://huggingface.co/amazon/chronos-2
+- Reviewed source:
+  - `README.md` — blob `1ec146a2e037a7725f53ae6bdfba22970804efb2`
+  - `LICENSE` — blob `67db8588217f266eb561f75fae738656325deac9`
+  - `src/chronos/chronos2/pipeline.py` — blob `d2b3f02e62fe663c0888414bad017f41d8ce57d3`
+  - `src/chronos/chronos2/model.py` — blob `8adfbfcfdbc3674b97c8a4836e725be16cfc7080`
+- Repository license: Apache-2.0. The Hugging Face model card also declares the Chronos-2 weights as Apache-2.0; verify the exact model revision and its license again before redistribution.
+- Source-verified capabilities: zero-shot inference; univariate and multivariate forecasting; past and known-future covariates; multi-step quantile forecasts; DataFrame inference interface; CPU and GPU usage are documented by the project.
+- Native output: quantile forecasts, not complete OHLC candles or a native joint candle-path object.
+- CHART fit: strong research/prototype candidate for probabilistic multivariate forecasting. OHLC fields can be investigated as multiple related series/targets, but independently returned marginal quantiles do not guarantee coherent joint candle geometry (for example High >= Open/Close >= Low), nor do they prove that a realistic candle path has been learned.
+- Important limitation: public benchmark leadership claimed by the project is not evidence of financial-market or OHLC predictive superiority. CHART-specific walk-forward testing against naive/random-walk and statistical baselines is mandatory.
+- Initial disposition: **Prototype → Controlled Experiment candidate**, not production-approved.
+
+### 15.2. Secondary comparator: official PatchTST
+
+- Repository: https://github.com/yuqinie98/PatchTST
+- Reviewed source:
+  - `README.md` — blob `68ca7130debcca2887458da3948e5e79dae07e8c`
+  - `LICENSE` — blob `261eeb9e9f8b2b4b0d119366dda99c6fd7d35c64`
+  - `PatchTST_supervised/models/PatchTST.py` — blob `5906049dbc663a154160c289b7a237899007ed5d`
+- License: Apache-2.0.
+- Source-verified capabilities: supervised forecasting; configurable context/prediction windows; multichannel input tensor; patch-based Transformer; optional self-supervised pretraining and downstream fine-tuning.
+- Native output: point forecasts per channel. The inspected implementation does not provide native probabilistic quantiles or native OHLC candle constraints.
+- CHART fit: useful supervised comparator and fine-tuning research candidate. Its channel-independence design means feeding O/H/L/C as four channels does not, by itself, enforce joint candle consistency.
+- Initial disposition: **Controlled Experiment candidate**, secondary to Chronos-2.
+
+### 15.3. Research infrastructure: THUML Time-Series-Library
+
+- Repository: https://github.com/thuml/Time-Series-Library
+- Reviewed source:
+  - `README.md` — blob `not captured in this pass`
+  - `LICENSE` — blob `278c2678a6167d7c110b4451c7fd1f2e51f4b532`
+  - `requirements.txt` — blob `6a092bbbc105ce844996dee027ea838cc93667d1`
+  - `models/PatchTST.py` — blob `085efd89de3af3024cd993a2ef139f2c5d4c3eaf`
+  - `models/Chronos2.py` — blob `ce9e017a50a3ca2fd23db13d0c7c9db263234d7c`
+- License: MIT.
+- It is a research library/experiment harness, not a forecasting model and not a production-ready CHART adapter.
+- The current README explicitly says maintainers will not actively add features and that many historical benchmarks may no longer be meaningful. Therefore it must not be treated as the authoritative up-to-date leaderboard or as proof of fair model comparison.
+- The inspected Chronos2 wrapper hardcodes `device_map="cuda"`; this is a portability constraint in that wrapper, not a limitation of the upstream Chronos-2 package.
+- Initial disposition: **Research reference only** for reusable implementations and experiment recipes; do not adopt it as CHART's canonical comparison environment without a separate reproducibility and leakage audit.
+
+### 15.4. Moirai 2.0 — license gate
+
+- Repository: https://github.com/SalesforceAIResearch/uni2ts
+- Reviewed source: `README.md` blob `833c53a435a19b9b42c27e6f0a477b1963303ee0`; `src/uni2ts/model/moirai2/forecast.py` blob `bd1d5992dda586d04d44063d994b6e8fddf0573d`; `src/uni2ts/model/moirai2/module.py` blob `b4f80bf0631cab0e464f94c5714af6c13ecc7e8a`.
+- The source code files declare Apache-2.0, but the official `Salesforce/moirai-2.0-R-small` model card declares the weights as **CC-BY-NC-4.0**. This non-commercial restriction is a material blocker for commercial CHART deployment unless separately licensed. Do not infer the weight license from the source-code license.
+- Source-verified output design: quantile forecasts, with configurable multivariate target dimensions; not native OHLC candle output.
+- Initial disposition: **Research only / commercial-use blocked pending written licensing clearance**.
+
+### 15.5. Screening conclusion
+
+Chronos-2 is the strongest candidate in this first source-level screen for a practical CHART experiment because it combines an accessible inference interface, zero-shot use, multivariate/covariate support, probabilistic output and an Apache-2.0 declared model license. This is a suitability judgment for experimentation, not a claim that it predicts financial markets accurately.
+
+The immediate experiment should preserve the model's native quantile output and separately test:
+1. four OHLC variables as targets versus a deliberately chosen target/feature arrangement;
+2. marginal quantile coherence and invalid candle geometry;
+3. close, return, range and OHLC-specific metrics without fabricating missing candle fields;
+4. walk-forward results across multiple instruments, regimes and horizons;
+5. naive/random-walk and suitable statistical baselines;
+6. CPU/GPU inference, memory, latency and deterministic reproducibility.
+
+Do not convert Chronos-2 quantiles into synthetic OHLC candles for the primary acceptance result. If a separate, explicitly labelled display transformation is later explored, retain raw outputs and evaluate the transformation independently.
+
+### 15.6. Items not yet fully screened
+
+TimesFM, OpenLTM, Large-Time-Series-Model, NeuralForecast implementations of N-BEATS/N-HiTS, TFT implementations, TimeXer, TimeMixer, iTransformer, TimesNet, ChanFormer and the financial benchmark repositories have not received a complete source/license/runtime review in this pass. No positive or negative disposition is implied for them.
