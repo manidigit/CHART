@@ -663,9 +663,8 @@ object Phase2IndicatorsAlgorithm {
     }
 
     /**
-     * Deterministic Multi-Step OHLC Candlestick Extrapolation Engine (PRED-09 & PRED-10):
-     * Generates at least 10 (default 30) future ghosted OHLC candles combining damped Holt linear trend,
-     * 2-harmonic Fourier cycle decomposition, and ATR-scaled candlestick bodies/wicks.
+     * Causal Damped Drift & Log-Normal Volatility Quantile Projection (Rev 2.1):
+     * Zero synthetic harmonic waves, zero SMC magnet warping.
      */
     fun computeFutureCandlestickProjection(
         candles: List<CandleBar>,
@@ -675,277 +674,48 @@ object Phase2IndicatorsAlgorithm {
         if (candles.size < 4) return emptyList()
         val effectiveHorizon = max(10, min(60, horizon))
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(timeframe)
-        val win = candles.takeLast(min(120, candles.size))
-        val n = win.size
+        val win = candles.takeLast(min(240, candles.size))
         val baseBar = win.last()
         val baseClose = baseBar.close.toDouble()
-        if (baseClose <= 0.0) return emptyList()
+        if (!baseClose.isFinite() || baseClose <= 0.0) return emptyList()
 
-        // 1. Compute local ATR(14) & 30-bar average body/wick ratios
-        var trSum = 0.0
-        var trCount = 0
-        val atrStart = max(1, n - 14)
-        for (i in atrStart until n) {
-            val h = win[i].high.toDouble()
-            val l = win[i].low.toDouble()
-            val pc = win[i - 1].close.toDouble()
-            val tr = max(h - l, max(abs(h - pc), abs(l - pc)))
-            trSum += tr
-            trCount++
+        val logReturns = DoubleArray(win.size - 1) { i ->
+            val p0 = win[i].close.toDouble()
+            val p1 = win[i + 1].close.toDouble()
+            if (p0 > 0.0 && p1 > 0.0) kotlin.math.ln(p1 / p0) else 0.0
         }
-        val fallbackRange = (baseBar.high.toDouble() - baseBar.low.toDouble()).coerceAtLeast(baseClose * 0.0015)
-        val atr = (if (trCount > 0) trSum / trCount else fallbackRange).coerceAtLeast(baseClose * 0.0012)
-
-        val ratioCount = min(30, max(1, n - 1))
-        var bodyRatioSum = 0.0
-        var upperWickSum = 0.0
-        var lowerWickSum = 0.0
-        for (i in (n - ratioCount) until n) {
-            val cur = win[i]
-            val hi = cur.high.toDouble()
-            val lo = cur.low.toDouble()
-            val op = cur.open.toDouble()
-            val cl = cur.close.toDouble()
-            val rng = max(hi - lo, baseClose * 0.0005)
-            bodyRatioSum += abs(cl - op) / rng
-            upperWickSum += (hi - max(op, cl)) / rng
-            lowerWickSum += (min(op, cl) - lo) / rng
+        val tailCount = min(20, logReturns.size)
+        var meanRet = 0.0
+        for (i in (logReturns.size - tailCount) until logReturns.size) {
+            meanRet += logReturns[i]
         }
-        val avgBodyRatio = (bodyRatioSum / ratioCount).coerceIn(0.38, 0.74)
-        val avgUpperWickRatio = (upperWickSum / ratioCount).coerceIn(0.15, 0.48)
-        val avgLowerWickRatio = (lowerWickSum / ratioCount).coerceIn(0.15, 0.48)
+        meanRet /= max(1, tailCount).toDouble()
+        val dampedDrift = meanRet.coerceIn(-0.004, 0.004)
 
-        // 2. SMC (BOS/CHoCH, FVG, EQH/EQL) + Volume Profile (POC/VAH/VAL) + EMA20
-        val smc = PriceFormatterAlgorithm.detectSmcMarketStructures(win, 3)
-        val vp = PriceFormatterAlgorithm.computeVolumeProfile(
-            win,
-            24,
-            0.70
-        )
-        val ema20List = PriceFormatterAlgorithm.computeEmaValues(
-            win.map { it.close.toDouble() },
-            min(20, max(5, n - 2))
-        )
-        val ema20 = ema20List.lastOrNull() ?: baseClose
-        val lastBos = smc.structures.lastOrNull()
-        val dominantDir = when {
-            lastBos != null -> if (lastBos.direction >= 0) 1.0 else -1.0
-            baseClose >= ema20 -> 1.0
-            else -> -1.0
+        var ewmaVar = 1e-8
+        val lambda = 0.94
+        for (r in logReturns) {
+            ewmaVar = lambda * ewmaVar + (1.0 - lambda) * (r * r)
         }
+        val sigma = max(1e-5, kotlin.math.sqrt(ewmaVar))
 
-        val poc = vp?.pocPrice ?: ema20
-        val vah = vp?.vahPrice ?: (baseClose + 2.2 * atr)
-        val valPrice = vp?.valPrice ?: (baseClose - 2.2 * atr)
+        val out = ArrayList<FutureProjectedCandle>(effectiveHorizon)
+        var prevMedian = baseClose
+        var cumDrift = 0.0
+        for (step in 1..effectiveHorizon) {
+            cumDrift += dampedDrift * Math.pow(0.90, (step - 1).toDouble())
+            val cumSigma = sigma * kotlin.math.sqrt(step.toDouble())
+            val q10 = max(baseClose * 0.02, baseClose * kotlin.math.exp(cumDrift - 1.28155157 * cumSigma))
+            val q25 = max(q10, baseClose * kotlin.math.exp(cumDrift - 0.67448975 * cumSigma))
+            val q50 = max(q25, baseClose * kotlin.math.exp(cumDrift))
+            val q75 = max(q50, baseClose * kotlin.math.exp(cumDrift + 0.67448975 * cumSigma))
+            val q90 = max(q75, baseClose * kotlin.math.exp(cumDrift + 1.28155157 * cumSigma))
 
-        // Step A: Pullback / Mitigation Target (FVG / POC / EMA20)
-        val pullbackTarget = if (dominantDir > 0.0) {
-            val lowerFvg = smc.fvgs.filter { it.top < baseClose && (baseClose - (it.top + it.bottom) * 0.5) <= 3.5 * atr }
-                .maxByOrNull { it.top }
-            when {
-                lowerFvg != null -> (lowerFvg.top + lowerFvg.bottom) * 0.5
-                baseClose > ema20 + 0.4 * atr -> min(baseClose - 0.85 * atr, max(ema20, poc))
-                else -> baseClose - 0.75 * atr
-            }
-        } else {
-            val upperFvg = smc.fvgs.filter { it.bottom > baseClose && ((it.top + it.bottom) * 0.5 - baseClose) <= 3.5 * atr }
-                .minByOrNull { it.bottom }
-            when {
-                upperFvg != null -> (upperFvg.top + upperFvg.bottom) * 0.5
-                baseClose < ema20 - 0.4 * atr -> max(baseClose + 0.85 * atr, min(ema20, poc))
-                else -> baseClose + 0.75 * atr
-            }
-        }
-
-        // Step B: Primary Liquidity Magnet (EQH/EQL / VAH/VAL)
-        val primaryMagnet = if (dominantDir > 0.0) {
-            val aboveEqh = smc.equalLevels.filter { it.type == "EQH" && it.price > baseClose + 0.8 * atr && it.price <= baseClose + 5.5 * atr }
-                .minByOrNull { it.price }
-            when {
-                aboveEqh != null -> aboveEqh.price
-                vah > baseClose + 1.1 * atr -> vah
-                else -> baseClose + 3.5 * atr
-            }
-        } else {
-            val belowEql = smc.equalLevels.filter { it.type == "EQL" && it.price < baseClose - 0.8 * atr && it.price >= baseClose - 5.5 * atr }
-                .maxByOrNull { it.price }
-            when {
-                belowEql != null -> belowEql.price
-                valPrice < baseClose - 1.1 * atr -> valPrice
-                else -> baseClose - 3.5 * atr
-            }
-        }
-
-        val canonicalHorizon = 60
-        val tfNorm = timeframe.trim().uppercase()
-        val pullbackBars = when (tfNorm) {
-            "M15" -> 3
-            "M30" -> 2
-            else -> 1
-        }
-        val maxPullAtr = if (pullbackBars == 1) 0.62 else 1.35
-        val clampedPullback = pullbackTarget.coerceIn(baseClose - maxPullAtr * atr, baseClose + maxPullAtr * atr)
-        val clampedMagnet = if (dominantDir > 0.0) {
-            primaryMagnet.coerceIn(baseClose + 1.6 * atr, baseClose + 5.2 * atr)
-        } else {
-            primaryMagnet.coerceIn(baseClose - 5.2 * atr, baseClose - 1.6 * atr)
-        }
-
-        val out = ArrayList<FutureProjectedCandle>(canonicalHorizon)
-        var prevClose = baseClose
-        var waveMode = "PULLBACK"
-        var legBars = 0
-        var legStart = baseClose
-        var sweepCount = 0
-        var corrLen = 4
-        var corrTarget = baseClose
-        var consLen = 3
-        var consMid = baseClose
-        var consecDir = 0
-        var lastDir = 0
-
-        for (step in 1..canonicalHorizon) {
-            val open = prevClose
-            val maxEnvAtr = 1.10 * kotlin.math.sqrt((step + 5).toDouble())
-            val totalExcAtr = ((open - baseClose) * dominantDir) / max(atr, 1e-6)
-            val damp = (1.0 - max(0.0, totalExcAtr) / (maxEnvAtr * 1.04)).coerceIn(0.18, 1.0)
-
-            if (waveMode == "PULLBACK" && step > pullbackBars) {
-                waveMode = "IMPULSE"
-                legBars = 0
-                legStart = open
-            } else if (waveMode == "IMPULSE") {
-                val legGainAtr = ((open - legStart) * dominantDir) / max(atr, 1e-6)
-                val activeTarget = if (sweepCount == 0) {
-                    clampedMagnet
-                } else {
-                    baseClose + dominantDir * atr * min(maxEnvAtr * 0.9, 3.0 + sweepCount * 1.55)
-                }
-                val hitTarget = (open - activeTarget) * dominantDir >= -0.25 * atr && legBars >= 4
-                val overext = legGainAtr >= 2.15 + 0.35 * (sweepCount % 2) ||
-                    legBars >= 8 ||
-                    totalExcAtr >= maxEnvAtr * 0.80
-                if (hitTarget || overext) {
-                    waveMode = "CORRECTION"
-                    corrLen = 4 + ((step + sweepCount) % 3)
-                    corrTarget = open - (open - legStart) * (0.42 + 0.10 * (sweepCount % 2))
-                    legBars = 0
-                    sweepCount += 1
-                }
-            } else if (waveMode == "CORRECTION") {
-                val reached = (open - corrTarget) * (-dominantDir) >= -0.15 * atr && legBars >= 2
-                if (legBars >= corrLen || reached) {
-                    if (step >= 14 && sweepCount % 2 == 1) {
-                        waveMode = "CONSOLIDATION"
-                        consLen = 3 + (sweepCount % 2)
-                        consMid = open
-                        legBars = 0
-                    } else {
-                        waveMode = "IMPULSE"
-                        legStart = open
-                        legBars = 0
-                    }
-                }
-            } else if (waveMode == "CONSOLIDATION") {
-                if (legBars >= consLen) {
-                    if (step < 48 && totalExcAtr < maxEnvAtr * 0.78) {
-                        waveMode = "IMPULSE"
-                        legStart = open
-                        legBars = 0
-                    } else {
-                        consMid = open
-                        legBars = 0
-                    }
-                }
-            }
-
-            val signedBody: Double = when (waveMode) {
-                "PULLBACK" -> {
-                    when {
-                        pullbackBars == 1 -> dominantDir * atr * 0.22
-                        step == pullbackBars -> dominantDir * atr * 0.24
-                        else -> {
-                            val remPullback = max(1, pullbackBars - step + 1)
-                            val gapToPullback = (clampedPullback - open) / remPullback.toDouble()
-                            val bodyMag = (abs(gapToPullback) * 0.85 + atr * 0.16).coerceIn(atr * 0.24, atr * 0.58)
-                            val pullSign = if (gapToPullback >= 0.0) 1.0 else -1.0
-                            pullSign * bodyMag
-                        }
-                    }
-                }
-                "IMPULSE" -> {
-                    if (consecDir >= 3 && lastDir == dominantDir.toInt()) {
-                        -dominantDir * atr * (0.24 + 0.18 * abs(kotlin.math.sin(step * 1.25 + n)))
-                    } else {
-                        val impulseScale = 0.38 + 0.30 * avgBodyRatio + 0.24 * abs(kotlin.math.cos(step * 0.85 + (n % 5)))
-                        val mag = (atr * impulseScale * damp).coerceIn(atr * 0.24, atr * 1.15)
-                        dominantDir * mag
-                    }
-                }
-                "CORRECTION" -> {
-                    if (consecDir >= 3 && lastDir == (-dominantDir).toInt()) {
-                        dominantDir * atr * (0.20 + 0.14 * abs(kotlin.math.cos(step * 1.1)))
-                    } else {
-                        val remCorr = max(1, corrLen - legBars)
-                        val gap = abs(corrTarget - open) / remCorr.toDouble()
-                        val mag = (gap * 0.75 + atr * 0.16).coerceIn(atr * 0.22, atr * 0.72)
-                        -dominantDir * mag
-                    }
-                }
-                else -> {
-                    val pullToMid = (consMid - open) * 0.30
-                    val osc = (if (legBars % 2 == 0) -dominantDir else dominantDir) * atr * 0.30
-                    val comb = pullToMid + osc
-                    var sgn = if (comb >= 0.0) 1 else -1
-                    if (consecDir >= 3 && sgn == lastDir) sgn = -lastDir
-                    sgn * abs(comb).coerceIn(atr * 0.20, atr * 0.48)
-                }
-            }
-
-            var close = max(baseClose * 0.05, open + signedBody)
-            if (abs(close - open) < atr * 0.18) {
-                close = open + (if (close >= open) 1.0 else -1.0) * atr * 0.20
-            }
-            val nextExcAtr = ((close - baseClose) * dominantDir) / max(atr, 1e-6)
-            if (nextExcAtr > maxEnvAtr) {
-                close = max(baseClose * 0.05, open - dominantDir * atr * 0.24)
-            }
-            if (consecDir >= 4 && (if (close >= open) 1 else -1) == lastDir) {
-                close = max(baseClose * 0.05, open - lastDir * atr * (0.24 + 0.14 * abs(kotlin.math.cos(step * 1.15))))
-            }
-
-            val curSgn = if (close >= open) 1 else -1
-            consecDir = if (curSgn == lastDir) consecDir + 1 else 1
-            lastDir = curSgn
-
-            val bodyAbs = abs(close - open)
-            val upperWick = min(
-                atr * 0.78,
-                max(
-                    atr * 0.14,
-                    bodyAbs * (avgUpperWickRatio / avgBodyRatio) * (0.85 + 0.30 * abs(kotlin.math.cos(step * 0.9)))
-                )
-            )
-            val lowerWick = min(
-                atr * 0.78,
-                max(
-                    atr * 0.14,
-                    bodyAbs * (avgLowerWickRatio / avgBodyRatio) * (0.85 + 0.30 * abs(kotlin.math.sin(step * 1.1)))
-                )
-            )
-
-            var high = max(open, close) + upperWick
-            var low = max(baseClose * 0.02, min(open, close) - lowerWick)
-
-            if (abs(low - clampedPullback) <= atr * 0.30 || abs(low - poc) <= atr * 0.30 || abs(low - valPrice) <= atr * 0.30) {
-                low = max(baseClose * 0.02, low - atr * 0.26)
-            }
-            if (abs(high - vah) <= atr * 0.30 || abs(high - clampedMagnet) <= atr * 0.30) {
-                high += atr * 0.26
-            }
-
-            val pct = ((close - baseClose) / baseClose) * 100.0
-            val bandHalf = atr * kotlin.math.sqrt(step.toDouble()) * 0.85
+            val open = prevMedian
+            val close = q50
+            val high = max(q75, max(open, close))
+            val low = min(q25, min(open, close))
+            prevMedian = close
 
             out.add(
                 FutureProjectedCandle(
@@ -955,14 +725,12 @@ object Phase2IndicatorsAlgorithm {
                     high = high,
                     low = low,
                     close = close,
-                    pctChangeFromAnchor = pct,
-                    upperBand = close + bandHalf,
-                    lowerBand = max(baseClose * 0.02, close - bandHalf)
+                    pctChangeFromAnchor = ((close - baseClose) / baseClose) * 100.0,
+                    upperBand = q90,
+                    lowerBand = q10
                 )
             )
-            prevClose = close
-            legBars += 1
         }
-        return out.take(effectiveHorizon)
+        return out
     }
 }

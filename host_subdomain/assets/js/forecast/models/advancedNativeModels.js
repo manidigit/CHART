@@ -1,4 +1,4 @@
-import { MODEL_EXECUTION_STATUS, enforceMonotonicQuantiles } from '../forecastContract.js?v=1.43.0';
+import { MODEL_EXECUTION_STATUS, enforceMonotonicQuantiles } from '../forecastContract.js?v=2.0.0';
 
 export const CANONICAL_FORECAST_HORIZON = 60;
 
@@ -512,64 +512,71 @@ export const NativeSequenceRecurrentModel = {
     let bOut = 0;
 
     const sigmoid = (x) => 1 / (1 + Math.exp(-Math.max(-12, Math.min(12, x))));
-    const forwardWindow = (seq, dropMask = null) => {
-      let h = new Array(hiddenSize).fill(0);
+    const hBufA = new Float64Array(hiddenSize);
+    const hBufB = new Float64Array(hiddenSize);
+    const finalHBuf = new Float64Array(hiddenSize);
+    const forwardWindow = (seq, startIdx, length, dropMask = null) => {
+      hBufA.fill(0);
+      let h = hBufA;
+      let nextH = hBufB;
       let runAvg = 0;
-      for (let t = 0; t < seq.length; t++) {
-        const x0 = seq[t];
+      for (let t = 0; t < length; t++) {
+        const x0 = seq[startIdx + t];
         runAvg = 0.7 * runAvg + 0.3 * x0;
-        const nextH = new Array(hiddenSize);
         for (let i = 0; i < hiddenSize; i++) {
           let zPre = Wz[i][0] * x0 + Wz[i][1] * runAvg;
           let hPre = Wh[i][0] * x0 + Wh[i][1] * runAvg;
+          const uzRow = Uz[i];
+          const uhRow = Uh[i];
           for (let j = 0; j < hiddenSize; j++) {
-            zPre += Uz[i][j] * h[j];
-            hPre += Uh[i][j] * h[j];
+            zPre += uzRow[j] * h[j];
+            hPre += uhRow[j] * h[j];
           }
           const zGate = sigmoid(zPre);
           const cand = Math.tanh(hPre);
           nextH[i] = (1 - zGate) * h[i] + zGate * cand;
         }
+        const tmp = h;
         h = nextH;
+        nextH = tmp;
       }
       let yHat = bOut;
       for (let i = 0; i < hiddenSize; i++) {
+        finalHBuf[i] = h[i];
         const val = dropMask ? h[i] * dropMask[i] : h[i];
         yHat += wOut[i] * val;
       }
-      return { yHat, finalH: h };
+      return { yHat, finalH: finalHBuf };
     };
 
     // Build sliding samples from tail up to 96 bars for mobile/browser speed
     const maxStart = Math.max(0, zSeries.length - 96);
-    const samples = [];
+    const sampleIndices = [];
     for (let idx = maxStart + seqLen; idx < zSeries.length; idx++) {
-      samples.push({
-        x: zSeries.slice(idx - seqLen, idx),
-        y: zSeries[idx],
-      });
+      sampleIndices.push(idx);
     }
 
     const epochs = Math.max(6, Math.min(20, Math.round(Number(params.epochs ?? 16))));
     const lr = 0.018;
     const dropRate = Math.max(0.05, Math.min(0.45, Number(params.dropoutRate ?? 0.2)));
     const scaleKeep = 1 / (1 - dropRate);
+    const maskBuf = new Float64Array(hiddenSize);
 
     for (let ep = 0; ep < epochs; ep++) {
-      for (let sIdx = 0; sIdx < samples.length; sIdx++) {
-        const sample = samples[sIdx];
-        const mask = Array.from({ length: hiddenSize }, () => (rng() < dropRate ? 0 : scaleKeep));
-        const { yHat, finalH } = forwardWindow(sample.x, mask);
-        const err = Math.max(-2.5, Math.min(2.5, yHat - sample.y));
+      for (let sIdx = 0; sIdx < sampleIndices.length; sIdx++) {
+        const endIdx = sampleIndices[sIdx];
+        for (let i = 0; i < hiddenSize; i++) maskBuf[i] = rng() < dropRate ? 0 : scaleKeep;
+        const { yHat, finalH } = forwardWindow(zSeries, endIdx - seqLen, seqLen, maskBuf);
+        const err = Math.max(-2.5, Math.min(2.5, yHat - zSeries[endIdx]));
 
         // Update readout + lightweight recurrent nudges (BPTT-1)
         bOut -= lr * (err + 1e-4 * bOut);
+        const lastX = zSeries[endIdx - 1];
         for (let i = 0; i < hiddenSize; i++) {
-          const hMasked = finalH[i] * mask[i];
+          const hMasked = finalH[i] * maskBuf[i];
           const gOut = Math.max(-1, Math.min(1, err * hMasked + 1e-4 * wOut[i]));
           wOut[i] -= lr * gOut;
-          const hGrad = Math.max(-0.5, Math.min(0.5, err * wOut[i] * mask[i] * (1 - finalH[i] * finalH[i])));
-          const lastX = sample.x[sample.x.length - 1];
+          const hGrad = Math.max(-0.5, Math.min(0.5, err * wOut[i] * maskBuf[i] * (1 - finalH[i] * finalH[i])));
           Wh[i][0] -= lr * 0.35 * hGrad * lastX;
         }
       }
@@ -581,18 +588,19 @@ export const NativeSequenceRecurrentModel = {
     const stepBuckets = Array.from({ length: horizon }, () => []);
     const mcRng = createSeededRng(1007);
     const stepCap = features.uncondSigma * 0.85;
+    const windowBuf = new Float64Array(seqLen + horizon);
 
     for (let m = 0; m < mcSamples; m++) {
-      const windowBuf = zSeries.slice(-seqLen);
+      for (let i = 0; i < seqLen; i++) windowBuf[i] = zSeries[zSeries.length - seqLen + i];
       let cumRet = 0;
       for (let h = 0; h < horizon; h++) {
-        const mask = Array.from({ length: hiddenSize }, () => (mcRng() < dropRate ? 0 : scaleKeep));
-        const { yHat } = forwardWindow(windowBuf.slice(-seqLen), mask);
+        for (let i = 0; i < hiddenSize; i++) maskBuf[i] = mcRng() < dropRate ? 0 : scaleKeep;
+        const { yHat } = forwardWindow(windowBuf, h, seqLen, maskBuf);
         const clampedZ = Math.max(-2.5, Math.min(2.5, yHat));
         const stepRet = Math.max(-stepCap, Math.min(stepCap, mu + clampedZ * sd));
         cumRet += stepRet;
         stepBuckets[h].push({ stepRet, cumRet });
-        windowBuf.push(clampedZ);
+        windowBuf[seqLen + h] = clampedZ;
       }
     }
 
@@ -759,10 +767,14 @@ export const NativeQuantileAttentionModel = {
     const lr = 0.025;
     const trainEnd = featVecs.length - 1;
     const trainStart = Math.max(encLen, trainEnd - 90);
+    const cachedContexts = new Array(trainEnd);
+    for (let t = trainStart; t < trainEnd; t++) {
+      cachedContexts[t] = summarizeContext(t);
+    }
 
     for (let ep = 0; ep < epochs; ep++) {
       for (let t = trainStart; t < trainEnd; t++) {
-        const ctx = summarizeContext(t);
+        const ctx = cachedContexts[t];
         const target = featVecs[t][0];
         for (let qi = 0; qi < taus.length; qi++) {
           const tau = taus[qi];

@@ -63,7 +63,9 @@ class ForecastModelRegistry {
             weight = e.weight,
             defaultWeight = e.plugin.defaultWeight,
             params = e.params.toMap(),
-            defaultParams = e.plugin.defaultParams.toMap()
+            defaultParams = e.plugin.defaultParams.toMap(),
+            modelVersion = e.plugin.modelVersion,
+            experimentalOnly = e.plugin.experimentalOnly
         )
     }
 
@@ -91,6 +93,30 @@ class ForecastModelRegistry {
             e.weight = e.plugin.defaultWeight
             e.params = e.plugin.defaultParams.toMutableMap()
         }
+    }
+
+    /**
+     * Deterministic sorted representation included in V2 canonical inputHash.
+     */
+    fun serializeConfigForHash(): Map<String, Any?> {
+        val enabledList = ArrayList<Map<String, Any?>>()
+        for ((id, e) in entries) {
+            if (!e.enabled || e.weight <= 0.0) continue
+            val sortedParams = e.params.toSortedMap().mapValues { it.value }
+            enabledList.add(
+                linkedMapOf(
+                    "id" to id,
+                    "sortedParams" to sortedParams,
+                    "version" to e.plugin.modelVersion,
+                    "weight" to e.weight
+                )
+            )
+        }
+        enabledList.sortBy { it["id"] as String }
+        return linkedMapOf(
+            "enabledModels" to enabledList,
+            "registryVersion" to FORECAST_MODEL_REGISTRY_VERSION
+        )
     }
 
     fun serializeToJson(): String {
@@ -126,6 +152,26 @@ class ForecastModelRegistry {
             }
         } catch (_: Throwable) {
             // Keep existing defaults on malformed JSON
+        }
+    }
+
+    companion object {
+        val defaultForecastRegistry = ForecastModelRegistry()
+
+        fun resolveRemoteWorkerStatus(workerUrl: String): RemoteWorkerSummary {
+            val trimmed = workerUrl.trim()
+            if (trimmed.isEmpty()) {
+                return RemoteWorkerSummary(
+                    status = RemoteWorkerStatus.LOCAL_STATISTICAL_ONLY,
+                    configured = false,
+                    url = ""
+                )
+            }
+            return RemoteWorkerSummary(
+                status = RemoteWorkerStatus.UNCONFIGURED,
+                configured = true,
+                url = trimmed
+            )
         }
     }
 }

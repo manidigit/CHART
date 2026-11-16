@@ -4,6 +4,8 @@ import es.manico.chartintelligence.data.model.CandleBar
 import java.util.Locale
 import kotlin.math.abs
 import kotlin.math.exp
+import kotlin.math.floor
+import kotlin.math.ln
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.round
@@ -60,10 +62,17 @@ object ForecastV130Analyzer {
         }
         if (driftZAbs >= 2.5) oodReasons.add("Extreme drift z=${String.format(Locale.US, "%.2f", driftZAbs)}")
 
-        val (oodStatus, spreadMultiplier, oodEpistemicFactor) = when {
-            oodDistance >= 3.6 -> Triple(OodStatus.EXTREME, 1.42, 0.48)
-            oodDistance >= 2.2 -> Triple(OodStatus.ELEVATED, 1.18, 0.20)
-            else -> Triple(OodStatus.IN_DISTRIBUTION, 1.0, 0.0)
+        var oodStatus = OodStatus.IN_DISTRIBUTION
+        var spreadMultiplier = 1.0
+        var oodEpistemicFactor = 0.0
+        if (oodDistance >= 3.6) {
+            oodStatus = OodStatus.EXTREME
+            spreadMultiplier = 1.42
+            oodEpistemicFactor = 0.48
+        } else if (oodDistance >= 2.2) {
+            oodStatus = OodStatus.ELEVATED
+            spreadMultiplier = 1.18
+            oodEpistemicFactor = 0.20
         }
 
         val nEffSafe = max(6.0, effectiveSampleSize ?: max(6.0, features.barCount / 4.0))
@@ -87,17 +96,197 @@ object ForecastV130Analyzer {
         )
     }
 
-    internal data class PathSimulationResult(
-        val leafId: String,
+    private fun buildCausalScenarioFeatureVec(candles: List<CleanOhlcBar>, idx: Int, atrFallback: Double): DoubleArray {
+        val start = max(0, idx - 29)
+        val win = candles.subList(start, idx + 1)
+        if (win.size < 6) return doubleArrayOf(1.0, 0.0, 1.0, 0.0)
+        var trSum = 0.0
+        var sqShort = 0.0
+        var sqLong = 0.0
+        var nShort = 0
+        var nLong = 0
+        var gains = 0.0
+        var losses = 0.0
+        for (i in 1 until win.size) {
+            val prevC = max(1e-8, win[i - 1].close)
+            val cur = win[i]
+            val cl = max(1e-8, cur.close)
+            trSum += max(cur.high - cur.low, max(abs(cur.high - prevC), abs(cur.low - prevC)))
+            val ret = ln(cl / prevC)
+            sqLong += ret * ret
+            nLong++
+            if (i >= win.size - 6) {
+                sqShort += ret * ret
+                nShort++
+            }
+            val diff = cl - prevC
+            if (diff >= 0.0) gains += diff else losses -= diff
+        }
+        val atrLocal = max(1e-6, max(trSum / max(1, win.size - 1).toDouble(), atrFallback * 0.25))
+        val trendZ = ForecastStatisticalTests.clamp(
+            (win.last().close - win[max(0, win.size - 11)].close) / (atrLocal * sqrt(10.0)),
+            -3.0,
+            3.0
+        )
+        val sigShort = sqrt(sqShort / max(1, nShort).toDouble())
+        val sigLong = max(1e-6, sqrt(sqLong / max(1, nLong).toDouble()))
+        val volRatio = ForecastStatisticalTests.clamp(sigShort / sigLong - 1.0, -1.5, 2.5)
+        val rsiNorm = ForecastStatisticalTests.clamp(((gains / max(1e-8, gains + losses)) - 0.5) * 2.0, -1.0, 1.0)
+        return doubleArrayOf(1.0, trendZ, volRatio, rsiNorm)
+    }
+
+    fun buildCalibratedScenariosV2(
+        candles: List<CleanOhlcBar>,
+        features: ExtractedForecastFeatures,
+        horizonBars: Int,
+        points: List<ForecastPoint>,
+        split: DisjointNestedSplits? = null
+    ): Pair<List<ForecastScenario>, ScenarioCalibrationReport> {
+        val atr = max(1e-6, features.atr14)
+        val lastClose = features.lastClose
+        val lastPt = points.lastOrNull()
+        val pQ10 = lastPt?.q10 ?: (lastClose - atr * 1.5)
+        val pQ25 = lastPt?.q25 ?: (lastClose - atr * 0.8)
+        val pQ50 = lastPt?.q50 ?: lastClose
+        val pQ75 = lastPt?.q75 ?: (lastClose + atr * 0.8)
+        val pQ90 = lastPt?.q90 ?: (lastClose + atr * 1.5)
+
+        val trainSamples = ArrayList<ForecastStatisticalTests.ScenarioLogitSample>()
+        val calSamples = ArrayList<ForecastStatisticalTests.ScenarioLogitSample>()
+        val outerSamples = ArrayList<ForecastStatisticalTests.ScenarioLogitSample>()
+
+        fun classifyOrigin(originIdx: Int): ForecastStatisticalTests.ScenarioLogitSample {
+            val oClose = candles[originIdx].close
+            val fClose = candles[originIdx + horizonBars].close
+            var trS = 0.0
+            val pStart = max(1, originIdx - 13)
+            for (j in pStart..originIdx) {
+                val pc = candles[j - 1].close
+                val cur = candles[j]
+                trS += max(cur.high - cur.low, max(abs(cur.high - pc), abs(cur.low - pc)))
+            }
+            val atrO = max(1e-6, trS / max(1, originIdx - pStart + 1).toDouble())
+            val normMove = (fClose - oClose) / atrO
+            val label = when {
+                normMove > 1.0 -> 0
+                normMove < -1.0 -> 2
+                else -> 1
+            }
+            return ForecastStatisticalTests.ScenarioLogitSample(buildCausalScenarioFeatureVec(candles, originIdx, atrO), label)
+        }
+
+        if (split != null && split.feasible && split.trainEndIdx >= 30) {
+            val trainOriginEnd = max(20, split.trainEndIdx - horizonBars)
+            val step = max(1, (trainOriginEnd - 20) / 45)
+            var o = 20
+            while (o <= trainOriginEnd) {
+                trainSamples.add(classifyOrigin(o))
+                o += step
+            }
+            for (co in split.calOrigins) {
+                if (co + horizonBars < candles.size) calSamples.add(classifyOrigin(co))
+            }
+            for (oo in split.outerOrigins) {
+                if (oo + horizonBars < candles.size) outerSamples.add(classifyOrigin(oo))
+            }
+        } else if (candles.size >= 24 + horizonBars) {
+            val maxO = candles.size - 1 - horizonBars
+            val splitBoundary = max(18, floor((maxO - 14) * 0.7).toInt() + 14)
+            val step = max(1, (maxO - 14) / 36)
+            var o = 14
+            while (o <= maxO) {
+                val s = classifyOrigin(o)
+                if (o <= splitBoundary) trainSamples.add(s) else calSamples.add(s)
+                o += step
+            }
+        }
+
+        val currentX = buildCausalScenarioFeatureVec(candles, candles.size - 1, atr)
+        val logitFit = ForecastStatisticalTests.fitAndEvaluateScenarioLogit(trainSamples, calSamples, outerSamples, currentX)
+
+        val estimableIndices = (0..2).filter { logitFit.estimable[it] }
+        val estimableMass = estimableIndices.sumOf { logitFit.conditionalProbabilities[it] }
+        val normProbs = arrayOfNulls<Double>(3)
+        for (idx in 0..2) {
+            normProbs[idx] = if (!logitFit.estimable[idx] || estimableMass <= 0.0) null
+            else roundTo(logitFit.conditionalProbabilities[idx] / estimableMass, 4)
+        }
+        if (estimableIndices.isNotEmpty() && estimableMass > 0.0) {
+            val sumRest = estimableIndices.dropLast(1).sumOf { normProbs[it] ?: 0.0 }
+            val lastIdx = estimableIndices.last()
+            normProbs[lastIdx] = roundTo(max(0.0, 1.0 - sumRest), 4)
+        }
+
+        val specs = listOf(
+            Triple(ScenarioIds.BULLISH_EXPANSION, "Bullish Expansion (> +1.0 ATR)", "bull"),
+            Triple(ScenarioIds.RANGE_CONTAINMENT, "Range Containment (|dP| <= 1.0 ATR)", "neutral"),
+            Triple(ScenarioIds.BEARISH_CONTRACTION, "Bearish Contraction (< -1.0 ATR)", "bear")
+        )
+        val targets = listOf(
+            Triple(pQ75, pQ90, pQ25),
+            Triple(pQ50, pQ75, pQ25),
+            Triple(pQ25, pQ10, pQ75)
+        )
+        val texts = listOf(
+            Triple(
+                "Terminal move > +1.0 ATR14 (+${String.format(Locale.US, "%.2f", atr)}) above ${String.format(Locale.US, "%.2f", lastClose)}",
+                "Causal breakout persistence over upper quartile envelope",
+                "Close falls below lower quartile pivot ${String.format(Locale.US, "%.2f", pQ25)}"
+            ),
+            Triple(
+                "Terminal excursion bounded within ±1.0 ATR14 (±${String.format(Locale.US, "%.2f", atr)})",
+                "Mean-reverting oscillation around conditional median q50",
+                "Sustained close beyond ±1.0 ATR expansion band"
+            ),
+            Triple(
+                "Terminal move < -1.0 ATR14 (-${String.format(Locale.US, "%.2f", atr)}) below ${String.format(Locale.US, "%.2f", lastClose)}",
+                "Downside momentum extension into lower quartile envelope",
+                "Close reclaims above upper quartile pivot ${String.format(Locale.US, "%.2f", pQ75)}"
+            )
+        )
+
+        val scenarios = (0..2).map { i ->
+            val isEst = logitFit.estimable[i]
+            val targetP = targets[i].first
+            ForecastScenario(
+                id = specs[i].first,
+                label = specs[i].second,
+                bias = specs[i].third,
+                status = if (isEst) ScenarioStatus.ESTIMABLE else ScenarioStatus.NOT_ESTIMABLE,
+                probability = normProbs[i],
+                rawEmpiricalFrequency = roundTo(logitFit.rawEmpiricalFrequency[i], 4),
+                sampleCount = logitFit.counts[i],
+                targetPrice = targetP,
+                extremePrice = targets[i].second,
+                invalidationReference = targets[i].third,
+                pctChange = if (lastClose > 0.0) ((targetP - lastClose) / lastClose) * 100.0 else 0.0,
+                leafId = specs[i].first,
+                parentBranch = if (isEst) "ESTIMABLE" else "NOT_ESTIMABLE",
+                entryCondition = texts[i].first,
+                intermediateEvent = texts[i].second,
+                invalidationCondition = texts[i].third,
+                lowSampleWarning = !isEst
+            )
+        }
+
+        val report = ScenarioCalibrationReport(
+            totalTrainAndCalSamples = logitFit.totalLocal,
+            oosEvaluatedCount = logitFit.oosEvaluatedCount,
+            temperature = logitFit.temperature,
+            oosBrierModel = logitFit.oosBrierModel,
+            oosBrierClimatology = logitFit.oosBrierClimatology,
+            calibrationPassed = logitFit.calibrationPassed,
+            notEstimableCount = (0..2).count { !logitFit.estimable[it] }
+        )
+        return Pair(scenarios, report)
+    }
+
+    internal data class SimulatedPathEvent(
         val touched: Boolean,
         val penetrated: Boolean,
-        val maxPenAtr: Double,
-        val closesOutside: Int,
         val reclaimed: Boolean,
-        val reclaimTime: Int,
         val confirmedBreakout: Boolean,
         val reachedTarget: Boolean,
-        val reachedInvalidation: Boolean,
         val ambiguousBar: Boolean,
         val firstReachBar: Int
     )
@@ -112,111 +301,72 @@ object ForecastV130Analyzer {
         reclaimBars: Int = 3,
         breakoutCloses: Int = 2,
         atr: Double = 1.0
-    ): PathSimulationResult {
+    ): SimulatedPathEvent {
         val penAmt = max(1e-8, penAtrMult * atr)
         var touched = false
         var penetrated = false
-        var maxPenAtr = 0.0
-        var closesOutside = 0
         var consecOutside = 0
         var breakoutDir = 0
         var penetratedAt = -1
         var reclaimed = false
-        var reclaimTime = 0
         var reachedTarget = false
         var reachedInvalidation = false
         var ambiguousBar = false
         var firstReachBar = 0
-
         val isUpperZone = zoneHigh >= invalidationPrice
 
         for (i in candles.indices) {
             val c = candles[i]
-            val lo = c.low
-            val hi = c.high
-            val cl = c.close
-
-            val hitTarget = if (isUpperZone) hi >= targetPrice else lo <= targetPrice
-            val hitInv = if (isUpperZone) lo <= invalidationPrice else hi >= invalidationPrice
-
+            val hitTarget = if (isUpperZone) c.high >= targetPrice else c.low <= targetPrice
+            val hitInv = if (isUpperZone) c.low <= invalidationPrice else c.high >= invalidationPrice
             if (!reachedTarget && !reachedInvalidation) {
-                when {
-                    hitTarget && hitInv -> ambiguousBar = true
-                    hitTarget -> {
-                        reachedTarget = true
-                        firstReachBar = i + 1
-                    }
-                    hitInv -> reachedInvalidation = true
+                if (hitTarget && hitInv) ambiguousBar = true
+                else if (hitTarget) {
+                    reachedTarget = true
+                    firstReachBar = i + 1
+                } else if (hitInv) {
+                    reachedInvalidation = true
                 }
             }
-
-            if (hi >= zoneLow && lo <= zoneHigh) {
-                touched = true
-            }
-
-            val penDist = max(hi - zoneHigh, zoneLow - lo)
+            if (c.high >= zoneLow && c.low <= zoneHigh) touched = true
+            val penDist = max(c.high - zoneHigh, zoneLow - c.low)
             if (penDist >= penAmt) {
                 if (!penetrated) penetratedAt = i
                 penetrated = true
-                maxPenAtr = max(maxPenAtr, penDist / max(1e-8, atr))
             }
-
-            if (cl > zoneHigh || cl < zoneLow) {
-                closesOutside++
+            if (c.close > zoneHigh || c.close < zoneLow) {
                 consecOutside++
                 if (consecOutside >= breakoutCloses && breakoutDir == 0) {
-                    breakoutDir = if (cl > zoneHigh) 1 else -1
+                    breakoutDir = if (c.close > zoneHigh) 1 else -1
                 }
             } else {
-                if (penetrated && !reclaimed && penetratedAt >= 0 && (i - penetratedAt) <= reclaimBars) {
+                if (penetrated && !reclaimed && penetratedAt >= 0 && i - penetratedAt <= reclaimBars) {
                     reclaimed = true
-                    reclaimTime = i - penetratedAt
                 }
                 consecOutside = 0
             }
         }
-
-        val leafId = when {
-            breakoutDir > 0 -> "CONFIRMED_BREAKOUT_BULL"
-            breakoutDir < 0 -> "CONFIRMED_BREAKOUT_BEAR"
-            reclaimed -> "PENETRATE_AND_RECLAIM"
-            penetrated -> {
-                if (closesOutside >= 1) {
-                    if (zoneHigh >= invalidationPrice) "CONFIRMED_BREAKOUT_BULL" else "CONFIRMED_BREAKOUT_BEAR"
-                } else {
-                    "ZONE_REACTION_REJECTION"
-                }
-            }
-            touched -> "ZONE_REACTION_REJECTION"
-            else -> "NO_ZONE_TOUCH_RANGE"
-        }
-
-        return PathSimulationResult(
-            leafId = leafId,
-            touched = touched,
-            penetrated = penetrated,
-            maxPenAtr = maxPenAtr,
-            closesOutside = closesOutside,
-            reclaimed = reclaimed,
-            reclaimTime = reclaimTime,
-            confirmedBreakout = breakoutDir != 0,
-            reachedTarget = reachedTarget,
-            reachedInvalidation = reachedInvalidation,
-            ambiguousBar = ambiguousBar,
-            firstReachBar = firstReachBar
-        )
+        return SimulatedPathEvent(touched, penetrated, reclaimed, breakoutDir != 0, reachedTarget, ambiguousBar, firstReachBar)
     }
+
+    data class KeyZonesAndEventsBundle(
+        val scenarios: List<ForecastScenario>,
+        val scenarioCalibration: ScenarioCalibrationReport,
+        val keyZones: List<KeyPriceZone>,
+        val eventDictionary: EventDictionarySpec,
+        val pathEventStats: PathEventStats
+    )
 
     fun detectKeyZonesAndEventTree(
         features: ExtractedForecastFeatures,
         points: List<ForecastPoint>,
-        horizonBars: Int
-    ): Triple<List<ForecastScenario>, List<KeyPriceZone>, EventDictionarySpec> {
+        horizonBars: Int,
+        split: DisjointNestedSplits? = null
+    ): KeyZonesAndEventsBundle {
         val lastPt = points.last()
         val lastClose = features.lastClose
         val atr = max(1e-6, features.atr14)
         val candles = features.candles
-
         val lookback = candles.takeLast(min(60, candles.size))
         val swingHigh = lookback.maxOfOrNull { it.high } ?: lastPt.q75
         val swingLow = lookback.minOfOrNull { it.low } ?: lastPt.q25
@@ -224,7 +374,6 @@ object ForecastV130Analyzer {
         val upperCenter = lastPt.q75 * 0.65 + swingHigh * 0.35
         val lowerCenter = lastPt.q25 * 0.65 + swingLow * 0.35
         val zoneHalf = max(atr * 0.35, lastClose * 0.0008)
-
         val upperLow = max(lastClose * 0.02, upperCenter - zoneHalf)
         val upperHigh = upperCenter + zoneHalf
         val lowerLow = max(lastClose * 0.02, lowerCenter - zoneHalf)
@@ -233,22 +382,16 @@ object ForecastV130Analyzer {
         val evalLen = min(horizonBars, 12)
         val histStep = max(1, max(1, candles.size - evalLen - 16) / 14)
 
-        var cntNoTouch = 0
-        var cntReact = 0
-        var cntReclaim = 0
-        var cntBull = 0
-        var cntBear = 0
-
         var totalPaths = 0
-        var reachUpperBeforeInv = 0
-        var reachLowerBeforeInv = 0
-        var ambiguousUpperCount = 0
-        var upperTouchCount = 0
-        var upperPenCount = 0
-        var upperReclaimCount = 0
-        var upperBreakCount = 0
-        var upperCensoredTimeSum = 0.0
-        var lowerCensoredTimeSum = 0.0
+        var reachUpper = 0
+        var reachLower = 0
+        var ambigUpper = 0
+        var upperTouch = 0
+        var upperPen = 0
+        var upperReclaim = 0
+        var upperBreakout = 0
+        var upperCensSum = 0.0
+        var lowerCensSum = 0.0
 
         if (candles.size >= evalLen + 18) {
             var origin = 14
@@ -256,51 +399,29 @@ object ForecastV130Analyzer {
                 totalPaths++
                 val scale = candles[origin - 1].close / lastClose
                 val win = candles.subList(origin, origin + evalLen)
-
-                val uEv = simulatePathEventsOnWindow(
-                    win, upperLow * scale, upperHigh * scale, upperCenter * scale, lowerCenter * scale,
-                    0.20, 3, 2, atr * scale
-                )
-                val lEv = simulatePathEventsOnWindow(
-                    win, lowerLow * scale, lowerHigh * scale, lowerCenter * scale, upperCenter * scale,
-                    0.20, 3, 2, atr * scale
-                )
-
-                if (uEv.touched) upperTouchCount++
-                if (uEv.penetrated) upperPenCount++
-                if (uEv.reclaimed) upperReclaimCount++
-                if (uEv.confirmedBreakout) upperBreakCount++
-                if (uEv.ambiguousBar) ambiguousUpperCount++
+                val uEv = simulatePathEventsOnWindow(win, upperLow * scale, upperHigh * scale, upperCenter * scale, lowerCenter * scale, 0.20, 3, 2, atr * scale)
+                val lEv = simulatePathEventsOnWindow(win, lowerLow * scale, lowerHigh * scale, lowerCenter * scale, upperCenter * scale, 0.20, 3, 2, atr * scale)
+                if (uEv.touched) upperTouch++
+                if (uEv.penetrated) upperPen++
+                if (uEv.reclaimed) upperReclaim++
+                if (uEv.confirmedBreakout) upperBreakout++
+                if (uEv.ambiguousBar) ambigUpper++
                 if (uEv.reachedTarget) {
-                    reachUpperBeforeInv++
-                    upperCensoredTimeSum += uEv.firstReachBar
-                } else {
-                    upperCensoredTimeSum += evalLen
-                }
+                    reachUpper++
+                    upperCensSum += uEv.firstReachBar
+                } else upperCensSum += evalLen
                 if (lEv.reachedTarget) {
-                    reachLowerBeforeInv++
-                    lowerCensoredTimeSum += lEv.firstReachBar
-                } else {
-                    lowerCensoredTimeSum += evalLen
-                }
-
-                when {
-                    uEv.leafId == "CONFIRMED_BREAKOUT_BULL" -> cntBull++
-                    lEv.leafId == "CONFIRMED_BREAKOUT_BEAR" -> cntBear++
-                    uEv.leafId == "PENETRATE_AND_RECLAIM" || lEv.leafId == "PENETRATE_AND_RECLAIM" -> cntReclaim++
-                    uEv.touched || lEv.touched -> cntReact++
-                    else -> cntNoTouch++
-                }
+                    reachLower++
+                    lowerCensSum += lEv.firstReachBar
+                } else lowerCensSum += evalLen
                 origin += histStep
             }
         }
 
-        val sensitivityGrid = ArrayList<SensitivityGridPoint>()
+        val grid = ArrayList<SensitivityGridPoint>()
         if (candles.size >= evalLen + 18) {
-            val atrChoices = listOf(0.10, 0.20, 0.35)
-            val reclaimChoices = listOf(2, 3, 5)
-            for (penMult in atrChoices) {
-                for (recBars in reclaimChoices) {
+            for (penMult in doubleArrayOf(0.10, 0.20, 0.35)) {
+                for (recBars in intArrayOf(2, 3, 5)) {
                     var gWins = 0
                     var gTouch = 0
                     var gRec = 0
@@ -310,11 +431,7 @@ object ForecastV130Analyzer {
                     while (origin <= candles.size - evalLen) {
                         gWins++
                         val scale = candles[origin - 1].close / lastClose
-                        val ev = simulatePathEventsOnWindow(
-                            candles.subList(origin, origin + evalLen),
-                            upperLow * scale, upperHigh * scale, upperCenter * scale, lowerCenter * scale,
-                            penMult, recBars, 2, atr * scale
-                        )
+                        val ev = simulatePathEventsOnWindow(candles.subList(origin, origin + evalLen), upperLow * scale, upperHigh * scale, upperCenter * scale, lowerCenter * scale, penMult, recBars, 2, atr * scale)
                         if (ev.touched) gTouch++
                         if (ev.reclaimed) gRec++
                         if (ev.confirmedBreakout) gBrk++
@@ -322,133 +439,20 @@ object ForecastV130Analyzer {
                         origin += histStep * 2
                     }
                     if (gWins > 0) {
-                        sensitivityGrid.add(
-                            SensitivityGridPoint(
-                                penetrationAtrMult = penMult,
-                                reclaimWindowBars = recBars,
-                                breakoutCloses = 2,
-                                touchFreqPct = roundTo((gTouch.toDouble() / gWins) * 100.0, 1),
-                                reclaimFreqPct = roundTo((gRec.toDouble() / gWins) * 100.0, 1),
-                                breakoutFreqPct = roundTo((gBrk.toDouble() / gWins) * 100.0, 1),
-                                ambiguousRatePct = roundTo((gAmb.toDouble() / gWins) * 100.0, 1)
-                            )
-                        )
+                        grid.add(SensitivityGridPoint(penMult, recBars, 2, roundTo((gTouch.toDouble() / gWins) * 100.0, 1), roundTo((gRec.toDouble() / gWins) * 100.0, 1), roundTo((gBrk.toDouble() / gWins) * 100.0, 1), roundTo((gAmb.toDouble() / gWins) * 100.0, 1)))
                     }
                 }
             }
         }
 
+        val (scenarios, scenarioCal) = buildCalibratedScenariosV2(candles, features, horizonBars, points, split)
+        val pBull = scenarios[0].probability ?: scenarios[0].rawEmpiricalFrequency
+        val pBear = scenarios[2].probability ?: scenarios[2].rawEmpiricalFrequency
         val totalSpread = max(1e-6, lastPt.q90 - lastPt.q10)
-        val driftNorm = (lastPt.q50 - lastClose) / (totalSpread / 2.5631)
-        val bullBias = normalCdf(driftNorm)
-
-        val empNoTouch = if (totalPaths > 0) cntNoTouch.toDouble() / totalPaths else 0.22
-        val empReact = if (totalPaths > 0) cntReact.toDouble() / totalPaths else 0.24
-        val empReclaim = if (totalPaths > 0) cntReclaim.toDouble() / totalPaths else 0.18
-        val empBull = if (totalPaths > 0) cntBull.toDouble() / totalPaths else 0.18 * bullBias * 2.0
-        val empBear = if (totalPaths > 0) cntBear.toDouble() / totalPaths else 0.18 * (1.0 - bullBias) * 2.0
-
-        val anaTouch = (0.62 + 0.14 * min(2.0, abs(driftNorm))).coerceIn(0.42, 0.88)
-        val rawNoTouch = 0.5 * (1.0 - anaTouch) + 0.5 * empNoTouch
-        val rawReact = 0.5 * (anaTouch * 0.30) + 0.5 * empReact
-        val rawReclaim = 0.5 * (anaTouch * 0.22) + 0.5 * empReclaim
-        val rawBreakPool = max(0.08, 1.0 - rawNoTouch - rawReact - rawReclaim)
-        val rawBull = 0.55 * (rawBreakPool * bullBias) + 0.45 * empBull
-        val rawBear = 0.55 * (rawBreakPool * (1.0 - bullBias)) + 0.45 * empBear
-        val sumRaw = rawNoTouch + rawReact + rawReclaim + rawBull + rawBear
-
-        val pNoTouch = roundTo(rawNoTouch / sumRaw, 3)
-        val pReact = roundTo(rawReact / sumRaw, 3)
-        val pReclaim = roundTo(rawReclaim / sumRaw, 3)
-        val pBull = roundTo(rawBull / sumRaw, 3)
-        val pBear = roundTo(max(0.0, 1.0 - pNoTouch - pReact - pReclaim - pBull), 3)
-
-        val scenarios = listOf(
-            ForecastScenario(
-                id = "NO_ZONE_TOUCH_RANGE",
-                leafId = "NO_ZONE_TOUCH_RANGE",
-                parentBranch = "NO_TOUCH",
-                label = "No Key Zone Touch (Range Containment)",
-                bias = "neutral",
-                probability = pNoTouch,
-                targetPrice = lastPt.q50,
-                extremePrice = lastPt.q75,
-                invalidationReference = lowerCenter,
-                pctChange = ((lastPt.q50 - lastClose) / lastClose) * 100.0,
-                entryCondition = "Price stays between ${String.format(Locale.US, "%.2f", lowerHigh)} and ${String.format(Locale.US, "%.2f", upperLow)}",
-                intermediateEvent = "Neither primary zone is touched over horizon",
-                invalidationCondition = "High/Low touches upper or lower key zone",
-                lowSampleWarning = totalPaths > 0 && cntNoTouch < 2
-            ),
-            ForecastScenario(
-                id = "ZONE_REACTION_REJECTION",
-                leafId = "ZONE_REACTION_REJECTION",
-                parentBranch = "TOUCH_OBSERVED",
-                label = "Key Zone Touch & Reaction Rejection",
-                bias = "neutral",
-                probability = pReact,
-                targetPrice = lastPt.q50,
-                extremePrice = upperLow,
-                invalidationReference = lowerLow,
-                pctChange = ((lastPt.q50 - lastClose) / lastClose) * 100.0,
-                entryCondition = "High/Low enters key zone boundary",
-                intermediateEvent = "Penetration remains < 0.2x ATR with mean reversion",
-                invalidationCondition = "Penetration >= 0.2x ATR outside zone",
-                lowSampleWarning = totalPaths > 0 && cntReact < 2
-            ),
-            ForecastScenario(
-                id = "PENETRATE_AND_RECLAIM",
-                leafId = "PENETRATE_AND_RECLAIM",
-                parentBranch = "TOUCH_OBSERVED",
-                label = "Zone Penetration & <=3-Bar Reclaim",
-                bias = "neutral",
-                probability = pReclaim,
-                targetPrice = lastPt.q50,
-                extremePrice = upperHigh,
-                invalidationReference = lowerHigh,
-                pctChange = ((lastPt.q50 - lastClose) / lastClose) * 100.0,
-                entryCondition = "Penetration >= 0.2x ATR beyond key zone",
-                intermediateEvent = "Close reclaims inside zone within <= 3 bars",
-                invalidationCondition = "2 consecutive closes outside zone boundary",
-                lowSampleWarning = totalPaths > 0 && cntReclaim < 2
-            ),
-            ForecastScenario(
-                id = "CONFIRMED_BREAKOUT_BULL",
-                leafId = "CONFIRMED_BREAKOUT_BULL",
-                parentBranch = "TOUCH_OBSERVED",
-                label = "Confirmed Bullish Zone Expansion",
-                bias = "bull",
-                probability = pBull,
-                targetPrice = lastPt.q75,
-                extremePrice = lastPt.q90,
-                invalidationReference = lowerCenter,
-                pctChange = ((lastPt.q75 - lastClose) / lastClose) * 100.0,
-                entryCondition = "Upper zone penetration >= 0.2x ATR above ${String.format(Locale.US, "%.2f", upperHigh)}",
-                intermediateEvent = "2 consecutive closes confirmed above upper zone",
-                invalidationCondition = "Close back below structural pivot ${String.format(Locale.US, "%.2f", lowerCenter)}",
-                lowSampleWarning = totalPaths > 0 && cntBull < 2
-            ),
-            ForecastScenario(
-                id = "CONFIRMED_BREAKOUT_BEAR",
-                leafId = "CONFIRMED_BREAKOUT_BEAR",
-                parentBranch = "TOUCH_OBSERVED",
-                label = "Confirmed Bearish Zone Contraction",
-                bias = "bear",
-                probability = pBear,
-                targetPrice = lastPt.q25,
-                extremePrice = lastPt.q10,
-                invalidationReference = upperCenter,
-                pctChange = ((lastPt.q25 - lastClose) / lastClose) * 100.0,
-                entryCondition = "Lower zone penetration >= 0.2x ATR below ${String.format(Locale.US, "%.2f", lowerLow)}",
-                intermediateEvent = "2 consecutive closes confirmed below lower zone",
-                invalidationCondition = "Close back above structural pivot ${String.format(Locale.US, "%.2f", upperCenter)}",
-                lowSampleWarning = totalPaths > 0 && cntBear < 2
-            )
-        )
-
-        val reachUpRate = if (totalPaths > 0) reachUpperBeforeInv.toDouble() / totalPaths else bullBias * 0.65
-        val reachDnRate = if (totalPaths > 0) reachLowerBeforeInv.toDouble() / totalPaths else (1.0 - bullBias) * 0.65
-        val ambigRate = if (totalPaths > 0) ambiguousUpperCount.toDouble() / totalPaths else 0.0
+        val bullBias = normalCdf((lastPt.q50 - lastClose) / (totalSpread / 2.5631))
+        val reachUpRate = if (totalPaths > 0) reachUpper.toDouble() / totalPaths else 0.0
+        val reachDnRate = if (totalPaths > 0) reachLower.toDouble() / totalPaths else 0.0
+        val ambigRate = if (totalPaths > 0) ambigUpper.toDouble() / totalPaths else 0.0
 
         val keyZones = listOf(
             KeyPriceZone(
@@ -459,14 +463,14 @@ object ForecastV130Analyzer {
                 centerPrice = upperCenter,
                 detectedAtMs = features.lastOpenMs,
                 source = "SWING_STRUCTURE_ATR",
-                strength = roundTo((0.55 + (if (swingHigh > lastClose) 0.22 else 0.08)).coerceIn(0.3, 0.95), 2),
-                touchProbability = roundTo(if (totalPaths > 0) upperTouchCount.toDouble() / totalPaths else bullBias * 0.72, 3),
-                penetrationProbability = roundTo(if (totalPaths > 0) upperPenCount.toDouble() / totalPaths else bullBias * 0.45, 3),
-                reclaimProbability = roundTo(if (totalPaths > 0) upperReclaimCount.toDouble() / totalPaths else pReclaim * 0.5, 3),
-                confirmedBreakoutProbability = pBull,
-                reachBeforeInvalidationProb = roundTo(reachUpRate.coerceIn(0.0, 1.0 - ambigRate), 3),
-                invalidationBeforeReachProb = roundTo(reachDnRate.coerceIn(0.0, 1.0 - ambigRate), 3),
-                expectedBarsToReachCensored = roundTo(if (totalPaths > 0) upperCensoredTimeSum / totalPaths else horizonBars * 0.56, 1),
+                strength = roundTo(ForecastStatisticalTests.clamp(0.55 + if (swingHigh > lastClose) 0.22 else 0.08, 0.3, 0.95), 2),
+                touchProbability = roundTo(if (totalPaths > 0) upperTouch.toDouble() / totalPaths else 0.0, 3),
+                penetrationProbability = roundTo(if (totalPaths > 0) upperPen.toDouble() / totalPaths else 0.0, 3),
+                reclaimProbability = roundTo(if (totalPaths > 0) upperReclaim.toDouble() / totalPaths else 0.0, 3),
+                confirmedBreakoutProbability = roundTo(pBull, 3),
+                reachBeforeInvalidationProb = roundTo(ForecastStatisticalTests.clamp(reachUpRate, 0.0, 1.0 - ambigRate), 3),
+                invalidationBeforeReachProb = roundTo(ForecastStatisticalTests.clamp(reachDnRate, 0.0, 1.0 - ambigRate), 3),
+                expectedBarsToReachCensored = roundTo(if (totalPaths > 0) upperCensSum / totalPaths else horizonBars * 0.5, 1),
                 invalidationPrice = lowerCenter,
                 horizonBars = horizonBars
             ),
@@ -478,23 +482,36 @@ object ForecastV130Analyzer {
                 centerPrice = lowerCenter,
                 detectedAtMs = features.lastOpenMs,
                 source = "SWING_STRUCTURE_ATR",
-                strength = roundTo((0.55 + (if (swingLow < lastClose) 0.22 else 0.08)).coerceIn(0.3, 0.95), 2),
-                touchProbability = roundTo(((1.0 - bullBias) * 0.74).coerceIn(0.05, 0.95), 3),
-                penetrationProbability = roundTo(((1.0 - bullBias) * 0.46).coerceIn(0.03, 0.85), 3),
-                reclaimProbability = roundTo(pReclaim * 0.5, 3),
-                confirmedBreakoutProbability = pBear,
-                reachBeforeInvalidationProb = roundTo(reachDnRate.coerceIn(0.0, 1.0 - ambigRate), 3),
-                invalidationBeforeReachProb = roundTo(reachUpRate.coerceIn(0.0, 1.0 - ambigRate), 3),
-                expectedBarsToReachCensored = roundTo(if (totalPaths > 0) lowerCensoredTimeSum / totalPaths else horizonBars * 0.60, 1),
+                strength = roundTo(ForecastStatisticalTests.clamp(0.55 + if (swingLow < lastClose) 0.22 else 0.08, 0.3, 0.95), 2),
+                touchProbability = roundTo(if (totalPaths > 0) (totalPaths - upperTouch).toDouble() / totalPaths else ForecastStatisticalTests.clamp((1.0 - bullBias) * 0.5, 0.0, 1.0), 3),
+                penetrationProbability = roundTo(if (totalPaths > 0) upperPen.toDouble() / totalPaths else 0.0, 3),
+                reclaimProbability = roundTo(if (totalPaths > 0) upperReclaim.toDouble() / totalPaths else 0.0, 3),
+                confirmedBreakoutProbability = roundTo(pBear, 3),
+                reachBeforeInvalidationProb = roundTo(ForecastStatisticalTests.clamp(reachDnRate, 0.0, 1.0 - ambigRate), 3),
+                invalidationBeforeReachProb = roundTo(ForecastStatisticalTests.clamp(reachUpRate, 0.0, 1.0 - ambigRate), 3),
+                expectedBarsToReachCensored = roundTo(if (totalPaths > 0) lowerCensSum / totalPaths else horizonBars * 0.5, 1),
                 invalidationPrice = upperCenter,
                 horizonBars = horizonBars
             )
         )
 
-        val dictSpec = EventDictionarySpec(
-            sensitivityGrid = sensitivityGrid
+        val pathEventStats = PathEventStats(
+            touchRatePct = roundTo(if (totalPaths > 0) (upperTouch.toDouble() / totalPaths) * 100.0 else 0.0, 1),
+            penetrationRatePct = roundTo(if (totalPaths > 0) (upperPen.toDouble() / totalPaths) * 100.0 else 0.0, 1),
+            reclaimRatePct = roundTo(if (totalPaths > 0) (upperReclaim.toDouble() / totalPaths) * 100.0 else 0.0, 1),
+            breakoutRatePct = roundTo(if (totalPaths > 0) (upperBreakout.toDouble() / totalPaths) * 100.0 else 0.0, 1),
+            reachBeforeInvalidationPct = roundTo(reachUpRate * 100.0, 1),
+            ambiguousRatePct = roundTo(ambigRate * 100.0, 1),
+            censoringRatePct = roundTo(if (totalPaths > 0) ((totalPaths - reachUpper).toDouble() / totalPaths) * 100.0 else 100.0, 1)
         )
-        return Triple(scenarios, keyZones, dictSpec)
+
+        return KeyZonesAndEventsBundle(
+            scenarios = scenarios,
+            scenarioCalibration = scenarioCal,
+            keyZones = keyZones,
+            eventDictionary = EventDictionarySpec(sensitivityGrid = grid),
+            pathEventStats = pathEventStats
+        )
     }
 
     fun coordinateMultiTimeframe(
@@ -502,42 +519,26 @@ object ForecastV130Analyzer {
         independentScenarios: List<ForecastScenario>,
         anchorClose: Double,
         timeframe: String,
-        higherTimeframe: String = "",
-        higherCandles: List<CandleBar> = emptyList()
+        higherTimeframe: String,
+        higherCandles: List<CandleBar>
     ): MtfCoordinationReport {
         val indLast = independentPoints.last()
         val indMedPct = if (anchorClose > 0.0) ((indLast.q50 - anchorClose) / anchorClose) * 100.0 else 0.0
-
-        val htfFeats = if (higherCandles.size >= 16 && higherTimeframe.isNotBlank()) {
-            ForecastFeatureExtractor.extract(higherCandles, 120)
-        } else null
-
-        if (htfFeats == null) {
-            return MtfCoordinationReport(
-                referenceTimeframe = higherTimeframe.ifBlank { "NONE" },
-                alignmentState = MtfAlignmentState.SINGLE_TIMEFRAME,
-                ohlcConsistent = true,
-                independentMedianPct = roundTo(indMedPct, 3),
-                coordinatedMedianPct = roundTo(indMedPct, 3),
-                coordinatedPoints = independentPoints,
-                coordinatedScenarios = independentScenarios,
-                conflictReasons = listOf("Higher-timeframe history unavailable locally; running independent engine only"),
-                uncertaintyAdjustmentFactor = 1.0
-            )
+        val htfClean = higherCandles.mapNotNull { c ->
+            val o = c.open.toDouble(); val h = c.high.toDouble(); val l = c.low.toDouble(); val cl = c.close.toDouble()
+            if (cl.isFinite() && cl > 0.0 && h >= l) CleanOhlcBar(o, h, l, cl, max(0.0, c.volume.toDouble()), c.openTimeUtcMillis) else null
         }
+
+        if (htfClean.size < 16 || higherTimeframe.isBlank()) {
+            return MtfCoordinationReport(higherTimeframe.ifBlank { "NONE" }, MtfAlignmentState.SINGLE_TIMEFRAME, true, roundTo(indMedPct, 3), roundTo(indMedPct, 3), independentPoints, independentScenarios, listOf("Higher-timeframe history unavailable locally; running independent engine only"), 1.0)
+        }
+        val htfFeats = ForecastFeatureExtractor.extractClean(if (htfClean.size > 120) htfClean.takeLast(120) else htfClean)
+            ?: return MtfCoordinationReport(higherTimeframe, MtfAlignmentState.SINGLE_TIMEFRAME, true, roundTo(indMedPct, 3), roundTo(indMedPct, 3), independentPoints, independentScenarios, listOf("Insufficient higher-timeframe bars for independent check"), 1.0)
 
         val htfLatest = htfFeats.candles.last()
         val ohlcConsistent = anchorClose >= htfLatest.low * 0.992 && anchorClose <= htfLatest.high * 1.008
-        val htfDriftSign = when {
-            htfFeats.driftZ > 0.35 -> 1
-            htfFeats.driftZ < -0.35 -> -1
-            else -> 0
-        }
-        val indSign = when {
-            indMedPct > 0.08 -> 1
-            indMedPct < -0.08 -> -1
-            else -> 0
-        }
+        val htfDriftSign = if (htfFeats.driftZ > 0.35) 1 else if (htfFeats.driftZ < -0.35) -1 else 0
+        val indSign = if (indMedPct > 0.08) 1 else if (indMedPct < -0.08) -1 else 0
 
         val conflictReasons = ArrayList<String>()
         var alignmentState = MtfAlignmentState.ALIGNED
@@ -556,11 +557,10 @@ object ForecastV130Analyzer {
             conflictReasons.add("$timeframe trajectory (${if (indSign > 0) "+" else "-"}) diverges from $higherTimeframe drift (z=${String.format(Locale.US, "%.2f", htfFeats.driftZ)})")
         }
 
-        val horizon = independentPoints.size
+        val horizon = max(1, independentPoints.size)
         val coordinatedPoints = independentPoints.mapIndexed { idx, p ->
-            val stepFrac = (idx + 1).toDouble() / max(1, horizon)
-            val shiftFactor = exp(driftPull * (idx + 1))
-            val q50 = p.q50 * shiftFactor
+            val stepFrac = (idx + 1).toDouble() / horizon.toDouble()
+            val q50 = p.q50 * exp(driftPull * (idx + 1))
             val halfLo = max(1e-8, (p.q50 - p.q10) * uncAdj)
             val halfLo25 = max(1e-8, (p.q50 - p.q25) * uncAdj)
             val halfHi75 = max(1e-8, (p.q75 - p.q50) * uncAdj)
@@ -574,89 +574,58 @@ object ForecastV130Analyzer {
                 anchorClose * 0.02
             )
             p.copy(
-                q10 = mq[0],
-                q25 = mq[1],
-                q50 = mq[2],
-                q75 = mq[3],
-                q90 = mq[4],
+                q10 = mq[0], q25 = mq[1], q50 = mq[2], q75 = mq[3], q90 = mq[4],
+                open = if (idx == 0) anchorClose else mq[2], close = mq[2],
+                high = max(mq[3], mq[2]), low = min(mq[1], mq[2]),
+                upperBand = mq[4], lowerBand = mq[0],
                 pctChangeFromLast = ((mq[2] - anchorClose) / anchorClose) * 100.0
             )
         }
-
         val coordLast = coordinatedPoints.last()
         val coordMedPct = if (anchorClose > 0.0) ((coordLast.q50 - anchorClose) / anchorClose) * 100.0 else indMedPct
 
-        return MtfCoordinationReport(
-            referenceTimeframe = higherTimeframe,
-            alignmentState = alignmentState,
-            ohlcConsistent = ohlcConsistent,
-            independentMedianPct = roundTo(indMedPct, 3),
-            coordinatedMedianPct = roundTo(coordMedPct, 3),
-            coordinatedPoints = coordinatedPoints,
-            coordinatedScenarios = independentScenarios,
-            conflictReasons = conflictReasons,
-            uncertaintyAdjustmentFactor = uncAdj
-        )
+        return MtfCoordinationReport(higherTimeframe, alignmentState, ohlcConsistent, roundTo(indMedPct, 3), roundTo(coordMedPct, 3), coordinatedPoints, independentScenarios, conflictReasons, uncAdj)
     }
 
-    fun evaluateNoEdgeGate(
-        walkForward: WalkForwardReport?,
-        uncertainty: UncertaintyBreakdown?
-    ): NoEdgeGateReport {
+    fun evaluateNoEdgeGate(walkForward: WalkForwardReport?, uncertainty: UncertaintyBreakdown?): NoEdgeGateReport {
         val reasons = ArrayList<String>()
-        if (walkForward == null || walkForward.evaluatedWindows < 5) {
-            reasons.add("Insufficient walk-forward windows (< 5)")
-        }
+        val kOuter = walkForward?.evaluatedWindows ?: 0
+        if (walkForward == null || kOuter < 30) reasons.add("Insufficient non-overlapping OOS windows (K_outer=$kOuter < 30)")
         val nEff = walkForward?.effectiveSampleSize ?: 0.0
-        if (nEff < 12.0) {
-            reasons.add("Effective sample size N_eff=${String.format(Locale.US, "%.1f", nEff)} below minimum 12.0")
-        }
-        val skill = walkForward?.skillScoreVsNaive ?: 0.0
-        if (skill <= 0.0) {
-            reasons.add("Skill score vs Persistence (${String.format(Locale.US, "%.1f", skill * 100.0)}%) <= 0%")
-        }
-        if (walkForward?.acceptancePassed != true) {
-            reasons.add(walkForward?.acceptanceReason ?: "Walk-forward acceptance gate not met")
-        }
-        if (uncertainty?.oodStatus == OodStatus.EXTREME) {
-            reasons.add("Extreme OOD regime forbids high-confidence edge claim")
-        }
+        if (nEff < 25.0) reasons.add("Effective sample size N_eff=${String.format(Locale.US, "%.1f", nEff)} below minimum 25.0")
+        val calSt = walkForward?.conformalCalibration?.calibrationStatus ?: "UNDER_SAMPLED"
+        if (calSt != "CALIBRATED_NORMALIZED") reasons.add("Conformal calibration not ready ($calSt)")
+        val rMae = walkForward?.relativeMaeVsNaive ?: 1.0
+        if (rMae >= 1.0) reasons.add("rMAE=${String.format(Locale.US, "%.3f", rMae)} >= 1.000")
+        val wisM = walkForward?.wisModel ?: 0.0
+        val wisN = walkForward?.wisNaiveDistributional ?: 0.0
+        if (!(wisM < wisN && wisN > 0.0)) reasons.add("WIS=${String.format(Locale.US, "%.4f", wisM)} >= Naive WIS=${String.format(Locale.US, "%.4f", wisN)}")
+        val cov80 = walkForward?.coverage80Pct ?: 0.0
+        if (cov80 < 72.0 || cov80 > 88.0) reasons.add("80% Coverage=${String.format(Locale.US, "%.1f", cov80)}% outside [72%, 88%]")
+        val dmP = walkForward?.dieboldMarianoPValue ?: 1.0
+        if (dmP > 0.05) reasons.add("HLN-DM p=${String.format(Locale.US, "%.4f", dmP)} > 0.05")
+        val bootP = walkForward?.sensitivityBootstrapPValue ?: 1.0
+        if (bootP > 0.10) reasons.add("Stationary block bootstrap p=${String.format(Locale.US, "%.4f", bootP)} > 0.10")
+        if (uncertainty?.oodStatus == OodStatus.EXTREME) reasons.add("Extreme OOD regime forbids edge claim")
 
-        val hasEdge = walkForward?.acceptancePassed == true &&
-            nEff >= 12.0 &&
-            skill > 0.0 &&
-            uncertainty?.oodStatus != OodStatus.EXTREME
-
+        val hasEdge = walkForward?.acceptancePassed == true && kOuter >= 30 && nEff >= 25.0 &&
+            calSt == "CALIBRATED_NORMALIZED" && uncertainty?.oodStatus != OodStatus.EXTREME
         return NoEdgeGateReport(
             gateState = if (hasEdge) NoEdgeGateState.EDGE_SUPPORTED else NoEdgeGateState.NO_EDGE_DETECTED,
             hasEdge = hasEdge,
             effectiveSampleSize = roundTo(nEff, 2),
-            skillScoreVsBaseline = roundTo(skill, 4),
-            reasons = if (hasEdge) listOf("Out-of-sample skill and calibration pass v1.3.0 statistical gate") else reasons
+            skillScoreVsBaseline = roundTo(walkForward?.skillScoreVsNaive ?: 0.0, 4),
+            reasons = if (hasEdge) listOf("All 6 V2.1 OOS, WIS, Conformal, and HLN-DM + Block Bootstrap gates passed") else reasons
         )
     }
 
-    fun computeForecastStability(
-        summary: ForecastSummary?,
-        anchorClose: Double,
-        previousForecast: ForecastResult?
-    ): ForecastStabilityReport {
-        val prevSum = previousForecast?.summary
-        if (summary == null || prevSum == null || anchorClose <= 0.0) {
-            return ForecastStabilityReport(
-                previousForecastHash = previousForecast?.inputHash,
-                medianDriftPct = 0.0,
-                corridorShiftPct = 0.0,
-                stable = true
-            )
+    fun computeForecastStability(summary: ForecastSummary?, anchorClose: Double, previousForecast: ForecastResult?): ForecastStabilityReport {
+        val prevSummary = previousForecast?.summary
+        if (prevSummary == null || summary == null || anchorClose <= 0.0) {
+            return ForecastStabilityReport(null, 0.0, 0.0, true)
         }
-        val medianDriftPct = roundTo((abs(summary.terminalQ50 - prevSum.terminalQ50) / anchorClose) * 100.0, 3)
-        val corridorShiftPct = roundTo(abs(summary.corridorWidthPct - prevSum.corridorWidthPct), 3)
-        return ForecastStabilityReport(
-            previousForecastHash = previousForecast.inputHash,
-            medianDriftPct = medianDriftPct,
-            corridorShiftPct = corridorShiftPct,
-            stable = medianDriftPct <= 1.25 && corridorShiftPct <= 2.5
-        )
+        val medDrift = roundTo((abs(summary.terminalQ50 - prevSummary.terminalQ50) / max(1e-8, anchorClose)) * 100.0, 3)
+        val corShift = roundTo(abs(summary.corridorWidthPct - prevSummary.corridorWidthPct), 3)
+        return ForecastStabilityReport(previousForecast.inputHash.ifBlank { null }, medDrift, corShift, medDrift <= 1.25 && corShift <= 2.5)
     }
 }

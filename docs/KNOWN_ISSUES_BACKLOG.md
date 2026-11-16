@@ -34,3 +34,25 @@
 - **شواهد تصویری:** فضای خالی سمت چپ دکمه `CSV` در نوار بالای صفحه هنگام کش شدن فایل CSS قدیمی
 - **اصلاح انجام‌شده در کد:**
   - در `headerView.js` ابعاد، رنگ پس‌زمینه و درخشش پایه (`width: 9px; height: 9px; border-radius: 50%; display: inline-block; background: ...; box-shadow: ...`) به‌صورت استایل درون‌خطی (`inline style`) روی `.ci-status-dot` اضافه شد و نسخه کش فایل‌های استایل و اسکریپت در `host_subdomain/index.html` به `v=1.44.0` ارتقا یافت.
+
+---
+
+## ۴. ممیزی جامع و الگوی نوسانی کارتونی در موتور پیش‌بینی (`Forecasting Pipeline Audit & Synthetic Wave Distortion`) — ✅ حل‌شده و تست‌شده (Rev 2.1)
+
+- **اولویت:** بسیار بالا (P0 / P1) — معماری و صداقت الگوریتمی
+- **اسناد فنی مرجع:** [`docs/01-product/FORECAST_ENGINE_V2_SPEC.md`](./01-product/FORECAST_ENGINE_V2_SPEC.md) · [`docs/01-product/SMC_ANALOG_ENGINE_REFACTOR_SPEC.md`](./01-product/SMC_ANALOG_ENGINE_REFACTOR_SPEC.md)
+- **۷ یافته بحرانی از ممیزی مستقیم کدهای اجرایی (تماماً برطرف‌شده در Rev 2.1):**
+  1. **حجم مصنوعی:** حذف جایگزینی حجم ناموجود با ۱۰۰ و ممنوعیت تزریق حجم مصنوعی در `ForecastPoint` و محاسبات نقدینگی.
+  2. **سوگیری جهت‌دار شدید:** جایگزینی با انتخاب برون‌نمونه ۴فازه‌ی Nested Walk-Forward و رگرسیون لاجستیک ۳-سناریویی کالیبره‌شده (با وضعیت `NOT_ESTIMABLE` برای نمونه کمتر از ۳).
+  3. **مغایرت وب و اندروید:** یکسان‌سازی کامل محاسبات در Kotlin و JS و تطابق 12 رقم بامعنای IEEE-754 در `canonicalJson` و `inputHash` با تایید بردارهای طلایی (`golden_vectors_v2.json`).
+  4. **تولید ۶ الگوی مصنوعی در صورت کمبود داده:** حذف کامل الگوهای موجی مصنوعی و جایگزینی با `DataReadinessGate` (`nOpMin`: 155/232/318/550 و `nStatMin`: 465/852/1248/2410) و صدور صریح `DATA_NOT_READY` / `INSUFFICIENT_EVIDENCE`.
+  5. **ماشین حالت صلب:** حذف کامل ماشین حالت و توابع `sin/cos`؛ استفاده مستقیم از `EmpiricalAnalogEngine` با مرز دقیق علیت ($j_{\max} = T - 2L - H - G_{\text{embargo}}$ و حداقل ۶ آنالوگ واقعی).
+  6. **احتمالات کالیبره‌نشده:** جایگزینی با L2 Multinomial Logit + Temperature Scaling و Brier Score برون‌نمونه و گیت‌های ۶گانه `NoEdgeGate` (rMAE < 1، WIS 5Q < Naive، پوشش [72%, 88%]، HLN-DM p ≤ 0.05، Bootstrap p ≤ 0.10).
+  7. **کندل‌های OHLC مصنوعی:** جداسازی کامل پیش‌بینی ۵-چندکی (`q10, q25, q50, q75, q90`) با کالیبراسیون Conformal نرمال‌شده با نوسان و حذف کامل `rejectionWick` ساختگی.
+- **چک‌لیست اجرایی و تایید خودکار (Rev 2.1):**
+  - [x] ایجاد و استقرار اسکریپت شبیه‌ساز داده M15 واقع‌گرایانه (`scripts/makeSampleData.js`) با تولید ۹۶۰ کندل نمونه پیوسته در `data/sample_M15.json`.
+  - [x] پیاده‌سازی کامل ابزار آزمون پیش‌رونده (`scripts/backtest.js`) و پایپ‌لاین CI (`.github/workflows/backtest.yml`).
+  - [x] حذف کامل `generateSyntheticProfiles`، توابع `sin/cos` و الزام کف `nOpMin` / آنالوگ‌های علیت‌محور در Android (`ForecastEngine.kt`, `EmpiricalAnalogEngine.kt`) و Web (`forecastEngine.js`).
+  - [x] پیاده‌سازی Nested Walk-Forward هفت‌سگمنتی، WIS 5Q، Bartlett $N_{\text{eff}}$، Conformal نرمال‌شده، HLN-DM و Stationary Block Bootstrap در `WalkForwardEvaluator.kt`, `ForecastStatisticalTests.kt`, `walkForwardEvaluator.js`, `statisticalTests.js`.
+  - [x] تضمین Prefix Invariance across H∈{10,20,60} برای تمام ۱۰ مدل رجیستری و افشای صریح خطای پلاگین با `ModelExecutionStatus.FAILED`.
+  - [x] **نتیجه اجرای تست‌ها:** تمام **۵۲/۵۲** تست واحد اندروید (`gradle :app:testDebugUnitTest`: `Phase4ForecastTest`, `ForecastV2Test`, `Phase1AlgorithmsTest`, `Phase2AlgorithmsTest`) و **۴۶/۴۶** تست Node.js (`node --test tests/*.test.mjs`) با موفقیت کامل (Zero Failures) پاس شدند.

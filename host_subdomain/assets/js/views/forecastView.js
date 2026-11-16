@@ -2,6 +2,7 @@ import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 import {
   RENDER_MODES,
   FORECAST_STATUS,
+  SCENARIO_STATUS,
   MODEL_EXECUTION_STATUS,
   NO_EDGE_GATE_STATE,
   OOD_STATUS,
@@ -10,25 +11,28 @@ import {
   SELECTION_MODE,
   normalizeRenderMode,
   clampHorizonBars,
-} from '../forecast/forecastContract.js?v=1.43.0';
-import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=1.43.0';
-import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.43.0';
-import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.43.0';
-import { ForecastWorkerClient } from '../forecast/forecastWorkerClient.js?v=1.43.0';
-import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.43.0';
+} from '../forecast/forecastContract.js?v=2.0.0';
+import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=2.0.0';
+import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=2.0.0';
+import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=2.0.0';
+import { ForecastWorkerClient } from '../forecast/forecastWorkerClient.js?v=2.0.0';
+import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=2.0.0';
 import { renderSymbolBadge } from './watchlistView.js?v=1.43.0';
 
 const MODEL_OVERLAY_COLORS = {
-  smc_kmedoids: '#F59E0B',
+  empirical_analogs: '#F59E0B',
   naive_persistence: '#94A3B8',
   native_arima_diff: '#38BDF8',
   native_prophet_decomp: '#22C55E',
   native_seq_recurrent_approx: '#EC4899',
   native_quantile_attention_approx: '#A855F7',
   ensemble: '#14B8A6',
+  py_arima_statsmodels: '#0EA5E9',
   py_arima: '#0EA5E9',
   py_prophet: '#10B981',
+  py_lstm_torch: '#F43F5E',
   py_lstm_mc: '#F43F5E',
+  py_tft_torch: '#8B5CF6',
   py_tft: '#8B5CF6',
 };
 
@@ -54,7 +58,7 @@ export function buildForecastForTab(activeTab) {
     defaultForecastRegistry.applyConfig(prefs.forecastPluginConfig);
   }
   const horizonBars = clampHorizonBars(activeTab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
-  const renderMode = normalizeRenderMode(activeTab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.HYBRID);
+  const renderMode = normalizeRenderMode(activeTab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.FAN_CHART);
   const workerUrl = prefs.forecastWorkerUrl || '';
 
   const higherTf = resolveHigherTimeframe(activeTab.timeframe);
@@ -108,6 +112,7 @@ export function buildForecastForTab(activeTab) {
 
   let result = ForecastEngine.project(candles, {
     symbolCode: activeTab.symbolCode,
+    providerId: activeTab.provider || 'twelvedata',
     timeframe: activeTab.timeframe,
     horizonBars,
     renderMode,
@@ -225,8 +230,10 @@ export function renderForecastStudioFanCanvas(
     maxP = Math.max(maxP, Number(c.high));
   }
   for (const p of pts) {
-    minP = Math.min(minP, Number(p.q10), Number(p.low));
-    maxP = Math.max(maxP, Number(p.q90), Number(p.high));
+    const lo = Number(p.q10 ?? p.low);
+    const hi = Number(p.q90 ?? p.high);
+    if (Number.isFinite(lo)) minP = Math.min(minP, lo);
+    if (Number.isFinite(hi)) maxP = Math.max(maxP, hi);
   }
   const padPrice = Math.max(1e-6, (maxP - minP) * 0.08);
   minP -= padPrice;
@@ -342,41 +349,47 @@ export function renderForecastStudioFanCanvas(
       ctx.fill();
     }
 
-    // Ghost OHLC candles (GHOST_CANDLES or HYBRID) - Realistic Bull/Bear SMC Medoid Candles
+    // Optional quantile envelope bars derived strictly from q25..q75 and q50 (no synthetic wicks/waves)
     if (mode === RENDER_MODES.GHOST_CANDLES || mode === RENDER_MODES.HYBRID) {
-      pts.forEach((p, idx) => {
+      let prevMed = Number(hist[hist.length - 1].close);
+      pts.forEach((p) => {
+        const idx = pts.indexOf(p);
         const x = xOf(hist.length + idx);
-        const bull = p.close >= p.open;
-        const baseCol = bull ? 'rgba(38, 166, 154, 0.78)' : 'rgba(239, 83, 80, 0.78)';
-        ctx.strokeStyle = bull ? 'rgba(38, 166, 154, 0.90)' : 'rgba(239, 83, 80, 0.90)';
-        ctx.lineWidth = p.rejectionWick ? 1.5 : 1.15;
+        const openP = Number.isFinite(Number(p.open)) ? Number(p.open) : prevMed;
+        const closeP = Number.isFinite(Number(p.close)) ? Number(p.close) : Number(p.q50);
+        const highP = Number.isFinite(Number(p.high)) ? Number(p.high) : Math.max(openP, closeP, Number(p.q75));
+        const lowP = Number.isFinite(Number(p.low)) ? Number(p.low) : Math.min(openP, closeP, Number(p.q25));
+        prevMed = closeP;
+        const bull = closeP >= openP;
+        const baseCol = bull ? 'rgba(38, 166, 154, 0.72)' : 'rgba(239, 83, 80, 0.72)';
+        ctx.strokeStyle = bull ? 'rgba(38, 166, 154, 0.85)' : 'rgba(239, 83, 80, 0.85)';
+        ctx.lineWidth = 1.15;
         ctx.beginPath();
-        ctx.moveTo(x, yOf(p.high));
-        ctx.lineTo(x, yOf(p.low));
+        ctx.moveTo(x, yOf(highP));
+        ctx.lineTo(x, yOf(lowP));
         ctx.stroke();
-        const oY = yOf(p.open);
-        const cY = yOf(p.close);
+        const oY = yOf(openP);
+        const cY = yOf(closeP);
         ctx.fillStyle = baseCol;
         ctx.fillRect(x - bodyW / 2, Math.min(oY, cY), bodyW, Math.max(2, Math.abs(cY - oY)));
       });
     }
 
-    // Alternative SMC Scenarios (SCENARIO_B & SCENARIO_C) dashed paths
-    if (Array.isArray(forecast?.smcScenarios)) {
-      const altCols = ['#38BDF8', '#A855F7'];
-      const altList = forecast.smcScenarios.filter((s) => s.id !== forecast.activeScenarioId);
-      altList.forEach((altSc, aIdx) => {
-        if (!Array.isArray(altSc.candles) || altSc.candles.length === 0) return;
-        const col = altCols[aIdx % altCols.length];
+    // Optional Illustrative Empirical Analog Medoids (not calibrated probabilities)
+    if (Array.isArray(forecast?.representativePaths) && forecast.representativePaths.length > 0) {
+      const repCols = ['#38BDF8', '#94A3B8', '#A855F7'];
+      forecast.representativePaths.forEach((rep, rIdx) => {
+        if (!Array.isArray(rep.closes) || rep.closes.length === 0) return;
+        const col = repCols[rIdx % repCols.length];
         ctx.save();
         ctx.strokeStyle = col;
-        ctx.globalAlpha = 0.68;
-        ctx.lineWidth = 1.4;
+        ctx.globalAlpha = 0.58;
+        ctx.lineWidth = 1.3;
         ctx.setLineDash([3, 4]);
         ctx.beginPath();
         ctx.moveTo(xOf(hist.length - 1), yOf(Number(hist[hist.length - 1].close)));
-        altSc.candles.forEach((ac, idx) => {
-          ctx.lineTo(xOf(hist.length + idx), yOf(Number(ac.close)));
+        rep.closes.slice(0, pts.length).forEach((cv, idx) => {
+          ctx.lineTo(xOf(hist.length + idx), yOf(Number(cv)));
         });
         ctx.stroke();
         ctx.setLineDash([]);
@@ -392,7 +405,7 @@ export function renderForecastStudioFanCanvas(
         Array.isArray(t.points) &&
         t.points.length >= pts.length &&
         t.modelId !== forecast.selectedChartModelId &&
-        ['smc_kmedoids', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_prophet', 'py_lstm_mc', 'py_tft'].includes(t.modelId)
+        ['empirical_analogs', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_arima_statsmodels', 'py_prophet', 'py_lstm_mc', 'py_lstm_torch', 'py_tft', 'py_tft_torch'].includes(t.modelId)
     );
     overlayModels.forEach((tr) => {
       const col = MODEL_OVERLAY_COLORS[tr.modelId] || '#64748B';
@@ -479,7 +492,7 @@ export function renderForecastStudioView(activeTab, i18n) {
     (activeTab && activeTab.forecastHorizonBars) || state.chartPreferences.forecastHorizonBars || 30
   );
   const renderMode = normalizeRenderMode(
-    (activeTab && activeTab.forecastRenderMode) || state.chartPreferences.forecastRenderMode || RENDER_MODES.HYBRID
+    (activeTab && activeTab.forecastRenderMode) || state.chartPreferences.forecastRenderMode || RENDER_MODES.FAN_CHART
   );
 
   const built = buildForecastForTab(activeTab);
@@ -494,9 +507,9 @@ export function renderForecastStudioView(activeTab, i18n) {
     .join('');
 
   const modes = [
-    { id: RENDER_MODES.HYBRID, label: isFa ? 'ترکیبی (Fan + Ghost)' : 'Hybrid (Fan + Ghost)' },
     { id: RENDER_MODES.FAN_CHART, label: isFa ? 'ابری کوانتایل (Fan)' : 'Quantile Fan' },
-    { id: RENDER_MODES.GHOST_CANDLES, label: isFa ? 'کندل سایه‌ای (Ghost)' : 'Ghost Candles' },
+    { id: RENDER_MODES.HYBRID, label: isFa ? 'ترکیبی (Fan + Bars)' : 'Hybrid (Fan + Bars)' },
+    { id: RENDER_MODES.GHOST_CANDLES, label: isFa ? 'میله‌های کوانتایل' : 'Quantile Bars' },
   ];
   const modeButtons = modes
     .map(
@@ -505,25 +518,22 @@ export function renderForecastStudioView(activeTab, i18n) {
     )
     .join('');
 
+  const fcStatus = fc?.status || FORECAST_STATUS.DATA_NOT_READY;
   const statusBadgeClass =
-    fc && fc.status === FORECAST_STATUS.VALID
+    fcStatus === FORECAST_STATUS.VALID
       ? 'ci-fc-badge-valid'
-      : fc && fc.status === FORECAST_STATUS.PROVISIONAL
+      : fcStatus === FORECAST_STATUS.PROVISIONAL
         ? 'ci-fc-badge-provisional'
         : 'ci-fc-badge-blocked';
 
-  const statusLabel =
-    fc && fc.status === FORECAST_STATUS.VALID
-      ? isFa
-        ? 'تأییدشده (VALID)'
-        : 'VALID'
-      : fc && fc.status === FORECAST_STATUS.PROVISIONAL
-        ? isFa
-          ? 'موقت / آزمایشی (PROVISIONAL)'
-          : 'PROVISIONAL'
-        : isFa
-          ? 'داده ناکافی (DATA_NOT_READY)'
-          : 'DATA_NOT_READY';
+  const statusLabelMap = {
+    [FORECAST_STATUS.VALID]: isFa ? 'تأییدشده (VALID)' : 'VALID',
+    [FORECAST_STATUS.PROVISIONAL]: isFa ? 'موقت / OOD (PROVISIONAL)' : 'PROVISIONAL',
+    [FORECAST_STATUS.NO_EDGE]: isFa ? 'بدون برتری آماری (NO_EDGE)' : 'NO_EDGE',
+    [FORECAST_STATUS.INSUFFICIENT_EVIDENCE]: isFa ? 'شواهد آماری ناکافی (INSUFFICIENT_EVIDENCE)' : 'INSUFFICIENT_EVIDENCE',
+    [FORECAST_STATUS.DATA_NOT_READY]: isFa ? 'داده آماده نیست (DATA_NOT_READY)' : 'DATA_NOT_READY',
+  };
+  const statusLabel = statusLabelMap[fcStatus] || fcStatus;
 
   const edgeGate = fc?.noEdgeGate;
   const edgeBadge = edgeGate
@@ -542,9 +552,9 @@ export function renderForecastStudioView(activeTab, i18n) {
     : '';
 
   const tabsNav = [
-    { id: 'overview', label: isFa ? 'پیش‌بینی و سناریوها (v1.3.0)' : 'Projection & Event Tree' },
+    { id: 'overview', label: isFa ? 'پیش‌بینی و سناریوها (V2.1)' : 'Projection & Event Tree' },
     { id: 'models', label: isFa ? 'مدل‌های پلاگینی' : 'Plugin Models' },
-    { id: 'backtest', label: isFa ? 'Walk-Forward و حساسیت' : 'Walk-Forward & Sensitivity' },
+    { id: 'backtest', label: isFa ? 'Walk-Forward و کالیبراسیون' : 'Walk-Forward & Calibration' },
     { id: 'ledger', label: isFa ? 'دفتر کل SHA-256 و چرخه عمر' : 'SHA-256 Ledger & Lifecycle' },
   ]
     .map(
@@ -569,13 +579,13 @@ export function renderForecastStudioView(activeTab, i18n) {
   );
   const modelChoices = [
     { id: 'AUTO', label: isFa ? 'خودکار (بهترین OOS)' : 'Auto (OOS Winner)' },
-    { id: 'smc_kmedoids', label: 'SMC K-Medoids' },
     { id: 'native_arima_diff', label: 'ARIMA(p,d,q)' },
     { id: 'native_prophet_decomp', label: isFa ? 'Prophet (تقریبی)' : 'Prophet (Approx)' },
     { id: 'native_seq_recurrent_approx', label: isFa ? 'Recurrent MC (تقریبی)' : 'Recurrent MC (Approx)' },
     { id: 'native_quantile_attention_approx', label: isFa ? 'TFT Attention (تقریبی)' : 'TFT Attention (Approx)' },
+    { id: 'empirical_analogs', label: isFa ? 'آنالوگ‌های علّی' : 'Empirical Analogs' },
     { id: 'naive_persistence', label: 'Naive Baseline' },
-    { id: 'ensemble', label: 'Ensemble' },
+    { id: 'ensemble', label: 'Ensemble (V2)' },
   ];
   const remoteTrajs = (fc?.modelTrajectories || []).filter((t) => String(t.modelId || '').startsWith('py_'));
   for (const rt of remoteTrajs) {
@@ -668,12 +678,13 @@ export function renderForecastStudioView(activeTab, i18n) {
 
 function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
   if (!fc || fc.status === FORECAST_STATUS.DATA_NOT_READY) {
+    const reqBars = fc?.readiness?.nOpMin || 155;
     const reasons = (fc?.readiness?.issues || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('');
     return `
       <div class="ci-fc-card" style="text-align:center;padding:32px;">
-        <h3 style="margin:0 0 8px 0;color:var(--bear);">${isFa ? 'دروازه آماده بودن داده: کندل کافی موجود نیست' : 'Data Readiness Gate: DATA_NOT_READY'}</h3>
+        <h3 style="margin:0 0 8px 0;color:var(--bear);">${isFa ? 'دروازه آماده بودن داده: DATA_NOT_READY' : 'Data Readiness Gate: DATA_NOT_READY'}</h3>
         <p style="margin:0 0 12px 0;color:var(--text-muted);font-size:13px;">
-          ${isFa ? 'برای مدل‌سازی بازده لگاریتمی و ارزیابی Walk-Forward حداقل ۲۴ کندل معتبر لازم است.' : 'At least 24 valid OHLC bars are required for log-return modeling and walk-forward auditing.'}
+          ${isFa ? `برای اجرای Nested Walk-Forward حداقل ${reqBars} کندل معتبر و تمیز لازم است.` : `At least ${reqBars} clean closed OHLC bars (and full statistical sample for VALID) are required without corruption or unclosed bars.`}
         </p>
         <ul style="list-style:none;padding:0;margin:0;color:var(--text-muted);font-size:12px;" class="ltr-num">${reasons}</ul>
       </div>
@@ -758,61 +769,46 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
       ? `<div class="ci-fc-warning-banner ltr-num">⊘ NO_EDGE_DETECTED (${escapeHtml(edgeGate.gateState)}): ${edgeGate.reasons.map(escapeHtml).join(' | ')}</div>`
       : '';
 
-  const bayes = fc.bayesianLiveReport;
-  const bayesianBannerHtml = bayes
+  const conformalCal = fc.conformalCalibration;
+  const conformalBannerHtml = conformalCal
     ? `
-      <div class="ci-fc-card" style="margin-bottom:12px;border-color:rgba(38,166,154,0.45);">
-        <div class="row-between" style="flex-wrap:wrap;gap:8px;">
-          <div>
-            <strong style="font-size:13px;color:var(--bull);">
-              ${isFa ? 'حلقه خوداصلاحی بیزین زنده ۱۵ دقیقه‌ای (Bayesian Live-Tracker & Re-Anchoring)' : 'Live 15m Bayesian Self-Correction & Re-Anchoring Engine'}
-            </strong>
-            <div style="font-size:11.5px;color:var(--text-main);margin-top:4px;">
-              ${escapeHtml(isFa ? bayes.statusMessageFa : bayes.statusMessageEn)}
-            </div>
-          </div>
-          <span class="ci-fc-prob-pill ltr-num" style="background:rgba(38,166,154,0.18);color:var(--bull);">
-            Accuracy: ${bayes.accuracyScoreLastStep}% · Active: ${escapeHtml(fc.activeScenarioId || bayes.dominantScenarioId)}
+      <div class="ci-fc-card" style="margin-bottom:12px;">
+        <div class="row-between" style="flex-wrap:wrap;gap:8px;margin-bottom:6px;">
+          <strong style="font-size:13px;">${isFa ? 'کالیبراسیون هم‌دیس نرمال‌شده با نوسان (Split Conformal)' : 'Volatility-Normalized Conformal Calibration'}</strong>
+          <span class="ci-fc-status-badge ${conformalCal.calibrationStatus === 'CALIBRATED_NORMALIZED' ? 'ci-fc-badge-valid' : 'ci-fc-badge-provisional'} ltr-num">
+            ${escapeHtml(conformalCal.calibrationStatus)}
           </span>
+        </div>
+        <div class="ci-fc-ladder-grid ltr-num">
+          <div class="ci-fc-mini-stat"><span>M_cal Windows</span><strong>${conformalCal.calibrationWindows ?? 0}</strong></div>
+          <div class="ci-fc-mini-stat"><span>γ Level</span><strong>${conformalCal.gammaLevel != null ? Number(conformalCal.gammaLevel).toFixed(3) : '—'}</strong></div>
+          <div class="ci-fc-mini-stat"><span>q80 Scale</span><strong>${Number(conformalCal.normalizedScaleQ80 ?? 0).toFixed(3)}</strong></div>
+          <div class="ci-fc-mini-stat"><span>Decay λ</span><strong>${Number(conformalCal.decayLambda ?? 0.92).toFixed(2)}</strong></div>
         </div>
       </div>
     `
     : '';
 
-  const smcScenariosHtml = Array.isArray(fc.smcScenarios) && fc.smcScenarios.length > 0
+  const repPaths = Array.isArray(fc.representativePaths) ? fc.representativePaths : [];
+  const representativePathsHtml = repPaths.length > 0
     ? `
       <div class="ci-fc-card" style="margin-bottom:12px;">
-        <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-          <strong style="font-size:13px;">${isFa ? '۳ سناریوی خوشه‌بندی‌شده همزاد تاریخی (k-NN + K-Medoids + SMC Gravity)' : '3 Clustered Historical Analog Scenarios (k-NN + K-Medoids + SMC Gravity)'}</strong>
-          <span class="ci-fc-family-tag ltr-num">HTF Bias: ${fc.smcContext?.htfTrendBias >= 0 ? '+' : ''}${fc.smcContext?.htfTrendBias ?? 0} · POC: ${PriceFormatter.formatPrice(fc.smcContext?.vp?.poc || fc.anchorClose, decimals)}</span>
+        <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+          <strong style="font-size:13px;">${isFa ? 'مسیرهای نمونه آنالوگ تاریخی (فقط نمایشی — فاقد احتمال)' : 'Illustrative Empirical Analog Medoids (Not Probabilities)'}</strong>
+          <span class="ci-fc-family-tag ltr-num">Causal Analogs: ${fc.analogDiagnostics?.matchedCount ?? 0} · Embargo +${fc.analogDiagnostics?.embargoGap ?? 0}b</span>
         </div>
         <div class="ci-fc-grid-3">
-          ${fc.smcScenarios
-            .map((sc) => {
-              const isAct = (fc.activeScenarioId || 'SCENARIO_A') === sc.id;
-              const col = sc.bias === 'bull' ? 'var(--bull)' : sc.bias === 'bear' ? 'var(--bear)' : 'var(--gold)';
-              const borderCol = isAct ? col : 'var(--border)';
-              const pct = Math.round(Number(sc.probability || 0) * 100);
+          ${repPaths
+            .map((rp) => {
+              const firstClose = rp.closes?.[0] ?? fc.anchorClose;
+              const lastCloseRp = rp.closes?.[rp.closes.length - 1] ?? fc.anchorClose;
+              const diffPct = firstClose > 0 ? ((lastCloseRp - fc.anchorClose) / fc.anchorClose) * 100 : 0;
               return `
-                <div class="ci-fc-card ci-fc-scenario-card" style="border-color:${borderCol};${isAct ? 'box-shadow:0 0 0 1px ' + col + ';' : ''}">
-                  <div class="row-between" style="margin-bottom:8px;gap:8px;align-items:flex-start;">
-                    <strong style="color:${col};font-size:12.5px;line-height:1.35;">${escapeHtml(sc.id)} — ${escapeHtml(isFa ? sc.name : sc.nameEn)}</strong>
-                    <span class="ci-fc-prob-pill ltr-num">${pct}%</span>
-                  </div>
-                  <div class="ltr-num" style="font-size:11.5px;display:flex;flex-direction:column;gap:5px;margin-bottom:10px;">
-                    <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'ناحیه پولبک (FVG/POC)' : 'Step A Pullback (FVG/POC)'}</span><strong>${PriceFormatter.formatPrice(sc.pullbackPrice, decimals)}</strong></div>
-                    <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'هدف نهایی (Target)' : 'Step B Target (VAH/VAL)'}</span><strong>${PriceFormatter.formatPrice(sc.targetPrice, decimals)}</strong></div>
-                    <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'حد ابطال (Invalidation)' : 'Invalidation (±1.8 ATR)'}</span><strong>${PriceFormatter.formatPrice(sc.invalidationPrice, decimals)}</strong></div>
-                  </div>
-                  <button
-                    type="button"
-                    class="btn btn-sm ${isAct ? 'btn-primary' : ''}"
-                    style="width:100%;margin-top:auto;"
-                    data-action="select-smc-scenario"
-                    data-scenario-id="${escapeHtml(sc.id)}"
-                  >
-                    ${isAct ? (isFa ? '✓ سناریوی فعال روی چارت' : '✓ Active Scenario on Chart') : isFa ? 'نمایش کندل‌های این سناریو' : 'Activate Scenario Candles'}
-                  </button>
+                <div class="ci-fc-mini-stat ltr-num">
+                  <div style="font-size:11px;font-weight:700;color:var(--text-strong);">${escapeHtml(rp.id)}</div>
+                  <div style="font-size:10px;color:var(--text-muted);">${escapeHtml(rp.label)}</div>
+                  <strong style="font-size:12.5px;">${PriceFormatter.formatPrice(lastCloseRp, decimals)}</strong>
+                  <span style="font-size:10.5px;color:${diffPct >= 0 ? 'var(--bull)' : 'var(--bear)'};">${diffPct >= 0 ? '+' : ''}${diffPct.toFixed(2)}% (Illustrative Only)</span>
                 </div>
               `;
             })
@@ -824,6 +820,7 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
 
   const scenariosHtml = (fc.scenarios || [])
     .map((sc) => {
+      const isEstimable = sc.status === SCENARIO_STATUS.ESTIMABLE && sc.probability !== null && sc.probability !== undefined;
       const borderCol =
         sc.bias === 'bull'
           ? 'rgba(38,166,154,0.45)'
@@ -831,16 +828,18 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
             ? 'rgba(239,83,80,0.45)'
             : 'rgba(245,158,11,0.45)';
       const accentCol = sc.bias === 'bull' ? 'var(--bull)' : sc.bias === 'bear' ? 'var(--bear)' : 'var(--gold)';
-      const probPct = (Number(sc.probability || 0) * 100).toFixed(1);
+      const badgeHtml = isEstimable
+        ? `<span class="ci-fc-prob-pill ltr-num">${(Number(sc.probability) * 100).toFixed(1)}%</span>`
+        : `<span class="ci-fc-low-sample-tag ltr-num">NOT_ESTIMABLE</span>`;
       return `
         <div class="ci-fc-card ci-fc-scenario-card" style="border-color:${borderCol};">
           <div class="row-between" style="margin-bottom:6px;gap:8px;align-items:flex-start;">
             <strong style="color:${accentCol};font-size:12.5px;line-height:1.35;">${escapeHtml(sc.label)}</strong>
-            <span class="ci-fc-prob-pill ltr-num">${probPct}%</span>
+            ${badgeHtml}
           </div>
           <div style="margin-bottom:8px;display:flex;gap:6px;flex-wrap:wrap;" class="ltr-num">
-            <span class="ci-fc-family-tag">${escapeHtml(sc.parentBranch || 'TREE')}</span>
-            ${sc.lowSampleWarning ? `<span class="ci-fc-low-sample-tag">LOW_SAMPLE</span>` : ''}
+            <span class="ci-fc-family-tag">Empirical: ${(Number(sc.rawEmpiricalFrequency ?? 0) * 100).toFixed(1)}% (n=${sc.sampleCount ?? 0})</span>
+            ${!isEstimable ? `<span class="ci-fc-low-sample-tag">n &lt; 3 (No Dirichlet Floor)</span>` : ''}
           </div>
           <div class="ltr-num" style="font-size:11.5px;display:flex;flex-direction:column;gap:4px;margin-bottom:8px;">
             <div class="row-between"><span style="color:var(--text-muted);">${isFa ? 'مرجع میانی (Target)' : 'Statistical Target'}</span><strong>${PriceFormatter.formatPrice(sc.targetPrice, decimals)}</strong></div>
@@ -949,9 +948,9 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     <div class="ci-fc-canvas-wrap ci-fc-card">
       <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
         <div>
-          <strong style="font-size:13.5px;">${isFa ? 'نمای مخروط عدم‌قطعیت (q10..q90) + نواحی کلیدی + کندل سایه‌ای' : 'Probabilistic Quantile Fan (q10..q90), Key Zones & Multi-Model Overlay'}</strong>
+          <strong style="font-size:13.5px;">${isFa ? 'مخروط عدم‌قطعیت کالیبره‌شده (q10..q90) و مقایسه مدل‌ها' : 'Calibrated Quantile Fan (q10..q90), Key Zones & Multi-Model Overlay'}</strong>
           <div style="font-size:11px;color:var(--text-muted);" class="ltr-num">
-            ${escapeHtml(fc.contractVersion)} · spec v${escapeHtml(fc.specVersion || '1.3.0')} · Active: ${escapeHtml(fc.selectedChartModelId || 'AUTO')} · Anchor ${PriceFormatter.formatPrice(fc.anchorClose, decimals)} · EWMA σ ${fc.featuresSummary.ewmaSigmaPct.toFixed(3)}% · Layer: ${coordView.toUpperCase()}
+            ${escapeHtml(fc.contractVersion)} · spec v${escapeHtml(fc.specVersion || '2.1.0')} · Active: ${escapeHtml(fc.selectedChartModelId || 'AUTO')} · Anchor ${PriceFormatter.formatPrice(fc.anchorClose, decimals)} · EWMA σ ${fc.featuresSummary.ewmaSigmaPct.toFixed(3)}% · Layer: ${coordView.toUpperCase()}
           </div>
         </div>
         <span style="font-size:11px;color:var(--text-muted);" class="ltr-num">
@@ -962,17 +961,17 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     </div>
 
     ${winnerBannerHtml}
+    ${conformalBannerHtml}
     ${comparisonChipsHtml}
-    ${bayesianBannerHtml}
-    ${smcScenariosHtml}
+    ${representativePathsHtml}
     ${edgeBannerHtml}
     ${uncertaintyCardHtml}
     ${mtfBannerHtml}
 
     <div class="ci-fc-card" style="margin-bottom:12px;">
       <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-        <strong style="font-size:13px;">${isFa ? 'درخت رخداد ۵ شاخه‌ای و سطوح مرجع آماری (Event Tree)' : '5-Branch Probabilistic Event Tree & Structural Reference Bands'}</strong>
-        <span class="ci-fc-family-tag ltr-num">5 Exhaustive Scenarios (ΣP = 100%)</span>
+        <strong style="font-size:13px;">${isFa ? 'سناریوهای شرطی کالیبره‌شده V2.1 (بدون کف ساختگی دیریکله)' : '3-Scenario Conditional Logit Event Tree (Zero Synthetic Priors)'}</strong>
+        <span class="ci-fc-family-tag ltr-num">Brier OOS: ${fc.scenarioCalibration?.oosBrierModel ?? '—'} vs Clim ${fc.scenarioCalibration?.oosBrierClimatology ?? '—'}</span>
       </div>
       <div class="ci-fc-event-tree-grid">${scenariosHtml}</div>
     </div>
@@ -1069,8 +1068,8 @@ function renderBacktestPanel(fc, decimals, isFa) {
   if (!wf || wf.evaluatedWindows === 0 || !wf.ensembleMetrics) {
     return `
       <div class="ci-fc-card" style="padding:24px;text-align:center;">
-        <strong>${isFa ? 'ارزیابی Walk-Forward نیاز به تاریخچه بیشتر دارد' : 'Walk-Forward Backtest Unavailable'}</strong>
-        <p style="color:var(--text-muted);font-size:12.5px;">${escapeHtml(wf?.acceptanceReason || 'Load at least 40 historical candles to execute rolling purged out-of-sample tests.')}</p>
+        <strong>${isFa ? 'ارزیابی Nested Walk-Forward نیاز به تاریخچه بیشتر دارد' : 'Nested Walk-Forward Backtest Unavailable'}</strong>
+        <p style="color:var(--text-muted);font-size:12.5px;">${escapeHtml(wf?.acceptanceReason || 'Need >= N_op_min clean bars (155 for H=10, 1248+ for H=30 statistical gate) to execute disjoint 4-way purged walk-forward.')}</p>
       </div>
     `;
   }
@@ -1078,7 +1077,7 @@ function renderBacktestPanel(fc, decimals, isFa) {
   const rows = [wf.ensembleMetrics, ...(wf.modelBenchmarks || [])]
     .map((m) => {
       const isEns = m.modelId === 'ensemble';
-      const isWinner = m.modelId === wf.winnerModelId;
+      const isWinner = m.modelId === wf.winningModelId;
       const st = m.status || MODEL_EXECUTION_STATUS.SUCCESS;
       const isOk = st === MODEL_EXECUTION_STATUS.SUCCESS && m.evaluatedWindows > 0;
       const badgeTxt = m.isApproximation ? `${m.executionRuntime || 'NATIVE_JS'} · APPROX` : (m.executionRuntime || 'NATIVE_JS');
@@ -1091,13 +1090,13 @@ function renderBacktestPanel(fc, decimals, isFa) {
           <td class="ltr-num">${escapeHtml(m.family)}</td>
           <td class="ltr-num" style="color:${isOk ? (isWinner ? 'var(--bull)' : 'var(--text-main)') : 'var(--bear)'};font-size:11px;">${escapeHtml(statusReason)}</td>
           <td class="ltr-num">${isOk ? `${Number(m.mae ?? 0).toFixed(decimals >= 3 ? 4 : 3)} (${Number(m.maePct ?? 0).toFixed(2)}%)` : '—'}</td>
-          <td class="ltr-num">${isOk ? Number(m.rmse ?? 0).toFixed(decimals >= 3 ? 4 : 3) : '—'}</td>
-          <td class="ltr-num">${isOk && m.safeMapePct != null ? `${Number(m.safeMapePct).toFixed(2)}%` : '—'}</td>
+          <td class="ltr-num">${isOk && m.rMae != null ? Number(m.rMae).toFixed(3) : '—'}</td>
+          <td class="ltr-num">${isOk && m.mase != null ? Number(m.mase).toFixed(3) : '—'}</td>
           <td class="ltr-num">${isOk ? `${Number(m.directionalAccuracyPct ?? 0).toFixed(1)}%` : '—'}</td>
           <td class="ltr-num">${isOk ? `${Number(m.coverage80Pct ?? 0).toFixed(1)}%` : '—'}</td>
-          <td class="ltr-num">${isOk && m.avgIntervalWidthPct != null ? `${Number(m.avgIntervalWidthPct).toFixed(2)}%` : '—'}</td>
-          <td class="ltr-num">${isOk ? Number(m.pinballLoss ?? 0).toFixed(4) : '—'}</td>
-          <td class="ltr-num">${isOk ? Number(m.crps ?? 0).toFixed(4) : '—'}</td>
+          <td class="ltr-num">${isOk && m.wis != null ? Number(m.wis).toFixed(4) : '—'}</td>
+          <td class="ltr-num">${isOk && m.dmPValue != null ? Number(m.dmPValue).toFixed(4) : '—'}</td>
+          <td class="ltr-num">${isOk && m.bootPValue != null ? Number(m.bootPValue).toFixed(4) : '—'}</td>
         </tr>
       `;
     })
@@ -1122,19 +1121,22 @@ function renderBacktestPanel(fc, decimals, isFa) {
     )
     .join('');
 
+  const wfStatus = wf.forecastStatus || (wf.acceptancePassed ? 'VALID' : 'NO_EDGE');
   return `
     <div class="ci-fc-card" style="margin-bottom:12px;">
       <div class="row-between" style="flex-wrap:wrap;gap:8px;margin-bottom:8px;">
-        <strong style="font-size:13.5px;">${isFa ? 'دروازه پذیرش Walk-Forward (بدون نشت داده آینده)' : 'Strict Purged Walk-Forward Acceptance Gate (Zero Leakage)'}</strong>
-        <span class="ci-fc-status-badge ${wf.acceptancePassed ? 'ci-fc-badge-valid' : 'ci-fc-badge-provisional'} ltr-num">
-          ${wf.acceptancePassed ? 'PASS' : 'PROVISIONAL'} · ${wf.evaluatedWindows} windows × +${wf.evalHorizon} bars
+        <strong style="font-size:13.5px;">${isFa ? 'دروازه پذیرش Nested Walk-Forward ۶شرطی (بدون نشت داده آینده)' : 'Disjoint 4-Way Nested Walk-Forward Acceptance Gate (6-Condition)'}</strong>
+        <span class="ci-fc-status-badge ${wf.acceptancePassed ? 'ci-fc-badge-valid' : wfStatus === 'INSUFFICIENT_EVIDENCE' ? 'ci-fc-badge-provisional' : 'ci-fc-badge-blocked'} ltr-num">
+          ${escapeHtml(wfStatus)} · ${wf.evaluatedWindows}×(+${wf.evalHorizon}b, S=${wf.outerStrideBars || wf.evalHorizon})
         </span>
       </div>
       <p style="font-size:12px;margin:0 0 8px 0;color:var(--text-muted);" class="ltr-num">${escapeHtml(wf.acceptanceReason)}</p>
       <div class="ci-fc-ladder-grid ltr-num">
-        <div class="ci-fc-mini-stat"><span>N_eff (Independent)</span><strong>${Number(wf.effectiveSampleSize || 0).toFixed(1)}</strong></div>
-        <div class="ci-fc-mini-stat"><span>Skill vs Naive</span><strong>${(Number(wf.skillScoreVsNaive || 0) * 100).toFixed(2)}%</strong></div>
-        <div class="ci-fc-mini-stat"><span>Ambiguous Inside-Bar</span><strong>${wf.ambiguousOutcomeCount || 0} (${Number(wf.ambiguousRatePct || 0).toFixed(1)}%)</strong></div>
+        <div class="ci-fc-mini-stat"><span>N_eff (Bartlett)</span><strong>${Number(wf.effectiveSampleSize || 0).toFixed(1)}</strong></div>
+        <div class="ci-fc-mini-stat"><span>WIS Model vs Naive</span><strong>${Number(wf.wisModel ?? 0).toFixed(4)} / ${Number(wf.wisNaiveDistributional ?? 0).toFixed(4)}</strong></div>
+        <div class="ci-fc-mini-stat"><span>rMAE / MASE</span><strong>${Number(wf.relativeMaeVsNaive ?? 1).toFixed(3)} / ${Number(wf.mase ?? 1).toFixed(3)}</strong></div>
+        <div class="ci-fc-mini-stat"><span>HLN-DM / Boot p</span><strong>${Number(wf.dieboldMarianoPValue ?? 1).toFixed(4)} / ${Number(wf.sensitivityBootstrapPValue ?? 1).toFixed(4)}</strong></div>
+        <div class="ci-fc-mini-stat"><span>80% Cov [72..88%]</span><strong>${Number(wf.coverage80Pct ?? 0).toFixed(1)}%</strong></div>
         ${
           stab
             ? `<div class="ci-fc-mini-stat"><span>Stability Drift</span><strong>${Number(stab.medianDriftPct ?? 0).toFixed(2)}% (${stab.stable ? 'STABLE' : 'SHIFT'})</strong></div>`
@@ -1169,13 +1171,13 @@ function renderBacktestPanel(fc, decimals, isFa) {
             <th>Family</th>
             <th>Status</th>
             <th>MAE</th>
-            <th>RMSE</th>
-            <th>Safe-MAPE</th>
+            <th>rMAE</th>
+            <th>MASE</th>
             <th>Dir Acc</th>
             <th>80% Cov</th>
-            <th>Width%</th>
-            <th>Pinball</th>
-            <th>CRPS</th>
+            <th>WIS (5Q)</th>
+            <th>HLN-DM p</th>
+            <th>Boot p</th>
           </tr>
         </thead>
         <tbody>${rows}</tbody>

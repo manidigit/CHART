@@ -165,10 +165,29 @@ All markdown documentation (except this `README.md`) is organized under `docs/`:
 │       ├── AGENTS.md                         # AI & developer invariants, UI directives & user flow
 │       ├── CONTRIBUTING.md                   # Build, test & PR workflow
 │       └── CHANGELOG.md                      # Chronological release history (up to v1.44.0)
+├── scripts/                                  # Backtest & evaluation tooling (backtest.js, makeSampleData.js)
+├── data/                                     # Local validation datasets (sample_M15.json)
 ├── tests/                                    # Node.js parity & Phase 4 forecast test suites
 ├── .github/workflows/
-│   └── build-apk.yml                         # Android APK build + Web/DB cPanel deployment workflow
+│   ├── build-apk.yml                         # Android APK build + Web/DB cPanel deployment workflow
+│   └── backtest.yml                          # Automated Walk-Forward backtest & validation CI workflow
+├── package.json                              # Root ES module & evaluation script definitions
 └── README.md                                 # Project landing page
+```
+
+## Walk-Forward Backtesting & Quantitative Validation
+
+The forecasting engine includes a CLI walk-forward evaluation harness comparing model projections against the `Naive Persistence` baseline:
+
+```bash
+# 1. Generate realistic 960-candle M15 test dataset
+npm run make:data
+
+# 2. Run quick walk-forward backtest (stride = 5)
+npm run backtest:quick
+
+# 3. Run full walk-forward backtest with CSV export
+npm run backtest -- --csv results.csv
 ```
 
 ## Documentation

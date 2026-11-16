@@ -80,9 +80,9 @@ import {
   renderForecastStudioFanCanvas,
   buildForecastForTab,
 } from './views/forecastView.js?v=1.43.0';
-import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.43.0';
-import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.43.0';
-import { normalizeRenderMode, clampHorizonBars } from './forecast/forecastContract.js?v=1.43.0';
+import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.0';
+import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.0';
+import { normalizeRenderMode, clampHorizonBars } from './forecast/forecastContract.js?v=2.0.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;

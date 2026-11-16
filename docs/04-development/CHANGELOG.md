@@ -22,6 +22,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Forecast Studio Canvas Right Gutter & Card Grid Alignment (Web & Android):**
   - Added a dedicated right-hand price and quantile badge gutter (`padR = 112` on Web `#forecast-studio-canvas`; `92.dp` column on Android `ForecastMiniFanCanvas`) with vertical anti-collision spacing so `q90`, `q50`, and `q10` badges never overlap candlesticks or grid labels.
   - Fixed the 12-model comparison grid (`.ci-fc-models-comparison-grid`), prevented vertical character wrapping on the `APPROX` badge (`white-space: nowrap`), and equalized heights and bottom button alignment across the 3 SMC scenario cards and 5 Event Tree scenario cards.
+- **Walk-Forward Backtest & Quantitative Evaluation Harness (`scripts/backtest.js`, `scripts/makeSampleData.js` & CI):**
+  - Added standalone CLI Walk-Forward evaluation harness (`scripts/backtest.js`) comparing the forecast engine against the `Naive Persistence` baseline across MAE, RMSE, MAPE, Directional Accuracy, and Direction Distribution with optional CSV export.
+  - Added realistic 960-bar continuous M15 sample data generator (`scripts/makeSampleData.js`) simulating trending, ranging, and volatility regimes.
+  - Added root `package.json` scripts (`npm test`, `npm run backtest`, `npm run backtest:quick`, `npm run backtest:long`, `npm run make:data`) and GitHub Actions validation workflow (`.github/workflows/backtest.yml`).
+  - Documented complete, unsummarized script source codes, acceptance criteria matrix, and honest statistical baseline in Section 9 of [`docs/01-product/SMC_ANALOG_ENGINE_REFACTOR_SPEC.md`](../01-product/SMC_ANALOG_ENGINE_REFACTOR_SPEC.md).
 
 ---
 

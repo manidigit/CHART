@@ -107,7 +107,7 @@ data class ChartPreferences(
     val finnhubApiKey: String = "",
 
     // Phase 4 Forecast Studio preferences
-    val forecastRenderMode: String = "HYBRID",
+    val forecastRenderMode: String = "FAN_CHART",
     val forecastHorizonBars: Int = 30,
     val forecastPluginConfigJson: String = "",
     val forecastWorkerUrl: String = "",

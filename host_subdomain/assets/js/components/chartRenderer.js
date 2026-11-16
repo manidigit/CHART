@@ -2,9 +2,9 @@ import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.43.0';
 import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.43.0';
 import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba, getCachedOrAggregatedCandles } from '../core/store.js?v=1.43.0';
-import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.43.0';
-import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.43.0';
-import { RENDER_MODES, normalizeRenderMode, clampHorizonBars } from '../forecast/forecastContract.js?v=1.43.0';
+import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=2.0.0';
+import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=2.0.0';
+import { RENDER_MODES, normalizeRenderMode, clampHorizonBars } from '../forecast/forecastContract.js?v=2.0.0';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -165,7 +165,7 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
     getFutureProjection: () => {
       const prefs = state.chartPreferences || {};
       const horizonBars = clampHorizonBars(tab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
-      const renderMode = normalizeRenderMode(tab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.HYBRID);
+      const renderMode = normalizeRenderMode(tab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.FAN_CHART);
       const selectedScenarioId = tab.selectedScenarioId || prefs.selectedScenarioId || 'SCENARIO_A';
       const selectedModelId = String(tab.selectedForecastModelId || prefs.selectedForecastModelId || 'AUTO');
       if (prefs.forecastPluginConfig) {
@@ -177,11 +177,12 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       const higherTf = tf === 'M15' ? 'H1' : tf === 'M30' ? 'H4' : tf === 'H1' ? 'H4' : tf === 'H4' ? 'D1' : tf === 'D1' ? 'W1' : '';
       const higherCandles = higherTf ? getCachedOrAggregatedCandles(symCode, prov, higherTf) : [];
       const higherLast = higherCandles.length > 0 ? higherCandles[higherCandles.length - 1] : null;
-      const fKey = `${symCode}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${selectedModelId}_${candles.length}_${lowerCandles.length}_${lowerLast?.close || 0}_${higherCandles.length}_${higherLast?.close || 0}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
+      const fKey = `${symCode}_${prov}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${selectedModelId}_${candles.length}_${lowerCandles.length}_${lowerLast?.close || 0}_${higherCandles.length}_${higherLast?.close || 0}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
       if (cache.futureProjKey !== fKey || !cache.futureProjectionResult) {
         cache.futureProjKey = fKey;
         cache.futureProjectionResult = ForecastEngine.project(candles, {
           symbolCode: symCode,
+          providerId: prov,
           timeframe: tf,
           horizonBars,
           renderMode,
@@ -346,8 +347,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
   for (let k = 0; k < futureProj.length; k++) {
     const fp = futureProj[k];
-    rawMin = Math.min(rawMin, Number(fp.low), Number(fp.q10 ?? fp.low));
-    rawMax = Math.max(rawMax, Number(fp.high), Number(fp.q90 ?? fp.high));
+    const loVal = Number(fp.q10 ?? fp.low);
+    const hiVal = Number(fp.q90 ?? fp.high);
+    if (Number.isFinite(loVal)) rawMin = Math.min(rawMin, loVal);
+    if (Number.isFinite(hiVal)) rawMax = Math.max(rawMax, hiVal);
   }
   if (!Number.isFinite(rawMin) || !Number.isFinite(rawMax)) return;
 
@@ -1198,11 +1201,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // Phase 4 (SPEC-PRED-01): Probabilistic Future Projection (HYBRID | FAN_CHART | GHOST_CANDLES)
+  // Forecast Engine V2.1: Calibrated Quantile Fan Chart (default: FAN_CHART)
   if (futureProj.length > 0) {
     const dividerX = visible.length * slotW;
     const activeRenderMode = normalizeRenderMode(
-      tab.forecastRenderMode || (state.chartPreferences && state.chartPreferences.forecastRenderMode) || RENDER_MODES.HYBRID
+      tab.forecastRenderMode || (state.chartPreferences && state.chartPreferences.forecastRenderMode) || RENDER_MODES.FAN_CHART
     );
     const showFan = activeRenderMode === RENDER_MODES.FAN_CHART || activeRenderMode === RENDER_MODES.HYBRID;
     const showGhost = activeRenderMode === RENDER_MODES.GHOST_CANDLES || activeRenderMode === RENDER_MODES.HYBRID;
@@ -1246,19 +1249,25 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fill();
     }
 
-    // Ghosted future candlesticks (GHOST_CANDLES or HYBRID) - Realistic Bull/Bear SMC Medoid Candles
+    // Optional quantile envelope bars derived strictly from q25..q75 and q50 (no synthetic wicks/waves)
     if (showGhost) {
+      let prevMed = Number(lastActual.close);
       futureProj.forEach((fp, kIdx) => {
         const x = idxToX(visible.length + kIdx);
-        const highY = priceToY(fp.high);
-        const lowY = priceToY(fp.low);
-        const openY = priceToY(fp.open);
-        const closeY = priceToY(fp.close);
-        const isBull = fp.close >= fp.open;
+        const openP = Number.isFinite(Number(fp.open)) ? Number(fp.open) : prevMed;
+        const closeP = Number.isFinite(Number(fp.close)) ? Number(fp.close) : Number(fp.q50);
+        const highP = Number.isFinite(Number(fp.high)) ? Number(fp.high) : Math.max(openP, closeP, Number(fp.q75));
+        const lowP = Number.isFinite(Number(fp.low)) ? Number(fp.low) : Math.min(openP, closeP, Number(fp.q25));
+        prevMed = closeP;
+        const highY = priceToY(highP);
+        const lowY = priceToY(lowP);
+        const openY = priceToY(openP);
+        const closeY = priceToY(closeP);
+        const isBull = closeP >= openP;
         const baseCol = isBull ? bullColor : bearColor;
 
-        ctx.strokeStyle = hexToRgba(baseCol, fp.rejectionWick ? 0.92 : 0.78);
-        ctx.lineWidth = fp.rejectionWick ? 1.5 : 1.15;
+        ctx.strokeStyle = hexToRgba(baseCol, 0.72);
+        ctx.lineWidth = 1.15;
         ctx.beginPath();
         ctx.moveTo(x, highY);
         ctx.lineTo(x, lowY);
@@ -1266,52 +1275,35 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
         const topY = Math.min(openY, closeY);
         const bodyH = Math.max(2, Math.abs(closeY - openY));
-        ctx.fillStyle = hexToRgba(baseCol, activeRenderMode === RENDER_MODES.HYBRID ? 0.65 : 0.78);
+        ctx.fillStyle = hexToRgba(baseCol, activeRenderMode === RENDER_MODES.HYBRID ? 0.52 : 0.72);
         ctx.fillRect(x - bodyW / 2, topY, bodyW, bodyH);
       });
     }
 
-    // Alternative SMC Scenarios (SCENARIO_B & SCENARIO_C) dashed paths — only when smc_kmedoids is active
+    // Optional Illustrative Empirical Analog Medoids (strictly causal, zero probabilities claimed)
     const fullFcResult = indCache.getFutureProjectionResult && indCache.getFutureProjectionResult();
     if (
       fullFcResult &&
-      fullFcResult.selectedChartModelId === 'smc_kmedoids' &&
-      Array.isArray(fullFcResult.smcScenarios)
+      fullFcResult.selectedChartModelId === 'empirical_analogs' &&
+      Array.isArray(fullFcResult.representativePaths)
     ) {
-      const altColors = ['#38BDF8', '#A855F7'];
-      const primarySc = fullFcResult.smcScenarios.find((s) => s.id === fullFcResult.activeScenarioId);
-      if (primarySc && Number.isFinite(Number(primarySc.probability))) {
-        const lastFp = futureProj[futureProj.length - 1];
-        queueRightLevelLabel(
-          priceToY(Number(lastFp?.q50 ?? lastFp?.close ?? lastActual.close)),
-          `Primary (${Math.round(primarySc.probability * 100)}%)`,
-          '#F59E0B'
-        );
-      }
-      const altScenarios = fullFcResult.smcScenarios.filter((s) => s.id !== fullFcResult.activeScenarioId);
-      altScenarios.forEach((altSc, aIdx) => {
-        if (!Array.isArray(altSc.candles) || altSc.candles.length === 0) return;
-        const col = altColors[aIdx % altColors.length];
+      const repColors = ['#38BDF8', '#94A3B8', '#A855F7'];
+      fullFcResult.representativePaths.forEach((rep, rIdx) => {
+        if (!Array.isArray(rep.closes) || rep.closes.length === 0) return;
+        const col = repColors[rIdx % repColors.length];
         ctx.save();
         ctx.strokeStyle = col;
-        ctx.globalAlpha = 0.65;
-        ctx.lineWidth = 1.4;
+        ctx.globalAlpha = 0.58;
+        ctx.lineWidth = 1.3;
         ctx.setLineDash([3, 4]);
         ctx.beginPath();
         ctx.moveTo(anchorX, anchorY);
-        altSc.candles.forEach((ac, kIdx) => {
-          ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(ac.close)));
+        rep.closes.slice(0, futureProj.length).forEach((cv, kIdx) => {
+          ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(cv)));
         });
         ctx.stroke();
         ctx.setLineDash([]);
         ctx.restore();
-
-        const lastAlt = altSc.candles[altSc.candles.length - 1];
-        queueRightLevelLabel(
-          priceToY(Number(lastAlt.close)),
-          `${altSc.id.replace('SCENARIO_', 'Alt ')} (${Math.round(altSc.probability * 100)}%)`,
-          col
-        );
       });
     }
 
@@ -1393,8 +1385,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
     const modelNameMap = {
       naive_persistence: 'Baseline (Naive)',
-      smc_kmedoids: 'SMC K-Medoids',
-      ensemble: 'Ensemble',
+      empirical_analogs: 'Causal Analogs',
+      ensemble: 'Ensemble (V2)',
       native_arima_diff: 'ARIMA(p,d,q)',
       native_prophet_decomp: 'Prophet Approx',
       native_seq_recurrent_approx: 'Recurrent Approx',
@@ -1408,7 +1400,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       AUTO_OOS_BEST: 'OOS Winner',
       MANUAL_OVERRIDE: 'Manual',
       NO_CLEAR_WINNER_BASELINE: 'No OOS Edge',
-      SMC_STRUCTURAL_DEFAULT: 'SMC Default',
+      INSUFFICIENT_EVIDENCE_BASELINE: 'Insufficient Evidence',
     };
     const activeModelLabel = fullFcResult?.selectedChartModelId
       ? (modelNameMap[fullFcResult.selectedChartModelId] || fullFcResult.selectedChartModelId)
@@ -1416,7 +1408,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     const activeModeTag = fullFcResult?.selectionMode
       ? (modeLabelMap[fullFcResult.selectionMode] || '')
       : '';
-    const bannerSubtitle = [activeRenderMode, activeModelLabel, activeModeTag, 'q10–q90']
+    const statusTag = fullFcResult?.status ? fullFcResult.status : '';
+    const bannerSubtitle = [statusTag, activeRenderMode, activeModelLabel, activeModeTag, 'q10–q90']
       .filter(Boolean)
       .join(' · ');
     ctx.fillStyle = textColor;
@@ -1506,17 +1499,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         const x = idxToX(idx);
         const isBull = Number(c.close) >= Number(c.open);
         ctx.fillStyle = isBull ? bullColor + '77' : bearColor + '77';
-        ctx.fillRect(x - bodyW / 2, volTopY + volPaneH - barH, bodyW, barH);
-      });
-
-      // Dynamic Projected Volume Bars for Future Candles
-      futureProj.forEach((fp, kIdx) => {
-        const v = Number(fp.volume || 0);
-        if (v <= 0) return;
-        const barH = Math.max(2, Math.min(volAvailH, (v / maxVol) * volAvailH));
-        const x = idxToX(visible.length + kIdx);
-        const isBull = Number(fp.close) >= Number(fp.open);
-        ctx.fillStyle = isBull ? bullColor + '48' : bearColor + '48';
         ctx.fillRect(x - bodyW / 2, volTopY + volPaneH - barH, bodyW, barH);
       });
 

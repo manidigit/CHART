@@ -122,6 +122,9 @@
   - اجرای **Purged Walk-Forward** روی پنجره تاریخی با `AcceptanceGate` در برابر `Persistence Baseline` (`MAE`، `RMSE`، `Directional Accuracy`، `Pinball Loss`).
   - پیاده‌سازی مایگریشن `003_phase4_forecast_tables.sql` (`prediction_models`, `prediction_runs`, `prediction_forecasts`, `prediction_scenarios`, `prediction_walkforward_benchmarks`)، اندپوینت `api/v1/forecast.php` و دفترکل محلی/ابری زنجیره‌شده با **SHA-256** (`ForecastLedgerStore` / `forecastLedger.js`).
 
+- `[ ]` **بازطراحی موتور آنالوگ SMC (`SMC Analog Engine Refactor` — سند مرجع: [`SMC_ANALOG_ENGINE_REFACTOR_SPEC.md`](../01-product/SMC_ANALOG_ENGINE_REFACTOR_SPEC.md)):**
+  - جایگزینی ماشین حالت مصنوعی (`buildRealisticCandles` با فازهای `PULLBACK → IMPULSE → CORRECTION` و توابع `sin/cos`) با طرح‌ریزی مقیاس‌پذیر مسیرهای واقعی آنالوگ‌های تاریخی (`projectAnalogPath`) و محاسبه تجربی و مستقیم کوانتایل‌های `q10..q90` از توزیع داده‌ها.
+
 
 ### فاز ۵ — حلقه بازخورد زنده، Walk-Forward و حاکمیت مدل
 - [ ] **ارزیابی خودکار Outcome و یادگیری شناختی (`Outcome & Learning Evaluator`):** مقایسه بلادرنگ کندل‌های بسته‌شده جدید با خروجی ثبت‌شده تغییرناپذیر پیش‌بینی در پایگاه داده؛ محاسبه خطای جهت، MAE، RMSE، Quantile Loss، و امتیاز کالیبراسیون بر اساس `forecast-contract/v1`.

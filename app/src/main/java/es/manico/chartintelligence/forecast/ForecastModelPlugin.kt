@@ -16,7 +16,8 @@ data class PluginPrediction(
     val isApproximation: Boolean = false,
     val isCalibratedInterval: Boolean = true,
     val directQuantiles: DirectQuantiles? = null,
-    val modelVersion: String = "1.0.0"
+    val modelVersion: String = "2.0.0",
+    val meta: Map<String, Any?> = emptyMap()
 )
 
 interface ForecastModelPlugin {
@@ -29,7 +30,8 @@ interface ForecastModelPlugin {
     val defaultParams: Map<String, Double>
     val isApproximation: Boolean get() = false
     val isCalibratedInterval: Boolean get() = true
-    val modelVersion: String get() = "1.0.0"
+    val experimentalOnly: Boolean get() = isApproximation
+    val modelVersion: String get() = "2.0.0"
 
     fun predict(
         features: ExtractedForecastFeatures,
@@ -46,11 +48,18 @@ class NaivePersistenceModel : ForecastModelPlugin {
     override val defaultEnabled = true
     override val defaultWeight = 0.10
     override val defaultParams = mapOf("volFloor" to 0.0005)
+    override val modelVersion = "2.0.0"
 
     override fun predict(features: ExtractedForecastFeatures, horizon: Int, params: Map<String, Double>): PluginPrediction {
         val floor = params["volFloor"] ?: 0.0005
         val sigma = max(floor, features.ewmaSigma)
-        return PluginPrediction(id, DoubleArray(horizon), DoubleArray(horizon) { sigma })
+        return PluginPrediction(
+            modelId = id,
+            meanReturns = DoubleArray(horizon),
+            sigmas = DoubleArray(horizon) { sigma },
+            modelVersion = modelVersion,
+            meta = mapOf("ewmaSigma" to sigma)
+        )
     }
 }
 
@@ -58,16 +67,17 @@ class HistoricalDriftModel : ForecastModelPlugin {
     override val id = "historical_drift"
     override val name = "Damped Historical Drift"
     override val family = "BASELINE"
-    override val description = "Recent log-return drift decaying exponentially toward zero with volatility scaling."
+    override val description = "Recent log-return drift decaying exponentially toward zero with volatility clustering."
     override val defaultEnabled = true
     override val defaultWeight = 0.16
     override val defaultParams = mapOf("damping" to 0.90, "lookback" to 24.0)
+    override val modelVersion = "2.0.0"
 
     override fun predict(features: ExtractedForecastFeatures, horizon: Int, params: Map<String, Double>): PluginPrediction {
         val damping = (params["damping"] ?: 0.90).coerceIn(0.5, 0.99)
         val lookback = (params["lookback"] ?: 24.0).toInt().coerceIn(6, max(6, features.logReturns.size))
         val tail = features.logReturns.takeLast(min(lookback, features.logReturns.size))
-        val avg = tail.average()
+        val avg = if (tail.isNotEmpty()) tail.average() else 0.0
         val cap = features.uncondSigma * 0.45
         val cappedDrift = avg.coerceIn(-cap, cap)
         val baseSigma = max(1e-5, features.ewmaSigma)
@@ -80,7 +90,13 @@ class HistoricalDriftModel : ForecastModelPlugin {
             means[h] = cappedDrift * phi
             sigmas[h] = baseSigma * (1.0 + 0.015 * h)
         }
-        return PluginPrediction(id, means, sigmas)
+        return PluginPrediction(
+            modelId = id,
+            meanReturns = means,
+            sigmas = sigmas,
+            modelVersion = modelVersion,
+            meta = mapOf("cappedDrift" to cappedDrift, "damping" to damping)
+        )
     }
 }
 
@@ -92,6 +108,7 @@ class KalmanMomentumModel : ForecastModelPlugin {
     override val defaultEnabled = true
     override val defaultWeight = 0.24
     override val defaultParams = mapOf("processNoise" to 0.08, "obsNoise" to 1.0, "velocityDecay" to 0.86)
+    override val modelVersion = "2.0.0"
 
     override fun predict(features: ExtractedForecastFeatures, horizon: Int, params: Map<String, Double>): PluginPrediction {
         val returns = features.logReturns
@@ -141,7 +158,13 @@ class KalmanMomentumModel : ForecastModelPlugin {
             means[h] = curLevel
             sigmas[h] = max(features.ewmaSigma * 0.65, sqrt(stepVar))
         }
-        return PluginPrediction(id, means, sigmas)
+        return PluginPrediction(
+            modelId = id,
+            meanReturns = means,
+            sigmas = sigmas,
+            modelVersion = modelVersion,
+            meta = mapOf("finalLevel" to x0, "finalVelocity" to x1)
+        )
     }
 }
 
@@ -153,6 +176,7 @@ class GarchVolatilityModel : ForecastModelPlugin {
     override val defaultEnabled = true
     override val defaultWeight = 0.24
     override val defaultParams = mapOf("alpha" to 0.09, "beta" to 0.87, "meanRevertPull" to 0.84)
+    override val modelVersion = "2.0.0"
 
     override fun predict(features: ExtractedForecastFeatures, horizon: Int, params: Map<String, Double>): PluginPrediction {
         val alpha = (params["alpha"] ?: 0.09).coerceIn(0.02, 0.25)
@@ -181,7 +205,13 @@ class GarchVolatilityModel : ForecastModelPlugin {
             means[h] = drift
             sigmas[h] = max(1e-5, sqrt(curVar))
         }
-        return PluginPrediction(id, means, sigmas)
+        return PluginPrediction(
+            modelId = id,
+            meanReturns = means,
+            sigmas = sigmas,
+            modelVersion = modelVersion,
+            meta = mapOf("alpha" to alpha, "beta" to beta, "persistence" to persistence, "initialSigma" to sqrt(hVar))
+        )
     }
 }
 
@@ -189,10 +219,11 @@ class ArimaEtsModel : ForecastModelPlugin {
     override val id = "arima_ets"
     override val name = "Damped AR(2) + ETS"
     override val family = "TIME_SERIES"
-    override val description = "Combines second-order autoregressive return dynamics with damped exponential smoothing."
+    override val description = "Combines second-order autoregressive return dynamics with damped Holt exponential smoothing."
     override val defaultEnabled = true
     override val defaultWeight = 0.22
     override val defaultParams = mapOf("damping" to 0.88, "alphaEts" to 0.32)
+    override val modelVersion = "2.0.0"
 
     override fun predict(features: ExtractedForecastFeatures, horizon: Int, params: Map<String, Double>): PluginPrediction {
         val returns = features.logReturns
@@ -249,7 +280,13 @@ class ArimaEtsModel : ForecastModelPlugin {
             rPrev2 = rPrev1
             rPrev1 = stepReturn
         }
-        return PluginPrediction(id, means, sigmas)
+        return PluginPrediction(
+            modelId = id,
+            meanReturns = means,
+            sigmas = sigmas,
+            modelVersion = modelVersion,
+            meta = mapOf("phi1" to phi1, "phi2" to phi2, "etsLevel" to etsLevel)
+        )
     }
 }
 
@@ -261,6 +298,7 @@ class GaussianProcessModel : ForecastModelPlugin {
     override val defaultEnabled = true
     override val defaultWeight = 0.14
     override val defaultParams = mapOf("lengthScale" to 7.5, "noiseRatio" to 0.35)
+    override val modelVersion = "2.0.0"
 
     override fun predict(features: ExtractedForecastFeatures, horizon: Int, params: Map<String, Double>): PluginPrediction {
         val tail = features.logReturns.takeLast(min(28, features.logReturns.size))
@@ -329,6 +367,12 @@ class GaussianProcessModel : ForecastModelPlugin {
             means[h] = predMean.coerceIn(-cap, cap)
             sigmas[h] = max(1e-5, sqrt(postVar))
         }
-        return PluginPrediction(id, means, sigmas)
+        return PluginPrediction(
+            modelId = id,
+            meanReturns = means,
+            sigmas = sigmas,
+            modelVersion = modelVersion,
+            meta = mapOf("lengthScale" to ls, "trainingPoints" to m)
+        )
     }
 }

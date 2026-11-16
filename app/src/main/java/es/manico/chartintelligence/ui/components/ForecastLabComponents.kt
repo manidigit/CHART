@@ -107,6 +107,7 @@ private fun formatLabSelectionMode(mode: SelectionMode): String = when (mode) {
     SelectionMode.AUTO_OOS_BEST -> "OOS Winner"
     SelectionMode.MANUAL_OVERRIDE -> "Manual"
     SelectionMode.NO_CLEAR_WINNER_BASELINE -> "No OOS Edge"
+    SelectionMode.INSUFFICIENT_EVIDENCE_BASELINE -> "Insufficient Evidence"
     SelectionMode.SMC_STRUCTURAL_DEFAULT -> "SMC Default"
 }
 
@@ -308,15 +309,14 @@ fun ForecastMiniFanCanvas(
                                     }
                                 }
 
-                                if (result?.selectedChartModelId == "smc_kmedoids") {
-                                    val altCols = listOf(Color(0xFF38BDF8), Color(0xFFA855F7))
-                                    val altScenarios = result.smcScenarios.filter { it.id != result.activeScenarioId }
-                                    altScenarios.forEachIndexed { aIdx, altSc ->
-                                        if (altSc.candles.isNotEmpty()) {
+                                if (result != null && result.representativePaths.isNotEmpty()) {
+                                    val altCols = listOf(Color(0xFF38BDF8), Color(0xFFA855F7), Color(0xFFF59E0B))
+                                    result.representativePaths.forEachIndexed { aIdx, repPath ->
+                                        if (repPath.closes.isNotEmpty()) {
                                             val altPath = Path().apply {
                                                 moveTo(anchorX, anchorY)
-                                                altSc.candles.forEachIndexed { i, ac ->
-                                                    lineTo(xOf(hist.size + i), yOf(ac.close))
+                                                repPath.closes.forEachIndexed { i, cPrice ->
+                                                    lineTo(xOf(hist.size + i), yOf(cPrice))
                                                 }
                                             }
                                             drawPath(altPath, altCols[aIdx % altCols.size].copy(alpha = 0.68f), style = Stroke(width = 1.4f, pathEffect = dash))
@@ -465,7 +465,7 @@ fun ForecastScenarioCard(
         "bear" -> palette.bearCandle
         else -> MaterialTheme.colorScheme.primary
     }
-    val pctProb = (scenario.probability * 100.0).roundToInt()
+    val probText = scenario.probability?.let { "${(it * 100.0).roundToInt()}%" } ?: "N/E"
     val sign = if (scenario.pctChange >= 0.0) "+" else ""
 
     Card(
@@ -514,7 +514,7 @@ fun ForecastScenarioCard(
                     shape = RoundedCornerShape(6.dp)
                 ) {
                     Text(
-                        text = "$pctProb% · $sign${String.format(Locale.US, "%.2f", scenario.pctChange)}%",
+                        text = "$probText · $sign${String.format(Locale.US, "%.2f", scenario.pctChange)}%",
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = JetBrainsMonoFontFamily,
@@ -1300,19 +1300,19 @@ fun HashLedgerEntryCard(
 }
 
 @Composable
-fun BayesianLiveSelfCorrectionCard(
+fun AnalogDiagnosticsCard(
     result: ForecastResult,
     modifier: Modifier = Modifier
 ) {
-    val bayes = result.bayesianLiveReport ?: return
+    val diag = result.analogDiagnostics ?: return
     val palette = LocalFinancialPalette.current
     Card(
         modifier = modifier
             .fillMaxWidth()
-            .testTag("forecast_bayesian_live_card"),
+            .testTag("forecast_analog_diagnostics_card"),
         shape = RoundedCornerShape(10.dp),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, palette.bullCandle.copy(alpha = 0.45f))
+        border = BorderStroke(1.dp, palette.cardBorder)
     ) {
         Column(
             modifier = Modifier.padding(12.dp),
@@ -1324,168 +1324,29 @@ fun BayesianLiveSelfCorrectionCard(
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
-                    text = "Bayesian 15m Live-Tracker & Re-Anchoring",
-                    style = MaterialTheme.typography.labelLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = palette.bullCandle
-                )
-                Surface(
-                    color = palette.bullCandle.copy(alpha = 0.16f),
-                    shape = RoundedCornerShape(6.dp)
-                ) {
-                    Text(
-                        text = "Accuracy: ${bayes.accuracyScoreLastStep}%",
-                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
-                        style = MaterialTheme.typography.labelSmall,
-                        fontFamily = JetBrainsMonoFontFamily,
-                        fontWeight = FontWeight.Bold,
-                        color = palette.bullCandle
-                    )
-                }
-            }
-            Text(
-                text = bayes.statusMessageFa,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-        }
-    }
-}
-
-@Composable
-fun SmcClusteredScenariosCard(
-    result: ForecastResult,
-    decimals: Int,
-    selectedScenarioId: String,
-    onSelectScenario: (String) -> Unit,
-    modifier: Modifier = Modifier
-) {
-    val scenarios = result.smcScenarios
-    if (scenarios.isEmpty()) return
-    val palette = LocalFinancialPalette.current
-    Card(
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag("forecast_smc_scenarios_card"),
-        shape = RoundedCornerShape(10.dp),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-        border = BorderStroke(1.dp, palette.cardBorder)
-    ) {
-        Column(
-            modifier = Modifier.padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Text(
-                    text = "3 Historical Analog Scenarios (k-NN + K-Medoids + SMC)",
+                    text = "Empirical Analogs (Strictly Causal)",
                     style = MaterialTheme.typography.titleSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
                 )
-                result.smcContext?.let { ctx ->
-                    val sign = if (ctx.htfTrendBias >= 0) "+" else ""
+                Surface(
+                    color = if (diag.status == "READY") palette.bullCandle.copy(alpha = 0.16f) else MaterialTheme.colorScheme.surfaceVariant,
+                    shape = RoundedCornerShape(6.dp)
+                ) {
                     Text(
-                        text = "HTF Bias: $sign${ctx.htfTrendBias}",
+                        text = "${diag.matchedCount} Matches (jMax=${diag.jMax})",
+                        modifier = Modifier.padding(horizontal = 8.dp, vertical = 3.dp),
                         style = MaterialTheme.typography.labelSmall,
                         fontFamily = JetBrainsMonoFontFamily,
-                        color = MaterialTheme.colorScheme.primary
+                        color = if (diag.status == "READY") palette.bullCandle else MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
             }
-
-            for (sc in scenarios) {
-                val isSelected = sc.id == selectedScenarioId
-                val accent = when (sc.bias) {
-                    "bull" -> palette.bullCandle
-                    "bear" -> palette.bearCandle
-                    else -> Color(0xFFF59E0B)
-                }
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onSelectScenario(sc.id) }
-                        .testTag("smc_scenario_card_${sc.id.lowercase()}"),
-                    shape = RoundedCornerShape(8.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = if (isSelected) accent.copy(alpha = 0.08f) else MaterialTheme.colorScheme.background
-                    ),
-                    border = BorderStroke(if (isSelected) 1.5.dp else 1.dp, if (isSelected) accent else palette.cardBorder)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = "${sc.id} — ${sc.name}",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = accent,
-                                modifier = Modifier.weight(1f)
-                            )
-                            Surface(
-                                color = accent.copy(alpha = 0.18f),
-                                shape = RoundedCornerShape(6.dp)
-                            ) {
-                                Text(
-                                    text = "${(sc.probability * 100).roundToInt()}%",
-                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp),
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    color = accent
-                                )
-                            }
-                        }
-                        CompositionLocalProvider(LocalLayoutDirection provides LayoutDirection.Ltr) {
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween
-                            ) {
-                                Text(
-                                    text = "Pullback (FVG/POC): ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(sc.pullbackPrice), decimals)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = "Target: ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(sc.targetPrice), decimals)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                            }
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.SpaceBetween,
-                                verticalAlignment = Alignment.CenterVertically
-                            ) {
-                                Text(
-                                    text = "Invalidation: ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(sc.invalidationPrice), decimals)}",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                Text(
-                                    text = if (isSelected) "✓ Active on Chart" else "Tap to Activate",
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontWeight = FontWeight.Bold,
-                                    color = accent
-                                )
-                            }
-                        }
-                    }
-                }
-            }
+            Text(
+                text = diag.reason,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
         }
     }
 }

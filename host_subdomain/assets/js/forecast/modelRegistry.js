@@ -1,23 +1,18 @@
-import { NaivePersistenceModel, HistoricalDriftModel } from './models/baselineModels.js?v=1.43.0';
+import { NaivePersistenceModel, HistoricalDriftModel } from './models/baselineModels.js?v=2.0.0';
 import {
   KalmanMomentumModel,
   GarchVolatilityModel,
   ArimaEtsModel,
   GaussianProcessModel,
-} from './models/statisticalModels.js?v=1.43.0';
+} from './models/statisticalModels.js?v=2.0.0';
 import {
   NativeArimaDiffModel,
   NativeProphetDecompModel,
   NativeSequenceRecurrentModel,
   NativeQuantileAttentionModel,
-} from './models/advancedNativeModels.js?v=1.43.0';
-import { REMOTE_WORKER_STATUS } from './forecastContract.js?v=1.43.0';
+} from './models/advancedNativeModels.js?v=2.0.0';
+import { MODEL_REGISTRY_VERSION, REMOTE_WORKER_STATUS } from './forecastContract.js?v=2.0.0';
 
-/**
- * Metadata-only specification for the optional self-hosted Python inference worker.
- * Never fabricates deep-learning predictions locally; reports honest UNCONFIGURED/LOCAL_STATISTICAL_ONLY status
- * unless an external worker URL is explicitly provided and responds.
- */
 export const REMOTE_DL_WORKER_SPEC = Object.freeze({
   id: 'remote_dl_worker',
   name: 'Remote Python/FastAPI Worker (Optional)',
@@ -35,10 +30,6 @@ export const REMOTE_DL_WORKER_SPEC = Object.freeze({
   healthPath: '/health',
 });
 
-/**
- * Pluggable Model Registry enabling runtime model registration, weight tuning,
- * enable/disable toggles, and isolated parameter updates.
- */
 export class ForecastModelRegistry {
   constructor() {
     this._plugins = new Map();
@@ -72,6 +63,7 @@ export class ForecastModelRegistry {
         enabled: plugin.defaultEnabled !== false,
         weight: Number(plugin.defaultWeight ?? 0.2),
         params: { ...(plugin.defaultParams || {}) },
+        experimentalOnly: Boolean(plugin.experimentalOnly || plugin.isApproximation),
       });
     }
     return this;
@@ -102,12 +94,14 @@ export class ForecastModelRegistry {
         id: plugin.id,
         name: plugin.name,
         family: plugin.family,
+        modelVersion: plugin.modelVersion || '2.0.0',
         description: plugin.description,
         defaultWeight: Number(plugin.defaultWeight ?? 0.2),
         defaultParams: { ...(plugin.defaultParams || {}) },
         enabled: Boolean(cfg.enabled),
         weight: Number(cfg.weight),
         params: { ...cfg.params },
+        experimentalOnly: Boolean(plugin.experimentalOnly || plugin.isApproximation),
       };
     });
   }
@@ -151,14 +145,44 @@ export class ForecastModelRegistry {
         enabled: plugin.defaultEnabled !== false,
         weight: Number(plugin.defaultWeight ?? 0.2),
         params: { ...(plugin.defaultParams || {}) },
+        experimentalOnly: Boolean(plugin.experimentalOnly || plugin.isApproximation),
       });
     }
   }
 
+  /**
+   * Deterministic sorted representation included in V2 canonical inputHash.
+   */
+  serializeConfigForHash() {
+    const enabledModels = Array.from(this._plugins.values())
+      .map((plugin) => {
+        const cfg = this._config.get(plugin.id);
+        if (!cfg || !cfg.enabled || Number(cfg.weight) <= 0) return null;
+        const sortedParams = {};
+        for (const k of Object.keys(cfg.params || {}).sort()) {
+          sortedParams[k] = cfg.params[k];
+        }
+        return {
+          id: plugin.id,
+          version: plugin.modelVersion || '2.0.0',
+          weight: Number(cfg.weight),
+          sortedParams,
+        };
+      })
+      .filter(Boolean)
+      .sort((a, b) => a.id.localeCompare(b.id));
+
+    return {
+      registryVersion: MODEL_REGISTRY_VERSION,
+      enabledModels,
+    };
+  }
+
   serializeConfig() {
     const out = {};
-    for (const [id, cfg] of this._config.entries()) {
-      out[id] = {
+    for (const key of Array.from(this._config.keys()).sort()) {
+      const cfg = this._config.get(key);
+      out[key] = {
         enabled: Boolean(cfg.enabled),
         weight: Number(cfg.weight),
         params: { ...(cfg.params || {}) },

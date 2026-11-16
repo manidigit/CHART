@@ -1,9 +1,13 @@
 import {
+  CONTRACT_VERSION,
+  ENGINE_VERSION,
   EVALUATION_OUTCOME,
+  LEGACY_CONTRACT_VERSION,
   LIFECYCLE_STATUS,
   canonicalJson,
+  canonicalJsonV1Legacy,
   sha256Hex,
-} from './forecastContract.js?v=1.43.0';
+} from './forecastContract.js?v=2.0.0';
 
 const LEDGER_STORAGE_KEY = 'ci_forecast_ledger_v1';
 const LIFECYCLE_STORAGE_KEY = 'ci_forecast_lifecycle_v1';
@@ -41,9 +45,7 @@ export class ForecastLedger {
     try {
       const trimmed = entries.slice(-MAX_LOCAL_LEDGER_ENTRIES);
       globalThis.localStorage.setItem(this.storageKey, JSON.stringify(trimmed));
-    } catch (_) {
-      // Ignore quota errors gracefully
-    }
+    } catch (_) {}
   }
 
   loadLifecycleEvents() {
@@ -73,9 +75,39 @@ export class ForecastLedger {
     }
   }
 
-  computeEntryHash(prevHash, canonicalPayloadObj) {
-    const serialized = canonicalJson(canonicalPayloadObj);
+  computeEntryHash(prevHash, canonicalPayloadObj, isLegacyV1 = false) {
+    const serialized = isLegacyV1
+      ? canonicalJsonV1Legacy(canonicalPayloadObj)
+      : canonicalJson(canonicalPayloadObj);
     return sha256Hex(`${prevHash}|${serialized}`);
+  }
+
+  _buildHashableBody(entryLike) {
+    const base = {
+      seq: entryLike.seq,
+      contractVersion: entryLike.contractVersion,
+      symbolCode: entryLike.symbolCode,
+      timeframe: entryLike.timeframe,
+      horizonBars: entryLike.horizonBars,
+      anchorOpenTimeUtcMs: entryLike.anchorOpenTimeUtcMs,
+      anchorClose: entryLike.anchorClose,
+      forecastStatus: entryLike.forecastStatus,
+      regime: entryLike.regime,
+      inputHash: entryLike.inputHash,
+      terminalMedian: entryLike.terminalMedian ?? 0,
+      terminalQ10: entryLike.terminalQ10 ?? 0,
+      terminalQ90: entryLike.terminalQ90 ?? 0,
+      generatedAtUtcMs: entryLike.generatedAtUtcMs,
+    };
+    if (entryLike.contractVersion === LEGACY_CONTRACT_VERSION) {
+      return base;
+    }
+    return {
+      ...base,
+      engineVersion: entryLike.engineVersion || ENGINE_VERSION,
+      wisModel: entryLike.wisModel ?? null,
+      calibrationStatus: entryLike.calibrationStatus || 'UNDER_SAMPLED',
+    };
   }
 
   appendFromForecast(forecastResult) {
@@ -87,9 +119,10 @@ export class ForecastLedger {
     const prevForecastHash = last ? last.forecastHash : GENESIS_HASH;
     const seq = last ? Number(last.seq || entries.length) + 1 : 1;
 
-    const hashableBody = {
+    const candidate = {
       seq,
-      contractVersion: forecastResult.contractVersion,
+      contractVersion: forecastResult.contractVersion || CONTRACT_VERSION,
+      engineVersion: forecastResult.engineVersion || ENGINE_VERSION,
       symbolCode: forecastResult.symbolCode,
       timeframe: forecastResult.timeframe,
       horizonBars: forecastResult.horizonBars,
@@ -101,10 +134,15 @@ export class ForecastLedger {
       terminalMedian: forecastResult.summary?.terminalQ50 ?? 0,
       terminalQ10: forecastResult.summary?.terminalQ10 ?? 0,
       terminalQ90: forecastResult.summary?.terminalQ90 ?? 0,
+      wisModel: forecastResult.walkForward?.wisModel ?? null,
+      calibrationStatus: forecastResult.conformalCalibration?.calibrationStatus || 'UNDER_SAMPLED',
       generatedAtUtcMs: forecastResult.generatedAtUtcMs,
     };
 
-    const forecastHash = this.computeEntryHash(prevForecastHash, hashableBody);
+    const isLegacy = candidate.contractVersion === LEGACY_CONTRACT_VERSION;
+    const hashableBody = this._buildHashableBody(candidate);
+    const forecastHash = this.computeEntryHash(prevForecastHash, hashableBody, isLegacy);
+
     const entry = {
       ...hashableBody,
       prevForecastHash,
@@ -114,7 +152,9 @@ export class ForecastLedger {
       scenarios: (forecastResult.scenarios || []).map((s) => ({
         id: s.id,
         label: s.label,
-        probability: s.probability,
+        status: s.status || 'ESTIMABLE',
+        probability: s.probability ?? null,
+        rawEmpiricalFrequency: s.rawEmpiricalFrequency ?? 0,
         targetPrice: s.targetPrice,
       })),
       syncedToCloud: false,
@@ -123,7 +163,6 @@ export class ForecastLedger {
     entries.push(entry);
     this.saveEntries(entries);
 
-    // Record initial append-only lifecycle ACTIVE / PENDING event without mutating prior runs
     const prevActiveSame = entries
       .slice(0, -1)
       .reverse()
@@ -190,7 +229,7 @@ export class ForecastLedger {
       evaluationOutcome,
       recordedAtUtcMs,
     };
-    const eventHash = this.computeEntryHash(prevEventHash, body);
+    const eventHash = this.computeEntryHash(prevEventHash, body, false);
     const ev = {
       ...body,
       reason,
@@ -205,7 +244,7 @@ export class ForecastLedger {
 
   /**
    * Evaluates matured forecasts against subsequent closed candles per independent horizon
-   * and preserves AMBIGUOUS inside-bar target+invalidation hits (§5.3, §5.4, §9.4).
+   * and preserves AMBIGUOUS inside-bar target+invalidation hits.
    */
   evaluateMaturedForecasts(candles = [], symbolCode = '', timeframe = '') {
     const clean = (candles || []).filter((c) => Number(c?.close) > 0);
@@ -268,15 +307,16 @@ export class ForecastLedger {
   verifyLifecycleChain(customEvents = null) {
     const events = Array.isArray(customEvents) ? customEvents : this.loadLifecycleEvents();
     if (events.length === 0) {
-      return { valid: true, totalEvents: 0, brokenIndex: -1, reason: 'Empty lifecycle log' };
+      return { valid: true, totalEvents: 0, brokenIndex: -1, error: null, reason: 'Empty lifecycle log' };
     }
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
       const expectedPrev = i === 0 ? GENESIS_HASH : events[i - 1].eventHash;
       if (ev.prevEventHash !== expectedPrev) {
-        return { valid: false, totalEvents: events.length, brokenIndex: i, reason: `Lifecycle chain break at index ${i}` };
+        const msg = `SHA-256 Hash Chain Integrity Mismatch: lifecycle break at index ${i}`;
+        return { valid: false, totalEvents: events.length, brokenIndex: i, error: msg, reason: msg };
       }
-      const expected = this.computeEntryHash(ev.prevEventHash, {
+      const body = {
         seq: ev.seq,
         forecastHash: ev.forecastHash,
         symbolCode: ev.symbolCode,
@@ -285,12 +325,15 @@ export class ForecastLedger {
         lifecycleStatus: ev.lifecycleStatus,
         evaluationOutcome: ev.evaluationOutcome,
         recordedAtUtcMs: ev.recordedAtUtcMs,
-      });
-      if (ev.eventHash !== expected) {
-        return { valid: false, totalEvents: events.length, brokenIndex: i, reason: `Lifecycle SHA-256 tamper at seq #${ev.seq}` };
+      };
+      const expectedV2 = this.computeEntryHash(ev.prevEventHash, body, false);
+      const expectedV1 = this.computeEntryHash(ev.prevEventHash, body, true);
+      if (ev.eventHash !== expectedV2 && ev.eventHash !== expectedV1) {
+        const msg = `SHA-256 Hash Chain Integrity Mismatch: lifecycle tamper at seq #${ev.seq}`;
+        return { valid: false, totalEvents: events.length, brokenIndex: i, error: msg, reason: msg };
       }
     }
-    return { valid: true, totalEvents: events.length, brokenIndex: -1, reason: `All ${events.length} append-only lifecycle events verified` };
+    return { valid: true, totalEvents: events.length, brokenIndex: -1, error: null, reason: `All ${events.length} SHA-256 Hash Chain Integrity checks passed` };
   }
 
   markSynced(forecastHash) {
@@ -309,43 +352,33 @@ export class ForecastLedger {
   verifyChain(customEntries = null) {
     const entries = Array.isArray(customEntries) ? customEntries : this.loadEntries();
     if (entries.length === 0) {
-      return { valid: true, totalEntries: 0, brokenIndex: -1, reason: 'Empty ledger' };
+      return { valid: true, totalEntries: 0, brokenIndex: -1, error: null, reason: 'Empty ledger (SHA-256 Hash Chain Integrity idle)' };
     }
 
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       const expectedPrev = i === 0 ? GENESIS_HASH : entries[i - 1].forecastHash;
       if (e.prevForecastHash !== expectedPrev) {
+        const msg = `SHA-256 Hash Chain Integrity Mismatch: chain link mismatch at index ${i}`;
         return {
           valid: false,
           totalEntries: entries.length,
           brokenIndex: i,
-          reason: `Chain link mismatch at index ${i}`,
+          error: msg,
+          reason: msg,
         };
       }
-      const hashableBody = {
-        seq: e.seq,
-        contractVersion: e.contractVersion,
-        symbolCode: e.symbolCode,
-        timeframe: e.timeframe,
-        horizonBars: e.horizonBars,
-        anchorOpenTimeUtcMs: e.anchorOpenTimeUtcMs,
-        anchorClose: e.anchorClose,
-        forecastStatus: e.forecastStatus,
-        regime: e.regime,
-        inputHash: e.inputHash,
-        terminalMedian: e.terminalMedian,
-        terminalQ10: e.terminalQ10,
-        terminalQ90: e.terminalQ90,
-        generatedAtUtcMs: e.generatedAtUtcMs,
-      };
-      const expectedHash = this.computeEntryHash(e.prevForecastHash, hashableBody);
+      const isLegacy = e.contractVersion === LEGACY_CONTRACT_VERSION;
+      const hashableBody = this._buildHashableBody(e);
+      const expectedHash = this.computeEntryHash(e.prevForecastHash, hashableBody, isLegacy);
       if (e.forecastHash !== expectedHash) {
+        const msg = `SHA-256 Hash Chain Integrity Mismatch: payload tamper detected at seq #${e.seq}`;
         return {
           valid: false,
           totalEntries: entries.length,
           brokenIndex: i,
-          reason: `SHA-256 payload tamper detected at seq #${e.seq}`,
+          error: msg,
+          reason: msg,
         };
       }
     }
@@ -354,7 +387,8 @@ export class ForecastLedger {
       valid: true,
       totalEntries: entries.length,
       brokenIndex: -1,
-      reason: `All ${entries.length} SHA-256 hash-chain entries verified`,
+      error: null,
+      reason: `All ${entries.length} entries verified (SHA-256 Hash Chain Integrity)`,
     };
   }
 }

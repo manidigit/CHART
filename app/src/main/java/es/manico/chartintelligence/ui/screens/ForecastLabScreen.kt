@@ -82,8 +82,8 @@ import es.manico.chartintelligence.forecast.LedgerVerifyResult
 import es.manico.chartintelligence.forecast.LifecycleVerifyResult
 import es.manico.chartintelligence.forecast.RemoteWorkerStatus
 import es.manico.chartintelligence.forecast.resolveLowerTimeframeInfo
+import es.manico.chartintelligence.ui.components.AnalogDiagnosticsCard
 import es.manico.chartintelligence.ui.components.AssetSymbolBadge
-import es.manico.chartintelligence.ui.components.BayesianLiveSelfCorrectionCard
 import es.manico.chartintelligence.ui.components.ForecastMiniFanCanvas
 import es.manico.chartintelligence.ui.components.ForecastModelPluginCard
 import es.manico.chartintelligence.ui.components.ForecastScenarioCard
@@ -96,7 +96,6 @@ import es.manico.chartintelligence.ui.components.NoEdgeAndOodHeaderBadges
 import es.manico.chartintelligence.ui.components.NoEdgeWarningBanner
 import es.manico.chartintelligence.ui.components.OosWinnerGateCard
 import es.manico.chartintelligence.ui.components.PathEventAndSensitivityCard
-import es.manico.chartintelligence.ui.components.SmcClusteredScenariosCard
 import es.manico.chartintelligence.ui.components.UncertaintyBreakdownCard
 import es.manico.chartintelligence.ui.components.WalkForwardBenchmarkTable
 import es.manico.chartintelligence.ui.theme.BentoCard
@@ -195,7 +194,38 @@ fun ForecastLabScreen(
     }
     val previousRunMap = remember { mutableMapOf<String, ForecastResult>() }
 
-    var forecastResult by remember { mutableStateOf<ForecastResult?>(null) }
+    var forecastResult by remember(
+        candles,
+        higherCandles,
+        lowerCandles,
+        activeTab?.symbolCode,
+        activeTab?.timeframe,
+        activeHorizon,
+        activeRenderMode,
+        activeSelectedModelId,
+        selectedScenarioId
+    ) {
+        mutableStateOf<ForecastResult?>(
+            if (activeTab != null && candles.isNotEmpty()) {
+                ForecastEngine.project(
+                    candles = candles,
+                    symbolCode = activeTab.symbolCode,
+                    timeframe = activeTab.timeframe,
+                    horizonBars = activeHorizon,
+                    renderMode = activeRenderMode,
+                    registry = registry,
+                    workerUrl = preferences.forecastWorkerUrl,
+                    skipWalkForward = false,
+                    higherTimeframe = higherTf,
+                    higherTimeframeCandles = higherCandles,
+                    lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
+                    lowerTimeframeCandles = lowerCandles,
+                    selectedScenarioId = selectedScenarioId,
+                    selectedModelId = activeSelectedModelId
+                )
+            } else null
+        )
+    }
     var isComputingForecast by remember { mutableStateOf(false) }
 
     LaunchedEffect(
@@ -309,6 +339,8 @@ fun ForecastLabScreen(
                                     val statusColor = when (currentForecast.status) {
                                         ForecastStatus.VALID -> palette.bullCandle
                                         ForecastStatus.PROVISIONAL -> Color(0xFFF59E0B)
+                                        ForecastStatus.NO_EDGE -> Color(0xFFEF4444)
+                                        ForecastStatus.INSUFFICIENT_EVIDENCE -> Color(0xFF94A3B8)
                                         ForecastStatus.DATA_NOT_READY -> MaterialTheme.colorScheme.onSurfaceVariant
                                     }
                                     Surface(color = statusColor.copy(alpha = 0.16f), shape = RoundedCornerShape(4.dp)) {
@@ -622,14 +654,7 @@ fun ForecastLabScreen(
                                     onSelectModelId = onSelectModelId
                                 )
 
-                                BayesianLiveSelfCorrectionCard(result = currentForecast)
-
-                                SmcClusteredScenariosCard(
-                                    result = currentForecast,
-                                    decimals = decimals,
-                                    selectedScenarioId = currentForecast.activeScenarioId,
-                                    onSelectScenario = { selectedScenarioId = it }
-                                )
+                                AnalogDiagnosticsCard(result = currentForecast)
 
                                 currentForecast.noEdgeGate?.let { gate ->
                                     NoEdgeWarningBanner(noEdgeGate = gate)

@@ -1,10 +1,49 @@
-import { REMOTE_WORKER_STATUS } from './forecastContract.js?v=1.43.0';
+import { REMOTE_WORKER_STATUS } from './forecastContract.js?v=2.0.0';
 
 const workerResponseCache = new Map();
 
+export function validateRemoteWorkerPayload(data, expectedInputHash = '', expectedHorizon = null) {
+  if (!data || typeof data !== 'object') {
+    return { ok: false, reason: 'Empty or invalid JSON payload from worker' };
+  }
+  if (expectedInputHash && data.inputHash && data.inputHash !== expectedInputHash) {
+    return {
+      ok: false,
+      reason: `WORKER_INPUT_HASH_MISMATCH: expected ${expectedInputHash.slice(0, 12)}, got ${String(data.inputHash).slice(0, 12)}`,
+    };
+  }
+  if (Array.isArray(data.modelTrajectories)) {
+    for (const tr of data.modelTrajectories) {
+      if (!tr || typeof tr !== 'object') {
+        return { ok: false, reason: 'Malformed trajectory entry from worker' };
+      }
+      if (tr.status === 'SUCCESS') {
+        if (!Array.isArray(tr.points) || (expectedHorizon && tr.points.length !== expectedHorizon)) {
+          return { ok: false, reason: `Trajectory length mismatch for ${tr.modelId}` };
+        }
+        for (const p of tr.points) {
+          if (
+            !p ||
+            !Number.isFinite(p.q10) ||
+            !Number.isFinite(p.q25) ||
+            !Number.isFinite(p.q50) ||
+            !Number.isFinite(p.q75) ||
+            !Number.isFinite(p.q90) ||
+            p.q10 <= 0 ||
+            !(p.q10 <= p.q25 && p.q25 <= p.q50 && p.q50 <= p.q75 && p.q75 <= p.q90)
+          ) {
+            return { ok: false, reason: `Non-finite or non-monotonic quantiles emitted by worker for ${tr.modelId}` };
+          }
+        }
+      }
+    }
+  }
+  return { ok: true, reason: '' };
+}
+
 /**
  * Non-blocking optional HTTP client for self-hosted Python/FastAPI inference worker.
- * Never throws or disrupts native JS forecasting if worker is offline, slow, or unconfigured.
+ * Strictly validates inputHash & finite monotonic quantiles; never uses hardcoded fallback stubs.
  */
 export const ForecastWorkerClient = {
   normalizeBaseUrl(url) {
@@ -64,6 +103,21 @@ export const ForecastWorkerClient = {
         };
       }
       const data = await res.json();
+      const validation = validateRemoteWorkerPayload(
+        data,
+        requestPayload?.inputHash || '',
+        requestPayload?.horizonBars || null
+      );
+      if (!validation.ok) {
+        return {
+          status: REMOTE_WORKER_STATUS.ERROR,
+          configured: true,
+          url: base,
+          error: validation.reason,
+          data: null,
+        };
+      }
+
       const wrapped = {
         status: REMOTE_WORKER_STATUS.CONNECTED,
         configured: true,

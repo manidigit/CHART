@@ -120,6 +120,7 @@ private fun formatSelectionModeTag(mode: SelectionMode?): String = when (mode) {
     SelectionMode.AUTO_OOS_BEST -> "OOS Winner"
     SelectionMode.MANUAL_OVERRIDE -> "Manual"
     SelectionMode.NO_CLEAR_WINNER_BASELINE -> "No OOS Edge"
+    SelectionMode.INSUFFICIENT_EVIDENCE_BASELINE -> "Insufficient Evidence"
     SelectionMode.SMC_STRUCTURAL_DEFAULT -> "SMC Default"
     null -> ""
 }
@@ -1431,18 +1432,16 @@ fun CandlestickCanvas(
                                 }
                             }
 
-                            // Alternative SMC Scenarios (SCENARIO_B & SCENARIO_C) dashed paths — only when smc_kmedoids is active
-                            if (futureProjectionResult?.selectedChartModelId == "smc_kmedoids") {
-                                val altColors = listOf(Color(0xFF38BDF8), Color(0xFFA855F7))
-                                val altScenarios = futureProjectionResult.smcScenarios
-                                    .filter { it.id != futureProjectionResult.activeScenarioId }
-                                altScenarios.forEachIndexed { aIdx, altSc ->
-                                    if (altSc.candles.isNotEmpty()) {
+                            // Alternative Empirical Analog Medoids dashed paths
+                            if (futureProjectionResult != null && futureProjectionResult.representativePaths.isNotEmpty()) {
+                                val altColors = listOf(Color(0xFF38BDF8), Color(0xFFA855F7), Color(0xFFF59E0B))
+                                futureProjectionResult.representativePaths.forEachIndexed { aIdx, repPath ->
+                                    if (repPath.closes.isNotEmpty()) {
                                         val altPath = obtainPath()
                                         altPath.moveTo(anchorX, anchorCloseY)
-                                        altSc.candles.forEachIndexed { fIdx, ac ->
+                                        repPath.closes.forEachIndexed { fIdx, closePrice ->
                                             val x = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                            altPath.lineTo(x, priceToY(ac.close))
+                                            altPath.lineTo(x, priceToY(closePrice))
                                         }
                                         drawPath(
                                             path = altPath,
@@ -1828,23 +1827,7 @@ fun CandlestickCanvas(
                                     )
                                 }
                             }
-                            futureProjectedCandles.forEachIndexed { fIdx, fc ->
-                                val volFrac = (fc.volume / maxVolume).toFloat().coerceIn(0f, 1f)
-                                if (volFrac > 0f) {
-                                    val centerX = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                    val barH = (usableVolH * volFrac).coerceAtLeast(1.5f)
-                                    val volColor = if (fc.close >= fc.open) {
-                                        bullColor.copy(alpha = 0.28f)
-                                    } else {
-                                        bearColor.copy(alpha = 0.28f)
-                                    }
-                                    drawRect(
-                                        color = volColor,
-                                        topLeft = Offset(centerX - bodyW / 2f, vBot - barH),
-                                        size = Size(bodyW, barH)
-                                    )
-                                }
-                            }
+                            // Zero fabricated volume in future bars (Rev 2.1 specification)
                         }
                     }
 
@@ -2798,34 +2781,22 @@ fun CandlestickCanvas(
                     }
 
                     if (futureProjectedCandles.isNotEmpty() &&
-                        futureProjectionResult?.selectedChartModelId == "smc_kmedoids"
+                        futureProjectionResult != null &&
+                        futureProjectionResult.representativePaths.isNotEmpty()
                     ) {
-                        val altColors = listOf(Color(0xFF38BDF8), Color(0xFFA855F7))
-                        val primarySc = futureProjectionResult.smcScenarios
-                            .firstOrNull { it.id == futureProjectionResult.activeScenarioId }
-                        if (primarySc != null) {
-                            val lastFp = futureProjectedCandles.last()
-                            rawBadges.add(
-                                DockedLevelBadge(
-                                    id = "sc_primary",
-                                    text = "Primary (${(primarySc.probability * 100.0).roundToInt()}%)",
-                                    rawRatio = mapPriceToNormRatio(lastFp.q50),
-                                    color = Color(0xFFF59E0B)
+                        val altColors = listOf(Color(0xFF38BDF8), Color(0xFFA855F7), Color(0xFFF59E0B))
+                        futureProjectionResult.representativePaths.forEachIndexed { aIdx, repPath ->
+                            if (repPath.closes.isNotEmpty()) {
+                                val terminalPrice = repPath.closes.last()
+                                rawBadges.add(
+                                    DockedLevelBadge(
+                                        id = "rep_${repPath.id}",
+                                        text = repPath.id.replace("ANALOG_", ""),
+                                        rawRatio = mapPriceToNormRatio(terminalPrice),
+                                        color = altColors[aIdx % altColors.size]
+                                    )
                                 )
-                            )
-                        }
-                        val altScenarios = futureProjectionResult.smcScenarios
-                            .filter { it.id != futureProjectionResult.activeScenarioId && it.candles.isNotEmpty() }
-                        altScenarios.forEachIndexed { aIdx, altSc ->
-                            val lastAlt = altSc.candles.last()
-                            rawBadges.add(
-                                DockedLevelBadge(
-                                    id = "sc_${altSc.id}",
-                                    text = "${altSc.id.replace("SCENARIO_", "Alt ")} (${(altSc.probability * 100.0).roundToInt()}%)",
-                                    rawRatio = mapPriceToNormRatio(lastAlt.close),
-                                    color = altColors[aIdx % altColors.size]
-                                )
-                            )
+                            }
                         }
                     }
 

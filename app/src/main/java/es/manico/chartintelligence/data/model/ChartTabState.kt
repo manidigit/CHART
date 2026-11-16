@@ -58,7 +58,7 @@ data class ChartTabState(
     val showPivotPoints: Boolean = false,
     val pivotType: String = "STANDARD",
     val showFutureProjection: Boolean = false,
-    val forecastRenderMode: String = "HYBRID",
+    val forecastRenderMode: String = "FAN_CHART",
     val forecastHorizonBars: Int = 30,
     val selectedForecastModelId: String = "AUTO",
     val pitchforkVariant: String = "original",

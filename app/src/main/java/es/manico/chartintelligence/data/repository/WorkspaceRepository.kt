@@ -580,7 +580,7 @@ class WorkspaceRepository(context: Context) {
                 alphaVantageApiKey = loadByokField("alphaVantageApiKey", obj.optString("alphaVantageApiKey", "")),
                 finnhubApiKey = loadByokField("finnhubApiKey", obj.optString("finnhubApiKey", "")),
                 timezoneMode = obj.optString("timezoneMode", "UTC").uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" },
-                forecastRenderMode = obj.optString("forecastRenderMode", "HYBRID").uppercase(),
+                forecastRenderMode = obj.optString("forecastRenderMode", "FAN_CHART").uppercase(),
                 forecastHorizonBars = obj.optInt("forecastHorizonBars", 30).coerceIn(10, 60),
                 forecastPluginConfigJson = obj.optString("forecastPluginConfigJson", ""),
                 forecastWorkerUrl = obj.optString("forecastWorkerUrl", ""),

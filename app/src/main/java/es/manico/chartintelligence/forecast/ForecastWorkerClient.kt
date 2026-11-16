@@ -15,6 +15,7 @@ data class RemoteWorkerResponseWrap(
     val status: RemoteWorkerStatus,
     val url: String,
     val error: String = "",
+    val inputHash: String = "",
     val trajectories: List<ModelTrajectory> = emptyList(),
     val benchmarks: List<ModelWalkForwardSummary> = emptyList()
 )
@@ -50,12 +51,13 @@ object ForecastWorkerClient {
 
         val payload = JSONObject().apply {
             put("contractVersion", ForecastSha256.CONTRACT_VERSION)
+            put("specVersion", ForecastSha256.SPEC_VERSION)
             put("symbolCode", symbolCode)
             put("timeframe", timeframe)
             put("horizonBars", horizonBars)
             put("inputHash", inputHash)
             val arr = JSONArray()
-            candles.takeLast(240).forEach { c ->
+            candles.takeLast(2500).forEach { c ->
                 arr.put(
                     JSONObject().apply {
                         put("open_time_utc_ms", c.openTimeUtcMillis)
@@ -86,14 +88,25 @@ object ForecastWorkerClient {
                 } else {
                     val bodyStr = resp.body?.string().orEmpty()
                     val obj = JSONObject(bodyStr)
-                    val trajs = parseTrajectories(obj.optJSONArray("modelTrajectories"))
-                    val benches = parseBenchmarks(obj.optJSONArray("modelBenchmarks"))
-                    RemoteWorkerResponseWrap(
-                        status = RemoteWorkerStatus.CONNECTED,
-                        url = base,
-                        trajectories = trajs,
-                        benchmarks = benches
-                    )
+                    val respHash = obj.optString("inputHash", "")
+                    if (respHash.isNotEmpty() && inputHash.isNotEmpty() && respHash != inputHash) {
+                        RemoteWorkerResponseWrap(
+                            status = RemoteWorkerStatus.ERROR,
+                            url = base,
+                            error = "WORKER_INPUT_HASH_MISMATCH: expected ${inputHash.take(12)}, got ${respHash.take(12)}",
+                            inputHash = respHash
+                        )
+                    } else {
+                        val trajs = parseTrajectories(obj.optJSONArray("modelTrajectories"))
+                        val benches = parseBenchmarks(obj.optJSONArray("modelBenchmarks"))
+                        RemoteWorkerResponseWrap(
+                            status = RemoteWorkerStatus.CONNECTED,
+                            url = base,
+                            inputHash = respHash,
+                            trajectories = trajs,
+                            benchmarks = benches
+                        )
+                    }
                 }
             }
         } catch (t: Throwable) {
@@ -122,23 +135,30 @@ object ForecastWorkerClient {
             if (ptsArr != null) {
                 for (k in 0 until ptsArr.length()) {
                     val p = ptsArr.optJSONObject(k) ?: continue
+                    val q10 = p.optDouble("q10", Double.NaN)
+                    val q25 = p.optDouble("q25", Double.NaN)
+                    val q50 = p.optDouble("q50", Double.NaN)
+                    val q75 = p.optDouble("q75", Double.NaN)
+                    val q90 = p.optDouble("q90", Double.NaN)
                     pts.add(
                         ForecastPoint(
                             stepAhead = p.optInt("stepAhead", k + 1),
                             openTimeUtcMs = p.optLong("openTimeUtcMs", 0L),
-                            open = p.optDouble("open", 0.0),
-                            high = p.optDouble("high", 0.0),
-                            low = p.optDouble("low", 0.0),
-                            close = p.optDouble("close", 0.0),
-                            q10 = p.optDouble("q10", 0.0),
-                            q25 = p.optDouble("q25", 0.0),
-                            q50 = p.optDouble("q50", 0.0),
-                            q75 = p.optDouble("q75", 0.0),
-                            q90 = p.optDouble("q90", 0.0),
+                            open = p.optDouble("open", q50),
+                            high = p.optDouble("high", q75),
+                            low = p.optDouble("low", q25),
+                            close = p.optDouble("close", q50),
+                            q10 = q10,
+                            q25 = q25,
+                            q50 = q50,
+                            q75 = q75,
+                            q90 = q90,
                             pctChangeFromLast = p.optDouble("pctChangeFromLast", 0.0),
-                            volume = p.optDouble("volume", 0.0),
-                            rejectionWick = p.optBoolean("rejectionWick", false),
-                            wavePhase = p.optString("wavePhase", "IMPULSE")
+                            volume = 0.0,
+                            rejectionWick = false,
+                            wavePhase = "IMPULSE",
+                            upperBand = p.optDouble("upperBand", q90),
+                            lowerBand = p.optDouble("lowerBand", q10)
                         )
                     )
                 }
@@ -148,7 +168,7 @@ object ForecastWorkerClient {
                     modelId = o.optString("modelId"),
                     modelName = o.optString("modelName", o.optString("modelId")),
                     family = o.optString("family", "PYTHON_ML"),
-                    modelVersion = o.optString("modelVersion", "1.0.0"),
+                    modelVersion = o.optString("modelVersion", "2.0.0"),
                     executionRuntime = ExecutionRuntime.PYTHON_WORKER,
                     isApproximation = o.optBoolean("isApproximation", false),
                     isCalibratedInterval = o.optBoolean("isCalibratedInterval", true),
@@ -169,27 +189,39 @@ object ForecastWorkerClient {
         val out = ArrayList<ModelWalkForwardSummary>(arr.length())
         for (i in 0 until arr.length()) {
             val o = arr.optJSONObject(i) ?: continue
+            val wins = o.optInt("windows", 0)
             out.add(
                 ModelWalkForwardSummary(
                     modelId = o.optString("modelId"),
                     modelName = o.optString("modelName", o.optString("modelId")),
                     family = o.optString("family", "PYTHON_ML"),
-                    windows = o.optInt("windows", 0),
+                    experimentalOnly = o.optBoolean("experimentalOnly", false),
+                    windows = wins,
+                    evaluatedWindows = o.optInt("evaluatedWindows", wins),
+                    status = parseExecStatus(o.optString("status", "SUCCESS")),
+                    reason = o.optString("reason", ""),
                     mae = o.optDouble("mae", 0.0),
                     maePct = o.optDouble("maePct", 0.0),
                     rmse = o.optDouble("rmse", 0.0),
-                    directionalAccuracyPct = o.optDouble("directionalAccuracyPct", 0.0),
+                    rMae = o.optDouble("rMae", 1.0),
+                    mase = o.optDouble("mase", 1.0),
+                    wis = o.optDouble("wis", 0.0),
                     pinballLoss = o.optDouble("pinballLoss", 0.0),
                     coverage80Pct = o.optDouble("coverage80Pct", 0.0),
-                    crps = o.optDouble("crps", 0.0),
+                    coverage50Pct = o.optDouble("coverage50Pct", 0.0),
+                    avgIntervalWidthPct = o.optDouble("avgIntervalWidthPct", 0.0),
+                    directionalAccuracyPct = o.optDouble("directionalAccuracyPct", 0.0),
+                    skillVsNaivePct = o.optDouble("skillVsNaivePct", 0.0),
+                    dmStat = o.optDouble("dmStat", 0.0),
+                    dmPValue = o.optDouble("dmPValue", 1.0),
+                    bootPValue = o.optDouble("bootPValue", 1.0),
+                    nEff = o.optDouble("nEff", 0.0),
                     executionRuntime = ExecutionRuntime.PYTHON_WORKER,
                     isApproximation = o.optBoolean("isApproximation", false),
                     isCalibratedInterval = o.optBoolean("isCalibratedInterval", true),
-                    status = parseExecStatus(o.optString("status", "SUCCESS")),
-                    reason = o.optString("reason", ""),
+                    crps = o.optDouble("crps", 0.0),
                     safeMapePct = if (o.isNull("safeMapePct")) null else o.optDouble("safeMapePct"),
-                    safeMapeValidCount = o.optInt("safeMapeValidCount", 0),
-                    avgIntervalWidthPct = if (o.isNull("avgIntervalWidthPct")) null else o.optDouble("avgIntervalWidthPct")
+                    safeMapeValidCount = o.optInt("safeMapeValidCount", 0)
                 )
             )
         }

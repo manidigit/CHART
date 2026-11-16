@@ -1636,7 +1636,7 @@ export async function runForecastOnServer({
         symbol: symbolCode,
         timeframe,
         horizon_bars: horizonBars,
-        candles: candles.slice(-180),
+        candles: candles.slice(-2500),
         client_forecast: clientForecast,
         worker_url: workerUrl || '',
       }),

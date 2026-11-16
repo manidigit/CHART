@@ -7,7 +7,7 @@ import kotlin.math.exp
 import kotlin.math.floor
 import kotlin.math.max
 import kotlin.math.min
-import kotlin.math.round
+import kotlin.math.roundToInt
 import kotlin.math.sqrt
 
 data class OosSelectionDecision(
@@ -15,6 +15,16 @@ data class OosSelectionDecision(
     val selectedModelId: String,
     val winnerModelId: String?,
     val reason: String
+)
+
+data class DisjointNestedSplits(
+    val feasible: Boolean,
+    val statisticallyFull: Boolean,
+    val req: HorizonRequirements,
+    val trainEndIdx: Int,
+    val valOrigins: List<Int>,
+    val calOrigins: List<Int>,
+    val outerOrigins: List<Int>
 )
 
 object WalkForwardEvaluator {
@@ -27,39 +37,36 @@ object WalkForwardEvaluator {
         val q90: Double
     )
 
+    private data class WindowScore(
+        val maeMean: Double,
+        val mseMean: Double,
+        val wisMean: Double,
+        val pinballMean: Double,
+        val in80Frac: Double,
+        val in50Frac: Double,
+        val widthPctMean: Double,
+        val dirOk: Boolean
+    )
+
     private class MetricAccumulator(
         val id: String,
         val name: String,
         val family: String,
-        val evalHorizon: Int,
-        val isApproximation: Boolean = false,
-        val isCalibratedInterval: Boolean = true,
-        val executionRuntime: ExecutionRuntime = ExecutionRuntime.NATIVE_KOTLIN
+        val experimentalOnly: Boolean = false
     ) {
-        var absErrSum = 0.0
-        var sqErrSum = 0.0
+        var maeSum = 0.0
+        var mseSum = 0.0
+        var wisSum = 0.0
         var pinballSum = 0.0
-        var crpsSum = 0.0
-        var safeMapeSum = 0.0
-        var safeMapeCount = 0
+        var in80Sum = 0.0
+        var in50Sum = 0.0
         var widthPctSum = 0.0
-        var dirCorrect = 0
-        var inBand80 = 0
-        var pointCount = 0
-        var windowCount = 0
-        var skippedCount = 0
+        var dirCount = 0
+        var windows = 0
         var failedCount = 0
-        var lastSkipReason = ""
         var lastFailReason = ""
-        val hAbsErr = DoubleArray(evalHorizon)
-        val hSqErr = DoubleArray(evalHorizon)
-        val hInBand80 = IntArray(evalHorizon)
-        val hCount = IntArray(evalHorizon)
-    }
-
-    private fun pinball(actual: Double, qPred: Double, tau: Double): Double {
-        val err = actual - qPred
-        return max(tau * err, (tau - 1.0) * err)
+        val wisSeries = ArrayList<Double>()
+        val errSeries = ArrayList<Double>()
     }
 
     internal fun buildTrajectory(
@@ -97,11 +104,11 @@ object WalkForwardEvaluator {
                 cumVar += sg * sg
                 val cumSig = sqrt(cumVar)
                 val mq = ForecastCalendarHelper.enforceMonotonicQuantiles(
-                    lastClose * exp(cumRet - 1.28155 * cumSig),
-                    lastClose * exp(cumRet - 0.67449 * cumSig),
+                    lastClose * exp(cumRet - 1.28155157 * cumSig),
+                    lastClose * exp(cumRet - 0.67448975 * cumSig),
                     lastClose * exp(cumRet),
-                    lastClose * exp(cumRet + 0.67449 * cumSig),
-                    lastClose * exp(cumRet + 1.28155 * cumSig),
+                    lastClose * exp(cumRet + 0.67448975 * cumSig),
+                    lastClose * exp(cumRet + 1.28155157 * cumSig),
                     lastClose * 0.01
                 )
                 out.add(QuantileStep(mq[0], mq[1], mq[2], mq[3], mq[4]))
@@ -110,309 +117,546 @@ object WalkForwardEvaluator {
         return out
     }
 
+    /**
+     * Exact closed-form 4-way disjoint nested walk-forward splits:
+     *   Train [0..trainEndIdx] -> Gap(H+E) -> Val -> Gap(H+E) -> Cal -> Gap(H+E) -> Outer (stride=H)
+     */
+    fun buildDisjointNestedSplits(totalBars: Int, horizonBars: Int): DisjointNestedSplits {
+        val h = ForecastCalendarHelper.clampHorizonBars(horizonBars)
+        val req = ForecastCalendarHelper.computeHorizonRequirements(h)
+        val n = totalBars
+        val g = req.gapTotal
+
+        if (n < req.nOpMin) {
+            return DisjointNestedSplits(false, false, req, -1, emptyList(), emptyList(), emptyList())
+        }
+
+        var kOuter = 30
+        var kVal = 10
+        var mCal = 20
+
+        if (n < req.nStatMin) {
+            kVal = 5
+            mCal = 10
+            val prefixOp = req.lTrain + g + ((kVal - 1) * req.sVal + 1) + g + ((mCal - 1) * req.sCal + 1) + 1
+            val availOuterBars = n - prefixOp - g
+            kOuter = max(1, min(29, floor(availOuterBars.toDouble() / h.toDouble()).toInt()))
+        }
+
+        val lastOuter = n - 1 - h
+        val outerOrigins = ArrayList<Int>(kOuter)
+        for (k in (kOuter - 1) downTo 0) {
+            outerOrigins.add(lastOuter - k * h)
+        }
+        val firstOuter = outerOrigins.first()
+
+        val lastCal = firstOuter - 1 - g
+        val calOrigins = ArrayList<Int>(mCal)
+        for (m in (mCal - 1) downTo 0) {
+            calOrigins.add(lastCal - m * req.sCal)
+        }
+        val firstCal = calOrigins.first()
+
+        val lastVal = firstCal - 1 - g
+        val valOrigins = ArrayList<Int>(kVal)
+        for (v in (kVal - 1) downTo 0) {
+            valOrigins.add(lastVal - v * req.sVal)
+        }
+        val firstVal = valOrigins.first()
+
+        val trainEndIdx = firstVal - 1 - g
+        val feasible = trainEndIdx + 1 >= req.lTrain && valOrigins.size >= 5 && calOrigins.size >= 10 && outerOrigins.isNotEmpty()
+        val statFull = n >= req.nStatMin && outerOrigins.size >= 30 && calOrigins.size >= 20
+
+        return DisjointNestedSplits(
+            feasible = feasible,
+            statisticallyFull = statFull,
+            req = req,
+            trainEndIdx = trainEndIdx,
+            valOrigins = valOrigins,
+            calOrigins = calOrigins,
+            outerOrigins = outerOrigins
+        )
+    }
+
+    private fun buildNaiveLogNormalTraj(anchorClose: Double, trainLogReturns: DoubleArray, horizon: Int): List<QuantileStep> {
+        val sigmaRw = ForecastStatisticalTests.computeNaiveSigmaRw(trainLogReturns)
+        return List(horizon) { step ->
+            val q = ForecastStatisticalTests.buildZeroDriftLogNormalNaiveQuantiles(anchorClose, sigmaRw, step + 1)
+            QuantileStep(q.q10, q.q25, q.q50, q.q75, q.q90)
+        }
+    }
+
+    private fun applyConformalToStep(
+        q: QuantileStep,
+        anchorClose: Double,
+        ewmaSigma: Double,
+        stepH: Int,
+        conformal: ForecastStatisticalTests.ConformalCalibrationState?
+    ): QuantileStep {
+        val qt = ForecastStatisticalTests.QuantileTuple(q.q10, q.q25, q.q50, q.q75, q.q90)
+        val adj = ForecastStatisticalTests.applyConformalAdjustmentToQuantiles(qt, anchorClose, ewmaSigma, stepH, conformal, anchorClose * 0.01)
+        return QuantileStep(adj.q10, adj.q25, adj.q50, adj.q75, adj.q90)
+    }
+
+    private fun scoreWindow(clean: List<CleanOhlcBar>, originIdx: Int, traj: List<QuantileStep>, horizon: Int): WindowScore {
+        var maeSum = 0.0
+        var sqErrSum = 0.0
+        var wisSum = 0.0
+        var pinballSum = 0.0
+        var in80 = 0
+        var in50 = 0
+        var widthPctSum = 0.0
+        val baseClose = clean[originIdx].close
+        for (h in 0 until horizon) {
+            val actual = clean[originIdx + 1 + h].close
+            val q = traj[h]
+            val err = abs(actual - q.q50)
+            maeSum += err
+            sqErrSum += err * err
+            val qt = ForecastStatisticalTests.QuantileTuple(q.q10, q.q25, q.q50, q.q75, q.q90)
+            wisSum += ForecastStatisticalTests.computeWis5Q(actual, qt)
+            val pb = (ForecastStatisticalTests.pinballLoss(actual, q.q10, 0.1) +
+                ForecastStatisticalTests.pinballLoss(actual, q.q50, 0.5) +
+                ForecastStatisticalTests.pinballLoss(actual, q.q90, 0.9)) / 3.0
+            pinballSum += pb
+            if (actual >= q.q10 && actual <= q.q90) in80++
+            if (actual >= q.q25 && actual <= q.q75) in50++
+            widthPctSum += max(1e-8, q.q90 - q.q10) / max(1e-8, actual)
+        }
+        val finalAct = clean[originIdx + horizon].close
+        val finalPred = traj[horizon - 1].q50
+        val dirOk = (finalAct >= baseClose && finalPred >= baseClose) || (finalAct < baseClose && finalPred < baseClose)
+        val hD = horizon.toDouble()
+        return WindowScore(
+            maeMean = maeSum / hD,
+            mseMean = sqErrSum / hD,
+            wisMean = wisSum / hD,
+            pinballMean = pinballSum / hD,
+            in80Frac = in80.toDouble() / hD,
+            in50Frac = in50.toDouble() / hD,
+            widthPctMean = widthPctSum / hD,
+            dirOk = dirOk
+        )
+    }
+
     internal fun evaluate(
         candles: List<CandleBar>,
         registry: ForecastModelRegistry,
-        minTrainBars: Int = 30,
-        evalHorizon: Int = 5,
-        maxWindows: Int = 10,
-        smcEvaluator: ((List<CleanOhlcBar>, Int) -> List<QuantileStep>?)? = null
+        horizonBars: Int = 30,
+        excludeExperimental: Boolean = true,
+        allowExperimentalInEnsemble: Boolean = false,
+        skipBootstrap: Boolean = false,
+        bootstrapB: Int = 1000
     ): WalkForwardReport {
         val clean = candles.mapNotNull { c ->
             val o = c.open.toDouble()
             val h = c.high.toDouble()
             val l = c.low.toDouble()
             val cl = c.close.toDouble()
-            if (o.isFinite() && cl.isFinite() && o > 0.0 && cl > 0.0) {
-                CleanOhlcBar(o, max(h, max(o, cl)), max(1e-8, min(l, min(o, cl))), cl, max(0.0, c.volume.toDouble()), c.openTimeUtcMillis)
+            if (o.isFinite() && h.isFinite() && l.isFinite() && cl.isFinite() && cl > 0.0 && h >= l) {
+                CleanOhlcBar(o, h, l, cl, max(0.0, c.volume.toDouble()), c.openTimeUtcMillis)
             } else null
         }
+        return evaluateClean(
+            clean = clean,
+            registry = registry,
+            horizonBars = horizonBars,
+            excludeExperimental = excludeExperimental,
+            allowExperimentalInEnsemble = allowExperimentalInEnsemble,
+            skipBootstrap = skipBootstrap,
+            bootstrapB = bootstrapB
+        )
+    }
 
-        val effMinTrain = max(24, minTrainBars)
-        val effEvalH = evalHorizon.coerceIn(3, 12)
-        val effMaxW = maxWindows.coerceIn(3, 16)
+    internal fun evaluateClean(
+        clean: List<CleanOhlcBar>,
+        registry: ForecastModelRegistry,
+        horizonBars: Int = 30,
+        excludeExperimental: Boolean = true,
+        allowExperimentalInEnsemble: Boolean = false,
+        skipBootstrap: Boolean = false,
+        bootstrapB: Int = 1000
+    ): WalkForwardReport {
+        val horizon = ForecastCalendarHelper.clampHorizonBars(horizonBars)
+        val split = buildDisjointNestedSplits(clean.size, horizon)
         val active = registry.getEnabled()
 
-        if (clean.size < effMinTrain + effEvalH + 2 || active.isEmpty()) {
-            val status = if (clean.size >= 24) ForecastStatus.PROVISIONAL else ForecastStatus.DATA_NOT_READY
-            val reason = if (clean.size < effMinTrain + effEvalH + 2) {
-                "Need >= ${effMinTrain + effEvalH + 2} bars for walk-forward audit (have ${clean.size})"
+        if (!split.feasible || active.isEmpty()) {
+            val status = if (clean.size >= split.req.nOpMin) ForecastStatus.INSUFFICIENT_EVIDENCE else ForecastStatus.DATA_NOT_READY
+            val reason = if (!split.feasible) {
+                "Need >= ${split.req.nOpMin} bars for nested split at H=$horizon (stat min ${split.req.nStatMin}, have ${clean.size})"
             } else {
                 "No active forecast plugins enabled"
             }
-            return WalkForwardReport(0, effEvalH, status, false, reason, null, null, emptyList(), 0.0)
+            return WalkForwardReport(
+                evaluatedWindows = 0,
+                evalHorizon = horizon,
+                outerStrideBars = horizon,
+                acceptancePassed = false,
+                forecastStatus = status,
+                acceptanceReason = reason,
+                ensembleMetrics = null,
+                naiveMetrics = null,
+                modelBenchmarks = emptyList(),
+                conformalCalibration = ForecastStatisticalTests.fitVolatilityNormalizedConformal(DoubleArray(0), 0.20, 0.92),
+                splits = mapOf("trainBars" to 0, "valWindows" to 0, "calWindows" to 0, "outerWindows" to 0)
+            )
         }
 
-        val availableEnd = clean.size - effEvalH
-        val stride = max(1, floor((availableEnd - effMinTrain).toDouble() / effMaxW).toInt())
+        // MASE denominator strictly from Train[0..trainEndIdx]
+        var inSampleDiffSum = 0.0
+        for (i in 1..split.trainEndIdx) {
+            inSampleDiffSum += abs(clean[i].close - clean[i - 1].close)
+        }
+        val maseDenom = max(1e-9, inSampleDiffSum / max(1, split.trainEndIdx).toDouble())
 
-        val accs = LinkedHashMap<String, MetricAccumulator>()
-        fun accFor(
-            id: String,
-            name: String,
-            family: String,
-            isApprox: Boolean = false,
-            isCalib: Boolean = true
-        ) = accs.getOrPut(id) {
-            MetricAccumulator(id, name, family, effEvalH, isApprox, isCalib, ExecutionRuntime.NATIVE_KOTLIN)
+        val valModels = active.filter { (p, _, _) ->
+            !(excludeExperimental && (p.experimentalOnly || p.isApproximation))
         }
 
-        val naiveModel = NaivePersistenceModel()
-        accFor("ensemble", "Calibrated Ensemble", "ENSEMBLE")
-        accFor(naiveModel.id, naiveModel.name, naiveModel.family)
-        if (smcEvaluator != null) {
-            accFor("smc_kmedoids", "SMC K-Medoids Analogs", "PATTERN_SMC")
-        }
-        for ((p, _, _) in active) {
-            accFor(p.id, p.name, p.family, p.isApproximation, p.isCalibratedInterval)
-        }
+        // Stage 2: Validation only (model selection & weight freezing)
+        val valWisSum = HashMap<String, Double>()
+        val valCount = HashMap<String, Int>()
+        var naiveValWisSum = 0.0
 
-        var windowsRun = 0
-        var origin = effMinTrain
+        for (origin in split.valOrigins) {
+            val slice = clean.subList(0, origin + 1)
+            val feats = ForecastFeatureExtractor.extractClean(if (slice.size > 260) slice.takeLast(260) else slice) ?: continue
+            val naiveTraj = buildNaiveLogNormalTraj(feats.lastClose, feats.logReturns, horizon)
+            val naiveWin = scoreWindow(clean, origin, naiveTraj, horizon)
+            naiveValWisSum += naiveWin.wisMean
 
-        var wfTouch = 0
-        var wfPen = 0
-        var wfReclaim = 0
-        var wfBreakout = 0
-        var wfReachFirst = 0
-        var wfAmbig = 0
-        var wfCensored = 0
-
-        while (origin <= availableEnd && windowsRun < effMaxW) {
-            val trainStart = max(0, origin - 180)
-            val trainClean = clean.subList(trainStart, origin)
-            val feats = ForecastFeatureExtractor.extractClean(trainClean)
-            if (feats != null) {
-                windowsRun++
-                val baseClose = feats.lastClose
-                val naiveOut = naiveModel.predict(feats, effEvalH, emptyMap())
-                val naiveTraj = buildTrajectory(baseClose, naiveOut.meanReturns, naiveOut.sigmas)
-                recordErrors(accFor(naiveModel.id, naiveModel.name, naiveModel.family), clean, origin, baseClose, naiveTraj, effEvalH)
-
-                if (smcEvaluator != null) {
-                    val smcAcc = accFor("smc_kmedoids", "SMC K-Medoids Analogs", "PATTERN_SMC")
-                    try {
-                        val smcTraj = smcEvaluator(trainClean, effEvalH)
-                        if (smcTraj != null && smcTraj.size >= effEvalH) {
-                            recordErrors(smcAcc, clean, origin, baseClose, smcTraj, effEvalH)
-                        } else {
-                            smcAcc.skippedCount++
-                            smcAcc.lastSkipReason = "Insufficient analog bars in window"
-                        }
-                    } catch (t: Throwable) {
-                        smcAcc.failedCount++
-                        smcAcc.lastFailReason = t.message ?: "SMC window failed"
+            for ((plugin, _, params) in valModels) {
+                if (plugin.id == "naive_persistence") continue
+                val pred = try {
+                    plugin.predict(feats, horizon, params)
+                } catch (_: Throwable) {
+                    null
+                }
+                if (pred != null && pred.status == ModelExecutionStatus.SUCCESS && pred.meanReturns.size >= horizon) {
+                    val traj = buildTrajectory(feats.lastClose, pred.meanReturns, pred.sigmas, pred.directQuantiles, horizon)
+                    val finite = traj.all { it.q10.isFinite() && it.q50.isFinite() && it.q90.isFinite() }
+                    if (finite) {
+                        val w = scoreWindow(clean, origin, traj, horizon)
+                        valWisSum[plugin.id] = (valWisSum[plugin.id] ?: 0.0) + w.wisMean
+                        valCount[plugin.id] = (valCount[plugin.id] ?: 0) + 1
                     }
                 }
+            }
+        }
 
-                val ensMean = DoubleArray(effEvalH)
-                val ensVar = DoubleArray(effEvalH)
-                var validWeightSum = 0.0
-                val validPluginOutputs = ArrayList<Triple<Double, DoubleArray, DoubleArray>>()
+        val eta = 2.5
+        val avgNaiveValWis = max(1e-9, naiveValWisSum / max(1, split.valOrigins.size).toDouble())
+        val frozenWeights = LinkedHashMap<String, Double>()
+        var rawWeightSum = 0.0
 
-                for ((plugin, weight, params) in active) {
-                    val pAcc = accFor(plugin.id, plugin.name, plugin.family, plugin.isApproximation, plugin.isCalibratedInterval)
-                    val out = if (plugin.id == naiveModel.id) {
-                        naiveOut
-                    } else {
-                        try {
-                            plugin.predict(feats, effEvalH, params)
-                        } catch (t: Throwable) {
-                            PluginPrediction(
-                                modelId = plugin.id,
-                                meanReturns = DoubleArray(0),
-                                sigmas = DoubleArray(0),
-                                status = ModelExecutionStatus.FAILED,
-                                reason = t.message ?: "Model execution error",
-                                isApproximation = plugin.isApproximation,
-                                isCalibratedInterval = plugin.isCalibratedInterval
-                            )
-                        }
-                    }
+        for ((plugin, weight, _) in valModels) {
+            if (plugin.id == "naive_persistence") continue
+            val cnt = valCount[plugin.id] ?: 0
+            if (cnt == 0) continue
+            if ((plugin.experimentalOnly || plugin.isApproximation) && !allowExperimentalInEnsemble) continue
+            val avgWis = (valWisSum[plugin.id] ?: 0.0) / cnt.toDouble()
+            val ratio = avgWis / avgNaiveValWis
+            val w = if (ratio <= 1.05) exp(-eta * ratio) * max(0.05, weight) else 0.0
+            if (w > 0.0) {
+                frozenWeights[plugin.id] = w
+                rawWeightSum += w
+            }
+        }
+        if (rawWeightSum <= 0.0) {
+            for ((plugin, weight, _) in valModels) {
+                if (plugin.id == "naive_persistence") continue
+                if ((plugin.experimentalOnly || plugin.isApproximation) && !allowExperimentalInEnsemble) continue
+                val w = max(0.05, weight)
+                frozenWeights[plugin.id] = w
+                rawWeightSum += w
+            }
+        }
+        val safeW = max(1e-9, rawWeightSum)
+        frozenWeights.keys.forEach { id -> frozenWeights[id] = (frozenWeights[id] ?: 0.0) / safeW }
 
-                    val st = out.status
-                    val ok = st == ModelExecutionStatus.SUCCESS && out.meanReturns.size >= effEvalH
-                    if (!ok) {
-                        if (st == ModelExecutionStatus.SKIPPED_LOW_DATA) {
-                            pAcc.skippedCount++
-                            pAcc.lastSkipReason = out.reason.ifBlank { "Insufficient history in window" }
-                        } else {
-                            pAcc.failedCount++
-                            pAcc.lastFailReason = out.reason.ifBlank { "Model returned invalid horizon output" }
+        fun runEnsembleAtOrigin(feats: ExtractedForecastFeatures, includeZeroWeight: Boolean): Pair<List<QuantileStep>, Map<String, Pair<PluginPrediction?, List<QuantileStep>?>>> {
+            val ensMean = DoubleArray(horizon)
+            val ensVar = DoubleArray(horizon)
+            var wUsed = 0.0
+            val outputs = LinkedHashMap<String, Pair<PluginPrediction?, List<QuantileStep>?>>()
+
+            for ((plugin, _, params) in valModels) {
+                if (plugin.id == "naive_persistence") continue
+                val w = frozenWeights[plugin.id] ?: 0.0
+                if (!includeZeroWeight && w <= 0.0) continue
+                val pred = try {
+                    plugin.predict(feats, horizon, params)
+                } catch (t: Throwable) {
+                    PluginPrediction(
+                        modelId = plugin.id,
+                        meanReturns = DoubleArray(0),
+                        sigmas = DoubleArray(0),
+                        status = ModelExecutionStatus.FAILED,
+                        reason = t.message ?: "Model execution error",
+                        isApproximation = plugin.isApproximation,
+                        isCalibratedInterval = plugin.isCalibratedInterval,
+                        modelVersion = plugin.modelVersion
+                    )
+                }
+                if (pred != null && pred.status == ModelExecutionStatus.SUCCESS && pred.meanReturns.size >= horizon) {
+                    val traj = buildTrajectory(feats.lastClose, pred.meanReturns, pred.sigmas, pred.directQuantiles, horizon)
+                    if (traj.all { it.q10.isFinite() && it.q50.isFinite() && it.q90.isFinite() }) {
+                        outputs[plugin.id] = Pair(pred, traj)
+                        if (w > 0.0) {
+                            wUsed += w
+                            for (h in 0 until horizon) {
+                                ensMean[h] += w * pred.meanReturns.getOrElse(h) { 0.0 }
+                                val sg = max(1e-5, pred.sigmas.getOrElse(h) { feats.ewmaSigma })
+                                ensVar[h] += w * sg * sg
+                            }
                         }
                         continue
                     }
-
-                    validWeightSum += weight
-                    validPluginOutputs.add(Triple(weight, out.meanReturns, out.sigmas))
-                    if (plugin.id != naiveModel.id) {
-                        val traj = buildTrajectory(baseClose, out.meanReturns, out.sigmas, out.directQuantiles, effEvalH)
-                        recordErrors(pAcc, clean, origin, baseClose, traj, effEvalH)
-                    }
                 }
-
-                val safeWeightSum = if (validWeightSum > 0.0) validWeightSum else 1.0
-                for ((w, mArr, sArr) in validPluginOutputs) {
-                    val nw = w / safeWeightSum
-                    for (h in 0 until effEvalH) {
-                        ensMean[h] += nw * mArr[h]
-                        val sg = sArr.getOrElse(h) { feats.ewmaSigma }
-                        ensVar[h] += nw * (sg * sg)
-                    }
-                }
-
-                val ensSigmas = DoubleArray(effEvalH) { sqrt(max(1e-10, ensVar[it])) }
-                val ensTraj = buildTrajectory(baseClose, ensMean, ensSigmas)
-                recordErrors(accFor("ensemble", "Calibrated Ensemble", "ENSEMBLE"), clean, origin, baseClose, ensTraj, effEvalH)
-
-                val termPt = ensTraj.last()
-                val zoneHalf = max(feats.atr14 * 0.35, baseClose * 0.0008)
-                val evRes = ForecastV130Analyzer.simulatePathEventsOnWindow(
-                    candles = clean.subList(origin, origin + effEvalH),
-                    zoneLow = termPt.q75 - zoneHalf,
-                    zoneHigh = termPt.q75 + zoneHalf,
-                    targetPrice = termPt.q75,
-                    invalidationPrice = termPt.q25,
-                    penAtrMult = 0.20,
-                    reclaimBars = 3,
-                    breakoutCloses = 2,
-                    atr = feats.atr14
-                )
-                if (evRes.touched) wfTouch++
-                if (evRes.penetrated) wfPen++
-                if (evRes.reclaimed) wfReclaim++
-                if (evRes.confirmedBreakout) wfBreakout++
-                if (evRes.reachedTarget) wfReachFirst++
-                if (evRes.ambiguousBar) wfAmbig++
-                if (!evRes.reachedTarget && !evRes.reachedInvalidation) wfCensored++
+                outputs[plugin.id] = Pair(pred, null)
             }
-            origin += stride
+            if (wUsed > 0.0) {
+                for (h in 0 until horizon) {
+                    ensMean[h] /= wUsed
+                    ensVar[h] /= wUsed
+                }
+            } else {
+                val nSig = ForecastStatisticalTests.computeNaiveSigmaRw(feats.logReturns)
+                for (h in 0 until horizon) ensVar[h] = nSig * nSig
+            }
+            val ensSigmas = DoubleArray(horizon) { sqrt(max(1e-10, ensVar[it])) }
+            return Pair(buildTrajectory(feats.lastClose, ensMean, ensSigmas, null, horizon), outputs)
         }
 
-        val scalePrice = max(1e-6, clean.last().close)
-        fun toSummary(acc: MetricAccumulator): ModelWalkForwardSummary {
-            if (acc.windowCount == 0 || acc.pointCount == 0) {
-                val st = if (acc.failedCount > 0) ModelExecutionStatus.FAILED else ModelExecutionStatus.SKIPPED_LOW_DATA
-                val rsn = if (acc.failedCount > 0) {
-                    acc.lastFailReason.ifBlank { "Model failed on evaluation windows" }
-                } else {
-                    acc.lastSkipReason.ifBlank { "Skipped: minimum required bars not satisfied" }
-                }
-                return ModelWalkForwardSummary(
-                    modelId = acc.id,
-                    modelName = acc.name,
-                    family = acc.family,
-                    windows = 0,
-                    mae = 0.0,
-                    maePct = 0.0,
-                    rmse = 0.0,
-                    directionalAccuracyPct = 0.0,
-                    pinballLoss = 0.0,
-                    coverage80Pct = 0.0,
-                    crps = 0.0,
-                    executionRuntime = acc.executionRuntime,
-                    isApproximation = acc.isApproximation,
-                    isCalibratedInterval = acc.isCalibratedInterval,
-                    status = st,
-                    reason = rsn
-                )
+        // Stage 3: Conformal Calibration Only
+        val calScores = ArrayList<Double>(split.calOrigins.size)
+        for (origin in split.calOrigins) {
+            val slice = clean.subList(0, origin + 1)
+            val feats = ForecastFeatureExtractor.extractClean(if (slice.size > 260) slice.takeLast(260) else slice) ?: continue
+            val (ensTraj, _) = runEnsembleAtOrigin(feats, false)
+            var normSum = 0.0
+            for (h in 0 until horizon) {
+                val actualY = clean[origin + 1 + h].close
+                val q = ensTraj[h]
+                val rawMiss = max(max(q.q10 - actualY, actualY - q.q90), 0.0)
+                val denom = max(1e-8, feats.lastClose * feats.ewmaSigma * sqrt((h + 1).toDouble()))
+                normSum += rawMiss / denom
             }
+            calScores.add(normSum / horizon.toDouble())
+        }
+        val conformalCal = ForecastStatisticalTests.fitVolatilityNormalizedConformal(calScores.toDoubleArray(), 0.20, 0.92)
 
-            val n = max(1, acc.pointCount)
-            val w = max(1, acc.windowCount)
-            val mae = acc.absErrSum / n
-            val perH = (0 until acc.evalHorizon).mapNotNull { h ->
-                val hc = acc.hCount[h]
-                if (hc <= 0) null
-                else PerHorizonMetric(
-                    stepAhead = h + 1,
-                    mae = acc.hAbsErr[h] / hc,
-                    rmse = sqrt(acc.hSqErr[h] / hc),
-                    coverage80Pct = (acc.hInBand80[h].toDouble() / hc) * 100.0
-                )
+        // Stage 4: Frozen Outer Evaluation Only (stride = H)
+        val accs = LinkedHashMap<String, MetricAccumulator>()
+        fun accFor(id: String, name: String, family: String, expOnly: Boolean = false) =
+            accs.getOrPut(id) { MetricAccumulator(id, name, family, expOnly) }
+
+        val naivePlugin = NaivePersistenceModel()
+        accFor("ensemble", "Calibrated Ensemble (V2)", "ENSEMBLE", false)
+        accFor(naivePlugin.id, naivePlugin.name, naivePlugin.family, false)
+        for ((p, _, _) in valModels) {
+            accFor(p.id, p.name, p.family, p.experimentalOnly || p.isApproximation)
+        }
+
+        for (origin in split.outerOrigins) {
+            val slice = clean.subList(0, origin + 1)
+            val feats = ForecastFeatureExtractor.extractClean(if (slice.size > 260) slice.takeLast(260) else slice) ?: continue
+
+            val naiveTraj = buildNaiveLogNormalTraj(feats.lastClose, feats.logReturns, horizon)
+            val naiveWin = scoreWindow(clean, origin, naiveTraj, horizon)
+            recordAcc(accFor(naivePlugin.id, naivePlugin.name, naivePlugin.family), naiveWin, clean[origin + horizon].close - naiveTraj.last().q50)
+
+            val (ensTraj, outputs) = runEnsembleAtOrigin(feats, true)
+            val calEnsTraj = ensTraj.mapIndexed { idx, q -> applyConformalToStep(q, feats.lastClose, feats.ewmaSigma, idx + 1, conformalCal) }
+            val ensWin = scoreWindow(clean, origin, calEnsTraj, horizon)
+            recordAcc(accFor("ensemble", "Calibrated Ensemble (V2)", "ENSEMBLE"), ensWin, clean[origin + horizon].close - calEnsTraj.last().q50)
+
+            for ((p, _, _) in valModels) {
+                if (p.id == "naive_persistence") continue
+                val pair = outputs[p.id]
+                val traj = pair?.second
+                if (traj == null) {
+                    val pred = pair?.first
+                    if (pred != null && pred.status == ModelExecutionStatus.FAILED) {
+                        val a = accFor(p.id, p.name, p.family)
+                        a.failedCount++
+                        if (pred.reason.isNotBlank()) a.lastFailReason = pred.reason
+                    }
+                    continue
+                }
+                val calTraj = traj.mapIndexed { idx, q -> applyConformalToStep(q, feats.lastClose, feats.ewmaSigma, idx + 1, conformalCal) }
+                val w = scoreWindow(clean, origin, calTraj, horizon)
+                recordAcc(accFor(p.id, p.name, p.family), w, clean[origin + horizon].close - calTraj.last().q50)
             }
+        }
+
+        val lastPrice = max(1e-6, clean.last().close)
+        val naiveAcc = accs["naive_persistence"]!!
+        val naiveMae = max(1e-9, naiveAcc.maeSum / max(1, naiveAcc.windows).toDouble())
+        val naiveWis = max(1e-9, naiveAcc.wisSum / max(1, naiveAcc.windows).toDouble())
+
+        fun finalizeAcc(acc: MetricAccumulator): ModelWalkForwardSummary {
+            val k = acc.windows
+            val ok = k > 0
+            val mae = if (ok) acc.maeSum / k.toDouble() else 0.0
+            val rmse = if (ok) sqrt(acc.mseSum / k.toDouble()) else 0.0
+            val wis = if (ok) acc.wisSum / k.toDouble() else 0.0
+            val cov80 = if (ok) (acc.in80Sum / k.toDouble()) * 100.0 else 0.0
+            val cov50 = if (ok) (acc.in50Sum / k.toDouble()) * 100.0 else 0.0
+            val dSeries = if (ok && acc.id != "naive_persistence" && naiveAcc.wisSeries.size == k) {
+                DoubleArray(k) { i -> acc.wisSeries[i] - naiveAcc.wisSeries[i] }
+            } else DoubleArray(0)
+            val dm = if (dSeries.size >= 5) ForecastStatisticalTests.hlnModifiedDieboldMariano(dSeries, 1)
+            else ForecastStatisticalTests.DieboldMarianoResult(0.0, 1.0, 0.0, 0, 0.0)
+            val boot = if (dSeries.size >= 5 && !skipBootstrap) {
+                ForecastStatisticalTests.centeredStationaryBlockBootstrap(dSeries, bootstrapB, 4, 133742)
+            } else ForecastStatisticalTests.BootstrapResult(1.0, bootstrapB, 4)
+
+            val nEff = ForecastStatisticalTests.computeBartlettEffectiveSampleSize(acc.errSeries.toDoubleArray(), horizon)
             return ModelWalkForwardSummary(
                 modelId = acc.id,
                 modelName = acc.name,
                 family = acc.family,
-                windows = acc.windowCount,
+                experimentalOnly = acc.experimentalOnly,
+                windows = k,
+                evaluatedWindows = k,
+                status = when {
+                    ok -> ModelExecutionStatus.SUCCESS
+                    acc.failedCount > 0 -> ModelExecutionStatus.FAILED
+                    else -> ModelExecutionStatus.SKIPPED_LOW_DATA
+                },
+                reason = when {
+                    ok -> ""
+                    acc.failedCount > 0 -> acc.lastFailReason.ifBlank { "Model execution failed during OOS walk-forward" }
+                    else -> "No valid outer windows"
+                },
                 mae = mae,
-                maePct = (mae / scalePrice) * 100.0,
-                rmse = sqrt(acc.sqErrSum / n),
-                directionalAccuracyPct = (acc.dirCorrect.toDouble() / w) * 100.0,
-                pinballLoss = acc.pinballSum / n,
-                coverage80Pct = (acc.inBand80.toDouble() / n) * 100.0,
-                crps = acc.crpsSum / n,
-                executionRuntime = acc.executionRuntime,
-                isApproximation = acc.isApproximation,
-                isCalibratedInterval = acc.isCalibratedInterval,
-                status = ModelExecutionStatus.SUCCESS,
-                reason = "",
-                safeMapePct = if (acc.safeMapeCount > 0) (acc.safeMapeSum / acc.safeMapeCount) * 100.0 else null,
-                safeMapeValidCount = acc.safeMapeCount,
-                avgIntervalWidthPct = acc.widthPctSum / n,
-                perHorizonMetrics = perH
+                maePct = (mae / lastPrice) * 100.0,
+                rmse = rmse,
+                rMae = if (ok) mae / naiveMae else 1.0,
+                mase = if (ok) mae / maseDenom else 1.0,
+                wis = wis,
+                pinballLoss = if (ok) acc.pinballSum / k.toDouble() else 0.0,
+                coverage80Pct = cov80,
+                coverage50Pct = cov50,
+                avgIntervalWidthPct = if (ok) (acc.widthPctSum / k.toDouble()) * 100.0 else 0.0,
+                directionalAccuracyPct = if (ok) (acc.dirCount.toDouble() / k.toDouble()) * 100.0 else 0.0,
+                skillVsNaivePct = if (ok) ((naiveMae - mae) / naiveMae) * 100.0 else 0.0,
+                dmStat = (dm.stat * 10000.0).roundToInt() / 10000.0,
+                dmPValue = (dm.pValue * 100000.0).roundToInt() / 100000.0,
+                bootPValue = (boot.pValue * 100000.0).roundToInt() / 100000.0,
+                nEff = nEff
             )
         }
 
-        val ensAcc = accs.getValue("ensemble")
-        val ensSummary = toSummary(ensAcc)
-        val naiveSummary = toSummary(accs.getValue(naiveModel.id))
-        val modelBenchmarks = accs.entries.filter { it.key != "ensemble" }.map { toSummary(it.value) }
+        val ensembleMetrics = finalizeAcc(accs["ensemble"]!!)
+        val naiveMetrics = finalizeAcc(naiveAcc)
+        val modelBenchmarks = accs.entries.filter { it.key != "ensemble" }.map { finalizeAcc(it.value) }
 
-        val naiveMae = max(1e-9, naiveSummary.mae)
-        val impPct = ((naiveMae - ensSummary.mae) / naiveMae) * 100.0
-        val skillScore = (naiveMae - ensSummary.mae) / naiveMae
-        val overlapFactor = if (stride > 0) min(effEvalH.toDouble(), effEvalH.toDouble() / stride) else 1.0
-        val effectiveSampleSize = (round((ensAcc.pointCount / max(1.0, overlapFactor * 0.6)) * 10.0) / 10.0)
-        val ambiguousRatePct = if (windowsRun > 0) round((wfAmbig.toDouble() / windowsRun) * 1000.0) / 10.0 else 0.0
+        val eligibleCandidates = (listOf(ensembleMetrics) + modelBenchmarks).filter { m ->
+            m.modelId != "naive_persistence" && !m.experimentalOnly &&
+                m.status == ModelExecutionStatus.SUCCESS && m.windows >= 30
+        }
+        val passingCandidates = if (conformalCal.calibrationStatus == "CALIBRATED_NORMALIZED") {
+            eligibleCandidates.filter { m ->
+                m.nEff >= 25.0 && m.rMae < 1.0 && m.wis < naiveWis &&
+                    m.coverage80Pct in 72.0..88.0 && m.dmPValue <= 0.05 && m.bootPValue <= 0.10
+            }
+        } else emptyList()
 
-        val pathStats = if (windowsRun > 0) {
-            PathEventStats(
-                touchRatePct = round((wfTouch.toDouble() / windowsRun) * 1000.0) / 10.0,
-                penetrationRatePct = round((wfPen.toDouble() / windowsRun) * 1000.0) / 10.0,
-                reclaimRatePct = round((wfReclaim.toDouble() / windowsRun) * 1000.0) / 10.0,
-                breakoutRatePct = round((wfBreakout.toDouble() / windowsRun) * 1000.0) / 10.0,
-                reachBeforeInvalidationPct = round((wfReachFirst.toDouble() / windowsRun) * 1000.0) / 10.0,
-                ambiguousRatePct = ambiguousRatePct,
-                censoringRatePct = round((wfCensored.toDouble() / windowsRun) * 1000.0) / 10.0
-            )
-        } else null
+        val pool = if (passingCandidates.isNotEmpty()) passingCandidates else eligibleCandidates
+        val bestCandidate = pool.minWithOrNull(compareBy<ModelWalkForwardSummary> { it.wis }.thenBy { it.mae }) ?: ensembleMetrics
+        val evalRef = if (passingCandidates.isNotEmpty()) bestCandidate
+        else if (bestCandidate.wis < ensembleMetrics.wis) bestCandidate else ensembleMetrics
 
-        val beatsNaive = ensSummary.mae <= naiveSummary.mae * 1.015
-        val goodCov = ensSummary.coverage80Pct in 50.0..98.0
-        val passed = windowsRun >= 5 && beatsNaive && goodCov
+        val evaluatedWindows = evalRef.windows
+        val effectiveSampleSize = (evalRef.nEff * 100.0).roundToInt() / 100.0
+        val relativeMaeVsNaive = (evalRef.rMae * 10000.0).roundToInt() / 10000.0
+        val mase = (evalRef.mase * 10000.0).roundToInt() / 10000.0
+        val wisModel = (evalRef.wis * 1000000.0).roundToInt() / 1000000.0
+        val wisNaiveDist = (naiveWis * 1000000.0).roundToInt() / 1000000.0
+        val cov80Pct = (evalRef.coverage80Pct * 100.0).roundToInt() / 100.0
+        val cov50Pct = (evalRef.coverage50Pct * 100.0).roundToInt() / 100.0
+        val dmStat = evalRef.dmStat
+        val dmPValue = evalRef.dmPValue
+        val bootPValue = evalRef.bootPValue
 
-        val status = if (passed) ForecastStatus.VALID else ForecastStatus.PROVISIONAL
-        val reason = when {
-            windowsRun < 5 -> "Walk-forward sample below minimum 5 windows; labeled Provisional."
-            passed -> "Ensemble passes acceptance gate across $windowsRun purged windows (${if (impPct >= 0) "+" else ""}${String.format(Locale.US, "%.1f", impPct)}% vs Naive MAE, ${String.format(Locale.US, "%.0f", ensSummary.coverage80Pct)}% coverage, N_eff=$effectiveSampleSize)."
-            !beatsNaive -> "Ensemble MAE did not beat Naive Persistence; status set to Provisional."
-            else -> "80% coverage (${String.format(Locale.US, "%.0f", ensSummary.coverage80Pct)}%) outside calibrated [50%, 98%] band; Provisional."
+        val enoughSamples = evaluatedWindows >= 30 && effectiveSampleSize >= 25.0 &&
+            conformalCal.calibrationStatus == "CALIBRATED_NORMALIZED"
+        val rMaePassed = relativeMaeVsNaive < 1.0
+        val wisPassed = wisModel < wisNaiveDist
+        val covPassed = cov80Pct in 72.0..88.0
+        val dmPassed = dmPValue <= 0.05
+        val bootPassed = bootPValue <= 0.10
+        val acceptancePassed = enoughSamples && rMaePassed && wisPassed && covPassed && dmPassed && bootPassed
+
+        val forecastStatus: ForecastStatus
+        val acceptanceReason: String
+        if (!enoughSamples) {
+            forecastStatus = ForecastStatus.INSUFFICIENT_EVIDENCE
+            acceptanceReason = "INSUFFICIENT_EVIDENCE: K_outer=$evaluatedWindows (need>=30), N_eff=$effectiveSampleSize (need>=25.0), Conformal=${conformalCal.calibrationStatus}"
+        } else if (!acceptancePassed) {
+            forecastStatus = ForecastStatus.NO_EDGE
+            val fails = ArrayList<String>()
+            if (!rMaePassed) fails.add("rMAE=${String.format(Locale.US, "%.4f", relativeMaeVsNaive)} >= 1.0")
+            if (!wisPassed) fails.add("WIS=${String.format(Locale.US, "%.4f", wisModel)} >= Naive=${String.format(Locale.US, "%.4f", wisNaiveDist)}")
+            if (!covPassed) fails.add("Cov80=${String.format(Locale.US, "%.1f", cov80Pct)}% outside [72%, 88%]")
+            if (!dmPassed) fails.add("HLN-DM p=${String.format(Locale.US, "%.4f", dmPValue)} > 0.05")
+            if (!bootPassed) fails.add("Bootstrap p=${String.format(Locale.US, "%.4f", bootPValue)} > 0.10")
+            acceptanceReason = "NO_EDGE on Outer OOS ($evaluatedWindows windows): ${fails.joinToString("; ")}"
+        } else {
+            forecastStatus = ForecastStatus.VALID
+            acceptanceReason = "All V2.1 outer OOS statistical, WIS, coverage ([72%,88%]), and HLN-DM + Bootstrap gates passed (model=${evalRef.modelId}, p_DM=$dmPValue, p_boot=$bootPValue)"
         }
 
-        val initialReport = WalkForwardReport(
-            evaluatedWindows = windowsRun,
-            evalHorizon = effEvalH,
-            forecastStatus = status,
-            acceptancePassed = passed,
-            acceptanceReason = reason,
-            ensembleMetrics = ensSummary,
-            naiveMetrics = naiveSummary,
-            modelBenchmarks = modelBenchmarks,
-            maeImprovementVsNaivePct = impPct,
-            skillScoreVsNaive = round(skillScore * 10000.0) / 10000.0,
+        return WalkForwardReport(
+            evaluatedWindows = evaluatedWindows,
+            evalHorizon = horizon,
+            outerStrideBars = horizon,
             effectiveSampleSize = effectiveSampleSize,
-            ambiguousOutcomeCount = wfAmbig,
-            ambiguousRatePct = ambiguousRatePct,
-            pathEventStats = pathStats
+            relativeMaeVsNaive = relativeMaeVsNaive,
+            mase = mase,
+            wisModel = wisModel,
+            wisNaiveDistributional = wisNaiveDist,
+            coverage80Pct = cov80Pct,
+            coverage50Pct = cov50Pct,
+            dieboldMarianoStat = dmStat,
+            dieboldMarianoPValue = dmPValue,
+            sensitivityBootstrapPValue = bootPValue,
+            acceptancePassed = acceptancePassed,
+            forecastStatus = forecastStatus,
+            acceptanceReason = acceptanceReason,
+            winningModelId = if (acceptancePassed) evalRef.modelId else "naive_persistence",
+            ensembleMetrics = ensembleMetrics,
+            naiveMetrics = naiveMetrics,
+            modelBenchmarks = modelBenchmarks,
+            maeImprovementVsNaivePct = ((1.0 - relativeMaeVsNaive) * 10000.0).roundToInt() / 100.0,
+            skillScoreVsNaive = ((1.0 - wisModel / max(1e-9, wisNaiveDist)) * 10000.0).roundToInt() / 10000.0,
+            conformalCalibration = conformalCal,
+            frozenWeights = frozenWeights,
+            splits = mapOf(
+                "trainBars" to (split.trainEndIdx + 1),
+                "valWindows" to split.valOrigins.size,
+                "calWindows" to split.calOrigins.size,
+                "outerWindows" to split.outerOrigins.size
+            )
         )
-        val decision = selectOosChartWinner(initialReport, emptyList(), "AUTO")
-        return initialReport.copy(
-            winnerModelId = decision.winnerModelId,
-            selectionMode = decision.selectionMode,
-            selectionReason = decision.reason
-        )
+    }
+
+    private fun recordAcc(acc: MetricAccumulator, w: WindowScore, err: Double) {
+        acc.maeSum += w.maeMean
+        acc.mseSum += w.mseMean
+        acc.wisSum += w.wisMean
+        acc.pinballSum += w.pinballMean
+        acc.in80Sum += w.in80Frac
+        acc.in50Sum += w.in50Frac
+        acc.widthPctSum += w.widthPctMean
+        if (w.dirOk) acc.dirCount++
+        acc.windows++
+        acc.wisSeries.add(w.wisMean)
+        acc.errSeries.add(err)
     }
 
     fun selectOosChartWinner(
@@ -421,120 +665,61 @@ object WalkForwardEvaluator {
         requestedModelId: String = "AUTO"
     ): OosSelectionDecision {
         val req = requestedModelId.trim()
-        val hasTrajs = modelTrajectories.isNotEmpty()
-        fun trajAvailable(id: String): Boolean {
-            if (!hasTrajs) return true
-            val t = modelTrajectories.firstOrNull { it.modelId == id }
-            return t != null && t.status == ModelExecutionStatus.SUCCESS && t.points.isNotEmpty()
-        }
+        val successById = modelTrajectories.filter {
+            it.status == ModelExecutionStatus.SUCCESS && it.points.isNotEmpty()
+        }.associateBy { it.modelId }
 
         if (req.isNotEmpty() && !req.equals("AUTO", ignoreCase = true)) {
-            val found = modelTrajectories.firstOrNull { it.modelId == req }
-            if (found != null && found.status == ModelExecutionStatus.SUCCESS && found.points.isNotEmpty()) {
+            val manual = successById[req]
+            if (manual != null) {
                 return OosSelectionDecision(
                     selectionMode = SelectionMode.MANUAL_OVERRIDE,
-                    selectedModelId = found.modelId,
-                    winnerModelId = found.modelId,
-                    reason = "User manually selected model '${found.modelName}' (${found.executionRuntime.name})."
+                    selectedModelId = manual.modelId,
+                    winnerModelId = manual.modelId,
+                    reason = "Manual chart model selection: ${manual.modelName}"
                 )
             }
-            if (found != null) {
-                val fallbackId = if (trajAvailable("smc_kmedoids")) "smc_kmedoids" else "naive_persistence"
-                return OosSelectionDecision(
-                    selectionMode = SelectionMode.NO_CLEAR_WINNER_BASELINE,
-                    selectedModelId = fallbackId,
-                    winnerModelId = null,
-                    reason = "Requested model '${found.modelName}' is ${found.status.name} (${found.reason}); showing '$fallbackId'."
-                )
-            }
-        }
-
-        if (walkForward == null || walkForward.evaluatedWindows < 5 || walkForward.naiveMetrics == null) {
-            val fallbackId = if (trajAvailable("smc_kmedoids")) "smc_kmedoids" else "naive_persistence"
             return OosSelectionDecision(
-                selectionMode = SelectionMode.SMC_STRUCTURAL_DEFAULT,
-                selectedModelId = fallbackId,
+                selectionMode = SelectionMode.NO_CLEAR_WINNER_BASELINE,
+                selectedModelId = if (successById.containsKey("naive_persistence")) "naive_persistence" else (modelTrajectories.firstOrNull()?.modelId ?: "naive_persistence"),
                 winnerModelId = null,
-                reason = "Fewer than 5 evaluated walk-forward windows; displaying '$fallbackId' without claiming an OOS statistical winner."
+                reason = "Requested model $req unavailable; displaying zero-drift baseline."
             )
         }
 
-        val naiveMae = max(1e-9, walkForward.naiveMetrics.mae)
-        val naiveRmse = max(1e-9, walkForward.naiveMetrics.rmse)
-        val allCandidates = buildList {
-            walkForward.ensembleMetrics?.let { add(it) }
-            addAll(walkForward.modelBenchmarks)
-        }.filter { cand ->
-            cand.modelId != "naive_persistence" &&
-                cand.status == ModelExecutionStatus.SUCCESS &&
-                cand.windows >= 5 &&
-                trajAvailable(cand.modelId)
+        if (walkForward == null || walkForward.evaluatedWindows < 30 || walkForward.effectiveSampleSize < 25.0) {
+            return OosSelectionDecision(
+                selectionMode = SelectionMode.INSUFFICIENT_EVIDENCE_BASELINE,
+                selectedModelId = if (successById.containsKey("naive_persistence")) "naive_persistence" else "ensemble",
+                winnerModelId = null,
+                reason = "Insufficient non-overlapping OOS evidence (K_outer=${walkForward?.evaluatedWindows ?: 0}/30, N_eff=${walkForward?.effectiveSampleSize ?: 0.0}/25); showing baseline."
+            )
         }
 
-        // Strict OOS dominance gate: must beat Naive Persistence by >= 1.5% on both MAE and RMSE with calibrated coverage [40%, 98%]
-        val qualified = allCandidates.filter { cand ->
-            val maeGain = (naiveMae - cand.mae) / naiveMae
-            val rmseGain = (naiveRmse - cand.rmse) / naiveRmse
-            val covOk = !cand.isCalibratedInterval || (cand.coverage80Pct in 40.0..98.0)
-            maeGain >= 0.015 && rmseGain >= 0.015 && covOk
-        }.sortedWith(compareBy<ModelWalkForwardSummary> { it.rmse }.thenBy { it.mae })
+        val naiveWis = max(1e-9, walkForward.wisNaiveDistributional)
+        val candidates = (listOfNotNull(walkForward.ensembleMetrics) + walkForward.modelBenchmarks).filter { m ->
+            m.modelId != "naive_persistence" && !m.experimentalOnly &&
+                m.status == ModelExecutionStatus.SUCCESS && m.windows >= 30 &&
+                m.nEff >= 25.0 && m.rMae < 1.0 && m.wis < naiveWis &&
+                m.coverage80Pct in 72.0..88.0 && m.dmPValue <= 0.05 && m.bootPValue <= 0.10 &&
+                successById.containsKey(m.modelId)
+        }.sortedWith(compareBy<ModelWalkForwardSummary> { it.wis }.thenBy { it.mae })
 
-        if (qualified.isNotEmpty()) {
-            val best = qualified.first()
-            val gainPct = ((naiveMae - best.mae) / naiveMae) * 100.0
-            val approxNote = if (best.isApproximation) " [Approx]" else ""
+        if (candidates.isNotEmpty()) {
+            val win = candidates.first()
             return OosSelectionDecision(
                 selectionMode = SelectionMode.AUTO_OOS_BEST,
-                selectedModelId = best.modelId,
-                winnerModelId = best.modelId,
-                reason = "OOS Winner Gate: '${best.modelName}'$approxNote beat Naive baseline by +${String.format(Locale.US, "%.1f", gainPct)}% MAE across ${walkForward.evaluatedWindows} windows."
+                selectedModelId = win.modelId,
+                winnerModelId = win.modelId,
+                reason = "OOS winner ${win.modelName} passed 6-gate V2.1 check (rMAE=${String.format(Locale.US, "%.3f", win.rMae)}, WIS=${String.format(Locale.US, "%.4f", win.wis)} < ${String.format(Locale.US, "%.4f", naiveWis)}, p_DM=${win.dmPValue}, Cov80=${String.format(Locale.US, "%.1f", win.coverage80Pct)}%)."
             )
         }
 
-        val baselineId = if (trajAvailable("naive_persistence")) "naive_persistence" else "smc_kmedoids"
         return OosSelectionDecision(
             selectionMode = SelectionMode.NO_CLEAR_WINNER_BASELINE,
-            selectedModelId = baselineId,
+            selectedModelId = if (successById.containsKey("naive_persistence")) "naive_persistence" else "ensemble",
             winnerModelId = null,
-            reason = "NO_CLEAR_WINNER_BASELINE: No model outperformed Naive Persistence by >=1.5% OOS MAE & RMSE across ${walkForward.evaluatedWindows} windows."
+            reason = walkForward.acceptanceReason.ifBlank { "No candidate beat zero-drift log-normal Naive across all 6 V2.1 OOS gates." }
         )
-    }
-
-    private fun recordErrors(
-        acc: MetricAccumulator,
-        clean: List<CleanOhlcBar>,
-        origin: Int,
-        baseClose: Double,
-        traj: List<QuantileStep>,
-        evalH: Int
-    ) {
-        acc.windowCount++
-        val finalActual = clean[origin + evalH - 1].close
-        val finalPred = traj[evalH - 1].q50
-        if ((finalActual >= baseClose && finalPred >= baseClose) || (finalActual < baseClose && finalPred < baseClose)) {
-            acc.dirCorrect++
-        }
-        for (h in 0 until evalH) {
-            val actual = clean[origin + h].close
-            val p = traj[h]
-            val err = abs(actual - p.q50)
-            acc.absErrSum += err
-            acc.sqErrSum += err * err
-            if (abs(actual) > 1e-8) {
-                acc.safeMapeSum += err / abs(actual)
-                acc.safeMapeCount++
-            }
-            val width = max(1e-8, p.q90 - p.q10)
-            acc.widthPctSum += (width / max(1e-8, p.q50)) * 100.0
-            acc.pinballSum += (pinball(actual, p.q10, 0.1) + pinball(actual, p.q50, 0.5) + pinball(actual, p.q90, 0.9)) / 3.0
-            acc.crpsSum += err * 0.58 + 0.12 * width
-            val hit80 = actual in p.q10..p.q90
-            if (hit80) acc.inBand80++
-            acc.pointCount++
-            acc.hAbsErr[h] += err
-            acc.hSqErr[h] += err * err
-            if (hit80) acc.hInBand80[h]++
-            acc.hCount[h]++
-        }
     }
 }

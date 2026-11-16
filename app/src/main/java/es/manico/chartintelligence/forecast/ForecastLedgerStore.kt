@@ -160,8 +160,18 @@ class ForecastLedgerStore(
         }
     }
 
-    fun computeEntryHash(prevHash: String, bodyMap: Map<String, Any?>): String =
-        ForecastSha256.sha256Hex("$prevHash|${ForecastSha256.canonicalJson(bodyMap)}")
+    fun computeEntryHash(
+        prevHash: String,
+        bodyMap: Map<String, Any?>,
+        contractVersion: String = ForecastSha256.CONTRACT_VERSION
+    ): String {
+        val canonical = if (contractVersion == ForecastSha256.LEGACY_CONTRACT_VERSION) {
+            ForecastSha256.canonicalJsonV1Legacy(bodyMap)
+        } else {
+            ForecastSha256.canonicalJson(bodyMap)
+        }
+        return ForecastSha256.sha256Hex("$prevHash|$canonical")
+    }
 
     fun hasTerminalLifecycleStatus(forecastHash: String, horizonStep: Int? = null): Boolean {
         return loadLifecycleEvents().any { ev ->
@@ -429,7 +439,7 @@ class ForecastLedgerStore(
                 "terminalQ90" to e.terminalQ90,
                 "generatedAtUtcMs" to e.generatedAtUtcMs
             )
-            val expectedHash = computeEntryHash(e.prevForecastHash, body)
+            val expectedHash = computeEntryHash(e.prevForecastHash, body, e.contractVersion)
             if (e.forecastHash != expectedHash) {
                 return LedgerVerifyResult(false, entries.size, i, "SHA-256 tamper detected at seq #${e.seq}")
             }

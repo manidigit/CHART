@@ -123,7 +123,7 @@ export const DEFAULT_PREFS = {
   showPivotPoints: false,
   pivotType: 'STANDARD',
   showFutureProjection: false,
-  forecastRenderMode: 'HYBRID',
+  forecastRenderMode: 'FAN_CHART',
   forecastHorizonBars: 30,
   forecastPluginConfig: null,
   forecastWorkerUrl: '',
@@ -1571,7 +1571,7 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showPivotPoints: Boolean(t.showPivotPoints),
     pivotType: String(t.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase(),
     showFutureProjection: Boolean(t.showFutureProjection),
-    forecastRenderMode: String(t.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'HYBRID'),
+    forecastRenderMode: String(t.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART'),
     forecastHorizonBars: Math.max(10, Math.min(60, Number(t.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30))),
     isMagnetMode: Boolean(t.isMagnetMode),
     activeDrawingColor:

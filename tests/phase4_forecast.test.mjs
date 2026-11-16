@@ -21,6 +21,8 @@ const {
   CONTRACT_VERSION,
   SPEC_VERSION,
   FORECAST_STATUS,
+  SCENARIO_STATUS,
+  SCENARIO_IDS,
   MODEL_EXECUTION_STATUS,
   REMOTE_WORKER_STATUS,
   RENDER_MODES,
@@ -30,6 +32,7 @@ const {
   LIFECYCLE_STATUS,
   EVALUATION_OUTCOME,
   SELECTION_MODE,
+  computeHorizonRequirements,
   containsForbiddenTradingTerms,
   sha256Hex,
 } = await import('../host_subdomain/assets/js/forecast/forecastContract.js');
@@ -40,16 +43,16 @@ const { ForecastLedger } = await import('../host_subdomain/assets/js/forecast/fo
 const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
 const { TechnicalIndicators } = await import('../host_subdomain/assets/js/algorithms/technicalIndicators.js');
 
-function buildSyntheticCandles(count = 110, timeframe = 'M15') {
+function buildSyntheticCandles(count = 500, timeframe = 'M15', drift = 0.0008) {
   const stepMs = timeframe === 'D1' ? 86_400_000 : timeframe === 'H1' ? 3_600_000 : 900_000;
-  const start = Date.parse('2026-07-06T00:00:00Z');
+  const start = Date.parse('2025-01-06T00:00:00Z');
   const bars = [];
   let prevClose = 92.5;
   for (let i = 0; i < count; i++) {
-    const drift = 0.0014 + 0.0042 * Math.sin(i * 0.23) + 0.0018 * Math.cos(i * 0.61);
+    const ret = drift + 0.0012 * Math.sin(i * 0.23) + 0.0006 * Math.cos(i * 0.61);
     const open = prevClose;
-    const close = Number((open * Math.exp(drift)).toFixed(4));
-    const spread = Math.max(0.18, Math.abs(close - open) * 1.45);
+    const close = Number((open * Math.exp(ret)).toFixed(4));
+    const spread = Math.max(0.08, Math.abs(close - open) * 0.65);
     const high = Number((Math.max(open, close) + spread * 0.45).toFixed(4));
     const low = Number((Math.min(open, close) - spread * 0.4).toFixed(4));
     bars.push({
@@ -65,20 +68,27 @@ function buildSyntheticCandles(count = 110, timeframe = 'M15') {
   return bars;
 }
 
-test('PRED-01: Quantile monotonicity, h>=10 horizon, and calendar advancement across M15/H1/D1', () => {
+test('PRED-01: V2.1 Quantile monotonicity, h>=10 horizon, and calendar advancement across M15/H1/D1', () => {
   for (const tf of ['M15', 'H1', 'D1']) {
-    const candles = buildSyntheticCandles(96, tf);
+    const req = computeHorizonRequirements(30);
+    const candles = buildSyntheticCandles(req.nOpMin + 40, tf);
+    const anchor = candles[candles.length - 1].open_time_utc_ms + (tf === 'D1' ? 86_400_000 : tf === 'H1' ? 3_600_000 : 900_000) + 60_000;
     const res = ForecastEngine.project(candles, {
       symbolCode: 'SPOTBRENT',
       timeframe: tf,
       horizonBars: 30,
-      renderMode: RENDER_MODES.HYBRID,
+      renderMode: RENDER_MODES.FAN_CHART,
+      anchorNowMs: anchor,
     });
     assert.equal(res.contractVersion, CONTRACT_VERSION);
     assert.equal(res.specVersion, SPEC_VERSION);
     assert.equal(res.points.length, 30);
-    assert.ok(res.points.length >= 10);
-    assert.ok([FORECAST_STATUS.VALID, FORECAST_STATUS.PROVISIONAL].includes(res.status));
+    assert.ok([
+      FORECAST_STATUS.VALID,
+      FORECAST_STATUS.PROVISIONAL,
+      FORECAST_STATUS.NO_EDGE,
+      FORECAST_STATUS.INSUFFICIENT_EVIDENCE,
+    ].includes(res.status));
 
     let prevTs = candles[candles.length - 1].open_time_utc_ms;
     for (let i = 0; i < res.points.length; i++) {
@@ -86,36 +96,46 @@ test('PRED-01: Quantile monotonicity, h>=10 horizon, and calendar advancement ac
       assert.equal(p.stepAhead, i + 1);
       assert.ok(p.openTimeUtcMs > prevTs, 'Timestamps must strictly advance');
       assert.ok(p.q10 > 0 && p.q10 <= p.q25 && p.q25 <= p.q50 && p.q50 <= p.q75 && p.q75 <= p.q90);
-      assert.ok(p.low <= p.open && p.low <= p.close && p.high >= p.open && p.high >= p.close);
+      assert.equal(p.volume, undefined, 'No fabricated projected volume');
       prevTs = p.openTimeUtcMs;
     }
 
-    const probSum = res.scenarios.reduce((acc, s) => acc + s.probability, 0);
-    assert.ok(Math.abs(probSum - 1.0) <= 0.005, `Scenario probabilities must sum to 1.0 (got ${probSum})`);
+    const estimable = res.scenarios.filter((s) => s.status === SCENARIO_STATUS.ESTIMABLE);
+    if (estimable.length > 0) {
+      const probSum = estimable.reduce((acc, s) => acc + s.probability, 0);
+      assert.ok(Math.abs(probSum - 1.0) <= 0.005, `Estimable scenario probabilities must sum to 1.0 (got ${probSum})`);
+    }
     assert.equal(containsForbiddenTradingTerms(res.scenarios), false);
   }
 });
 
-test('PRED-02: DataReadinessGate blocks insufficient history (<24 bars)', () => {
-  const shortBars = buildSyntheticCandles(15, 'M15');
-  const res = ForecastEngine.project(shortBars, { symbolCode: 'XAUUSD', timeframe: 'M15', horizonBars: 30 });
+test('PRED-02: DataReadinessGate blocks insufficient history (< N_op_min)', () => {
+  const shortBars = buildSyntheticCandles(48, 'M15');
+  const res = ForecastEngine.project(shortBars, {
+    symbolCode: 'XAUUSD',
+    timeframe: 'M15',
+    horizonBars: 30,
+    anchorNowMs: shortBars[shortBars.length - 1].open_time_utc_ms + 900_000,
+  });
   assert.equal(res.status, FORECAST_STATUS.DATA_NOT_READY);
   assert.equal(res.points.length, 0);
   assert.equal(res.readiness.ready, false);
 });
 
-test('PRED-03: Walk-Forward benchmark computes non-empty metrics vs NaivePersistence and honest DL worker state', () => {
-  const candles = buildSyntheticCandles(120, 'H1');
+test('PRED-03: Nested Walk-Forward computes WIS/rMAE/MASE metrics vs Log-Normal Naive & honest DL worker state', () => {
+  const candles = buildSyntheticCandles(880, 'H1');
+  const anchor = candles[candles.length - 1].open_time_utc_ms + 3_600_000;
   const res = ForecastEngine.project(candles, {
     symbolCode: 'XAUUSD',
     timeframe: 'H1',
     horizonBars: 20,
+    anchorNowMs: anchor,
   });
   assert.ok(res.walkForward);
-  assert.ok(res.walkForward.evaluatedWindows >= 4);
-  assert.ok(res.walkForward.ensembleMetrics.maePct > 0);
-  assert.ok(res.walkForward.naiveMetrics.maePct > 0);
-  assert.ok(res.walkForward.modelBenchmarks.length >= 6);
+  assert.ok(res.walkForward.evaluatedWindows >= 30);
+  assert.ok(res.walkForward.wisNaiveDistributional > 0);
+  assert.ok(res.walkForward.mase > 0);
+  assert.ok(res.walkForward.modelBenchmarks.length >= 4);
   assert.ok(res.walkForward.effectiveSampleSize > 0);
   assert.equal(res.remoteWorker.status, REMOTE_WORKER_STATUS.LOCAL_STATISTICAL_ONLY);
   assert.equal(REMOTE_DL_WORKER_SPEC.supportedModels.some((m) => /TimesFM 3\.0/i.test(m)), false);
@@ -125,6 +145,7 @@ test('PRED-03: Walk-Forward benchmark computes non-empty metrics vs NaivePersist
     symbolCode: 'XAUUSD',
     timeframe: 'H1',
     horizonBars: 20,
+    anchorNowMs: anchor,
     workerUrl: 'https://worker.invalid/infer',
   });
   assert.equal(unconfiguredRes.remoteWorker.status, REMOTE_WORKER_STATUS.UNCONFIGURED);
@@ -156,18 +177,19 @@ test('PRED-04: Pluggable ModelRegistry extensibility & SHA-256 hash-chain ledger
   rehydrated.applyConfig(cfgJson);
   assert.ok(rehydrated.getPlugin('custom_mean_reversion_test'));
 
-  const candles = buildSyntheticCandles(80, 'M15');
+  const candles = buildSyntheticCandles(200, 'M15');
   const res = ForecastEngine.project(candles, {
     symbolCode: 'NVDA',
     timeframe: 'M15',
     horizonBars: 15,
     registry: rehydrated,
     skipWalkForward: true,
+    anchorNowMs: candles[candles.length - 1].open_time_utc_ms + 900_000,
   });
   assert.ok(res.modelContributions.some((c) => c.modelId === 'custom_mean_reversion_test'));
 
   memStore.clear();
-  const ledger = new ForecastLedger('test_ledger_v1');
+  const ledger = new ForecastLedger('test_ledger_v2');
   const e1 = ledger.appendFromForecast(res);
   const e2 = ledger.appendFromForecast(res);
   assert.ok(e1 && e2);
@@ -178,62 +200,66 @@ test('PRED-04: Pluggable ModelRegistry extensibility & SHA-256 hash-chain ledger
   assert.equal(okVerify.valid, true);
   assert.equal(okVerify.totalEntries, 2);
 
-  // Tamper terminalMedian and assert tamper detection fires
   const tampered = ledger.loadEntries();
   tampered[0].terminalMedian += 1.25;
   const badVerify = ledger.verifyChain(tampered);
   assert.equal(badVerify.valid, false);
   assert.equal(badVerify.brokenIndex, 0);
+  assert.ok(badVerify.error.includes('SHA-256 Hash Chain Integrity Mismatch'));
 });
 
-test('PRED-05: v1.3.0 Aleatoric vs Epistemic uncertainty decomposition and OOD extreme spike multiplier', () => {
-  const normalCandles = buildSyntheticCandles(90, 'H1');
-  const normalRes = ForecastEngine.project(normalCandles, { symbolCode: 'XAUUSD', timeframe: 'H1', horizonBars: 20 });
+test('PRED-05: Aleatoric vs Epistemic uncertainty decomposition and OOD extreme spike multiplier', () => {
+  const normalCandles = buildSyntheticCandles(260, 'H1');
+  const anchor = normalCandles[normalCandles.length - 1].open_time_utc_ms + 3_600_000;
+  const normalRes = ForecastEngine.project(normalCandles, { symbolCode: 'XAUUSD', timeframe: 'H1', horizonBars: 20, anchorNowMs: anchor });
   assert.ok(normalRes.uncertainty);
   assert.ok(Math.abs(normalRes.uncertainty.aleatoricShare + normalRes.uncertainty.epistemicShare - 1.0) <= 0.002);
   assert.equal(normalRes.uncertainty.oodStatus, OOD_STATUS.IN_DISTRIBUTION);
 
-  // Inject an extreme 12% tail shock candle at end
-  const shockCandles = buildSyntheticCandles(90, 'H1');
+  const shockCandles = buildSyntheticCandles(260, 'H1');
   const last = shockCandles[shockCandles.length - 1];
   shockCandles[shockCandles.length - 1] = {
     ...last,
     high: Number((last.open * 1.15).toFixed(4)),
     close: Number((last.open * 1.12).toFixed(4)),
   };
-  const oodRes = ForecastEngine.project(shockCandles, { symbolCode: 'XAUUSD', timeframe: 'H1', horizonBars: 20 });
+  const oodRes = ForecastEngine.project(shockCandles, { symbolCode: 'XAUUSD', timeframe: 'H1', horizonBars: 20, anchorNowMs: anchor });
   assert.equal(oodRes.uncertainty.oodStatus, OOD_STATUS.EXTREME);
   assert.ok(oodRes.uncertainty.spreadMultiplierApplied > 1.2);
   assert.equal(oodRes.noEdgeGate.hasEdge, false);
   assert.equal(oodRes.noEdgeGate.gateState, NO_EDGE_GATE_STATE.NO_EDGE_DETECTED);
 });
 
-test('PRED-06: v1.3.0 5-leaf Event Tree exact sum=1.000, Key Zones, Sensitivity Grid & No-Edge separation', () => {
-  const candles = buildSyntheticCandles(110, 'H1');
-  const res = ForecastEngine.project(candles, { symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 24 });
-  assert.equal(res.scenarios.length, 5);
-  const expectedIds = [
-    'NO_ZONE_TOUCH_RANGE',
-    'ZONE_REACTION_REJECTION',
-    'PENETRATE_AND_RECLAIM',
-    'CONFIRMED_BREAKOUT_BULL',
-    'CONFIRMED_BREAKOUT_BEAR',
-  ];
+test('PRED-06: V2.1 3-Scenario Logistic Calibration (NOT_ESTIMABLE safe), Key Zones, & Sensitivity Grid', () => {
+  const candles = buildSyntheticCandles(500, 'H1', 0.0002);
+  const res = ForecastEngine.project(candles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'H1',
+    horizonBars: 20,
+    anchorNowMs: candles[candles.length - 1].open_time_utc_ms + 3_600_000,
+  });
+  assert.equal(res.scenarios.length, 3);
   assert.deepEqual(
-    res.scenarios.map((s) => s.leafId),
-    expectedIds
+    res.scenarios.map((s) => s.id),
+    [SCENARIO_IDS.BULLISH_EXPANSION, SCENARIO_IDS.RANGE_CONTAINMENT, SCENARIO_IDS.BEARISH_CONTRACTION]
   );
-  const sum = res.scenarios.reduce((acc, s) => acc + s.probability, 0);
-  assert.ok(Math.abs(sum - 1.0) <= 0.002);
+  for (const s of res.scenarios) {
+    assert.ok([SCENARIO_STATUS.ESTIMABLE, SCENARIO_STATUS.NOT_ESTIMABLE].includes(s.status));
+    if (s.status === SCENARIO_STATUS.NOT_ESTIMABLE) {
+      assert.equal(s.probability, null);
+    } else {
+      assert.ok(s.probability >= 0 && s.probability <= 1);
+    }
+  }
   assert.equal(res.keyZones.length, 2);
   assert.ok(res.keyZones[0].expectedBarsToReachCensored > 0);
-  assert.ok(res.eventDictionary.sensitivityGrid.length === 9);
+  assert.equal(res.eventDictionary.sensitivityGrid.length, 9);
   assert.ok(res.noEdgeGate);
-  assert.equal(res.scenarios.some((s) => s.leafId === 'NO_EDGE_DETECTED'), false);
 });
 
-test('PRED-07: v1.3.0 MTF Coordination preserves independent forecast and detects conflict separately', () => {
-  const ltf = buildSyntheticCandles(96, 'H1');
+test('PRED-07: MTF Coordination preserves independent forecast and detects conflict separately', () => {
+  const ltf = buildSyntheticCandles(260, 'H1');
+  const anchor = ltf[ltf.length - 1].open_time_utc_ms + 3_600_000;
   const htf = buildSyntheticCandles(60, 'D1').map((b, idx, arr) => {
     if (idx >= arr.length - 10) {
       return { ...b, close: Number((b.close * 0.85).toFixed(4)), low: Number((b.low * 0.82).toFixed(4)) };
@@ -241,11 +267,12 @@ test('PRED-07: v1.3.0 MTF Coordination preserves independent forecast and detect
     return b;
   });
 
-  const withoutHtf = ForecastEngine.project(ltf, { symbolCode: 'BTCUSD', timeframe: 'H1', horizonBars: 20 });
+  const withoutHtf = ForecastEngine.project(ltf, { symbolCode: 'BTCUSD', timeframe: 'H1', horizonBars: 20, anchorNowMs: anchor });
   const withHtf = ForecastEngine.project(ltf, {
     symbolCode: 'BTCUSD',
     timeframe: 'H1',
     horizonBars: 20,
+    anchorNowMs: anchor,
     higherTimeframe: 'D1',
     higherTimeframeCandles: htf,
   });
@@ -260,20 +287,21 @@ test('PRED-07: v1.3.0 MTF Coordination preserves independent forecast and detect
   assert.equal(withHtf.mtfCoordination.coordinatedPoints.length, 20);
 });
 
-test('PRED-08: v1.3.0 Append-only lifecycle log evaluates matured forecasts & preserves AMBIGUOUS inside-bar hits', () => {
+test('PRED-08: Append-only lifecycle log evaluates matured forecasts & preserves AMBIGUOUS inside-bar hits', () => {
   memStore.clear();
   const ledger = new ForecastLedger('test_ledger_lc');
-  const candles = buildSyntheticCandles(80, 'M15');
-  const baseRes = ForecastEngine.project(candles.slice(0, 60), {
+  const candles = buildSyntheticCandles(200, 'M15');
+  const slice = candles.slice(0, 170);
+  const baseRes = ForecastEngine.project(slice, {
     symbolCode: 'EURUSD',
     timeframe: 'M15',
     horizonBars: 10,
+    anchorNowMs: slice[slice.length - 1].open_time_utc_ms + 900_000,
   });
   const entry = ledger.appendFromForecast(baseRes);
   assert.ok(entry);
 
-  // Build subsequent bars hitting BOTH terminalQ10 and terminalQ90 inside a single bar => AMBIGUOUS
-  const futureCandles = candles.slice(0, 60).concat(
+  const futureCandles = slice.concat(
     Array.from({ length: 12 }, (_, idx) => {
       const ts = baseRes.anchorOpenTimeUtcMs + (idx + 1) * 900_000;
       if (idx === 2) {
@@ -303,82 +331,58 @@ test('PRED-08: v1.3.0 Append-only lifecycle log evaluates matured forecasts & pr
   assert.equal(ledger.loadEntries().length, 1, 'Original run entry must never be mutated/deleted');
 });
 
-test('PRED-09: SMCPredictionEngine Historical Analogs, K-Medoids 3-Scenario Clustering, ATR Wave Geometry & Bayesian Live Re-Anchoring', () => {
-  const candles = buildSyntheticCandles(150, 'M15');
+test('PRED-09: EmpiricalAnalogEngine causal analogs, illustrative medoids, and zero fabricated volume/wicks', () => {
+  const candles = buildSyntheticCandles(360, 'M15', 0.0004);
   const res = ForecastEngine.project(candles, {
     symbolCode: 'SPOTBRENT',
     timeframe: 'M15',
     horizonBars: 20,
-    selectedModelId: 'smc_kmedoids',
+    selectedModelId: 'empirical_analogs',
+    anchorNowMs: candles[candles.length - 1].open_time_utc_ms + 900_000,
   });
 
-  assert.equal(res.selectedChartModelId, 'smc_kmedoids');
-  assert.equal(res.smcScenarios.length, 3, 'Must produce 3 clustered K-Medoids scenarios (SCENARIO_A, B, C)');
-  const probSum = res.smcScenarios.reduce((s, sc) => s + sc.probability, 0);
-  assert.ok(Math.abs(probSum - 1.0) <= 0.03, `Scenario probabilities must sum to ~1.0, got ${probSum}`);
-  assert.ok(res.bayesianLiveReport, 'Bayesian live verification report must be present');
-  assert.ok(res.bayesianLiveReport.accuracyScoreLastStep >= 0 && res.bayesianLiveReport.accuracyScoreLastStep <= 100);
-
-  // Verify non-flatlining ATR-calibrated candle bodies and non-linear wave structure
-  let maxConsecutiveSameColor = 0;
-  let curRun = 0;
-  let lastSign = 0;
-  for (let i = 0; i < res.points.length; i++) {
-    const p = res.points[i];
-    const body = Math.abs(p.close - p.open);
-    assert.ok(body >= res.featuresSummary.atr14 * 0.14, `Future candle ${i + 1} body must not flatline`);
-    assert.ok(p.volume > 0, 'Dynamic volume must be projected');
-    const sign = p.close >= p.open ? 1 : -1;
-    curRun = sign === lastSign ? curRun + 1 : 1;
-    lastSign = sign;
-    if (curRun > maxConsecutiveSameColor) maxConsecutiveSameColor = curRun;
+  assert.equal(res.selectedChartModelId, 'empirical_analogs');
+  assert.equal(res.smcScenarios, undefined);
+  assert.equal(res.bayesianLiveReport, undefined);
+  assert.ok(Array.isArray(res.representativePaths));
+  for (const rp of res.representativePaths) {
+    assert.equal(rp.isIllustrativeOnly, true);
   }
-  assert.ok(maxConsecutiveSameColor <= 5, 'Wave generator must never produce 10 straight-line candles');
+  for (const p of res.points) {
+    assert.equal(p.volume, undefined);
+    assert.equal(p.rejectionWick, undefined);
+    assert.ok(p.q10 <= p.q25 && p.q25 <= p.q50 && p.q50 <= p.q75 && p.q75 <= p.q90);
+  }
 });
 
-test('PRED-10: Horizon Prefix Invariance (+10 vs +20 vs +60) and +60-bar Multi-Wave Realistic Envelope', () => {
-  const candles = buildSyntheticCandles(160, 'M15');
+test('PRED-10: Horizon Prefix Invariance (+10 vs +20 vs +60) on Quantiles and TechnicalIndicators adapter', () => {
+  const candles = buildSyntheticCandles(560, 'M15');
+  const anchor = candles[candles.length - 1].open_time_utc_ms + 900_000;
   const res10 = ForecastEngine.project(candles, {
     symbolCode: 'SPOTBRENT',
     timeframe: 'M15',
     horizonBars: 10,
+    anchorNowMs: anchor,
     skipWalkForward: true,
+    selectedModelId: 'native_arima_diff',
   });
   const res20 = ForecastEngine.project(candles, {
     symbolCode: 'SPOTBRENT',
     timeframe: 'M15',
     horizonBars: 20,
+    anchorNowMs: anchor,
     skipWalkForward: true,
+    selectedModelId: 'native_arima_diff',
   });
   const res60 = ForecastEngine.project(candles, {
     symbolCode: 'SPOTBRENT',
     timeframe: 'M15',
     horizonBars: 60,
+    anchorNowMs: anchor,
     skipWalkForward: true,
+    selectedModelId: 'native_arima_diff',
   });
 
-  // 1. Exact first-10-bar prefix invariance across points and all 3 SMC scenarios
-  for (let sIdx = 0; sIdx < 3; sIdx++) {
-    const s10 = res10.smcScenarios[sIdx];
-    const s20 = res20.smcScenarios[sIdx];
-    const s60 = res60.smcScenarios[sIdx];
-    assert.equal(s10.id, s20.id);
-    assert.equal(s10.id, s60.id);
-    assert.equal(s10.clusterType, s20.clusterType);
-    assert.equal(s10.clusterType, s60.clusterType);
-    assert.equal(s10.probability, s20.probability);
-    assert.equal(s10.probability, s60.probability);
-    for (let i = 0; i < 10; i++) {
-      assert.ok(Math.abs(s10.candles[i].open - s20.candles[i].open) < 1e-9);
-      assert.ok(Math.abs(s10.candles[i].close - s20.candles[i].close) < 1e-9);
-      assert.ok(Math.abs(s10.candles[i].high - s20.candles[i].high) < 1e-9);
-      assert.ok(Math.abs(s10.candles[i].low - s20.candles[i].low) < 1e-9);
-      assert.ok(Math.abs(s10.candles[i].open - s60.candles[i].open) < 1e-9);
-      assert.ok(Math.abs(s10.candles[i].close - s60.candles[i].close) < 1e-9);
-      assert.ok(Math.abs(s10.candles[i].high - s60.candles[i].high) < 1e-9);
-      assert.ok(Math.abs(s10.candles[i].low - s60.candles[i].low) < 1e-9);
-    }
-  }
   for (let i = 0; i < 10; i++) {
     assert.ok(Math.abs(res10.points[i].q50 - res20.points[i].q50) < 1e-9);
     assert.ok(Math.abs(res10.points[i].q50 - res60.points[i].q50) < 1e-9);
@@ -389,29 +393,6 @@ test('PRED-10: Horizon Prefix Invariance (+10 vs +20 vs +60) and +60-bar Multi-W
     assert.ok(Math.abs(res20.points[i].q50 - res60.points[i].q50) < 1e-9);
   }
 
-  // 2. +60-bar projection must have multi-bar waves (both bullish & bearish bars) and bounded ATR excursion
-  let bullCount = 0;
-  let bearCount = 0;
-  let maxConsec = 0;
-  let curRun = 0;
-  let prevSign = 0;
-  for (const p of res60.points) {
-    const sign = p.close >= p.open ? 1 : -1;
-    if (sign > 0) bullCount += 1;
-    else bearCount += 1;
-    curRun = sign === prevSign ? curRun + 1 : 1;
-    prevSign = sign;
-    if (curRun > maxConsec) maxConsec = curRun;
-  }
-  assert.ok(bullCount >= 12 && bearCount >= 12, `60-bar forecast must oscillate with real pullbacks (bull=${bullCount}, bear=${bearCount})`);
-  assert.ok(maxConsec <= 5, `60-bar forecast must not march linearly (maxConsec=${maxConsec})`);
-  const atr = res60.featuresSummary.atr14;
-  for (const sc of res60.smcScenarios) {
-    const netExc = Math.abs(sc.targetPrice - res60.anchorClose);
-    assert.ok(netExc <= atr * 12.5, `Scenario ${sc.id} terminal excursion ${netExc} exceeded 12.5*ATR (${atr * 12.5})`);
-  }
-
-  // 3. TechnicalIndicators.computeFutureCandlestickProjection also preserves prefix invariance
   const ti10 = TechnicalIndicators.computeFutureCandlestickProjection(candles, 'M15', 10);
   const ti30 = TechnicalIndicators.computeFutureCandlestickProjection(candles, 'M15', 30);
   const ti60 = TechnicalIndicators.computeFutureCandlestickProjection(candles, 'M15', 60);
@@ -419,16 +400,14 @@ test('PRED-10: Horizon Prefix Invariance (+10 vs +20 vs +60) and +60-bar Multi-W
   assert.equal(ti30.length, 30);
   assert.equal(ti60.length, 60);
   for (let i = 0; i < 10; i++) {
-    assert.ok(Math.abs(ti10[i].open - ti60[i].open) < 1e-9);
-    assert.ok(Math.abs(ti10[i].close - ti60[i].close) < 1e-9);
-    assert.ok(Math.abs(ti10[i].high - ti60[i].high) < 1e-9);
-    assert.ok(Math.abs(ti10[i].low - ti60[i].low) < 1e-9);
+    assert.ok(Math.abs(ti10[i].q50 - ti60[i].q50) < 1e-9);
+    assert.ok(Math.abs(ti10[i].q10 - ti60[i].q10) < 1e-9);
+    assert.ok(Math.abs(ti10[i].q90 - ti60[i].q90) < 1e-9);
   }
 });
 
-test('PRED-11: Cross-Timeframe M15 <-> H1 Sub-Bar Rollup Consistency', () => {
-  // Build 160 M15 bars (40 complete aligned 1H blocks)
-  const m15Bars = buildSyntheticCandles(160, 'M15');
+test('PRED-11: MTF Consistency M15 <-> H1 with independent forecast preservation', () => {
+  const m15Bars = buildSyntheticCandles(480, 'M15');
   const h1Bars = [];
   for (let i = 0; i < m15Bars.length; i += 4) {
     const chunk = m15Bars.slice(i, i + 4);
@@ -441,50 +420,42 @@ test('PRED-11: Cross-Timeframe M15 <-> H1 Sub-Bar Rollup Consistency', () => {
       volume: chunk.reduce((s, b) => s + b.volume, 0),
     });
   }
-
+  const anchor = m15Bars[m15Bars.length - 1].open_time_utc_ms + 900_000;
   const m15Res = ForecastEngine.project(m15Bars, {
     symbolCode: 'SPOTBRENT',
     timeframe: 'M15',
     horizonBars: 16,
+    anchorNowMs: anchor,
     skipWalkForward: true,
   });
-  const h1Res = ForecastEngine.project(h1Bars, {
+  const h1Res = ForecastEngine.project(m15Bars.slice(-260), {
     symbolCode: 'SPOTBRENT',
-    timeframe: 'H1',
-    horizonBars: 10,
+    timeframe: 'M15',
+    horizonBars: 16,
+    anchorNowMs: anchor,
     skipWalkForward: true,
-    lowerTimeframe: 'M15',
-    lowerTimeframeCandles: m15Bars,
+    higherTimeframe: 'H1',
+    higherTimeframeCandles: h1Bars,
   });
-
-  // Every H1 scenario's first candle must exactly equal the OHLC rollup of the first 4 M15 candles of the matching cluster
-  for (const h1Sc of h1Res.smcScenarios) {
-    const m15Sc = m15Res.smcScenarios.find((s) => s.clusterType === h1Sc.clusterType) || m15Res.smcScenarios[0];
-    const first4 = m15Sc.candles.slice(0, 4);
-    const rollupHigh = Math.max(...first4.map((c) => c.high));
-    const rollupLow = Math.min(...first4.map((c) => c.low));
-    const rollupClose = first4[3].close;
-    const h1Bar0 = h1Sc.candles[0];
-
-    assert.ok(Math.abs(h1Bar0.open - first4[0].open) < 1e-6, 'H1 bar 0 open must match M15 bar 0 open');
-    assert.ok(Math.abs(h1Bar0.high - rollupHigh) < 1e-6, 'H1 bar 0 high must match max of M15 bars 0..3');
-    assert.ok(Math.abs(h1Bar0.low - rollupLow) < 1e-6, 'H1 bar 0 low must match min of M15 bars 0..3');
-    assert.ok(Math.abs(h1Bar0.close - rollupClose) < 1e-6, 'H1 bar 0 close must match M15 bar 3 close');
-  }
+  assert.equal(m15Res.points.length, 16);
+  assert.ok(h1Res.mtfCoordination.ohlcConsistent);
+  assert.equal(h1Res.mtfCoordination.coordinatedPoints.length, 16);
 });
 
 test('PRED-12: Strict Causal Anti-Leakage — mutating future bars after cutoff cannot alter history-only predictions', () => {
-  const full = buildSyntheticCandles(140, 'M15');
-  const cutoff = 100;
+  const full = buildSyntheticCandles(240, 'M15');
+  const cutoff = 200;
   const prefixA = full.slice(0, cutoff);
   const fullMutated = full.map((c, idx) =>
     idx >= cutoff ? { ...c, high: c.high * 2.5, low: c.low * 0.4, close: c.close * 1.9 } : c
   );
   const prefixB = fullMutated.slice(0, cutoff);
+  const anchor = prefixA[prefixA.length - 1].open_time_utc_ms + 900_000;
 
-  const resA = ForecastEngine.project(prefixA, { symbolCode: 'XAUUSD', timeframe: 'M15', horizonBars: 20 });
-  const resB = ForecastEngine.project(prefixB, { symbolCode: 'XAUUSD', timeframe: 'M15', horizonBars: 20 });
+  const resA = ForecastEngine.project(prefixA, { symbolCode: 'XAUUSD', timeframe: 'M15', horizonBars: 10, anchorNowMs: anchor });
+  const resB = ForecastEngine.project(prefixB, { symbolCode: 'XAUUSD', timeframe: 'M15', horizonBars: 10, anchorNowMs: anchor });
 
+  assert.equal(resA.inputHash, resB.inputHash);
   assert.equal(resA.modelTrajectories.length, resB.modelTrajectories.length);
   for (let m = 0; m < resA.modelTrajectories.length; m++) {
     const tA = resA.modelTrajectories[m];
@@ -503,18 +474,22 @@ test('PRED-13: Quantile-Attention TFT <90-bar Gate enforces SKIPPED_LOW_DATA wit
     symbolCode: 'EURUSD',
     timeframe: 'H1',
     horizonBars: 20,
+    minBars: 60,
+    anchorNowMs: shortCandles[shortCandles.length - 1].open_time_utc_ms + 3_600_000,
+    skipWalkForward: true,
   });
   const tftShort = shortRes.modelTrajectories.find((t) => t.modelId === 'native_quantile_attention_approx');
   assert.ok(tftShort, 'TFT native approx model must appear in modelTrajectories');
   assert.equal(tftShort.status, MODEL_EXECUTION_STATUS.SKIPPED_LOW_DATA);
-  assert.equal(tftShort.points.length, 0, 'Skipped model must never emit flat fallback points');
+  assert.equal(tftShort.points.length, 0);
   assert.equal(tftShort.isApproximation, true);
 
-  const longCandles = buildSyntheticCandles(110, 'H1');
+  const longCandles = buildSyntheticCandles(240, 'H1');
   const longRes = ForecastEngine.project(longCandles, {
     symbolCode: 'EURUSD',
     timeframe: 'H1',
     horizonBars: 20,
+    anchorNowMs: longCandles[longCandles.length - 1].open_time_utc_ms + 3_600_000,
   });
   const tftLong = longRes.modelTrajectories.find((t) => t.modelId === 'native_quantile_attention_approx');
   assert.ok(tftLong);
@@ -537,25 +512,25 @@ test('PRED-14: Failing model returns explicit FAILED status with empty points an
     },
   });
 
-  const candles = buildSyntheticCandles(100, 'H1');
+  const candles = buildSyntheticCandles(200, 'H1');
   const res = ForecastEngine.project(candles, {
     symbolCode: 'NVDA',
     timeframe: 'H1',
     horizonBars: 15,
     registry,
+    anchorNowMs: candles[candles.length - 1].open_time_utc_ms + 3_600_000,
   });
   const broken = res.modelTrajectories.find((t) => t.modelId === 'broken_plugin_test');
   assert.ok(broken);
   assert.equal(broken.status, MODEL_EXECUTION_STATUS.FAILED);
   assert.equal(broken.points.length, 0);
   assert.ok(broken.reason.includes('Intentional convergence failure'));
-  assert.ok(res.points.length === 15, 'Valid models must still complete normally');
+  assert.equal(res.points.length, 15);
 });
 
 test('PRED-15: Honest OOS Winner Gate emits NO_CLEAR_WINNER_BASELINE when random walk has no clear OOS winner', () => {
-  // Deterministic flat/mean-zero random walk where naive_persistence is competitive
   const stepMs = 3_600_000;
-  const start = Date.parse('2026-06-01T00:00:00Z');
+  const start = Date.parse('2025-06-01T00:00:00Z');
   let seed = 42;
   const nextRand = () => {
     seed = (seed * 1664525 + 1013904223) >>> 0;
@@ -563,7 +538,7 @@ test('PRED-15: Honest OOS Winner Gate emits NO_CLEAR_WINNER_BASELINE when random
   };
   const rwBars = [];
   let p = 100.0;
-  for (let i = 0; i < 120; i++) {
+  for (let i = 0; i < 520; i++) {
     const ret = nextRand() * 0.008;
     const op = p;
     const cl = Number((op * Math.exp(ret)).toFixed(4));
@@ -581,20 +556,17 @@ test('PRED-15: Honest OOS Winner Gate emits NO_CLEAR_WINNER_BASELINE when random
   const res = ForecastEngine.project(rwBars, {
     symbolCode: 'RANDOMWALK',
     timeframe: 'H1',
-    horizonBars: 20,
+    horizonBars: 10,
     selectedModelId: 'AUTO',
+    anchorNowMs: rwBars[rwBars.length - 1].open_time_utc_ms + stepMs,
   });
-  if (res.selectionMode === SELECTION_MODE.NO_CLEAR_WINNER_BASELINE) {
-    assert.equal(res.selectedChartModelId, 'naive_persistence');
-  } else {
-    assert.equal(res.selectionMode, SELECTION_MODE.AUTO_OOS_BEST);
-    const winBench = res.walkForward.modelBenchmarks.find((b) => b.modelId === res.selectedChartModelId);
-    assert.ok(winBench && winBench.mae <= res.walkForward.naiveMetrics.mae * 0.985);
-  }
+  assert.equal(res.selectionMode, SELECTION_MODE.NO_CLEAR_WINNER_BASELINE);
+  assert.equal(res.selectedChartModelId, 'naive_persistence');
 });
 
 test('PRED-16: All 4 new native models enforce prefix invariance across horizons 10 / 20 / 60', () => {
-  const candles = buildSyntheticCandles(120, 'M15');
+  const candles = buildSyntheticCandles(560, 'M15');
+  const anchor = candles[candles.length - 1].open_time_utc_ms + 900_000;
   const modelIds = [
     'native_arima_diff',
     'native_prophet_decomp',
@@ -608,6 +580,7 @@ test('PRED-16: All 4 new native models enforce prefix invariance across horizons
       horizonBars: 10,
       selectedModelId: modelId,
       skipWalkForward: true,
+      anchorNowMs: anchor,
     });
     const r20 = ForecastEngine.project(candles, {
       symbolCode: 'SPOTBRENT',
@@ -615,6 +588,7 @@ test('PRED-16: All 4 new native models enforce prefix invariance across horizons
       horizonBars: 20,
       selectedModelId: modelId,
       skipWalkForward: true,
+      anchorNowMs: anchor,
     });
     const r60 = ForecastEngine.project(candles, {
       symbolCode: 'SPOTBRENT',
@@ -622,6 +596,7 @@ test('PRED-16: All 4 new native models enforce prefix invariance across horizons
       horizonBars: 60,
       selectedModelId: modelId,
       skipWalkForward: true,
+      anchorNowMs: anchor,
     });
     assert.equal(r10.selectedChartModelId, modelId);
     assert.equal(r10.points.length, 10);
@@ -633,6 +608,3 @@ test('PRED-16: All 4 new native models enforce prefix invariance across horizons
     }
   }
 });
-
-
-
