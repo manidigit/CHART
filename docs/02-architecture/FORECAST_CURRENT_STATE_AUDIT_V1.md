@@ -1,7 +1,7 @@
 # Forecast Current-State Audit
 
-**Version:** 0.5.0  
-**Status:** Execution-path, data-readiness, ledger-integrity and CI audit in progress; architecture decisions are intentionally open  
+**Version:** 0.6.0  
+**Status:** Execution-path, data-readiness, ledger-integrity, server-persistence and CI audit in progress; architecture decisions are intentionally open  
 **Audit date:** 16 November 2026  
 **Repository:** `manidigit/CHART`  
 **Inspected ref:** `main` — tree SHA `6dd0d272f67bb2b97a3721e3812f71b57572fc41`  
@@ -511,3 +511,64 @@ Verified in `host_subdomain/assets/js/components/chartRenderer.js`:
 | Medium | Main chart future axis uses appended slots and step milestones | `chartRenderer.js` | Specify timestamp/session mapping and scroll behavior |
 
 The remaining work before migration design is to inspect PHP server-side append idempotency and fallback semantics, complete Android/Web/PHP data-readiness parity, inspect chart interactions/scroll behavior, and then produce the file-level preserve/adapt/replace/retire matrix. No executable code has been modified in this audit.
+
+
+---
+
+## 26. PHP server ledger: persistence, idempotency and access-scope risks
+
+The server ledger path was traced through `forecast.php` and the Web API client.
+
+### 26.1. Database and JSON fallback are not reconciled as one ordered ledger
+
+Verified behavior:
+
+- The GET path reads up to 50 database forecast runs and up to 80 database lifecycle events.
+- If the corresponding database result set is empty, it falls back to the JSON ledger file.
+- If the database returns any rows, the JSON fallback is not merged into that result.
+- The POST recording path writes to the database when PDO is available, but also appends to local JSON storage.
+- The JSON fallback retains only the last 120 forecast entries and 240 lifecycle events.
+
+**Risk:** A partially populated database can mask newer records that exist only in JSON fallback. The response may be a valid-looking but incomplete slice. Database and JSON storage are not reconciled by a shared event identity, cursor or merge policy in the inspected endpoint.
+
+### 26.2. Snapshot append is not idempotent
+
+The `append_client_forecast` action accepts the client forecast payload, but the server creates a new `created_at_utc_ms`, derives a new chain hash and generates a run UUID containing the current timestamp. No duplicate check on `input_hash`, client forecast identity or idempotency key was observed before insertion.
+
+**Risk:** A retried request after a timeout or uncertain response can create another server ledger record for the same forecast snapshot. The client can then mark its local entry as synced based on the first successful response, while a later retry may create an additional server record.
+
+A replacement ledger API should accept a stable client-generated snapshot ID/idempotency key and return the existing record on replay.
+
+### 26.3. Database writes are not atomic across the forecast record and child records
+
+The server inserts the main `prediction_runs` row and then inserts forecast points, scenarios, key zones, MTF coordination and path-event records inside a broad try/catch. No encompassing database transaction is visible in the inspected path, and thrown errors are swallowed. The endpoint proceeds to append local JSON and return a success envelope after the catch.
+
+**Risk:** A failure during child-table persistence can leave a partially populated relational record while the API still reports success. The serialized `payload_json` may preserve the full client forecast, but normalized child tables can be incomplete. The endpoint does not expose a clear persistence outcome per storage backend.
+
+### 26.4. User scoping requires explicit security review
+
+The ledger GET queries select from `prediction_runs` and `prediction_lifecycle_events` with optional symbol/timeframe filters, but the inspected SQL does not constrain rows by the authenticated `$username`, despite the main run record storing a username.
+
+**Risk:** If the product intends user-private forecast history, one authenticated account may receive another account's ledger entries. This is a source-level access-control concern requiring immediate verification against the intended product visibility model and production schema. Do not assume this is safe merely because the endpoint requires a session.
+
+The server also obtains the previous forecast/lifecycle hash from the latest row globally rather than a clearly user-scoped chain. If ledgers are intended to be per-user, chain ownership and concurrency semantics are currently ambiguous. If the ledger is intentionally global, that must be explicit and access-controlled as a shared audit resource.
+
+### 26.5. Lifecycle event chain differs between database and local JSON
+
+The lifecycle POST path computes a database event hash using the latest database event hash, then calls `appendLocalLifecycleEvent`, which independently chooses the previous hash from the local JSON file and recomputes the local event hash. Therefore, the database and JSON copies of the same logical lifecycle event can have different previous hashes and event hashes whenever their chain heads differ.
+
+**Risk:** The two persistence backends are not replicas of the same immutable event chain. This makes fallback/reconciliation and cross-backend integrity verification unreliable without an explicit canonical chain policy.
+
+## 27. Updated risk register — server ledger
+
+| Priority | Finding | Evidence | Required follow-up |
+|---|---|---|---|
+| Critical / security review | Server ledger reads are not visibly scoped by authenticated username | `forecast.php` GET SQL for prediction runs and lifecycle events | Confirm intended visibility; if private, enforce user ownership on every read |
+| Critical | DB and JSON lifecycle copies can hash the same event differently | DB hash construction and independent `appendLocalLifecycleEvent` recomputation | Use one canonical event identity/hash and deterministic replication |
+| High | Repeated client snapshot POSTs can create duplicate server records | No idempotency key/deduplication in `append_client_forecast` path | Add stable idempotency key and replay-safe response |
+| High | DB and JSON fallback results are not merged/reconciled | GET only falls back to JSON when DB result is empty | Define canonical backend, recovery and reconciliation |
+| High | Main and child DB writes are not visibly transactional; errors are swallowed | `forecast.php` broad try/catch around inserts | Make persistence atomic and return explicit storage status |
+| High | Server chain head appears global, not user-scoped | Latest hash queries omit username filter | Define global vs per-user chain ownership and concurrency |
+| Medium | Server local JSON ledger is bounded to 120/240 entries | `saveLocalLedgerEntries` | Apply checkpoint-compatible retention or use a non-truncated archive |
+
+These findings are static source-level risks. Production account topology, actual DB constraints, deployed endpoint behavior and whether the intended ledger is global or user-private remain unverified. No code has been modified.
