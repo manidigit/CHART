@@ -12,7 +12,7 @@
 | Category | File | Purpose & Scope |
 |---|---|---|
 | | [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) | **Independent Forecast Product Foundation (v1.2.0)**: Product mission, realistic multi-candle OHLC paths, multi-model chart comparison, snapshots, forecast records, live and historical evaluation, and future model ranking |
-| | [FORECAST_CURRENT_STATE_AUDIT_V1.md](./02-architecture/FORECAST_CURRENT_STATE_AUDIT_V1.md) | **Initial Forecast implementation audit (v0.1.0)**: Verified Android, Web and PHP implementation inventory, cross-runtime OHLC/contract risks, preliminary preservation candidates and next audit steps |
+| | [FORECAST_CURRENT_STATE_AUDIT_V1.md](./02-architecture/FORECAST_CURRENT_STATE_AUDIT_V1.md) | **Forecast implementation and execution-path audit (v0.2.0)**: Android/Web/PHP inventory, main-chart and studio call paths, worker usage, snapshot/ledger flow, cross-runtime risks and remaining verification |
 | **01 — Product & Research** | [CHART_INTELLIGENCE_MASTER_SPEC.md](./01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) | Existing CHART-wide product and engineering reference. For Forecast product direction, the independent `FORECAST_PRODUCT_FOUNDATION_V1.md` takes precedence. |
 | | [FORECAST_ENGINE_V2_SPEC.md](./01-product/FORECAST_ENGINE_V2_SPEC.md) | Historical technical specification and implementation-status report. Its claims and algorithms are not accepted as current or binding without independent code and test verification. |
 | | [FORECAST_STUDIO_PRODUCT_DIRECTION_V2.md](./01-product/FORECAST_STUDIO_PRODUCT_DIRECTION_V2.md) | Superseded product-direction draft. Useful historical source; the consolidated `FORECAST_PRODUCT_FOUNDATION_V1.md` is authoritative for product requirements. |
