@@ -1,7 +1,7 @@
 # Forecast Current-State Audit
 
-**Version:** 0.2.0  
-**Status:** Execution-path audit in progress; architecture decisions are intentionally open  
+**Version:** 0.3.0  
+**Status:** Execution-path and worker-contract audit in progress; architecture decisions are intentionally open  
 **Audit date:** 16 November 2026  
 **Repository:** `manidigit/CHART`  
 **Inspected ref:** `main` — tree SHA `6dd0d272f67bb2b97a3721e3812f71b57572fc41`  
@@ -287,3 +287,92 @@ These are concrete consistency questions for the replacement design. Existing le
 5. Compare Kotlin/JavaScript/PHP candle validation, closed-bar handling, timestamp construction and timeframe alignment.
 6. Inspect CI workflows and execute relevant tests if a supported environment is available; report execution results separately from source-level test review.
 7. Complete the file-level migration matrix only after the above paths are traced.
+
+
+---
+
+## 15. Python worker implementation and candle construction
+
+### 15.1. Worker endpoint and model families
+
+Verified in `python_worker/app.py`:
+
+- FastAPI exposes `GET /health` and `POST /forecast/infer`.
+- The registered model list includes native Python ARIMA, Prophet, LSTM and TFT predictors.
+- Each model is called independently; exceptions are returned as per-model `FAILED` trajectories.
+- The worker runs `evaluate_models_walk_forward` over the cleaned candle input and returns trajectories and benchmarks.
+- The worker request schema defaults to `forecast-contract/v1`.
+
+This establishes that the Python worker is an optional inference service, not the sole Forecast engine. Its actual production availability/deployment remains unverified.
+
+### 15.2. Python worker also synthesizes candle OHLC mechanically
+
+Verified in `python_worker/models/common.py`, function `build_points_from_quantiles`:
+
+- `open` is assigned the previous step's `close`.
+- `close` is assigned `q50`.
+- A symmetric wick distance is calculated as `(q75 - q25) * 0.28`.
+- `high` and `low` are then constructed around the open/close interval using that wick distance.
+- `volume` is set to `0.0`.
+- `rejectionWick` is always false.
+- `wavePhase` is assigned mechanically from whether close is above or below open.
+
+This is a second verified implementation of the same fundamental design pattern found in Android: a quantile path is converted into candle-shaped OHLC by a deterministic post-processing rule.
+
+**Important consequence:** Replacing or improving the underlying model alone cannot remove this limitation while the candle-construction layer remains unchanged. The product's future OHLC path must be explicitly defined as model output or as a separately justified probabilistic construction, not a cosmetic renderer fallback.
+
+### 15.3. Worker contract version and input-hash integrity gap
+
+The inspected contracts and worker behavior show a concrete compatibility/integrity concern:
+
+- Kotlin and JavaScript main Forecast contracts declare `forecast-contract/v2`.
+- Their worker clients send a request containing `inputHash`.
+- The Python worker's Pydantic request accepts `inputHash`, but `infer_payload` returns `forecast-contract/v1` and does not include `inputHash` in its response.
+- The JavaScript response validator rejects a mismatch only when the worker response actually contains an `inputHash`; absence is accepted.
+- The Android worker client likewise rejects a mismatch only when the response hash is non-empty; absence is accepted.
+- PHP sends its own input hash to the worker but the inspected merge path does not validate the response hash before merging returned trajectories.
+
+**Risk:** The intended input-hash binding is not enforced end-to-end. A worker response computed from a different or altered input can pass the current clients' missing-hash path, subject to the other response validations. The worker's v1 response is also accepted into v2 client merge paths without an explicit version compatibility check in the inspected functions.
+
+This should be treated as a high-priority contract defect for the existing system. It is documented for migration and test planning; no code has been changed in this audit.
+
+### 15.4. Worker output still does not establish OHLC realism
+
+The worker's model trajectories are quantile-based and its common helper constructs OHLC mechanically. Existing response validation focuses on trajectory length, finite values and monotonic quantiles. Those checks do not establish realistic open-to-close transitions, plausible high/low excursion distributions, intrabar path consistency, volume validity or realistic multi-candle structure.
+
+The current worker contract is therefore a quantile-trajectory contract with derived candle fields, not evidence of a validated future OHLC forecasting contract.
+
+## 16. Web ledger persistence and limits
+
+Verified in `host_subdomain/assets/js/forecast/forecastLedger.js`:
+
+- The web ledger stores forecast entries in browser `localStorage`.
+- It retains at most 120 forecast entries and 240 lifecycle events in the local store.
+- It creates forecast and lifecycle hash chains locally.
+- It evaluates matured forecasts against candles passed to `evaluateMaturedForecasts`.
+- The inspected module itself contains no network persistence implementation.
+
+The web Forecast Studio imports this local ledger. A separate web-to-PHP ledger synchronization path has not been established by the inspected code.
+
+**Risk:** Browser-local history is device/browser scoped and subject to browser storage availability, user clearing, quota and profile changes. It is not automatically the same record set as Android local storage or the PHP server ledger. A unified Forecast Ledger requires explicit canonical ownership, identity, sync and conflict policies.
+
+## 17. Updated highest-priority technical risks
+
+| Priority | Finding | Evidence | Migration implication |
+|---|---|---|---|
+| Critical | OHLC is mechanically derived from quantiles in Android and Python worker | Kotlin `ForecastEngine.kt`; Python `models/common.py` | Redesign forecast output semantics before choosing models |
+| Critical | Worker input-hash response binding is optional in clients and absent from Python responses | Kotlin/JS worker clients; Python `app.py` | Require strict request/response identity and reject missing or mismatched hashes |
+| High | Worker contract v1 is merged into v2 client paths without explicit version gate | Python `app.py`; Kotlin/JS merge functions | Define explicit version negotiation/compatibility policy |
+| High | Different surfaces use different inference paths and worker usage | Android canvas/Lab; Web renderer/Studio; PHP engine | Define one authoritative inference orchestration policy |
+| High | Snapshot recomputes instead of clearly persisting exact rendered result | Android ViewModel/repository | Snapshot must capture immutable displayed result and full provenance |
+| High | Web ledger is browser-local while Android and PHP have separate stores | JS ledger, Android store, PHP API | Define canonical ledger and synchronization semantics |
+| Medium | Python worker sanitization and OHLC helper default missing volume to synthetic positive values | Python `models/common.py` | Preserve volume provenance; never silently represent fabricated volume as observed volume |
+
+## 18. Next verification pass
+
+1. Inspect the complete model implementations and determine whether each model predicts only close/quantiles or a genuine joint OHLC distribution.
+2. Inspect the PHP native OHLC construction path and compare it with Kotlin, JavaScript and Python.
+3. Verify web ledger write call sites and whether any hidden API synchronization exists outside the ledger module.
+4. Inspect CI workflow commands and, where feasible, execute the Python and JavaScript Forecast tests.
+5. Document the exact chart rendering API and how future points affect price/time scaling, scrolling and visible candle geometry.
+6. Build the final file-level migration matrix with evidence for each classification.
