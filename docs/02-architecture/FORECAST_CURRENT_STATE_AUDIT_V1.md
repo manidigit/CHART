@@ -1,7 +1,7 @@
 # Forecast Current-State Audit
 
-**Version:** 0.1.0  
-**Status:** Initial source-code audit; architecture decisions are intentionally open  
+**Version:** 0.2.0  
+**Status:** Execution-path audit in progress; architecture decisions are intentionally open  
 **Audit date:** 16 November 2026  
 **Repository:** `manidigit/CHART`  
 **Inspected ref:** `main` — tree SHA `6dd0d272f67bb2b97a3721e3812f71b57572fc41`  
@@ -154,3 +154,136 @@ Key files inspected in this pass:
 - `tests/phase4_forecast.test.mjs`
 
 This document should be updated as the call graph, runtime behavior and tests are verified. It must not be treated as a complete code audit yet.
+
+
+---
+
+## 9. Execution-path trace — client chart rendering
+
+### 9.1. Android main chart
+
+Verified path in `CandlestickCanvas.kt`:
+
+1. The canvas receives the active tab's `candles`, symbol, timeframe and forecast preferences.
+2. It resolves optional higher/lower timeframe candle sets through supplied providers.
+3. Inside a Compose `remember` calculation, if future projection is enabled, the chart is at the latest scroll position and at least 24 candles exist, it constructs a `ForecastModelRegistry`.
+4. It directly calls `ForecastEngine.project(...)`.
+5. It passes `futureProjectionResult.points` to the canvas rendering path.
+
+Important observations:
+
+- The main chart calls the Kotlin engine directly. This call does not invoke `ForecastWorkerClient.infer(...)`.
+- Passing `workerUrl` to `ForecastEngine.project` only supplies worker configuration/status in the inspected engine path; the separate worker client is used in Forecast Lab.
+- The calculation is part of a Compose `remember` expression, not an explicitly asynchronous inference use case. The actual cost and UI impact require runtime profiling.
+- The calculation can be repeated when any key dependency changes (candles, timeframe, symbol, horizon, model configuration, render mode or worker URL).
+
+### 9.2. Android Forecast Lab
+
+Verified path in `ForecastLabScreen.kt`:
+
+1. Reads the active tab's candles and obtains higher/lower timeframe candles.
+2. Calculates a local result using `ForecastEngine.project(...)`.
+3. In `LaunchedEffect`, calculates again on the configured inputs, on `Dispatchers.Default`.
+4. If a worker URL is configured and the local result is not `DATA_NOT_READY`, it calls `ForecastWorkerClient.infer(...)`.
+5. It merges worker trajectories through `ForecastEngine.applyRemoteWorkerResponse(...)`.
+
+**Risk:** The screen contains both an initial remembered calculation and a subsequent effect-driven calculation. This is a potential duplicate computation path. It needs profiling and state-flow review before deciding whether it is an actual user-visible performance defect.
+
+### 9.3. Web main chart
+
+Verified path in `chartRenderer.js`:
+
+1. The chart renderer's indicator/cache layer resolves symbol, provider and timeframe.
+2. It reads forecast preferences and obtains lower/higher timeframe candles through `getCachedOrAggregatedCandles`.
+3. It calls `ForecastEngine.project(candles, options)` synchronously when the forecast cache key changes.
+4. It returns forecast points to the chart renderer.
+5. The chart draws quantile fan bands and, for Ghost Candles/Hybrid modes, draws candle-like bars from point OHLC values when present, otherwise from quantile fallbacks.
+
+The inspected main chart renderer does not itself call `ForecastWorkerClient.infer`.
+
+### 9.4. Web Forecast Studio
+
+Verified path in `forecastView.js`:
+
+1. Builds a local forecast using `ForecastEngine.project(...)`.
+2. If a worker URL exists, it starts an asynchronous `ForecastWorkerClient.infer(...)` request unless a cached/pending request exists for the input hash.
+3. On response, it stores the worker result in an in-memory state cache, invalidates the memo and dispatches `ci-forecast-worker-updated`.
+4. The next build merges the cached response using `ForecastEngine.applyRemoteWorkerResponse(...)`.
+
+**Risk:** The main chart and Forecast Studio have separate worker behavior. A worker-backed result available in Forecast Studio is not proven to be the same result used by the main chart.
+
+## 10. Server inference path
+
+The PHP API endpoint `host_subdomain/api/v1/forecast.php` supports distinct operations:
+
+- GET / ledger retrieval: reads prediction runs and lifecycle events from database when possible, with local JSON fallback when the corresponding database result is empty.
+- `infer`: invokes `ForecastEnginePhp::project(...)` and returns an inferred forecast without following the normal append path.
+- `append_client_forecast`: accepts a client-generated forecast payload and records that payload rather than recomputing it in the PHP engine.
+- Other POST recording flow: computes through PHP engine and persists a run.
+
+The PHP engine itself can call the configured Python worker through `probeRemoteWorker`, merge returned model trajectories and reselect the chart winner.
+
+This creates at least three distinct worker arrangements in the repository:
+
+1. Android Forecast Lab → Android `ForecastWorkerClient` → Python worker.
+2. Web Forecast Studio → JavaScript `ForecastWorkerClient` → Python worker.
+3. PHP Forecast engine → PHP cURL request → Python worker.
+
+The Android main chart and Web main chart do not show the same direct worker invocation in the inspected paths.
+
+**Architectural implication:** The configured worker URL does not imply that every Forecast surface is using the worker. A user can see local inference on one surface and worker-enriched inference on another, depending on the path and cache state.
+
+## 11. Snapshot and lifecycle path — Android
+
+Verified in `MainViewModel.recordAndSyncForecastSnapshot()`:
+
+1. Reads the active tab and Forecast preferences.
+2. Resolves higher/lower timeframe candles from the repository.
+3. Calls `ForecastEngine.project(...)` again for the snapshot action.
+4. Appends the result to `ForecastLedgerStore` locally.
+5. Calls `WorkspaceRepository.syncForecastSnapshotToServer(...)`.
+6. The repository serializes forecast points, scenarios, zones, diagnostics and metadata into a client forecast payload.
+7. The PHP endpoint's `append_client_forecast` path can store that supplied result.
+8. The ViewModel refreshes local/server ledger state and verifies local chains.
+
+Matured-outcome evaluation is a separate path: `evaluateMaturedForecastOutcomes()` evaluates local ledger entries against the active tab candles and synchronizes lifecycle events.
+
+Important distinctions:
+
+- The chart's currently displayed forecast and the snapshot action are separate calls to `ForecastEngine.project`; identity/equivalence is not guaranteed unless their inputs and timing match.
+- The inspected snapshot path recalculates locally. It does not first fetch and snapshot the exact currently displayed worker-enriched Forecast Lab result.
+- Server sync requires a session token and a non-null summary; otherwise the method returns false.
+- The PHP ledger endpoint can use database persistence and local JSON fallback, while Android maintains its own local ledger.
+
+These are concrete consistency questions for the replacement design. Existing ledger records should be preserved during migration planning.
+
+## 12. Current execution map
+
+| Surface | Local engine | Remote worker in inspected path | Rendering / storage |
+|---|---|---|---|
+| Android main chart | Kotlin | No direct worker call observed | Existing native chart canvas |
+| Android Forecast Lab | Kotlin | Yes, asynchronous client call | Forecast Lab UI; local result state |
+| Android snapshot action | Kotlin recomputation | No direct worker call observed | Local ledger, then PHP API client-forecast append |
+| Web main chart | JavaScript | No direct worker call observed | Existing chart renderer |
+| Web Forecast Studio | JavaScript | Yes, asynchronous client call | Studio view and in-memory worker cache |
+| PHP API inference | PHP | Yes, PHP cURL worker probe | API response |
+| PHP ledger | Receives client forecast or records PHP inference | Depends on request path | Database with local JSON fallback |
+
+## 13. Newly confirmed risks
+
+1. **Different forecast paths by UI surface:** main chart, Forecast Lab/Studio, snapshot action and PHP API can produce or consume different forecast results.
+2. **Worker configuration is not global execution policy:** some paths use the worker, some do not.
+3. **Snapshot identity risk:** snapshot generation recalculates instead of clearly persisting the exact rendered result and its full provenance.
+4. **Cross-runtime divergence:** Kotlin, JavaScript and PHP have different engine/contract paths and worker integration.
+5. **Potential duplicate local work:** Android Forecast Lab performs a remembered calculation and an effect-driven calculation; this requires runtime profiling.
+6. **Ledger authority is unclear:** local Android, web-side ledger and PHP database/file fallback coexist. Canonical ownership, merge rules and conflict behavior are not established.
+
+## 14. Remaining verification before migration design
+
+1. Trace all call sites of Android snapshot, evaluation and ledger synchronization, including lifecycle triggers.
+2. Trace Web ledger writes and whether the browser ever syncs forecasts to the PHP API or only stores locally.
+3. Inspect Python worker routes, request schema, model execution, and deployment configuration to establish the actual worker contract.
+4. Inspect chart renderer inputs and scaling/time-axis logic to specify the exact overlay extension seam.
+5. Compare Kotlin/JavaScript/PHP candle validation, closed-bar handling, timestamp construction and timeframe alignment.
+6. Inspect CI workflows and execute relevant tests if a supported environment is available; report execution results separately from source-level test review.
+7. Complete the file-level migration matrix only after the above paths are traced.
