@@ -4,7 +4,7 @@
 - **Version:** 1.0.1
 - **Date:** 2026-11-17
 - **Status:** Model-agnostic system specification; Phase 1 operational scope is limited to Chronos-2, subject to implementation and acceptance gates
-- **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.2.0
+- **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0
 - **Scope:** Product/system behavior, lifecycle, user workflows, model independence, comparison, persistence semantics, evaluation boundaries and acceptance gates
 - **Phase 1 model scope:** Chronos-2 is the sole selected model for initial implementation and controlled evaluation; no additional model is enabled in Phase 1.
 - **Explicit exclusion:** This document does not select software architecture, programming language, provider or deployment topology. The Phase 1 model decision does not establish predictive performance or production approval.
@@ -588,7 +588,7 @@ These decisions must be made using evidence from candidate model reviews, integr
 
 ## 20. Phase 1 model and required execution sequence
 
-The Phase 1 model is **Chronos-2 only**, as recorded in FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md. The immediate next work is to complete the system implementation and controlled evaluation path around this single model, while preserving its native output and the product requirement for meaningful OHLC forecasting.
+The Phase 1 model is **Chronos-2 only**, as recorded in FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md. The immediate next work is to complete the system implementation and controlled evaluation path around this single model, while preserving its native output and prioritizing a structurally meaningful price path. Complete OHLC candles are deferred beyond Phase 1.
 
 Chronos-2 has passed source-level screening only. It is not yet CHART-runtime-verified, performance-validated, product-accepted or production-approved. Passing system acceptance gates establishes that the system handles outputs honestly; it does not establish forecast accuracy.
 
@@ -613,6 +613,7 @@ A change to model-specific implementation must not silently redefine the system 
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial model-independent system specification: responsibilities, lifecycle, multi-model execution, comparison, live/replay workflows, state semantics, provenance, governance and acceptance gates |
 | 1.0.1 | 2026-11-17 | Recorded Chronos-2 as the sole Phase 1 model; retained model-independent extension points and added a formal evidence-based gate before future model expansion |
+| 1.0.2 | 2026-11-17 | Aligned Phase 1 acceptance with the revised product priority: structured price path over candle rendering; line output is valid, while broad uninformative uncertainty cones are rejected |
 
 ---
 
