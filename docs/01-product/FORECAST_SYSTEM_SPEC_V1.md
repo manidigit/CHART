@@ -615,7 +615,8 @@ A change to model-specific implementation must not silently redefine the system 
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial model-independent system specification: responsibilities, lifecycle, multi-model execution, comparison, live/replay workflows, state semantics, provenance, governance and acceptance gates |
 | 1.0.1 | 2026-11-17 | Recorded Chronos-2 as the sole Phase 1 model; retained model-independent extension points and added a formal evidence-based gate before future model expansion |
-| 1.0.2 | 2026-11-17 | Aligned Phase 1 system behavior with structured price-path priority, line output acceptance, deferred OHLC candles and meaningful uncertainty visualization |\n| 1.0.3 | 2026-11-17 | Added a binding Chronos-2 Phase 1 input/output contract, native quantile semantics, Close-only baseline, path interpretation and walk-forward evaluation reference |
+| 1.0.2 | 2026-11-17 | Aligned Phase 1 system behavior with structured price-path priority, line output acceptance, deferred OHLC candles and meaningful uncertainty visualization |
+| 1.0.3 | 2026-11-17 | Added a binding Chronos-2 Phase 1 input/output contract, native quantile semantics, Close-only baseline, path interpretation and walk-forward evaluation reference |
 | 1.0.2 | 2026-11-17 | Aligned Phase 1 acceptance with the revised product priority: structured price path over candle rendering; line output is valid, while broad uninformative uncertainty cones are rejected |
 
 ---
