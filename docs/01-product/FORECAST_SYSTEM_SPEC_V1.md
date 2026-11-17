@@ -1,7 +1,7 @@
 # CHART Forecast — System Specification
 ## سند جامع تعریف سیستم پیش‌بینی، چرخه عمر اجرا و رفتارهای قابل مشاهده
 
-- **Version:** 1.0.3
+- **Version:** 1.0.4
 - **Date:** 2026-11-17
 - **Status:** Model-agnostic system specification; Phase 1 operational scope is limited to Chronos-2, subject to implementation and acceptance gates
 - **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0
@@ -640,3 +640,18 @@ Implementation must follow these rules:
 
 A failure to produce meaningful swings, corrections or reversals must be reported as a model/output limitation after the data, adapter, configuration, horizon, display and evaluation checks. It must not be repaired by drawing artificial market structure into the forecast.
 
+
+
+## 15. Gemini implementation handoff
+
+The implementation-facing execution instructions are maintained in [FORECAST_GEMINI_IMPLEMENTATION_HANDOFF_V1.md](./FORECAST_GEMINI_IMPLEMENTATION_HANDOFF_V1.md) v1.0.0. Gemini and other implementation agents must read that handoff together with this specification, the Product Foundation, the Chronos-2 input/output contract, the Acceptance Test Plan, the Model Intake document and the current-state audit before proposing code changes.
+
+The handoff does not override product/system requirements. It translates them into a bounded Phase 1 work sequence, explicit non-goals, required provenance, stop conditions and delivery evidence. Unresolved runtime values remain TBD until measured. No implementation agent may fabricate OHLC, add decorative oscillations, stitch marginal quantiles into scenarios, replace the existing chart/data source or claim predictive quality without walk-forward evidence.
+
+The handoff is not evidence that any implementation has been completed. Code changes require explicit project-owner authorization and must be reviewed against the acceptance gates.
+
+### 15.1. Version history
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0.4 | 2026-11-17 | Added authoritative link to the Gemini Phase 1 implementation handoff and clarified its precedence and authorization boundary |
