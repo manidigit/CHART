@@ -4,7 +4,7 @@
 - **Version:** 1.0.0
 - **Date:** 2026-11-17
 - **Status:** Normative Phase 1 model-specific contract; runtime parameters marked TBD require controlled measurement before implementation freeze
-- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0; FORECAST_SYSTEM_SPEC_V1.md v1.0.2; FORECAST_ACCEPTANCE_TEST_PLAN_V1.md v1.0.1
+- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0; FORECAST_SYSTEM_SPEC_V1.md v1.0.3; FORECAST_ACCEPTANCE_TEST_PLAN_V1.md v1.0.2
 - **Model scope:** `amazon/chronos-2` only for Phase 1
 - **Evidence basis:** Upstream Chronos source reviewed at the file revisions listed in Section 12. Source review is not runtime or market-performance validation.
 
