@@ -212,7 +212,8 @@ Path-quality evaluation should include, where measurable: direction/regime trans
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial model-independent acceptance scenarios for readiness, execution, output, chart, persistence, evaluation, replay, security and cross-platform integrity |
-| 1.0.1 | 2026-11-17 | Added Phase 1 path-structure acceptance cases; clarified that line output is valid and complete OHLC is deferred |\n| 1.0.2 | 2026-11-17 | Added Chronos-2 native-output integrity, inference configuration, leakage, quantile calibration and walk-forward path-quality test cases |
+| 1.0.1 | 2026-11-17 | Added Phase 1 path-structure acceptance cases; clarified that line output is valid and complete OHLC is deferred |
+| 1.0.2 | 2026-11-17 | Added Chronos-2 native-output integrity, inference configuration, leakage, quantile calibration and walk-forward path-quality test cases |
 
 
 ## 10. Chronos-2 Phase 1 model-specific acceptance cases
