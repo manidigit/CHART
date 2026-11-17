@@ -48,7 +48,13 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.11"
-          cache: pip
+
+      - name: Static syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/chronos2_workflow_runner.py host_subdomain/scripts/chronos2_worker.py host_subdomain/scripts/sync_tvdatafeed.py
+          node --input-type=module --check < host_subdomain/assets/js/services/apiService.js
 
       - name: Validate inputs and map CHART timeframe to TradingView interval
         shell: bash
