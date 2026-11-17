@@ -1,7 +1,7 @@
 # CHART Forecast — System Specification
 ## سند جامع تعریف سیستم پیش‌بینی، چرخه عمر اجرا و رفتارهای قابل مشاهده
 
-- **Version:** 1.0.1
+- **Version:** 1.0.2
 - **Date:** 2026-11-17
 - **Status:** Model-agnostic system specification; Phase 1 operational scope is limited to Chronos-2, subject to implementation and acceptance gates
 - **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0
@@ -588,13 +588,15 @@ These decisions must be made using evidence from candidate model reviews, integr
 
 ## 20. Phase 1 model and required execution sequence
 
-The Phase 1 model is **Chronos-2 only**, as recorded in FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md. The immediate next work is to complete the system implementation and controlled evaluation path around this single model, while preserving its native output and prioritizing a structurally meaningful price path. Complete OHLC candles are deferred beyond Phase 1.
+The Phase 1 model is **Chronos-2 only**, as recorded in FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md. The immediate next work is to complete the system implementation and controlled evaluation path around this single model, prioritizing a time-ordered price path that represents trend changes, impulse moves, pullbacks, swing highs/lows and likely reversal areas. A line/path output is acceptable in Phase 1; complete OHLC candles are deferred.
 
 Chronos-2 has passed source-level screening only. It is not yet CHART-runtime-verified, performance-validated, product-accepted or production-approved. Passing system acceptance gates establishes that the system handles outputs honestly; it does not establish forecast accuracy.
 
 If results are inadequate, first diagnose data identity/quality, preparation, model configuration and execution, horizon, output interpretation/display, and evaluation methodology. Do not add models as a substitute for this diagnosis.
 
 Any later candidate must be independently assessed using FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md and pass its formal model-expansion gate. Deferral of other candidates is not rejection; no additional candidate is enabled in Phase 1.
+
+Phase 1 display and acceptance must not reward a smooth but structurally empty line. The forecast path must be assessed for intermediate movement, meaningful corrections, swing points and reversal timing/areas. If uncertainty is displayed, its width and empirical coverage must be evaluated together; a broad cone that hides the central path is not an acceptable substitute for a useful forecast. Native quantiles must not be arbitrarily linked into fabricated coherent paths.
 
 ## 21. Change control
 
@@ -613,6 +615,7 @@ A change to model-specific implementation must not silently redefine the system 
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial model-independent system specification: responsibilities, lifecycle, multi-model execution, comparison, live/replay workflows, state semantics, provenance, governance and acceptance gates |
 | 1.0.1 | 2026-11-17 | Recorded Chronos-2 as the sole Phase 1 model; retained model-independent extension points and added a formal evidence-based gate before future model expansion |
+| 1.0.2 | 2026-11-17 | Aligned Phase 1 system behavior with structured price-path priority, line output acceptance, deferred OHLC candles and meaningful uncertainty visualization |
 | 1.0.2 | 2026-11-17 | Aligned Phase 1 acceptance with the revised product priority: structured price path over candle rendering; line output is valid, while broad uninformative uncertainty cones are rejected |
 
 ---
