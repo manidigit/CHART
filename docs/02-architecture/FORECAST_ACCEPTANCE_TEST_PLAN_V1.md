@@ -1,7 +1,7 @@
 # CHART Forecast — Model-Independent Acceptance Test Plan
 ## برنامه آزمون پذیرش سیستم، مستقل از مدل و الگوریتم
 
-- **Version:** 1.0.2
+- **Version:** 1.0.3
 - **Date:** 2026-11-17
 - **Status:** Normative acceptance scenarios for system design and future implementation
 - **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.3
@@ -243,3 +243,25 @@ These cases supplement—not replace—the model-independent tests above. The no
 Chronos-2 source/API compatibility is not a model acceptance result. Passing X-01 through X-10 establishes adapter/output integrity only. Predictive path acceptance requires walk-forward evidence across instruments, timeframes, horizons and market regimes, including comparison with suitable naive baselines. A visually convincing line without this evidence remains unvalidated.
 
 A failure in path structure must trigger the diagnostic sequence in the Model Intake document before any second model is proposed. No synthetic oscillation, fabricated OHLC or arbitrary quantile stitching may be used to turn a failed test into a pass.
+
+
+## 11. Gemini implementation handoff mapping
+
+The implementation sequence and required delivery evidence are specified in [FORECAST_GEMINI_IMPLEMENTATION_HANDOFF_V1.md](../01-product/FORECAST_GEMINI_IMPLEMENTATION_HANDOFF_V1.md) v1.0.0.
+
+The mapping is:
+- Handoff E0 → input integrity, timestamp/origin and leakage tests.
+- Handoff E1 → Chronos-2 adapter, native quantile and baseline tests.
+- Handoff E2 → P-01 through P-04 and X-12 path-structure tests.
+- Handoff E3 → P-05 and X-07 uncertainty tests.
+- Handoff E4/E5 → separately approved ablation and OHLC experiments; neither is required to pass the Close-only Phase 1 baseline.
+- Handoff E6 → robustness, runtime and cross-platform checks.
+- Handoff G1–G9 → release evidence gates.
+
+Implementation agents must report unexecuted cases as Not Run. A successful build or inference call is not a substitute for walk-forward path-quality evidence. The handoff does not authorize code changes by itself; explicit project-owner authorization remains required.
+
+### 11.1. Version history
+
+| Version | Date | Change |
+|---|---|---|
+| 1.0.3 | 2026-11-17 | Added mapping between the Gemini implementation handoff stages and the acceptance-test/release gates |
