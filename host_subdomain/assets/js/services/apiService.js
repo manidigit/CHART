@@ -16,6 +16,10 @@ import {
   normalizeHexForAndroid,
   resolvePriceBasis,
   INDICATOR_FLAG_KEYS,
+  CHRONOS2_PINNED_MODEL_ID,
+  CHRONOS2_PINNED_REVISION_SHA,
+  isChronosForecastMatchingTab,
+  clearTabChronosForecast,
 } from '../core/store.js?v=1.43.0';
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.43.0';
@@ -1741,4 +1745,197 @@ export async function fetchImportBatches(limit = 20) {
   }
   return state.importBatches || [];
 }
+
+const _chronos2MemoryCache = new Map();
+const _chronos2PollTimers = new Map();
+
+export function buildClientChronos2CacheKey(symbolCode, provider, timeframe, originOpenMs, horizonBars = 30) {
+  const sym = String(symbolCode || '').trim().toUpperCase();
+  const prov = String(provider || 'tvdatafeed').trim().toLowerCase();
+  const tf = String(timeframe || 'M15').trim().toUpperCase();
+  const h = Math.max(1, Math.min(120, Math.round(Number(horizonBars) || 30)));
+  return `${sym}|${prov}|${tf}|${Number(originOpenMs)}|H${h}|${CHRONOS2_PINNED_MODEL_ID}@${CHRONOS2_PINNED_REVISION_SHA}`;
+}
+
+/**
+ * Fetches or enqueues a real Chronos-2 forecast for the active chart tab.
+ * - Uses only closed candles (Close values).
+ * - Checks deterministic cache (memory -> static server cache -> PHP API).
+ * - Polls automatically if status is PROCESSING / QUEUED.
+ * - Strictly verifies series identity before mutating tab state.
+ */
+export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRefresh = false) {
+  if (!tab || !tab.showChronosForecast) {
+    if (tab) clearTabChronosForecast(tab);
+    return null;
+  }
+
+  const symbolCode = String(tab.symbolCode || '').trim().toUpperCase();
+  const provider = String(tab.provider || 'tvdatafeed').trim().toLowerCase();
+  const timeframe = String(tab.timeframe || 'M15').trim().toUpperCase();
+  const horizonBars = Math.max(
+    1,
+    Math.min(120, Math.round(Number(tab.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30)))
+  );
+
+  const stepMs = PriceFormatter.stepMilliseconds(timeframe);
+  const nowMs = Date.now();
+  const allCandles = Array.isArray(tab.candles) ? tab.candles : [];
+  const closedCandles = allCandles.filter((c) => {
+    const openMs = Number(c?.open_time_utc_ms || 0);
+    const closeVal = Number(c?.close);
+    return (
+      openMs > 0 &&
+      Number.isFinite(closeVal) &&
+      closeVal > 0 &&
+      c?.is_closed !== false &&
+      PriceFormatter.isCandleClosed(openMs, timeframe, nowMs, symbolCode)
+    );
+  });
+
+  if (closedCandles.length < 32) {
+    tab.chronosForecast = null;
+    tab.chronosStatus = 'ERROR';
+    tab.chronosError = `Insufficient closed candles (${closedCandles.length}/32)`;
+    if (typeof onRenderUpdate === 'function') onRenderUpdate();
+    return null;
+  }
+
+  const lastClosedCandle = closedCandles[closedCandles.length - 1];
+  const originOpenMs = Number(lastClosedCandle.open_time_utc_ms);
+  const clientCacheKey = buildClientChronos2CacheKey(symbolCode, provider, timeframe, originOpenMs, horizonBars);
+
+  // If current tab already holds a valid matching forecast and no refresh was forced, keep it
+  if (!forceRefresh && isChronosForecastMatchingTab(tab, tab.chronosForecast)) {
+    tab.chronosStatus = 'READY';
+    tab.chronosError = '';
+    return tab.chronosForecast;
+  }
+
+  // Clear any stale forecast from a previous symbol, provider, timeframe, or older candle immediately
+  if (!isChronosForecastMatchingTab(tab, tab.chronosForecast)) {
+    tab.chronosForecast = null;
+  }
+
+  // 1. Check client memory cache
+  if (!forceRefresh && _chronos2MemoryCache.has(clientCacheKey)) {
+    const memHit = _chronos2MemoryCache.get(clientCacheKey);
+    if (isChronosForecastMatchingTab(tab, memHit)) {
+      tab.chronosForecast = memHit;
+      tab.chronosStatus = 'READY';
+      tab.chronosError = '';
+      if (typeof onRenderUpdate === 'function') onRenderUpdate();
+      return memHit;
+    }
+  }
+
+  // Mark as PROCESSING while checking server cache / worker queue
+  tab.chronosStatus = 'PROCESSING';
+  tab.chronosError = '';
+  if (typeof onRenderUpdate === 'function') onRenderUpdate();
+
+  // 2. Check static pre-cached deterministic file on server if available
+  const staticAliasUrl = `./data/chronos2/cache/${encodeURIComponent(symbolCode)}_${encodeURIComponent(provider)}_${encodeURIComponent(timeframe)}_${originOpenMs}_H${horizonBars}.json`;
+  if (!forceRefresh) {
+    try {
+      const staticRes = await fetch(staticAliasUrl, { cache: 'no-store' });
+      if (staticRes.ok) {
+        const staticPayload = await staticRes.json();
+        if (isChronosForecastMatchingTab(tab, staticPayload)) {
+          staticPayload.served_from_cache = true;
+          _chronos2MemoryCache.set(clientCacheKey, staticPayload);
+          tab.chronosForecast = staticPayload;
+          tab.chronosStatus = 'READY';
+          tab.chronosError = '';
+          if (typeof onRenderUpdate === 'function') onRenderUpdate();
+          return staticPayload;
+        }
+      }
+    } catch {
+      // Static file not yet generated; proceed to PHP API endpoint
+    }
+  }
+
+  // 3. Request from PHP + Python + Cron queue endpoint
+  const contextSlice = closedCandles.slice(-256).map((c) => ({
+    open_time_utc_ms: Number(c.open_time_utc_ms),
+    open: Number(c.open),
+    high: Number(c.high),
+    low: Number(c.low),
+    close: Number(c.close),
+    volume: Number(c.volume || 0),
+    is_closed: 1,
+  }));
+
+  try {
+    const res = await fetch('./api/v1/chronos2_forecast.php', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        symbol: symbolCode,
+        provider,
+        timeframe,
+        horizon: horizonBars,
+        context_bars: 256,
+        mode: 'auto',
+        candles: contextSlice,
+      }),
+    });
+
+    const json = await res.json().catch(() => null);
+    const payload = json && json.data ? json.data : json;
+
+    // Verify tab hasn't switched symbol/provider/timeframe while awaiting response
+    if (
+      !tab.showChronosForecast ||
+      String(tab.symbolCode || '').toUpperCase() !== symbolCode ||
+      String(tab.provider || 'tvdatafeed').toLowerCase() !== provider ||
+      String(tab.timeframe || 'M15').toUpperCase() !== timeframe
+    ) {
+      return null;
+    }
+
+    if (payload && payload.status === 'READY' && isChronosForecastMatchingTab(tab, payload)) {
+      _chronos2MemoryCache.set(clientCacheKey, payload);
+      tab.chronosForecast = payload;
+      tab.chronosStatus = 'READY';
+      tab.chronosError = '';
+      if (typeof onRenderUpdate === 'function') onRenderUpdate();
+      return payload;
+    }
+
+    if (payload && (payload.status === 'PROCESSING' || payload.status === 'QUEUED')) {
+      tab.chronosForecast = null;
+      tab.chronosStatus = 'PROCESSING';
+      tab.chronosError = '';
+      if (typeof onRenderUpdate === 'function') onRenderUpdate();
+
+      const tabKey = tab.tabId || `${symbolCode}_${timeframe}`;
+      if (_chronos2PollTimers.has(tabKey)) {
+        clearTimeout(_chronos2PollTimers.get(tabKey));
+      }
+      const timerId = setTimeout(() => {
+        _chronos2PollTimers.delete(tabKey);
+        if (tab.showChronosForecast) {
+          requestChronos2ForecastForTab(tab, onRenderUpdate, false).catch(() => {});
+        }
+      }, 3000);
+      _chronos2PollTimers.set(tabKey, timerId);
+      return null;
+    }
+
+    tab.chronosForecast = null;
+    tab.chronosStatus = 'ERROR';
+    tab.chronosError = (payload && payload.error) || 'Chronos-2 forecast unavailable';
+    if (typeof onRenderUpdate === 'function') onRenderUpdate();
+    return null;
+  } catch (err) {
+    tab.chronosForecast = null;
+    tab.chronosStatus = 'ERROR';
+    tab.chronosError = err && err.message ? err.message : 'Chronos-2 connection error';
+    if (typeof onRenderUpdate === 'function') onRenderUpdate();
+    return null;
+  }
+}
+
 

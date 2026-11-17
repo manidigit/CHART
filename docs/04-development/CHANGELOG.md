@@ -7,6 +7,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.46.0] - 2026-11-17
+
+### Added (Phase 1 Real `amazon/chronos-2` Forecast Integration on CHART Canvas)
+- **Official `amazon/chronos-2` Engine & Close-Only Univariate Contract (`chronos2_worker.py`):**
+  - Connected official `amazon/chronos-2` at fixed Hugging Face revision `29ec3766d36d6f73f0696f85560a422f50e8498c` using the validated Python environment (`/tmp/chronos_venv/bin/python3`, `torch 2.15.0+cpu`, `transformers 5.23.0`, `chronos-forecasting 2.3.2`).
+  - Strictly filters for closed candles only (`is_closed = 1` / `open_time_utc_ms + step_ms <= now_utc_ms`), extracts chronological `Close` prices (minimum 32 closed bars, default context 256 closed bars), and passes a 3D context tensor `(1, 1, history_length)` to `Chronos2Pipeline.predict()`.
+  - Configurable prediction horizon (`15`, `30`, `45`, `60` future candles; default `30`).
+  - Preserves all **21 native quantiles** (`0.01, 0.05, 0.10, ..., 0.50, ..., 0.99`) in `native_quantiles` per step, exposes `q50_median` (`Q50`) as the central forecast path and `q25`–`q75` for the optional uncertainty band, and generates **zero synthetic OHLC** and **zero Buy/Sell signals**.
+- **PHP + Python + Cron Queue, Single-Instance Mutex & Deterministic Cache (`Chronos2QueueManager.php`, `chronos2_forecast.php`, `cron_process_chronos2_queue.php`):**
+  - Implemented `Chronos2QueueManager` enforcing single-instance execution via non-blocking `flock(LOCK_EX | LOCK_NB)` on `host_subdomain/data/chronos2/chronos2_worker.lock` so only one Chronos-2 process ever runs at a time.
+  - Deterministic cache key incorporates `symbol`, `provider`, `timeframe`, `origin_open_time_utc_ms` (last closed candle timestamp), `horizon`, and `model_revision` (`29ec3766d36d6f73f0696f85560a422f50e8498c`), with atomic cache writes to `host_subdomain/data/chronos2/cache/{SYMBOL}_{PROVIDER}_{TF}_{ORIGIN_MS}_H{HORIZON}.json`.
+  - When the worker lock is busy, requests are queued into `host_subdomain/data/chronos2/queue/*.job.json` (`status: PROCESSING / QUEUED`) and drained sequentially by `host_subdomain/scripts/cron_process_chronos2_queue.php`.
+- **Interactive CHART Canvas Rendering & Series-Switch Invalidation (`chartRenderer.js`, `store.js`, `apiService.js`, `headerView.js`, `app.js`):**
+  - Added `Chronos-2` (`toggle-chronos-forecast`) and `Q25–Q75` (`toggle-chronos-band`) quick-toggle buttons to the CHART top header bar and full controls (including horizon selector `15 / 30 / 45 / 60` and custom color picker) inside the Indicators modal.
+  - Extends the X-axis time scale to the right of the last closed candle when `offset === 0` and incorporates `Q50` and `Q25–Q75` into Y-axis auto-scaling.
+  - Renders the origin vertical divider at the last closed candle, optional `Q25–Q75` shaded polygon band with dashed boundaries, distinct violet `Q50` central forecast line with step markers, right-axis price badges (`Q50`, `Q75`, `Q25`), processing status badge (`در حال پردازش...`), and crosshair step tooltip.
+  - Enforced strict series-switch invalidation (`isChronosForecastMatchingTab` & `clearTabChronosForecast`) so changing symbol, provider, timeframe, or last closed candle timestamp immediately prevents stale forecasts from displaying.
+- **End-to-End Verification (`SPOTBRENT` on `H1`, `M15`, `H4`, `D1`):**
+  - Verified real closed-candle ingestion, model execution, caching, and chart rendering across `SPOTBRENT` (`tvdatafeed`) on `H1` (`origin: 2026-11-09T07:00:00Z`, `last_close: 99.848`, `step+1 Q50: 99.850`, `step+30 Q50: 100.422 [Q25: 97.523, Q75: 103.031]`, inference `0.1155s`, peak RSS `1003.18 MB`), `M15` (`origin: 2026-11-09T08:30:00Z`, `last_close: 99.546`, `step+1 Q50: 99.564`, `step+30 Q50: 99.568 [Q25: 98.509, Q75: 100.813]`, inference `0.1220s`), `H4`, and `D1`.
+  - Saved visual chart verification artifact to `docs/assets/chronos2_spotbrent_chart_verification.png` and added `CHRONOS2-INTEGRATION` unit test in `tests/web_parity.test.mjs` (`10/10 passed`).
+
+---
+
 ## [1.45.1] - 2026-11-17
 
 ### Changed & Fixed (Forecast Engine Archived for Ground-Up Redesign, Disabled Forecast Tabs & Web Timeframe-Switch Unblock)

@@ -311,7 +311,20 @@ Not established by source review:
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial Phase 1 Chronos-2 contract: data boundary, native quantile semantics, no fabricated OHLC, path interpretation, uncertainty, walk-forward evaluation and explicit unresolved runtime parameters |
+| 1.1.0 | 2026-11-17 | Phase 1 runtime parameters measured and connected to CHART (`amazon/chronos-2` @ `29ec3766d36d6f73f0696f85560a422f50e8498c`, `PHP + Python + Cron` single-instance queue, deterministic cache key, `Q50` central line & `Q25–Q75` optional band on `chartRenderer.js`) |
+
+## 14. Measured Phase 1 Runtime Parameters & End-to-End CHART Connection Record (v1.1.0)
+
+- **Model ID & Pinned Revision:** `amazon/chronos-2` @ `29ec3766d36d6f73f0696f85560a422f50e8498c`
+- **Runtime Stack:** Python `3.11.2` (`/tmp/chronos_venv/bin/python3`), `torch 2.15.0+cpu`, `transformers 5.23.0`, `chronos-forecasting 2.3.2`, CPU `float32`
+- **Input Tensor & Context:** 3D tensor `(1, 1, history_length)` constructed strictly from validated closed candles (`is_closed = 1`), default context window `256` closed bars (minimum `32` closed bars), `Close`-only univariate target.
+- **Horizon & Quantiles:** Configurable horizon (`15`, `30`, `45`, `60` future bars; default `30`), preserving all `21` native quantile levels (`0.01, 0.05, 0.10, 0.15, 0.20, 0.25, 0.30, 0.35, 0.40, 0.45, 0.50, 0.55, 0.60, 0.65, 0.70, 0.75, 0.80, 0.85, 0.90, 0.95, 0.99`).
+- **Execution Queue & Cache Key:** Single-instance `flock(LOCK_EX | LOCK_NB)` mutex (`host_subdomain/data/chronos2/chronos2_worker.lock`) managed by `Chronos2QueueManager.php` and `cron_process_chronos2_queue.php`. Cache key binds `(symbol, provider, timeframe, origin_open_time_utc_ms, horizon, model_revision)`.
+- **Measured Performance (`SPOTBRENT` / `tvdatafeed`, `H=30`):**
+  - `H1` (`origin: 2026-11-09T07:00:00Z`, `last_close: 99.848`): Cold load `0.4323s`, inference `0.1155s`, peak RSS `1003.18 MB`, Step +1 `Q50 = 99.850`, Step +30 `Q50 = 100.422` (`Q25 = 97.523`, `Q75 = 103.031`).
+  - `M15` (`origin: 2026-11-09T08:30:00Z`, `last_close: 99.546`): Cold load `0.4561s`, inference `0.1220s`, peak RSS `1003.35 MB`, Step +1 `Q50 = 99.564`, Step +30 `Q50 = 99.568` (`Q25 = 98.509`, `Q75 = 100.813`).
 
 ---
 
 **Implementation rule:** Preserve the model's native output, label every derived interpretation, and measure the path against future actuals. If the model does not produce the structure CHART needs, expose that limitation instead of drawing structure into the result.
+

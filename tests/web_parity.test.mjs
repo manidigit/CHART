@@ -632,3 +632,113 @@ test('CATALOG-79: expanded 79-symbol catalog, TradingView-only active, and new 5
     assert.equal(normalizeCanonicalChartKey('chart_brkb_stock'), 'BRK.B_M15');
     assert.equal(normalizeCanonicalChartKey('chart_2222sr_stock'), '2222.SR_M15');
 });
+
+test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-only contract, Q50/Q25-Q75 toggles, and strict series-switch invalidation', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {
+        isChronosForecastMatchingTab,
+        clearTabChronosForecast
+    } = await import('../host_subdomain/assets/js/core/store.js');
+    const {
+        buildClientChronos2CacheKey
+    } = await import('../host_subdomain/assets/js/services/apiService.js');
+    const { renderIndicatorsModal } = await import('../host_subdomain/assets/js/views/headerView.js');
+
+    const cacheDir = path.resolve('host_subdomain/data/chronos2/cache');
+    const h1CachePath = path.join(cacheDir, 'SPOTBRENT_tvdatafeed_H1_1794207600000_H30.json');
+    const m15CachePath = path.join(cacheDir, 'SPOTBRENT_tvdatafeed_M15_1794213000000_H30.json');
+    assert.equal(fs.existsSync(h1CachePath), true, 'Real Chronos-2 H1 cache file must exist');
+    assert.equal(fs.existsSync(m15CachePath), true, 'Real Chronos-2 M15 cache file must exist');
+
+    const h1Payload = JSON.parse(fs.readFileSync(h1CachePath, 'utf8'));
+    assert.equal(h1Payload.status, 'READY');
+    assert.equal(h1Payload.schema, 'chart_chronos2_forecast_v1');
+    assert.equal(h1Payload.model.model_id, 'amazon/chronos-2');
+    assert.equal(h1Payload.model.hf_revision_sha, '29ec3766d36d6f73f0696f85560a422f50e8498c');
+    assert.equal(h1Payload.series.symbol, 'SPOTBRENT');
+    assert.equal(h1Payload.series.provider, 'tvdatafeed');
+    assert.equal(h1Payload.series.timeframe, 'H1');
+    assert.equal(h1Payload.series.origin_open_time_utc_ms, 1794207600000);
+    assert.equal(h1Payload.model.horizon_bars, 30);
+    assert.equal(h1Payload.model.native_quantile_levels.length, 21);
+    assert.equal(h1Payload.forecast.length, 30);
+
+    for (const step of h1Payload.forecast) {
+        assert.equal(typeof step.q50_median, 'number');
+        assert.equal(typeof step.q25, 'number');
+        assert.equal(typeof step.q75, 'number');
+        assert.ok(step.q25 <= step.q50_median && step.q50_median <= step.q75, 'Quantile monotonicity Q25 <= Q50 <= Q75 must hold');
+        assert.equal(Object.keys(step.native_quantiles).length, 21, 'All 21 native quantiles must be preserved');
+        assert.equal('open' in step, false, 'Zero synthetic OHLC allowed in forecast steps');
+        assert.equal('high' in step, false, 'Zero synthetic OHLC allowed in forecast steps');
+        assert.equal('low' in step, false, 'Zero synthetic OHLC allowed in forecast steps');
+        assert.equal('close' in step, false, 'Zero synthetic OHLC allowed in forecast steps');
+    }
+
+    // Verify deterministic client cache key incorporates symbol, provider, timeframe, origin_open_time_utc_ms, horizon, and revision
+    const key1 = buildClientChronos2CacheKey('SPOTBRENT', 'tvdatafeed', 'H1', 1794207600000, 30);
+    const key2 = buildClientChronos2CacheKey('SPOTBRENT', 'tvdatafeed', 'M15', 1794207600000, 30);
+    const key3 = buildClientChronos2CacheKey('SPOTBRENT', 'tvdatafeed', 'H1', 1794211200000, 30);
+    assert.notEqual(key1, key2);
+    assert.notEqual(key1, key3);
+    assert.ok(key1.includes('29ec3766d36d6f73f0696f85560a422f50e8498c'));
+
+    // Verify strict series-switch invalidation (isChronosForecastMatchingTab)
+    const matchingTab = {
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'H1',
+        chronosHorizonBars: 30,
+        candles: [
+            { open_time_utc_ms: 1794204000000, open: 99.5, high: 100.1, low: 99.4, close: 99.7, is_closed: true },
+            { open_time_utc_ms: 1794207600000, open: 99.7, high: 100.2, low: 99.6, close: 99.848, is_closed: true }
+        ],
+        chronosForecast: h1Payload,
+        chronosStatus: 'READY'
+    };
+    assert.equal(isChronosForecastMatchingTab(matchingTab, h1Payload), true);
+
+    // Changing timeframe, symbol, provider, or last closed candle timestamp must reject the previous forecast
+    assert.equal(isChronosForecastMatchingTab({ ...matchingTab, timeframe: 'M15' }, h1Payload), false);
+    assert.equal(isChronosForecastMatchingTab({ ...matchingTab, symbolCode: 'XAUUSD' }, h1Payload), false);
+    assert.equal(isChronosForecastMatchingTab({ ...matchingTab, provider: 'yahoo_finance' }, h1Payload), false);
+    assert.equal(
+        isChronosForecastMatchingTab(
+            {
+                ...matchingTab,
+                candles: [
+                    ...matchingTab.candles,
+                    { open_time_utc_ms: 1794211200000, open: 99.848, high: 100.3, low: 99.8, close: 100.1, is_closed: true }
+                ]
+            },
+            h1Payload
+        ),
+        false
+    );
+
+    clearTabChronosForecast(matchingTab);
+    assert.equal(matchingTab.chronosForecast, null);
+    assert.equal(matchingTab.chronosStatus, 'IDLE');
+
+    // Verify top header & indicators modal expose Chronos-2 forecast & Q25-Q75 band toggles
+    const mockI18n = { getCurrentLanguage: () => 'fa', t: (k) => k };
+    const topBarHtml = renderTopHeaderBar({ ...matchingTab, showChronosForecast: true, showChronosBand: true }, mockI18n);
+    assert.ok(topBarHtml.includes('data-action="toggle-chronos-forecast"'));
+    assert.ok(topBarHtml.includes('data-action="toggle-chronos-band"'));
+
+    const prevModal = state.activeModal;
+    const prevCat = state.activeIndicatorCategory;
+    try {
+        state.activeModal = 'indicators';
+        state.activeIndicatorCategory = 'all';
+        const indHtml = renderIndicatorsModal({ ...matchingTab, showChronosForecast: true, showChronosBand: true }, mockI18n);
+        assert.ok(indHtml.includes('data-action="toggle-chronos-forecast"'));
+        assert.ok(indHtml.includes('data-action="toggle-chronos-band"'));
+        assert.ok(indHtml.includes('data-action="set-chronos-horizon"'));
+    } finally {
+        state.activeModal = prevModal;
+        state.activeIndicatorCategory = prevCat;
+    }
+});
+

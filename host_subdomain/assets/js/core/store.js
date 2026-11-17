@@ -123,6 +123,9 @@ export const DEFAULT_PREFS = {
   showPivotPoints: false,
   pivotType: 'STANDARD',
   showFutureProjection: false,
+  showChronosForecast: false,
+  showChronosBand: true,
+  chronosHorizonBars: 30,
   forecastRenderMode: 'FAN_CHART',
   forecastHorizonBars: 30,
   forecastPluginConfig: null,
@@ -180,6 +183,8 @@ export const DEFAULT_INDICATOR_COLORS = {
   ichimoku: '#06B6D4', // Turquoise Cloud
   overlayMacd: '#3B82F6', // Blue Overlay
   futureProjection: '#8B5CF6', // Violet Projection
+  chronosQ50: '#A855F7', // Chronos-2 Q50 Central Path (Vibrant Violet)
+  chronosBand: '#A855F7', // Chronos-2 Q25-Q75 Band
 
   // Smart Money Concepts & Killzones
   smcStructure: '#38BDF8', // Sky Blue
@@ -1201,6 +1206,12 @@ function loadOpenTabsFromStorage() {
       ...t,
       provider: 'tvdatafeed',
       showFutureProjection: false,
+      showChronosForecast: Boolean(t.showChronosForecast),
+      showChronosBand: t.showChronosBand !== false,
+      chronosHorizonBars: Math.max(1, Math.min(120, Number(t.chronosHorizonBars || 30))),
+      chronosForecast: null,
+      chronosStatus: 'IDLE',
+      chronosError: '',
     }));
   } catch {
     return [];
@@ -1443,6 +1454,8 @@ export const INDICATOR_FLAG_KEYS = [
   'showFvg',
   'showVolumeProfile',
   'showPivotPoints',
+  'showChronosForecast',
+  'showChronosBand',
 ];
 
 export function syncIndicatorsAcrossTabsAndPrefs(sourceTab, skipSave = false) {
@@ -1481,6 +1494,13 @@ export function syncIndicatorsAcrossTabsAndPrefs(sourceTab, skipSave = false) {
     state.chartPreferences.pivotType = validPt;
     for (const tab of state.openTabs) {
       tab.pivotType = validPt;
+    }
+  }
+  if (sourceTab.chronosHorizonBars !== undefined) {
+    const ch = Math.max(1, Math.min(120, Math.round(Number(sourceTab.chronosHorizonBars) || 30)));
+    state.chartPreferences.chronosHorizonBars = ch;
+    for (const tab of state.openTabs) {
+      tab.chronosHorizonBars = ch;
     }
   }
   if (!skipSave) {
@@ -1594,6 +1614,8 @@ export function getIndicatorColorPalette(prefs = state.chartPreferences) {
     ichimokuChikou: getColor('ichimokuChikou'),
     overlayMacd: getColor('overlayMacd'),
     futureProjection: getColor('futureProjection'),
+    chronosQ50: getColor('chronosQ50'),
+    chronosBand: getColor('chronosBand'),
 
     // Category 5: Smart Money Concepts (SMC) & Session Killzones
     smcStructure: getColor('smcStructure'),
@@ -1750,6 +1772,9 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showPivotPoints: Boolean(t.showPivotPoints),
     pivotType: String(t.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase(),
     showFutureProjection: false,
+    showChronosForecast: Boolean(t.showChronosForecast),
+    showChronosBand: t.showChronosBand !== false,
+    chronosHorizonBars: Math.max(1, Math.min(120, Number(t.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30))),
     isMagnetMode: Boolean(t.isMagnetMode),
     activeDrawingColor:
       t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',
@@ -1906,3 +1931,49 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
   _resolvedCandlesMemo.set(memoKey, result);
   return result;
 }
+
+export const CHRONOS2_PINNED_MODEL_ID = 'amazon/chronos-2';
+export const CHRONOS2_PINNED_REVISION_SHA = '29ec3766d36d6f73f0696f85560a422f50e8498c';
+
+/**
+ * Strictly validates that a Chronos-2 forecast payload belongs to the exact
+ * current (symbolCode, provider, timeframe, lastClosedCandleOpenMs, horizon, revision).
+ * Prevents any stale forecast from a previous symbol/provider/timeframe/candle from rendering.
+ */
+export function isChronosForecastMatchingTab(tab, forecastPayload = tab?.chronosForecast) {
+  if (!tab || !forecastPayload || typeof forecastPayload !== 'object') return false;
+  if (forecastPayload.status !== 'READY') return false;
+  if (!Array.isArray(forecastPayload.forecast) || forecastPayload.forecast.length === 0) return false;
+
+  const model = forecastPayload.model || {};
+  const series = forecastPayload.series || {};
+
+  if (model.model_id !== CHRONOS2_PINNED_MODEL_ID) return false;
+  if (model.hf_revision_sha !== CHRONOS2_PINNED_REVISION_SHA) return false;
+
+  const tabSym = String(tab.symbolCode || '').trim().toUpperCase();
+  const tabProv = String(tab.provider || 'tvdatafeed').trim().toLowerCase();
+  const tabTf = String(tab.timeframe || 'M15').trim().toUpperCase();
+  const tabHorizon = Math.max(1, Math.min(120, Math.round(Number(tab.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30))));
+
+  if (String(series.symbol || '').trim().toUpperCase() !== tabSym) return false;
+  if (String(series.provider || '').trim().toLowerCase() !== tabProv) return false;
+  if (String(series.timeframe || '').trim().toUpperCase() !== tabTf) return false;
+  if (Number(model.horizon_bars || 0) !== tabHorizon) return false;
+
+  const candles = Array.isArray(tab.candles) ? tab.candles : [];
+  if (candles.length === 0) return false;
+  const lastClosedCandle = candles[candles.length - 1];
+  const lastClosedOpenMs = Number(lastClosedCandle?.open_time_utc_ms || 0);
+  if (lastClosedOpenMs <= 0) return false;
+
+  return Number(series.origin_open_time_utc_ms) === lastClosedOpenMs;
+}
+
+export function clearTabChronosForecast(tab) {
+  if (!tab) return;
+  tab.chronosForecast = null;
+  tab.chronosStatus = 'IDLE';
+  tab.chronosError = '';
+}
+

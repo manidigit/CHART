@@ -1,7 +1,13 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.43.0';
 import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.43.0';
-import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.43.0';
+import {
+  state,
+  getInstrumentSpec,
+  getIndicatorColorPalette,
+  hexToRgba,
+  isChronosForecastMatchingTab,
+} from '../core/store.js?v=1.43.0';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -302,6 +308,39 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
   if (!Number.isFinite(rawMin) || !Number.isFinite(rawMax)) return;
 
+  // Chronos-2 Forecast validation & Y-axis auto-scale integration
+  const hasValidChronosForecast =
+    Boolean(tab.showChronosForecast) && isChronosForecastMatchingTab(tab, tab.chronosForecast);
+  const chronosPoints = hasValidChronosForecast ? tab.chronosForecast.forecast : [];
+  const showChronosBand = tab.showChronosBand !== false;
+  const chronosHorizonSlots =
+    tab.showChronosForecast && offset === 0
+      ? Math.max(
+          1,
+          Math.min(
+            120,
+            chronosPoints.length || Number(tab.chronosHorizonBars || prefs.chronosHorizonBars || 30)
+          )
+        )
+      : 0;
+
+  if (hasValidChronosForecast && offset === 0) {
+    for (let i = 0; i < chronosPoints.length; i++) {
+      const fp = chronosPoints[i];
+      const q50 = Number(fp.q50_median);
+      if (Number.isFinite(q50) && q50 > 0) {
+        if (q50 < rawMin) rawMin = q50;
+        if (q50 > rawMax) rawMax = q50;
+      }
+      if (showChronosBand) {
+        const q25 = Number(fp.q25);
+        const q75 = Number(fp.q75);
+        if (Number.isFinite(q25) && q25 > 0 && q25 < rawMin) rawMin = q25;
+        if (Number.isFinite(q75) && q75 > 0 && q75 > rawMax) rawMax = q75;
+      }
+    }
+  }
+
   const isAutoY = tab.isAutoScaleY !== false;
   const scaleFactor = isAutoY ? 1.0 : Math.max(0.25, Math.min(4.0, Number(tab.priceScaleFactor || 1.0)));
   const baseRange = Math.max(rawMax - rawMin, 0.0001);
@@ -368,16 +407,38 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
 
   const effectiveSlots = Math.max(
-    visible.length,
-    Math.min(visibleCount, candles.length + Math.min(12, Math.round(visible.length * 0.08)))
+    visible.length + chronosHorizonSlots,
+    Math.min(
+      visibleCount + chronosHorizonSlots,
+      candles.length + chronosHorizonSlots + Math.min(12, Math.round(visible.length * 0.08))
+    )
   );
   const slotW = chartW / Math.max(1, effectiveSlots);
   const bodyW = Math.max(1.0, Math.min(20, slotW * 0.68));
   const idxToX = (idx) => (idx + 0.5) * slotW;
   const pastRightLimitX = chartW;
 
+  // Build X-axis time items including future Chronos-2 forecast slots when active at right edge
+  const stepMsAxis = PriceFormatter.stepMilliseconds(tab.timeframe || 'M15');
+  const lastVisBar = visible[visible.length - 1];
+  const lastVisOpenMs = Number(
+    lastVisBar?.open_time_utc_ms || (lastVisBar?.openTimeSec ? lastVisBar.openTimeSec * 1000 : 0)
+  );
+  const timeAxisItems =
+    chronosHorizonSlots > 0 && lastVisOpenMs > 0
+      ? [
+          ...visible,
+          ...Array.from({ length: chronosHorizonSlots }, (_, k) => ({
+            open_time_utc_ms:
+              hasValidChronosForecast && chronosPoints[k]?.target_open_time_utc_ms
+                ? Number(chronosPoints[k].target_open_time_utc_ms)
+                : lastVisOpenMs + (k + 1) * stepMsAxis,
+          })),
+        ]
+      : visible;
+
   // Vertical Time Grid + Smart Calendar-Aligned X-Axis Labels
-  const smartTicks = PriceFormatter.computeSmartTimeAxisTicks(visible, pastRightLimitX, tab.timeframe, tzMode);
+  const smartTicks = PriceFormatter.computeSmartTimeAxisTicks(timeAxisItems, pastRightLimitX, tab.timeframe, tzMode);
   for (const tick of smartTicks) {
     const x = idxToX(tick.index);
     ctx.strokeStyle = gridColor;
@@ -1083,6 +1144,201 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
         queueRightLevelLabel(py, `${lv.key} ${PriceFormatter.formatPrice(lv.val, tab.decimals)}`, lv.col);
       }
+      ctx.restore();
+    }
+  }
+
+  // CHRONOS-2 REAL FORECAST OVERLAY (Q50 Central Path + Optional Q25..Q75 Uncertainty Band)
+  if (tab.showChronosForecast) {
+    const chronosColor = indPal.chronosQ50 || '#A855F7';
+    const chronosBandCol = indPal.chronosBand || chronosColor;
+
+    if (hasValidChronosForecast && chronosPoints.length > 0) {
+      const originOpenMs = Number(tab.chronosForecast.series?.origin_open_time_utc_ms || 0);
+      let originIdx = -1;
+      for (let i = visible.length - 1; i >= 0; i--) {
+        const cMs = Number(visible[i].open_time_utc_ms || (visible[i].openTimeSec ? visible[i].openTimeSec * 1000 : 0));
+        if (cMs === originOpenMs) {
+          originIdx = i;
+          break;
+        }
+      }
+
+      if (originIdx >= 0) {
+        const originCandle = visible[originIdx];
+        const originClose = Number(originCandle.close);
+        const originX = idxToX(originIdx);
+        const originY = priceToY(originClose);
+
+        const pts = chronosPoints
+          .map((fp, idx) => {
+            const stepNum = Number(fp.step || idx + 1);
+            const x = idxToX(originIdx + stepNum);
+            const q50 = Number(fp.q50_median);
+            const q25 = Number(fp.q25);
+            const q75 = Number(fp.q75);
+            return {
+              step: stepNum,
+              x,
+              q50,
+              q25,
+              q75,
+              yQ50: priceToY(q50),
+              yQ25: priceToY(q25),
+              yQ75: priceToY(q75),
+              raw: fp,
+            };
+          })
+          .filter((p) => Number.isFinite(p.q50) && p.x <= chartW + slotW);
+
+        if (pts.length > 0) {
+          const lastPt = pts[pts.length - 1];
+
+          ctx.save();
+          // 1. Subtle future forecast zone background & vertical origin divider at last closed candle
+          ctx.fillStyle = isDark ? hexToRgba(chronosColor, 0.035) : hexToRgba(chronosColor, 0.03);
+          ctx.fillRect(originX, topPad, Math.max(0, Math.min(chartW, lastPt.x + slotW * 0.5) - originX), chartH);
+
+          ctx.strokeStyle = hexToRgba(chronosColor, 0.55);
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(originX, topPad);
+          ctx.lineTo(originX, topPad + chartH);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // 2. Optional Uncertainty Band (Q25 to Q75)
+          if (showChronosBand) {
+            ctx.fillStyle = hexToRgba(chronosBandCol, isDark ? 0.19 : 0.15);
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            for (let i = 0; i < pts.length; i++) {
+              ctx.lineTo(pts[i].x, pts[i].yQ75);
+            }
+            for (let i = pts.length - 1; i >= 0; i--) {
+              ctx.lineTo(pts[i].x, pts[i].yQ25);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            // Upper Q75 and Lower Q25 dashed boundary curves
+            ctx.strokeStyle = hexToRgba(chronosBandCol, 0.65);
+            ctx.lineWidth = 1.15;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            for (let i = 0; i < pts.length; i++) {
+              ctx.lineTo(pts[i].x, pts[i].yQ75);
+            }
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            for (let i = 0; i < pts.length; i++) {
+              ctx.lineTo(pts[i].x, pts[i].yQ25);
+            }
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            queueRightLevelLabel(
+              lastPt.yQ75,
+              `Q75 ${PriceFormatter.formatPrice(lastPt.q75, tab.decimals)}`,
+              hexToRgba(chronosBandCol, 0.92)
+            );
+            queueRightLevelLabel(
+              lastPt.yQ25,
+              `Q25 ${PriceFormatter.formatPrice(lastPt.q25, tab.decimals)}`,
+              hexToRgba(chronosBandCol, 0.92)
+            );
+          }
+
+          // 3. Central Forecast Path (Q50 Median) — visually distinct from actual price
+          ctx.strokeStyle = hexToRgba(chronosColor, 0.26);
+          ctx.lineWidth = 4.6;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(originX, originY);
+          for (let i = 0; i < pts.length; i++) {
+            ctx.lineTo(pts[i].x, pts[i].yQ50);
+          }
+          ctx.stroke();
+
+          ctx.strokeStyle = chronosColor;
+          ctx.lineWidth = 2.3;
+          ctx.beginPath();
+          ctx.moveTo(originX, originY);
+          for (let i = 0; i < pts.length; i++) {
+            ctx.lineTo(pts[i].x, pts[i].yQ50);
+          }
+          ctx.stroke();
+
+          // Anchor circle on last closed candle Close & step nodes along Q50
+          ctx.fillStyle = chronosColor;
+          ctx.beginPath();
+          ctx.arc(originX, originY, 3.6, 0, Math.PI * 2);
+          ctx.fill();
+
+          for (let i = 0; i < pts.length; i++) {
+            const isMilestone = (i + 1) % 5 === 0 || i === pts.length - 1;
+            if (!isMilestone) continue;
+            ctx.fillStyle = i === pts.length - 1 ? '#FFFFFF' : chronosColor;
+            ctx.beginPath();
+            ctx.arc(pts[i].x, pts[i].yQ50, i === pts.length - 1 ? 4.0 : 2.3, 0, Math.PI * 2);
+            ctx.fill();
+            if (i === pts.length - 1) {
+              ctx.strokeStyle = chronosColor;
+              ctx.lineWidth = 1.8;
+              ctx.stroke();
+            }
+          }
+
+          // Header label inside forecast zone
+          const badgeTxt = `Chronos-2 Q50 (+${pts.length})`;
+          ctx.font = 'bold 10px "JetBrains Mono", monospace';
+          const bTw = ctx.measureText(badgeTxt).width + 12;
+          const bX = Math.min(chartW - bTw - 8, Math.max(8, originX + 6));
+          const bY = topPad + 10;
+          ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.88)' : 'rgba(255, 255, 255, 0.92)';
+          ctx.strokeStyle = hexToRgba(chronosColor, 0.75);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bX, bY, bTw, 18, 4);
+          else ctx.rect(bX, bY, bTw, 18);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = chronosColor;
+          ctx.fillText(badgeTxt, bX + 6, bY + 12.5);
+
+          queueRightLevelLabel(
+            lastPt.yQ50,
+            `Q50 ${PriceFormatter.formatPrice(lastPt.q50, tab.decimals)}`,
+            chronosColor
+          );
+          ctx.restore();
+        }
+      }
+    } else if (tab.chronosStatus === 'PROCESSING' || tab.chronosStatus === 'QUEUED') {
+      ctx.save();
+      const procText =
+        i18n && i18n.getCurrentLanguage() === 'fa'
+          ? 'Chronos-2: در حال پردازش پیش‌بینی...'
+          : 'Chronos-2: Processing forecast...';
+      ctx.font = 'bold 11px "JetBrains Mono", sans-serif';
+      const pTw = ctx.measureText(procText).width + 18;
+      const pX = Math.max(12, chartW - pTw - 12);
+      const pY = topPad + 12;
+      ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.92)' : 'rgba(255, 255, 255, 0.94)';
+      ctx.strokeStyle = hexToRgba(chronosColor, 0.8);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(pX, pY, pTw, 22, 5);
+      else ctx.rect(pX, pY, pTw, 22);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = chronosColor;
+      ctx.fillText(procText, pX + 9, pY + 14.5);
       ctx.restore();
     }
   }
@@ -2162,26 +2418,34 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
   ctx.restore();
 
-  // Crosshair (Vertical + Horizontal + Price Pill + Adaptive UTC Time Pill)
+  // Crosshair (Vertical + Horizontal + Price Pill + Adaptive UTC Time Pill, including future Chronos-2 slots)
+  const maxInteractiveSlot =
+    hasValidChronosForecast && offset === 0
+      ? visible.length + chronosPoints.length - 1
+      : visible.length - 1;
   const hoverIdx =
     tab.hoverIndex !== null && tab.hoverIndex !== undefined
       ? tab.hoverIndex
       : tab.crosshairX !== null && tab.crosshairX !== undefined
-        ? Math.max(0, Math.min(visible.length - 1, Math.floor(tab.crosshairX / Math.max(1, slotW))))
+        ? Math.max(0, Math.min(maxInteractiveSlot, Math.floor(tab.crosshairX / Math.max(1, slotW))))
         : null;
   const hoverYVal =
     tab.hoverY !== null && tab.hoverY !== undefined ? tab.hoverY : tab.crosshairY;
 
-  if (hoverIdx !== null && hoverIdx >= 0 && hoverIdx < visible.length) {
-    const hc = visible[hoverIdx];
+  if (hoverIdx !== null && hoverIdx >= 0 && hoverIdx <= maxInteractiveSlot) {
+    const isFutureHover = hoverIdx >= visible.length;
+    const futureStepIdx = isFutureHover ? hoverIdx - visible.length : -1;
+    const fPt = isFutureHover && chronosPoints[futureStepIdx] ? chronosPoints[futureStepIdx] : null;
+    const hc = !isFutureHover ? visible[hoverIdx] : null;
     const hx = idxToX(hoverIdx);
+    const defaultPrice = fPt ? Number(fPt.q50_median) : hc ? Number(hc.close) : minP;
     const hy =
       hoverYVal !== null &&
       hoverYVal !== undefined &&
       hoverYVal >= topPad &&
       hoverYVal <= topPad + chartH
         ? hoverYVal
-        : priceToY(Number(hc.close));
+        : priceToY(defaultPrice);
     const hoverPrice = yToPrice(hy);
 
     ctx.save();
@@ -2196,7 +2460,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.stroke();
     ctx.restore();
 
-    const pillBgCross = isDark ? '#2A2E39' : '#1E293B';
+    const pillBgCross = isFutureHover ? (indPal.chronosQ50 || '#A855F7') : isDark ? '#2A2E39' : '#1E293B';
     ctx.fillStyle = pillBgCross;
     ctx.fillRect(chartW, hy - 10, rightAxisW, 20);
     ctx.fillStyle = '#FFFFFF';
@@ -2204,11 +2468,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.textAlign = 'left';
     ctx.fillText(PriceFormatter.formatPrice(hoverPrice, tab.decimals), chartW + 6, hy + 4);
 
-    const timeText = PriceFormatter.formatCandleUtc(
-      hc.open_time_utc_ms || hc.openTimeUtc || hc.open_time_utc_iso,
-      tab.timeframe,
-      tzMode
-    );
+    const rawTimeMs = fPt
+      ? fPt.target_open_time_utc_ms
+      : hc
+        ? hc.open_time_utc_ms || hc.openTimeUtc || hc.open_time_utc_iso
+        : 0;
+    const timeText = PriceFormatter.formatCandleUtc(rawTimeMs, tab.timeframe, tzMode);
     ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
     const tw = ctx.measureText(timeText).width + 14;
     const tx = Math.max(2, Math.min(chartW - tw - 2, hx - tw / 2));
@@ -2216,6 +2481,24 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.fillRect(tx, topPad + totalChartH + 2, tw, 22);
     ctx.fillStyle = '#FFFFFF';
     ctx.fillText(timeText, tx + 7, topPad + totalChartH + 16);
+
+    if (fPt) {
+      const tipText = `Chronos-2 (+${fPt.step}) · Q50: ${PriceFormatter.formatPrice(fPt.q50_median, tab.decimals)} · Q25–Q75: [${PriceFormatter.formatPrice(fPt.q25, tab.decimals)} – ${PriceFormatter.formatPrice(fPt.q75, tab.decimals)}]`;
+      ctx.font = 'bold 10px "JetBrains Mono", monospace';
+      const tipW = ctx.measureText(tipText).width + 14;
+      const tipX = Math.max(8, Math.min(chartW - tipW - 8, hx - tipW / 2));
+      const tipY = Math.max(topPad + 8, priceToY(Number(fPt.q75)) - 26);
+      ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.94)' : 'rgba(255, 255, 255, 0.96)';
+      ctx.strokeStyle = indPal.chronosQ50 || '#A855F7';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(tipX, tipY, tipW, 19, 4);
+      else ctx.rect(tipX, tipY, tipW, 19);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = isDark ? '#F8FAFC' : '#0F172A';
+      ctx.fillText(tipText, tipX + 7, tipY + 13);
+    }
   }
 
   canvas._chartMeta = {

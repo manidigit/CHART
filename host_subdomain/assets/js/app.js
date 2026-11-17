@@ -30,6 +30,8 @@ import {
   resetIndicatorColorsToDefault,
   isProviderEnabled,
   isFocusPullSuspended,
+  isChronosForecastMatchingTab,
+  clearTabChronosForecast,
 } from './core/store.js?v=1.43.0';
 import {
   syncServerAuthStatus,
@@ -51,6 +53,7 @@ import {
   fetchSymbolIntel,
   uploadHistoricalImport,
   fetchImportBatches,
+  requestChronos2ForecastForTab,
 } from './services/apiService.js?v=1.43.0';
 import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.43.0';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.43.0';
@@ -246,6 +249,12 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     existing.pivotType = String(
       (curActive && curActive.pivotType) || existing.pivotType || state.chartPreferences.pivotType || 'STANDARD'
     ).toUpperCase();
+    existing.chronosHorizonBars = Number(
+      (curActive && curActive.chronosHorizonBars) || existing.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30
+    );
+    if (!isChronosForecastMatchingTab(existing, existing.chronosForecast)) {
+      clearTabChronosForecast(existing);
+    }
     state.activeTabId = existing.tabId;
     saveActiveTabId(state.activeTabId);
     syncIndicatorsAcrossTabsAndPrefs(existing, true);
@@ -301,6 +310,12 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     newTab.pivotType = String(
       (curActive && curActive.pivotType) || state.chartPreferences.pivotType || 'STANDARD'
     ).toUpperCase();
+    newTab.chronosHorizonBars = Number(
+      (curActive && curActive.chronosHorizonBars) || state.chartPreferences.chronosHorizonBars || 30
+    );
+    newTab.chronosForecast = null;
+    newTab.chronosStatus = 'IDLE';
+    newTab.chronosError = '';
     state.openTabs.push(newTab);
     state.activeTabId = tabId;
     saveActiveTabId(state.activeTabId);
@@ -436,6 +451,31 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showObv, pal.obv, 'OBV', 'toggle-obv');
   pushPill(activeTab.showCmf20, pal.cmf20, 'CMF 20', 'toggle-cmf20');
   pushPill(activeTab.showRoc12, pal.roc12, 'ROC 12', 'toggle-roc12');
+  if (activeTab.showChronosForecast) {
+    const cCol = pal.chronosQ50 || '#A855F7';
+    const isFa = i18n.getCurrentLanguage() === 'fa';
+    if (isChronosForecastMatchingTab(activeTab, activeTab.chronosForecast)) {
+      const hLen = activeTab.chronosForecast.forecast.length;
+      const bandTag = activeTab.showChronosBand !== false ? ' · Q25–Q75' : '';
+      pushPill(true, cCol, `Chronos-2 Q50 (+${hLen}${bandTag})`, 'toggle-chronos-forecast');
+    } else if (activeTab.chronosStatus === 'PROCESSING' || activeTab.chronosStatus === 'QUEUED') {
+      pushPill(
+        true,
+        cCol,
+        isFa ? 'Chronos-2: در حال پردازش...' : 'Chronos-2: Processing...',
+        'toggle-chronos-forecast'
+      );
+    } else if (activeTab.chronosStatus === 'ERROR') {
+      pushPill(
+        true,
+        '#EF5350',
+        isFa ? 'Chronos-2: در انتظار داده بسته' : 'Chronos-2: Waiting for closed bars',
+        'toggle-chronos-forecast'
+      );
+    } else {
+      pushPill(true, cCol, 'Chronos-2 Q50', 'toggle-chronos-forecast');
+    }
+  }
 
   const gapInfo =
     activeTab.candles && activeTab.candles.length >= 2
@@ -610,6 +650,22 @@ export function renderApp() {
         activeTab.provider,
         activeTab.timeframe
       );
+      if (activeTab.showChronosForecast) {
+        if (!isChronosForecastMatchingTab(activeTab, activeTab.chronosForecast)) {
+          activeTab.chronosForecast = null;
+          if (
+            Array.isArray(activeTab.candles) &&
+            activeTab.candles.length >= 32 &&
+            activeTab.chronosStatus !== 'PROCESSING'
+          ) {
+            requestChronos2ForecastForTab(activeTab, () => {
+              redrawActiveCanvas();
+            }).catch(() => {});
+          }
+        }
+      } else if (activeTab.chronosForecast) {
+        clearTabChronosForecast(activeTab);
+      }
     }
 
     state.activeWorkspaceView = 'chart';
@@ -1956,6 +2012,7 @@ document.addEventListener('click', async (e) => {
     activeTab.priceScaleFactor = 1.0;
     activeTab.verticalPriceOffset = 0.0;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
+    clearTabChronosForecast(activeTab);
     activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
     if (activeTab.candles && activeTab.candles.length > 0) {
       activeTab.visibleCount = Math.min(Math.max(24, activeTab.visibleCount || 48), Math.max(24, activeTab.candles.length));
@@ -1993,6 +2050,9 @@ document.addEventListener('click', async (e) => {
     }
 
     const tfChanged = activeTab.timeframe !== targetTf;
+    if (tfChanged) {
+      clearTabChronosForecast(activeTab);
+    }
     activeTab.timeframe = targetTf;
     activeTab.chartId = `${activeTab.symbolCode}_${targetTf}`;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
@@ -2182,6 +2242,38 @@ document.addEventListener('click', async (e) => {
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
+  } else if (action === 'toggle-chronos-forecast' && activeTab) {
+    activeTab.showChronosForecast = !activeTab.showChronosForecast;
+    if (activeTab.showChronosForecast) {
+      activeTab.scrollOffset = 0;
+    } else {
+      clearTabChronosForecast(activeTab);
+    }
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+    redrawActiveCanvas();
+    if (activeTab.showChronosForecast) {
+      requestChronos2ForecastForTab(activeTab, () => {
+        redrawActiveCanvas();
+      }).catch(() => {});
+    }
+  } else if (action === 'toggle-chronos-band' && activeTab) {
+    activeTab.showChronosBand = activeTab.showChronosBand === false;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+    redrawActiveCanvas();
+  } else if (action === 'set-chronos-horizon' && activeTab) {
+    const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
+    activeTab.chronosHorizonBars = hVal;
+    activeTab.showChronosForecast = true;
+    activeTab.scrollOffset = 0;
+    clearTabChronosForecast(activeTab);
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+    redrawActiveCanvas();
+    requestChronos2ForecastForTab(activeTab, () => {
+      redrawActiveCanvas();
+    }).catch(() => {});
   } else if (action === 'set-workspace-view') {
     if (el.getAttribute('data-view') === 'forecast') {
       return;
@@ -2926,6 +3018,12 @@ async function handleChartSnapshot() {
       if (activeTab.showObv) activePills.push({ label: 'OBV', color: pal.obv });
       if (activeTab.showCmf20) activePills.push({ label: 'CMF', color: pal.cmf20 });
       if (activeTab.showRoc12) activePills.push({ label: 'ROC', color: pal.roc12 });
+      if (activeTab.showChronosForecast) {
+        activePills.push({
+          label: `Chronos-2 Q50 (+${activeTab.chronosHorizonBars || 30})`,
+          color: pal.chronosQ50 || '#A855F7',
+        });
+      }
 
       if (activePills.length > 0) {
         let pillX = 16 * dpr;

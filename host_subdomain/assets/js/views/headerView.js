@@ -56,7 +56,8 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showSmcStructure ? 1 : 0) +
       (activeTab.showFvg ? 1 : 0) +
       (activeTab.showVolumeProfile ? 1 : 0) +
-      (activeTab.showPivotPoints ? 1 : 0)
+      (activeTab.showPivotPoints ? 1 : 0) +
+      (activeTab.showChronosForecast ? 1 : 0)
     : 1;
 
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -302,6 +303,29 @@ export function renderTopHeaderBar(activeTab, i18n) {
               : ''
           }
         </button>
+
+        <!-- Chronos-2 Real Forecast Overlay Quick Toggle + Band Toggle -->
+        <div class="tv-toolbar-group" title="Chronos-2 Forecast (amazon/chronos-2)">
+          <button
+            type="button"
+            class="tv-tool-btn ${activeTab && activeTab.showChronosForecast ? 'active' : ''}"
+            data-action="toggle-chronos-forecast"
+            title="${isFa ? 'پیش‌بینی Chronos-2 (مسیر میانه Q50 روی کندل‌های بسته‌شده)' : 'Chronos-2 Forecast (Q50 Median on Closed Candles)'}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 17 9 11 13 15 21 7"/><circle cx="21" cy="7" r="2"/></svg>
+            <span class="ltr-num">Chronos-2</span>
+          </button>
+          ${
+            activeTab && activeTab.showChronosForecast
+              ? `<button
+                  type="button"
+                  class="tv-tool-btn ltr-num ${activeTab.showChronosBand !== false ? 'active' : ''}"
+                  data-action="toggle-chronos-band"
+                  title="${isFa ? 'نمایش/مخفی‌سازی باند عدم قطعیت Q25 تا Q75' : 'Toggle Q25–Q75 Uncertainty Band'}"
+                >Q25–Q75</button>`
+              : ''
+          }
+        </div>
 
         <div class="tv-divider"></div>
 
@@ -570,6 +594,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
   const activeIndCat = state.activeIndicatorCategory || 'all';
   const indCategories = [
     { key: 'all', label: isFa ? 'همه (All)' : 'All' },
+    { key: 'chronos', label: isFa ? 'پیش‌بینی Chronos-2' : 'Chronos-2 Forecast' },
     { key: 'ma', label: isFa ? 'میانگین‌ها (MA)' : 'Moving Averages' },
     { key: 'bands_levels', label: isFa ? 'کانال و سطوح' : 'Bands & Levels' },
     { key: 'trend_smc', label: isFa ? 'روند و SMC' : 'Trend & SMC' },
@@ -611,6 +636,52 @@ export function renderIndicatorsModal(activeTab, i18n) {
         </div>
 
         <div class="tv-modal-body" style="display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding-bottom: 14px;">
+          ${
+            activeIndCat === 'all' || activeIndCat === 'chronos'
+              ? `
+          ${renderSectionHeader(
+            isFa ? 'موتور پیش‌بینی سری زمانی Chronos-2 (amazon/chronos-2)' : 'Chronos-2 Time-Series Forecast Engine (amazon/chronos-2)',
+            isFa
+              ? 'ورودی صرفاً Close کندل‌های بسته‌شده · خروجی کامل ۲۱ کوانتایل · مسیر مرکزی Q50 و باند Q25–Q75 · بدون تولید کندل مصنوعی'
+              : 'Closed-candle Close series only · Full 21 native quantiles · Q50 central path & Q25–Q75 uncertainty band · Zero synthetic OHLC'
+          )}
+          ${renderToggleRow(
+            'chronosQ50',
+            pal.chronosQ50,
+            isFa ? 'مسیر پیش‌بینی Chronos-2 (Q50 Median)' : 'Chronos-2 Forecast Path (Q50 Median)',
+            isFa
+              ? 'نمایش مسیر میانه نقطه‌ای (Q50) در ادامه آخرین کندل بسته‌شده (Revision: 29ec3766d3)'
+              : 'Display pointwise median (Q50) path extending right from the last closed candle (Revision: 29ec3766d3)',
+            Boolean(activeTab.showChronosForecast),
+            'toggle-chronos-forecast',
+            'Q50'
+          )}
+          <div class="card-subtle" style="padding: 8px 11px; margin-top: -3px; border-top: 1px dashed var(--border);">
+            <div class="row-between" style="font-size: 11.5px; margin-bottom: 7px; flex-wrap: wrap; gap: 6px;">
+              <span style="color: var(--text-muted);">${isFa ? 'باند عدم قطعیت (Q25 تا Q75):' : 'Uncertainty Band (Q25 to Q75):'}</span>
+              <button
+                type="button"
+                class="btn btn-sm ${activeTab.showChronosBand !== false ? 'btn-primary' : ''}"
+                data-action="toggle-chronos-band"
+              >
+                ${activeTab.showChronosBand !== false ? (isFa ? 'نمایش باند Q25–Q75 ✓' : 'Q25–Q75 Band ON ✓') : isFa ? 'باند خاموش' : 'Band OFF'}
+              </button>
+            </div>
+            <div class="row-between" style="font-size: 11.5px; flex-wrap: wrap; gap: 6px;">
+              <span style="color: var(--text-muted);">${isFa ? 'افق پیش‌بینی (تعداد کندل آینده — پیش‌فرض ۳۰):' : 'Forecast Horizon (Future Bars — Default 30):'}</span>
+              <div class="chip-group ltr-num">
+                ${[15, 30, 45, 60]
+                  .map((hVal) => {
+                    const curH = Number(activeTab.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30);
+                    return `<button type="button" class="chip ${curH === hVal ? 'active' : ''}" data-action="set-chronos-horizon" data-horizon="${hVal}">${hVal}</button>`;
+                  })
+                  .join('')}
+              </div>
+            </div>
+          </div>
+          `
+              : ''
+          }
           ${
             activeIndCat === 'all' || activeIndCat === 'ma'
               ? `
