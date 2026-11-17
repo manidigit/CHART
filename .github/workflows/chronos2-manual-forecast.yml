@@ -1,0 +1,200 @@
+name: Chronos-2 Manual Forecast
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: "CHART symbol code"
+        required: true
+        type: choice
+        options: [SPOTBRENT, XAUUSD]
+      timeframe:
+        description: "CHART timeframe code"
+        required: true
+        type: choice
+        options: [M15, H1, H4, D1, W1]
+      horizon:
+        description: "Forecast horizon in bars"
+        required: true
+        type: choice
+        options: ["15", "30", "45", "60"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chronos2-${{ inputs.symbol }}-${{ inputs.timeframe }}-${{ inputs.horizon }}
+  cancel-in-progress: false
+
+jobs:
+  forecast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      FORECAST_SFTP_HOST: ${{ secrets.FORECAST_SFTP_HOST }}
+      FORECAST_SFTP_PORT: ${{ secrets.FORECAST_SFTP_PORT }}
+      FORECAST_SFTP_USER: ${{ secrets.FORECAST_SFTP_USER }}
+      FORECAST_SFTP_PRIVATE_KEY: ${{ secrets.FORECAST_SFTP_PRIVATE_KEY }}
+      FORECAST_SFTP_HOST_FINGERPRINT: ${{ secrets.FORECAST_SFTP_HOST_FINGERPRINT }}
+      FORECAST_SFTP_REMOTE_ROOT: ${{ vars.FORECAST_SFTP_REMOTE_ROOT }}
+      SYMBOL: ${{ inputs.symbol }}
+      TIMEFRAME: ${{ inputs.timeframe }}
+      HORIZON: ${{ inputs.horizon }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Validate inputs and map CHART timeframe to TradingView interval
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$SYMBOL" in
+            SPOTBRENT) EXCHANGE="PEPPERSTONE" ;;
+            XAUUSD) EXCHANGE="OANDA" ;;
+            *) echo "::error::Unsupported symbol code: $SYMBOL"; exit 1 ;;
+          esac
+          case "$TIMEFRAME" in
+            M15) TV_INTERVAL="15" ;;
+            H1)  TV_INTERVAL="60" ;;
+            H4)  TV_INTERVAL="240" ;;
+            D1)  TV_INTERVAL="1D" ;;
+            W1)  TV_INTERVAL="1W" ;;
+            *) echo "::error::Unsupported CHART timeframe: $TIMEFRAME"; exit 1 ;;
+          esac
+          case "$HORIZON" in
+            15|30|45|60) ;;
+            *) echo "::error::Unsupported horizon: $HORIZON"; exit 1 ;;
+          esac
+          echo "EXCHANGE=$EXCHANGE" >> "$GITHUB_ENV"
+          echo "TV_INTERVAL=$TV_INTERVAL" >> "$GITHUB_ENV"
+          echo "Mapped $TIMEFRAME to TradingView interval $TV_INTERVAL"
+
+      - name: Check required SFTP configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in FORECAST_SFTP_HOST FORECAST_SFTP_PORT FORECAST_SFTP_USER FORECAST_SFTP_PRIVATE_KEY FORECAST_SFTP_HOST_FINGERPRINT FORECAST_SFTP_REMOTE_ROOT; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required GitHub secret/variable: $name"
+              exit 1
+            fi
+          done
+          if ! [[ "$FORECAST_SFTP_PORT" =~ ^[0-9]+$ ]]; then
+            echo "::error::FORECAST_SFTP_PORT must be numeric"; exit 1
+          fi
+          if ! [[ "$FORECAST_SFTP_REMOTE_ROOT" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
+            echo "::error::FORECAST_SFTP_REMOTE_ROOT must be an absolute safe path"; exit 1
+          fi
+
+      - name: Install pinned Chronos-2 runtime
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.15.0+cpu"
+          python -m pip install "transformers==5.23.0" "chronos-forecasting==2.3.2"
+          python - <<'PY'
+          import importlib.metadata, platform, torch, transformers
+          assert platform.python_version().startswith("3.11."), platform.python_version()
+          expected = {"torch": "2.15.0+cpu", "transformers": "5.23.0", "chronos-forecasting": "2.3.2"}
+          for package, wanted in expected.items():
+              actual = importlib.metadata.version(package)
+              if actual != wanted:
+                  raise SystemExit(f"{package}: expected {wanted}, got {actual}")
+          print("Python:", platform.python_version())
+          print("PyTorch:", torch.__version__)
+          print("Transformers:", transformers.__version__)
+          print("Chronos-forecasting:", importlib.metadata.version("chronos-forecasting"))
+          PY
+
+      - name: Configure and verify SSH host identity
+        shell: bash
+        run: |
+          set -euo pipefail
+          install -d -m 700 "$HOME/.ssh"
+          printf '%s\n' "$FORECAST_SFTP_PRIVATE_KEY" > "$HOME/.ssh/forecast_key"
+          chmod 600 "$HOME/.ssh/forecast_key"
+          ssh-keyscan -T 15 -p "$FORECAST_SFTP_PORT" "$FORECAST_SFTP_HOST" > "$HOME/.ssh/forecast_known_hosts" 2>/dev/null
+          test -s "$HOME/.ssh/forecast_known_hosts"
+          ACTUAL="$(ssh-keygen -lf "$HOME/.ssh/forecast_known_hosts" -E sha256 | awk '{print $2}' | sort -u)"
+          if ! printf '%s\n' "$ACTUAL" | grep -Fxq "$FORECAST_SFTP_HOST_FINGERPRINT"; then
+            echo "::error::SFTP host fingerprint mismatch. Refusing connection."; exit 1
+          fi
+          echo "SFTP host fingerprint verified."
+
+      - name: Download published site reference candles
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/chronos2/input"
+          REF_NAME="${SYMBOL}_${TIMEFRAME}.json"
+          printf 'cd %s\nget data/tvdatafeed/%s %s\n' \
+            "$FORECAST_SFTP_REMOTE_ROOT" "$REF_NAME" "$RUNNER_TEMP/chronos2/input/site_reference.json" \
+            > "$RUNNER_TEMP/chronos2/download.sftp"
+          sftp -b "$RUNNER_TEMP/chronos2/download.sftp" \
+            -P "$FORECAST_SFTP_PORT" -oBatchMode=yes -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/forecast_known_hosts" \
+            -i "$HOME/.ssh/forecast_key" "$FORECAST_SFTP_USER@$FORECAST_SFTP_HOST"
+          test -s "$RUNNER_TEMP/chronos2/input/site_reference.json"
+
+      - name: Fetch fresh candles using existing CHART sync script
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/chronos2/input/fresh"
+          python host_subdomain/scripts/sync_tvdatafeed.py \
+            --symbol "$SYMBOL" --exchange "$EXCHANGE" --bars 5000 \
+            --output-dir "$RUNNER_TEMP/chronos2/input/fresh"
+          test -s "$RUNNER_TEMP/chronos2/input/fresh/${SYMBOL}_${TIMEFRAME}.json"
+
+      - name: Validate origin and run Chronos-2
+        id: forecast
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/chronos2_workflow_runner.py \
+            --symbol "$SYMBOL" --timeframe "$TIMEFRAME" --horizon "$HORIZON" \
+            --input "$RUNNER_TEMP/chronos2/input/fresh/${SYMBOL}_${TIMEFRAME}.json" \
+            --reference "$RUNNER_TEMP/chronos2/input/site_reference.json" \
+            --worker host_subdomain/scripts/chronos2_worker.py \
+            --output-dir "$RUNNER_TEMP/chronos2/output" | tee "$RUNNER_TEMP/chronos2/runner.log"
+          OUTPUT_FILE="$(sed -n 's/^CHRONOS2_OUTPUT_FILE=//p' "$RUNNER_TEMP/chronos2/runner.log" | tail -n 1)"
+          OUTPUT_NAME="$(sed -n 's/^CHRONOS2_OUTPUT_NAME=//p' "$RUNNER_TEMP/chronos2/runner.log" | tail -n 1)"
+          test -n "$OUTPUT_FILE" && test -s "$OUTPUT_FILE"
+          echo "output_file=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          echo "output_name=$OUTPUT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Publish validated cache and preserve run history over SFTP
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT_FILE="${{ steps.forecast.outputs.output_file }}"
+          OUTPUT_NAME="${{ steps.forecast.outputs.output_name }}"
+          RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          HISTORY_NAME="${OUTPUT_NAME%.json}_${RUN_STAMP}_run${GITHUB_RUN_ID}.json"
+          CACHE_TMP="data/chronos2/cache/${OUTPUT_NAME}.tmp.${GITHUB_RUN_ID}"
+          printf 'cd %s\n-mkdir data/chronos2/cache\n-mkdir data/chronos2/history\nput %s data/chronos2/history/%s\nput %s %s\nrename %s %s\n' \
+            "$FORECAST_SFTP_REMOTE_ROOT" "$OUTPUT_FILE" "$HISTORY_NAME" "$OUTPUT_FILE" "$CACHE_TMP" "$CACHE_TMP" "data/chronos2/cache/$OUTPUT_NAME" \
+            > "$RUNNER_TEMP/chronos2/publish.sftp"
+          sftp -b "$RUNNER_TEMP/chronos2/publish.sftp" \
+            -P "$FORECAST_SFTP_PORT" -oBatchMode=yes -oStrictHostKeyChecking=yes \
+            -oUserKnownHostsFile="$HOME/.ssh/forecast_known_hosts" \
+            -i "$HOME/.ssh/forecast_key" "$FORECAST_SFTP_USER@$FORECAST_SFTP_HOST"
+          echo "Published $OUTPUT_NAME and retained history/$HISTORY_NAME"
+
+      - name: Upload diagnostics
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronos2-${{ inputs.symbol }}-${{ inputs.timeframe }}-${{ inputs.horizon }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/chronos2/runner.log
+            ${{ runner.temp }}/chronos2/output/*.json
+          if-no-files-found: ignore
+          retention-days: 14
