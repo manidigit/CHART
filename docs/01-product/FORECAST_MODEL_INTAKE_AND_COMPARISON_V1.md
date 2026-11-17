@@ -1,7 +1,7 @@
 # CHART Forecast — Model Intake and Comparison Framework
 ## چارچوب بررسی، پذیرش و مقایسه مدل‌های پیشنهادی
 
-- **Version:** 1.0.3
+- **Version:** 1.0.4
 - **Date:** 2026-11-17
 - **Status:** Reusable intake protocol; Chronos-2 is the sole Phase 1 active-model candidate, subject to implementation and acceptance gates
 - **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.2
@@ -450,3 +450,39 @@ The Phase 1 experiment may inspect and visualize native quantile outputs in an e
 ### 16.7. Current evidence boundary
 
 At the time of this decision, Chronos-2 has passed source-level screening only. It has **not** passed CHART-specific runtime evaluation, walk-forward performance testing, product acceptance or production approval. No accuracy, profitability or OHLC-quality claim is authorized by this Phase 1 selection.
+
+
+---
+
+## 17. Chronos-2 Phase 1 input/output contract review — 2026-11-17
+
+The implementation-facing contract is now maintained in [FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md](./FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md). This section records the upstream source facts relevant to model admission and prevents the source-level screening result from being overstated.
+
+### 17.1. Additional source-level facts
+
+Reviewed `Chronos2Pipeline.predict()` in upstream `src/chronos/chronos2/pipeline.py`:
+- Accepts univariate and multivariate arrays/tensors, lists of series and structured target/covariate inputs.
+- The documented return is a list of tensors shaped `(n_variates, n_quantiles, prediction_length)`.
+- Exposes loaded-model context length, output patch size, model prediction length, maximum output patches and supported quantile levels.
+- Warns that prediction lengths beyond the model's configured prediction length may degrade quality; long horizons use an autoregressive unrolling heuristic.
+- Native inference output remains quantile forecasts. Multivariate support does not establish valid OHLC geometry or a joint probabilistic candle-path distribution.
+
+### 17.2. Phase 1 experimental order
+
+The first baseline is Close-only univariate forecasting. Returns/differences, multivariate OHLC, volume and technical covariates are separate experiments requiring explicit preprocessing, provenance, ablation and price-space evaluation.
+
+The pointwise median can be inspected as a candidate central display line, but it is not a sampled joint trajectory. Marginal quantiles must not be stitched into scenarios. Synthetic OHLC construction, decorative noise and arbitrary smoothing are prohibited.
+
+### 17.3. Evidence boundary and remaining gates
+
+This source review does not establish CHART runtime compatibility, financial-market accuracy, path-structure quality, uncertainty calibration, acceptable latency/cost or commercial rights for every model-weight revision.
+
+Before implementation parameters are frozen, the team must measure and record:
+- exact immutable model-weight revision and license terms;
+- effective context and supported horizon values from that artifact;
+- selected quantile grid;
+- CPU/GPU runtime, precision, memory and latency;
+- repeatability and input/output adapter behavior;
+- path-quality and uncertainty results under walk-forward evaluation.
+
+A poor or smooth/structurally empty path must first be diagnosed across data, preparation, model configuration/execution, horizon, interpretation/display and evaluation. It does not automatically justify adding another model. The formal model-expansion gate in Section 16.4 remains unchanged.
