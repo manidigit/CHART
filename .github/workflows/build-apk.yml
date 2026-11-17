@@ -83,8 +83,37 @@ jobs:
             yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
           fi
 
+      - name: Verify Clean v1.46.x Structure (No Stale Archived Files)
+        run: |
+          STALE_PATHS=(
+            "app/src/main/java/es/manico/chartintelligence/ui/screens/PredictionScreen.kt"
+            "app/src/main/java/es/manico/chartintelligence/ui/screens/ForecastLabScreen.kt"
+            "app/src/main/java/es/manico/chartintelligence/ui/components/ForecastLabComponents.kt"
+            "app/src/main/java/es/manico/chartintelligence/ui/components/ForecastV130Components.kt"
+            "app/src/main/java/es/manico/chartintelligence/forecast"
+            "app/src/test/java/es/manico/chartintelligence/ForecastV2Test.kt"
+            "app/src/test/java/es/manico/chartintelligence/Phase4ForecastTest.kt"
+            "tests/forecast_v2.test.mjs"
+            "tests/phase4_forecast.test.mjs"
+            ".github/workflows/backtest.yml"
+          )
+          FOUND=0
+          for p in "${STALE_PATHS[@]}"; do
+            if [ -e "$p" ]; then
+              echo "::error::Stale archived path still present on branch: $p (should only exist under archive/)"
+              FOUND=1
+            fi
+          done
+          if [ "$FOUND" -ne 0 ]; then
+            echo "Please remove stale archived files from main (git rm -r ...) so v1.46.x + Chronos-2 builds cleanly."
+            exit 1
+          fi
+
       - name: Build Debug APK with Gradle
         run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Run Android Unit & Robolectric Tests
+        run: gradle :app:testDebugUnitTest --no-daemon --stacktrace
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
@@ -100,6 +129,21 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run Web Parity & Chronos-2 Architecture Tests
+        run: |
+          node --test tests/web_parity.test.mjs
+          python3 -m py_compile host_subdomain/scripts/chronos2_worker.py
+          if command -v php >/dev/null 2>&1; then
+            php -l host_subdomain/api/v1/chronos2_forecast.php
+            php -l host_subdomain/api/v1/core/Chronos2QueueManager.php
+            php -l host_subdomain/scripts/cron_process_chronos2_queue.php
+          fi
 
       - name: Extract PEPPERSTONE:SPOTBRENT and OANDA:XAUUSD Candles via tvdatafeed (5,000 Bars)
         run: |

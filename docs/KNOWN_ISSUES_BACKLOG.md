@@ -162,5 +162,31 @@
   7. **`tests/web_parity.test.mjs`:**
      - افزودن تست‌های ابطال کش با تغییر قیمت مبنا (`computeClosedSeriesDigest` / `invalidateTabChronosIfStale`)، حذف `.job.json` و `enqueue_only` و `QUEUED`، غیرفعال بودن کرون، حذف همگام‌سازی `showChronosForecast` و محدودیت ۳ تلاش کلاینت (**۱۱/۱۱ تست پاس شد**).
 
+---
+
+## ۹. همگام‌سازی پایپ‌لاین GitHub Actions با ساختار تمیز `v1.46.x` و `Chronos-2` — ✅ حل شد در کد / نیازمند پاک‌سازی فایل‌های قدیمی روی شاخه `main` گیت‌هاب
+
+- **اولویت:** بحرانی (Critical / P0)
+- **تاریخ ثبت و اصلاح:** ۱۷ نوامبر ۲۰۲۶
+- **ریشه خطای Commit `5e8f557` در GitHub Actions:**
+  - در نسخه `v1.45.1` تمام فایل‌های موتور پیش‌بینی قبلی (`PredictionScreen.kt`، پکیج `forecast/`، `ForecastV2Test.kt`، `Phase4ForecastTest.kt`، `tests/forecast_v2.test.mjs`، `tests/phase4_forecast.test.mjs` و `.github/workflows/backtest.yml`) به پوشه `/archive/` منتقل و متد قدیمی `computeFutureCandlestickProjection` حذف شد؛ اما در Push روی شاخه `main` گیت‌هاب، فایل‌های قدیمی حذف نشده و در کنار نسخه جدید `Phase2IndicatorsAlgorithm.kt` و `technicalIndicators.js` باقی مانده بودند.
+- **اصلاح انجام‌شده در `.github/workflows/build-apk.yml`:**
+  1. افزودن گام **`Verify Clean v1.46.x Structure (No Stale Archived Files)`** در جاب `build-android-apk` برای شناسایی فوری فایل‌های آرشیوشده در صورت جا ماندن روی شاخه `main`.
+  2. افزودن اجرای خودکار **`gradle :app:testDebugUnitTest --no-daemon --stacktrace`** (۲۸ تست واحد و Robolectric اندروید) در کنار `gradle assembleDebug`.
+  3. افزودن اجرای خودکار **`node --test tests/web_parity.test.mjs`** (۱۱ تست پاریتی وب و `Chronos-2`)، بررسی سینتکس **`python3 -m py_compile host_subdomain/scripts/chronos2_worker.py`** و بررسی سینتکس **`php -l`** پیش از بسته‌بندی و استقرار وب در `package-web-subdomain`.
+- **چک‌لیست پاک‌سازی روی شاخه `main` گیت‌هاب پیش از Push بعدی:**
+  - اطمینان از حذف کامل مسیرهای زیر از ریشه شاخه `main` در گیت‌هاب (که هم‌اکنون در `/archive/` نگهداری می‌شوند):
+    - `app/src/main/java/es/manico/chartintelligence/ui/screens/PredictionScreen.kt`
+    - `app/src/main/java/es/manico/chartintelligence/ui/screens/ForecastLabScreen.kt`
+    - `app/src/main/java/es/manico/chartintelligence/ui/components/ForecastLabComponents.kt`
+    - `app/src/main/java/es/manico/chartintelligence/ui/components/ForecastV130Components.kt`
+    - `app/src/main/java/es/manico/chartintelligence/forecast/`
+    - `app/src/test/java/es/manico/chartintelligence/ForecastV2Test.kt`
+    - `app/src/test/java/es/manico/chartintelligence/Phase4ForecastTest.kt`
+    - `tests/forecast_v2.test.mjs` و `tests/phase4_forecast.test.mjs` و `tests/golden_vectors_v2.json`
+    - `.github/workflows/backtest.yml`
+    - `host_subdomain/assets/js/forecast/`, `host_subdomain/assets/js/views/forecastView.js`, `host_subdomain/assets/js/views/analysisView.js`, `host_subdomain/api/v1/forecast/`, `host_subdomain/api/v1/forecast.php`
+
+
 
 
