@@ -1,17 +1,17 @@
 <?php
 declare(strict_types=1);
 
-require_once __DIR__ . '/core/Config.php';
+require_once __DIR__ . '/core/ApiEnvelope.php';
 require_once __DIR__ . '/core/Database.php';
-require_once __DIR__ . '/core/Response.php';
 require_once __DIR__ . '/core/Chronos2QueueManager.php';
 require_once __DIR__ . '/algorithms/UtcTimeAnchor.php';
 require_once __DIR__ . '/algorithms/CandleValidator.php';
 require_once __DIR__ . '/algorithms/TimeframeAggregator.php';
+require_once __DIR__ . '/providers/ProviderCatalog.php';
 require_once __DIR__ . '/providers/TvDatafeedAdapter.php';
 
+use ChartIntelligence\Core\ApiEnvelope;
 use ChartIntelligence\Core\Chronos2QueueManager;
-use ChartIntelligence\Core\Response;
 
 /**
  * API Endpoint: `/api/v1/chronos2_forecast.php`
@@ -27,7 +27,8 @@ use ChartIntelligence\Core\Response;
  */
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    Response::json(['status' => 'OK']);
+    ApiEnvelope::sendCorsAndSecurityHeaders('GET, POST, OPTIONS');
+    exit;
 }
 
 $rawBody = file_get_contents('php://input');
@@ -55,7 +56,8 @@ $closedCandles = Chronos2QueueManager::resolveClosedCandles(
 );
 
 if (count($closedCandles) < Chronos2QueueManager::MIN_CLOSED_BARS) {
-    Response::error(
+    ApiEnvelope::sendError(
+        'ERR_INSUFFICIENT_CLOSED_CANDLES',
         sprintf(
             'Insufficient closed candles for %s (%s): %d closed bars available, minimum %d required.',
             $symbol,
@@ -74,11 +76,12 @@ $cacheKey = Chronos2QueueManager::buildCacheKey($symbol, $provider, $timeframe, 
 if ($mode === 'cache_only') {
     $cached = Chronos2QueueManager::readCachedForecast($cacheKey, $symbol, $provider, $timeframe, $originOpenMs, $horizon);
     if ($cached !== null) {
-        Response::json($cached, 200);
+        ApiEnvelope::sendSuccess($cached, 'chronos2_forecast_cached');
     }
     $jobFile = Chronos2QueueManager::getJobFilePath($cacheKey);
     if (is_file($jobFile)) {
-        Response::json([
+        http_response_code(202);
+        ApiEnvelope::sendSuccess([
             'status'                  => 'PROCESSING',
             'cache_key'               => $cacheKey,
             'symbol'                  => $symbol,
@@ -88,9 +91,9 @@ if ($mode === 'cache_only') {
             'horizon_bars'            => $horizon,
             'model_id'                => Chronos2QueueManager::MODEL_ID,
             'hf_revision_sha'         => Chronos2QueueManager::MODEL_REVISION,
-        ], 202);
+        ], 'chronos2_forecast_processing');
     }
-    Response::json([
+    ApiEnvelope::sendSuccess([
         'status'                  => 'NOT_CACHED',
         'cache_key'               => $cacheKey,
         'symbol'                  => $symbol,
@@ -98,7 +101,7 @@ if ($mode === 'cache_only') {
         'timeframe'               => $timeframe,
         'origin_open_time_utc_ms' => $originOpenMs,
         'horizon_bars'            => $horizon,
-    ], 200);
+    ], 'chronos2_forecast_not_cached');
 }
 
 $executeIfLockFree = ($mode !== 'enqueue_only');
@@ -118,4 +121,6 @@ $httpStatus = match ($result['status'] ?? 'ERROR') {
     default => 500,
 };
 
-Response::json($result, $httpStatus);
+http_response_code($httpStatus);
+ApiEnvelope::sendSuccess($result, $httpStatus === 200 ? 'chronos2_forecast_ready' : 'chronos2_forecast_status');
+

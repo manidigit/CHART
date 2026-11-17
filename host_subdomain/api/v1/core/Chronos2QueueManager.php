@@ -5,6 +5,7 @@ namespace ChartIntelligence\Core;
 
 use ChartIntelligence\Algorithms\CandleValidator;
 use ChartIntelligence\Algorithms\UtcTimeAnchor;
+use ChartIntelligence\Providers\ProviderCatalog;
 use ChartIntelligence\Providers\TvDatafeedAdapter;
 use PDO;
 
@@ -128,26 +129,27 @@ final class Chronos2QueueManager
 
         // 1. Try MariaDB existing infrastructure first (read-only, zero schema changes)
         try {
-            $pdo = Database::getConnection();
-            $stmtSym = $pdo->prepare('SELECT id FROM symbols WHERE symbol_code = :code LIMIT 1');
-            $stmtSym->execute([':code' => $cleanSymbol]);
-            $symRow = $stmtSym->fetch(PDO::FETCH_ASSOC);
-            if ($symRow) {
-                $symbolId = (int) $symRow['id'];
+            $pdo = Database::getPdo();
+            if ($pdo !== null) {
+                $chartId = ProviderCatalog::resolveChartId($cleanSymbol);
                 $stmtC = $pdo->prepare(
-                    'SELECT open_time_utc_ms, open_price, high_price, low_price, close_price, volume
+                    'SELECT open_time_utc, open_price, high_price, low_price, close_price, volume
                      FROM candles
-                     WHERE symbol_id = :sid AND timeframe = :tf AND is_closed = 1
-                     ORDER BY open_time_utc_ms DESC
+                     WHERE chart_id = :chart_id
+                       AND provider_id = :provider_id
+                       AND timeframe = :tf
+                       AND is_closed = 1
+                     ORDER BY open_time_utc DESC
                      LIMIT :lim'
                 );
-                $stmtC->bindValue(':sid', $symbolId, PDO::PARAM_INT);
+                $stmtC->bindValue(':chart_id', $chartId, PDO::PARAM_STR);
+                $stmtC->bindValue(':provider_id', $cleanProvider, PDO::PARAM_STR);
                 $stmtC->bindValue(':tf', $normTf, PDO::PARAM_STR);
                 $stmtC->bindValue(':lim', max(64, $maxBars), PDO::PARAM_INT);
                 $stmtC->execute();
-                $rows = array_reverse($stmtC->fetchAll(PDO::FETCH_ASSOC));
+                $rows = array_reverse($stmtC->fetchAll(PDO::FETCH_ASSOC) ?: []);
                 foreach ($rows as $r) {
-                    $openMs = (int) ($r['open_time_utc_ms'] ?? 0);
+                    $openMs = (int) ($r['open_time_utc'] ?? 0);
                     if ($openMs <= 0 || !UtcTimeAnchor::isCandleClosed($openMs, $normTf, $nowMs, $cleanSymbol)) {
                         continue;
                     }

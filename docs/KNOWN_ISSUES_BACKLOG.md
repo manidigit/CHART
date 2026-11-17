@@ -1,7 +1,7 @@
 # گزارش و لیست مشکلات فنی شناسایی‌شده (Known Issues Backlog)
 
-**تاریخ ثبت:** ۱۵ نوامبر ۲۰۲۶  
-**وضعیت:** ✅ حل‌شده و تست‌شده در کدهای اجرایی (Web JS، PHP و Android Kotlin)
+**تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۱۷ نوامبر ۲۰۲۶  
+**وضعیت:** موارد ۱ تا ۴ حل‌شده و تست‌شده در کدهای اجرایی؛ مورد ۵ باز و در دست اقدام (Open / P0)
 
 ---
 
@@ -56,3 +56,43 @@
   - [x] پیاده‌سازی Nested Walk-Forward هفت‌سگمنتی، WIS 5Q، Bartlett $N_{\text{eff}}$، Conformal نرمال‌شده، HLN-DM و Stationary Block Bootstrap در `WalkForwardEvaluator.kt`, `ForecastStatisticalTests.kt`, `walkForwardEvaluator.js`, `statisticalTests.js`.
   - [x] تضمین Prefix Invariance across H∈{10,20,60} برای تمام ۱۰ مدل رجیستری و افشای صریح خطای پلاگین با `ModelExecutionStatus.FAILED`.
   - [x] **نتیجه اجرای تست‌ها:** تمام **۵۲/۵۲** تست واحد اندروید (`gradle :app:testDebugUnitTest`: `Phase4ForecastTest`, `ForecastV2Test`, `Phase1AlgorithmsTest`, `Phase2AlgorithmsTest`) و **۴۶/۴۶** تست Node.js (`node --test tests/*.test.mjs`) با موفقیت کامل (Zero Failures) پاس شدند.
+
+---
+
+## ۵. عدم به‌روزرسانی و فریز چارت هنگام تغییر نماد از واچ‌لیست و سوئیچ تایم‌فریم (`Watchlist Symbol Switch & Timeframe Change Chart Stall`) — ⏳ باز / در دست اقدام (Open / P0)
+
+- **اولویت:** بحرانی (Critical / P0)
+- **تاریخ گزارش:** ۱۷ نوامبر ۲۰۲۶
+- **شواهد و گزارش:**
+  - با کلیک روی نمادهای مختلف در واچ‌لیست (Watchlist)، چارت فعال به‌روزرسانی نشده و روی نماد قبلی ثابت می‌ماند.
+  - با کلیک روی گزینه‌های تایم‌فریم در نوار ابزار بالای چارت (M15، H1، H4، D1)، نمودار واکنش نشان نداده و کندل‌های تایم‌فریم جدید ترسیم نمی‌شوند.
+- **ریشه‌یابی فنی (Root Cause Analysis):**
+  1. **عدم فراخوانی همگام‌سازی اجباری در سوئیچ تب (`openOrFocusSymbolTab`):**
+     در `host_subdomain/assets/js/app.js`، با کلیک روی ردیف واچ‌لیست رویداد `action === 'open-chart'` فراخوانی شده و کنترل را به `openOrFocusSymbolTab(code)` می‌سپارد. اگر تب نماد از قبل باز شده باشد یا کش آن ناقص/خالی باشد، تابع `syncSymbolNow` برای بارگیری کندل‌های تازه صدا زده نمی‌شود؛ در نتیجه `tab.candles` خالی می‌ماند و چارت تغییری نشان نمی‌دهد.
+  2. **مسابقه زمانی ابعاد بوم پس از رندر DOM (`DOM Layout Race Condition in redrawActiveCanvas`):**
+     در متد `renderApp()`، با تغییر `root.innerHTML` ساختار DOM به طور کامل بازنویسی شده و المان `#main-chart-canvas` مجدداً ایجاد می‌گردد. فراخوانی بلادرنگ و هم‌گام `redrawActiveCanvas()` قبل از آن انجام می‌شود که مرورگر فرصت محاسبه ابعاد نهایی (`canvas.getBoundingClientRect()`) را پیدا کند. در نتیجه شرط `if (rect.width <= 0 || rect.height <= 0) return;` در `renderCandlestickCanvas` برقرار شده و تابع بدون ترسیم هیچ کندلی خارج می‌شود.
+  3. **تداخل توالی در تعویض تایم‌فریم (`Timeframe Sequence Guard & Abort Drift`):**
+     هنگام کلیک روی تایم‌فریم جدید (`action === 'set-timeframe'`)، شناسه `chartId` و مقدار `timeframe` تغییر می‌کند، اما چنانچه کندل‌های تجمیعی در کش آماده نباشند، مقدار `activeTab.candles` موقتاً خالی شده و پاسخ نامتقارن وب‌سوکت یا فچ سرور به علت چک‌های توالی یا لغو ناخواسته `AbortController` روی بوم منعکس نمی‌شود.
+  4. **محدودیت داده‌های اولیه استاتیک tvdatafeed:**
+     پوشه `host_subdomain/data/tvdatafeed/` تنها حاوی داده‌های استاتیک نماد `SPOTBRENT` بوده و برای سایر نمادها (`XAUUSD`, `BTCUSD` و...) در صورت عدم رسیدن داده‌های آنلاین بک‌اند، هیچ داده جایگزین یا اسکلتون لودینگی مانع از فریز دیداری نمی‌شود.
+- **برنامه اصلاح مهندسی (Fix Strategy):**
+  1. **اصلاح رویداد واچ‌لیست در `app.js`:** تضمین فراخوانی فوری `syncSymbolNow` همراه با فورس سوئیچ به نمای چارت (`state.activeWorkspaceView = 'chart'`) و بررسی دسترسی به کش.
+  2. **استفاده از `requestAnimationFrame` در بازترسیم بوم:** بهینه‌سازی `redrawActiveCanvas` به نحوی که اگر عرض یا ارتفاع کانواس هنوز صفر بود، ترسیم به فریم بعدی رندر موکول شود تا مطمئن شویم بوم به طور قطعی ترسیم می‌گردد.
+  3. **مدیریت پایدار تغییر تایم‌فریم:** اصلاح توالی تعویض تایم‌فریم به شکلی که کندل‌های پیشین تا زمان بارگیری تایم‌فریم جدید به عنوان اسکلتون موقت حفظ شده و وضعیت لودینگ به کاربر نمایش داده شود.
+  4. **تست‌های خودکار:** افزودن تست شبیه‌سازی سوئیچ نماد و تایم‌فریم در `tests/web_parity.test.mjs` جهت جلوگیری از هرگونه رگرسیون بعدی.
+
+---
+
+## ۶. رفع خطای وابستگی‌های اندپوینت PHP موتور Chronos-2 و یکپارچه‌سازی Cache-Busting جاوااسکریپت (`v1.45.2`) — ✅ حل شد
+
+- **اولویت:** بحرانی (Critical / P0)
+- **تاریخ ثبت و اصلاح:** ۱۷ نوامبر ۲۰۲۶
+- **شرح ایرادات شناسایی‌شده:**
+  1. در `host_subdomain/api/v1/chronos2_forecast.php` و `host_subdomain/scripts/cron_process_chronos2_queue.php`، فایل‌های ناموجود `core/Config.php` و `core/Response.php` فراخوانی شده بودند.
+  2. در `host_subdomain/api/v1/core/Chronos2QueueManager.php`، متد ناموجود `Database::getConnection()` و کوئری روی جدول ناموجود `symbols` فراخوانی شده بود، در حالی که کلاس `Database.php` متد `Database::getPdo()` را ارائه می‌دهد و جدول `candles` بر پایه `chart_id` (از طریق `ProviderCatalog::resolveChartId`) و ستون `open_time_utc` ساختار یافته است.
+  3. نسخه‌های cache-busting در importهای ماژول‌های جاوااسکریپت (`host_subdomain/assets/js/**/*.js`) روی `?v=1.43.0` باقی مانده بود و در `store.js` نیز تابع `isChronosForecastMatchingTab` به جای آخرین کندل بسته‌شده، آخرین عنصر آرایه (شامل کندل باز/در حال شکل‌گیری) را بررسی می‌کرد.
+- **اصلاح انجام‌شده در کد:**
+  1. جایگزینی کامل `Config.php` و `Response.php` با کلاس استاندارد موجود `ChartIntelligence\Core\ApiEnvelope` (`core/ApiEnvelope.php`) و `ProviderCatalog.php` در `chronos2_forecast.php` و `cron_process_chronos2_queue.php`.
+  2. اصلاح `Database::getConnection()` به `Database::getPdo()` و تطبیق کامل کوئری جدول `candles` با ستون‌های واقعی (`chart_id`, `provider_id`, `timeframe`, `open_time_utc`, `is_closed = 1`) در `Chronos2QueueManager.php`.
+  3. ارتقای یکپارچه تمام پارامترهای cache-busting در فایل‌های JS، `index.html`، `status.php` و `package.json` به `v=1.45.2` و اصلاح `isChronosForecastMatchingTab` در `store.js` برای تطابق با آخرین کندل بسته‌شده (`PriceFormatter.isCandleClosed`).
+

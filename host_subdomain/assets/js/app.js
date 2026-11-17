@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.43.0';
+import { I18nManager } from './core/i18n.js?v=1.45.2';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -32,7 +32,7 @@ import {
   isFocusPullSuspended,
   isChronosForecastMatchingTab,
   clearTabChronosForecast,
-} from './core/store.js?v=1.43.0';
+} from './core/store.js?v=1.45.2';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -54,26 +54,26 @@ import {
   uploadHistoricalImport,
   fetchImportBatches,
   requestChronos2ForecastForTab,
-} from './services/apiService.js?v=1.43.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.43.0';
-import { GapDetector } from './algorithms/gapDetector.js?v=1.43.0';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.43.0';
-import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.43.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.43.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.43.0';
+} from './services/apiService.js?v=1.45.2';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.45.2';
+import { GapDetector } from './algorithms/gapDetector.js?v=1.45.2';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.45.2';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.45.2';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.45.2';
+import { renderLoginScreen } from './views/loginView.js?v=1.45.2';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.43.0';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.43.0';
+} from './views/headerView.js?v=1.45.2';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.45.2';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.43.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.43.0';
-import { renderRightIconRail } from './views/navigationView.js?v=1.43.0';
+} from './views/watchlistView.js?v=1.45.2';
+import { renderSettingsModal } from './views/settingsView.js?v=1.45.2';
+import { renderRightIconRail } from './views/navigationView.js?v=1.45.2';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;

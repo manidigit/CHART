@@ -20,9 +20,9 @@ import {
   CHRONOS2_PINNED_REVISION_SHA,
   isChronosForecastMatchingTab,
   clearTabChronosForecast,
-} from '../core/store.js?v=1.43.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.43.0';
+} from '../core/store.js?v=1.45.2';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.45.2';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.45.2';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';

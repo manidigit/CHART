@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.43.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.45.2';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.45.2';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -1963,8 +1963,19 @@ export function isChronosForecastMatchingTab(tab, forecastPayload = tab?.chronos
 
   const candles = Array.isArray(tab.candles) ? tab.candles : [];
   if (candles.length === 0) return false;
-  const lastClosedCandle = candles[candles.length - 1];
-  const lastClosedOpenMs = Number(lastClosedCandle?.open_time_utc_ms || 0);
+  const nowMs = Date.now();
+  let lastClosedOpenMs = 0;
+  for (let i = candles.length - 1; i >= 0; i--) {
+    const c = candles[i];
+    const openMs = Number(c?.open_time_utc_ms || 0);
+    if (openMs > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(openMs, tabTf, nowMs, tabSym)) {
+      lastClosedOpenMs = openMs;
+      break;
+    }
+  }
+  if (lastClosedOpenMs <= 0) {
+    lastClosedOpenMs = Number(candles[candles.length - 1]?.open_time_utc_ms || 0);
+  }
   if (lastClosedOpenMs <= 0) return false;
 
   return Number(series.origin_open_time_utc_ms) === lastClosedOpenMs;

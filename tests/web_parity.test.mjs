@@ -740,5 +740,35 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
         state.activeModal = prevModal;
         state.activeIndicatorCategory = prevCat;
     }
+
+    // Verify forming bar at the tail of candles does not invalidate forecast anchored on last closed candle
+    const tabWithFormingBar = {
+        ...matchingTab,
+        chronosForecast: h1Payload,
+        chronosStatus: 'READY',
+        candles: [
+            { open_time_utc_ms: 1794204000000, open: 99.5, high: 100.1, low: 99.4, close: 99.7, is_closed: true },
+            { open_time_utc_ms: 1794207600000, open: 99.7, high: 100.2, low: 99.6, close: 99.848, is_closed: true },
+            { open_time_utc_ms: Date.now() + 60_000, open: 99.848, high: 99.9, low: 99.8, close: 99.88, is_closed: false },
+        ],
+    };
+    assert.equal(isChronosForecastMatchingTab(tabWithFormingBar, h1Payload), true);
+
+    // Verify PHP files use existing ApiEnvelope & Database::getPdo() and JS uses unified v=1.45.2 cache-busting
+    const phpEndpointSrc = fs.readFileSync(path.resolve('host_subdomain/api/v1/chronos2_forecast.php'), 'utf8');
+    assert.equal(phpEndpointSrc.includes('core/Config.php'), false, 'Must not reference nonexistent Config.php');
+    assert.equal(phpEndpointSrc.includes('core/Response.php'), false, 'Must not reference nonexistent Response.php');
+    assert.equal(phpEndpointSrc.includes('core/ApiEnvelope.php'), true, 'Must use existing ApiEnvelope.php');
+
+    const phpQueueMgrSrc = fs.readFileSync(path.resolve('host_subdomain/api/v1/core/Chronos2QueueManager.php'), 'utf8');
+    assert.equal(phpQueueMgrSrc.includes('Database::getConnection()'), false, 'Must not call nonexistent Database::getConnection()');
+    assert.equal(phpQueueMgrSrc.includes('Database::getPdo()'), true, 'Must call Database::getPdo()');
+    assert.equal(phpQueueMgrSrc.includes('ProviderCatalog::resolveChartId'), true, 'Must resolve chart_id via ProviderCatalog');
+
+    const indexHtmlSrc = fs.readFileSync(path.resolve('host_subdomain/index.html'), 'utf8');
+    const appJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
+    assert.equal(indexHtmlSrc.includes('?v=1.45.2'), true);
+    assert.equal(appJsSrc.includes('?v=1.43.0'), false);
+    assert.equal(appJsSrc.includes('?v=1.45.2'), true);
 });
 

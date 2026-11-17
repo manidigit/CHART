@@ -1,6 +1,6 @@
 {
   "name": "chart-intelligence",
-  "version": "1.44.0",
+  "version": "1.45.2",
   "description": "Chart Intelligence & Financial Forecast Engine",
   "type": "module",
   "scripts": {

@@ -11,12 +11,12 @@ declare(strict_types=1);
  * so at most one `amazon/chronos-2` process runs at any moment.
  */
 
-require_once __DIR__ . '/../api/v1/core/Config.php';
 require_once __DIR__ . '/../api/v1/core/Database.php';
 require_once __DIR__ . '/../api/v1/core/Chronos2QueueManager.php';
 require_once __DIR__ . '/../api/v1/algorithms/UtcTimeAnchor.php';
 require_once __DIR__ . '/../api/v1/algorithms/CandleValidator.php';
 require_once __DIR__ . '/../api/v1/algorithms/TimeframeAggregator.php';
+require_once __DIR__ . '/../api/v1/providers/ProviderCatalog.php';
 require_once __DIR__ . '/../api/v1/providers/TvDatafeedAdapter.php';
 
 use ChartIntelligence\Core\Chronos2QueueManager;
