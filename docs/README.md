@@ -3,7 +3,7 @@
 > **Unified Index & Single Source of Truth (`docs/`)**  
 > کل مستندات پروژه به‌صورت موضوعی در ۴ پوشه استاندارد دسته‌بندی شده‌اند تا پیگیری نیازمندی‌ها، معماری، خطاهای باز و نقشه راه توسعه بدون تکرار یا ابهام انجام شود.
 
-> **Forecast document authority:** The product mission is governed by [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) v1.2.0; system behavior and lifecycle by [FORECAST_SYSTEM_SPEC_V1.md](./01-product/FORECAST_SYSTEM_SPEC_V1.md) v1.0.1; model-independent verification by [FORECAST_ACCEPTANCE_TEST_PLAN_V1.md](./02-architecture/FORECAST_ACCEPTANCE_TEST_PLAN_V1.md) v1.0.0; candidate repository reviews by [FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md](./01-product/FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md) v1.0.2. The current-state audit is evidence about existing implementation, not a design authority. Historical specifications and code do not override these documents unless explicitly adopted.
+> **Forecast document authority:** The product mission is governed by [FORECAST_PRODUCT_FOUNDATION_V1.md](./01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) v1.3.0; system behavior and lifecycle by [FORECAST_SYSTEM_SPEC_V1.md](./01-product/FORECAST_SYSTEM_SPEC_V1.md) v1.0.2; model-independent verification by [FORECAST_ACCEPTANCE_TEST_PLAN_V1.md](./02-architecture/FORECAST_ACCEPTANCE_TEST_PLAN_V1.md) v1.0.1; candidate repository reviews by [FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md](./01-product/FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md) v1.0.3. The current-state audit is evidence about existing implementation, not a design authority. Historical specifications and code do not override these documents unless explicitly adopted.
 
 ---
 
