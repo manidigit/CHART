@@ -1,10 +1,10 @@
 # CHART Forecast — Model Intake and Comparison Framework
 ## چارچوب بررسی، پذیرش و مقایسه مدل‌های پیشنهادی
 
-- **Version:** 1.0.2
+- **Version:** 1.0.3
 - **Date:** 2026-11-17
 - **Status:** Reusable intake protocol; Chronos-2 is the sole Phase 1 active-model candidate, subject to implementation and acceptance gates
-- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.2.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.1
+- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.2
 - **Purpose:** Evaluate candidate GitHub repositories and other model implementations consistently before deciding whether to research, prototype, test or integrate them.
 
 ---
@@ -304,6 +304,7 @@ No need to pre-filter candidates by algorithm family. Candidate repositories may
 | 1.0.0 | 2026-11-17 | Initial repository intake, evidence classification, technical review, licensing, experiment protocol, integration fit and disposition framework |
 | 1.0.1 | 2026-11-17 | Added source-level screening records for Chronos-2, PatchTST, Time-Series-Library and Moirai 2.0 |
 | 1.0.2 | 2026-11-17 | Recorded the Phase 1 decision: Chronos-2 is the sole active-model candidate; other candidates are deferred pending evidence-based review; clarified that selection is not performance or OHLC approval |
+| 1.0.3 | 2026-11-17 | Reframed Phase 1 model evaluation around structured price-path quality, swings, corrections and reversals; candle OHLC is deferred and broad uninformative uncertainty cones are rejected |
 
 
 ---
@@ -430,12 +431,22 @@ A new model may be proposed for a later phase only when a written review establi
 
 Until this gate is passed, Chronos-2 remains the only Phase 1 model. The architecture must retain model-independent extension points, but extensibility is not a reason to activate additional models prematurely.
 
-### 16.5. Output integrity remains mandatory
+### 16.5. Phase 1 target capability and output integrity
+
+The Phase 1 target is not native OHLC candle generation. It is a time-ordered, structurally meaningful price path capable of representing trend continuation and change, impulse moves, pullbacks, swing highs/lows and likely correction/reversal areas. A line or path representation is acceptable and may be preferable if it preserves these structures faithfully.
+
+Chronos-2 must be tested against this target explicitly. Its multivariate quantile capability does not by itself prove that it can identify market structure, forecast meaningful turning points or generate temporally coherent paths. Do not infer those capabilities from general forecasting benchmarks. If its native outputs are too smooth, omit material swings, or provide only broad uninformative uncertainty, record that as an observed limitation only after controlled testing.
+
+Support/resistance and reversal zones must be distinguished by provenance: model-native output versus system-derived interpretation based on the forecast path and historical market structure. They must not be displayed as guaranteed levels or events.
+
+Uncertainty visualization must preserve a readable central path. A very broad cone/fan that simply spans many higher and lower prices without clarifying the likely sequence is not useful and must not pass product acceptance. Bands must be evaluated for both empirical coverage and width/sharpness. Do not arbitrarily connect independent marginal quantiles into a coherent-looking scenario.
+
+### 16.6. Output integrity remains mandatory
 
 Chronos-2's native quantile forecasts are not complete native OHLC candles and do not constitute a joint candle-path distribution. Do not manufacture Open, High or Low values from Close quantiles, perturbations or arbitrary spreads and label them as model-predicted candles.
 
 The Phase 1 experiment may inspect and visualize native quantile outputs in an explicitly identified experimental representation. The product requirement for meaningful future OHLC candles remains open until an output method satisfies structural validity and predictive evaluation. A display adapter must never conceal the distinction between model output and derived presentation.
 
-### 16.6. Current evidence boundary
+### 16.7. Current evidence boundary
 
 At the time of this decision, Chronos-2 has passed source-level screening only. It has **not** passed CHART-specific runtime evaluation, walk-forward performance testing, product acceptance or production approval. No accuracy, profitability or OHLC-quality claim is authorized by this Phase 1 selection.
