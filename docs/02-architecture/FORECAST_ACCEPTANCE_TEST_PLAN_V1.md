@@ -1,10 +1,10 @@
 # CHART Forecast — Model-Independent Acceptance Test Plan
 ## برنامه آزمون پذیرش سیستم، مستقل از مدل و الگوریتم
 
-- **Version:** 1.0.1
+- **Version:** 1.0.2
 - **Date:** 2026-11-17
 - **Status:** Normative acceptance scenarios for system design and future implementation
-- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.2
+- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.3
 - **Scope:** Observable system behavior; no specific model or algorithm is assumed.
 
 ---
@@ -212,4 +212,33 @@ Path-quality evaluation should include, where measurable: direction/regime trans
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial model-independent acceptance scenarios for readiness, execution, output, chart, persistence, evaluation, replay, security and cross-platform integrity |
-| 1.0.1 | 2026-11-17 | Added Phase 1 path-structure acceptance cases; clarified that line output is valid and complete OHLC is deferred |
+| 1.0.1 | 2026-11-17 | Added Phase 1 path-structure acceptance cases; clarified that line output is valid and complete OHLC is deferred |\n| 1.0.2 | 2026-11-17 | Added Chronos-2 native-output integrity, inference configuration, leakage, quantile calibration and walk-forward path-quality test cases |
+
+
+## 10. Chronos-2 Phase 1 model-specific acceptance cases
+
+These cases supplement—not replace—the model-independent tests above. The normative input/output details are in [FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md](../01-product/FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md).
+
+| ID | Scenario | Required result |
+|---|---|---|
+| X-01 | Close-only baseline input is constructed | Only eligible historical Close values are supplied; exact series, timestamps, origin and preprocessing identity are recorded |
+| X-02 | Model artifact is loaded | Exact immutable model revision, package/runtime versions and weight identity are recorded |
+| X-03 | Context length is selected | Effective value is within the loaded model's supported capacity and is recorded; no unverified hard-coded capacity |
+| X-04 | Prediction horizon exceeds configured model prediction length | Request is rejected or explicitly classified as an experimental long-horizon run; no silent shortening or hidden degradation |
+| X-05 | Quantile levels are requested | Every requested level is supported by the loaded artifact; raw quantile output and dimensions are preserved |
+| X-06 | Pointwise median is rendered | It is labelled as a pointwise quantile-derived path, not a sampled coherent trajectory |
+| X-07 | Marginal quantiles are displayed | They are not labelled as joint scenarios; empirical coverage and width are both measured |
+| X-08 | OHLC is tested as multivariate targets | All variates are aligned; invalid candle geometry is recorded, not silently clamped/reordered |
+| X-09 | Adapter receives malformed/non-finite output | Run fails validation; no synthetic replacement path is rendered |
+| X-10 | Inference is repeated with identical inputs/configuration | Differences, if any, are measured and recorded; deterministic behavior is not assumed |
+| X-11 | Historical walk-forward origin is evaluated | No input or feature contains information later than the origin |
+| X-12 | Path structure is scored | Swing, correction, reversal, regime and path-shape metrics are computed under frozen definitions; endpoint error alone is insufficient |
+| X-13 | Model is compared with naive baselines | Same origins, instruments, target space, horizons and actuals are used |
+| X-14 | Event labels or support/resistance zones are shown | Provenance identifies model-native versus system-derived output, with method/version and evidence |
+| X-15 | Runtime parameter has not been measured | It remains explicitly TBD; implementation does not silently substitute an arbitrary value |
+
+### 10.1. Phase 1 model acceptance interpretation
+
+Chronos-2 source/API compatibility is not a model acceptance result. Passing X-01 through X-10 establishes adapter/output integrity only. Predictive path acceptance requires walk-forward evidence across instruments, timeframes, horizons and market regimes, including comparison with suitable naive baselines. A visually convincing line without this evidence remains unvalidated.
+
+A failure in path structure must trigger the diagnostic sequence in the Model Intake document before any second model is proposed. No synthetic oscillation, fabricated OHLC or arbitrary quantile stitching may be used to turn a failed test into a pass.
