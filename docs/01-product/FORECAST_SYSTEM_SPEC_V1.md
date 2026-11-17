@@ -1,12 +1,13 @@
 # CHART Forecast — System Specification
 ## سند جامع تعریف سیستم پیش‌بینی، چرخه عمر اجرا و رفتارهای قابل مشاهده
 
-- **Version:** 1.0.0
+- **Version:** 1.0.1
 - **Date:** 2026-11-17
-- **Status:** Model-agnostic system specification; ready for review and model intake after acceptance
+- **Status:** Model-agnostic system specification; Phase 1 operational scope is limited to Chronos-2, subject to implementation and acceptance gates
 - **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.2.0
 - **Scope:** Product/system behavior, lifecycle, user workflows, model independence, comparison, persistence semantics, evaluation boundaries and acceptance gates
-- **Explicit exclusion:** No software architecture, programming language, algorithm, model family, provider or deployment topology is selected here.
+- **Phase 1 model scope:** Chronos-2 is the sole selected model for initial implementation and controlled evaluation; no additional model is enabled in Phase 1.
+- **Explicit exclusion:** This document does not select software architecture, programming language, provider or deployment topology. The Phase 1 model decision does not establish predictive performance or production approval.
 
 ---
 
@@ -495,7 +496,7 @@ These are product-level security requirements. Concrete controls and threat mode
 ## 16. User control and workflow expectations
 
 The user must retain control over:
-- which models are selected for a run;
+- whether the Phase 1 Chronos-2 model is run for a request and whether its available result is displayed;
 - whether an available result is displayed;
 - which results are overlaid or inspected separately;
 - which comparison set is reviewed;
@@ -532,7 +533,7 @@ The following gates must be met in order:
 - Product Foundation and this System Specification are internally consistent.
 - Core terms and boundaries are unambiguous.
 - The existing chart remains the display surface.
-- Model and algorithm selection remains open.
+- Phase 1 model scope is explicitly documented as Chronos-2 only; its selection is not a performance or production approval.
 
 ### Gate B — Execution and identity
 - One request can create independently identifiable model runs.
@@ -570,9 +571,9 @@ Passing these gates does not prove that a model is accurate. It proves that the 
 
 ## 19. Decisions deliberately left open
 
-This document does not decide:
-- which model or model family should be used first;
-- how many models should run concurrently;
+The Phase 1 model choice is fixed as Chronos-2 only. The following decisions remain open:
+- whether and when a later phase should admit additional models, subject to the formal expansion gate;
+- how many models may run concurrently in a future multi-model phase;
 - which programming language or execution environment should host a model;
 - whether models run locally, remotely or in a hybrid arrangement;
 - the internal software architecture, APIs or database schema;
@@ -585,23 +586,15 @@ This document does not decide:
 
 These decisions must be made using evidence from candidate model reviews, integration tests, product constraints and operational measurements.
 
-## 20. Required next phase: model intake
+## 20. Phase 1 model and required execution sequence
 
-Once the product/system contract and model-independent acceptance plan are reviewed, candidate GitHub repositories can be introduced.
+The Phase 1 model is **Chronos-2 only**, as recorded in FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md. The immediate next work is to complete the system implementation and controlled evaluation path around this single model, while preserving its native output and the product requirement for meaningful OHLC forecasting.
 
-Each candidate must be assessed independently using FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md. The review must determine what the repository actually contains, what it can produce, its dependencies and license, its data requirements, its integration effort, its reproducibility and its measurable limitations.
+Chronos-2 has passed source-level screening only. It is not yet CHART-runtime-verified, performance-validated, product-accepted or production-approved. Passing system acceptance gates establishes that the system handles outputs honestly; it does not establish forecast accuracy.
 
-A candidate must not be selected merely because its README claims high accuracy, it uses a recent architecture, or its sample chart looks convincing.
+If results are inadequate, first diagnose data identity/quality, preparation, model configuration and execution, horizon, output interpretation/display, and evaluation methodology. Do not add models as a substitute for this diagnosis.
 
-The outcome of model intake may be:
-- reject;
-- research only;
-- prototype;
-- eligible for controlled experiment;
-- eligible for active integration;
-- combine with another model only through a separately justified design.
-
-No model is pre-approved by this document.
+Any later candidate must be independently assessed using FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md and pass its formal model-expansion gate. Deferral of other candidates is not rejection; no additional candidate is enabled in Phase 1.
 
 ## 21. Change control
 
@@ -619,6 +612,7 @@ A change to model-specific implementation must not silently redefine the system 
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial model-independent system specification: responsibilities, lifecycle, multi-model execution, comparison, live/replay workflows, state semantics, provenance, governance and acceptance gates |
+| 1.0.1 | 2026-11-17 | Recorded Chronos-2 as the sole Phase 1 model; retained model-independent extension points and added a formal evidence-based gate before future model expansion |
 
 ---
 
