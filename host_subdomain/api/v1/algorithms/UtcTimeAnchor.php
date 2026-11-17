@@ -28,21 +28,15 @@ final class UtcTimeAnchor
     ];
 
     private const US_EQUITIES_SYMBOLS = [
-        'SPX500USD',
-        'NDQ',
-        'NVDA',
-        'AMZN',
-        'TSLA',
-        'AAPL',
-        'GOOGL',
-        'MSFT',
-        'META',
-        'NFLX',
-        'AMD',
-        'UBER',
-        'NKE',
-        'IBM',
-        'SAN',
+        'SPX500USD', 'NDQ',
+        'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
+        'AVGO', 'MU', 'INTC', 'MRVL', 'AMAT', 'LRCX', 'QCOM', 'SMCI', 'DELL', 'SNDK', 'ANET',
+        'PLTR', 'ORCL', 'CRM', 'ADBE', 'CRWD', 'CSCO', 'APP', 'NBIS', 'CRWV',
+        'SPCX', 'RKLB', 'GEV', 'BE', 'IONQ', 'RIVN',
+        'JPM', 'BAC', 'GS', 'V', 'MA', 'BRK.B', 'BRKB', 'HOOD', 'MSTR', 'PYPL', 'COIN',
+        'WMT', 'COST', 'DIS', 'SBUX', 'MCD', 'KO',
+        'LLY', 'UNH', 'PFE', 'XOM', 'CVX',
+        'TSM', 'ASML', 'SSNLF', 'SKHY', 'BABA', 'NVO', 'TM', 'SAP', 'HSBC', '2222.SR', '2222SR',
     ];
 
     public static function stepMilliseconds(string $timeframe): int

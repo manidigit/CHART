@@ -1,7 +1,7 @@
 # CHART — وضعیت واقعی قابلیت‌ها و نقشه راه توسعه (`ROADMAP_BACKLOG`)
 
-> **نسخه:** `1.44.0` · **تاریخ ممیزی واقعی در کد:** `2026-11-15`  
-> این سند تفاوت بین **قابلیت‌های پیاده‌سازی‌شده و تأییدشده در کد فعلی** را از **بک‌لاگ باقی‌مانده (Worker خارجی یادگیری عمیق، فازهای ۵ و ۶ و آزمون‌های عملیاتی cPanel زنده)** به‌طور دقیق و صادقانه جدا می‌کند.
+> **نسخه:** `1.45.1` · **تاریخ ممیزی واقعی در کد:** `2026-11-17`  
+> این سند تفاوت بین **قابلیت‌های پیاده‌سازی‌شده و تأییدشده در کد فعلی** را از **بک‌لاگ باقی‌مانده (بازطراحی مجدد موتور پیش‌بینی از صفر پس از آرشیو کدهای قبلی، فازهای ۵ و ۶ و آزمون‌های عملیاتی cPanel زنده)** به‌طور دقیق و صادقانه جدا می‌کند.
 
 ---
 
@@ -15,13 +15,13 @@
 
   - `[x]` جداسازی کامل کلیدهای شخصی `BYOK` (`Twelve Data`, `Stooq`, `Alpha Vantage`, `Finnhub`) با ارسال هدر `X-Provider-Api-Key` (هرگز در فضای ابری یا فایل بکاپ ذخیره نمی‌شوند).
 - **موتور داده، سشن، تشخیص Gap و خروجی (`DB-First Delta Sync`):**
-  - `[x]` ۷ آداپتور مستقل (`tvdatafeed`, `biquote`, `twelve_data`, `dukascopy`, `yahoo_finance`, `stooq`, `eia_brent_spot`) با کلید یکتای `UNIQUE(chart_id, provider_id, timeframe, open_time_utc)` و ممنوعیت Fallback پنهان.
-  - `[x]` پشتیبانی از ۶ تایم‌فریم (`M15`, `M30`, `H1`, `H4`, `D1`, `W1`) و واکشی عمیق تاریخی تا ۵۰۰۰ کندل با هم‌ترازی سشن‌ها و DST (`ENG-01`).
+  - `[x]` کاتالوگ استاندارد **۷۹ نماد** (۲۲ نماد پیش‌فرض واچ‌لیست + ۵۷ سهام و شرکت بزرگ بین‌المللی در Settings و دیتابیس `chart_series` با `inWatchlist = false` پیش‌فرض) با منبع فعال انحصاری **`tvdatafeed`** در هر سه لایه (`005_expand_global_stocks_catalog.sql`).
+  - `[x]` پشتیبانی از ۶ تایم‌فریم (`M15`, `M30`, `H1`, `H4`, `D1`, `W1`) و واکشی عمیق تاریخی تا ۵۰۰۰ کندل با هم‌ترازی سشن‌ها و DST (`ENG-01`)، به همراه رفع کامل گیرکردن تعویض تایم‌فریم در وب (`AbortController` و تایم‌اوت ۴.۵ ثانیه‌ای سوکت `TvDatafeedAdapter.php`).
   - `[x]` Quote زنده فقط-خواندنی (`quote.php` — `ENG-02`) جدا از ذخیره کندل‌های بسته‌شده (`is_closed = 1`).
   - `[x]` موتور تشخیص هوشمند Gap آگاه از سشن، تسویه روزانه (`21:00–23:59 UTC`) و تعطیلات رسمی بورس‌ها (`GapDetector` + `gap_report.php` + جدول `data_quality_reports` — `ENG-03`، ارتقایافته در `v1.44.0` با حذف کامل گپ‌های کاذب روی `SPOTBRENT`).
   - `[x]` خروجی استاندارد **CSV (RFC 4180)** در نوار بالای وب (`Blob`) و اندروید (`SAF` بدون نیاز به مجوز Storage؛ دکمه اضافی `JSON` طبق درخواست محصول از UI حذف شد).
-- **میزکار چارت و تعامل TradingView Pro (Web & Android — `v1.44.0`):**
-  - `[x]` یکپارچه‌سازی منوی ناوبری (`Chart`, `Forecast`, `Performance`, `Watchlist`, `Settings`) در نوار بالای وب (حذف کامل نوار عمودی سمت راست و دکمه‌های تکراری خروج/تم/زبان)، چراغ چشمک‌زن وضعیت بازار (`Live` سبز / `Closed` قرمز بدون متن شلوغ)، نوار تب‌های چندگانه چارت، محور قیمت رند Heckbert با `[Auto] [Log]`، محور زمان هوشمند `UTC / Local`، ۱۱ بازه سریع (`1D..All`)، و تغییر ارتفاع لمسی پنل‌ها.
+- **میزکار چارت و تعامل TradingView Pro (Web & Android — `v1.45.1`):**
+  - `[x]` یکپارچه‌سازی منوی ناوبری (`Chart`, `Forecast [غیرفعال/disabled]`, `Performance`, `Watchlist`, `Settings`) در نوار بالای وب (حذف کامل نوار عمودی سمت راست و دکمه‌های تکراری خروج/تم/زبان)، چراغ چشمک‌زن وضعیت بازار (`Live` سبز / `Closed` قرمز بدون متن شلوغ)، نوار تب‌های چندگانه چارت، محور قیمت رند Heckbert با `[Auto] [Log]`، محور زمان هوشمند `UTC / Local`، ۱۱ بازه سریع (`1D..All`)، و تغییر ارتفاع لمسی پنل‌ها.
   - `[x]` ابزارهای پایه (`HLINE`, `VLINE`, `TREND`, `FIB`, `LONG_POS`, `SHORT_POS`) با `Magnet Mode`، انتخاب، جابه‌جایی، رنگ و ضخامت `1px..4px`.
 
 ---
@@ -90,40 +90,14 @@
 2. `[x]` **ورود فایل‌های تاریخی (`Historical Import` & `LocalCsvAdapter` — `v1.41.0`):** `LocalCsvAdapter.php` + `api/v1/import_candles.php` + جداول نسب و ممیزی `data_import_batches`، `data_corrections`، `backup_records`، `audit_logs` در `002_phase2_3_tables.sql` + کلاینت وب (`candleImport.js`, `settingsView.js`) و اندروید (`CandleImportAlgorithm.kt`, `Phase3ImportCard.kt` با `SAF` بدون نیاز به مجوز Storage)؛ پشتیبانی کامل از `EIA RBRTEd.xls` (باینری `BIFF8 OLE2`، `SpreadsheetML XML`، `HTML`، `TSV`)، `DataHub brent-daily.csv` (اجبار خودکار به `D1` بدون جعل اینترادی)، `CSV` استاندارد، `JSON`، ورود دستی `OHLC` و اعمال سخت‌گیرانه **سیاست ممنوعیت ذخیره تصویر (`ERR_IMAGE_UPLOAD_FORBIDDEN`)**. *(استقرار/اجرای زنده روی `chart.manico.es` پس از دیپلوی بعدی تأیید می‌شود.)*
 3. `[x]` **Backup & Restore رمزنگاری‌شده در سطح برنامه (`PBKDF2 + AES-256-GCM`):** در `v1.39.0` در PHP/Web/Android پیاده‌سازی شد (`INF-01`؛ تست نهایی بازیابی روی cPanel زنده باقی مانده است).
 
-### فاز ۴ — موتور تحلیل ساختار و پیش‌بینی آینده قیمت (`Future Price Projection Engine v1` — هسته مستقل آماری در `v1.42.0`)
+### فاز ۴ — موتور پیش‌بینی قیمت (آرشیوشده در `/archive/` برای بازطراحی از صفر — `v1.45.1`)
 
-> **مستندات مرجع تفصیلی:** کلیه جزئیات فنی، فرمول‌ها، پایپ‌لاین و ماتریس تصمیم‌گیری در سند اختصاصی [**`FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md`**](../01-product/FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md) و بخش ۱۰ سند [**`CHART_INTELLIGENCE_MASTER_SPEC.md`**](../01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) تدوین شده است.
+> **وضعیت فعلی در `v1.45.1`:** تمامی کدهای اجرایی پیش‌بینی در Android، Web، PHP، Worker، Backtest و تست‌های اختصاصی به پوشه **`/archive/`** منتقل شده‌اند. تمامی اسناد فنی و محصولی در `/docs/` (به‌ویژه سند مرجع محصول [**`FORECAST_PRODUCT_FOUNDATION_V1.md`**](../01-product/FORECAST_PRODUCT_FOUNDATION_V1.md)) و جداول SQL (`003_phase4_forecast_tables.sql`, `004_phase4_forecast_v2_columns.sql`) دست‌نخورده حفظ شده‌اند. تا زمان طراحی و پیاده‌سازی نسخه جدید، تب **`Forecast`** و دکمه‌های ورود مربوطه در اندروید و وب سر جای خود ولی در حالت **غیرفعال (`disabled`)** قرار دارند.
 
-- `[x]` **تمایز بنیادین معماری، هسته مستقل و پلاگین‌محور (`Decoupled Pluggable Core`):**
-  - ایزوله‌سازی کامل موتور پیش‌بینی در پکیج‌های مستقل (`host_subdomain/assets/js/forecast/*`، `app/.../forecast/*` و `host_subdomain/api/v1/forecast/*`) کاملاً جدا از رندرر چارت و Providerهای داده، با رجیستری پلاگین (`ForecastModelRegistry` / `modelRegistry.js`) برای افزودن، فعال/غیرفعال‌کردن و تنظیم وزن/پارامتر مدل‌ها در آینده.
-  - جداسازی کامل زبان آماری (`q10..q90`، احتمال جمع‌شونده به `1.000`، سناریوهای `Bullish Expansion / Base Range / Bearish Contraction` و `Structural Pivot Reference`) بدون هیچ‌گونه سیگنال خرید/فروش یا توصیه معاملاتی.
-
-- `[x]` **فرمول‌بندی ورودی، بازده لگاریتمی و بازسازی قیمت آینده (`v1.42.0`):**
-  - استخراج ویژگی روی بازده‌های لگاریتمی مانا $r_t = \ln(C_t / C_{t-1})$، برش‌های نوسان، رژیم بازار و `DataReadinessGate` (`>= 30` کندل بسته).
-  - بازسازی قیمت آینده از آخرین کندل بسته قطعی: $\hat{C}_{t+h} = C_t \times \exp(\sum_{i=1}^h \hat{r}_{t+i})$ همراه با تولید OHLC شبحی و تقویم سشن معاملاتی با پرش از تعطیلات آخر هفته.
-
-- `[x]` **خانواده متدهای ریاضی، آماری و فیلترهای حالت (پلاگین‌های پیش‌فرض MVP):**
-  - **Persistence Baseline (`NaivePersistence`)** و **ATR Volatility Cone** به‌عنوان خط مبنای مقایسه‌ای.
-  - **Kalman Filter:** تخمین سطح قیمت و سرعت/تکانه با میرایی گام‌به‌گام.
-  - **GARCH (1,1):** مدل‌سازی نوسان شرطی و گسترش چندمرحله‌ای عدم‌قطعیت.
-  - **AR(2) / ETS Drift:** خط مبنای اقتصادسنجی اتورگرسیو.
-  - **Gaussian Process Trend (`GP`):** برآورد احتمالاتی پیوسته روی پنجره کوتاه‌مدت در کلاینت وب و اندروید.
-
-- `[ ]` **استقرار سرویس خارجی مدل‌های یادگیری عمیق روی GPU/VPS (`External Python DL Worker`):**
-  - `[x]` **قرارداد و پل اتصال صادقانه (`Remote Worker Bridge` در `v1.42.0`):** پشتیبانی از `FORECAST_WORKER_URL` در Backend PHP، وب و اندروید با نمایش وضعیت صریح `LOCAL_STATISTICAL_ONLY` یا `UNCONFIGURED` در نبود Worker (بدون جعل خروجی DL).
-  - `[ ]` استقرار سرور پایتونی خارجی برای **Chronos-2 (Apache 2.0)**، **TimesFM 2.5 (Google Research)** و **N-HiTS (Nixtla)** *(تبصره دائمی: **TimesFM 3.0** به دلیل لایسنس غیرتجاری استفاده نمی‌شود)*.
-
-- `[x]` **خروجی ۴ مؤلفه‌ای، تب اختصاصی، همگام‌سازی مولتی‌تایم‌فریم (`1h/4h`) و رندر ۳ حالته روی بوم چارت (`v1.42.0–v1.44.0`):**
-  - تب و صفحه مستقل **آزمایشگاه پیش‌بینی (`Forecast Studio` در وب / `ForecastLabScreen` در اندروید)** با اسکرول استاندارد در سطح Document (مناسب افزونه‌های اسکرین‌شات تمام‌صفحه)، ۴ زیرتب (`Projection`, `Plugin Models`, `Walk-Forward`, `SHA-256 Ledger`)، مقایسه ۱۲ مدل، ستون اختصاصی برچسب‌های `q90 / q50 / q10` در سمت راست بوم، و دکمه دوحالته واقعی (`✓ / ☐ Apply & View on Chart`) در وب و اندروید.
-  - همگام‌سازی کامل سناریوهای `SCENARIO_A / B / C` و احتمال‌های ترکیبی بین تایم‌فریم‌های `15m / 1h / 4h` با Rollup ده کندلی (`40h` در `H4`) و محاسبه محلی `POC` بر حسب تایم‌فریم (`M15: 80 .. D1: 30` کندل با محدودسازی `±3.5×ATR`).
-  - رندر ۳ حالته روی بوم چارت در وب (`chartRenderer.js`) و اندروید (`CandlestickCanvas.kt`): **Fan Chart (`q10..q90` و `q25..q75`)**، **Ghost Candlesticks** و **Hybrid Overlay** با افق قابل تنظیم **`10..60` کندل** (`$h \ge 10$`, پیش‌فرض `30`) در تمامی ۶ تایم‌فریم (`M15..W1`).
-
-- `[x]` **ارزیابی Walk-Forward محلی و زنجیره تغییرناپذیر `SHA-256` (`v1.42.0`):**
-  - اجرای **Purged Walk-Forward** روی پنجره تاریخی با `AcceptanceGate` در برابر `Persistence Baseline` (`MAE`، `RMSE`، `Directional Accuracy`، `Pinball Loss`).
-  - پیاده‌سازی مایگریشن `003_phase4_forecast_tables.sql` (`prediction_models`, `prediction_runs`, `prediction_forecasts`, `prediction_scenarios`, `prediction_walkforward_benchmarks`)، اندپوینت `api/v1/forecast.php` و دفترکل محلی/ابری زنجیره‌شده با **SHA-256** (`ForecastLedgerStore` / `forecastLedger.js`).
-
-- `[ ]` **بازطراحی موتور آنالوگ SMC (`SMC Analog Engine Refactor` — سند مرجع: [`SMC_ANALOG_ENGINE_REFACTOR_SPEC.md`](../01-product/SMC_ANALOG_ENGINE_REFACTOR_SPEC.md)):**
-  - جایگزینی ماشین حالت مصنوعی (`buildRealisticCandles` با فازهای `PULLBACK → IMPULSE → CORRECTION` و توابع `sin/cos`) با طرح‌ریزی مقیاس‌پذیر مسیرهای واقعی آنالوگ‌های تاریخی (`projectAnalogPath`) و محاسبه تجربی و مستقیم کوانتایل‌های `q10..q90` از توزیع داده‌ها.
+- [ ] **بازطراحی و پیاده‌سازی از صفر موتور پیش‌بینی مطابق [`FORECAST_PRODUCT_FOUNDATION_V1.md`](../01-product/FORECAST_PRODUCT_FOUNDATION_V1.md):**
+  - `[ ]` طراحی معماری جدید پیش‌بینی (مسیرهای چندکندلی واقع‌گرایانه، مقایسه چندمدلی روی بوم چارت، ثبت تغییرناپذیر اسنپ‌شات و رکوردهای ارزیابی زنده/تاریخی).
+  - `[ ]` فعال‌سازی مجدد تب `Forecast` و لایه‌های بصری چارت در اندروید و وب پس از تکمیل و راستی‌آزمایی نسخه جدید.
+  - `[ ]` استقرار سرویس خارجی DL Worker (`Chronos-2`, `TimesFM 2.5`, `N-HiTS` — با حفظ ممنوعیت `TimesFM 3.0`) پس از تثبیت قرارداد جدید.
 
 
 ### فاز ۵ — حلقه بازخورد زنده، Walk-Forward و حاکمیت مدل

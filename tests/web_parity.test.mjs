@@ -31,6 +31,9 @@ const {
     filterSyntheticWeekendAndCombCandles,
     UNIVERSAL_COLOR_PALETTE,
     DEFAULT_INDICATOR_COLORS,
+    PROVIDER_METHODS_CATALOG,
+    isProviderEnabled,
+    normalizeCanonicalChartKey,
     normalizeHexForWeb,
     normalizeHexForAndroid,
     state,
@@ -42,7 +45,7 @@ const {
 } = await import('../host_subdomain/assets/js/core/store.js');
 const { renderTopHeaderBar } = await import('../host_subdomain/assets/js/views/headerView.js');
 const { renderSettingsModal } = await import('../host_subdomain/assets/js/views/settingsView.js');
-const { buildForecastForTab, renderForecastStudioView } = await import('../host_subdomain/assets/js/views/forecastView.js');
+const { renderSymbolOverviewModal } = await import('../host_subdomain/assets/js/views/watchlistView.js');
 const { syncSymbolNow } = await import('../host_subdomain/assets/js/services/apiService.js');
 
 test('PAR-01: resolvePriceBasis returns CFD Feed for SPOTBRENT on tvdatafeed', () => {
@@ -162,14 +165,6 @@ test('IND-01 & PRED-09/PRED-10: 4-Variant Pivot Points and 30-Period Future Cand
     assert.equal(woodie.variant, 'WOODIE');
     const expectedWoodieP = (120 + 90 + 2 * 114) / 4;
     assert.ok(Math.abs(woodie.p - expectedWoodieP) < 1e-9);
-
-    for (const tf of ['M15', 'M30', 'H1', 'H4', 'D1', 'W1']) {
-        const projected = TechnicalIndicators.computeFutureCandlestickProjection(sampleBars, tf, 30);
-        assert.equal(projected.length, 30, `Expected 30 projected bars (>=10) for ${tf}`);
-        assert.equal(projected[0].step, 1);
-        assert.equal(projected[29].step, 30);
-        assert.ok(projected.every((c) => c.high >= Math.max(c.open, c.close) && c.low <= Math.min(c.open, c.close)));
-    }
 });
 
 test('AUDIT-v1.40.1: Middle incomplete bucket rejection and D1 UTC midnight alignment', () => {
@@ -473,7 +468,7 @@ test('COLOR-PARITY: hex normalization, universal palette, custom indicator color
     assert.equal(state.chartPreferences.trendColor, '#F59E0B');
 });
 
-test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamlined Forecast topbar, forecast memoization, and D1 sync safety', async () => {
+test('UI-PARITY & TIMEFRAME-SYNC: default by_symbol mode, RTL Settings, disabled Forecast nav tab, and rapid timeframe-switch abort safety', async () => {
     const mockI18n = {
         getCurrentLanguage: () => 'fa',
         t: (k) => k
@@ -498,56 +493,45 @@ test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamline
         state.settingsTab = prevSettingsTab;
     }
 
-    // 3. Top header bar keeps open symbol tabs + timeframes + unified workspace nav in both Chart and Forecast views, omits JSON export button, uses compact blinking status dot, and Forecast card avoids duplicate symbol/timeframe rows
+    // 3. Top header bar keeps Forecast button visible but strictly disabled, keeps Chart nav active, and Symbol Overview disables Forecast CTA
     const prevWorkspace = state.activeWorkspaceView;
+    const prevOverview = state.symbolOverviewCode;
     const sampleTab = {
         tabId: 'tab_SPOTBRENT_M15',
         symbolCode: 'SPOTBRENT',
         provider: 'tvdatafeed',
         timeframe: 'M15',
         decimals: 2,
-        showFutureProjection: true,
+        showFutureProjection: false,
         candles: []
     };
     try {
-        state.activeWorkspaceView = 'forecast';
-        const fcHeaderHtml = renderTopHeaderBar(sampleTab, mockI18n);
-        assert.ok(fcHeaderHtml.includes('tv-open-tabs-strip'), 'Symbol tabs strip must be kept in Forecast topbar');
-        assert.ok(fcHeaderHtml.includes('data-action="set-timeframe"'), 'Timeframe buttons must be kept in Forecast topbar');
-        assert.ok(fcHeaderHtml.includes('data-action="set-workspace-view"'), 'Unified topbar workspace nav must be present in Forecast view');
-        assert.ok(fcHeaderHtml.includes('data-action="open-active-symbol-overview"'), 'Performance/Overview button must be in topbar');
-        assert.ok(fcHeaderHtml.includes('data-modal="settings"'), 'Settings button must be in topbar');
-        assert.equal(fcHeaderHtml.includes('data-action="export-candles-json"'), false, 'JSON export button must be removed from topbar');
-        assert.ok(fcHeaderHtml.includes('ci-status-dot'), 'Compact blinking status dot must be rendered in topbar');
-        assert.equal(fcHeaderHtml.includes('data-action="set-chart-type"'), false, 'Chart type buttons must be omitted in forecast view');
-        assert.equal(fcHeaderHtml.includes('data-modal="indicators"'), false, 'Indicators button must be omitted in forecast view');
-
-        const fcStudioHtml = renderForecastStudioView(sampleTab, mockI18n);
-        assert.equal(fcStudioHtml.includes('data-action="select-prediction-symbol"'), false, 'Duplicate lower symbol dropdown must be removed');
-        assert.equal(fcStudioHtml.includes('data-action="set-timeframe"'), false, 'Duplicate lower timeframe chips must be removed');
-        assert.equal(fcStudioHtml.includes('data-action="set-workspace-view"'), false, 'Redundant Back to Chart button must be removed from Forecast studio');
-        assert.ok(fcStudioHtml.includes('data-action="apply-forecast-to-chart"'), 'Apply & View on Chart button must be present');
-        assert.ok(fcStudioHtml.includes('aria-pressed="true"') && fcStudioHtml.includes('is-checked'), 'Apply & View on Chart button must show checked state when showFutureProjection is true');
-
-        sampleTab.showFutureProjection = false;
-        const fcStudioUncheckedHtml = renderForecastStudioView(sampleTab, mockI18n);
-        assert.ok(fcStudioUncheckedHtml.includes('aria-pressed="false"') && !fcStudioUncheckedHtml.includes('is-checked'), 'Apply & View on Chart button must show unchecked state when showFutureProjection is false');
-        sampleTab.showFutureProjection = true;
-
-        state.activeWorkspaceView = 'chart';
+        state.activeWorkspaceView = 'forecast'; // even if stale state asks for forecast, UI remains on chart
         const chartHeaderHtml = renderTopHeaderBar(sampleTab, mockI18n);
         assert.ok(chartHeaderHtml.includes('tv-open-tabs-strip'));
         assert.ok(chartHeaderHtml.includes('data-action="set-timeframe"'));
         assert.ok(chartHeaderHtml.includes('data-modal="indicators"'));
-        assert.ok(chartHeaderHtml.includes('data-action="set-workspace-view"'));
+        assert.ok(chartHeaderHtml.includes('data-view="forecast"'), 'Forecast nav button must remain present');
+        assert.ok(
+            /data-view="forecast"[^>]*disabled[^>]*aria-disabled="true"|disabled[^>]*data-view="forecast"/.test(chartHeaderHtml),
+            'Forecast nav button must be disabled'
+        );
+        assert.equal(chartHeaderHtml.includes('toggle-future-projection'), false, 'Future projection indicator toggle must be removed');
         assert.equal(chartHeaderHtml.includes('data-action="export-candles-json"'), false, 'JSON export button must be removed from chart topbar');
+
+        state.symbolOverviewCode = 'SPOTBRENT';
+        const overviewHtml = renderSymbolOverviewModal(mockI18n);
+        if (overviewHtml.includes('open-prediction-from-overview')) {
+            assert.ok(overviewHtml.includes('disabled') && overviewHtml.includes('aria-disabled="true"'));
+        }
     } finally {
         state.activeWorkspaceView = prevWorkspace;
+        state.symbolOverviewCode = prevOverview;
     }
 
     // 3b. SPOTBRENT daily settlement break (17:00-20:00 NY / 21:00-00:00 UTC in EDT) must not produce false gap warnings
-    const brentPreBreak = Date.parse('2026-08-18T20:30:00Z'); // 16:30 EDT
-    const brentPostBreak = Date.parse('2026-08-19T00:00:00Z'); // 20:00 EDT
+    const brentPreBreak = Date.parse('2026-08-18T20:30:00Z');
+    const brentPostBreak = Date.parse('2026-08-19T00:00:00Z');
     const brentBars = [
         { open_time_utc_ms: brentPreBreak, open: 98, high: 98.5, low: 97.8, close: 98.2, volume: 300 },
         { open_time_utc_ms: brentPreBreak + 15 * 60_000, open: 98.2, high: 98.6, low: 98.0, close: 98.4, volume: 320 },
@@ -559,38 +543,7 @@ test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamline
     assert.equal(brentGapReport.gaps_found, 0, 'SPOTBRENT 17:00-20:00 NY daily break must not be counted as a gap');
     assert.equal(brentGapReport.status, 'CLEAN');
 
-    // 4. buildForecastForTab memoizes repeated calls with identical inputs and recomputes on timeframe change
-    const mon1330 = Date.parse('2026-07-13T13:30:00Z');
-    const m15Step = 15 * 60_000;
-    const candles = Array.from({ length: 60 }, (_, i) => {
-        const o = 75 + Math.sin(i * 0.25) * 0.8 + i * 0.03;
-        return {
-            open_time_utc_ms: mon1330 + i * m15Step,
-            open: o,
-            high: o + 0.35,
-            low: o - 0.3,
-            close: o + 0.12,
-            volume: 400 + i * 5
-        };
-    });
-    const fcTab = {
-        tabId: 'tab_fc_test',
-        symbolCode: 'SPOTBRENT',
-        provider: 'tvdatafeed',
-        timeframe: 'M15',
-        decimals: 2,
-        candles
-    };
-    state._forecastBuildMemo = null;
-    const built1 = buildForecastForTab(fcTab);
-    const built2 = buildForecastForTab(fcTab);
-    assert.strictEqual(built1, built2, 'Identical inputs must return memoized forecast bundle');
-    assert.strictEqual(built1.result, built2.result, 'Identical inputs must return identical forecast result');
-
-    const builtH1 = buildForecastForTab({ ...fcTab, timeframe: 'H1' });
-    assert.notStrictEqual(builtH1, built1, 'Changing timeframe must recompute forecast');
-
-    // 5. syncSymbolNow works on D1 without ReferenceError (m15Bars defined safely)
+    // 4. Rapid sequential timeframe switching aborts superseded requests and finishes cleanly on D1
     const d1Now = Math.floor(Date.now() / 86_400_000) * 86_400_000;
     const mockD1Candles = Array.from({ length: 40 }, (_, i) => ({
         open_time_utc_ms: d1Now - (39 - i) * 86_400_000,
@@ -601,24 +554,81 @@ test('UI-PARITY & FORECAST-FIX: default by_symbol mode, RTL Settings, streamline
         close: 70.5 + i * 0.1,
         volume: 1000
     }));
+    const abortedUrls = [];
     const origFetch = globalThis.fetch;
-    globalThis.fetch = async () => ({
-        ok: true,
-        status: 200,
-        json: async () => ({
+    globalThis.fetch = async (url, opts = {}) => {
+        const urlStr = String(url);
+        if (urlStr.includes('timeframe=H1') || urlStr.includes('timeframe=H4')) {
+            return new Promise((resolve, reject) => {
+                if (opts.signal) {
+                    opts.signal.addEventListener('abort', () => {
+                        abortedUrls.push(urlStr);
+                        const err = new Error('Aborted');
+                        err.name = 'AbortError';
+                        reject(err);
+                    }, { once: true });
+                }
+            });
+        }
+        return {
             ok: true,
-            data: {
-                candles: mockD1Candles,
-                sync_meta: { sync_mode: 'DELTA_SYNC', fetched_new_bars: 1, provider_status: 'READY' }
-            }
-        })
-    });
+            status: 200,
+            json: async () => ({
+                ok: true,
+                data: {
+                    candles: mockD1Candles,
+                    sync_meta: { sync_mode: 'DELTA_SYNC', fetched_new_bars: 1, provider_status: 'READY' }
+                }
+            })
+        };
+    };
     try {
-        await syncSymbolNow('SPOTBRENT', 'D1', null, false, true);
+        const pH1 = syncSymbolNow('SPOTBRENT', 'H1', null, false, false);
+        const pH4 = syncSymbolNow('SPOTBRENT', 'H4', null, false, false);
+        const pD1 = syncSymbolNow('SPOTBRENT', 'D1', null, false, false);
+        await Promise.all([pH1, pH4, pD1]);
+        assert.ok(abortedUrls.some((u) => u.includes('timeframe=H1')), 'Superseded H1 request must abort');
+        assert.ok(abortedUrls.some((u) => u.includes('timeframe=H4')), 'Superseded H4 request must abort');
         const brent = state.symbols.find((s) => s.symbolCode === 'SPOTBRENT');
         assert.equal(brent.timeframe, 'D1');
         assert.equal(brent.syncError, false);
+        assert.equal(brent.isSyncing, false);
     } finally {
         globalThis.fetch = origFetch;
     }
+});
+
+test('CATALOG-79: expanded 79-symbol catalog, TradingView-only active, and new 57 symbols excluded from default watchlist', () => {
+    assert.equal(isProviderEnabled('tvdatafeed'), true);
+    assert.equal(isProviderEnabled('yahoo_finance'), false);
+    assert.equal(isProviderEnabled('twelve_data'), false);
+    assert.equal(isProviderEnabled('biquote'), false);
+
+    const enabledProviders = PROVIDER_METHODS_CATALOG.filter((m) => m.enabled);
+    assert.equal(enabledProviders.length, 1);
+    assert.equal(enabledProviders[0].providerId, 'tvdatafeed');
+
+    for (const provId of ['tvdatafeed', 'twelve_data', 'yahoo_finance']) {
+        const method = PROVIDER_METHODS_CATALOG.find((m) => m.providerId === provId);
+        assert.ok(method, `Missing provider ${provId}`);
+        assert.equal(method.symbols.length, 79, `${provId} must support 79 catalog symbols`);
+        assert.ok(method.symbols.some((s) => s.symbolCode === 'BRK.B'));
+        assert.ok(method.symbols.some((s) => s.symbolCode === '2222.SR'));
+        assert.ok(method.symbols.some((s) => s.symbolCode === 'AVGO'));
+    }
+
+    assert.equal(state.symbols.length, 79);
+    const inWatchlistCount = state.symbols.filter((s) => s.inWatchlist).length;
+    assert.equal(inWatchlistCount, 22, 'Default watchlist must stay uncluttered with 22 symbols');
+
+    for (const symCode of ['AVGO', 'PLTR', 'BRK.B', 'TSM', 'ASML', 'SKHY', '2222.SR']) {
+        const entry = state.symbols.find((s) => s.symbolCode === symCode);
+        assert.ok(entry, `Missing catalog entry for ${symCode}`);
+        assert.equal(entry.inWatchlist, false, `${symCode} must default to inWatchlist=false`);
+        assert.equal(entry.activeProvider, 'tvdatafeed');
+        assert.equal(PriceFormatter.getSessionCalendar(symCode), 'US_EQUITIES');
+    }
+
+    assert.equal(normalizeCanonicalChartKey('chart_brkb_stock'), 'BRK.B_M15');
+    assert.equal(normalizeCanonicalChartKey('chart_2222sr_stock'), '2222.SR_M15');
 });

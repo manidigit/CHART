@@ -82,21 +82,15 @@ object UtcTimeAnchorAlgorithm {
     )
 
     private val usEquitiesSymbols = setOf(
-        "SPX500USD",
-        "NDQ",
-        "NVDA",
-        "AMZN",
-        "TSLA",
-        "AAPL",
-        "GOOGL",
-        "MSFT",
-        "META",
-        "NFLX",
-        "AMD",
-        "UBER",
-        "NKE",
-        "IBM",
-        "SAN"
+        "SPX500USD", "NDQ",
+        "NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN",
+        "AVGO", "MU", "INTC", "MRVL", "AMAT", "LRCX", "QCOM", "SMCI", "DELL", "SNDK", "ANET",
+        "PLTR", "ORCL", "CRM", "ADBE", "CRWD", "CSCO", "APP", "NBIS", "CRWV",
+        "SPCX", "RKLB", "GEV", "BE", "IONQ", "RIVN",
+        "JPM", "BAC", "GS", "V", "MA", "BRK.B", "BRKB", "HOOD", "MSTR", "PYPL", "COIN",
+        "WMT", "COST", "DIS", "SBUX", "MCD", "KO",
+        "LLY", "UNH", "PFE", "XOM", "CVX",
+        "TSM", "ASML", "SSNLF", "SKHY", "BABA", "NVO", "TM", "SAP", "HSBC", "2222.SR", "2222SR"
     )
 
     private val legacyChartIdMap = mapOf(
@@ -124,7 +118,66 @@ object UtcTimeAnchorAlgorithm {
         "UBER" to "chart_uber_stock",
         "NKE" to "chart_nke_stock",
         "IBM" to "chart_ibm_stock",
-        "SAN" to "chart_san_stock"
+        "SAN" to "chart_san_stock",
+        "AVGO" to "chart_avgo_stock",
+        "MU" to "chart_mu_stock",
+        "INTC" to "chart_intc_stock",
+        "MRVL" to "chart_mrvl_stock",
+        "AMAT" to "chart_amat_stock",
+        "LRCX" to "chart_lrcx_stock",
+        "QCOM" to "chart_qcom_stock",
+        "SMCI" to "chart_smci_stock",
+        "DELL" to "chart_dell_stock",
+        "SNDK" to "chart_sndk_stock",
+        "ANET" to "chart_anet_stock",
+        "PLTR" to "chart_pltr_stock",
+        "ORCL" to "chart_orcl_stock",
+        "CRM" to "chart_crm_stock",
+        "ADBE" to "chart_adbe_stock",
+        "CRWD" to "chart_crwd_stock",
+        "CSCO" to "chart_csco_stock",
+        "APP" to "chart_app_stock",
+        "NBIS" to "chart_nbis_stock",
+        "CRWV" to "chart_crwv_stock",
+        "SPCX" to "chart_spcx_stock",
+        "RKLB" to "chart_rklb_stock",
+        "GEV" to "chart_gev_stock",
+        "BE" to "chart_be_stock",
+        "IONQ" to "chart_ionq_stock",
+        "RIVN" to "chart_rivn_stock",
+        "JPM" to "chart_jpm_stock",
+        "BAC" to "chart_bac_stock",
+        "GS" to "chart_gs_stock",
+        "V" to "chart_v_stock",
+        "MA" to "chart_ma_stock",
+        "BRK.B" to "chart_brkb_stock",
+        "BRKB" to "chart_brkb_stock",
+        "HOOD" to "chart_hood_stock",
+        "MSTR" to "chart_mstr_stock",
+        "PYPL" to "chart_pypl_stock",
+        "COIN" to "chart_coin_stock",
+        "WMT" to "chart_wmt_stock",
+        "COST" to "chart_cost_stock",
+        "DIS" to "chart_dis_stock",
+        "SBUX" to "chart_sbux_stock",
+        "MCD" to "chart_mcd_stock",
+        "KO" to "chart_ko_stock",
+        "LLY" to "chart_lly_stock",
+        "UNH" to "chart_unh_stock",
+        "PFE" to "chart_pfe_stock",
+        "XOM" to "chart_xom_stock",
+        "CVX" to "chart_cvx_stock",
+        "TSM" to "chart_tsm_stock",
+        "ASML" to "chart_asml_stock",
+        "SSNLF" to "chart_ssnlf_stock",
+        "SKHY" to "chart_skhy_stock",
+        "BABA" to "chart_baba_stock",
+        "NVO" to "chart_nvo_stock",
+        "TM" to "chart_tm_stock",
+        "SAP" to "chart_sap_stock",
+        "HSBC" to "chart_hsbc_stock",
+        "2222.SR" to "chart_2222sr_stock",
+        "2222SR" to "chart_2222sr_stock"
     )
 
     fun canonicalChartKey(symbolCode: String, timeframe: String): String {
@@ -335,7 +388,15 @@ object UtcTimeAnchorAlgorithm {
                 "ETHUSD" -> "BITSTAMP:ETHUSD"
                 "SPX500USD" -> "OANDA:SPX500USD"
                 "NDQ" -> "NASDAQ:NDX"
-                "UBER", "NKE", "IBM", "SAN" -> "NYSE:$sym"
+                "UBER", "NKE", "IBM", "SAN",
+                "DELL", "ANET", "ORCL", "CRM", "GEV", "BE", "IONQ",
+                "JPM", "BAC", "GS", "V", "MA", "WMT", "DIS", "MCD", "KO",
+                "LLY", "UNH", "PFE", "XOM", "CVX", "TSM", "BABA", "NVO", "TM", "SAP", "HSBC" -> "NYSE:$sym"
+                "BRK.B", "BRKB" -> "NYSE:BRK.B"
+                "SPCX" -> "AMEX:SPCX"
+                "SSNLF" -> "OTC:SSNLF"
+                "SKHY" -> "KRX:000660"
+                "2222.SR", "2222SR" -> "TADAWUL:2222"
                 else -> "NASDAQ:$sym"
             }
             ProviderId.BIQUOTE -> if (sym == "SPOTBRENT") "BIQUOTE:UKOIL" else "BIQUOTE:$sym"
@@ -380,6 +441,9 @@ object UtcTimeAnchorAlgorithm {
                 "SPX500USD" -> "^SPX"
                 "NDQ" -> "^NDX"
                 "XAUUSD", "XAGUSD", "EURUSD", "GBPUSD", "USDJPY", "BTCUSD", "ETHUSD" -> sym
+                "BRK.B", "BRKB" -> "BRK-B.US"
+                "SKHY" -> "000660.KR"
+                "2222.SR", "2222SR" -> "2222.SR"
                 else -> "$sym.US"
             }
             ProviderId.EIA_BRENT_SPOT -> "EIA:RBRTE"

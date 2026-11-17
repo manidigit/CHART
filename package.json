@@ -4,11 +4,7 @@
   "description": "Chart Intelligence & Financial Forecast Engine",
   "type": "module",
   "scripts": {
-    "test": "node --test tests/phase4_forecast.test.mjs tests/web_parity.test.mjs",
-    "backtest": "node scripts/backtest.js --file data/sample_M15.json --tf M15 --steps 10",
-    "backtest:quick": "node scripts/backtest.js --file data/sample_M15.json --tf M15 --steps 10 --stride 5",
-    "backtest:long": "node scripts/backtest.js --file data/sample_M15.json --tf M15 --steps 20 --stride 2",
-    "make:data": "node scripts/makeSampleData.js"
+    "test": "node --test tests/web_parity.test.mjs"
   },
   "keywords": [
     "chart",

@@ -500,7 +500,7 @@ export async function uploadWorkspaceSync() {
           showVolumeProfile: Boolean(t.showVolumeProfile),
           showPivotPoints: Boolean(t.showPivotPoints),
           pivotType: String(t.pivotType || p.pivotType || 'STANDARD').toUpperCase(),
-          showFutureProjection: Boolean(t.showFutureProjection),
+          showFutureProjection: false,
           pitchforkVariant: t.pitchforkVariant || p.pitchforkVariant || 'original',
           isLogScale: Boolean(t.isLogScale),
           isMagnetMode: Boolean(t.isMagnetMode),
@@ -790,7 +790,7 @@ export async function downloadWorkspaceSync() {
             showVolumeProfile: resolveFlag('showVolumeProfile'),
             showPivotPoints: resolveFlag('showPivotPoints'),
             pivotType: String(t.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase(),
-            showFutureProjection: resolveFlag('showFutureProjection'),
+            showFutureProjection: false,
             pitchforkVariant: t.pitchforkVariant || state.chartPreferences.pitchforkVariant || 'original',
             isMagnetMode: Boolean(t.isMagnetMode),
             isLogScale: t.isLogScale !== undefined ? Boolean(t.isLogScale) : Boolean(state.chartPreferences.isLogScale),
@@ -917,9 +917,61 @@ function computeExpectedLastClosedOpenMs(timeframe, nowMs = Date.now(), symbolCo
   return candidateOpenMs;
 }
 
-function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300, nowMs = Date.now()) {
+const inFlightSyncControllers = new Map();
+const interactiveSyncSymbols = new Set();
+
+function resolveTradingViewWsSpec(symbolCode) {
+  const clean = String(symbolCode || '').toUpperCase().replace(/[^A-Z0-9_]/g, '');
+  let exchange = 'PEPPERSTONE';
+  let tvTicker = clean;
+
+  if (['XAUUSD', 'XAGUSD', 'EURUSD', 'GBPUSD', 'USDJPY', 'SPX500USD'].includes(clean)) {
+    exchange = 'OANDA';
+  } else if (clean === 'BRENT_FUTURES') {
+    exchange = 'NYMEX';
+    tvTicker = 'BZ1!';
+  } else if (clean === 'USOIL') {
+    exchange = 'TVC';
+  } else if (clean === 'BTCUSD' || clean === 'ETHUSD') {
+    exchange = 'BITSTAMP';
+  } else if (
+    [
+      'NDQ', 'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD',
+      'AVGO', 'MU', 'INTC', 'MRVL', 'AMAT', 'LRCX', 'QCOM', 'SMCI', 'SNDK',
+      'PLTR', 'ADBE', 'CRWD', 'CSCO', 'APP', 'NBIS', 'CRWV', 'RKLB', 'RIVN',
+      'HOOD', 'MSTR', 'PYPL', 'COIN', 'COST', 'SBUX', 'ASML',
+    ].includes(clean)
+  ) {
+    exchange = 'NASDAQ';
+    if (clean === 'NDQ') tvTicker = 'NDX';
+  } else if (
+    [
+      'UBER', 'NKE', 'IBM', 'SAN',
+      'DELL', 'ANET', 'ORCL', 'CRM', 'GEV', 'BE', 'IONQ',
+      'JPM', 'BAC', 'GS', 'V', 'MA', 'BRKB', 'WMT', 'DIS', 'MCD', 'KO',
+      'LLY', 'UNH', 'PFE', 'XOM', 'CVX', 'TSM', 'BABA', 'NVO', 'TM', 'SAP', 'HSBC',
+    ].includes(clean)
+  ) {
+    exchange = 'NYSE';
+    if (clean === 'BRKB') tvTicker = 'BRK.B';
+  } else if (clean === 'SPCX') {
+    exchange = 'AMEX';
+  } else if (clean === 'SSNLF') {
+    exchange = 'OTC';
+  } else if (clean === 'SKHY') {
+    exchange = 'KRX';
+    tvTicker = '000660';
+  } else if (clean === '2222SR') {
+    exchange = 'TADAWUL';
+    tvTicker = '2222';
+  }
+
+  return { exchange, tvTicker };
+}
+
+function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300, nowMs = Date.now(), abortSignal = null) {
   return new Promise((resolve) => {
-    if (typeof WebSocket === 'undefined') {
+    if (typeof WebSocket === 'undefined' || (abortSignal && abortSignal.aborted)) {
       resolve([]);
       return;
     }
@@ -937,15 +989,7 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
                 ? '1W'
                 : '1D';
     const stepMs = PriceFormatter.stepMilliseconds(normTf);
-
-    let exchange = 'PEPPERSTONE';
-    let tvTicker = symbolCode;
-    if (symbolCode === 'XAUUSD' || symbolCode === 'XAGUSD' || symbolCode === 'EURUSD') {
-      exchange = 'OANDA';
-    } else if (symbolCode === 'BRENT_FUTURES') {
-      exchange = 'NYMEX';
-      tvTicker = 'BZ1!';
-    }
+    const { exchange, tvTicker } = resolveTradingViewWsSpec(symbolCode);
 
     const packMsg = (m, p) => {
       const s = JSON.stringify({ m, p });
@@ -955,9 +999,15 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
     let rawBuffer = '';
     let settled = false;
     let ws = null;
+    let timer = null;
+    const onAbort = () => finish([]);
     const finish = (bars) => {
       if (settled) return;
       settled = true;
+      if (timer) clearTimeout(timer);
+      if (abortSignal && typeof abortSignal.removeEventListener === 'function') {
+        abortSignal.removeEventListener('abort', onAbort);
+      }
       try {
         if (ws && ws.readyState <= 1) ws.close();
       } catch {
@@ -966,12 +1016,16 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
       resolve(bars);
     };
 
-    const timer = setTimeout(() => finish([]), 6500);
+    if (abortSignal && typeof abortSignal.addEventListener === 'function') {
+      abortSignal.addEventListener('abort', onAbort, { once: true });
+    }
+    timer = setTimeout(() => finish([]), 4000);
 
     try {
       ws = new WebSocket('wss://data.tradingview.com/socket.io/websocket?from=chart%2F');
       const chartSession = 'cs_' + Math.random().toString(36).slice(2, 14);
       ws.onopen = () => {
+        if (settled) return;
         const symArg = JSON.stringify({
           symbol: `${exchange}:${tvTicker}`,
           adjustment: 'splits',
@@ -1058,7 +1112,39 @@ function fetchDirectFromTradingViewBrowserWs(symbolCode, timeframe, nBars = 300,
   });
 }
 
-async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, forceBackfill = false) {
+async function fetchWithTimeout(url, options = {}, timeoutMs = 10000, parentSignal = null) {
+  const ctrl = new AbortController();
+  let timedOut = false;
+  const onParentAbort = () => ctrl.abort();
+  if (parentSignal) {
+    if (parentSignal.aborted) {
+      ctrl.abort();
+    } else if (typeof parentSignal.addEventListener === 'function') {
+      parentSignal.addEventListener('abort', onParentAbort, { once: true });
+    }
+  }
+  const timerId = setTimeout(() => {
+    timedOut = true;
+    ctrl.abort();
+  }, timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: ctrl.signal });
+  } catch (err) {
+    if (timedOut) {
+      const te = new Error(`Request timeout (${timeoutMs}ms)`);
+      te.name = 'TimeoutError';
+      throw te;
+    }
+    throw err;
+  } finally {
+    clearTimeout(timerId);
+    if (parentSignal && typeof parentSignal.removeEventListener === 'function') {
+      parentSignal.removeEventListener('abort', onParentAbort);
+    }
+  }
+}
+
+async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, forceBackfill = false, abortSignal = null) {
   const rawTf = String(timeframe || 'M15').toUpperCase();
   const normTf =
     provider === 'eia_brent_spot'
@@ -1113,12 +1199,16 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
     instrument_spec: getInstrumentSpec(symbolCode, provider),
   };
 
+  if (abortSignal && abortSignal.aborted) {
+    return { candles, syncMeta, syncOk: false, errorMessage: 'Aborted', aborted: true };
+  }
+
   try {
     const reqHeaders = {};
     if (userApiKey) {
       reqHeaders['X-Provider-Api-Key'] = userApiKey;
     }
-    const res = await fetch(url, { cache: 'no-store', headers: reqHeaders });
+    const res = await fetchWithTimeout(url, { cache: 'no-store', headers: reqHeaders }, 10000, abortSignal);
     const json = await res.json();
     if (res.ok && json && json.ok && json.data) {
       syncOk = true;
@@ -1137,15 +1227,24 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
       syncMeta.provider_status = (json && json.error_code) || 'ERROR';
     }
   } catch (err) {
+    if ((err && err.name === 'AbortError') || (abortSignal && abortSignal.aborted)) {
+      return { candles, syncMeta, syncOk: false, errorMessage: 'Aborted', aborted: true };
+    }
     errorMessage = (err && err.message) || 'Network unavailable';
-    syncMeta.provider_status = 'NETWORK_ERROR';
+    syncMeta.provider_status = err && err.name === 'TimeoutError' ? 'TIMEOUT' : 'NETWORK_ERROR';
+  }
+
+  if (abortSignal && abortSignal.aborted) {
+    return { candles, syncMeta, syncOk: false, errorMessage: 'Aborted', aborted: true };
   }
 
   if (candles.length === 0 && provider === 'tvdatafeed') {
     try {
-      const staticRes = await fetch(
+      const staticRes = await fetchWithTimeout(
         `./data/tvdatafeed/${encodeURIComponent(symbolCode)}_${encodeURIComponent(normTf)}.json?_t=${nowMs}`,
-        { cache: 'no-store' }
+        { cache: 'no-store' },
+        4000,
+        abortSignal
       );
       const staticJson = await staticRes.json();
       if (staticJson && Array.isArray(staticJson.candles) && staticJson.candles.length > 0) {
@@ -1157,6 +1256,10 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
     } catch {
       // Ignore static fallback error
     }
+  }
+
+  if (abortSignal && abortSignal.aborted) {
+    return { candles, syncMeta, syncOk: false, errorMessage: 'Aborted', aborted: true };
   }
 
   const lastStoredOpenMs = candles.length > 0 ? Number(candles[candles.length - 1].open_time_utc_ms) : 0;
@@ -1171,7 +1274,7 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
         ? Math.min(1500, Math.max(500, safeLimit))
         : Math.min(400, Math.max(16, Math.ceil((nowMs - lastStoredOpenMs) / Math.max(1, stepMs)) + 8));
 
-    const liveWsBars = await fetchDirectFromTradingViewBrowserWs(symbolCode, normTf, gapBars, nowMs);
+    const liveWsBars = await fetchDirectFromTradingViewBrowserWs(symbolCode, normTf, gapBars, nowMs, abortSignal);
     if (liveWsBars.length > 0) {
       syncOk = true;
       errorMessage = '';
@@ -1196,6 +1299,21 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
 export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, forceBackfill = false, backgroundOnly = false) {
   const sym = state.symbols.find((s) => s.symbolCode === symbolCode);
   if (!sym) return;
+
+  // Never let background watchlist sweeps overwrite or contend with an active interactive switch on this symbol
+  if (backgroundOnly && interactiveSyncSymbols.has(symbolCode)) {
+    return;
+  }
+
+  const prevController = inFlightSyncControllers.get(symbolCode);
+  if (!backgroundOnly && prevController) {
+    prevController.abort();
+  }
+  const syncController = new AbortController();
+  inFlightSyncControllers.set(symbolCode, syncController);
+  if (!backgroundOnly) {
+    interactiveSyncSymbols.add(symbolCode);
+  }
 
   const syncSeq = (sym._syncSeq = (sym._syncSeq || 0) + 1);
   sym._activeSyncCount = (sym._activeSyncCount || 0) + 1;
@@ -1225,10 +1343,13 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
   try {
     const results = await Promise.all(
       timeframesToSync.map(async (tf) => {
-        const res = await fetchFromBackend(symbolCode, sym.activeProvider, tf, fetchLimit, forceBackfill);
-        return [tf, res.candles, res.syncMeta, res.syncOk, res.errorMessage];
+        const res = await fetchFromBackend(symbolCode, sym.activeProvider, tf, fetchLimit, forceBackfill, syncController.signal);
+        return [tf, res.candles, res.syncMeta, res.syncOk, res.errorMessage, Boolean(res.aborted)];
       })
     );
+    if (syncController.signal.aborted || results.every((r) => r[5])) {
+      return;
+    }
 
     const syncedByTf = {};
     let activeMeta = null;
@@ -1334,6 +1455,12 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
       sym.connectionStatus = sym.candles && sym.candles.length > 0 ? 'STALE' : 'ERROR';
     }
   } finally {
+    if (inFlightSyncControllers.get(symbolCode) === syncController) {
+      inFlightSyncControllers.delete(symbolCode);
+    }
+    if (!backgroundOnly && sym._syncSeq === syncSeq) {
+      interactiveSyncSymbols.delete(symbolCode);
+    }
     sym._activeSyncCount = Math.max(0, (sym._activeSyncCount || 1) - 1);
     sym.isSyncing = sym._activeSyncCount > 0;
     if (!backgroundOnly && sym._syncSeq === syncSeq && typeof renderCallback === 'function') {
@@ -1356,10 +1483,13 @@ export async function syncAllWatchlistSymbols(renderCallback) {
     }
   }
 
-  // Sync remaining watchlist symbols quietly in the background without hammering the DOM on every symbol
+  // Sync remaining watchlist symbols quietly with low concurrency so Chrome's HTTP connection pool stays free for timeframe switches
   const remaining = watchlist.filter((s) => !activeTab || s.symbolCode !== activeTab.symbolCode);
-  const BATCH_SIZE = 4;
+  const BATCH_SIZE = 2;
   for (let i = 0; i < remaining.length; i += BATCH_SIZE) {
+    if (interactiveSyncSymbols.size > 0) {
+      await new Promise((r) => setTimeout(r, 250));
+    }
     const chunk = remaining.slice(i, i + BATCH_SIZE);
     await Promise.all(
       chunk.map((sym) => {
@@ -1610,125 +1740,5 @@ export async function fetchImportBatches(limit = 20) {
     // Non-fatal fallback
   }
   return state.importBatches || [];
-}
-
-/**
- * Phase 4: Record a deterministic forecast snapshot or execute backend projection via /api/v1/forecast.php
- */
-export async function runForecastOnServer({
-  symbolCode,
-  timeframe,
-  horizonBars = 30,
-  candles = [],
-  clientForecast = null,
-  workerUrl = '',
-} = {}) {
-  const token = localStorage.getItem('ci_session_token') || '';
-  try {
-    const res = await fetch('./api/v1/forecast.php', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        action: clientForecast ? 'append_client_forecast' : 'run_and_record',
-        symbol: symbolCode,
-        timeframe,
-        horizon_bars: horizonBars,
-        candles: candles.slice(-2500),
-        client_forecast: clientForecast,
-        worker_url: workerUrl || '',
-      }),
-    });
-    if (res.status === 401) {
-      clearLocalAuthSession(false);
-      return { ok: false, errorCode: 'UNAUTHORIZED' };
-    }
-    const json = await res.json();
-    if (res.ok && json && json.ok && json.data) {
-      return { ok: true, data: json.data };
-    }
-    return {
-      ok: false,
-      errorCode: (json && json.error_code) || 'FORECAST_SYNC_FAILED',
-      error: (json && json.error) || 'Forecast sync failed',
-    };
-  } catch (err) {
-    return {
-      ok: false,
-      errorCode: 'NETWORK_ERROR',
-      error: err && err.message ? err.message : 'Network error',
-    };
-  }
-}
-
-export async function fetchForecastLedger(symbolCode = '', timeframe = '') {
-  const token = localStorage.getItem('ci_session_token') || '';
-  try {
-    const qs = new URLSearchParams({ action: 'ledger', _t: String(Date.now()) });
-    if (symbolCode) qs.set('symbol', symbolCode);
-    if (timeframe) qs.set('timeframe', timeframe);
-    const res = await fetch(`./api/v1/forecast.php?${qs.toString()}`, {
-      cache: 'no-store',
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-    if (res.status === 401) {
-      clearLocalAuthSession(false);
-      return [];
-    }
-    const json = await res.json();
-    if (res.ok && json && json.ok && json.data) {
-      if (Array.isArray(json.data.entries)) {
-        state.forecastServerLedger = json.data.entries;
-      }
-      if (Array.isArray(json.data.lifecycle_events)) {
-        state.forecastServerLifecycle = json.data.lifecycle_events;
-      }
-      return state.forecastServerLedger || [];
-    }
-  } catch {
-    // Non-fatal fallback
-  }
-  return state.forecastServerLedger || [];
-}
-
-export async function appendForecastLifecycleEventOnServer(ev = {}) {
-  const token = localStorage.getItem('ci_session_token') || '';
-  try {
-    const res = await fetch('./api/v1/forecast.php', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      },
-      body: JSON.stringify({
-        action: 'append_lifecycle_event',
-        session_token: token,
-        lifecycle_event: {
-          forecast_hash: ev.forecastHash || '',
-          symbol_code: ev.symbolCode || '',
-          timeframe: ev.timeframe || '',
-          horizon_step: Number(ev.horizonStep || 0),
-          lifecycle_status: ev.lifecycleStatus || 'MATURED',
-          evaluation_outcome: ev.evaluationOutcome || 'PENDING',
-          reason: ev.reason || '',
-          observed_close: ev.observedClose ?? null,
-          recorded_at_utc_ms: Number(ev.recordedAtUtcMs || Date.now()),
-        },
-      }),
-    });
-    if (res.status === 401) {
-      clearLocalAuthSession(false);
-      return { ok: false, errorCode: 'UNAUTHORIZED' };
-    }
-    const json = await res.json();
-    if (res.ok && json && json.ok && json.data) {
-      return { ok: true, data: json.data };
-    }
-    return { ok: false, errorCode: (json && json.error_code) || 'LIFECYCLE_APPEND_FAILED' };
-  } catch (err) {
-    return { ok: false, errorCode: 'NETWORK_ERROR', error: err?.message || 'Network error' };
-  }
 }
 

@@ -148,28 +148,4 @@ class ChartPreferenceCoordinator(private val repository: WorkspaceRepository) {
         repository.saveChartPreferences(next)
         return next
     }
-
-    fun updateForecastPreferences(
-        current: ChartPreferences,
-        renderMode: String? = null,
-        horizonBars: Int? = null,
-        pluginConfigJson: String? = null,
-        workerUrl: String? = null,
-        selectedModelId: String? = null
-    ): ChartPreferences {
-        val next = current.copy(
-            forecastRenderMode = renderMode?.let {
-                es.manico.chartintelligence.forecast.ForecastRenderMode.parse(it).key
-            } ?: current.forecastRenderMode,
-            forecastHorizonBars = horizonBars?.let {
-                es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(it)
-            } ?: current.forecastHorizonBars,
-            forecastPluginConfigJson = pluginConfigJson ?: current.forecastPluginConfigJson,
-            forecastWorkerUrl = workerUrl ?: current.forecastWorkerUrl,
-            selectedForecastModelId = selectedModelId?.trim()?.ifBlank { "AUTO" } ?: current.selectedForecastModelId,
-            preferencesUpdatedAtMs = System.currentTimeMillis()
-        )
-        repository.saveChartPreferences(next)
-        return next
-    }
 }

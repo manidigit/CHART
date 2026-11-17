@@ -1915,6 +1915,77 @@ class WorkspaceRepository(context: Context) {
                 allowedProviders = stockProviders,
                 timeframe = "M15"
             ),
+            // 23–79. Expanded Global Equities & Tech Giants (Available in Settings Catalog; inWatchlist = false by default)
+            *listOf(
+                Triple("chart_avgo_stock", "AVGO", R.string.symbol_avgo_name),
+                Triple("chart_mu_stock", "MU", R.string.symbol_mu_name),
+                Triple("chart_intc_stock", "INTC", R.string.symbol_intc_name),
+                Triple("chart_mrvl_stock", "MRVL", R.string.symbol_mrvl_name),
+                Triple("chart_amat_stock", "AMAT", R.string.symbol_amat_name),
+                Triple("chart_lrcx_stock", "LRCX", R.string.symbol_lrcx_name),
+                Triple("chart_qcom_stock", "QCOM", R.string.symbol_qcom_name),
+                Triple("chart_smci_stock", "SMCI", R.string.symbol_smci_name),
+                Triple("chart_dell_stock", "DELL", R.string.symbol_dell_name),
+                Triple("chart_sndk_stock", "SNDK", R.string.symbol_sndk_name),
+                Triple("chart_anet_stock", "ANET", R.string.symbol_anet_name),
+                Triple("chart_pltr_stock", "PLTR", R.string.symbol_pltr_name),
+                Triple("chart_orcl_stock", "ORCL", R.string.symbol_orcl_name),
+                Triple("chart_crm_stock", "CRM", R.string.symbol_crm_name),
+                Triple("chart_adbe_stock", "ADBE", R.string.symbol_adbe_name),
+                Triple("chart_crwd_stock", "CRWD", R.string.symbol_crwd_name),
+                Triple("chart_csco_stock", "CSCO", R.string.symbol_csco_name),
+                Triple("chart_app_stock", "APP", R.string.symbol_app_name),
+                Triple("chart_nbis_stock", "NBIS", R.string.symbol_nbis_name),
+                Triple("chart_crwv_stock", "CRWV", R.string.symbol_crwv_name),
+                Triple("chart_spcx_stock", "SPCX", R.string.symbol_spcx_name),
+                Triple("chart_rklb_stock", "RKLB", R.string.symbol_rklb_name),
+                Triple("chart_gev_stock", "GEV", R.string.symbol_gev_name),
+                Triple("chart_be_stock", "BE", R.string.symbol_be_name),
+                Triple("chart_ionq_stock", "IONQ", R.string.symbol_ionq_name),
+                Triple("chart_rivn_stock", "RIVN", R.string.symbol_rivn_name),
+                Triple("chart_jpm_stock", "JPM", R.string.symbol_jpm_name),
+                Triple("chart_bac_stock", "BAC", R.string.symbol_bac_name),
+                Triple("chart_gs_stock", "GS", R.string.symbol_gs_name),
+                Triple("chart_v_stock", "V", R.string.symbol_v_name),
+                Triple("chart_ma_stock", "MA", R.string.symbol_ma_name),
+                Triple("chart_brkb_stock", "BRK.B", R.string.symbol_brkb_name),
+                Triple("chart_hood_stock", "HOOD", R.string.symbol_hood_name),
+                Triple("chart_mstr_stock", "MSTR", R.string.symbol_mstr_name),
+                Triple("chart_pypl_stock", "PYPL", R.string.symbol_pypl_name),
+                Triple("chart_coin_stock", "COIN", R.string.symbol_coin_name),
+                Triple("chart_wmt_stock", "WMT", R.string.symbol_wmt_name),
+                Triple("chart_cost_stock", "COST", R.string.symbol_cost_name),
+                Triple("chart_dis_stock", "DIS", R.string.symbol_dis_name),
+                Triple("chart_sbux_stock", "SBUX", R.string.symbol_sbux_name),
+                Triple("chart_mcd_stock", "MCD", R.string.symbol_mcd_name),
+                Triple("chart_ko_stock", "KO", R.string.symbol_ko_name),
+                Triple("chart_lly_stock", "LLY", R.string.symbol_lly_name),
+                Triple("chart_unh_stock", "UNH", R.string.symbol_unh_name),
+                Triple("chart_pfe_stock", "PFE", R.string.symbol_pfe_name),
+                Triple("chart_xom_stock", "XOM", R.string.symbol_xom_name),
+                Triple("chart_cvx_stock", "CVX", R.string.symbol_cvx_name),
+                Triple("chart_tsm_stock", "TSM", R.string.symbol_tsm_name),
+                Triple("chart_asml_stock", "ASML", R.string.symbol_asml_name),
+                Triple("chart_ssnlf_stock", "SSNLF", R.string.symbol_ssnlf_name),
+                Triple("chart_skhy_stock", "SKHY", R.string.symbol_skhy_name),
+                Triple("chart_baba_stock", "BABA", R.string.symbol_baba_name),
+                Triple("chart_nvo_stock", "NVO", R.string.symbol_nvo_name),
+                Triple("chart_tm_stock", "TM", R.string.symbol_tm_name),
+                Triple("chart_sap_stock", "SAP", R.string.symbol_sap_name),
+                Triple("chart_hsbc_stock", "HSBC", R.string.symbol_hsbc_name),
+                Triple("chart_2222sr_stock", "2222.SR", R.string.symbol_2222sr_name)
+            ).map { (chartId, symCode, resId) ->
+                SymbolConfig(
+                    chartId = chartId,
+                    symbolCode = symCode,
+                    titleResId = resId,
+                    decimals = 2,
+                    inWatchlist = false,
+                    activeProvider = ProviderId.TVDATAFEED,
+                    allowedProviders = stockProviders,
+                    timeframe = "M15"
+                )
+            }.toTypedArray(),
             // Secondary catalog symbols (inWatchlist = false)
             SymbolConfig(
                 chartId = "chart_brent_futures",
@@ -2117,13 +2188,9 @@ class WorkspaceRepository(context: Context) {
                         showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
                         showPivotPoints = obj.optBoolean("showPivotPoints", false),
                         pivotType = obj.optString("pivotType", "STANDARD").uppercase(),
-                        showFutureProjection = obj.optBoolean("showFutureProjection", false),
-                        forecastRenderMode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(
-                            obj.optString("forecastRenderMode", curPrefs.forecastRenderMode)
-                        ).key,
-                        forecastHorizonBars = es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(
-                            obj.optInt("forecastHorizonBars", curPrefs.forecastHorizonBars)
-                        ),
+                        showFutureProjection = false,
+                        forecastRenderMode = obj.optString("forecastRenderMode", curPrefs.forecastRenderMode).ifBlank { "FAN_CHART" },
+                        forecastHorizonBars = obj.optInt("forecastHorizonBars", curPrefs.forecastHorizonBars).coerceIn(10, 60),
                         selectedForecastModelId = obj.optString("selectedForecastModelId", curPrefs.selectedForecastModelId).ifBlank { "AUTO" },
                         pitchforkVariant = obj.optString("pitchforkVariant", "original"),
                         isLogScale = obj.optBoolean("isLogScale", false),
@@ -2590,12 +2657,8 @@ class WorkspaceRepository(context: Context) {
                     showPrevCloseLine = prefsJson.optBoolean("showPrevCloseLine", cur.showPrevCloseLine),
                     showHighLowLabels = prefsJson.optBoolean("showHighLowLabels", cur.showHighLowLabels),
                     timezoneMode = prefsJson.optString("timezoneMode", cur.timezoneMode).uppercase().let { if (it == "LOCAL") "LOCAL" else "UTC" },
-                    forecastRenderMode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(
-                        prefsJson.optString("forecastRenderMode", cur.forecastRenderMode)
-                    ).key,
-                    forecastHorizonBars = es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(
-                        prefsJson.optInt("forecastHorizonBars", cur.forecastHorizonBars)
-                    ),
+                    forecastRenderMode = prefsJson.optString("forecastRenderMode", cur.forecastRenderMode).ifBlank { "FAN_CHART" },
+                    forecastHorizonBars = prefsJson.optInt("forecastHorizonBars", cur.forecastHorizonBars).coerceIn(10, 60),
                     forecastPluginConfigJson = prefsJson.optString("forecastPluginConfigJson", cur.forecastPluginConfigJson),
                     forecastWorkerUrl = prefsJson.optString("forecastWorkerUrl", cur.forecastWorkerUrl),
                     selectedForecastModelId = prefsJson.optString("selectedForecastModelId", cur.selectedForecastModelId).ifBlank { "AUTO" },
@@ -2744,13 +2807,9 @@ class WorkspaceRepository(context: Context) {
                             showVolumeProfile = obj.optBoolean("showVolumeProfile", curPrefs.showVolumeProfile),
                             showPivotPoints = obj.optBoolean("showPivotPoints", curPrefs.showPivotPoints),
                             pivotType = obj.optString("pivotType", curPrefs.pivotType).uppercase(),
-                            showFutureProjection = obj.optBoolean("showFutureProjection", curPrefs.showFutureProjection),
-                            forecastRenderMode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(
-                                obj.optString("forecastRenderMode", curPrefs.forecastRenderMode)
-                            ).key,
-                            forecastHorizonBars = es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(
-                                obj.optInt("forecastHorizonBars", curPrefs.forecastHorizonBars)
-                            ),
+                            showFutureProjection = false,
+                            forecastRenderMode = obj.optString("forecastRenderMode", curPrefs.forecastRenderMode).ifBlank { "FAN_CHART" },
+                            forecastHorizonBars = obj.optInt("forecastHorizonBars", curPrefs.forecastHorizonBars).coerceIn(10, 60),
                             selectedForecastModelId = obj.optString("selectedForecastModelId", curPrefs.selectedForecastModelId).ifBlank { "AUTO" },
                             pitchforkVariant = obj.optString("pitchforkVariant", curPrefs.pitchforkVariant),
                             isLogScale = obj.optBoolean("isLogScale", curPrefs.logarithmicScaleDefault),
@@ -3055,309 +3114,6 @@ class WorkspaceRepository(context: Context) {
                     )
                 }
                 list
-            }
-        }.getOrDefault(emptyList())
-    }
-
-    fun getForecastLedgerPrefs(): android.content.SharedPreferences = prefs
-
-    suspend fun syncForecastSnapshotToServer(
-        result: es.manico.chartintelligence.forecast.ForecastResult,
-        workerUrl: String
-    ): Boolean = withContext(Dispatchers.IO) {
-        val token = getSessionToken()
-        if (token.isBlank() || result.summary == null) return@withContext false
-        runCatching {
-            val pointsArr = JSONArray()
-            for (pt in result.points) {
-                pointsArr.put(
-                    JSONObject().apply {
-                        put("stepAhead", pt.stepAhead)
-                        put("openTimeUtcMs", pt.openTimeUtcMs)
-                        put("q10", pt.q10)
-                        put("q25", pt.q25)
-                        put("q50", pt.q50)
-                        put("q75", pt.q75)
-                        put("q90", pt.q90)
-                        put("open", pt.open)
-                        put("high", pt.high)
-                        put("low", pt.low)
-                        put("close", pt.close)
-                    }
-                )
-            }
-            val scenariosArr = JSONArray()
-            for (sc in result.scenarios) {
-                scenariosArr.put(
-                    JSONObject().apply {
-                        put("id", sc.id)
-                        put("leafId", sc.leafId)
-                        put("parentBranch", sc.parentBranch)
-                        put("label", sc.label)
-                        put("bias", sc.bias)
-                        put("probability", sc.probability)
-                        put("targetPrice", sc.targetPrice)
-                        put("extremePrice", sc.extremePrice)
-                        put("invalidationReference", sc.invalidationReference)
-                        put("pctChange", sc.pctChange)
-                        put("lowSampleWarning", sc.lowSampleWarning)
-                    }
-                )
-            }
-            val zonesArr = JSONArray()
-            for (z in result.keyZones) {
-                zonesArr.put(
-                    JSONObject().apply {
-                        put("zoneId", z.zoneId)
-                        put("zoneType", z.zoneType)
-                        put("lowPrice", z.lowPrice)
-                        put("highPrice", z.highPrice)
-                        put("centerPrice", z.centerPrice)
-                        put("source", z.source)
-                        put("strength", z.strength)
-                        put("touchProbability", z.touchProbability)
-                        put("penetrationProbability", z.penetrationProbability)
-                        put("reclaimProbability", z.reclaimProbability)
-                        put("confirmedBreakoutProbability", z.confirmedBreakoutProbability)
-                        put("reachBeforeInvalidationProb", z.reachBeforeInvalidationProb)
-                        put("invalidationBeforeReachProb", z.invalidationBeforeReachProb)
-                        put("expectedBarsToReachCensored", z.expectedBarsToReachCensored)
-                        put("invalidationPrice", z.invalidationPrice)
-                    }
-                )
-            }
-            val clientForecast = JSONObject().apply {
-                put("specVersion", result.specVersion)
-                put("status", result.status.name)
-                put("regime", result.regime.name)
-                put("anchorOpenTimeUtcMs", result.anchorOpenTimeUtcMs)
-                put("anchorClose", result.anchorClose)
-                put("inputHash", result.inputHash)
-                put("remoteWorker", JSONObject().put("status", result.remoteWorkerStatus.name))
-                put("summary", JSONObject().apply {
-                    put("terminalQ10", result.summary.terminalQ10)
-                    put("terminalQ50", result.summary.terminalQ50)
-                    put("terminalQ90", result.summary.terminalQ90)
-                })
-                result.uncertainty?.let { u ->
-                    put("uncertainty", JSONObject().apply {
-                        put("aleatoricPct", u.aleatoricPct)
-                        put("epistemicPct", u.epistemicPct)
-                        put("totalPct", u.totalPct)
-                        put("oodStatus", u.oodStatus.name)
-                        put("oodDistance", u.oodDistance)
-                        put("spreadMultiplierApplied", u.spreadMultiplierApplied)
-                    })
-                }
-                result.noEdgeGate?.let { gate ->
-                    put("noEdgeGate", JSONObject().apply {
-                        put("gateState", gate.gateState.name)
-                        put("hasEdge", gate.hasEdge)
-                        put("effectiveSampleSize", gate.effectiveSampleSize)
-                        put("skillScoreVsBaseline", gate.skillScoreVsBaseline)
-                    })
-                }
-                result.mtfCoordination?.let { mtf ->
-                    put("mtfCoordination", JSONObject().apply {
-                        put("referenceTimeframe", mtf.referenceTimeframe)
-                        put("alignmentState", mtf.alignmentState.name)
-                        put("ohlcConsistent", mtf.ohlcConsistent)
-                        put("independentMedianPct", mtf.independentMedianPct)
-                        put("coordinatedMedianPct", mtf.coordinatedMedianPct)
-                        put("uncertaintyAdjustmentFactor", mtf.uncertaintyAdjustmentFactor)
-                    })
-                }
-                result.walkForward?.let { wf ->
-                    put("walkForward", JSONObject().apply {
-                        put("evaluatedWindows", wf.evaluatedWindows)
-                        put("acceptancePassed", wf.acceptancePassed)
-                        put("effectiveSampleSize", wf.effectiveSampleSize)
-                        put("skillScoreVsNaive", wf.skillScoreVsNaive)
-                        wf.pathEventStats?.let { pe ->
-                            put("pathEventStats", JSONObject().apply {
-                                put("touchRatePct", pe.touchRatePct)
-                                put("penetrationRatePct", pe.penetrationRatePct)
-                                put("reclaimRatePct", pe.reclaimRatePct)
-                                put("breakoutRatePct", pe.breakoutRatePct)
-                                put("reachBeforeInvalidationPct", pe.reachBeforeInvalidationPct)
-                                put("ambiguousRatePct", pe.ambiguousRatePct)
-                                put("censoringRatePct", pe.censoringRatePct)
-                            })
-                        }
-                    })
-                }
-                put("scenarios", scenariosArr)
-                put("keyZones", zonesArr)
-                put("points", pointsArr)
-            }
-            val payload = JSONObject().apply {
-                put("session_token", token)
-                put("action", "append_client_forecast")
-                put("symbol", result.symbolCode)
-                put("timeframe", result.timeframe)
-                put("horizon_bars", result.horizonBars)
-                put("worker_url", workerUrl.trim())
-                put("client_forecast", clientForecast)
-            }
-            val req = Request.Builder()
-                .url("${AppConfig.API_BASE_URL}forecast.php")
-                .withOptionalBearerAuth()
-                .post(payload.toString().toRequestBody(jsonMediaType))
-                .build()
-            httpClient.newCall(req).execute().use { resp ->
-                if (resp.code == 401) {
-                    clearLocalSessionOnUnauthorized()
-                    return@use false
-                }
-                resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
-            }
-        }.getOrDefault(false)
-    }
-
-    suspend fun syncLifecycleEventToServer(
-        event: es.manico.chartintelligence.forecast.ForecastLifecycleEvent
-    ): Boolean = withContext(Dispatchers.IO) {
-        val token = getSessionToken()
-        if (token.isBlank()) return@withContext false
-        runCatching {
-            val payload = JSONObject().apply {
-                put("session_token", token)
-                put("action", "append_lifecycle_event")
-                put("forecast_hash", event.forecastHash)
-                put("symbol_code", event.symbolCode)
-                put("timeframe", event.timeframe)
-                put("horizon_step", event.horizonStep)
-                put("lifecycle_status", event.lifecycleStatus.name)
-                put("evaluation_outcome", event.evaluationOutcome.name)
-                put("reason", event.reason)
-                if (event.observedClose != null) put("observed_close", event.observedClose)
-                put("recorded_at_utc_ms", event.recordedAtUtcMs)
-                put("prev_event_hash", event.prevEventHash)
-                put("event_hash", event.eventHash)
-            }
-            val req = Request.Builder()
-                .url("${AppConfig.API_BASE_URL}forecast.php")
-                .withOptionalBearerAuth()
-                .post(payload.toString().toRequestBody(jsonMediaType))
-                .build()
-            httpClient.newCall(req).execute().use { resp ->
-                if (resp.code == 401) {
-                    clearLocalSessionOnUnauthorized()
-                    return@use false
-                }
-                resp.isSuccessful && JSONObject(resp.body?.string().orEmpty()).optBoolean("ok", false)
-            }
-        }.getOrDefault(false)
-    }
-
-    suspend fun fetchForecastLedgerFromServer(
-        symbolFilter: String = ""
-    ): List<es.manico.chartintelligence.forecast.ForecastLedgerEntry> = withContext(Dispatchers.IO) {
-        val token = getSessionToken()
-        if (token.isBlank()) return@withContext emptyList()
-        runCatching {
-            val cleanSym = symbolFilter.trim().uppercase()
-            val url = if (cleanSym.isNotEmpty()) {
-                "${AppConfig.API_BASE_URL}forecast.php?action=ledger&symbol=$cleanSym"
-            } else {
-                "${AppConfig.API_BASE_URL}forecast.php?action=ledger"
-            }
-            val req = Request.Builder()
-                .url(url)
-                .withOptionalBearerAuth()
-                .get()
-                .build()
-            httpClient.newCall(req).execute().use { resp ->
-                if (resp.code == 401) {
-                    clearLocalSessionOnUnauthorized()
-                    return@use emptyList()
-                }
-                if (!resp.isSuccessful) return@use emptyList()
-                val root = JSONObject(resp.body?.string().orEmpty())
-                if (!root.optBoolean("ok", false)) return@use emptyList()
-                val arr = root.optJSONObject("data")?.optJSONArray("entries") ?: return@use emptyList()
-                val out = ArrayList<es.manico.chartintelligence.forecast.ForecastLedgerEntry>(arr.length())
-                for (i in 0 until arr.length()) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    out.add(
-                        es.manico.chartintelligence.forecast.ForecastLedgerEntry(
-                            seq = o.optInt("id", i + 1),
-                            contractVersion = o.optString("contract_version", es.manico.chartintelligence.forecast.ForecastSha256.CONTRACT_VERSION),
-                            symbolCode = o.optString("symbol_code", ""),
-                            timeframe = o.optString("timeframe", "M15"),
-                            horizonBars = o.optInt("horizon_bars", 30),
-                            anchorOpenTimeUtcMs = o.optLong("anchor_open_time_utc_ms", 0L),
-                            anchorClose = o.optDouble("anchor_close", 0.0),
-                            forecastStatus = o.optString("forecast_status", "PROVISIONAL"),
-                            regime = o.optString("regime", "RANGING"),
-                            inputHash = o.optString("input_hash", ""),
-                            terminalMedian = o.optDouble("terminal_q50", 0.0),
-                            terminalQ10 = o.optDouble("terminal_q10", 0.0),
-                            terminalQ90 = o.optDouble("terminal_q90", 0.0),
-                            generatedAtUtcMs = o.optLong("created_at_utc_ms", 0L),
-                            prevForecastHash = o.optString("prev_forecast_hash", ""),
-                            forecastHash = o.optString("forecast_hash", ""),
-                            syncedToCloud = true,
-                            noEdgeGateState = o.optString("no_edge_gate_state", "NO_EDGE_DETECTED"),
-                            oodStatus = o.optString("ood_status", "IN_DISTRIBUTION")
-                        )
-                    )
-                }
-                out
-            }
-        }.getOrDefault(emptyList())
-    }
-
-    suspend fun fetchForecastLifecycleFromServer(
-        symbolFilter: String = ""
-    ): List<es.manico.chartintelligence.forecast.ForecastLifecycleEvent> = withContext(Dispatchers.IO) {
-        val token = getSessionToken()
-        if (token.isBlank()) return@withContext emptyList()
-        runCatching {
-            val cleanSym = symbolFilter.trim().uppercase()
-            val url = if (cleanSym.isNotEmpty()) {
-                "${AppConfig.API_BASE_URL}forecast.php?action=ledger&symbol=$cleanSym"
-            } else {
-                "${AppConfig.API_BASE_URL}forecast.php?action=ledger"
-            }
-            val req = Request.Builder()
-                .url(url)
-                .withOptionalBearerAuth()
-                .get()
-                .build()
-            httpClient.newCall(req).execute().use { resp ->
-                if (!resp.isSuccessful) return@use emptyList()
-                val root = JSONObject(resp.body?.string().orEmpty())
-                if (!root.optBoolean("ok", false)) return@use emptyList()
-                val arr = root.optJSONObject("data")?.optJSONArray("lifecycle_events") ?: return@use emptyList()
-                val out = ArrayList<es.manico.chartintelligence.forecast.ForecastLifecycleEvent>(arr.length())
-                for (i in 0 until arr.length()) {
-                    val o = arr.optJSONObject(i) ?: continue
-                    val statusStr = o.optString("lifecycle_status", "ACTIVE")
-                    val outcomeStr = o.optString("evaluation_outcome", "PENDING")
-                    val obs = if (o.has("observed_close") && !o.isNull("observed_close")) o.optDouble("observed_close") else null
-                    out.add(
-                        es.manico.chartintelligence.forecast.ForecastLifecycleEvent(
-                            seq = o.optInt("id", i + 1),
-                            forecastHash = o.optString("forecast_hash", ""),
-                            symbolCode = o.optString("symbol_code", ""),
-                            timeframe = o.optString("timeframe", "M15"),
-                            horizonStep = o.optInt("horizon_step", 0),
-                            lifecycleStatus = runCatching {
-                                es.manico.chartintelligence.forecast.ForecastLifecycleStatus.valueOf(statusStr)
-                            }.getOrDefault(es.manico.chartintelligence.forecast.ForecastLifecycleStatus.ACTIVE),
-                            evaluationOutcome = runCatching {
-                                es.manico.chartintelligence.forecast.ForecastEvaluationOutcome.valueOf(outcomeStr)
-                            }.getOrDefault(es.manico.chartintelligence.forecast.ForecastEvaluationOutcome.PENDING),
-                            reason = o.optString("reason", ""),
-                            observedClose = obs,
-                            recordedAtUtcMs = o.optLong("recorded_at_utc_ms", 0L),
-                            prevEventHash = o.optString("prev_event_hash", ""),
-                            eventHash = o.optString("event_hash", "")
-                        )
-                    )
-                }
-                out
             }
         }.getOrDefault(emptyList())
     }

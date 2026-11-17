@@ -173,7 +173,6 @@ fun ChartViewScreen(
     onToggleVolumeProfile: () -> Unit = {},
     onTogglePivotPoints: () -> Unit = {},
     onSelectPivotType: (String) -> Unit = {},
-    onToggleFutureProjection: () -> Unit = {},
     onToggleEma200: () -> Unit = {},
     onTogglePsar: () -> Unit = {},
     onToggleIchimoku: () -> Unit = {},
@@ -211,9 +210,7 @@ fun ChartViewScreen(
     onTranslateSelectedDrawing: (Long, BigDecimal) -> Unit,
     onDeleteSelectedDrawing: () -> Unit,
     onClearAllDrawings: () -> Unit,
-    modifier: Modifier = Modifier,
-    lowerTimeframeCandlesProvider: (String) -> List<es.manico.chartintelligence.data.model.CandleBar> = { emptyList() },
-    higherTimeframeCandlesProvider: (String) -> List<es.manico.chartintelligence.data.model.CandleBar> = { emptyList() }
+    modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBackToWatchlist)
     val palette = LocalFinancialPalette.current
@@ -580,9 +577,7 @@ fun ChartViewScreen(
                     onSelectDrawing = onSelectDrawing,
                     onTranslateSelectedDrawing = onTranslateSelectedDrawing,
                     onRetrySync = { onSyncActiveSymbolNow(activeTab.symbolCode) },
-                    modifier = Modifier.fillMaxSize(),
-                    lowerTimeframeCandlesProvider = lowerTimeframeCandlesProvider,
-                    higherTimeframeCandlesProvider = higherTimeframeCandlesProvider
+                    modifier = Modifier.fillMaxSize()
                 )
 
                 // Floating Quick Drawing Bar only when a drawing tool or line is actively selected on canvas
@@ -717,7 +712,7 @@ fun ChartViewScreen(
                         activeTab.showCci20 || activeTab.showWillR14 || activeTab.showObv ||
                         activeTab.showCmf20 || activeTab.showRoc12 ||
                         activeTab.showSmcStructure || activeTab.showFvg || activeTab.showVolumeProfile ||
-                        activeTab.showPivotPoints || activeTab.showFutureProjection
+                        activeTab.showPivotPoints
                     val hasActiveIndicator = hasOverlayIndicator || activeTab.showVolume
                     Box(
                         modifier = Modifier
@@ -1133,10 +1128,7 @@ fun ChartViewScreen(
                                                         SubComponentColorSpec("ichimokuChikou", "Chikou Span", preferences.ichimokuChikouColor, "CS")
                                                     )
                                                 ),
-                                                StudyRowSpec("overlayMacd", "MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", preferences.overlayMacdColor, activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button", "ılı"),
-                                                (if (activeTab.forecastHorizonBars in 10..60) activeTab.forecastHorizonBars else preferences.forecastHorizonBars.coerceIn(10, 60)).let { futBarsLabel ->
-                                                    StudyRowSpec("futureProjection", "Future Candlesticks ($futBarsLabel Bars)", "$futBarsLabel-Period Future Projection (h≥10)", preferences.futureProjectionColor, activeTab.showFutureProjection, onToggleFutureProjection, "chart_future_projection_toggle_button", "🔮")
-                                                }
+                                                StudyRowSpec("overlayMacd", "MACD Classic (Overlay)", "مکدی کلاسیک مستقیماً روی چارت اصلی", preferences.overlayMacdColor, activeTab.showOverlayMacd, onToggleOverlayMacd, "chart_overlay_macd_toggle_button", "ılı")
                                             )
                                         ),
                                         IndicatorFamilySection(

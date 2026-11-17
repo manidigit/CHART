@@ -131,8 +131,8 @@ $phpRuntime = [
 
 ApiEnvelope::sendSuccess([
     'status' => 'healthy',
-    'version' => '1.42.0',
-    'phase' => 'Phase 4 - Decoupled Future Price Projection Engine v1 (SPEC-PRED-01) & Forecast Studio',
+    'version' => '1.44.0',
+    'phase' => 'Phase 1-3 Core Engine & Multi-Asset Charting (Forecast Engine Archived for Redesign)',
     'server_time_utc' => $nowUtc,
     'server_time_ms' => $nowMs,
     'database' => [

@@ -68,11 +68,6 @@ import es.manico.chartintelligence.data.model.ChartPreferences
 import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.ChartType
 import es.manico.chartintelligence.data.model.DrawingTool
-import es.manico.chartintelligence.forecast.ForecastEngine
-import es.manico.chartintelligence.forecast.ForecastModelRegistry
-import es.manico.chartintelligence.forecast.ForecastRenderMode
-import es.manico.chartintelligence.forecast.SelectionMode
-import es.manico.chartintelligence.forecast.resolveLowerTimeframeInfo
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 import java.math.BigDecimal
@@ -100,31 +95,6 @@ private fun parseDrawingColor(hex: String?, fallback: Color): Color {
     }.getOrDefault(fallback)
 }
 
-private fun formatReadableModelName(modelId: String?): String = when (modelId) {
-    "naive_persistence" -> "Baseline (Naive)"
-    "smc_kmedoids" -> "SMC K-Medoids"
-    "ensemble" -> "Ensemble"
-    "native_arima_diff" -> "ARIMA(p,d,q)"
-    "native_prophet_decomp" -> "Prophet Approx"
-    "native_seq_recurrent_approx" -> "Recurrent Approx"
-    "native_quantile_attention_approx" -> "TFT Attn Approx"
-    "py_arima_statsmodels" -> "ARIMA (Py)"
-    "py_prophet" -> "Prophet (Py)"
-    "py_lstm_torch" -> "LSTM (Py)"
-    "py_tft_torch" -> "TFT (Py)"
-    null, "" -> "SMC K-Medoids"
-    else -> modelId
-}
-
-private fun formatSelectionModeTag(mode: SelectionMode?): String = when (mode) {
-    SelectionMode.AUTO_OOS_BEST -> "OOS Winner"
-    SelectionMode.MANUAL_OVERRIDE -> "Manual"
-    SelectionMode.NO_CLEAR_WINNER_BASELINE -> "No OOS Edge"
-    SelectionMode.INSUFFICIENT_EVIDENCE_BASELINE -> "Insufficient Evidence"
-    SelectionMode.SMC_STRUCTURAL_DEFAULT -> "SMC Default"
-    null -> ""
-}
-
 @Composable
 fun CandlestickCanvas(
     tab: ChartTabState,
@@ -140,9 +110,7 @@ fun CandlestickCanvas(
     onSelectDrawing: (String?) -> Unit,
     onTranslateSelectedDrawing: (Long, BigDecimal) -> Unit,
     onRetrySync: () -> Unit,
-    modifier: Modifier = Modifier,
-    lowerTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() },
-    higherTimeframeCandlesProvider: (String) -> List<CandleBar> = { emptyList() }
+    modifier: Modifier = Modifier
 ) {
     val financialPalette = LocalFinancialPalette.current
     val density = LocalDensity.current
@@ -405,65 +373,6 @@ fun CandlestickCanvas(
         else Phase2IndicatorsAlgorithm.computePivotPoints(candles, tab.timeframe, tab.symbolCode, tab.pivotType)
     }
 
-    val activeForecastRenderMode = remember(tab.forecastRenderMode, preferences.forecastRenderMode) {
-        ForecastRenderMode.parse(tab.forecastRenderMode.ifBlank { preferences.forecastRenderMode })
-    }
-    val activeForecastHorizon = remember(tab.forecastHorizonBars, preferences.forecastHorizonBars) {
-        if (tab.forecastHorizonBars in 10..60) tab.forecastHorizonBars else preferences.forecastHorizonBars.coerceIn(10, 60)
-    }
-    val higherTf = remember(tab.timeframe) {
-        es.manico.chartintelligence.forecast.ForecastV130Analyzer.resolveHigherTimeframe(tab.timeframe)
-    }
-    val higherCandles = remember(higherTf, candles) {
-        if (higherTf.isNotBlank()) higherTimeframeCandlesProvider(higherTf) else emptyList()
-    }
-    val lowerInfo = remember(tab.timeframe) {
-        resolveLowerTimeframeInfo(tab.timeframe)
-    }
-    val lowerCandles = remember(lowerInfo, candles) {
-        if (lowerInfo != null) lowerTimeframeCandlesProvider(lowerInfo.timeframe) else emptyList()
-    }
-    val activeSelectedModelId = remember(tab.selectedForecastModelId, preferences.selectedForecastModelId) {
-        tab.selectedForecastModelId.ifBlank { preferences.selectedForecastModelId }.ifBlank { "AUTO" }
-    }
-    val futureProjectionResult = remember(
-        candles,
-        higherCandles,
-        lowerCandles,
-        tab.symbolCode,
-        tab.timeframe,
-        tab.showFutureProjection,
-        effectiveScrollOffset,
-        activeForecastHorizon,
-        activeForecastRenderMode,
-        activeSelectedModelId,
-        preferences.forecastPluginConfigJson,
-        preferences.forecastWorkerUrl
-    ) {
-        if (!tab.showFutureProjection || effectiveScrollOffset > 0 || candles.size < 24) null
-        else {
-            val registry = ForecastModelRegistry().apply {
-                applyFromJson(preferences.forecastPluginConfigJson)
-            }
-            ForecastEngine.project(
-                candles = candles,
-                symbolCode = tab.symbolCode,
-                timeframe = tab.timeframe,
-                horizonBars = activeForecastHorizon,
-                renderMode = activeForecastRenderMode,
-                registry = registry,
-                workerUrl = preferences.forecastWorkerUrl,
-                skipWalkForward = false,
-                higherTimeframe = higherTf,
-                higherTimeframeCandles = higherCandles,
-                lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
-                lowerTimeframeCandles = lowerCandles,
-                selectedModelId = activeSelectedModelId
-            )
-        }
-    }
-    val futureProjectedCandles = futureProjectionResult?.points.orEmpty()
-
     val inspectedIdx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
     val inspectedCandle = remember(tab.selectedCandleIndex, visibleSlice) {
         val idx = tab.selectedCandleIndex
@@ -497,23 +406,16 @@ fun CandlestickCanvas(
     var panCarryPx by remember(tab.tabId, tab.timeframe) { mutableFloatStateOf(0f) }
 
     // Compute Price Y-Axis Bounds with Minimum Price Range Floor (prevents micro-spread barcode distortion)
-    val sliceMinPrice = visibleSlice.minOfOrNull { it.low.toDouble() } ?: 0.0
-    val sliceMaxPrice = visibleSlice.maxOfOrNull { it.high.toDouble() } ?: 1.0
-    val rawMinPrice = if (futureProjectedCandles.isNotEmpty()) {
-        min(sliceMinPrice, futureProjectedCandles.minOf { min(it.low, it.q10) })
-    } else sliceMinPrice
-    val rawMaxPrice = if (futureProjectedCandles.isNotEmpty()) {
-        max(sliceMaxPrice, futureProjectedCandles.maxOf { max(it.high, it.q90) })
-    } else sliceMaxPrice
+    val rawMinPrice = visibleSlice.minOfOrNull { it.low.toDouble() } ?: 0.0
+    val rawMaxPrice = visibleSlice.maxOfOrNull { it.high.toDouble() } ?: 1.0
     val midPrice = (rawMinPrice + rawMaxPrice) / 2.0
     val rawHalfSpan = (rawMaxPrice - rawMinPrice) / 2.0
     val minHalfSpanFloor = max(1e-4, abs(midPrice) * 0.0008) // Minimum 0.16% full span floor
     val baseHalfSpan = max(rawHalfSpan, minHalfSpanFloor) * 1.16
     val scaleFactor = if (tab.isAutoScaleY) 1.0 else tab.yPriceScaleFactor.coerceIn(0.25f, 4.0f).toDouble()
     val effectiveHalfSpan = baseHalfSpan * scaleFactor
-    val topExtra = if (futureProjectedCandles.isNotEmpty()) effectiveHalfSpan * 0.14 else 0.0
     val rawPaddedMin = midPrice - effectiveHalfSpan
-    val rawPaddedMax = midPrice + effectiveHalfSpan + topExtra
+    val rawPaddedMax = midPrice + effectiveHalfSpan
     val (paddedMin, paddedMax) = PriceFormatterAlgorithm.computeNiceAxisBounds(rawPaddedMin, rawPaddedMax, 4)
     val paddedSpan = (paddedMax - paddedMin).coerceAtLeast(1e-6)
     val safeLogMin = ln(max(paddedMin, 1e-6))
@@ -840,14 +742,10 @@ fun CandlestickCanvas(
                     }
 
                     // 2. Vertical time grid lines across both panes aligned with smart time ticks
-                    val effectiveSlots = if (futureProjectedCandles.isNotEmpty()) {
-                        visibleSlice.size + futureProjectedCandles.size
-                    } else {
-                        max(
-                            visibleSlice.size,
-                            min(visibleCount, max(visibleSlice.size, (candles.size * 1.4f).roundToInt()))
-                        )
-                    }
+                    val effectiveSlots = max(
+                        visibleSlice.size,
+                        min(visibleCount, max(visibleSlice.size, (candles.size * 1.4f).roundToInt()))
+                    )
                     val slotW = canvasW / max(1, effectiveSlots).toFloat()
                     for (tick in smartTimeTicks) {
                         val x = (tick.index + 0.5f) * slotW
@@ -898,13 +796,8 @@ fun CandlestickCanvas(
                         }
                         // 4.0a Package 3: Session / Visible Range Volume Profile (VRVP — POC / VAH / VAL)
                         if (tab.showVolumeProfile && visibleVolumeProfile != null) {
-                            val isForecastActive = futureProjectedCandles.isNotEmpty()
-                            val maxBarW = if (isForecastActive) {
-                                min(canvasW * 0.16f, max(36f, (canvasW - visibleSlice.size * slotW) * 0.34f))
-                            } else {
-                                canvasW * 0.24f
-                            }
-                            val vpAlphaScale = if (isForecastActive) 0.65f else 1.0f
+                            val maxBarW = canvasW * 0.24f
+                            val vpAlphaScale = 1.0f
                             for (bin in visibleVolumeProfile.bins) {
                                 val yTop = priceToY(bin.high)
                                 val yBot = priceToY(bin.low)
@@ -1341,128 +1234,6 @@ fun CandlestickCanvas(
                                     )
                                 }
                             }
-                        }
-
-                        // 5f. Phase 4 Statistical Future Projection (Quantile Fan Bands + Ghost Candlesticks + Median Path)
-                        if (futureProjectedCandles.isNotEmpty()) {
-                            val dividerX = visibleSlice.size * slotW
-                            val futureDashEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
-                            drawRect(
-                                color = Color(0xFF7A6CA2).copy(alpha = 0.08f),
-                                topLeft = Offset(dividerX, 0f),
-                                size = Size((canvasW - dividerX).coerceAtLeast(0f), pricePaneH)
-                            )
-                            drawLine(
-                                color = Color(0xFFF8FAFC).copy(alpha = 0.90f),
-                                start = Offset(dividerX, 0f),
-                                end = Offset(dividerX, pricePaneH),
-                                strokeWidth = 1.8f,
-                                pathEffect = futureDashEffect
-                            )
-
-                            val anchorX = ((visibleSlice.size - 0.5f) * slotW).coerceAtLeast(0f)
-                            val anchorCloseY = priceToY(visibleSlice.lastOrNull()?.close?.toDouble() ?: futureProjectedCandles.first().open)
-
-                            if (activeForecastRenderMode == ForecastRenderMode.FAN_CHART ||
-                                activeForecastRenderMode == ForecastRenderMode.HYBRID
-                            ) {
-                                val outerBandPath = obtainPath()
-                                outerBandPath.moveTo(anchorX, anchorCloseY)
-                                futureProjectedCandles.forEachIndexed { fIdx, pt ->
-                                    val x = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                    outerBandPath.lineTo(x, priceToY(pt.q90))
-                                }
-                                for (fIdx in futureProjectedCandles.indices.reversed()) {
-                                    val pt = futureProjectedCandles[fIdx]
-                                    val x = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                    outerBandPath.lineTo(x, priceToY(pt.q10))
-                                }
-                                outerBandPath.close()
-                                drawPath(
-                                    path = outerBandPath,
-                                    color = Color(0xFFA796D4).copy(alpha = 0.14f)
-                                )
-
-                                val innerBandPath = obtainPath()
-                                innerBandPath.moveTo(anchorX, anchorCloseY)
-                                futureProjectedCandles.forEachIndexed { fIdx, pt ->
-                                    val x = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                    innerBandPath.lineTo(x, priceToY(pt.q75))
-                                }
-                                for (fIdx in futureProjectedCandles.indices.reversed()) {
-                                    val pt = futureProjectedCandles[fIdx]
-                                    val x = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                    innerBandPath.lineTo(x, priceToY(pt.q25))
-                                }
-                                innerBandPath.close()
-                                drawPath(
-                                    path = innerBandPath,
-                                    color = Color(0xFFA796D4).copy(alpha = 0.24f)
-                                )
-                            }
-
-                            if (activeForecastRenderMode == ForecastRenderMode.GHOST_CANDLES ||
-                                activeForecastRenderMode == ForecastRenderMode.HYBRID
-                            ) {
-                                val candleAlpha = if (activeForecastRenderMode == ForecastRenderMode.HYBRID) 0.65f else 0.78f
-                                futureProjectedCandles.forEachIndexed { fIdx, fc ->
-                                    val fCenterX = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                    val fHighY = priceToY(fc.high)
-                                    val fLowY = priceToY(fc.low)
-                                    val fOpenY = priceToY(fc.open)
-                                    val fCloseY = priceToY(fc.close)
-                                    val isFutureBull = fc.close >= fc.open
-                                    val baseCol = if (isFutureBull) bullColor else bearColor
-                                    val wickCol = baseCol.copy(alpha = if (fc.rejectionWick) 0.92f else 0.78f)
-                                    val bodyCol = baseCol.copy(alpha = candleAlpha)
-                                    drawLine(
-                                        color = wickCol,
-                                        start = Offset(fCenterX, fHighY),
-                                        end = Offset(fCenterX, fLowY),
-                                        strokeWidth = if (fc.rejectionWick) 1.55f else 1.2f
-                                    )
-                                    val topY = min(fOpenY, fCloseY)
-                                    val botY = max(fOpenY, fCloseY)
-                                    val bH = (botY - topY).coerceAtLeast(2.0f)
-                                    drawRect(
-                                        color = bodyCol,
-                                        topLeft = Offset(fCenterX - bodyW / 2f, topY),
-                                        size = Size(bodyW, bH)
-                                    )
-                                }
-                            }
-
-                            // Alternative Empirical Analog Medoids dashed paths
-                            if (futureProjectionResult != null && futureProjectionResult.representativePaths.isNotEmpty()) {
-                                val altColors = listOf(Color(0xFF38BDF8), Color(0xFFA855F7), Color(0xFFF59E0B))
-                                futureProjectionResult.representativePaths.forEachIndexed { aIdx, repPath ->
-                                    if (repPath.closes.isNotEmpty()) {
-                                        val altPath = obtainPath()
-                                        altPath.moveTo(anchorX, anchorCloseY)
-                                        repPath.closes.forEachIndexed { fIdx, closePrice ->
-                                            val x = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                            altPath.lineTo(x, priceToY(closePrice))
-                                        }
-                                        drawPath(
-                                            path = altPath,
-                                            color = altColors[aIdx % altColors.size].copy(alpha = 0.68f),
-                                            style = Stroke(width = 1.4f, pathEffect = futureDashEffect)
-                                        )
-                                    }
-                                }
-                            }
-
-                            val medianPath = obtainPath()
-                            medianPath.moveTo(anchorX, anchorCloseY)
-                            futureProjectedCandles.forEachIndexed { fIdx, pt ->
-                                val x = (visibleSlice.size + fIdx + 0.5f) * slotW
-                                medianPath.lineTo(x, priceToY(pt.q50))
-                            }
-                            drawPath(
-                                path = medianPath,
-                                color = Color(0xFFF59E0B),
-                                style = Stroke(width = 2.0f, pathEffect = futureDashEffect)
-                            )
                         }
 
                         // 6a. Previous Session Close Horizontal Dashed Line across Main Price Pane
@@ -2280,17 +2051,6 @@ fun CandlestickCanvas(
                                 color = preferences.pivotPColor
                             )
                         }
-                        if (tab.showFutureProjection && futureProjectedCandles.isNotEmpty()) {
-                            val activeModelName = formatReadableModelName(futureProjectionResult?.selectedChartModelId)
-                            Text(
-                                text = "🔮 +${futureProjectedCandles.size} (${activeForecastRenderMode.key} · $activeModelName)",
-                                style = MaterialTheme.typography.labelSmall,
-                                fontSize = 10.sp,
-                                fontFamily = JetBrainsMonoFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                color = preferences.futureProjectionColor
-                            )
-                        }
                         if (tab.showKillzones) {
                             Text(
                                 text = "Killzones",
@@ -2780,30 +2540,10 @@ fun CandlestickCanvas(
                         }
                     }
 
-                    if (futureProjectedCandles.isNotEmpty() &&
-                        futureProjectionResult != null &&
-                        futureProjectionResult.representativePaths.isNotEmpty()
-                    ) {
-                        val altColors = listOf(Color(0xFF38BDF8), Color(0xFFA855F7), Color(0xFFF59E0B))
-                        futureProjectionResult.representativePaths.forEachIndexed { aIdx, repPath ->
-                            if (repPath.closes.isNotEmpty()) {
-                                val terminalPrice = repPath.closes.last()
-                                rawBadges.add(
-                                    DockedLevelBadge(
-                                        id = "rep_${repPath.id}",
-                                        text = repPath.id.replace("ANALOG_", ""),
-                                        rawRatio = mapPriceToNormRatio(terminalPrice),
-                                        color = altColors[aIdx % altColors.size]
-                                    )
-                                )
-                            }
-                        }
-                    }
-
                     if (rawBadges.isNotEmpty()) {
                         val sorted = rawBadges.sortedBy { it.rawRatio }
                         val minGapDp = 15.dp
-                        val minTopDp = if (futureProjectedCandles.isNotEmpty()) 28.dp else 4.dp
+                        val minTopDp = 4.dp
                         val maxTopDp = (pricePaneHeightDp - 16.dp).coerceAtLeast(minTopDp)
                         val placedOffsets = ArrayList<androidx.compose.ui.unit.Dp>(sorted.size)
                         for (b in sorted) {
@@ -2869,113 +2609,31 @@ fun CandlestickCanvas(
                     }
                 }
 
-                // Statistical Future Projection Callout Header
-                if (futureProjectedCandles.isNotEmpty()) {
-                    Row(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .padding(top = plotTopPadDp + 4.dp, start = 10.dp, end = plotRightPadDp + 6.dp)
-                            .clip(RoundedCornerShape(6.dp))
-                            .background(Color(0xFF0F172A).copy(alpha = 0.86f))
-                            .border(1.dp, Color(0xFFA796D4).copy(alpha = 0.55f), RoundedCornerShape(6.dp))
-                            .horizontalScroll(rememberScrollState())
-                            .padding(horizontal = 10.dp, vertical = 3.dp)
-                            .testTag("chart_future_projection_banner"),
-                        horizontalArrangement = Arrangement.spacedBy(10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Text(
-                            text = "← PAST (Actual Data)",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFF38BDF8)
-                        )
-                        Text(
-                            text = "┆",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 10.sp,
-                            color = Color(0xFFF8FAFC)
-                        )
-                        val activeModelName = formatReadableModelName(futureProjectionResult?.selectedChartModelId)
-                        val activeModeTag = formatSelectionModeTag(futureProjectionResult?.selectionMode)
-                        val modeSuffix = if (activeModeTag.isNotEmpty()) " · $activeModeTag" else ""
-                        Text(
-                            text = "Forecast (+${futureProjectedCandles.size} bars · ${activeForecastRenderMode.key} · $activeModelName$modeSuffix) →",
-                            style = MaterialTheme.typography.labelSmall,
-                            fontSize = 9.sp,
-                            fontFamily = JetBrainsMonoFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            color = Color(0xFFF59E0B)
-                        )
-                    }
-                }
-
-                // Bottom X-Axis Smart Span-Aware UTC Time Labels + Future Milestone Labels + Crosshair Pill
+                // Bottom X-Axis Smart Span-Aware UTC Time Labels + Crosshair Pill
                 Box(
                     modifier = Modifier
                         .align(Alignment.BottomStart)
                         .fillMaxWidth()
                         .padding(start = 8.dp, end = plotRightPadDp, bottom = 3.dp)
                 ) {
-                    if (futureProjectedCandles.isNotEmpty()) {
-                        val hCount = futureProjectedCandles.size
-                        val stepMarks = listOf(5, (hCount * 0.35).roundToInt(), (hCount * 0.65).roundToInt(), hCount)
-                            .filter { it in 1..hCount }
-                            .distinct()
-                            .sorted()
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            for (tick in smartTimeTicks.take(2)) {
-                                Text(
-                                    text = tick.label,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 9.sp,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            for (stepMark in stepMarks) {
-                                val fc = futureProjectedCandles.firstOrNull { it.stepAhead == stepMark }
-                                if (fc != null) {
-                                    val sign = if (fc.pctChangeFromLast >= 0.0) "+" else ""
-                                    val pctDigits = if (abs(fc.pctChangeFromLast) < 10.0) 2 else 1
-                                    val pctStr = String.format(java.util.Locale.US, "%s%.${pctDigits}f%%", sign, fc.pctChangeFromLast)
-                                    Text(
-                                        text = "+$stepMark ($pctStr)",
-                                        style = MaterialTheme.typography.labelSmall,
-                                        fontSize = 8.5.sp,
-                                        fontFamily = JetBrainsMonoFontFamily,
-                                        fontWeight = FontWeight.Bold,
-                                        color = Color(0xFFF59E0B)
-                                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        for (tick in smartTimeTicks) {
+                            Text(
+                                text = tick.label,
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = if (tick.isMajor) FontWeight.Bold else FontWeight.Normal,
+                                color = if (tick.isMajor) {
+                                    MaterialTheme.colorScheme.onSurface
+                                } else {
+                                    MaterialTheme.colorScheme.onSurfaceVariant
                                 }
-                            }
-                        }
-                    } else {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            for (tick in smartTimeTicks) {
-                                Text(
-                                    text = tick.label,
-                                    style = MaterialTheme.typography.labelSmall,
-                                    fontSize = 10.sp,
-                                    fontFamily = JetBrainsMonoFontFamily,
-                                    fontWeight = if (tick.isMajor) FontWeight.Bold else FontWeight.Normal,
-                                    color = if (tick.isMajor) {
-                                        MaterialTheme.colorScheme.onSurface
-                                    } else {
-                                        MaterialTheme.colorScheme.onSurfaceVariant
-                                    }
-                                )
-                            }
+                            )
                         }
                     }
 

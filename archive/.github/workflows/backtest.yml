@@ -1,0 +1,46 @@
+name: Forecast Engine Backtest & Validation CI
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'host_subdomain/assets/js/forecast/**'
+      - 'src/**'
+      - 'scripts/**'
+      - 'tests/**'
+      - '.github/workflows/backtest.yml'
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  walk-forward-backtest:
+    name: Walk-Forward Backtest & Quantitative Parity
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20.x
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Run Unit, V2.1 Audit & Parity Tests
+        run: |
+          node --test tests/forecast_v2.test.mjs tests/phase4_forecast.test.mjs tests/web_parity.test.mjs
+
+      - name: Generate M15 Sample Dataset
+        run: |
+          node scripts/makeSampleData.js --count 960 --out data/sample_M15.json --basePrice 2450
+
+      - name: Execute Walk-Forward Backtest Evaluation
+        run: |
+          node scripts/backtest.js --file data/sample_M15.json --tf M15 --steps 10 --stride 10 --csv backtest_results.csv
+
+      - name: Upload Backtest Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: backtest-report
+          path: backtest_results.csv

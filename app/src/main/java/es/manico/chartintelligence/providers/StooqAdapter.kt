@@ -60,6 +60,9 @@ class StooqAdapter(
                 "NKE" -> "nke.us"
                 "IBM" -> "ibm.us"
                 "SAN" -> "san.us"
+                "BRK.B", "BRKB" -> "brk-b.us"
+                "SKHY" -> "000660.kr"
+                "2222.SR", "2222SR" -> "2222.sr"
                 else -> "${symbolCode.trim().lowercase()}.us"
             }
         }

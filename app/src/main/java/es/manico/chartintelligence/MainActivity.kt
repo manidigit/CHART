@@ -41,7 +41,6 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import es.manico.chartintelligence.ui.screens.ChartViewScreen
-import es.manico.chartintelligence.ui.screens.ForecastLabScreen
 import es.manico.chartintelligence.ui.screens.LoginScreen
 import es.manico.chartintelligence.ui.screens.SettingsScreen
 import es.manico.chartintelligence.ui.screens.WatchlistScreen
@@ -102,7 +101,9 @@ fun ChartIntelligenceApp(
                                 selectedTextColor = MaterialTheme.colorScheme.primary,
                                 indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f),
                                 unselectedIconColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                                disabledIconColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f),
+                                disabledTextColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.38f)
                             )
 
                             // 1. Watchlist
@@ -166,13 +167,11 @@ fun ChartIntelligenceApp(
                                 modifier = Modifier.testTag("nav_chart_view_item")
                             )
 
-                            // 3. Forecast Lab
+                            // 3. Forecast Lab (Disabled pending redesign)
                             NavigationBarItem(
-                                selected = state.currentScreen == WorkspaceScreen.PREDICTION,
-                                onClick = {
-                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                    mainViewModel.navigateTo(WorkspaceScreen.PREDICTION)
-                                },
+                                selected = false,
+                                enabled = false,
+                                onClick = {},
                                 colors = navColors,
                                 icon = {
                                     Icon(
@@ -184,7 +183,7 @@ fun ChartIntelligenceApp(
                                     Text(
                                         text = stringResource(R.string.nav_forecast_lab),
                                         style = MaterialTheme.typography.labelSmall,
-                                        fontWeight = if (state.currentScreen == WorkspaceScreen.PREDICTION) FontWeight.Bold else FontWeight.Medium
+                                        fontWeight = FontWeight.Medium
                                     )
                                 },
                                 modifier = Modifier.testTag("nav_prediction_item")
@@ -260,7 +259,7 @@ fun ChartIntelligenceApp(
                             onReorderSymbol = mainViewModel::reorderSymbol,
                             onAddCustomSymbol = mainViewModel::addCustomSymbol,
                             onNavigateToSettings = { mainViewModel.navigateTo(WorkspaceScreen.SETTINGS) },
-                            onNavigateToPrediction = { mainViewModel.navigateTo(WorkspaceScreen.PREDICTION) },
+                            onNavigateToPrediction = {},
                             currentLanguage = state.language,
                             symbolIntelByCode = state.symbolIntelByCode,
                             isIntelLoading = state.isIntelLoading,
@@ -302,7 +301,6 @@ fun ChartIntelligenceApp(
                             onToggleVolumeProfile = mainViewModel::toggleVolumeProfileOnActiveTab,
                             onTogglePivotPoints = mainViewModel::togglePivotPointsOnActiveTab,
                             onSelectPivotType = mainViewModel::setPivotTypeOnActiveTab,
-                            onToggleFutureProjection = mainViewModel::toggleFutureProjectionOnActiveTab,
                             onToggleEma200 = mainViewModel::toggleEma200OnActiveTab,
                             onTogglePsar = mainViewModel::togglePsarOnActiveTab,
                             onToggleIchimoku = mainViewModel::toggleIchimokuOnActiveTab,
@@ -339,38 +337,31 @@ fun ChartIntelligenceApp(
                             onSelectDrawing = mainViewModel::selectDrawingOnActiveTab,
                             onTranslateSelectedDrawing = mainViewModel::translateSelectedDrawing,
                             onDeleteSelectedDrawing = mainViewModel::deleteSelectedDrawingOnActiveTab,
-                            onClearAllDrawings = mainViewModel::clearAllDrawingsOnActiveTab,
-                            lowerTimeframeCandlesProvider = mainViewModel::getLowerTimeframeCandlesForActiveTab,
-                            higherTimeframeCandlesProvider = mainViewModel::getHigherTimeframeCandlesForActiveTab
+                            onClearAllDrawings = mainViewModel::clearAllDrawingsOnActiveTab
                         )
 
-                        WorkspaceScreen.PREDICTION -> ForecastLabScreen(
-                            activeTab = state.activeTab,
+                        WorkspaceScreen.PREDICTION -> WatchlistScreen(
                             watchlistSymbols = state.watchlistSymbols,
+                            allSymbols = state.symbols,
+                            openTabs = state.openTabs,
+                            isSyncingAll = state.isSyncingAll,
+                            statusBannerResId = state.statusBannerResId,
                             preferences = state.chartPreferences,
-                            localLedgerEntries = state.forecastLocalLedger,
-                            serverLedgerEntries = state.forecastServerLedger,
-                            ledgerVerifyResult = state.forecastLedgerVerifyResult,
-                            onSelectSymbol = mainViewModel::selectSymbolInPrediction,
-                            onSelectTimeframe = mainViewModel::selectTimeframeForActiveTab,
-                            onSelectHorizonBars = mainViewModel::setForecastHorizon,
-                            onSelectRenderMode = mainViewModel::setForecastRenderMode,
-                            onToggleModelPlugin = mainViewModel::toggleForecastModel,
-                            onSetModelWeight = mainViewModel::setForecastModelWeight,
-                            onSetModelParam = mainViewModel::setForecastModelParam,
-                            onResetModelPlugins = mainViewModel::resetForecastModels,
-                            onSaveWorkerUrl = mainViewModel::saveForecastWorkerUrl,
-                            onRecordSnapshot = mainViewModel::recordAndSyncForecastSnapshot,
-                            onRefreshServerLedger = mainViewModel::refreshForecastServerLedger,
-                            onPlotReferenceLevelsToChart = mainViewModel::projectScenarioLevelsToChart,
-                            onApplyForecastToChart = mainViewModel::applyForecastAndOpenChart,
-                            onBackToWatchlist = mainViewModel::navigateBack,
-                            higherTimeframeCandlesProvider = mainViewModel::getHigherTimeframeCandlesForActiveTab,
-                            lowerTimeframeCandlesProvider = mainViewModel::getLowerTimeframeCandlesForActiveTab,
-                            lifecycleEvents = state.forecastLifecycleEvents,
-                            lifecycleVerifyResult = state.forecastLifecycleVerifyResult,
-                            onEvaluateMaturedOutcomes = mainViewModel::evaluateMaturedForecastOutcomes,
-                            onSelectModelId = mainViewModel::setForecastModel
+                            onSyncSymbolNow = mainViewModel::syncSingleSymbolUpToNow,
+                            onSyncAllNow = mainViewModel::syncAllWatchlistUpToNow,
+                            onOpenSymbolInChartTab = mainViewModel::openSymbolInChartTab,
+                            onToggleSymbolInWatchlist = mainViewModel::toggleSymbolInWatchlist,
+                            onReorderSymbol = mainViewModel::reorderSymbol,
+                            onAddCustomSymbol = mainViewModel::addCustomSymbol,
+                            onNavigateToSettings = { mainViewModel.navigateTo(WorkspaceScreen.SETTINGS) },
+                            onNavigateToPrediction = {},
+                            currentLanguage = state.language,
+                            symbolIntelByCode = state.symbolIntelByCode,
+                            isIntelLoading = state.isIntelLoading,
+                            onLoadSymbolIntel = mainViewModel::loadSymbolIntel,
+                            onGetD1CandlesForSymbol = mainViewModel::getD1CandlesForSymbol,
+                            onExportCandlesCsvToUri = { uri, sym, tf -> mainViewModel.exportCandlesCsvToUri(uri, sym, tf) },
+                            onExportCandlesJsonToUri = { uri, sym, tf -> mainViewModel.exportCandlesJsonToUri(uri, sym, tf) }
                         )
 
                         WorkspaceScreen.SETTINGS -> SettingsScreen(

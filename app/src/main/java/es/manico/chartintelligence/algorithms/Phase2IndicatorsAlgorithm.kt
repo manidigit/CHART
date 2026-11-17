@@ -522,22 +522,6 @@ object Phase2IndicatorsAlgorithm {
         val s4: Double? = null
     )
 
-    data class FutureProjectedCandle(
-        val step: Int,
-        val openTimeUtcMillis: Long,
-        val open: Double,
-        val high: Double,
-        val low: Double,
-        val close: Double,
-        val pctChangeFromAnchor: Double,
-        val upperBand: Double,
-        val lowerBand: Double
-    ) {
-        val isBullish: Boolean get() = close >= open
-        val stepAhead: Int get() = step
-        val pctChangeFromLast: Double get() = pctChangeFromAnchor
-    }
-
     /**
      * Multi-Variant Pivot Points (Standard, Fibonacci, Camarilla, Woodie) computed from prior session HLC and current session Open (IND-01).
      */
@@ -660,77 +644,5 @@ object Phase2IndicatorsAlgorithm {
                 )
             }
         }
-    }
-
-    /**
-     * Causal Damped Drift & Log-Normal Volatility Quantile Projection (Rev 2.1):
-     * Zero synthetic harmonic waves, zero SMC magnet warping.
-     */
-    fun computeFutureCandlestickProjection(
-        candles: List<CandleBar>,
-        timeframe: String = "M15",
-        horizon: Int = 30
-    ): List<FutureProjectedCandle> {
-        if (candles.size < 4) return emptyList()
-        val effectiveHorizon = max(10, min(60, horizon))
-        val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(timeframe)
-        val win = candles.takeLast(min(240, candles.size))
-        val baseBar = win.last()
-        val baseClose = baseBar.close.toDouble()
-        if (!baseClose.isFinite() || baseClose <= 0.0) return emptyList()
-
-        val logReturns = DoubleArray(win.size - 1) { i ->
-            val p0 = win[i].close.toDouble()
-            val p1 = win[i + 1].close.toDouble()
-            if (p0 > 0.0 && p1 > 0.0) kotlin.math.ln(p1 / p0) else 0.0
-        }
-        val tailCount = min(20, logReturns.size)
-        var meanRet = 0.0
-        for (i in (logReturns.size - tailCount) until logReturns.size) {
-            meanRet += logReturns[i]
-        }
-        meanRet /= max(1, tailCount).toDouble()
-        val dampedDrift = meanRet.coerceIn(-0.004, 0.004)
-
-        var ewmaVar = 1e-8
-        val lambda = 0.94
-        for (r in logReturns) {
-            ewmaVar = lambda * ewmaVar + (1.0 - lambda) * (r * r)
-        }
-        val sigma = max(1e-5, kotlin.math.sqrt(ewmaVar))
-
-        val out = ArrayList<FutureProjectedCandle>(effectiveHorizon)
-        var prevMedian = baseClose
-        var cumDrift = 0.0
-        for (step in 1..effectiveHorizon) {
-            cumDrift += dampedDrift * Math.pow(0.90, (step - 1).toDouble())
-            val cumSigma = sigma * kotlin.math.sqrt(step.toDouble())
-            val q10 = max(baseClose * 0.02, baseClose * kotlin.math.exp(cumDrift - 1.28155157 * cumSigma))
-            val q25 = max(q10, baseClose * kotlin.math.exp(cumDrift - 0.67448975 * cumSigma))
-            val q50 = max(q25, baseClose * kotlin.math.exp(cumDrift))
-            val q75 = max(q50, baseClose * kotlin.math.exp(cumDrift + 0.67448975 * cumSigma))
-            val q90 = max(q75, baseClose * kotlin.math.exp(cumDrift + 1.28155157 * cumSigma))
-
-            val open = prevMedian
-            val close = q50
-            val high = max(q75, max(open, close))
-            val low = min(q25, min(open, close))
-            prevMedian = close
-
-            out.add(
-                FutureProjectedCandle(
-                    step = step,
-                    openTimeUtcMillis = baseBar.openTimeUtcMillis + step.toLong() * stepMs,
-                    open = open,
-                    high = high,
-                    low = low,
-                    close = close,
-                    pctChangeFromAnchor = ((close - baseClose) / baseClose) * 100.0,
-                    upperBand = q90,
-                    lowerBand = q10
-                )
-            )
-        }
-        return out
     }
 }

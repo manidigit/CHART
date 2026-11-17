@@ -1,7 +1,7 @@
 # CHART — معماری هسته مرکزی، ذخیره‌سازی افزایشی تاریخچه و قراردادهای همگام‌سازی
 
-> **نسخه سند:** `1.38.1` · **وضعیت:** `DECIDED & IMPLEMENTED (Core Layer)` · **تاریخ آخرین بازبینی:** `2026-11-13`  
-> این سند نسخه یکپارچه‌شده `ARCHITECTURE.md` و `architecture.md` است و مرجع فنی هسته مرکزی واحد (**Unified Central Core Engine**)، موتور ذخیره‌سازی افزایشی تاریخچه کندل‌ها (**DB-First Incremental Historical Engine**)، کاتالوگ مستقل **۷ روش جمع‌آوری داده** (**Isolated Provider Methods Catalog**)، کاتالوگ استاندارد **۲۲ نماد واچ‌لیست**، و قراردادهای رسمی همگام‌سازی (**Sync Protocols**) بین کلاینت **اندروید (Kotlin / Jetpack Compose)**، کلاینت **وب (`chart.manico.es`)** و **دیتابیس مرکزی MariaDB** است.
+> **نسخه سند:** `1.43.1` · **وضعیت:** `DECIDED & IMPLEMENTED (Core Layer)` · **تاریخ آخرین بازبینی:** `2026-11-17`  
+> این سند نسخه یکپارچه‌شده `ARCHITECTURE.md` و `architecture.md` است و مرجع فنی هسته مرکزی واحد (**Unified Central Core Engine**)، موتور ذخیره‌سازی افزایشی تاریخچه کندل‌ها (**DB-First Incremental Historical Engine**)، کاتالوگ مستقل **۷ روش جمع‌آوری داده** (**Isolated Provider Methods Catalog** — که در حال حاضر صرفاً `tvdatafeed` / TradingView فعال است)، کاتالوگ استاندارد **۷۹ نماد** (**۲۲ نماد پیش‌فرض واچ‌لیست + ۵۷ سهام برتر جهانی با وضعیت اولیه خارج از واچ‌لیست**)، و قراردادهای رسمی همگام‌سازی (**Sync Protocols**) بین کلاینت **اندروید (Kotlin / Jetpack Compose)**، کلاینت **وب (`chart.manico.es`)** و **دیتابیس مرکزی MariaDB** است.
 
 ---
 
@@ -16,7 +16,7 @@
 │   ┌─────────────────────────────────────┐     ┌───────────────────────────────────┐   │
 │   │  اپلیکیشن اندروید (Kotlin/Compose)  │     │  اپلیکیشن وب (ES6 Modules / SPA)  │   │
 │   │  - MainViewModel + 3 Coordinators   │     │  - store.js (Central Reactive)    │   │
-│   │  - 22-Symbol Catalog + 7 Providers  │     │  - 22-Symbol Catalog + 7 Providers│   │
+│   │  - 79-Symbol Catalog (22 Watchlist) │     │  - 79-Symbol Catalog (22 Watchlist)│   │
 │   │  - SharedPreferences Delta Cache    │     │  - localStorage Delta Cache       │   │
 │   └──────────────────┬──────────────────┘     └─────────────────┬─────────────────┘   │
 └──────────────────────┼──────────────────────────────────────────┼─────────────────────┘
@@ -58,7 +58,7 @@
   - `ui/state/`: `MainViewModel.kt` + `coordinators/` (`ChartDrawingCoordinator.kt`, `ChartPreferenceCoordinator.kt`, `SymbolCatalogCoordinator.kt`)
   - `ui/theme/`: `Color.kt`, `Theme.kt`, `Type.kt`
 - **وب (`host_subdomain/`):**
-  - `index.html`, `i18n/fa.json`, `i18n/en.json`, `assets/css/theme.css`, `migrations/001_phase1_init.sql`
+  - `index.html`, `i18n/fa.json`, `i18n/en.json`, `assets/css/theme.css`, `migrations/001_phase1_init.sql`, `migrations/005_expand_global_stocks_catalog.sql`
   - `assets/js/`:
     - `app.js` (نقطه ورود، رویدادهای بوم و اکشن‌ها)
     - `core/store.js`, `core/i18n.js`
@@ -111,41 +111,53 @@
 
 ---
 
-## ۳. کاتالوگ مستقل ۷ روش جمع‌آوری داده (`ProviderCatalog`) و ۲۲ نماد استاندارد واچ‌لیست
+## ۳. کاتالوگ مستقل ۷ روش جمع‌آوری داده (`ProviderCatalog`) و ۷۹ نماد استاندارد سیستم
 
-### ۳.۱. اصل تفکیک ۱۰۰٪ منابع و ممنوعیت جایگزینی پنهان (Strict Provider Isolation)
-1. **کلید ذخیره‌سازی مستقل در دیتابیس:** در جدول `candles`، کلید یکتا به‌صورت `UNIQUE KEY uq_candle_identity (chart_id, provider_id, timeframe, open_time_utc)` تعریف شده است. کندل‌های `SPOTBRENT` از `tvdatafeed` کاملاً جدا از `biquote`، `twelve_data`، `stooq` یا `yahoo_finance` ذخیره می‌شوند.
-2. **ممنوعیت Fallback پنهان بین منابع:** هیچ آداپتوری مجاز نیست در صورت نبود کلید API یا خطای شبکه، به‌طور پنهانی کندل‌های یک منبع دیگر را دریافت و به نام منبع فعلی در دیتابیس ثبت کند.
-3. **شفافیت `InstrumentSpec` و پایه قیمت (`Price Basis`):** هر منبع با پایه قیمت صریح (`CFD / MT5 Feed`, `Interbank Spot`, `Spot REST`, `Futures Ref`, `EOD Historical`, `Official FOB Spot`, `Official Exchange`) و محدودیت‌های سشن خود نمایش داده می‌شود.
+### ۳.۱. اصل تفکیک ۱۰۰٪ منابع، منبع فعال و ممنوعیت جایگزینی پنهان (Strict Provider Isolation)
+1. **منبع فعال فعلی (`TradingView Only Active`):** در کلاینت‌های اندروید و وب، در حال حاضر صرفاً **`tvdatafeed` (TradingView)** به‌عنوان منبع فعال (`isEnabled = true`) در دسترس است و سایر منابع (`biquote`, `twelve_data`, `dukascopy`, `yahoo_finance`, `stooq`, `eia_brent_spot`) برای پایداری داده فعلاً غیرفعال (`enabled = false` / قفل‌شده در UI) نگهداری می‌شوند.
+2. **کلید ذخیره‌سازی مستقل در دیتابیس:** در جدول `candles`، کلید یکتا به‌صورت `UNIQUE KEY uq_candle_identity (chart_id, provider_id, timeframe, open_time_utc)` تعریف شده است. کندل‌های هر منبع کاملاً ایزوله ذخیره می‌شوند.
+3. **ممنوعیت Fallback پنهان بین منابع:** هیچ آداپتوری مجاز نیست در صورت نبود کلید API یا خطای شبکه، به‌طور پنهانی کندل‌های یک منبع دیگر را دریافت و به نام منبع فعلی در دیتابیس ثبت کند.
+4. **شفافیت `InstrumentSpec` و پایه قیمت (`Price Basis`):** هر منبع با پایه قیمت صریح (`CFD / MT5 Feed`, `Interbank Spot`, `Spot REST`, `Futures Ref`, `EOD Historical`, `Official FOB Spot`, `Official Exchange`) و محدودیت‌های سشن خود نمایش داده می‌شود.
 
 ### ۳.۲. شناسنامه فنی ۷ روش مستقل جمع‌آوری داده در هسته مرکزی
 
-| شناسه روش (`provider_id`) | نام روش و کلاس‌های پیاده‌سازی | مکانیزم فنی و فرمول استخراج | پوشش نمادها (`exchange:ticker`) | تایم‌فریم‌ها |
-|---|---|---|---|---|
-| **`tvdatafeed`** | **TradingView Wick & WebSocket Engine** (`TvDatafeedAdapter`) | خوانش آرشیو پایه شدودار (`host_subdomain/data/tvdatafeed/`) + استخراج سوکت TradingView (`sync_tvdatafeed.py`) و تراز `D1` به نیمه‌شب روز معاملاتی بعد | تمام ۲۲ نماد کاتالوگ (`PEPPERSTONE:SPOTBRENT`, `OANDA:XAUUSD`, `OANDA:XAGUSD`, `OANDA:EURUSD`, `TVC:USOIL`, `BITSTAMP:BTCUSD`, `BITSTAMP:ETHUSD`, `OANDA:SPX500USD`, `NASDAQ:NDX`, و ۱۳ سهام آمریکا) | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
-| **`biquote`** | **biquote Multi-Asset Feed** (`BiquoteAdapter`) | فید رایگان چنددارایی بدون نیاز به کلید API با پشتیبانی از `DELTA_SYNC` | `BTCUSD`, `ETHUSD`, `XAGUSD`, `XAUUSD`, `SPOTBRENT` (`UKOIL`), `USOIL`, `EURUSD` | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
-| **`twelve_data`** | **Twelve Data REST API** (`TwelveDataAdapter`) | فراخوانی `https://api.twelvedata.com/time_series` با کلید سرور یا کلید شخصی (`X-Provider-Api-Key`) و `outputsize` محدود به کندل‌های جدید | تمام ۲۲ نماد واچ‌لیست | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
-| **`dukascopy`** | **Dukascopy Swiss Bank Historical Feed** (`DukascopyAdapter`) | استخراج کندل‌های بین‌بانکی سوئیس با فیلتر تیک‌های مصنوعی آخر هفته (`volume = 0` و دامنه میکرونی) | `SPOTBRENT` (`BRENT.CMD/USD`), `XAUUSD` (`XAU/USD`), `XAGUSD` (`XAG/USD`), `EURUSD` (`EUR/USD`) | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
-| **`yahoo_finance`** | **Yahoo Finance v8 Chart Engine** (`YahooFinanceAdapter`) | فراخوانی `query1.finance.yahoo.com/v8/finance/chart/{ticker}` با واکشی عمیق تاریخی (`M15`/`M30` تا ۶۰ روز، `H1`/`H4` تا ۷۳۰ روز، `D1`/`W1` تا ۱۰ سال) | مرجع اول ۱۳ سهام آمریکا و شاخص‌ها (`^GSPC`, `^NDX`) + کریپتو/فیوچرز/فارکس (`BZ=F`, `CL=F`, `GC=F`, `SI=F`, `EURUSD=X`, `BTC-USD`, `ETH-USD`) | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
-| **`stooq`** | **Stooq Free EOD Historical Feed** (`StooqAdapter`) | دانلود رایگان سری تاریخی روزانه و هفتگی CSV بدون نیاز به کلید API برای بک‌تست بلندمدت و مرجع EOD | کالاها (`cb.f`, `cl.f`), فلزات (`xauusd`, `xagusd`), فارکس (`eurusd`), کریپتو (`btcusd`, `ethusd`), شاخص‌ها (`^spx`, `^ndq`), سهام (`nvda.us`...) | `D1`, `W1` |
-| **`eia_brent_spot`** | **U.S. EIA Official Daily FOB Benchmark** (`EiaBenchmarkAdapter`) | دریافت سری رسمی روزانه نفت برنت دریای شمال (Europe Brent Spot Price FOB) | `SPOTBRENT` (`EIA:RBRTE`) | `D1` |
+| شناسه روش (`provider_id`) | وضعیت فعلی UI | نام روش و کلاس‌های پیاده‌سازی | مکانیزم فنی و فرمول استخراج | پوشش نمادها (`exchange:ticker`) | تایم‌فریم‌ها |
+|---|---|---|---|---|---|
+| **`tvdatafeed`** | **فعال (`Active`)** | **TradingView Wick & WebSocket Engine** (`TvDatafeedAdapter`) | خوانش آرشیو پایه شدودار (`host_subdomain/data/tvdatafeed/`) + استخراج سوکت TradingView (`sync_tvdatafeed.py`) و تراز `D1` به نیمه‌شب روز معاملاتی بعد | تمام **۷۹ نماد کاتالوگ** (`PEPPERSTONE:SPOTBRENT`, `OANDA:XAUUSD`, `OANDA:XAGUSD`, `OANDA:EURUSD`, `TVC:USOIL`, `BITSTAMP:BTCUSD`, `BITSTAMP:ETHUSD`, `OANDA:SPX500USD`, `NASDAQ:NDX`, و ۷۰ سهام آمریکا و بین‌المللی از `NASDAQ`/`NYSE`/`AMEX`/`OTC`/`KRX:000660`/`TADAWUL:2222`) | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
+| **`biquote`** | غیرفعال (`Disabled`) | **biquote Multi-Asset Feed** (`BiquoteAdapter`) | فید رایگان چنددارایی بدون نیاز به کلید API با پشتیبانی از `DELTA_SYNC` | `BTCUSD`, `ETHUSD`, `XAGUSD`, `XAUUSD`, `SPOTBRENT` (`UKOIL`), `USOIL`, `EURUSD` | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
+| **`twelve_data`** | غیرفعال (`Disabled`) | **Twelve Data REST API** (`TwelveDataAdapter`) | فراخوانی `https://api.twelvedata.com/time_series` با کلید سرور یا کلید شخصی (`X-Provider-Api-Key`) و `outputsize` محدود به کندل‌های جدید | تمام ۷۹ نماد کاتالوگ | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
+| **`dukascopy`** | غیرفعال (`Disabled`) | **Dukascopy Swiss Bank Historical Feed** (`DukascopyAdapter`) | استخراج کندل‌های بین‌بانکی سوئیس با فیلتر تیک‌های مصنوعی آخر هفته (`volume = 0` و دامنه میکرونی) | `SPOTBRENT` (`BRENT.CMD/USD`), `XAUUSD` (`XAU/USD`), `XAGUSD` (`XAG/USD`), `EURUSD` (`EUR/USD`) | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
+| **`yahoo_finance`** | غیرفعال (`Disabled`) | **Yahoo Finance v8 Chart Engine** (`YahooFinanceAdapter`) | فراخوانی `query1.finance.yahoo.com/v8/finance/chart/{ticker}` با واکشی عمیق تاریخی (`BRK-B`, `000660.KS`, `2222.SR` و سهام/شاخص‌ها) | تمام ۷۹ نماد کاتالوگ | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
+| **`stooq`** | غیرفعال (`Disabled`) | **Stooq Free EOD Historical Feed** (`StooqAdapter`) | دانلود رایگان سری تاریخی روزانه و هفتگی CSV بدون نیاز به کلید API برای بک‌تست بلندمدت و مرجع EOD | کالاها (`cb.f`, `cl.f`), فلزات (`xauusd`, `xagusd`), فارکس (`eurusd`), کریپتو (`btcusd`, `ethusd`), شاخص‌ها (`^spx`, `^ndq`), تمام ۷۰ سهام (`brk-b.us`, `000660.kr`, `2222.sr`, ...) | `D1`, `W1` |
+| **`eia_brent_spot`** | غیرفعال (`Disabled`) | **U.S. EIA Official Daily FOB Benchmark** (`EiaBenchmarkAdapter`) | دریافت سری رسمی روزانه نفت برنت دریای شمال (Europe Brent Spot Price FOB) | `SPOTBRENT` (`EIA:RBRTE`) | `D1` |
 
 > **نکته کلیدهای شخصی (`BYOK`):** کلیدهای شخصی کاربر برای `Twelve Data`, `Stooq`, `Alpha Vantage` و `Finnhub` فقط به‌صورت محلی در کلاینت نگهداری و در درخواست‌های مرتبط با هدر HTTP `X-Provider-Api-Key` به سرور ارسال می‌شوند و در JSON عمومی `workspace_sync.php` ذخیره نمی‌گردند.
 
-### ۳.۳. کاتالوگ استاندارد ۲۲ نماد واچ‌لیست و زنجیره اولویت منابع داده
+### ۳.۳. کاتالوگ استاندارد ۷۹ نماد (۲۲ نماد پیش‌فرض واچ‌لیست + ۵۷ سهام توسعه کاتالوگ)
 
-| ردیف | نماد (`symbolCode`) | توضیح انگلیسی (`nameEn`) | توضیح فارسی (`nameFa`) | طبقه (`category`) | اعشار | منبع پیش‌فرض | زنجیره اولویت منابع مجاز |
-|---:|---|---|---|---|---:|---|---|
-| 1 | **`SPOTBRENT`** | Brent Crude (Spot) | نفت برنت اسپات | `ENERGY` | 3 | **`tvdatafeed`** | `tvdatafeed` → `dukascopy` → `biquote` → `yahoo_finance` → `twelve_data` → `stooq` → `eia_brent_spot` |
-| 2 | **`ETHUSD`** | Ethereum / U.S. Dollar | اتریوم / دلار آمریکا | `CRYPTO` | 2 | **`biquote`** | `biquote` → `yahoo_finance` → `twelve_data` → `tvdatafeed` → `stooq` |
-| 3 | **`BTCUSD`** | Bitcoin / U.S. Dollar | بیت‌کوین / دلار آمریکا | `CRYPTO` | 2 | **`biquote`** | `biquote` → `yahoo_finance` → `twelve_data` → `tvdatafeed` → `stooq` |
-| 4 | **`XAGUSD`** | Silver / U.S. Dollar | نقره جهانی / دلار آمریکا | `METALS` | 3 | **`biquote`** | `biquote` → `twelve_data` → `yahoo_finance` → `dukascopy` → `stooq` → `tvdatafeed` |
-| 5 | **`XAUUSD`** | Gold Spot / U.S. Dollar | طلای جهانی اسپات / دلار | `METALS` | 2 | **`twelve_data`** | `twelve_data` → `biquote` → `dukascopy` → `yahoo_finance` → `stooq` → `tvdatafeed` |
-| 6 | **`SPX500USD`** | US SPX 500 | شاخص S&P 500 آمریکا | `INDICES` | 2 | **`yahoo_finance`** | `yahoo_finance` → `tvdatafeed` → `twelve_data` → `stooq` |
-| 7 | **`NDQ`** | US 100 Index (Nasdaq 100) | شاخص نزدک ۱۰۰ آمریکا | `INDICES` | 2 | **`yahoo_finance`** | `yahoo_finance` → `tvdatafeed` → `twelve_data` → `stooq` |
-| 8 | **`EURUSD`** | Euro / U.S. Dollar | یورو / دلار آمریکا | `FX` | 4 | **`tvdatafeed`** | `tvdatafeed` → `twelve_data` → `biquote` → `dukascopy` → `yahoo_finance` → `stooq` |
-| 9 | **`USOIL`** | CFDs on WTI Crude Oil | نفت خام سبک تگزاس (WTI) | `ENERGY` | 2 | **`tvdatafeed`** | `tvdatafeed` → `yahoo_finance` → `biquote` → `twelve_data` → `stooq` |
-| 10–22 | **`NVDA, AMZN, TSLA, AAPL, GOOGL, MSFT, META, NFLX, AMD, UBER, NKE, IBM, SAN`** | سهام آمریکا و اروپا | سهام برتر بازار | `STOCKS` | 2 | **`yahoo_finance`** | `yahoo_finance` → `twelve_data` → `stooq` → `tvdatafeed` |
+برای جلوگیری از شلوغی واچ‌لیست اولیه کاربر، **فقط ۲۲ نماد اول** به‌صورت پیش‌فرض در واچ‌لیست روشن (`inWatchlist = true`) هستند و **۵۷ نماد جدید (ردیف‌های ۲۳ تا ۷۹)** در کاتالوگ برنامه، بخش **تنظیمات (`Settings`)** و جدول پایه دیتابیس (`chart_series` از طریق `migrations/005_expand_global_stocks_catalog.sql`) با **`inWatchlist = false`** و منبع فعال **`tvdatafeed`** ثبت شده‌اند تا کاربر هر کدام را خواست به‌صورت دستی به واچ‌لیست اضافه کند. هر دو کلاینت هنگام بارگذاری فضای کاری ذخیره‌شده، نمادهای جدید کاتالوگ پیش‌فرض را به‌صورت خودکار و بدون تغییر وضعیت واچ‌لیست نمادهای موجود به لیست تنظیمات اضافه (Merge) می‌کنند.
+
+| ردیف | نمادها (`symbolCode`) | توضیح / دسته‌بندی | طبقه (`category`) | اعشار | وضعیت پیش‌فرض واچ‌لیست | منبع فعال کلاینت |
+|---:|---|---|---|---:|---|---|
+| 1 | **`SPOTBRENT`** | Brent Crude (Spot) — نفت برنت اسپات | `ENERGY` | 3 | **فعال (`true`)** | `tvdatafeed` |
+| 2 | **`ETHUSD`** | Ethereum / U.S. Dollar — اتریوم | `CRYPTO` | 2 | **فعال (`true`)** | `tvdatafeed` |
+| 3 | **`BTCUSD`** | Bitcoin / U.S. Dollar — بیت‌کوین | `CRYPTO` | 2 | **فعال (`true`)** | `tvdatafeed` |
+| 4 | **`XAGUSD`** | Silver / U.S. Dollar — نقره جهانی | `METALS` | 3 | **فعال (`true`)** | `tvdatafeed` |
+| 5 | **`XAUUSD`** | Gold Spot / U.S. Dollar — طلای جهانی | `METALS` | 2 | **فعال (`true`)** | `tvdatafeed` |
+| 6 | **`SPX500USD`** | US SPX 500 — شاخص S&P 500 | `INDICES` | 2 | **فعال (`true`)** | `tvdatafeed` |
+| 7 | **`NDQ`** | US 100 Index (Nasdaq 100) — شاخص نزدک ۱۰۰ | `INDICES` | 2 | **فعال (`true`)** | `tvdatafeed` |
+| 8 | **`EURUSD`** | Euro / U.S. Dollar — یورو / دلار | `FX` | 4 | **فعال (`true`)** | `tvdatafeed` |
+| 9 | **`USOIL`** | CFDs on WTI Crude Oil — نفت خام تگزاس | `ENERGY` | 2 | **فعال (`true`)** | `tvdatafeed` |
+| 10–22 | **`NVDA, AMZN, TSLA, AAPL, GOOGL, MSFT, META, NFLX, AMD, UBER, NKE, IBM, SAN`** | ۱۳ سهام هسته اولیه واچ‌لیست | `STOCKS` | 2 | **فعال (`true`)** | `tvdatafeed` |
+| 23–33 | **`AVGO, MU, INTC, MRVL, AMAT, LRCX, QCOM, SMCI, DELL, SNDK, ANET`** | تراشه‌ها، نیمه‌هادی‌ها و سخت‌افزار هوش مصنوعی | `STOCKS` | 2 | غیرفعال (`false` — قابل فعال‌سازی در Settings) | `tvdatafeed` |
+| 34–42 | **`PLTR, ORCL, CRM, ADBE, CRWD, CSCO, APP, NBIS, CRWV`** | نرم‌افزار، ابری و هوش مصنوعی سازمانی | `STOCKS` | 2 | غیرفعال (`false` — قابل فعال‌سازی در Settings) | `tvdatafeed` |
+| 43–48 | **`SPCX, RKLB, GEV, BE, IONQ, RIVN`** | فضا، انرژی نو و فناوری‌های آینده | `STOCKS` | 2 | غیرفعال (`false` — قابل فعال‌سازی در Settings) | `tvdatafeed` |
+| 49–58 | **`JPM, BAC, GS, V, MA, BRK.B, HOOD, MSTR, PYPL, COIN`** | بانک‌ها، فین‌تک و موسسات مالی آمریکا | `STOCKS` | 2 | غیرفعال (`false` — قابل فعال‌سازی در Settings) | `tvdatafeed` |
+| 59–64 | **`WMT, COST, DIS, SBUX, MCD, KO`** | خرده‌فروشی، سرگرمی و برندهای مصرفی | `STOCKS` | 2 | غیرفعال (`false` — قابل فعال‌سازی در Settings) | `tvdatafeed` |
+| 65–69 | **`LLY, UNH, PFE, XOM, CVX`** | داروسازی، سلامت و غول‌های نفتی آمریکا | `STOCKS` | 2 | غیرفعال (`false` — قابل فعال‌سازی در Settings) | `tvdatafeed` |
+| 70–79 | **`TSM, ASML, SSNLF, SKHY, BABA, NVO, TM, SAP, HSBC, 2222.SR`** | غول‌های بین‌المللی و بازارهای آسیا/اروپا/خاورمیانه | `STOCKS` | 2 | غیرفعال (`false` — قابل فعال‌سازی در Settings) | `tvdatafeed` |
+
+> **نگاشت نمادهای نقطه‌دار (`Dotted Tickers`) در دیتابیس و آداپتورها:** برای `BRK.B` شناسه سری `chart_brkb_stock` (و در TradingView برابر `NYSE:BRK.B`) و برای آرامکو `2222.SR` شناسه سری `chart_2222sr_stock` (و در TradingView برابر `TADAWUL:2222`) در تمام لایه‌های Kotlin، JS و PHP/MariaDB یکسان‌سازی شده است.
 
 ---
 

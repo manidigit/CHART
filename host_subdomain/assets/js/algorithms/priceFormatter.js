@@ -295,6 +295,13 @@ export const PriceFormatter = {
       'SPX500USD', 'NAS100', 'NAS100USD', 'US30', 'US500', 'US100',
       'NDQ', 'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT',
       'META', 'NFLX', 'AMD', 'UBER', 'NKE', 'IBM', 'SAN',
+      'AVGO', 'MU', 'INTC', 'MRVL', 'AMAT', 'LRCX', 'QCOM', 'SMCI', 'DELL', 'SNDK', 'ANET',
+      'PLTR', 'ORCL', 'CRM', 'ADBE', 'CRWD', 'CSCO', 'APP', 'NBIS', 'CRWV',
+      'SPCX', 'RKLB', 'GEV', 'BE', 'IONQ', 'RIVN',
+      'JPM', 'BAC', 'GS', 'V', 'MA', 'BRK.B', 'BRKB', 'HOOD', 'MSTR', 'PYPL', 'COIN',
+      'WMT', 'COST', 'DIS', 'SBUX', 'MCD', 'KO',
+      'LLY', 'UNH', 'PFE', 'XOM', 'CVX',
+      'TSM', 'ASML', 'SSNLF', 'SKHY', 'BABA', 'NVO', 'TM', 'SAP', 'HSBC', '2222.SR', '2222SR',
     ];
     if (
       usEquities.includes(code) ||

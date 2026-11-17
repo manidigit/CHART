@@ -44,13 +44,26 @@ final class TvDatafeedAdapter
             'BRENT_FUTURES' => 'NYMEX',
             'USOIL' => 'TVC',
             'BTCUSD', 'ETHUSD' => 'BITSTAMP',
-            'NDQ', 'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD' => 'NASDAQ',
-            'UBER', 'NKE', 'IBM', 'SAN' => 'NYSE',
+            'NDQ', 'NVDA', 'AMZN', 'TSLA', 'AAPL', 'GOOGL', 'MSFT', 'META', 'NFLX', 'AMD',
+            'AVGO', 'MU', 'INTC', 'MRVL', 'AMAT', 'LRCX', 'QCOM', 'SMCI', 'SNDK',
+            'PLTR', 'ADBE', 'CRWD', 'CSCO', 'APP', 'NBIS', 'CRWV', 'RKLB', 'RIVN',
+            'HOOD', 'MSTR', 'PYPL', 'COIN', 'COST', 'SBUX', 'ASML' => 'NASDAQ',
+            'UBER', 'NKE', 'IBM', 'SAN',
+            'DELL', 'ANET', 'ORCL', 'CRM', 'GEV', 'BE', 'IONQ',
+            'JPM', 'BAC', 'GS', 'V', 'MA', 'BRKB', 'WMT', 'DIS', 'MCD', 'KO',
+            'LLY', 'UNH', 'PFE', 'XOM', 'CVX', 'TSM', 'BABA', 'NVO', 'TM', 'SAP', 'HSBC' => 'NYSE',
+            'SPCX' => 'AMEX',
+            'SSNLF' => 'OTC',
+            'SKHY' => 'KRX',
+            '2222SR' => 'TADAWUL',
             default => 'PEPPERSTONE',
         };
         $tvSymbol = match ($cleanSymbol) {
             'BRENT_FUTURES' => 'BZ1!',
             'NDQ' => 'NDX',
+            'BRKB' => 'BRK.B',
+            'SKHY' => '000660',
+            '2222SR' => '2222',
             default => $cleanSymbol,
         };
 
@@ -103,12 +116,15 @@ final class TvDatafeedAdapter
             // Primary: Pure PHP TradingView WebSocket Client (works on shared hosts without exec)
             $liveCandles = self::fetchLiveFromTradingViewWs($tvSymbol, $exchange, $normTf, $barsToFetch, $nowMs);
 
-            // Secondary: If H4, also aggregate closed H1 bars from TradingView so 00:00/04:00/08:00/12:00/16:00/20:00 UTC buckets are exact
+            // Secondary: On H4, only fetch & aggregate H1 if primary H4 bars are empty or still behind $expectedLastClosedOpenMs
             if ($normTf === 'H4') {
-                $liveH1 = self::fetchLiveFromTradingViewWs($tvSymbol, $exchange, 'H1', min(1500, $barsToFetch * 4), $nowMs);
-                if (!empty($liveH1)) {
-                    $aggH4 = TimeframeAggregator::aggregateCandles($liveH1, 'H4', $nowMs, $cleanSymbol);
-                    $liveCandles = self::mergeCandlesByOpenMs($liveCandles, $aggH4, 'H4', $nowMs);
+                $latestPrimaryMs = !empty($liveCandles) ? (int) $liveCandles[count($liveCandles) - 1]['open_time_utc_ms'] : 0;
+                if ($latestPrimaryMs < $expectedLastClosedOpenMs) {
+                    $liveH1 = self::fetchLiveFromTradingViewWs($tvSymbol, $exchange, 'H1', min(1500, $barsToFetch * 4), $nowMs);
+                    if (!empty($liveH1)) {
+                        $aggH4 = TimeframeAggregator::aggregateCandles($liveH1, 'H4', $nowMs, $cleanSymbol);
+                        $liveCandles = self::mergeCandlesByOpenMs($liveCandles, $aggH4, 'H4', $nowMs);
+                    }
                 }
             }
 
@@ -261,7 +277,7 @@ final class TvDatafeedAdapter
             'tls://data.tradingview.com:443',
             $errno,
             $errstr,
-            8.0,
+            4.5,
             STREAM_CLIENT_CONNECT,
             $ctx
         );
@@ -269,7 +285,7 @@ final class TvDatafeedAdapter
             return [];
         }
 
-        stream_set_timeout($sock, 8);
+        stream_set_timeout($sock, 4);
 
         try {
             $wsKey = base64_encode(random_bytes(16));
@@ -311,7 +327,7 @@ final class TvDatafeedAdapter
             self::wsSendText($sock, self::tvPackMsg('create_series', [$chartSession, 's1', 's1', 'symbol_1', $tvCode, $nBars]));
 
             $rawBuffer = '';
-            $deadline = microtime(true) + 8.5;
+            $deadline = microtime(true) + 4.5;
             while (microtime(true) < $deadline && !feof($sock)) {
                 $frame = self::wsRecvFrame($sock);
                 if ($frame === null) {

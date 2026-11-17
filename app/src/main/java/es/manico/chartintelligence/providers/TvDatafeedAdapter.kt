@@ -271,7 +271,8 @@ class TvDatafeedAdapter(
             "W1", "1W" -> "1W"
             else -> "15"
         }
-        val (exchange, tvTicker) = when (symbolCode.uppercase()) {
+        val upperSym = symbolCode.trim().uppercase()
+        val (exchange, tvTicker) = when (upperSym) {
             "SPOTBRENT" -> "PEPPERSTONE" to "SPOTBRENT"
             "BRENT_FUTURES" -> "NYMEX" to "BZ1!"
             "USOIL" -> "TVC" to "USOIL"
@@ -284,20 +285,20 @@ class TvDatafeedAdapter(
             "ETHUSD" -> "COINBASE" to "ETHUSD"
             "SPX500USD" -> "OANDA" to "SPX500USD"
             "NDQ" -> "NASDAQ" to "NDX"
-            "NVDA" -> "NASDAQ" to "NVDA"
-            "AMZN" -> "NASDAQ" to "AMZN"
-            "TSLA" -> "NASDAQ" to "TSLA"
-            "AAPL" -> "NASDAQ" to "AAPL"
-            "GOOGL" -> "NASDAQ" to "GOOGL"
-            "MSFT" -> "NASDAQ" to "MSFT"
-            "META" -> "NASDAQ" to "META"
-            "NFLX" -> "NASDAQ" to "NFLX"
-            "AMD" -> "NASDAQ" to "AMD"
-            "UBER" -> "NYSE" to "UBER"
-            "NKE" -> "NYSE" to "NKE"
-            "IBM" -> "NYSE" to "IBM"
-            "SAN" -> "NYSE" to "SAN"
-            else -> "PEPPERSTONE" to symbolCode.uppercase()
+            "UBER", "NKE", "IBM", "SAN",
+            "DELL", "ANET", "ORCL", "CRM", "GEV", "BE", "IONQ",
+            "JPM", "BAC", "GS", "V", "MA", "WMT", "DIS", "MCD", "KO",
+            "LLY", "UNH", "PFE", "XOM", "CVX", "TSM", "BABA", "NVO", "TM", "SAP", "HSBC" -> "NYSE" to upperSym
+            "BRK.B", "BRKB" -> "NYSE" to "BRK.B"
+            "SPCX" -> "AMEX" to "SPCX"
+            "SSNLF" -> "OTC" to "SSNLF"
+            "SKHY" -> "KRX" to "000660"
+            "2222.SR", "2222SR" -> "TADAWUL" to "2222"
+            "NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD",
+            "AVGO", "MU", "INTC", "MRVL", "AMAT", "LRCX", "QCOM", "SMCI", "SNDK",
+            "PLTR", "ADBE", "CRWD", "CSCO", "APP", "NBIS", "CRWV", "RKLB", "RIVN",
+            "HOOD", "MSTR", "PYPL", "COIN", "COST", "SBUX", "ASML" -> "NASDAQ" to upperSym
+            else -> "PEPPERSTONE" to upperSym
         }
 
         val stepMs = UtcTimeAnchorAlgorithm.timeframeStepMillis(normTf)

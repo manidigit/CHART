@@ -1,10 +1,7 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.43.0';
 import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.43.0';
-import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba, getCachedOrAggregatedCandles } from '../core/store.js?v=1.43.0';
-import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=2.0.0';
-import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=2.0.0';
-import { RENDER_MODES, normalizeRenderMode, clampHorizonBars } from '../forecast/forecastContract.js?v=2.0.0';
+import { state, getInstrumentSpec, getIndicatorColorPalette, hexToRgba } from '../core/store.js?v=1.43.0';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -100,7 +97,6 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       roc12: null,
       smc: null,
       pivots: null,
-      futureProjection: null,
       vpKey: null,
       vp: null,
     };
@@ -162,43 +158,6 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       cache.smc || (cache.smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3)),
     getPivotPoints: () =>
       cache.pivots || (cache.pivots = TechnicalIndicators.computePivotPoints(candles, tf, symCode, pivType)),
-    getFutureProjection: () => {
-      const prefs = state.chartPreferences || {};
-      const horizonBars = clampHorizonBars(tab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
-      const renderMode = normalizeRenderMode(tab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.FAN_CHART);
-      const selectedScenarioId = tab.selectedScenarioId || prefs.selectedScenarioId || 'SCENARIO_A';
-      const selectedModelId = String(tab.selectedForecastModelId || prefs.selectedForecastModelId || 'AUTO');
-      if (prefs.forecastPluginConfig) {
-        defaultForecastRegistry.applyConfig(prefs.forecastPluginConfig);
-      }
-      const lowerInfo = resolveLowerTimeframeInfo(tf);
-      const lowerCandles = lowerInfo ? getCachedOrAggregatedCandles(symCode, prov, lowerInfo.timeframe) : [];
-      const lowerLast = lowerCandles.length > 0 ? lowerCandles[lowerCandles.length - 1] : null;
-      const higherTf = tf === 'M15' ? 'H1' : tf === 'M30' ? 'H4' : tf === 'H1' ? 'H4' : tf === 'H4' ? 'D1' : tf === 'D1' ? 'W1' : '';
-      const higherCandles = higherTf ? getCachedOrAggregatedCandles(symCode, prov, higherTf) : [];
-      const higherLast = higherCandles.length > 0 ? higherCandles[higherCandles.length - 1] : null;
-      const fKey = `${symCode}_${prov}_${tf}_${horizonBars}_${renderMode}_${selectedScenarioId}_${selectedModelId}_${candles.length}_${lowerCandles.length}_${lowerLast?.close || 0}_${higherCandles.length}_${higherLast?.close || 0}_${JSON.stringify(prefs.forecastPluginConfig || '')}`;
-      if (cache.futureProjKey !== fKey || !cache.futureProjectionResult) {
-        cache.futureProjKey = fKey;
-        cache.futureProjectionResult = ForecastEngine.project(candles, {
-          symbolCode: symCode,
-          providerId: prov,
-          timeframe: tf,
-          horizonBars,
-          renderMode,
-          selectedScenarioId,
-          selectedModelId,
-          registry: defaultForecastRegistry,
-          higherTimeframe: higherTf,
-          higherTimeframeCandles: higherCandles,
-          lowerTimeframe: lowerInfo ? lowerInfo.timeframe : '',
-          lowerTimeframeCandles: lowerCandles,
-          skipWalkForward: false,
-        });
-      }
-      return cache.futureProjectionResult.points || [];
-    },
-    getFutureProjectionResult: () => cache.futureProjectionResult || null,
     getVolumeProfile: (visible, startIdx, endIdx) => {
       const spec = getInstrumentSpec(symCode, prov);
       const vKey = `${startIdx}_${endIdx}_${spec.volumeType}`;
@@ -322,10 +281,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const bbPeriod = Math.max(5, Math.min(200, Number(prefs.bollingerPeriod || 20)));
   const bbStdDev = Math.max(0.5, Math.min(5.0, Number(prefs.bollingerStdDev || 2.0)));
   const indCache = getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev);
-  const futureProj =
-    tab.showFutureProjection && offset === 0 && candles.length >= 10
-      ? indCache.getFutureProjection() || []
-      : [];
 
   let rawMin = Infinity;
   let rawMax = -Infinity;
@@ -345,13 +300,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       highCandleIdx = i;
     }
   }
-  for (let k = 0; k < futureProj.length; k++) {
-    const fp = futureProj[k];
-    const loVal = Number(fp.q10 ?? fp.low);
-    const hiVal = Number(fp.q90 ?? fp.high);
-    if (Number.isFinite(loVal)) rawMin = Math.min(rawMin, loVal);
-    if (Number.isFinite(hiVal)) rawMax = Math.max(rawMax, hiVal);
-  }
   if (!Number.isFinite(rawMin) || !Number.isFinite(rawMax)) return;
 
   const isAutoY = tab.isAutoScaleY !== false;
@@ -360,9 +308,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const midPrice = (rawMax + rawMin) / 2.0 + (isAutoY ? 0 : Number(tab.verticalPriceOffset || 0.0));
   const halfRange = (baseRange * scaleFactor) / 2.0;
   const pad = halfRange * 0.16;
-  const topPadScale = futureProj.length > 0 ? halfRange * 0.30 : pad;
   const minP = Math.max(isLog ? 0.000001 : -Infinity, midPrice - halfRange - pad);
-  const maxP = midPrice + halfRange + topPadScale;
+  const maxP = midPrice + halfRange + pad;
 
   const toScaleVal = (p) => (isLog ? Math.log(Math.max(Number(p), 0.000001)) : Number(p));
   const fromScaleVal = (s) => (isLog ? Math.exp(s) : s);
@@ -420,17 +367,14 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     );
   }
 
-  const effectiveSlots =
-    futureProj.length > 0
-      ? visible.length + futureProj.length
-      : Math.max(
-          visible.length,
-          Math.min(visibleCount, candles.length + Math.min(12, Math.round(visible.length * 0.08)))
-        );
+  const effectiveSlots = Math.max(
+    visible.length,
+    Math.min(visibleCount, candles.length + Math.min(12, Math.round(visible.length * 0.08)))
+  );
   const slotW = chartW / Math.max(1, effectiveSlots);
   const bodyW = Math.max(1.0, Math.min(20, slotW * 0.68));
   const idxToX = (idx) => (idx + 0.5) * slotW;
-  const pastRightLimitX = futureProj.length > 0 ? visible.length * slotW : chartW;
+  const pastRightLimitX = chartW;
 
   // Vertical Time Grid + Smart Calendar-Aligned X-Axis Labels
   const smartTicks = PriceFormatter.computeSmartTimeAxisTicks(visible, pastRightLimitX, tab.timeframe, tzMode);
@@ -449,59 +393,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     const lblX = Math.max(6, Math.min(pastRightLimitX - lblW - 4, x - lblW / 2));
     ctx.fillStyle = tick.isMajor ? majorTickColor : textColor;
     ctx.fillText(tick.text, lblX, topPad + totalChartH + 17);
-  }
-
-  // Future Projection X-Axis Milestone Labels (+5, +10, +15, +20, +25, +30..+60 with precise signed % change)
-  if (futureProj.length > 0) {
-    const milestones = [5, 10, 15, 20, 25, 30, 40, 50, 60].filter((s) => s <= futureProj.length);
-    if (!milestones.includes(futureProj.length)) {
-      milestones.push(futureProj.length);
-    }
-    let lastDrawnRightX = pastRightLimitX + 2;
-    for (const stepNum of milestones) {
-      const fp = futureProj[stepNum - 1];
-      if (!fp) continue;
-      const fx = idxToX(visible.length + stepNum - 1);
-      if (fx > chartW) continue;
-
-      const stepLbl = `+${stepNum}`;
-      const pctVal = Number(fp.pctChangeFromLast || 0);
-      const pctDigits = Math.abs(pctVal) < 10 ? 2 : 1;
-      const pctLbl = stepNum === 5 ? '(Future)' : `${pctVal >= 0 ? '+' : ''}${pctVal.toFixed(pctDigits)}%`;
-
-      ctx.save();
-      ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      const sw = ctx.measureText(stepLbl).width;
-      ctx.font = '9px "JetBrains Mono", monospace';
-      const pw = ctx.measureText(pctLbl).width;
-      const lblMaxW = Math.max(sw, pw);
-
-      const boxCenterX = Math.max(
-        pastRightLimitX + lblMaxW / 2 + 4,
-        Math.min(chartW - lblMaxW / 2 - 3, fx)
-      );
-      const boxLeftX = boxCenterX - lblMaxW / 2;
-      if (boxLeftX < lastDrawnRightX + 4 && stepNum !== futureProj.length) {
-        ctx.restore();
-        continue;
-      }
-
-      ctx.strokeStyle = gridColor;
-      ctx.beginPath();
-      ctx.moveTo(fx, topPad);
-      ctx.lineTo(fx, topPad + totalChartH);
-      ctx.stroke();
-
-      ctx.font = 'bold 10px "JetBrains Mono", monospace';
-      ctx.fillStyle = '#F59E0B';
-      ctx.fillText(stepLbl, boxCenterX - sw / 2, topPad + totalChartH + 11);
-
-      ctx.font = '9px "JetBrains Mono", monospace';
-      ctx.fillStyle = stepNum === 5 ? textColor : pctVal >= 0 ? '#D1D4DC' : bearColor;
-      ctx.fillText(pctLbl, boxCenterX - pw / 2, topPad + totalChartH + 22);
-      lastDrawnRightX = boxCenterX + lblMaxW / 2;
-      ctx.restore();
-    }
   }
 
   // Data Boundary Marker when scrolled to beginning of loaded history (placed at bottom-left of price pane to avoid OHLC overlay collision)
@@ -576,10 +467,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   if (tab.showVolumeProfile && visible.length >= 5) {
     const vp = indCache.getVolumeProfile(visible, startIdx, endIdx);
     if (vp && Array.isArray(vp.bins)) {
-      const maxProfileW = futureProj.length > 0
-        ? Math.min(82, Math.max(40, (chartW - pastRightLimitX) * 0.34))
-        : Math.min(130, chartW * 0.22);
-      const barAlphaScale = futureProj.length > 0 ? 0.65 : 1.0;
+      const maxProfileW = Math.min(130, chartW * 0.22);
+      const barAlphaScale = 1.0;
       for (const bin of vp.bins) {
         const yTop = priceToY(bin.high);
         const yBot = priceToY(bin.low);
@@ -641,10 +530,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         ctx.font = '600 9.5px "JetBrains Mono", sans-serif';
         const estW = ctx.measureText(estLabel).width + 12;
         const estX = Math.max(8, chartW - estW - 6);
-        const estY = futureProj.length > 0 ? topPad + chartH - 22 : topPad + 6;
-        if (futureProj.length > 0) {
-          estVolBadgeReservedBottom = 24;
-        }
+        const estY = topPad + 6;
         ctx.fillStyle = isDark ? hexToRgba(indPal.vrvpPoc, 0.16) : hexToRgba(indPal.vrvpPoc, 0.2);
         ctx.strokeStyle = hexToRgba(indPal.vrvpPoc, 0.55);
         ctx.lineWidth = 1;
@@ -1201,229 +1087,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // Forecast Engine V2.1: Calibrated Quantile Fan Chart (default: FAN_CHART)
-  if (futureProj.length > 0) {
-    const dividerX = visible.length * slotW;
-    const activeRenderMode = normalizeRenderMode(
-      tab.forecastRenderMode || (state.chartPreferences && state.chartPreferences.forecastRenderMode) || RENDER_MODES.FAN_CHART
-    );
-    const showFan = activeRenderMode === RENDER_MODES.FAN_CHART || activeRenderMode === RENDER_MODES.HYBRID;
-    const showGhost = activeRenderMode === RENDER_MODES.GHOST_CANDLES || activeRenderMode === RENDER_MODES.HYBRID;
-
-    ctx.save();
-
-    // Subtle right-side future zone tint
-    ctx.fillStyle = isDark ? 'rgba(148, 130, 190, 0.04)' : 'rgba(148, 130, 190, 0.06)';
-    ctx.fillRect(dividerX, topPad, chartW - dividerX, chartH);
-
-    // Fan quantile bands (q10..q90 outer corridor & q25..q75 inner corridor)
-    const lastActual = visible[visible.length - 1];
-    const anchorX = idxToX(visible.length - 1);
-    const anchorY = priceToY(Number(lastActual.close));
-
-    if (showFan) {
-      // q10..q90 outer band
-      ctx.fillStyle = isDark ? 'rgba(56, 189, 248, 0.13)' : 'rgba(41, 98, 255, 0.11)';
-      ctx.beginPath();
-      ctx.moveTo(anchorX, anchorY);
-      futureProj.forEach((fp, kIdx) => {
-        ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(fp.q90 ?? fp.high)));
-      });
-      for (let kIdx = futureProj.length - 1; kIdx >= 0; kIdx--) {
-        ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(futureProj[kIdx].q10 ?? futureProj[kIdx].low)));
-      }
-      ctx.closePath();
-      ctx.fill();
-
-      // q25..q75 interquartile band
-      ctx.fillStyle = isDark ? 'rgba(245, 158, 11, 0.20)' : 'rgba(245, 158, 11, 0.18)';
-      ctx.beginPath();
-      ctx.moveTo(anchorX, anchorY);
-      futureProj.forEach((fp, kIdx) => {
-        ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(fp.q75 ?? fp.high)));
-      });
-      for (let kIdx = futureProj.length - 1; kIdx >= 0; kIdx--) {
-        ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(futureProj[kIdx].q25 ?? futureProj[kIdx].low)));
-      }
-      ctx.closePath();
-      ctx.fill();
-    }
-
-    // Optional quantile envelope bars derived strictly from q25..q75 and q50 (no synthetic wicks/waves)
-    if (showGhost) {
-      let prevMed = Number(lastActual.close);
-      futureProj.forEach((fp, kIdx) => {
-        const x = idxToX(visible.length + kIdx);
-        const openP = Number.isFinite(Number(fp.open)) ? Number(fp.open) : prevMed;
-        const closeP = Number.isFinite(Number(fp.close)) ? Number(fp.close) : Number(fp.q50);
-        const highP = Number.isFinite(Number(fp.high)) ? Number(fp.high) : Math.max(openP, closeP, Number(fp.q75));
-        const lowP = Number.isFinite(Number(fp.low)) ? Number(fp.low) : Math.min(openP, closeP, Number(fp.q25));
-        prevMed = closeP;
-        const highY = priceToY(highP);
-        const lowY = priceToY(lowP);
-        const openY = priceToY(openP);
-        const closeY = priceToY(closeP);
-        const isBull = closeP >= openP;
-        const baseCol = isBull ? bullColor : bearColor;
-
-        ctx.strokeStyle = hexToRgba(baseCol, 0.72);
-        ctx.lineWidth = 1.15;
-        ctx.beginPath();
-        ctx.moveTo(x, highY);
-        ctx.lineTo(x, lowY);
-        ctx.stroke();
-
-        const topY = Math.min(openY, closeY);
-        const bodyH = Math.max(2, Math.abs(closeY - openY));
-        ctx.fillStyle = hexToRgba(baseCol, activeRenderMode === RENDER_MODES.HYBRID ? 0.52 : 0.72);
-        ctx.fillRect(x - bodyW / 2, topY, bodyW, bodyH);
-      });
-    }
-
-    // Optional Illustrative Empirical Analog Medoids (strictly causal, zero probabilities claimed)
-    const fullFcResult = indCache.getFutureProjectionResult && indCache.getFutureProjectionResult();
-    if (
-      fullFcResult &&
-      fullFcResult.selectedChartModelId === 'empirical_analogs' &&
-      Array.isArray(fullFcResult.representativePaths)
-    ) {
-      const repColors = ['#38BDF8', '#94A3B8', '#A855F7'];
-      fullFcResult.representativePaths.forEach((rep, rIdx) => {
-        if (!Array.isArray(rep.closes) || rep.closes.length === 0) return;
-        const col = repColors[rIdx % repColors.length];
-        ctx.save();
-        ctx.strokeStyle = col;
-        ctx.globalAlpha = 0.58;
-        ctx.lineWidth = 1.3;
-        ctx.setLineDash([3, 4]);
-        ctx.beginPath();
-        ctx.moveTo(anchorX, anchorY);
-        rep.closes.slice(0, futureProj.length).forEach((cv, kIdx) => {
-          ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(cv)));
-        });
-        ctx.stroke();
-        ctx.setLineDash([]);
-        ctx.restore();
-      });
-    }
-
-    // Median q50 trajectory curve
-    ctx.strokeStyle = '#F59E0B';
-    ctx.lineWidth = 1.8;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    ctx.moveTo(anchorX, anchorY);
-    futureProj.forEach((fp, kIdx) => {
-      ctx.lineTo(idxToX(visible.length + kIdx), priceToY(Number(fp.q50 ?? fp.close)));
-    });
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Vertical dashed Present Bar Divider
-    ctx.strokeStyle = isDark ? 'rgba(255, 255, 255, 0.85)' : 'rgba(15, 23, 42, 0.80)';
-    ctx.lineWidth = 1.6;
-    ctx.setLineDash([5, 4]);
-    ctx.beginPath();
-    ctx.moveTo(dividerX, topPad + 4);
-    ctx.lineTo(dividerX, topPad + chartH);
-    ctx.stroke();
-    ctx.setLineDash([]);
-
-    // Top Header Banner: PAST (Actual Data) <- | -> Forecast Horizon
-    const headerY = topPad + 16;
-    const arrowY = topPad + 24;
-    const subY = topPad + 37;
-
-    const leftSpan = Math.max(60, dividerX - 16);
-    const pastCenterX = dividerX / 2;
-    ctx.fillStyle = isDark ? '#FFFFFF' : '#0F172A';
-    ctx.font = 'bold 12px "Inter", system-ui, sans-serif';
-    ctx.textAlign = 'center';
-    ctx.fillText('PAST', pastCenterX, headerY);
-
-    ctx.strokeStyle = '#38BDF8';
-    ctx.lineWidth = 1.8;
-    ctx.beginPath();
-    ctx.moveTo(dividerX - 6, arrowY);
-    ctx.lineTo(Math.max(12, dividerX - leftSpan), arrowY);
-    ctx.stroke();
-    const leftTipX = Math.max(12, dividerX - leftSpan);
-    ctx.fillStyle = '#38BDF8';
-    ctx.beginPath();
-    ctx.moveTo(leftTipX, arrowY);
-    ctx.lineTo(leftTipX + 7, arrowY - 4);
-    ctx.lineTo(leftTipX + 7, arrowY + 4);
-    ctx.closePath();
-    ctx.fill();
-
-    ctx.fillStyle = textColor;
-    ctx.font = '10.5px "Inter", system-ui, sans-serif';
-    ctx.fillText('(Actual Data)', pastCenterX, subY);
-
-    const rightSpan = Math.max(60, chartW - dividerX - 16);
-    const futCenterX = dividerX + (chartW - dividerX) / 2;
-    ctx.fillStyle = '#F59E0B';
-    ctx.font = 'bold 11.5px "Inter", system-ui, sans-serif';
-    ctx.fillText(`Forecast Horizon (+${futureProj.length} bars)`, futCenterX, headerY);
-
-    ctx.strokeStyle = '#F59E0B';
-    ctx.lineWidth = 1.8;
-    ctx.setLineDash([4, 3]);
-    ctx.beginPath();
-    ctx.moveTo(dividerX + 6, arrowY);
-    ctx.lineTo(Math.min(chartW - 12, dividerX + rightSpan), arrowY);
-    ctx.stroke();
-    ctx.setLineDash([]);
-    const rightTipX = Math.min(chartW - 12, dividerX + rightSpan);
-    ctx.fillStyle = '#F59E0B';
-    ctx.beginPath();
-    ctx.moveTo(rightTipX, arrowY);
-    ctx.lineTo(rightTipX - 7, arrowY - 4);
-    ctx.lineTo(rightTipX - 7, arrowY + 4);
-    ctx.closePath();
-    ctx.fill();
-
-    const modelNameMap = {
-      naive_persistence: 'Baseline (Naive)',
-      empirical_analogs: 'Causal Analogs',
-      ensemble: 'Ensemble (V2)',
-      native_arima_diff: 'ARIMA(p,d,q)',
-      native_prophet_decomp: 'Prophet Approx',
-      native_seq_recurrent_approx: 'Recurrent Approx',
-      native_quantile_attention_approx: 'TFT Attn Approx',
-      py_arima_statsmodels: 'ARIMA (Py)',
-      py_prophet: 'Prophet (Py)',
-      py_lstm_torch: 'LSTM (Py)',
-      py_tft_torch: 'TFT (Py)',
-    };
-    const modeLabelMap = {
-      AUTO_OOS_BEST: 'OOS Winner',
-      MANUAL_OVERRIDE: 'Manual',
-      NO_CLEAR_WINNER_BASELINE: 'No OOS Edge',
-      INSUFFICIENT_EVIDENCE_BASELINE: 'Insufficient Evidence',
-    };
-    const activeModelLabel = fullFcResult?.selectedChartModelId
-      ? (modelNameMap[fullFcResult.selectedChartModelId] || fullFcResult.selectedChartModelId)
-      : '';
-    const activeModeTag = fullFcResult?.selectionMode
-      ? (modeLabelMap[fullFcResult.selectionMode] || '')
-      : '';
-    const statusTag = fullFcResult?.status ? fullFcResult.status : '';
-    const bannerSubtitle = [statusTag, activeRenderMode, activeModelLabel, activeModeTag, 'q10–q90']
-      .filter(Boolean)
-      .join(' · ');
-    ctx.fillStyle = textColor;
-    ctx.font = '10px "Inter", system-ui, sans-serif';
-    ctx.fillText(`(${bannerSubtitle})`, futCenterX, subY, Math.max(80, chartW - dividerX - 14));
-
-    ctx.restore();
-  }
-
-  // Render Unified Right-Docked Horizontal & Scenario Labels (VAH, POC, VAL, Pivots, Alt A/B/C) with collision-avoidance
+  // Render Unified Right-Docked Horizontal Labels (VAH, POC, VAL, Pivots) with collision-avoidance
   if (rightLevelLabels.length > 0) {
     rightLevelLabels.sort((a, b) => a.y - b.y);
     const minGap = 14;
-    const minTopY = topPad + (futureProj.length > 0 ? 48 : 12);
+    const minTopY = topPad + 12;
     for (let i = 0; i < rightLevelLabels.length; i++) {
       if (rightLevelLabels[i].y < minTopY) {
         rightLevelLabels[i].y = minTopY;

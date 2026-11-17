@@ -674,6 +674,15 @@ html[data-theme='dark'] .tv-tool-btn.active {
   color: #5b8def;
 }
 
+.tv-tool-btn.is-disabled,
+.tv-tool-btn:disabled,
+.btn.is-disabled,
+.btn:disabled {
+  opacity: 0.42;
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
 .tv-icon-btn {
   width: 28px;
   height: 28px;

@@ -1143,12 +1143,15 @@ fun SettingsScreen(
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
 
+                            val context = androidx.compose.ui.platform.LocalContext.current
                             val filteredSymbols = symbols.filter {
                                 val matchesCat = matchesSettingsMarketCategory(it.symbolCode, selectedMarketCategory)
                                 val matchesQ = if (symbolSearchQuery.isNotBlank()) {
                                     val q = symbolSearchQuery.trim().uppercase()
+                                    val resTitle = it.titleResId?.let { id -> context.getString(id).uppercase() }
                                     it.symbolCode.uppercase().contains(q) ||
-                                        (it.customTitle?.uppercase()?.contains(q) == true)
+                                        (it.customTitle?.uppercase()?.contains(q) == true) ||
+                                        (resTitle?.contains(q) == true)
                                 } else {
                                     true
                                 }

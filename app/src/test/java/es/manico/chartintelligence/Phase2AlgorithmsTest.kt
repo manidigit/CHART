@@ -450,15 +450,6 @@ class Phase2AlgorithmsTest {
         assertNotNull(pivots)
         assertTrue(pivots!!.r2 > pivots.r1 && pivots.r1 > pivots.p && pivots.p > pivots.s1 && pivots.s1 > pivots.s2)
 
-        for (tf in listOf("M15", "M30", "H1", "H4", "D1", "W1")) {
-            val projected = Phase2IndicatorsAlgorithm.computeFutureCandlestickProjection(sampleBars, tf, 30)
-            assertEquals("Expected 30 projected bars (>= 10) for $tf", 30, projected.size)
-            assertTrue(projected.size >= 10)
-            assertEquals(1, projected.first().stepAhead)
-            assertEquals(30, projected.last().stepAhead)
-            assertTrue(projected.all { it.high >= maxOf(it.open, it.close) && it.low <= minOf(it.open, it.close) })
-        }
-
         // 5. SYNC-01: WorkspaceRepository round-trip persistence of volumePaneRatio=0.16f, timezoneMode=LOCAL, and indicators
         val context = ApplicationProvider.getApplicationContext<Context>()
         val repo = WorkspaceRepository(context)
@@ -479,8 +470,7 @@ class Phase2AlgorithmsTest {
             showRsi14 = true,
             showMacd = true,
             showOverlayMacd = true,
-            showPivotPoints = true,
-            showFutureProjection = true
+            showPivotPoints = true
         )
         val wsJson = repo.buildWorkspaceJson(repo.loadSymbolCatalog(), prefs, emptyMap(), listOf(tab))
         // Simulate resetting local state and applying cloud workspace JSON
@@ -498,7 +488,7 @@ class Phase2AlgorithmsTest {
         assertTrue(hydratedTab.showMacd)
         assertTrue(hydratedTab.showOverlayMacd)
         assertTrue(hydratedTab.showPivotPoints)
-        assertTrue(hydratedTab.showFutureProjection)
+        assertFalse(hydratedTab.showFutureProjection)
     }
 
     @get:org.junit.Rule

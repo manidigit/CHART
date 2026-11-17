@@ -85,11 +85,6 @@ data class Phase1UiState(
     val importBatches: List<ImportBatchDto> = emptyList(),
     val importStatusMessage: String? = null,
     val activeGapAuditReport: GapReport? = null,
-    val forecastLocalLedger: List<es.manico.chartintelligence.forecast.ForecastLedgerEntry> = emptyList(),
-    val forecastServerLedger: List<es.manico.chartintelligence.forecast.ForecastLedgerEntry> = emptyList(),
-    val forecastLedgerVerifyResult: es.manico.chartintelligence.forecast.LedgerVerifyResult = es.manico.chartintelligence.forecast.LedgerVerifyResult(true, 0, -1, "Empty ledger"),
-    val forecastLifecycleEvents: List<es.manico.chartintelligence.forecast.ForecastLifecycleEvent> = emptyList(),
-    val forecastLifecycleVerifyResult: es.manico.chartintelligence.forecast.LifecycleVerifyResult = es.manico.chartintelligence.forecast.LifecycleVerifyResult(true, 0, -1, "Empty lifecycle log"),
     @param:StringRes val statusBannerResId: Int? = null
 ) {
     val watchlistSymbols: List<SymbolConfig>
@@ -107,14 +102,11 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     private val drawingCoordinator = ChartDrawingCoordinator(repository)
     private val symbolCoordinator = SymbolCatalogCoordinator(repository)
     private val preferenceCoordinator = ChartPreferenceCoordinator(repository)
-    private val forecastLedgerStore = es.manico.chartintelligence.forecast.ForecastLedgerStore(repository.getForecastLedgerPrefs())
 
     private val initialOpenTabs = repository.loadSavedOpenTabs()
     private val initialActiveTabId = repository.loadActiveTabId()
         ?.takeIf { savedId -> initialOpenTabs.any { it.tabId == savedId } }
         ?: initialOpenTabs.firstOrNull()?.tabId
-    private val initialLocalForecastLedger = forecastLedgerStore.loadEntries()
-    private val initialLifecycleEvents = forecastLedgerStore.loadLifecycleEvents()
 
     private val _uiState = MutableStateFlow(
         Phase1UiState(
@@ -128,11 +120,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             symbols = symbolCoordinator.loadInitialCatalog(),
             chartPreferences = preferenceCoordinator.loadInitialPreferences(),
             openTabs = initialOpenTabs,
-            activeTabId = initialActiveTabId,
-            forecastLocalLedger = initialLocalForecastLedger,
-            forecastLedgerVerifyResult = forecastLedgerStore.verifyChain(initialLocalForecastLedger),
-            forecastLifecycleEvents = initialLifecycleEvents,
-            forecastLifecycleVerifyResult = forecastLedgerStore.verifyLifecycleChain(initialLifecycleEvents)
+            activeTabId = initialActiveTabId
         )
     )
     val uiState: StateFlow<Phase1UiState> = _uiState.asStateFlow()
@@ -278,6 +266,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun navigateTo(screen: WorkspaceScreen) {
+        if (screen == WorkspaceScreen.PREDICTION) return
         val current = _uiState.value.currentScreen
         if (current == screen) return
 
@@ -291,7 +280,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
         }
 
-        if (screen in listOf(WorkspaceScreen.CHART_VIEW, WorkspaceScreen.PREDICTION) && _uiState.value.openTabs.isEmpty()) {
+        if (screen == WorkspaceScreen.CHART_VIEW && _uiState.value.openTabs.isEmpty()) {
             val savedCode = if (_uiState.value.chartPreferences.rememberLastChartOnDevice) {
                 repository.loadLastOpenedSymbolCode()
             } else null
@@ -830,13 +819,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         activateSymbolTab(symbol, targetScreen = WorkspaceScreen.CHART_VIEW)
     }
 
-    /**
-     * Switches the active symbol while staying inside the Prediction screen.
-     */
-    fun selectSymbolInPrediction(symbol: SymbolConfig) {
-        activateSymbolTab(symbol, targetScreen = WorkspaceScreen.PREDICTION)
-    }
-
     private fun activateSymbolTab(symbol: SymbolConfig, targetScreen: WorkspaceScreen) {
         repository.saveLastOpenedSymbolCode(symbol.symbolCode)
         val tabId = "${symbol.symbolCode}_${symbol.activeProvider.id}"
@@ -890,7 +872,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         showVolumeProfile = curActive?.showVolumeProfile ?: curPrefs.showVolumeProfile,
                         showPivotPoints = curActive?.showPivotPoints ?: curPrefs.showPivotPoints,
                         pivotType = curActive?.pivotType ?: curPrefs.pivotType,
-                        showFutureProjection = curActive?.showFutureProjection ?: curPrefs.showFutureProjection,
+                        showFutureProjection = false,
                         pitchforkVariant = curActive?.pitchforkVariant ?: curPrefs.pitchforkVariant
                     )
                 }
@@ -960,7 +942,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 showVolumeProfile = curActive?.showVolumeProfile ?: curPrefs.showVolumeProfile,
                 showPivotPoints = curActive?.showPivotPoints ?: curPrefs.showPivotPoints,
                 pivotType = curActive?.pivotType ?: curPrefs.pivotType,
-                showFutureProjection = curActive?.showFutureProjection ?: curPrefs.showFutureProjection,
+                showFutureProjection = false,
                 pitchforkVariant = curActive?.pitchforkVariant ?: curPrefs.pitchforkVariant,
                 isLogScale = curActive?.isLogScale ?: curPrefs.logarithmicScaleDefault,
                 isMagnetMode = curActive?.isMagnetMode ?: false,
@@ -1944,51 +1926,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
-    fun toggleFutureProjectionOnActiveTab() {
-        val nextVal = !(_uiState.value.activeTab?.showFutureProjection ?: _uiState.value.chartPreferences.showFutureProjection)
-        updateIndicatorsInTabsAndPrefs(
-            tabTransform = { tab ->
-                tab.copy(
-                    showFutureProjection = nextVal,
-                    scrollOffsetFromRight = if (nextVal) 0 else tab.scrollOffsetFromRight
-                )
-            },
-            prefTransform = { it.copy(showFutureProjection = nextVal) }
-        )
-    }
-
-    fun enableFutureProjectionAndOpenChart() {
-        val nextVal = !(_uiState.value.activeTab?.showFutureProjection ?: _uiState.value.chartPreferences.showFutureProjection)
-        val nowMs = System.currentTimeMillis()
-        var updatedPrefs: ChartPreferences? = null
-        _uiState.update { state ->
-            val nextStack = if (state.currentScreen != WorkspaceScreen.CHART_VIEW && nextVal) {
-                (state.screenBackStack + state.currentScreen).takeLast(6)
-            } else {
-                state.screenBackStack
-            }
-            val nextPrefs = state.chartPreferences.copy(
-                showFutureProjection = nextVal,
-                preferencesUpdatedAtMs = nowMs
-            )
-            updatedPrefs = nextPrefs
-            state.copy(
-                chartPreferences = nextPrefs,
-                openTabs = state.openTabs.map { tab ->
-                    tab.copy(
-                        showFutureProjection = nextVal,
-                        scrollOffsetFromRight = if (nextVal) 0 else tab.scrollOffsetFromRight
-                    )
-                },
-                currentScreen = if (nextVal) WorkspaceScreen.CHART_VIEW else state.currentScreen,
-                screenBackStack = nextStack
-            )
-        }
-        updatedPrefs?.let { repository.saveChartPreferences(it) }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
-    }
-
     fun toggleEma200OnActiveTab() {
         val nextVal = !(_uiState.value.activeTab?.showEma200 ?: _uiState.value.chartPreferences.showEma200)
         updateIndicatorsInTabsAndPrefs(
@@ -2505,7 +2442,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             showVolumeProfile = refreshedPrefs.showVolumeProfile,
                             showPivotPoints = refreshedPrefs.showPivotPoints,
                             pivotType = refreshedPrefs.pivotType,
-                            showFutureProjection = refreshedPrefs.showFutureProjection,
+                            showFutureProjection = false,
                             pitchforkVariant = refreshedPrefs.pitchforkVariant,
                             activeDrawingColorHex = refreshedPrefs.defaultDrawingColorHex,
                             activeDrawingWidthDp = refreshedPrefs.defaultDrawingWidthDp,
@@ -2849,283 +2786,6 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         importStatusMessage = "Manual OHLC failed: ${res.errorMessage ?: "INVALID_MANUAL_OHLC"}"
                     )
                 }
-            }
-        }
-    }
-
-    // --- Phase 4: Forecast Studio & Pluggable Ensemble Controls ---
-
-    fun setForecastHorizon(bars: Int) {
-        val clamped = es.manico.chartintelligence.forecast.ForecastCalendarHelper.clampHorizonBars(bars)
-        val nextPrefs = preferenceCoordinator.updateForecastPreferences(
-            current = _uiState.value.chartPreferences,
-            horizonBars = clamped
-        )
-        val activeId = _uiState.value.activeTab?.tabId
-        _uiState.update { state ->
-            state.copy(
-                chartPreferences = nextPrefs,
-                openTabs = state.openTabs.map { tab ->
-                    if (activeId == null || tab.tabId == activeId) tab.copy(forecastHorizonBars = clamped) else tab
-                }
-            )
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
-    }
-
-    fun setForecastRenderMode(mode: es.manico.chartintelligence.forecast.ForecastRenderMode) {
-        val nextPrefs = preferenceCoordinator.updateForecastPreferences(
-            current = _uiState.value.chartPreferences,
-            renderMode = mode.key
-        )
-        val activeId = _uiState.value.activeTab?.tabId
-        _uiState.update { state ->
-            state.copy(
-                chartPreferences = nextPrefs,
-                openTabs = state.openTabs.map { tab ->
-                    if (activeId == null || tab.tabId == activeId) tab.copy(forecastRenderMode = mode.key) else tab
-                }
-            )
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
-    }
-
-    fun toggleForecastModel(modelId: String, enabled: Boolean) {
-        val registry = es.manico.chartintelligence.forecast.ForecastModelRegistry().apply {
-            applyFromJson(_uiState.value.chartPreferences.forecastPluginConfigJson)
-            setEnabled(modelId, enabled)
-        }
-        val json = registry.serializeToJson()
-        val nextPrefs = preferenceCoordinator.updateForecastPreferences(
-            current = _uiState.value.chartPreferences,
-            pluginConfigJson = json
-        )
-        _uiState.update { it.copy(chartPreferences = nextPrefs) }
-        scheduleDebouncedCloudSync()
-    }
-
-    fun setForecastModelWeight(modelId: String, weight: Double) {
-        val registry = es.manico.chartintelligence.forecast.ForecastModelRegistry().apply {
-            applyFromJson(_uiState.value.chartPreferences.forecastPluginConfigJson)
-            setWeight(modelId, weight)
-        }
-        val json = registry.serializeToJson()
-        val nextPrefs = preferenceCoordinator.updateForecastPreferences(
-            current = _uiState.value.chartPreferences,
-            pluginConfigJson = json
-        )
-        _uiState.update { it.copy(chartPreferences = nextPrefs) }
-        scheduleDebouncedCloudSync()
-    }
-
-    fun setForecastModelParam(modelId: String, paramKey: String, value: Double) {
-        val registry = es.manico.chartintelligence.forecast.ForecastModelRegistry().apply {
-            applyFromJson(_uiState.value.chartPreferences.forecastPluginConfigJson)
-            setParam(modelId, paramKey, value)
-        }
-        val json = registry.serializeToJson()
-        val nextPrefs = preferenceCoordinator.updateForecastPreferences(
-            current = _uiState.value.chartPreferences,
-            pluginConfigJson = json
-        )
-        _uiState.update { it.copy(chartPreferences = nextPrefs) }
-        scheduleDebouncedCloudSync()
-    }
-
-    fun resetForecastModels() {
-        val registry = es.manico.chartintelligence.forecast.ForecastModelRegistry()
-        registry.resetDefaults()
-        val nextPrefs = preferenceCoordinator.updateForecastPreferences(
-            current = _uiState.value.chartPreferences,
-            pluginConfigJson = registry.serializeToJson()
-        )
-        _uiState.update { it.copy(chartPreferences = nextPrefs) }
-        scheduleDebouncedCloudSync()
-    }
-
-    fun saveForecastWorkerUrl(url: String) {
-        val nextPrefs = preferenceCoordinator.updateForecastPreferences(
-            current = _uiState.value.chartPreferences,
-            workerUrl = url.trim()
-        )
-        _uiState.update { it.copy(chartPreferences = nextPrefs) }
-        scheduleDebouncedCloudSync()
-    }
-
-    fun setForecastModel(modelId: String) {
-        val cleanId = modelId.trim().ifBlank { "AUTO" }
-        val nextPrefs = preferenceCoordinator.updateForecastPreferences(
-            current = _uiState.value.chartPreferences,
-            selectedModelId = cleanId
-        )
-        val activeId = _uiState.value.activeTab?.tabId
-        _uiState.update { state ->
-            state.copy(
-                chartPreferences = nextPrefs,
-                openTabs = state.openTabs.map { tab ->
-                    if (activeId == null || tab.tabId == activeId) tab.copy(selectedForecastModelId = cleanId) else tab
-                }
-            )
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
-    }
-
-    fun applyForecastAndOpenChart() {
-        val active = _uiState.value.activeTab ?: return
-        val prefs = _uiState.value.chartPreferences
-        val nextShow = !active.showFutureProjection
-        _uiState.update { state ->
-            val nextScreen = if (nextShow) WorkspaceScreen.CHART_VIEW else state.currentScreen
-            val nextStack = if (nextShow && state.currentScreen != WorkspaceScreen.CHART_VIEW) {
-                (state.screenBackStack + state.currentScreen).takeLast(6)
-            } else {
-                state.screenBackStack
-            }
-            state.copy(
-                openTabs = state.openTabs.map { tab ->
-                    if (tab.tabId == active.tabId) {
-                        tab.copy(
-                            showFutureProjection = nextShow,
-                            scrollOffsetFromRight = if (nextShow) 0 else tab.scrollOffsetFromRight,
-                            forecastHorizonBars = prefs.forecastHorizonBars,
-                            forecastRenderMode = prefs.forecastRenderMode,
-                            selectedForecastModelId = prefs.selectedForecastModelId
-                        )
-                    } else tab
-                },
-                currentScreen = nextScreen,
-                screenBackStack = nextStack
-            )
-        }
-        repository.saveOpenTabsToPrefs(_uiState.value.openTabs)
-        scheduleDebouncedCloudSync()
-    }
-
-    fun getHigherTimeframeCandlesForActiveTab(timeframe: String): List<CandleBar> {
-        val active = _uiState.value.activeTab ?: return emptyList()
-        if (timeframe.isBlank()) return emptyList()
-        return repository.getCachedOrAggregatedCandles(
-            symbolCode = active.symbolCode,
-            provider = active.provider,
-            timeframe = timeframe
-        )
-    }
-
-    fun getLowerTimeframeCandlesForActiveTab(timeframe: String): List<CandleBar> {
-        val active = _uiState.value.activeTab ?: return emptyList()
-        if (timeframe.isBlank()) return emptyList()
-        return repository.getCachedOrAggregatedCandles(
-            symbolCode = active.symbolCode,
-            provider = active.provider,
-            timeframe = timeframe
-        )
-    }
-
-    fun recordAndSyncForecastSnapshot() {
-        val active = _uiState.value.activeTab ?: return
-        val prefs = _uiState.value.chartPreferences
-        val registry = es.manico.chartintelligence.forecast.ForecastModelRegistry().apply {
-            applyFromJson(prefs.forecastPluginConfigJson)
-        }
-        val mode = es.manico.chartintelligence.forecast.ForecastRenderMode.parse(active.forecastRenderMode.ifBlank { prefs.forecastRenderMode })
-        val horizon = if (active.forecastHorizonBars in 10..60) active.forecastHorizonBars else prefs.forecastHorizonBars.coerceIn(10, 60)
-        val activeModelId = active.selectedForecastModelId.ifBlank { prefs.selectedForecastModelId }
-        val higherTf = es.manico.chartintelligence.forecast.ForecastV130Analyzer.resolveHigherTimeframe(active.timeframe)
-        val lowerInfo = es.manico.chartintelligence.forecast.resolveLowerTimeframeInfo(active.timeframe)
-
-        viewModelScope.launch {
-            val higherCandles = withContext(Dispatchers.Default) {
-                if (higherTf.isNotBlank()) {
-                    repository.getCachedOrAggregatedCandles(active.symbolCode, active.provider, higherTf)
-                } else emptyList()
-            }
-            val lowerCandles = withContext(Dispatchers.Default) {
-                if (lowerInfo != null) {
-                    repository.getCachedOrAggregatedCandles(active.symbolCode, active.provider, lowerInfo.timeframe)
-                } else emptyList()
-            }
-            val result = withContext(Dispatchers.Default) {
-                es.manico.chartintelligence.forecast.ForecastEngine.project(
-                    candles = active.candles,
-                    symbolCode = active.symbolCode,
-                    timeframe = active.timeframe,
-                    horizonBars = horizon,
-                    renderMode = mode,
-                    registry = registry,
-                    workerUrl = prefs.forecastWorkerUrl,
-                    skipWalkForward = false,
-                    higherTimeframe = higherTf,
-                    higherTimeframeCandles = higherCandles,
-                    lowerTimeframe = lowerInfo?.timeframe.orEmpty(),
-                    lowerTimeframeCandles = lowerCandles,
-                    selectedModelId = activeModelId
-                )
-            }
-            val appended = forecastLedgerStore.appendFromForecast(result)
-            if (appended != null) {
-                val synced = repository.syncForecastSnapshotToServer(result, prefs.forecastWorkerUrl)
-                if (synced) {
-                    forecastLedgerStore.markSynced(appended.forecastHash)
-                }
-                val entries = forecastLedgerStore.loadEntries()
-                val verify = forecastLedgerStore.verifyChain(entries)
-                val lcEvents = forecastLedgerStore.loadLifecycleEvents()
-                val lcVerify = forecastLedgerStore.verifyLifecycleChain(lcEvents)
-                val serverEntries = if (synced) repository.fetchForecastLedgerFromServer(active.symbolCode) else _uiState.value.forecastServerLedger
-                _uiState.update {
-                    it.copy(
-                        forecastLocalLedger = entries,
-                        forecastServerLedger = serverEntries,
-                        forecastLedgerVerifyResult = verify,
-                        forecastLifecycleEvents = lcEvents,
-                        forecastLifecycleVerifyResult = lcVerify,
-                        statusBannerResId = R.string.forecast_snapshot_recorded
-                    )
-                }
-            }
-        }
-    }
-
-    fun evaluateMaturedForecastOutcomes() {
-        val active = _uiState.value.activeTab ?: return
-        viewModelScope.launch {
-            val appended = withContext(Dispatchers.Default) {
-                forecastLedgerStore.evaluateMaturedForecasts(
-                    candles = active.candles,
-                    symbolCode = active.symbolCode,
-                    timeframe = active.timeframe
-                )
-            }
-            for (ev in appended) {
-                repository.syncLifecycleEventToServer(ev)
-            }
-            val allEvents = forecastLedgerStore.loadLifecycleEvents()
-            val verify = forecastLedgerStore.verifyLifecycleChain(allEvents)
-            _uiState.update {
-                it.copy(
-                    forecastLifecycleEvents = allEvents,
-                    forecastLifecycleVerifyResult = verify,
-                    statusBannerResId = R.string.forecast_outcomes_evaluated
-                )
-            }
-        }
-    }
-
-    fun refreshForecastServerLedger() {
-        val sym = _uiState.value.activeTab?.symbolCode.orEmpty()
-        viewModelScope.launch {
-            val entries = repository.fetchForecastLedgerFromServer(sym)
-            val serverLifecycle = repository.fetchForecastLifecycleFromServer(sym)
-            val mergedLifecycle = if (serverLifecycle.isNotEmpty()) serverLifecycle else forecastLedgerStore.loadLifecycleEvents()
-            _uiState.update {
-                it.copy(
-                    forecastServerLedger = entries,
-                    forecastLifecycleEvents = mergedLifecycle,
-                    forecastLifecycleVerifyResult = forecastLedgerStore.verifyLifecycleChain(mergedLifecycle)
-                )
             }
         }
     }

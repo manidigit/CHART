@@ -56,8 +56,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showSmcStructure ? 1 : 0) +
       (activeTab.showFvg ? 1 : 0) +
       (activeTab.showVolumeProfile ? 1 : 0) +
-      (activeTab.showPivotPoints ? 1 : 0) +
-      (activeTab.showFutureProjection ? 1 : 0)
+      (activeTab.showPivotPoints ? 1 : 0)
     : 1;
 
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -152,20 +151,21 @@ export function renderTopHeaderBar(activeTab, i18n) {
     })
     .join('');
 
-  const isForecastView = state.activeWorkspaceView === 'forecast';
+  const isForecastView = false;
   const isSettingsActive = state.activeModal === 'settings';
   const isOverviewActive = !isSettingsActive && Boolean(state.symbolOverviewCode);
   const isWatchlistActive =
     !isSettingsActive &&
     !isOverviewActive &&
-    !isForecastView &&
     Boolean(state.isSideDrawerOpen);
+
+  const forecastDisabledTitle = isFa ? 'پیش‌بینی (در حال بازطراحی)' : 'Forecast (Redesigning)';
 
   const topWorkspaceNavHtml = `
         <div class="tv-toolbar-group tv-top-nav-group" role="navigation" aria-label="Workspace Navigation">
           <button
             type="button"
-            class="tv-tool-btn ${!isForecastView && !isOverviewActive && !isSettingsActive ? 'active' : ''}"
+            class="tv-tool-btn ${!isOverviewActive && !isSettingsActive ? 'active' : ''}"
             data-action="set-workspace-view"
             data-view="chart"
             title="${chartNavLabel}"
@@ -175,10 +175,12 @@ export function renderTopHeaderBar(activeTab, i18n) {
           </button>
           <button
             type="button"
-            class="tv-tool-btn ${isForecastView ? 'active' : ''}"
+            class="tv-tool-btn is-disabled"
             data-action="set-workspace-view"
             data-view="forecast"
-            title="${i18n.t('nav_forecast_lab') || forecastNavLabel}"
+            disabled
+            aria-disabled="true"
+            title="${forecastDisabledTitle}"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
             <span>${forecastNavLabel}</span>
@@ -713,7 +715,6 @@ export function renderIndicatorsModal(activeTab, i18n) {
             ])}
           </div>
           ${renderToggleRow('overlayMacd', pal.overlayMacd, isFa ? 'MACD Classic (روی چارت اصلی — Overlay)' : 'MACD Classic (Main Chart Overlay)', isFa ? 'مکدی کلاسیک (۱۲، ۲۶، ۹) مستقیماً روی چارت قیمت' : 'Render Classic MACD directly overlaid on the main price canvas', activeTab.showOverlayMacd, 'toggle-overlay-macd', '∿')}
-          ${renderToggleRow('futureProjection', pal.futureProjection, isFa ? 'Future Candlesticks (پیش‌بینی ۳۰ کندل آینده روی چارت)' : 'Future Candlesticks (30-Period AI Projection)', isFa ? 'ترسیم ۳۰ کندل آینده با برچسب‌های تفکیک‌شده' : 'Render 30 ghosted future candlesticks with Present Bar Divider', activeTab.showFutureProjection, 'toggle-future-projection', '+30')}
 
           ${renderSectionHeader(
             isFa ? '۵. ساختار بازار و سشن‌ها (SMC & Session Killzones)' : '5. Smart Money Concepts (SMC) & Killzones',

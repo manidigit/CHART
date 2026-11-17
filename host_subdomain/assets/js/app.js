@@ -51,9 +51,6 @@ import {
   fetchSymbolIntel,
   uploadHistoricalImport,
   fetchImportBatches,
-  runForecastOnServer,
-  fetchForecastLedger,
-  appendForecastLifecycleEventOnServer,
 } from './services/apiService.js?v=1.43.0';
 import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.43.0';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.43.0';
@@ -72,17 +69,8 @@ import {
   renderSymbolOverviewModal,
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.43.0';
-import { renderPredictionModal } from './views/analysisView.js?v=1.43.0';
 import { renderSettingsModal } from './views/settingsView.js?v=1.43.0';
 import { renderRightIconRail } from './views/navigationView.js?v=1.43.0';
-import {
-  renderForecastStudioView,
-  renderForecastStudioFanCanvas,
-  buildForecastForTab,
-} from './views/forecastView.js?v=1.43.0';
-import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.0';
-import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.0';
-import { normalizeRenderMode, clampHorizonBars } from './forecast/forecastContract.js?v=2.0.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -435,8 +423,6 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showPsar, pal.psar, 'PSAR', 'toggle-psar');
   pushPill(activeTab.showIchimoku, pal.ichimoku, 'Ichimoku', 'toggle-ichimoku');
   pushPill(activeTab.showOverlayMacd, pal.overlayMacd, 'MACD Overlay', 'toggle-overlay-macd');
-  const futH = Math.max(10, Math.min(60, Number(activeTab.forecastHorizonBars || state.chartPreferences?.forecastHorizonBars || 30)));
-  pushPill(activeTab.showFutureProjection, pal.futureProjection, `Future Proj (+${futH})`, 'toggle-future-projection');
   pushPill(activeTab.showSmcStructure, pal.smcStructure, 'SMC (BOS)', 'toggle-smc-structure');
   pushPill(activeTab.showFvg, pal.fvg, 'FVG', 'toggle-fvg');
   pushPill(activeTab.showKillzones, pal.killzones, 'Killzones', 'toggle-killzones');
@@ -626,16 +612,14 @@ export function renderApp() {
       );
     }
 
-    const isForecastMode = state.activeWorkspaceView === 'forecast';
-    const prevWindowScrollY = isForecastMode && typeof window !== 'undefined' ? window.scrollY || 0 : 0;
+    state.activeWorkspaceView = 'chart';
     if (typeof document !== 'undefined') {
-      document.documentElement?.classList?.toggle('is-forecast-scroll', isForecastMode);
-      document.body?.classList?.toggle('is-forecast-scroll', isForecastMode);
+      document.documentElement?.classList?.remove('is-forecast-scroll');
+      document.body?.classList?.remove('is-forecast-scroll');
     }
 
     const scrollPositions = {};
     const scrollSelectors = [
-      '.forecast-workspace',
       '.tv-wl-list',
       '.watchlist-container',
       '.tv-symbol-details-pane',
@@ -657,28 +641,23 @@ export function renderApp() {
     });
 
     root.innerHTML = `
-      <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''} ${isForecastMode ? 'is-forecast-view' : ''}">
+      <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
         ${renderTopHeaderBar(activeTab, i18n)}
 
         <div class="tv-main-area">
-          ${isForecastMode ? '' : renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
+          ${renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
 
-          ${
-            isForecastMode
-              ? `<main class="forecast-workspace">${renderForecastStudioView(activeTab, i18n)}</main>`
-              : `<main class="chart-workspace">
-                  <div class="chart-canvas-box">
-                    ${renderOhlcvOverlay(activeTab)}
-                    <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
-                  </div>
-                  ${renderBottomChartBar(activeTab, i18n)}
-                </main>
-                ${renderRightSplitPanel(activeTab, i18n)}`
-          }
+          <main class="chart-workspace">
+            <div class="chart-canvas-box">
+              ${renderOhlcvOverlay(activeTab)}
+              <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
+            </div>
+            ${renderBottomChartBar(activeTab, i18n)}
+          </main>
+          ${renderRightSplitPanel(activeTab, i18n)}
         </div>
 
         ${renderSettingsModal(i18n)}
-        ${renderPredictionModal(activeTab, i18n)}
         ${renderIndicatorsModal(activeTab, i18n)}
         ${renderSymbolOverviewModal(i18n)}
         ${renderAddSymbolModal()}
@@ -698,9 +677,6 @@ export function renderApp() {
         element.scrollLeft = scrollPositions[sel].left;
       }
     });
-    if (isForecastMode && prevWindowScrollY > 0 && typeof window !== 'undefined' && typeof window.scrollTo === 'function') {
-      window.scrollTo({ top: prevWindowScrollY, behavior: 'instant' });
-    }
 
     window.__CI_APP_MOUNTED__ = true;
   } catch (err) {
@@ -828,21 +804,6 @@ function redrawActiveCanvas() {
           oldOverlay.replaceWith(temp.firstElementChild);
         }
       }
-    }
-  }
-
-  const studioCanvas = document.getElementById('forecast-studio-canvas');
-  if (studioCanvas && activeTab) {
-    const built = buildForecastForTab(activeTab);
-    if (built) {
-      renderForecastStudioFanCanvas(
-        studioCanvas,
-        built.candles,
-        built.result,
-        Number(activeTab.decimals || 2),
-        state.isDarkTheme,
-        state.forecastCoordView || 'independent'
-      );
     }
   }
 }
@@ -1789,12 +1750,7 @@ document.addEventListener('click', async (e) => {
     state.activeModal = null;
     renderApp();
   } else if (action === 'toggle-right-panel') {
-    if (state.activeWorkspaceView === 'forecast') {
-      state.activeWorkspaceView = 'chart';
-      state.isSideDrawerOpen = true;
-    } else {
-      state.isSideDrawerOpen = !state.isSideDrawerOpen;
-    }
+    state.isSideDrawerOpen = !state.isSideDrawerOpen;
     state.activeModal = null;
     state.symbolOverviewCode = null;
     renderApp();
@@ -1969,12 +1925,8 @@ document.addEventListener('click', async (e) => {
     state.symbolOverviewFinMode = el.getAttribute('data-mode') || 'ANNUAL';
     renderApp();
   } else if (action === 'open-prediction-from-overview') {
-    const symCode = el.getAttribute('data-symbol');
-    state.symbolOverviewCode = null;
-    state.activeModal = null;
-    if (symCode) openOrFocusSymbolTab(symCode);
-    state.activeWorkspaceView = 'forecast';
-    renderApp();
+    // Forecast tab is disabled pending redesign
+    return;
   } else if (action === 'copy-identifier') {
     const textToCopy = el.getAttribute('data-copy') || '';
     if (textToCopy && navigator.clipboard && navigator.clipboard.writeText) {
@@ -2230,178 +2182,15 @@ document.addEventListener('click', async (e) => {
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
-  } else if (action === 'toggle-future-projection' && activeTab) {
-    activeTab.showFutureProjection = !activeTab.showFutureProjection;
-    if (activeTab.showFutureProjection) {
-      activeTab.scrollOffset = 0;
-    }
-    syncIndicatorsAcrossTabsAndPrefs(activeTab);
-    renderApp();
-  } else if (action === 'toggle-future-projection-from-modal' && activeTab) {
-    activeTab.showFutureProjection = !activeTab.showFutureProjection;
-    if (activeTab.showFutureProjection) {
-      activeTab.scrollOffset = 0;
-      state.activeModal = null;
-    }
-    syncIndicatorsAcrossTabsAndPrefs(activeTab);
-    renderApp();
-    redrawActiveCanvas();
   } else if (action === 'set-workspace-view') {
-    const targetView = el.getAttribute('data-view') === 'forecast' ? 'forecast' : 'chart';
-    state.activeWorkspaceView = targetView;
+    if (el.getAttribute('data-view') === 'forecast') {
+      return;
+    }
+    state.activeWorkspaceView = 'chart';
     state.activeModal = null;
     state.symbolOverviewCode = null;
     renderApp();
-    if (targetView === 'forecast' && activeTab) {
-      fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe).then(() => renderApp()).catch(() => {});
-    } else {
-      redrawActiveCanvas();
-    }
-  } else if (action === 'toggle-forecast-studio') {
-    state.activeWorkspaceView = state.activeWorkspaceView === 'forecast' ? 'chart' : 'forecast';
-    state.activeModal = null;
-    renderApp();
-    if (state.activeWorkspaceView === 'forecast' && activeTab) {
-      fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe).then(() => renderApp()).catch(() => {});
-    }
-  } else if (action === 'open-forecast-studio') {
-    state.activeWorkspaceView = 'forecast';
-    state.activeModal = null;
-    renderApp();
-  } else if (action === 'set-forecast-subtab') {
-    state.forecastStudioTab = el.getAttribute('data-tab') || 'overview';
-    renderApp();
-    if (state.forecastStudioTab === 'ledger' && activeTab) {
-      fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe).then(() => renderApp()).catch(() => {});
-    }
-  } else if (action === 'set-forecast-horizon' && activeTab) {
-    const h = clampHorizonBars(Number(el.getAttribute('data-horizon') || 30));
-    activeTab.forecastHorizonBars = h;
-    state.chartPreferences.forecastHorizonBars = h;
-    activeTab._indicatorCache = {};
-    savePreferences();
-    saveOpenTabsToStorage();
-    renderApp();
-  } else if (action === 'set-forecast-render-mode' && activeTab) {
-    const rm = normalizeRenderMode(el.getAttribute('data-mode'));
-    activeTab.forecastRenderMode = rm;
-    state.chartPreferences.forecastRenderMode = rm;
-    activeTab._indicatorCache = {};
-    savePreferences();
-    saveOpenTabsToStorage();
-    renderApp();
-  } else if (action === 'set-forecast-model' && activeTab) {
-    const modelId = String(el.getAttribute('data-model-id') || el.value || 'AUTO');
-    activeTab.selectedForecastModelId = modelId;
-    state.chartPreferences.selectedForecastModelId = modelId;
-    activeTab._indicatorCache = {};
-    savePreferences();
-    saveOpenTabsToStorage();
-    renderApp();
     redrawActiveCanvas();
-  } else if (action === 'select-smc-scenario' && activeTab) {
-    const scId = String(el.getAttribute('data-scenario-id') || 'SCENARIO_A');
-    activeTab.selectedScenarioId = scId;
-    state.chartPreferences.selectedScenarioId = scId;
-    activeTab._indicatorCache = {};
-    savePreferences();
-    saveOpenTabsToStorage();
-    renderApp();
-    redrawActiveCanvas();
-  } else if (action === 'apply-forecast-to-chart' && activeTab) {
-    const nextState = !activeTab.showFutureProjection;
-    activeTab.showFutureProjection = nextState;
-    if (nextState) {
-      activeTab.scrollOffset = 0;
-      state.activeWorkspaceView = 'chart';
-    }
-    syncIndicatorsAcrossTabsAndPrefs(activeTab);
-    saveOpenTabsToStorage();
-    renderApp();
-    redrawActiveCanvas();
-    showFloatingToast(
-      nextState
-        ? i18n.getCurrentLanguage() === 'fa'
-          ? 'پیش‌بینی روی چارت فعال شد ✓'
-          : 'Forecast overlay applied to chart ✓'
-        : i18n.getCurrentLanguage() === 'fa'
-          ? 'نمایش پیش‌بینی روی چارت غیرفعال شد'
-          : 'Forecast overlay removed from chart'
-    );
-  } else if (action === 'view-forecast-on-chart' && activeTab) {
-    activeTab.showFutureProjection = true;
-    activeTab.scrollOffset = 0;
-    state.activeWorkspaceView = 'chart';
-    syncIndicatorsAcrossTabsAndPrefs(activeTab);
-    saveOpenTabsToStorage();
-    renderApp();
-    redrawActiveCanvas();
-  } else if (action === 'reset-forecast-models') {
-    defaultForecastRegistry.resetDefaults();
-    state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
-    if (activeTab) activeTab._indicatorCache = {};
-    savePreferences();
-    renderApp();
-  } else if (action === 'save-forecast-worker-url') {
-    const inp = document.getElementById('ci-forecast-worker-url');
-    state.chartPreferences.forecastWorkerUrl = inp ? String(inp.value || '').trim() : '';
-    savePreferences();
-    renderApp();
-    showFloatingToast(
-      i18n.getCurrentLanguage() === 'fa' ? 'آدرس Worker ذخیره شد' : 'Remote worker URL saved'
-    );
-  } else if (action === 'record-forecast-snapshot' && activeTab) {
-    const built = buildForecastForTab(activeTab);
-    if (built && built.result && built.result.status !== 'DATA_NOT_READY') {
-      const localEntry = defaultForecastLedger.appendFromForecast(built.result);
-      const serverRes = await runForecastOnServer({
-        symbolCode: activeTab.symbolCode,
-        timeframe: activeTab.timeframe,
-        horizonBars: built.result.horizonBars,
-        candles: built.candles,
-        clientForecast: built.result,
-        workerUrl: state.chartPreferences.forecastWorkerUrl || '',
-      });
-      if (serverRes.ok && localEntry) {
-        defaultForecastLedger.markSynced(localEntry.forecastHash);
-      }
-      await fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe);
-      renderApp();
-      showFloatingToast(
-        i18n.getCurrentLanguage() === 'fa'
-          ? 'اسنپ‌شات پیش‌بینی با زنجیره SHA-256 ثبت شد ✓'
-          : 'Forecast snapshot appended to SHA-256 ledger ✓'
-      );
-    }
-  } else if (action === 'set-forecast-coord-mode') {
-    state.forecastCoordView = el.getAttribute('data-coord') === 'coordinated' ? 'coordinated' : 'independent';
-    renderApp();
-    redrawActiveCanvas();
-  } else if (action === 'evaluate-forecast-outcomes' && activeTab) {
-    const built = buildForecastForTab(activeTab);
-    const candles = built ? built.candles : activeTab.candles || [];
-    const appended = defaultForecastLedger.evaluateMaturedForecasts(
-      candles,
-      activeTab.symbolCode,
-      activeTab.timeframe
-    );
-    for (const ev of appended) {
-      await appendForecastLifecycleEventOnServer(ev);
-    }
-    await fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe);
-    renderApp();
-    showFloatingToast(
-      i18n.getCurrentLanguage() === 'fa'
-        ? appended.length > 0
-          ? `${appended.length} رویداد جدید سررسید در دفترکل ثبت شد ✓`
-          : 'پیش‌بینی جدیدی به سررسید نرسیده است'
-        : appended.length > 0
-          ? `${appended.length} matured lifecycle event(s) appended ✓`
-          : 'No new matured horizons ready for evaluation'
-    );
-  } else if (action === 'refresh-forecast-ledger' && activeTab) {
-    await fetchForecastLedger(activeTab.symbolCode, activeTab.timeframe);
-    renderApp();
   } else if (action === 'toggle-timezone-mode') {
     const nextTz = state.chartPreferences.timezoneMode === 'LOCAL' ? 'UTC' : 'LOCAL';
     state.chartPreferences.timezoneMode = nextTz;
@@ -2898,38 +2687,6 @@ document.addEventListener('change', async (e) => {
       renderApp();
       redrawActiveCanvas();
     }
-  } else if (action === 'toggle-forecast-model') {
-    const id = el.getAttribute('data-model-id');
-    if (id) {
-      defaultForecastRegistry.setEnabled(id, Boolean(el.checked));
-      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
-      const tab = getActiveTab();
-      if (tab) tab._indicatorCache = {};
-      savePreferences();
-      renderApp();
-    }
-  } else if (action === 'set-forecast-model-weight') {
-    const id = el.getAttribute('data-model-id');
-    if (id) {
-      defaultForecastRegistry.setWeight(id, Number(el.value || 0));
-      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
-      const tab = getActiveTab();
-      if (tab) tab._indicatorCache = {};
-      savePreferences();
-      renderApp();
-    }
-  } else if (action === 'set-forecast-model-param') {
-    const id = el.getAttribute('data-model-id');
-    const key = el.getAttribute('data-param-key');
-    const val = Number(el.value);
-    if (id && key && Number.isFinite(val)) {
-      defaultForecastRegistry.setParams(id, { [key]: val });
-      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
-      const tab = getActiveTab();
-      if (tab) tab._indicatorCache = {};
-      savePreferences();
-      renderApp();
-    }
   }
 });
 
@@ -3156,7 +2913,6 @@ async function handleChartSnapshot() {
       if (activeTab.showPsar) activePills.push({ label: 'PSAR', color: pal.psar });
       if (activeTab.showIchimoku) activePills.push({ label: 'Ichimoku', color: pal.ichimoku });
       if (activeTab.showOverlayMacd) activePills.push({ label: 'MACD Ovr', color: pal.overlayMacd });
-      if (activeTab.showFutureProjection) activePills.push({ label: 'Future Proj', color: pal.futureProjection });
       if (activeTab.showSmcStructure) activePills.push({ label: 'SMC (BOS)', color: pal.smcStructure });
       if (activeTab.showFvg) activePills.push({ label: 'FVG', color: pal.fvg });
       if (activeTab.showKillzones) activePills.push({ label: 'Killzones', color: pal.killzones });
@@ -3331,11 +3087,6 @@ async function pullWorkspaceOnFocusIfNeeded() {
 
 window.addEventListener('focus', () => {
   pullWorkspaceOnFocusIfNeeded();
-});
-
-window.addEventListener('ci-forecast-worker-updated', () => {
-  renderApp();
-  redrawActiveCanvas();
 });
 
 document.addEventListener('visibilitychange', () => {

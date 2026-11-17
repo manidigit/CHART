@@ -394,7 +394,15 @@ class Phase1AlgorithmsTest {
         assertEquals("EOD Historical", stooq.resolvePriceBasis("SPOTBRENT"))
 
         val stooqSpec = catalog.first { it.providerId == stooq }
-        assertEquals(22, stooqSpec.supportedSymbols.size)
+        assertEquals(79, stooqSpec.supportedSymbols.size)
+
+        val tvSpec = catalog.first { it.providerId == es.manico.chartintelligence.data.model.ProviderId.TVDATAFEED }
+        assertEquals(79, tvSpec.supportedSymbols.size)
+        assertTrue(es.manico.chartintelligence.data.model.ProviderId.TVDATAFEED.isEnabled)
+        assertFalse(stooq.isEnabled)
+        assertTrue(tvSpec.supportedSymbols.any { it.symbolCode == "AVGO" && it.providerTicker == "NASDAQ:AVGO" })
+        assertTrue(tvSpec.supportedSymbols.any { it.symbolCode == "BRK.B" && it.providerTicker == "NYSE:BRK.B" })
+        assertTrue(tvSpec.supportedSymbols.any { it.symbolCode == "2222.SR" && it.providerTicker == "TADAWUL:2222" })
 
         val biquoteSpec = catalog.first { it.providerId == biquote }
         val biquoteCodes = biquoteSpec.supportedSymbols.map { it.symbolCode }
@@ -404,7 +412,8 @@ class Phase1AlgorithmsTest {
         val yahooCodes = yahooSpec.supportedSymbols.map { it.symbolCode }
         assertTrue(yahooCodes.containsAll(listOf(
             "SPOTBRENT", "ETHUSD", "BTCUSD", "XAGUSD", "XAUUSD", "SPX500USD", "NDQ", "EURUSD", "USOIL",
-            "NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN"
+            "NVDA", "AMZN", "TSLA", "AAPL", "GOOGL", "MSFT", "META", "NFLX", "AMD", "UBER", "NKE", "IBM", "SAN",
+            "AVGO", "PLTR", "TSM", "2222.SR"
         )))
     }
 

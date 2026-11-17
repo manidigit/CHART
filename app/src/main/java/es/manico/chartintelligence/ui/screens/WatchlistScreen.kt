@@ -1352,10 +1352,8 @@ fun WatchlistScreen(
                                     )
                                 }
                                 Button(
-                                    onClick = {
-                                        overviewSymbolCode = null
-                                        onNavigateToPrediction()
-                                    },
+                                    onClick = {},
+                                    enabled = false,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 44.dp)

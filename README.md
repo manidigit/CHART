@@ -18,7 +18,7 @@ Detailed engineering and operational material: docs/04-development/PROJECT_GUIDE
   <a href="https://chart.manico.es"><img src="https://img.shields.io/badge/Web-chart.manico.es-172b3a?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web application"></a>
   <a href="https://github.com/manidigit/CHART/actions/workflows/build-apk.yml"><img src="https://img.shields.io/badge/Android-APK%20workflow-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK workflow"></a>
   <a href="https://github.com/manidigit/CHART"><img src="https://img.shields.io/badge/Platform-Web%20%7C%20Android-4C6FFF?style=for-the-badge" alt="Web and Android"></a>
-  <a href="docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.44.0-8B6CEF?style=for-the-badge" alt="Master Spec version 1.44.0"></a>
+  <a href="docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Spec-v1.45.1-8B6CEF?style=for-the-badge" alt="Master Spec version 1.45.1"></a>
 </p>
 
 <p align="center">
@@ -38,25 +38,24 @@ Detailed engineering and operational material: docs/04-development/PROJECT_GUIDE
 
 The engineering direction prioritizes explicit market-series identity, UTC candle boundaries, holiday-aware data integrity, pure independently testable algorithms, and a strict out-of-sample forecast validation pipeline (`forecast-contract/v1` / spec `v1.3.0`).
 
-> **Project status (Verified `v1.44.0` — 2026-11-15):** **Phases 1, 2, 3, and the Phase 4 Statistical & SMC Forecast Core** are shipped and verified in code across **Web, Android, and PHP Backend**. External GPU Python DL worker deployment and Phases 5–6 remain on the roadmap — see [`OPEN_ISSUES.md`](docs/03-roadmap-and-issues/OPEN_ISSUES.md), [`KNOWN_ISSUES_BACKLOG.md`](docs/KNOWN_ISSUES_BACKLOG.md), and [`ROADMAP_BACKLOG.md`](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md).
+> **Project status (Verified `v1.45.1` — 2026-11-17):** **Phases 1, 2, 3, the 79-Symbol TradingView-Only Catalog, and Web Timeframe-Switch Abort Safety** are shipped and verified in code across **Web, Android, and PHP Backend**. All previous **Phase 4 Forecast / Prediction code** has been moved to `/archive/` for a clean ground-up redesign (with `docs/` and SQL migrations `003`/`004` preserved, and the `Forecast` UI tab kept visible in a **disabled** state). See [`OPEN_ISSUES.md`](docs/03-roadmap-and-issues/OPEN_ISSUES.md) and [`ROADMAP_BACKLOG.md`](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md).
 
 ## Product
 
-### Shipped foundation (Web & Android — `v1.44.0`)
+### Shipped foundation (Web & Android — `v1.45.1`)
 
-- **Cross-Platform Parity (TradingView Pro Standard):** Responsive desktop/mobile web workspace (`host_subdomain`) and native Android Jetpack Compose app sharing the TradingView palettes (`#131722` dark / `#FFFFFF` light), circular vector asset badges for all 22 instruments, and `JetBrains Mono` LTR tabular digits.
-- **Unified Top-Bar Workspace (Zero Right-Rail Clutter):** All primary workspace sections—**`Chart`**, **`Forecast` (Forecast Studio / Lab)**, **`Performance`**, **`Watchlist`**, and **`Settings`**—are consolidated directly into the top header bar alongside the **Indicators** button, a clean **`CSV`** export button (redundant `JSON` export button removed), a **Snapshot** camera button, and a minimal **blinking green/red Market Status dot** (`Live` / `Market Closed` without verbose text banners). Theme, language, and account logout live cleanly inside **Settings** without cluttering the chart workspace.
+- **Cross-Platform Parity (TradingView Pro Standard):** Responsive desktop/mobile web workspace (`host_subdomain`) and native Android Jetpack Compose app sharing the TradingView palettes (`#131722` dark / `#FFFFFF` light), circular vector asset badges, and `JetBrains Mono` LTR tabular digits.
+- **Unified Top-Bar Workspace (Zero Right-Rail Clutter):** Primary workspace sections—**`Chart`**, **`Forecast` (disabled pending redesign)**, **`Performance`**, **`Watchlist`**, and **`Settings`**—live in the top header bar alongside the **Indicators** button, **`CSV`** export button, **Snapshot** camera button, and a minimal **blinking green/red Market Status dot** (`Live` / `Market Closed`).
+- **79-Symbol Catalog & Non-Blocking Timeframe Switching:** 22 default watchlist symbols + 57 global equities available in Settings (`tvdatafeed` active only), with per-symbol `AbortController` request cancellation and 79-symbol WebSocket exchange routing eliminating timeframe-switching hangs on Web.
 - **Multi-Tab Chart & Complete Phase 2 Studies (`15/15` Indicators + `18` Drawing Tools):**
   - Parallel chart tabs (`${SYMBOL}_${TF}`), 6 timeframes (`15m`, `30m`, `1h`, `4h`, `1D`, `1W`), Heckbert nice-number price scaling (`[Auto] [Log]`), `UTC / Local` time axis, and 11 quick date ranges (`1D..All`).
   - **6 Base + 12 Multi-Anchor Drawing Families:** `HLINE`, `VLINE`, `TREND`, `FIB`, `LONG_POS`, `SHORT_POS`, `AVWAP`, `FRVP`, `Linear Regression Channel`, `Gann Fan`, `Gann Box`, 4-variant `Pitchfork` (`Original / Schiff / Mod Schiff / Inside`), `Fib Time Zone`, `Cyclic Lines`, `Fib Speed Resistance Fan`, `ABCD`, `XABCD`, and `Head & Shoulders` with `Magnet Mode`.
   - **All 15 Core Indicators & SMC Overlays:** `EMA 20/50/200`, `SMA 20/50/200`, `MTF EMA 20`, `Bollinger Bands`, `Supertrend`, `Session VWAP`, `Parabolic SAR`, `Ichimoku Cloud`, `Keltner Channels`, `Donchian Channels`, 4-variant `Pivot Points` (`Standard / Fibonacci / Camarilla / Woodie` with `R1..R4 / S1..S4`), `Killzones`, `BOS/CHoCH`, `EQH/EQL`, `FVG`, `Estimated Session VRVP`, and lower panes (`Volume`, `RSI 14`, `MACD`, `Stochastic`, `ATR 14`, `ADX 14`, `CCI 20`, `Williams %R`, `OBV`, `CMF 20`, `ROC 12`).
 - **Phase 3 Data Quality, Holiday-Aware Gap Detection & Encrypted Backup:**
-  - Session- and holiday-aware `GapDetector` (`GapDetector.php`, `gapDetector.js`, `GapDetectorAlgorithm.kt`) that distinguishes true feed outages from weekends, daily futures settlement breaks (`21:00–23:59 UTC`), early US holiday closes (e.g., Labor Day), and single-day exchange holidays (Christmas, New Year's Day, Good Friday).
+  - Session- and holiday-aware `GapDetector` (`GapDetector.php`, `gapDetector.js`, `GapDetectorAlgorithm.kt`) separating real feed outages from weekends, daily futures settlement breaks (`21:00–23:59 UTC`), early US holiday closes, and single-day exchange holidays.
   - Historical data import (`CSV/TSV`, binary `BIFF8 OLE2` `EIA RBRTEd.xls`, `JSON`, manual `OHLC` with strict `ERR_IMAGE_UPLOAD_FORBIDDEN`) and `PBKDF2 + AES-256-GCM` encrypted workspace backup/restore.
-- **Phase 4 Forecast Studio / Lab (`forecast-contract/v1` · Spec `v1.3.0`):**
-  - 12-model comparison & ensemble engine (`SMC K-Medoids Analogs`, `Naive Persistence`, `ATR Volatility Cone`, `Kalman Filter`, `GARCH(1,1)`, `AR(2)+ETS`, `Gaussian Process`, native `ARIMA(p,d,q)`, `Prophet Approx`, `Recurrent MC Approx`, `TFT Attention Approx`, and remote Python worker bridge).
-  - **Multi-Timeframe (`1h` / `4h` / `15m`) Scenario & POC Synchronization:** Localized Volume Profile window per timeframe (`M15: 80 .. D1: 30` bars with ATR-bounded `POC`) and synchronized `SCENARIO_A / B / C` ranking + 10-bar (`40h` on `H4`) lower-timeframe sub-bar anchoring so `1h` and `4h` projections never contradict over shared horizons.
-  - **Full-Page Document Scroll & True Toggle Controls:** Document-level scrolling in Forecast Studio for full-page browser screenshot extensions, a dedicated right-hand quantile badge gutter (`q90 / q50 / q10`) preventing candlestick overlap, and a two-state **`✓ / ☐ Apply & View on Chart`** toggle across Web and Android.
+- **Phase 4 Forecast (Archived for Ground-Up Redesign):**
+  - Legacy Forecast/Prediction source code has been archived to `/archive/` while preserving [`FORECAST_PRODUCT_FOUNDATION_V1.md`](docs/01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) and SQL schemas (`003`, `004`) as the foundation for the next-generation Forecast redesign.
 - **Bilingual (`fa` / `en`) & BYOK:** Persian (RTL default) and English (LTR), salted SHA-256 owner login with `Remember Me` and 6-digit email OTP recovery, DB-First Delta Sync up to 5,000 candles, and isolated personal API keys (`BYOK` via `X-Provider-Api-Key`).
 
 ## Roadmap
@@ -65,11 +64,11 @@ The roadmap follows a strict **Build → Install → Practical Test → Owner Ap
 
 | Phase | Focus | Current State | Details |
 |---:|---|---|---|
-| 1 | Product foundation, multi-tab charts & 7+1 isolated data providers | **Shipped in code (`v1.35+`)** | [ROADMAP_BACKLOG.md](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) |
+| 1 | Product foundation, multi-tab charts & 79-symbol catalog (`tvdatafeed` active) | **Shipped in code (`v1.35–v1.45`)** | [ROADMAP_BACKLOG.md](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) |
 | 2 | All 15 core indicators (incl. 4-variant Pivots), 18 drawing tools (`Harmonic/Gann/Pitchfork/Cycle/AVWAP/FRVP`), `Symbol Intel` & `Seasonals` | **Shipped in code (`v1.39–v1.41`)** | [ROADMAP_BACKLOG.md](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) |
 | 3 | Holiday-aware Smart Gap detection, EIA/CSV/BIFF8 imports, `CSV` export & `AES-256-GCM` Backup/Restore | **Shipped in code (`v1.41–v1.44`)** | [ROADMAP_BACKLOG.md](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) |
-| 4 | Prediction Engine v1 (`SMC K-Medoids` + 11 statistical/approx plugins, MTF `1h/4h` sync, `forecast-contract/v1`, SHA-256 chain) | **Core Shipped in code (`v1.42–v1.44`) · External GPU Worker Optional** | [CHART_INTELLIGENCE_MASTER_SPEC.md](docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) |
-| 5 | Live Feedback Loop, `Purged + Embargoed Walk-Forward` governance & `Champion/Challenger` promotion gate | **Core Lifecycle Shipped · Full Promotion Gate Planned** | [CHART_INTELLIGENCE_MASTER_SPEC.md](docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) |
+| 4 | Prediction Engine vNext | **Legacy Code Archived to `/archive/` · Tab Disabled Pending Redesign** | [FORECAST_PRODUCT_FOUNDATION_V1.md](docs/01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) |
+| 5 | Live Feedback Loop, `Purged + Embargoed Walk-Forward` governance & `Champion/Challenger` promotion gate | **Planned** | [CHART_INTELLIGENCE_MASTER_SPEC.md](docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) |
 | 6 | Offline Strategy Simulator & Multi-user admin | **Planned** | [TRADING_STRATEGY_SPEC.md](docs/01-product/TRADING_STRATEGY_SPEC.md) |
 
 ## Architecture
@@ -135,59 +134,55 @@ All markdown documentation (except this `README.md`) is organized under `docs/`:
 
 ```text
 .
-├── app/                                      # Native Android app (Kotlin, Compose, ForecastEngine, GapDetector, REST + local cache)
+├── app/                                      # Native Android app (Kotlin, Compose, GapDetector, REST + local cache)
 ├── host_subdomain/
-│   ├── api/v1/                               # PHP REST API (auth, candles_sync, workspace_sync, forecast, gap_report, 8 adapters)
+│   ├── api/v1/                               # PHP REST API (auth, candles_sync, workspace_sync, gap_report, provider adapters)
 │   ├── scripts/                              # Python/PHP tvdatafeed extraction & cron scripts
-│   ├── assets/                               # Web Native ES6 modules, forecast engine, algorithms, views & CSS design tokens
+│   ├── assets/                               # Web Native ES6 modules, algorithms, views & CSS design tokens
 │   ├── data/tvdatafeed/                      # Seeded SPOTBRENT candles (M15, H1, H4, D1)
 │   ├── i18n/                                 # Web dictionaries (fa.json, en.json)
-│   └── migrations/                           # Idempotent MariaDB migrations (001_phase1..003_phase4)
+│   └── migrations/                           # Idempotent MariaDB migrations (001_phase1..005_catalog)
+├── archive/                                  # Archived legacy Forecast/Prediction implementation (Android/Web/PHP/Workers/Tests)
 ├── docs/
 │   ├── README.md                             # Documentation Hub & Role-Based Reading Guide
-│   ├── KNOWN_ISSUES_BACKLOG.md               # Tracked & resolved technical issues log (15 Nov 2026)
+│   ├── KNOWN_ISSUES_BACKLOG.md               # Tracked & resolved technical issues log
 │   ├── assets/chart-hero.svg                 # Repository hero banner
 │   ├── 01-product/
+│   │   ├── FORECAST_PRODUCT_FOUNDATION_V1.md # Independent Forecast Product Foundation for vNext redesign
 │   │   ├── CHART_INTELLIGENCE_MASTER_SPEC.md # Primary source of truth (product, contracts, formulas, phases)
-│   │   ├── CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md # Forecast Studio v1.3.0 specification
+│   │   ├── CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md # Historical Forecast technical research reference
 │   │   ├── GROK_OPENMARKET_RESEARCH_NOTES.md # Provider & ML architecture research notes
 │   │   └── TRADING_STRATEGY_SPEC.md          # Phase 6 offline strategy simulation spec
 │   ├── 02-architecture/
-│   │   ├── ARCHITECTURE.md                   # Central Core, DB-First Delta Sync, 8 providers & 22 symbols
+│   │   ├── ARCHITECTURE.md                   # Central Core, DB-First Delta Sync, providers & 79-symbol catalog
 │   │   ├── DESIGN_WORKSPACE_SPEC.md          # TradingView Pro workspace layout, topbar navigation & tokens
 │   │   ├── INFRASTRUCTURE_INVENTORY.md       # Verified cPanel / MariaDB host inventory & limits
 │   │   └── SECURITY.md                       # Security policy, zero-secrets & BYOK isolation
 │   ├── 03-roadmap-and-issues/
 │   │   ├── OPEN_ISSUES.md                    # Verified open bugs, partial implementations & open questions
-│   │   └── ROADMAP_BACKLOG.md                # Truthful Shipped Core vs Phase 5–6 backlog
+│   │   └── ROADMAP_BACKLOG.md                # Truthful Shipped Core vs redesign & Phase 5–6 backlog
 │   └── 04-development/
 │       ├── PROJECT_GUIDE.md                  # Code-vs-Spec audit table, secrets registry & CI/CD guide
 │       ├── AGENTS.md                         # AI & developer invariants, UI directives & user flow
 │       ├── CONTRIBUTING.md                   # Build, test & PR workflow
-│       └── CHANGELOG.md                      # Chronological release history (up to v1.44.0)
-├── scripts/                                  # Backtest & evaluation tooling (backtest.js, makeSampleData.js)
-├── data/                                     # Local validation datasets (sample_M15.json)
-├── tests/                                    # Node.js parity & Phase 4 forecast test suites
+│       └── CHANGELOG.md                      # Chronological release history (up to v1.45.1)
+├── tests/                                    # Node.js web parity & timeframe-abort test suite (web_parity.test.mjs)
 ├── .github/workflows/
-│   ├── build-apk.yml                         # Android APK build + Web/DB cPanel deployment workflow
-│   └── backtest.yml                          # Automated Walk-Forward backtest & validation CI workflow
-├── package.json                              # Root ES module & evaluation script definitions
+│   └── build-apk.yml                         # Android APK build + Web/DB cPanel deployment workflow
+├── package.json                              # Root ES module & test script definitions
 └── README.md                                 # Project landing page
 ```
 
-## Walk-Forward Backtesting & Quantitative Validation
+## Verification Tests
 
-The forecasting engine includes a CLI walk-forward evaluation harness comparing model projections against the `Naive Persistence` baseline:
+Run the local verification suites:
 
 ```bash
-# 1. Generate realistic 960-candle M15 test dataset
-npm run make:data
+# 1. Web parity & timeframe-switch abort safety tests
+npm test
 
-# 2. Run quick walk-forward backtest (stride = 5)
-npm run backtest:quick
-
-# 3. Run full walk-forward backtest with CSV export
-npm run backtest -- --csv results.csv
+# 2. Android JVM & Robolectric unit tests
+gradle :app:testDebugUnitTest
 ```
 
 ## Documentation

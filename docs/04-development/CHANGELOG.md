@@ -7,6 +7,37 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.45.1] - 2026-11-17
+
+### Changed & Fixed (Forecast Engine Archived for Ground-Up Redesign, Disabled Forecast Tabs & Web Timeframe-Switch Unblock)
+- **Archived Legacy Forecast / Prediction Code into `/archive/` (Docs & SQL Migrations Preserved):**
+  - Moved all Android, Web, PHP, Worker, Script, CI, and Test files belonging to the prior Forecast / Prediction implementation into `/archive/` preserving relative paths:
+    - Android: `forecast/` package (14 files), `ForecastLabScreen.kt`, `PredictionScreen.kt`, `ForecastLabComponents.kt`, `ForecastV130Components.kt`, `ForecastV2Test.kt`, `Phase4ForecastTest.kt`.
+    - Web & PHP: `host_subdomain/assets/js/forecast/`, `forecastView.js`, `analysisView.js`, `host_subdomain/api/v1/forecast/`, `host_subdomain/api/v1/forecast.php`.
+    - Root tooling/tests/workers: `src/featureExtractor.js`, `src/forecastEngine.js`, `scripts/backtest.js`, `scripts/generateGoldenVectors.mjs`, `scripts/makeSampleData.js`, `data/sample_M15.json`, `tests/forecast_v2.test.mjs`, `tests/phase4_forecast.test.mjs`, `tests/golden_vectors_v2.json`, `.github/workflows/backtest.yml`, `python_worker/`, and `time-series-forecasting-dashboard/`.
+  - Kept all specification and product-foundation documents in `/docs/` intact (including `docs/01-product/FORECAST_PRODUCT_FOUNDATION_V1.md`) and retained MariaDB migrations `host_subdomain/migrations/003_phase4_forecast_tables.sql` and `004_phase4_forecast_v2_columns.sql` untouched for the upcoming clean redesign.
+- **Disabled Forecast / Prediction Entry Points Across Android & Web:**
+  - Kept the **`Forecast`** navigation tab and Overview prediction CTA visible in place on both Android (`MainActivity.kt`, `MainViewModel.kt`, `WatchlistScreen.kt`) and Web (`headerView.js`, `watchlistView.js`, `theme.css`, `app.js`) in a **disabled (`disabled` / `aria-disabled="true"` / `.is-disabled`)** non-clickable state.
+  - Decoupled and removed runtime forecast canvas overlays (`showFutureProjection = false`), forecast modals, and server forecast sync calls from `CandlestickCanvas.kt`, `ChartViewScreen.kt`, `ChartPreferenceCoordinator.kt`, `WorkspaceRepository.kt`, `chartRenderer.js`, `technicalIndicators.js`, `store.js`, and `apiService.js`; updated `host_subdomain/api/v1/system/status.php` phase label.
+- **Fixed Web Timeframe-Switching Hang (`apiService.js` & `TvDatafeedAdapter.php`):**
+  - Added per-symbol `AbortController` superseding (`inFlightSyncControllers` + `interactiveSyncSymbols`) and hard request timeouts (`fetchWithTimeout`: `10s` backend, `4s` static JSON, `4s` browser WebSocket) so rapid `M15 -> H1 -> H4 -> D1` switching cancels stale sync calls cleanly without stalling the UI.
+  - Replaced the `PEPPERSTONE` default fallback in `resolveTradingViewWsSpec` with the complete 79-symbol exchange map and reduced background `syncAllWatchlistSymbols` batch concurrency to `2` while yielding whenever an interactive symbol sync is in flight.
+  - Tightened `TvDatafeedAdapter.php` socket timeouts (`4.5s` connect, `4s` stream, `4.5s` deadline) and restricted secondary `H4 -> H1` socket fallback strictly to when primary `liveCandles` is empty or behind `expectedLastClosedOpenMs`.
+- **Verified:**
+  - Android build (`compile_applet`) succeeded cleanly after resolving a brace balance issue in `CandlestickCanvas.kt`.
+  - Android unit & Robolectric tests (`gradle :app:testDebugUnitTest`): **28/28 passed** (`Phase1AlgorithmsTest`, `Phase2AlgorithmsTest`).
+  - Web parity & timeframe-abort tests (`npm test` -> `node --test tests/web_parity.test.mjs`): **9/9 passed**. *(Note: `php` CLI is not installed in the build container, so PHP runtime changes were verified by code inspection.)*
+
+## [1.45.0] - 2026-11-17
+
+### Added & Changed (79-Symbol Global Equities Catalog Expansion & TradingView-Only Active Provider)
+- **Expanded Canonical Catalog from 22 to 79 Symbols Across Android, Web, PHP & MariaDB:**
+  - Added 57 global equities and AI/semiconductor/fintech/international leaders (`AVGO`, `MU`, `INTC`, `MRVL`, `AMAT`, `LRCX`, `QCOM`, `SMCI`, `DELL`, `SNDK`, `ANET`, `PLTR`, `ORCL`, `CRM`, `ADBE`, `CRWD`, `CSCO`, `APP`, `NBIS`, `CRWV`, `SPCX`, `RKLB`, `GEV`, `BE`, `IONQ`, `RIVN`, `JPM`, `BAC`, `GS`, `V`, `MA`, `BRK.B`, `HOOD`, `MSTR`, `PYPL`, `COIN`, `WMT`, `COST`, `DIS`, `SBUX`, `MCD`, `KO`, `LLY`, `UNH`, `PFE`, `XOM`, `CVX`, `TSM`, `ASML`, `SSNLF`, `SKHY`, `BABA`, `NVO`, `TM`, `SAP`, `HSBC`, `2222.SR`).
+  - **Uncluttered Default Watchlist (`inWatchlist = false`):** All 57 newly added symbols appear in the **Settings** catalog, database (`chart_series`), and localized search (`strings.xml`, `values-fa/strings.xml`, `en.json`, `fa.json`) with `inWatchlist = false` by default so the initial 22-symbol watchlist remains uncluttered and users can selectively add symbols on demand.
+  - **TradingView (`tvdatafeed`) Active Only:** Configured all 79 catalog entries with `activeProvider = tvdatafeed`, keeping other provider schemas disabled/locked in UI while preserving exchange mappings (`KRX:000660` for `SKHY`, `TADAWUL:2222` for `2222.SR`, `NYSE:BRK.B` for `BRK.B`, `AMEX:SPCX`, `OTC:SSNLF`) and chart ID normalization (`chart_brkb_stock`, `chart_2222sr_stock`).
+  - **Database Migration:** Added `host_subdomain/migrations/005_expand_global_stocks_catalog.sql` (`INSERT IGNORE INTO chart_series`) and updated `ProviderCatalog.php`, `TvDatafeedAdapter.php`, `UtcTimeAnchor.php`, `ProviderId.kt`, `TvDatafeedAdapter.kt`, `StooqAdapter.kt`, `UtcTimeAnchorAlgorithm.kt`, `ForecastCalendarRegistry.kt`, `WorkspaceRepository.kt`, `SettingsScreen.kt`, `store.js`, `priceFormatter.js`, and `calendarRegistry.js`.
+- **Verification:** Added 79-symbol catalog & TradingView-only assertions in `Phase1AlgorithmsTest.kt` and `tests/web_parity.test.mjs`.
+
 ## [1.44.0] - 2026-11-15
 
 ### Fixed & Enhanced (Forecast Studio UX, Full-Page Scroll & Multi-Timeframe Parity Across Web & Android)

@@ -1154,7 +1154,7 @@ export function renderSymbolOverviewModal(i18n) {
         <div class="card-subtle" style="margin-bottom: 10px;">
           <div class="row-between" style="margin-bottom: 8px;">
             <strong style="font-size: 13px; color: var(--text-strong);">${i18n.t('overview_real_tech_title')}</strong>
-            <button type="button" class="btn btn-sm" style="color: var(--primary); border-color: var(--primary);" data-action="open-prediction-from-overview" data-symbol="${sym.symbolCode}">
+            <button type="button" class="btn btn-sm is-disabled" disabled aria-disabled="true" data-action="open-prediction-from-overview" data-symbol="${sym.symbolCode}">
               ${i18n.t('symbol_overview_see_forecast')}
             </button>
           </div>
@@ -1260,7 +1260,7 @@ export function renderSymbolOverviewModal(i18n) {
         <div class="card-subtle" style="margin-bottom: 10px;">
           <div class="row-between" style="margin-bottom: 8px;">
             <strong style="font-size: 13px; color: var(--text-strong);">${i18n.t('overview_real_tech_title')} (${realMetrics.barCount} bars)</strong>
-            <button type="button" class="btn btn-sm" style="color: var(--primary); border-color: var(--primary);" data-action="open-prediction-from-overview" data-symbol="${sym.symbolCode}">
+            <button type="button" class="btn btn-sm is-disabled" disabled aria-disabled="true" data-action="open-prediction-from-overview" data-symbol="${sym.symbolCode}">
               ${i18n.t('symbol_overview_see_forecast')}
             </button>
           </div>
