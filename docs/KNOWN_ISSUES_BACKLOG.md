@@ -96,3 +96,71 @@
   2. اصلاح `Database::getConnection()` به `Database::getPdo()` و تطبیق کامل کوئری جدول `candles` با ستون‌های واقعی (`chart_id`, `provider_id`, `timeframe`, `open_time_utc`, `is_closed = 1`) در `Chronos2QueueManager.php`.
   3. ارتقای یکپارچه تمام پارامترهای cache-busting در فایل‌های JS، `index.html`، `status.php` و `package.json` به `v=1.45.2` و اصلاح `isChronosForecastMatchingTab` در `store.js` برای تطابق با آخرین کندل بسته‌شده (`PriceFormatter.isCandleClosed`).
 
+---
+
+## ۷. استانداردسازی جامع سیستم آیکون‌ها، نشان‌ها (Badges) و پالت رنگ برند برای تمام ۷۹ نماد کاتالوگ (Web و Android) — ✅ حل شد
+
+- **اولویت:** بالا (High / P1)
+- **تاریخ ثبت و اصلاح:** ۱۷ نوامبر ۲۰۲۶
+- **شرح ایراد گزارش‌شده:**
+  - نمادها و سهام‌های اضافه‌شده به کاتالوگ گسترش‌یافته ۷۹ نمادی، در واچ‌لیست و سایر بخش‌های برنامه فاقد آیکون اختصاصی بودند یا به صورت دایره‌های خالی/بی‌تصویر نمایش داده می‌شدند. کاربر بر ضرورت وجود یک استاندارد جامع و یکدست برای تمام نمادها تأکید کرد.
+- **ریشه‌یابی فنی (Root Cause Analysis):**
+  1. **عدم پوشش کامل نمادها در ماژول وب (`watchlistView.js`):**
+     در وب تنها ۲۲ نماد اولیه دارای آیکون SVG و استایل اختصاصی در نگاشت نشان‌ها بودند و ۵۷ نماد جدید به فال‌بک عمومی با علامت بعلاوه/دایره ساده منتقل می‌شدند. همچنین نمادهای `SPX500USD` و `NDQ` فاقد SVG کامل بودند (`svgIcon: ''`).
+  2. **دایره‌های خالی و سفید در اندروید (`WatchlistRowCard.kt`):**
+     در کامپوننت `AssetSymbolBadge`، شرط `val hasCustomVectorArt = isGold || isOil || ... || isStock` به دلیل تعریف `ProviderId.isStock(upper)` برای تمام ۷۰ سهم فعال می‌شد و بخش `Canvas` را فعال می‌کرد؛ اما در داخل ساختار `when`، تنها ۱۳ سهم کد رسم برداری داشتند. در نتیجه برای ۵۷ سهم دیگر هیچ کدی در `Canvas` اجرا نمی‌شد و چون `hasCustomVectorArt` معادل `true` بود، بلوک `else` (که متن مونوگرام را نشان می‌داد) هرگز اجرا نمی‌شد و دایره‌ها به طور کامل خالی و محو رندر می‌شدند.
+- **اصلاحات انجام‌شده:**
+  1. **وب (`host_subdomain/assets/js/views/watchlistView.js`):**
+     - ایجاد رجیستری جامع `SYMBOL_CATALOG_BADGES` برای ۱۰۰٪ نمادهای کاتالوگ (۷۹ نماد) شامل:
+       - آیکون‌های وکتور اختصاصی SVG متناسب با هویت برند
+       - گرادیان پس‌زمینه خطی متناسب با سکتور و هویت بصری کمپانی
+       - کد رنگ دقیق برندینگ و برچسب مونوگرام ۲ الی ۳ حرفی
+       - متادیتای دسته‌بندی سکتوری و تگ ارائه‌دهنده سرویس
+     - بازنویسی `getAssetBadge(symbolCode)` با پشتیبانی از جستجوی مستقیم و تطبیق تمیز نام نماد.
+  2. **اندروید (`app/src/main/java/es/manico/chartintelligence/ui/components/WatchlistRowCard.kt`):**
+     - ایجاد تابع `resolveBadgeMonogram(symbolCode)` برای نگاشت استاندارد برچسب‌های مونوگرام نمادها.
+     - اصلاح ساختار `hasCustomVectorArt` با تعریف مجموعه صریح `customVectorSymbols`؛ در صورتی که نمادی ترسیم برداری اختصاصی در بوم نداشته باشد، به بلوک `else` هدایت شده و یک مونوگرام مونو‌اسپیس با کنتراست بالا و زیبا بر روی گرادیان برند خود دریافت می‌کند (ریشه‌کن شدن کامل دایره‌های خالی).
+     - پیاده‌سازی رسم برداری بوم برای دارایی‌های شاخص از جمله `PLTR`, `V`, `MA`, `BRK.B`, `2222.SR`, `DIS`, `MCD`, `WMT`, `XOM`, `CVX`, `TSM`, `COIN` و...
+     - به‌روزرسانی کامل `resolveAssetBadge` و پالت رنگ‌ها و حاشیه‌ها (`gradientColors` و `borderTint`) برای پوشش تمام ۷۹ نماد.
+  3. **تست خودکار و سنجش کیفیت (`tests/web_parity.test.mjs`):**
+     - افزودن تست جامع `SYMBOL-STANDARDS-79` که تک‌تک ۷۹ نماد کاتالوگ را بررسی کرده و عدم خالی بودن SVG، معتبر بودن گرادیان، کد هگز رنگی و دسته‌بندی را اعتبارسنجی می‌کند.
+     - اجرای موفق تست‌های ۱۱/۱۱ در محیط نود و بیلد موفق پروژه اندروید (`compile_applet`).
+
+---
+
+## ۸. اصلاح معماری اجرای Chronos-2 به حالت کاملاً درخواستی (`Strictly On-Demand PHP → Python Worker` بدون Cron و صف پس‌زمینه) — ✅ حل شد
+
+- **اولویت:** بحرانی (Critical / P0) — تصمیم قطعی معماری
+- **تاریخ ثبت و اصلاح:** ۱۷ نوامبر ۲۰۲۶
+- **اهداف و الزامات معماری:**
+  1. حذف کامل هرگونه Cron Job، صف پس‌زمینه (`.job.json`) و polling دوره‌ای مستقل.
+  2. اجرای مستقیم `PHP → Python Worker` فقط با درخواست صریح کاربر (کلیک روی دکمه `Chronos-2`).
+  3. ممنوعیت اجرای خودکار هنگام باز شدن سایت/بارگذاری تب، تغییر نماد، تغییر تایم‌فریم یا بسته شدن کندل جدید.
+  4. محدودسازی پیگیری درخواست در حال اجرا (`PROCESSING`) به حداکثر ۳ تلاش محدود (`MAX_CHRONOS2_ATTEMPTS = 3`).
+  5. کش کردن نتایج برای جلوگیری از اجرای مجدد مدل در درخواست‌های تکراری و ابطال خودکار کش هنگام تغییر داده‌های مبنا (کندل بسته جدید یا تغییر قیمت بسته شدن کندل‌های تاریخی) بدون اجرای مجدد خودکار.
+  6. نمایش خطای واقعی و قابل مشاهده روی نمودار و نوار وضعیت در صورت بروز محدودیت اجرایی روی هاست (نظیر غیرفعال بودن `exec()` یا نبودن محیط پایتون) بدون گیر افتادن در صف.
+- **تغییرات اعمال‌شده در فایل‌ها:**
+  1. **`host_subdomain/api/v1/core/Chronos2QueueManager.php`:**
+     - حذف کامل ایجاد فایل‌های صف `.job.json` و دایرکتوری `queue/`؛ تبدیل `requestOrRunForecast` به اجرای مستقیم همگام با قفل انحصاری `flock()` (`executeDirectJobUnderLock`) و بازگرداندن خطای صریح در صورت غیرفعال بودن `exec()` یا شکست پردازش پایتون.
+     - اعتبارسنجی `expectedLastClose` و `expectedContextSha256` هنگام خواندن کش سرور (`readCachedForecast`) پیش و پس از قفل، به همراه بازنویسی اجباری فایل ورودی کندل‌ها در `cache miss` برای تشخیص تغییر داده‌های مبنا.
+     - غیرفعال‌سازی کامل `processQueueBatch()` با وضعیت `DISABLED`.
+  2. **`host_subdomain/api/v1/chronos2_forecast.php`:**
+     - حذف کامل حالت `enqueue_only` و وضعیت‌های `QUEUED`؛ پشتیبانی انحصاری از حالت `sync_or_queue` (اجرای مستقیم یا بازگشت کش معتبر) و `cache_only` با بررسی هم‌زمان `last_closed_price` و `context_close_sha256`.
+  3. **`host_subdomain/scripts/cron_process_chronos2_queue.php`:**
+     - منسوخ و غیرفعال‌سازی کامل اسکریپت با خروجی `status: 'DISABLED'`.
+  4. **`host_subdomain/assets/js/core/store.js`:**
+     - حذف `'showChronosForecast'` از `INDICATOR_FLAG_KEYS` برای جلوگیری از همگام‌سازی ناخواسته بین نمادها/تب‌ها.
+     - تنظیم `showChronosForecast: false` در بارگذاری و ذخیره `localStorage` تا هنگام باز شدن مجدد سایت هیچ پیش‌بینی به‌طور خودکار اجرا نشود.
+     - تقویت `isChronosForecastMatchingTab` با تطبیق `series.last_closed_price` در کنار `origin_open_time_utc_ms` و افزودن `invalidateTabChronosIfStale(tab)` جهت پاک‌سازی کش نامعتبر و خاموش کردن خودکار دکمه.
+  5. **`host_subdomain/assets/js/services/apiService.js`:**
+     - اعمال `MAX_CHRONOS2_ATTEMPTS = 3` و `clearChronos2TimerForTab` برای پیگیری محدود صرفاً روی درخواست فعال و لغو فوری تایمر هنگام بستن یا تغییر نماد.
+     - افزودن `computeClosedSeriesDigest(closedCandles)` و گنجاندن آن در کلید کش کلاینت (`buildClientChronos2CacheKey`)، به علاوه فراخوانی `invalidateTabChronosIfStale(tab)` پس از همگام‌سازی داده‌ها در `syncSymbolNow`.
+     - انتقال پیام‌های خطای واقعی هاست/پایتون به وضعیت تب (`ERROR`).
+  6. **`host_subdomain/assets/js/components/chartRenderer.js` و `host_subdomain/assets/js/app.js`:**
+     - حذف اجرای خودکار `requestChronos2ForecastForTab` در `openOrFocusSymbolTab` و خاموش‌سازی `showChronosForecast` در تغییر تایم‌فریم/بازه.
+     - حذف وضعیت `QUEUED` از رندر بوم و نوار وضعیت، و افزودن بنر خطای واضح (`Chronos-2 Error: ...`) مستقیماً روی بوم چارت و چیپ وضعیت.
+  7. **`tests/web_parity.test.mjs`:**
+     - افزودن تست‌های ابطال کش با تغییر قیمت مبنا (`computeClosedSeriesDigest` / `invalidateTabChronosIfStale`)، حذف `.job.json` و `enqueue_only` و `QUEUED`، غیرفعال بودن کرون، حذف همگام‌سازی `showChronosForecast` و محدودیت ۳ تلاش کلاینت (**۱۱/۱۱ تست پاس شد**).
+
+
+

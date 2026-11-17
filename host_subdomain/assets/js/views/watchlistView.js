@@ -52,115 +52,710 @@ export function getShortCategoryLabel(symbolCode, i18n) {
   return String(raw).replace(/\s*\([^)]*\)\s*/g, '').trim();
 }
 
+export const SYMBOL_CATALOG_BADGES = {
+  // Commodities & Energy
+  XAUUSD: {
+    label: 'Au',
+    color: '#F59E0B',
+    bgGradient: 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)',
+    providerTag: 'TWELVE_DATA · biquote',
+    category: 'Spot Gold · Commodity',
+    svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 14 18 14 21 20 3 20 6 14" fill="rgba(255,255,255,0.28)"/><polygon points="8 7 16 7 18 12 6 12 8 7" fill="rgba(255,255,255,0.28)"/><path d="M12 2v2"/></svg>`,
+  },
+  SPOTBRENT: {
+    label: 'OIL',
+    color: '#2962FF',
+    bgGradient: 'linear-gradient(135deg, #2962FF 0%, #1D4ED8 100%)',
+    providerTag: 'PEPPERSTONE · tvdatafeed',
+    category: 'Brent Crude Spot · Energy',
+    svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.26)" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5" stroke-width="1.8"/></svg>`,
+  },
+  USOIL: {
+    label: 'WTI',
+    color: '#0EA5E9',
+    bgGradient: 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)',
+    providerTag: 'TVC · Yahoo',
+    category: 'WTI Crude Oil · Energy',
+    svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.26)" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5" stroke-width="1.8"/></svg>`,
+  },
+  XAGUSD: {
+    label: 'Ag',
+    color: '#94A3B8',
+    bgGradient: 'linear-gradient(135deg, #94A3B8 0%, #475569 100%)',
+    providerTag: 'biquote · TWELVE_DATA',
+    category: 'Spot Silver · Commodity',
+    svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.25)" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 15 19 15 22 20 2 20 5 15"/><polygon points="8 8 16 8 18 13 6 13 8 8"/></svg>`,
+  },
+  EURUSD: {
+    label: 'FX',
+    color: '#26A69A',
+    bgGradient: 'linear-gradient(135deg, #26A69A 0%, #0F766E 100%)',
+    providerTag: 'TradingView · Twelve Data',
+    category: 'Forex · Major Currency',
+    svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 3.5 0 1 0 0 6"/><line x1="8" y1="11" x2="13" y2="11"/><line x1="8" y1="13" x2="13" y2="13"/></svg>`,
+  },
+
+  // Crypto
+  BTCUSD: {
+    label: 'BTC',
+    color: '#F7931A',
+    bgGradient: 'linear-gradient(135deg, #F7931A 0%, #C2410C 100%)',
+    providerTag: 'biquote · Yahoo Finance',
+    category: 'Bitcoin · Crypto',
+    svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 8h4a2 2 0 0 1 0 4h-4h4.5a2 2 0 0 1 0 4h-4.5"/><line x1="11" y1="6" x2="11" y2="18"/></svg>`,
+  },
+  ETHUSD: {
+    label: 'ETH',
+    color: '#6366F1',
+    bgGradient: 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)',
+    providerTag: 'biquote · Yahoo Finance',
+    category: 'Ethereum · Crypto',
+    svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 2 19 12 12 15 5 12"/><polygon points="12 17 19 13 12 22 5 13"/></svg>`,
+  },
+
+  // Major Indices
+  SPX500USD: {
+    label: '500',
+    color: '#EF4444',
+    bgGradient: 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)',
+    providerTag: 'S&P Dow Jones · tvdatafeed',
+    category: 'S&P 500 · US Benchmark Index',
+    svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M3 20h18"/><path d="M5 16v-3"/><path d="M10 16v-7"/><path d="M15 16v-11"/><path d="M20 16V5"/><path d="M4 11l6-5 5 4 5-6"/></svg>`,
+  },
+  NDQ: {
+    label: '100',
+    color: '#06B6D4',
+    bgGradient: 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)',
+    providerTag: 'Nasdaq Inc. · tvdatafeed',
+    category: 'Nasdaq 100 · US Tech Index',
+    svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/><path d="M8 12h2"/></svg>`,
+  },
+
+  // Megacap Tech & Entertainment
+  NVDA: {
+    label: 'NV',
+    color: '#22C55E',
+    bgGradient: 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Semiconductor & AI Compute',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 16c4-6 12-6 16 0"/><circle cx="12" cy="12" r="3" fill="#FFFFFF"/></svg>`,
+  },
+  AMZN: {
+    label: 'AZ',
+    color: '#F59E0B',
+    bgGradient: 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Cloud & E-Commerce',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M5 16c4 3 10 3 14 0"/><path d="M16 13l3 3-3 3"/></svg>`,
+  },
+  TSLA: {
+    label: 'TS',
+    color: '#EF4444',
+    bgGradient: 'linear-gradient(135deg, #EF4444 0%, #991B1B 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Automotive & Clean Energy',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M12 4v16M6 6c3-2 9-2 12 0"/></svg>`,
+  },
+  AAPL: {
+    label: 'AP',
+    color: '#64748B',
+    bgGradient: 'linear-gradient(135deg, #64748B 0%, #334155 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Consumer Electronics & Services',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1"><path d="M12 20.94c1.88 0 3.05-.91 4.29-.91 1.23 0 2.22.91 4.1.91 2.53 0 4.61-2.13 4.61-4.75 0-2.48-1.57-4.16-3.8-4.24-1.6-.06-3.1 1.04-3.88 1.04-.79 0-2.02-.99-3.32-.99-2.2 0-4.32 1.63-4.32 4.47 0 2.97 1.94 6.47 4.32 6.47z"/><path d="M15.5 5.5c.83-1 1.3-2.3 1.15-3.5-1.2.06-2.6.8-3.4 1.8-.73.85-1.3 2.1-1.15 3.3 1.3 0 2.6-.7 3.4-1.6z"/></svg>`,
+  },
+  GOOGL: {
+    label: 'GO',
+    color: '#3B82F6',
+    bgGradient: 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Search & Cloud Platforms',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 12h5a5 5 0 0 1-5 5c-3 0-5-2-5-5s2-5 5-5c2 0 3.5.8 4.3 1.7"/></svg>`,
+  },
+  MSFT: {
+    label: 'MS',
+    color: '#0EA5E9',
+    bgGradient: 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Enterprise Software & Azure',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" fill="rgba(255,255,255,0.4)"/><rect x="13" y="4" width="7" height="7" fill="rgba(255,255,255,0.4)"/><rect x="4" y="13" width="7" height="7" fill="rgba(255,255,255,0.4)"/><rect x="13" y="13" width="7" height="7" fill="rgba(255,255,255,0.4)"/></svg>`,
+  },
+  META: {
+    label: 'MT',
+    color: '#2563EB',
+    bgGradient: 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Social Technology & AI',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M6 16c-2 0-3-2-3-4s1-4 3-4c3 0 4 5 6 5s3-5 6-5c2 0 3 2 3 4s-1 4-3 4c-3 0-4-5-6-5s-3 5-6 5z"/></svg>`,
+  },
+  NFLX: {
+    label: 'NF',
+    color: '#DC2626',
+    bgGradient: 'linear-gradient(135deg, #DC2626 0%, #7F1D1D 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Digital Entertainment & Streaming',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><path d="M5 4v16M19 4v16M5 4l14 16"/></svg>`,
+  },
+  AMD: {
+    label: 'AM',
+    color: '#10B981',
+    bgGradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Processors & Graphics',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 4 20 12 12 20 4 12"/></svg>`,
+  },
+  UBER: {
+    label: 'UB',
+    color: '#475569',
+    bgGradient: 'linear-gradient(135deg, #475569 0%, #1E293B 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Mobility & Delivery Platform',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="#FFFFFF"/></svg>`,
+  },
+  NKE: {
+    label: 'NK',
+    color: '#F97316',
+    bgGradient: 'linear-gradient(135deg, #F97316 0%, #C2410C 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Athletic Footwear & Apparel',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 14c4 3 12 3 16-8-4 4-10 6-16 8z"/></svg>`,
+  },
+  IBM: {
+    label: 'IB',
+    color: '#3B82F6',
+    bgGradient: 'linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Enterprise IT & Hybrid Cloud',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="16" x2="20" y2="16"/></svg>`,
+  },
+  SAN: {
+    label: 'SA',
+    color: '#EC1C24',
+    bgGradient: 'linear-gradient(135deg, #EC1C24 0%, #991B1B 100%)',
+    providerTag: 'BME · tvdatafeed',
+    category: 'International Banking',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><polygon points="12 7 16 16 8 16" fill="#FFFFFF"/></svg>`,
+  },
+
+  // Semiconductors & Hardware Infrastructure
+  AVGO: {
+    label: 'AV',
+    color: '#CC092F',
+    bgGradient: 'linear-gradient(135deg, #CC092F 0%, #8A001A 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Semiconductors & Infrastructure Software',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"><path d="M2 13c3-8 7-8 10 0s7 8 10 0"/></svg>`,
+  },
+  MU: {
+    label: 'MU',
+    color: '#005A9C',
+    bgGradient: 'linear-gradient(135deg, #005A9C 0%, #002D5A 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Memory & Storage Solutions (DRAM/NAND)',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><rect x="4" y="4" width="16" height="16" rx="2"/><path d="M8 16V8l4 5 4-5v8"/></svg>`,
+  },
+  INTC: {
+    label: 'IN',
+    color: '#0068B5',
+    bgGradient: 'linear-gradient(135deg, #0068B5 0%, #003B6F 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Semiconductor Foundry & CPUs',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><ellipse cx="12" cy="12" rx="9" ry="5" transform="rotate(-25 12 12)"/><circle cx="12" cy="12" r="2.5" fill="#FFFFFF"/></svg>`,
+  },
+  MRVL: {
+    label: 'MV',
+    color: '#D32F2F',
+    bgGradient: 'linear-gradient(135deg, #D32F2F 0%, #8E0000 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Data Infrastructure Semiconductors',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 18V6l8 8 8-8v12"/><line x1="12" y1="14" x2="12" y2="20"/></svg>`,
+  },
+  AMAT: {
+    label: 'AT',
+    color: '#00838F',
+    bgGradient: 'linear-gradient(135deg, #00838F 0%, #004D40 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Semiconductor Manufacturing Equipment',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3"/><line x1="12" y1="2" x2="12" y2="4"/><line x1="12" y1="20" x2="12" y2="22"/><line x1="2" y1="12" x2="4" y2="12"/><line x1="20" y1="12" x2="22" y2="12"/></svg>`,
+  },
+  LRCX: {
+    label: 'LC',
+    color: '#1565C0',
+    bgGradient: 'linear-gradient(135deg, #1565C0 0%, #0D47A1 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Wafer Fabrication & Etching Equipment',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 3 21 12 12 21 3 12"/><line x1="12" y1="8" x2="12" y2="16"/><line x1="8" y1="12" x2="16" y2="12"/></svg>`,
+  },
+  QCOM: {
+    label: 'QC',
+    color: '#1976D2',
+    bgGradient: 'linear-gradient(135deg, #1976D2 0%, #0D47A1 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Wireless Technologies & Mobile SoC',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="3" fill="#FFFFFF"/><path d="M7.76 7.76a6 6 0 0 0 0 8.48"/><path d="M16.24 7.76a6 6 0 0 1 0 8.48"/><path d="M4.93 4.93a10 10 0 0 0 0 14.14"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/></svg>`,
+  },
+  SMCI: {
+    label: 'SM',
+    color: '#059669',
+    bgGradient: 'linear-gradient(135deg, #059669 0%, #064E3B 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'High-Performance Enterprise Servers',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><rect x="4" y="4" width="16" height="5" rx="1"/><rect x="4" y="11" width="16" height="5" rx="1"/><rect x="4" y="18" width="16" height="5" rx="1"/><circle cx="7" cy="6.5" r="1" fill="#FFFFFF"/><circle cx="7" cy="13.5" r="1" fill="#FFFFFF"/><circle cx="7" cy="20.5" r="1" fill="#FFFFFF"/></svg>`,
+  },
+  DELL: {
+    label: 'DL',
+    color: '#0076CE',
+    bgGradient: 'linear-gradient(135deg, #0076CE 0%, #004680 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'IT Hardware & Enterprise Storage',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M8 8h4a4 4 0 0 1 0 8H8z"/></svg>`,
+  },
+  SNDK: {
+    label: 'SD',
+    color: '#D32F2F',
+    bgGradient: 'linear-gradient(135deg, #D32F2F 0%, #9A0007 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Flash Storage & Memory Tech',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><rect x="6" y="5" width="12" height="14" rx="2"/><line x1="9" y1="5" x2="9" y2="2"/><line x1="12" y1="5" x2="12" y2="2"/><line x1="15" y1="5" x2="15" y2="2"/></svg>`,
+  },
+  ANET: {
+    label: 'AN',
+    color: '#3949AB',
+    bgGradient: 'linear-gradient(135deg, #3949AB 0%, #1A237E 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Cloud Networking & Switch Mesh',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="6" cy="6" r="2.5"/><circle cx="18" cy="6" r="2.5"/><circle cx="12" cy="18" r="2.5"/><line x1="8" y1="7.5" x2="16" y2="7.5"/><line x1="7.5" y1="8" x2="10.5" y2="16"/><line x1="16.5" y1="8" x2="13.5" y2="16"/></svg>`,
+  },
+  TSM: {
+    label: 'TSM',
+    color: '#006699',
+    bgGradient: 'linear-gradient(135deg, #006699 0%, #003366 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Advanced Pure-Play Semiconductor Foundry',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><line x1="12" y1="3" x2="12" y2="21"/><line x1="3" y1="12" x2="21" y2="12"/><circle cx="12" cy="12" r="4.5"/></svg>`,
+  },
+  ASML: {
+    label: 'ASM',
+    color: '#1E1B4B',
+    bgGradient: 'linear-gradient(135deg, #312E81 0%, #0F172A 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'EUV Lithography Systems for Semis',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><rect x="4" y="4" width="16" height="16" rx="2"/><polygon points="12 7 16 17 8 17"/></svg>`,
+  },
+  SSNLF: {
+    label: 'SEC',
+    color: '#1428A0',
+    bgGradient: 'linear-gradient(135deg, #1428A0 0%, #071363 100%)',
+    providerTag: 'KRX · tvdatafeed',
+    category: 'Global Electronics, Memory & Displays',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><ellipse cx="12" cy="12" rx="10" ry="5.5" transform="rotate(-20 12 12)"/></svg>`,
+  },
+  SKHY: {
+    label: 'SKH',
+    color: '#EA580C',
+    bgGradient: 'linear-gradient(135deg, #EA580C 0%, #9A3412 100%)',
+    providerTag: 'KRX · tvdatafeed',
+    category: 'High-Bandwidth Memory (HBM) Leader',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 2 20 8 16 18 12 14 8 18 4 8"/></svg>`,
+  },
+
+  // AI, Cloud & Enterprise Software
+  PLTR: {
+    label: 'PLT',
+    color: '#334155',
+    bgGradient: 'linear-gradient(135deg, #1E293B 0%, #0F172A 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Enterprise AI & Defense Analytics',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="10" r="5"/><ellipse cx="12" cy="14" rx="8" ry="4"/><circle cx="12" cy="10" r="1.5" fill="#FFFFFF"/></svg>`,
+  },
+  ORCL: {
+    label: 'OR',
+    color: '#C74634',
+    bgGradient: 'linear-gradient(135deg, #C74634 0%, #8C2417 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Enterprise Database & Cloud Infrastructure',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><ellipse cx="12" cy="12" rx="9" ry="5"/></svg>`,
+  },
+  CRM: {
+    label: 'SF',
+    color: '#00A1E0',
+    bgGradient: 'linear-gradient(135deg, #00A1E0 0%, #0070B8 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Customer Relationship Cloud Software',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9z"/></svg>`,
+  },
+  ADBE: {
+    label: 'AD',
+    color: '#FA0F00',
+    bgGradient: 'linear-gradient(135deg, #FA0F00 0%, #A80000 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Creative Cloud & Document Intelligence',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 4 19 20 15 20 12 13 9 20 5 20"/></svg>`,
+  },
+  CRWD: {
+    label: 'CW',
+    color: '#E53935',
+    bgGradient: 'linear-gradient(135deg, #E53935 0%, #B71C1C 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Cloud-Native Cybersecurity & EDR',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>`,
+  },
+  CSCO: {
+    label: 'CS',
+    color: '#049FD9',
+    bgGradient: 'linear-gradient(135deg, #049FD9 0%, #005073 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Enterprise Networking & Communications',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round"><line x1="4" y1="15" x2="4" y2="18"/><line x1="8" y1="11" x2="8" y2="18"/><line x1="12" y1="7" x2="12" y2="18"/><line x1="16" y1="11" x2="16" y2="18"/><line x1="20" y1="15" x2="20" y2="18"/></svg>`,
+  },
+  APP: {
+    label: 'AL',
+    color: '#8B5CF6',
+    bgGradient: 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Mobile Marketing & Monetization Engine',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 18l6-6 4 4 6-8"/><polyline points="15 8 20 8 20 13"/></svg>`,
+  },
+  NBIS: {
+    label: 'NB',
+    color: '#4F46E5',
+    bgGradient: 'linear-gradient(135deg, #4F46E5 0%, #312E81 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'AI Infrastructure & GPU Supercomputing',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="6" cy="6" r="2"/><circle cx="18" cy="6" r="2"/><circle cx="12" cy="12" r="2.5" fill="#FFFFFF"/><circle cx="6" cy="18" r="2"/><circle cx="18" cy="18" r="2"/><line x1="8" y1="7" x2="10" y2="11"/><line x1="16" y1="7" x2="14" y2="11"/><line x1="8" y1="17" x2="10" y2="13"/><line x1="16" y1="17" x2="14" y2="13"/></svg>`,
+  },
+  CRWV: {
+    label: 'CW',
+    color: '#0D9488',
+    bgGradient: 'linear-gradient(135deg, #0D9488 0%, #115E59 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Specialized Generative AI Cloud GPU',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 2 21 7 12 12 3 7"/><polygon points="12 12 21 17 12 22 3 17"/><line x1="12" y1="12" x2="12" y2="22"/></svg>`,
+  },
+  SAP: {
+    label: 'SAP',
+    color: '#008FD3',
+    bgGradient: 'linear-gradient(135deg, #008FD3 0%, #005691 100%)',
+    providerTag: 'XETRA · tvdatafeed',
+    category: 'Enterprise Resource Planning & Cloud ERP',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="4 6 12 2 20 6 20 18 12 22 4 18"/></svg>`,
+  },
+
+  // Space, Quantum & Future Tech
+  SPCX: {
+    label: 'SPX',
+    color: '#262626',
+    bgGradient: 'linear-gradient(135deg, #262626 0%, #000000 100%)',
+    providerTag: 'SpaceX Track · tvdatafeed',
+    category: 'Aerospace & Orbital Launch Systems',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 0 0-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 0 1 2-3.95A12.88 12.88 0 0 1 22 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 0 1-4 2z"/></svg>`,
+  },
+  RKLB: {
+    label: 'RL',
+    color: '#C62828',
+    bgGradient: 'linear-gradient(135deg, #C62828 0%, #7F0000 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Small Satellite Launch & Space Systems',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M12 2l3 7h-6z"/><rect x="9" y="9" width="6" height="8"/><path d="M7 17l2-3v3z"/><path d="M17 17l-2-3v3z"/><path d="M10 17v4l2-1 2 1v-4"/></svg>`,
+  },
+  GEV: {
+    label: 'GEV',
+    color: '#16A34A',
+    bgGradient: 'linear-gradient(135deg, #16A34A 0%, #14532D 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Clean Energy, Wind & Grid Modernization',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="2.5" fill="#FFFFFF"/><path d="M12 9.5V2l2 4z"/><path d="M14.5 13.5l6.5 3.5-4 1z"/><path d="M9.5 13.5L3 17l2-4z"/></svg>`,
+  },
+  BE: {
+    label: 'BE',
+    color: '#10B981',
+    bgGradient: 'linear-gradient(135deg, #10B981 0%, #047857 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Solid Oxide Fuel Cells & Clean Power',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M11 20A7 7 0 0 1 4 13C4 7 11 3 11 3s7 4 7 10a7 7 0 0 1-7 7z"/><path d="M11 20v-9"/></svg>`,
+  },
+  IONQ: {
+    label: 'IQ',
+    color: '#7C3AED',
+    bgGradient: 'linear-gradient(135deg, #7C3AED 0%, #4C1D95 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Trapped-Ion Quantum Computing',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="3" fill="#FFFFFF"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(30 12 12)"/><ellipse cx="12" cy="12" rx="9" ry="4" transform="rotate(-30 12 12)"/></svg>`,
+  },
+  RIVN: {
+    label: 'RIV',
+    color: '#D97706',
+    bgGradient: 'linear-gradient(135deg, #D97706 0%, #78350F 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Electric Adventure Vehicles & Delivery Vans',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 3 20 12 12 21 4 12"/></svg>`,
+  },
+
+  // Banking, FinTech & Payments
+  JPM: {
+    label: 'JPM',
+    color: '#117ACA',
+    bgGradient: 'linear-gradient(135deg, #117ACA 0%, #0A436D 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Diversified Global Investment Banking',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="7 3 17 3 21 7 21 17 17 21 7 21 3 17 3 7"/></svg>`,
+  },
+  BAC: {
+    label: 'BAC',
+    color: '#0052C2',
+    bgGradient: 'linear-gradient(135deg, #0052C2 0%, #B71C1C 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Commercial & Consumer Banking',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><rect x="4" y="5" width="16" height="4" fill="rgba(255,255,255,0.4)"/><rect x="4" y="10" width="16" height="4"/><rect x="4" y="15" width="16" height="4" fill="rgba(255,255,255,0.4)"/></svg>`,
+  },
+  GS: {
+    label: 'GS',
+    color: '#7399C6',
+    bgGradient: 'linear-gradient(135deg, #7399C6 0%, #2B547E 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Investment Banking & Wealth Management',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><rect x="4" y="4" width="16" height="16" rx="2"/><circle cx="12" cy="12" r="4"/><circle cx="12" cy="12" r="1.5" fill="#FFFFFF"/></svg>`,
+  },
+  V: {
+    label: 'V',
+    color: '#1A1F71',
+    bgGradient: 'linear-gradient(135deg, #1A1F71 0%, #0F1347 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Global Digital Payments Network',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="3 6 8 18 12 18 17 6 13 6 10 14 7 6"/></svg>`,
+  },
+  MA: {
+    label: 'MA',
+    color: '#EB001B',
+    bgGradient: 'linear-gradient(135deg, #EB001B 0%, #F79E1B 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Payment Technology & Transaction Processing',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="9" cy="12" r="6" fill="rgba(235,0,27,0.6)"/><circle cx="15" cy="12" r="6" fill="rgba(247,158,27,0.6)"/></svg>`,
+  },
+  'BRK.B': {
+    label: 'BRK',
+    color: '#002244',
+    bgGradient: 'linear-gradient(135deg, #002244 0%, #001122 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Diversified Holding & Value Investing',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 2 20 7 20 17 12 22 4 17 4 7"/><line x1="12" y1="7" x2="12" y2="17"/><line x1="8" y1="12" x2="16" y2="12"/></svg>`,
+  },
+  BRKB: {
+    label: 'BRK',
+    color: '#002244',
+    bgGradient: 'linear-gradient(135deg, #002244 0%, #001122 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Diversified Holding & Value Investing',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 2 20 7 20 17 12 22 4 17 4 7"/><line x1="12" y1="7" x2="12" y2="17"/><line x1="8" y1="12" x2="16" y2="12"/></svg>`,
+  },
+  HOOD: {
+    label: 'HD',
+    color: '#00C805',
+    bgGradient: 'linear-gradient(135deg, #00C805 0%, #008003 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Retail FinTech & Crypto Brokerage',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M20 4s-8 1-12 7c-2 3-2 6-2 9 0 0 4-1 6-4 3-4 8-12 8-12z"/></svg>`,
+  },
+  MSTR: {
+    label: 'MST',
+    color: '#D32F2F',
+    bgGradient: 'linear-gradient(135deg, #D32F2F 0%, #8B0000 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Bitcoin Treasury & Enterprise Analytics',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polyline points="4 18 4 6 12 14 20 6 20 18"/></svg>`,
+  },
+  PYPL: {
+    label: 'PY',
+    color: '#003087',
+    bgGradient: 'linear-gradient(135deg, #003087 0%, #0079C1 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Digital Checkout & Peer-to-Peer Payments',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M7 4h7a4 4 0 0 1 4 4c0 3-2 5-5 5H9l-2 7"/></svg>`,
+  },
+  COIN: {
+    label: 'CN',
+    color: '#0052FF',
+    bgGradient: 'linear-gradient(135deg, #0052FF 0%, #0033A0 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Cryptocurrency Trading & Custody Platform',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="4"/><path d="M12 8h4"/></svg>`,
+  },
+  HSBC: {
+    label: 'HSB',
+    color: '#DB0011',
+    bgGradient: 'linear-gradient(135deg, #DB0011 0%, #8B0000 100%)',
+    providerTag: 'LSE · tvdatafeed',
+    category: 'Global Banking & Financial Services',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="6 6 18 6 12 12"/><polygon points="6 18 18 18 12 12"/></svg>`,
+  },
+
+  // Retail, Consumer & Automotive
+  WMT: {
+    label: 'WMT',
+    color: '#0071DC',
+    bgGradient: 'linear-gradient(135deg, #0071DC 0%, #004F9E 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Omnichannel Retail & Supercenters',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFC220" stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="2" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="22"/><line x1="3.34" y1="7" x2="7.67" y2="9.5"/><line x1="16.33" y1="14.5" x2="20.66" y2="17"/><line x1="3.34" y1="17" x2="7.67" y2="14.5"/><line x1="16.33" y1="9.5" x2="20.66" y2="7"/></svg>`,
+  },
+  COST: {
+    label: 'COS',
+    color: '#E31837',
+    bgGradient: 'linear-gradient(135deg, #E31837 0%, #8E0011 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Membership Wholesale Club Retail',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><line x1="8" y1="12" x2="16" y2="12"/></svg>`,
+  },
+  DIS: {
+    label: 'DIS',
+    color: '#001A9C',
+    bgGradient: 'linear-gradient(135deg, #001A9C 0%, #000B4F 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Media Entertainment, Parks & Disney+',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M5 20V10l3-3 4 4 4-4 3 3v10"/><path d="M12 2v5"/></svg>`,
+  },
+  SBUX: {
+    label: 'SB',
+    color: '#00704A',
+    bgGradient: 'linear-gradient(135deg, #00704A 0%, #00432C 100%)',
+    providerTag: 'NASDAQ · tvdatafeed',
+    category: 'Specialty Coffee Roaster & Retailer',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><polygon points="12 6 13.5 10.5 18 10.5 14.5 13.5 16 18 12 15 8 18 9.5 13.5 6 10.5 10.5 10.5" fill="#FFFFFF"/></svg>`,
+  },
+  MCD: {
+    label: 'MCD',
+    color: '#DA291C',
+    bgGradient: 'linear-gradient(135deg, #DA291C 0%, #991B1B 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Global Quick Service Restaurant Franchise',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFC72C" stroke-width="2.5"><path d="M4 18c0-7 4-10 4-10s4 3 4 10c0-7 4-10 4-10s4 3 4 10"/></svg>`,
+  },
+  KO: {
+    label: 'KO',
+    color: '#F40009',
+    bgGradient: 'linear-gradient(135deg, #F40009 0%, #990000 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Non-Alcoholic Beverage Leader',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M3 14c4 4 14-8 18-4"/><circle cx="12" cy="12" r="8"/></svg>`,
+  },
+  BABA: {
+    label: 'BBA',
+    color: '#FF6A00',
+    bgGradient: 'linear-gradient(135deg, #FF6A00 0%, #B84300 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Global E-Commerce & Alibaba Cloud',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M8 14c2 3 6 3 8 0"/></svg>`,
+  },
+  TM: {
+    label: 'TM',
+    color: '#EB0A1E',
+    bgGradient: 'linear-gradient(135deg, #EB0A1E 0%, #8B0000 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Global Automotive Manufacturing & Hybrids',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><ellipse cx="12" cy="12" rx="9" ry="6"/><ellipse cx="12" cy="11" rx="4" ry="2.5"/><line x1="12" y1="6" x2="12" y2="18"/></svg>`,
+  },
+
+  // Healthcare & Pharmaceuticals
+  LLY: {
+    label: 'LLY',
+    color: '#D52B1E',
+    bgGradient: 'linear-gradient(135deg, #D52B1E 0%, #801008 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Metabolic & Oncology Pharmaceuticals',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M9 3h6v4l5 12a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2L9 7V3z"/></svg>`,
+  },
+  UNH: {
+    label: 'UNH',
+    color: '#002677',
+    bgGradient: 'linear-gradient(135deg, #002677 0%, #00123D 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Diversified Healthcare Benefits & Optum',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><line x1="12" y1="8" x2="12" y2="14"/><line x1="9" y1="11" x2="15" y2="11"/></svg>`,
+  },
+  PFE: {
+    label: 'PFE',
+    color: '#0093D0',
+    bgGradient: 'linear-gradient(135deg, #0093D0 0%, #00567A 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Biopharmaceuticals & Vaccines',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 6c8 0 8 12 16 12"/><path d="M4 18c8 0 8-12 16-12"/><line x1="8" y1="9" x2="8" y2="15"/><line x1="16" y1="9" x2="16" y2="15"/></svg>`,
+  },
+  NVO: {
+    label: 'NVO',
+    color: '#003087',
+    bgGradient: 'linear-gradient(135deg, #003087 0%, #001A4E 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Diabetes & Obesity Care Therapeutics',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg>`,
+  },
+
+  // Oil & Energy Giants
+  XOM: {
+    label: 'XOM',
+    color: '#ED1B2D',
+    bgGradient: 'linear-gradient(135deg, #ED1B2D 0%, #8B0000 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Integrated Global Energy & Petrochemicals',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><line x1="5" y1="6" x2="11" y2="18"/><line x1="11" y1="6" x2="5" y2="18"/><line x1="13" y1="6" x2="19" y2="18"/><line x1="19" y1="6" x2="13" y2="18"/></svg>`,
+  },
+  CVX: {
+    label: 'CVX',
+    color: '#0054A6',
+    bgGradient: 'linear-gradient(135deg, #0054A6 0%, #002D5A 100%)',
+    providerTag: 'NYSE · tvdatafeed',
+    category: 'Integrated Exploration & Refining',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><polyline points="5 7 12 13 19 7"/><polyline points="5 13 12 19 19 13"/></svg>`,
+  },
+  '2222.SR': {
+    label: 'ARM',
+    color: '#007A3D',
+    bgGradient: 'linear-gradient(135deg, #007A3D 0%, #004D26 100%)',
+    providerTag: 'TADAWUL · tvdatafeed',
+    category: 'Saudi Aramco · Integrated Petroleum Giant',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 2 15 8 22 9 17 14 18 21 12 18 6 21 7 14 2 9 9 8" fill="rgba(255,255,255,0.3)"/></svg>`,
+  },
+  '2222SR': {
+    label: 'ARM',
+    color: '#007A3D',
+    bgGradient: 'linear-gradient(135deg, #007A3D 0%, #004D26 100%)',
+    providerTag: 'TADAWUL · tvdatafeed',
+    category: 'Saudi Aramco · Integrated Petroleum Giant',
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 2 15 8 22 9 17 14 18 21 12 18 6 21 7 14 2 9 9 8" fill="rgba(255,255,255,0.3)"/></svg>`,
+  },
+};
+
 export function getAssetBadge(symbolCode) {
-  const code = String(symbolCode || '').toUpperCase();
-  if (code === 'XAUUSD') {
-    return {
-      label: 'Au',
-      color: '#F59E0B',
-      bgGradient: 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)',
-      providerTag: 'TWELVE_DATA · biquote',
-      category: 'Spot Gold · Commodity',
-      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="6 14 18 14 21 20 3 20 6 14" fill="rgba(255,255,255,0.28)"/><polygon points="8 7 16 7 18 12 6 12 8 7" fill="rgba(255,255,255,0.28)"/><path d="M12 2v2"/></svg>`,
-    };
+  const code = String(symbolCode || '').toUpperCase().trim();
+  const directHit = SYMBOL_CATALOG_BADGES[code];
+  if (directHit) {
+    return directHit;
   }
-  if (code === 'SPOTBRENT' || code === 'USOIL' || code === 'BRENT_FUTURES' || code.includes('OIL') || code.includes('BRENT')) {
-    const isWti = code === 'USOIL';
-    return {
-      label: isWti ? 'WTI' : 'OIL',
-      color: isWti ? '#0EA5E9' : '#2962FF',
-      bgGradient: isWti
-        ? 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)'
-        : 'linear-gradient(135deg, #2962FF 0%, #1D4ED8 100%)',
-      providerTag: isWti ? 'TVC · Yahoo' : 'PEPPERSTONE · tvdatafeed',
-      category: isWti ? 'WTI Crude Oil · Energy' : 'Brent Crude Spot · Energy',
-      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.26)" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z"/><path d="M9.5 14.5a2.5 2.5 0 0 0 2.5 2.5" stroke-width="1.8"/></svg>`,
-    };
+  const cleanCode = code.replace(/[^A-Z0-9]/g, '');
+  if (SYMBOL_CATALOG_BADGES[cleanCode]) {
+    return SYMBOL_CATALOG_BADGES[cleanCode];
   }
-  if (code === 'XAGUSD') {
-    return {
-      label: 'Ag',
-      color: '#94A3B8',
-      bgGradient: 'linear-gradient(135deg, #94A3B8 0%, #475569 100%)',
-      providerTag: 'biquote · TWELVE_DATA',
-      category: 'Spot Silver · Commodity',
-      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="rgba(255,255,255,0.25)" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 15 19 15 22 20 2 20 5 15"/><polygon points="8 8 16 8 18 13 6 13 8 8"/></svg>`,
-    };
-  }
-  if (code === 'BTCUSD' || code === 'ETHUSD') {
-    const isEth = code === 'ETHUSD';
-    return {
-      label: isEth ? 'ETH' : 'BTC',
-      color: isEth ? '#6366F1' : '#F7931A',
-      bgGradient: isEth
-        ? 'linear-gradient(135deg, #6366F1 0%, #4338CA 100%)'
-        : 'linear-gradient(135deg, #F7931A 0%, #C2410C 100%)',
-      providerTag: 'biquote · Yahoo Finance',
-      category: isEth ? 'Ethereum · Crypto' : 'Bitcoin · Crypto',
-      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M9.5 8h4a2 2 0 0 1 0 4h-4h4.5a2 2 0 0 1 0 4h-4.5"/><line x1="11" y1="6" x2="11" y2="18"/></svg>`,
-    };
-  }
-  if (code === 'SPX500USD' || code === 'NDQ') {
-    const isNasdaq = code === 'NDQ';
-    return {
-      label: isNasdaq ? '100' : '500',
-      color: isNasdaq ? '#06B6D4' : '#EF4444',
-      bgGradient: isNasdaq
-        ? 'linear-gradient(135deg, #06B6D4 0%, #0E7490 100%)'
-        : 'linear-gradient(135deg, #EF4444 0%, #B91C1C 100%)',
-      providerTag: 'Yahoo Finance · TV',
-      category: isNasdaq ? 'Nasdaq 100 · US Index' : 'S&P 500 · US Index',
-      svgIcon: '',
-    };
-  }
-  if (code === 'EURUSD') {
-    return {
-      label: 'FX',
-      color: '#26A69A',
-      bgGradient: 'linear-gradient(135deg, #26A69A 0%, #0F766E 100%)',
-      providerTag: 'TradingView · Twelve Data',
-      category: 'Forex · Major Currency',
-      svgIcon: `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M14.5 9a3.5 3.5 0 1 0 0 6"/><line x1="8" y1="11" x2="13" y2="11"/><line x1="8" y1="13" x2="13" y2="13"/></svg>`,
-    };
-  }
-  if (getAssetClass(code) === 'STOCKS') {
-    const stockThemes = {
-      NVDA: ['#22C55E', 'linear-gradient(135deg, #22C55E 0%, #15803D 100%)', 'NV', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 16c4-6 12-6 16 0"/><circle cx="12" cy="12" r="3" fill="#FFFFFF"/></svg>`],
-      AMZN: ['#F59E0B', 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)', 'AZ', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M5 16c4 3 10 3 14 0"/><path d="M16 13l3 3-3 3"/></svg>`],
-      TSLA: ['#EF4444', 'linear-gradient(135deg, #EF4444 0%, #991B1B 100%)', 'TS', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M12 4v16M6 6c3-2 9-2 12 0"/></svg>`],
-      AAPL: ['#64748B', 'linear-gradient(135deg, #64748B 0%, #334155 100%)', 'AP', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.1"><path d="M12 20.94c1.88 0 3.05-.91 4.29-.91 1.23 0 2.22.91 4.1.91 2.53 0 4.61-2.13 4.61-4.75 0-2.48-1.57-4.16-3.8-4.24-1.6-.06-3.1 1.04-3.88 1.04-.79 0-2.02-.99-3.32-.99-2.2 0-4.32 1.63-4.32 4.47 0 2.97 1.94 6.47 4.32 6.47z"/><path d="M15.5 5.5c.83-1 1.3-2.3 1.15-3.5-1.2.06-2.6.8-3.4 1.8-.73.85-1.3 2.1-1.15 3.3 1.3 0 2.6-.7 3.4-1.6z"/></svg>`],
-      GOOGL: ['#3B82F6', 'linear-gradient(135deg, #3B82F6 0%, #1D4ED8 100%)', 'GO', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 12h5a5 5 0 0 1-5 5c-3 0-5-2-5-5s2-5 5-5c2 0 3.5.8 4.3 1.7"/></svg>`],
-      MSFT: ['#0EA5E9', 'linear-gradient(135deg, #0EA5E9 0%, #0369A1 100%)', 'MS', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="1.8"><rect x="4" y="4" width="7" height="7" fill="rgba(255,255,255,0.4)"/><rect x="13" y="4" width="7" height="7" fill="rgba(255,255,255,0.4)"/><rect x="4" y="13" width="7" height="7" fill="rgba(255,255,255,0.4)"/><rect x="13" y="13" width="7" height="7" fill="rgba(255,255,255,0.4)"/></svg>`],
-      META: ['#2563EB', 'linear-gradient(135deg, #2563EB 0%, #1E40AF 100%)', 'MT', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M6 16c-2 0-3-2-3-4s1-4 3-4c3 0 4 5 6 5s3-5 6-5c2 0 3 2 3 4s-1 4-3 4c-3 0-4-5-6-5s-3 5-6 5z"/></svg>`],
-      NFLX: ['#DC2626', 'linear-gradient(135deg, #DC2626 0%, #7F1D1D 100%)', 'NF', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.4"><path d="M5 4v16M19 4v16M5 4l14 16"/></svg>`],
-      AMD: ['#10B981', 'linear-gradient(135deg, #10B981 0%, #047857 100%)', 'AM', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polygon points="12 4 20 12 12 20 4 12"/></svg>`],
-      UBER: ['#475569', 'linear-gradient(135deg, #475569 0%, #1E293B 100%)', 'UB', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="8"/><circle cx="12" cy="12" r="3" fill="#FFFFFF"/></svg>`],
-      NKE: ['#F97316', 'linear-gradient(135deg, #F97316 0%, #C2410C 100%)', 'NK', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><path d="M4 14c4 3 12 3 16-8-4 4-10 6-16 8z"/></svg>`],
-      IBM: ['#3B82F6', 'linear-gradient(135deg, #3B82F6 0%, #1E3A8A 100%)', 'IB', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2"><line x1="4" y1="8" x2="20" y2="8"/><line x1="4" y1="12" x2="20" y2="12"/><line x1="4" y1="16" x2="20" y2="16"/></svg>`],
-      SAN: ['#EC1C24', 'linear-gradient(135deg, #EC1C24 0%, #991B1B 100%)', 'SA', `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><polygon points="12 7 16 16 8 16" fill="#FFFFFF"/></svg>`],
-    };
-    const [color, bgGradient, label, svg] = stockThemes[code] || [
-      '#2962FF',
-      'linear-gradient(135deg, #2962FF 0%, #1E40AF 100%)',
-      code.slice(0, 2),
-      `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><circle cx="12" cy="12" r="9"/><path d="M12 7v10M8 12h8"/></svg>`,
-    ];
-    return {
-      label,
-      color,
-      bgGradient,
-      providerTag: 'Yahoo Finance · NASDAQ/NYSE',
-      category: 'Equity · Global Stock',
-      svgIcon: svg,
-    };
-  }
+
+  // Graceful category-aware fallback for custom symbols added by user
+  const assetClass = getAssetClass(code);
+  const isCommodity = assetClass === 'COMMODITIES';
+  const isCrypto = assetClass === 'CRYPTO';
+  const isFx = assetClass === 'FOREX';
+
+  const pal = isCommodity
+    ? ['#F59E0B', 'linear-gradient(135deg, #F59E0B 0%, #B45309 100%)', 'Commodity']
+    : isCrypto
+    ? ['#8B5CF6', 'linear-gradient(135deg, #8B5CF6 0%, #6D28D9 100%)', 'Crypto Asset']
+    : isFx
+    ? ['#10B981', 'linear-gradient(135deg, #10B981 0%, #047857 100%)', 'Currencies']
+    : ['#2962FF', 'linear-gradient(135deg, #2962FF 0%, #1E40AF 100%)', 'Equity Stock'];
+
   return {
     label: code.slice(0, 3) || 'SYM',
-    color: '#2962FF',
-    bgGradient: 'linear-gradient(135deg, #2962FF 0%, #1E40AF 100%)',
-    providerTag: 'MARKET',
-    category: 'Financial Instrument',
-    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
+    color: pal[0],
+    bgGradient: pal[1],
+    providerTag: 'TradingView (tvdatafeed)',
+    category: `${code} · ${pal[2]}`,
+    svgIcon: `<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#FFFFFF" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>`,
   };
 }
 

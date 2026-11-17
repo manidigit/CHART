@@ -10,10 +10,11 @@ use ChartIntelligence\Providers\TvDatafeedAdapter;
 use PDO;
 
 /**
- * Chronos-2 Execution, Queue, Mutex & Deterministic Cache Manager
- * ===============================================================
+ * Chronos-2 Direct On-Demand Execution, Mutex & Deterministic Cache Manager
+ * =========================================================================
  * - Model: amazon/chronos-2
  * - Pinned Revision: 29ec3766d36d6f73f0696f85560a422f50e8498c
+ * - Strictly on-demand PHP -> Python Worker execution per explicit user click
  * - Enforces single-process concurrency via OS-level flock() mutex
  * - Caches computed 21-quantile forecasts keyed by:
  *   (symbol, provider, timeframe, last_closed_candle_ms, horizon, model_revision)
@@ -37,7 +38,6 @@ final class Chronos2QueueManager
         $dirs = [
             'base'   => $base,
             'cache'  => $base . '/cache',
-            'queue'  => $base . '/queue',
             'inputs' => $base . '/inputs',
             'logs'   => $base . '/logs',
         ];
@@ -91,13 +91,6 @@ final class Chronos2QueueManager
         $dirs = self::ensureDirectories();
         $safeKey = preg_replace('/[^A-Za-z0-9_\-]/', '', $cacheKey);
         return $dirs['cache'] . '/' . $safeKey . '.json';
-    }
-
-    public static function getJobFilePath(string $cacheKey): string
-    {
-        $dirs = self::ensureDirectories();
-        $safeKey = preg_replace('/[^A-Za-z0-9_\-]/', '', $cacheKey);
-        return $dirs['queue'] . '/' . $safeKey . '.job.json';
     }
 
     public static function getInputFilePath(string $cacheKey): string
@@ -233,7 +226,7 @@ final class Chronos2QueueManager
     }
 
     /**
-     * Reads a valid cached READY forecast if available for the exact cache key.
+     * Reads a valid cached READY forecast if available for the exact cache key and unchanged base candles.
      */
     public static function readCachedForecast(
         string $cacheKey,
@@ -241,7 +234,9 @@ final class Chronos2QueueManager
         string $provider,
         string $timeframe,
         int $originOpenMs,
-        int $horizon
+        int $horizon,
+        ?float $expectedLastClose = null,
+        ?string $expectedContextSha256 = null
     ): ?array {
         $cacheFile = self::getCacheFilePath($cacheKey);
         if (!is_file($cacheFile)) {
@@ -270,13 +265,29 @@ final class Chronos2QueueManager
             return null;
         }
 
+        // Invalidate cache automatically if base candle values changed
+        if ($expectedLastClose !== null && isset($series['last_closed_price'])) {
+            if (abs((float) $series['last_closed_price'] - $expectedLastClose) > 1e-8) {
+                return null;
+            }
+        }
+        if (
+            $expectedContextSha256 !== null
+            && $expectedContextSha256 !== ''
+            && !empty($series['context_close_sha256'])
+            && !hash_equals((string) $series['context_close_sha256'], $expectedContextSha256)
+        ) {
+            return null;
+        }
+
         $decoded['served_from_cache'] = true;
         return $decoded;
     }
 
     /**
-     * Enqueues a Chronos-2 forecast job and optionally executes it immediately
-     * if the single-instance flock() mutex is free.
+     * Executes Chronos-2 forecast directly on-demand under process mutex lock.
+     * Strictly on-demand: no background cron job, no infinite queue files.
+     * Checks deterministic cache first; if missed, runs Python worker synchronously and returns result or real error.
      */
     public static function requestOrRunForecast(
         string $symbol,
@@ -284,8 +295,7 @@ final class Chronos2QueueManager
         string $timeframe,
         array $closedCandles,
         int $horizon = self::DEFAULT_HORIZON,
-        int $contextBars = self::DEFAULT_CONTEXT_BARS,
-        bool $executeIfLockFree = true
+        int $contextBars = self::DEFAULT_CONTEXT_BARS
     ): array {
         $cleanSym = strtoupper(preg_replace('/[^A-Za-z0-9_]/', '', $symbol));
         $cleanProv = strtolower(preg_replace('/[^a-z0-9_]/', '', $provider)) ?: 'tvdatafeed';
@@ -308,6 +318,7 @@ final class Chronos2QueueManager
 
         $lastClosedBar = $closedCandles[count($closedCandles) - 1];
         $originOpenMs = (int) ($lastClosedBar['open_time_utc_ms'] ?? 0);
+        $lastClosedPrice = isset($lastClosedBar['close']) ? (float) $lastClosedBar['close'] : null;
         if ($originOpenMs <= 0) {
             return [
                 'status' => 'ERROR',
@@ -315,82 +326,62 @@ final class Chronos2QueueManager
             ];
         }
 
+        $contextSlice = array_slice($closedCandles, -$normContext);
+        $closeValues = array_map(static fn(array $c): float => (float) ($c['close'] ?? 0.0), array_values($contextSlice));
+        $contextCloseSha256 = hash('sha256', (string) json_encode($closeValues));
+
         $cacheKey = self::buildCacheKey($cleanSym, $cleanProv, $cleanTf, $originOpenMs, $normHorizon);
 
-        // 1. Check deterministic cache first
-        $cached = self::readCachedForecast($cacheKey, $cleanSym, $cleanProv, $cleanTf, $originOpenMs, $normHorizon);
+        // 1. Check deterministic cache first (instant return, zero worker invocation)
+        $cached = self::readCachedForecast(
+            $cacheKey,
+            $cleanSym,
+            $cleanProv,
+            $cleanTf,
+            $originOpenMs,
+            $normHorizon,
+            $lastClosedPrice,
+            $contextCloseSha256
+        );
         if ($cached !== null) {
             return $cached;
         }
 
-        // 2. Persist closed context snapshot & queue job descriptor
+        // 2. Always persist latest closed context snapshot for the Python worker
         $inputFile = self::getInputFilePath($cacheKey);
-        $contextSlice = array_slice($closedCandles, -$normContext);
-        if (!is_file($inputFile)) {
-            $inputPayload = json_encode([
-                'symbol'                  => $cleanSym,
-                'provider'                => $cleanProv,
-                'timeframe'               => $cleanTf,
-                'origin_open_time_utc_ms' => $originOpenMs,
-                'count'                   => count($contextSlice),
-                'candles'                 => array_values($contextSlice),
-            ], JSON_UNESCAPED_SLASHES);
-            @file_put_contents($inputFile, $inputPayload, LOCK_EX);
-        }
+        $inputPayload = json_encode([
+            'symbol'                  => $cleanSym,
+            'provider'                => $cleanProv,
+            'timeframe'               => $cleanTf,
+            'origin_open_time_utc_ms' => $originOpenMs,
+            'count'                   => count($contextSlice),
+            'candles'                 => array_values($contextSlice),
+        ], JSON_UNESCAPED_SLASHES);
+        @file_put_contents($inputFile, $inputPayload, LOCK_EX);
 
-        $jobFile = self::getJobFilePath($cacheKey);
-        $nowMs = (int) round(microtime(true) * 1000);
-        if (!is_file($jobFile)) {
-            $jobPayload = [
-                'cache_key'               => $cacheKey,
-                'symbol'                  => $cleanSym,
-                'provider'                => $cleanProv,
-                'timeframe'               => $cleanTf,
-                'origin_open_time_utc_ms' => $originOpenMs,
-                'horizon_bars'            => $normHorizon,
-                'context_bars'            => $normContext,
-                'model_id'                => self::MODEL_ID,
-                'hf_revision_sha'         => self::MODEL_REVISION,
-                'input_file'              => $inputFile,
-                'status'                  => 'QUEUED',
-                'enqueued_at_utc_ms'      => $nowMs,
-            ];
-            @file_put_contents($jobFile, json_encode($jobPayload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
-        }
-
-        if (!$executeIfLockFree) {
-            return [
-                'status'                  => 'QUEUED',
-                'cache_key'               => $cacheKey,
-                'symbol'                  => $cleanSym,
-                'provider'                => $cleanProv,
-                'timeframe'               => $cleanTf,
-                'origin_open_time_utc_ms' => $originOpenMs,
-                'horizon_bars'            => $normHorizon,
-                'model_id'                => self::MODEL_ID,
-                'hf_revision_sha'         => self::MODEL_REVISION,
-                'message'                 => 'Forecast job queued for Chronos-2 execution.',
-            ];
-        }
-
-        // 3. Attempt to acquire the single-instance Chronos-2 worker mutex (non-blocking)
+        // 3. Acquire single-instance execution mutex
         $dirs = self::ensureDirectories();
         $lockFile = $dirs['base'] . '/chronos2_worker.lock';
         $lockFp = @fopen($lockFile, 'c+');
         if ($lockFp === false) {
             return [
-                'status'                  => 'PROCESSING',
+                'status'                  => 'ERROR',
+                'error'                   => 'Unable to initialize Chronos-2 worker lock file.',
                 'cache_key'               => $cacheKey,
-                'symbol'                  => $cleanSym,
-                'provider'                => $cleanProv,
-                'timeframe'               => $cleanTf,
-                'origin_open_time_utc_ms' => $originOpenMs,
-                'horizon_bars'            => $normHorizon,
-                'message'                 => 'Chronos-2 worker lock unavailable; job queued.',
             ];
         }
 
-        if (!@flock($lockFp, LOCK_EX | LOCK_NB)) {
+        // Spin-wait briefly (up to 2 seconds) if another request is currently finishing
+        $locked = false;
+        for ($i = 0; $i < 20; $i++) {
+            if (@flock($lockFp, LOCK_EX | LOCK_NB)) {
+                $locked = true;
+                break;
+            }
+            usleep(100000); // 100ms
+        }
+
+        if (!$locked) {
             @fclose($lockFp);
             return [
                 'status'                  => 'PROCESSING',
@@ -402,19 +393,27 @@ final class Chronos2QueueManager
                 'horizon_bars'            => $normHorizon,
                 'model_id'                => self::MODEL_ID,
                 'hf_revision_sha'         => self::MODEL_REVISION,
-                'message'                 => 'Another Chronos-2 process is currently active; job is queued.',
+                'message'                 => 'Another Chronos-2 execution is currently active. Please retry in a few moments.',
             ];
         }
 
         try {
-            // Re-check cache after acquiring lock in case a concurrent worker just finished it
-            $cachedAfterLock = self::readCachedForecast($cacheKey, $cleanSym, $cleanProv, $cleanTf, $originOpenMs, $normHorizon);
+            // Re-check cache under lock in case previous request just finished
+            $cachedAfterLock = self::readCachedForecast(
+                $cacheKey,
+                $cleanSym,
+                $cleanProv,
+                $cleanTf,
+                $originOpenMs,
+                $normHorizon,
+                $lastClosedPrice,
+                $contextCloseSha256
+            );
             if ($cachedAfterLock !== null) {
-                @unlink($jobFile);
                 return $cachedAfterLock;
             }
 
-            return self::executeSingleJobUnderLock(
+            return self::executeDirectJobUnderLock(
                 $cacheKey,
                 $cleanSym,
                 $cleanProv,
@@ -422,8 +421,7 @@ final class Chronos2QueueManager
                 $originOpenMs,
                 $normHorizon,
                 $normContext,
-                $inputFile,
-                $jobFile
+                $inputFile
             );
         } finally {
             @flock($lockFp, LOCK_UN);
@@ -432,74 +430,15 @@ final class Chronos2QueueManager
     }
 
     /**
-     * Processes pending jobs in the queue directory (invoked by Cron or CLI worker).
-     * Strictly honors the single-instance flock() mutex.
+     * Cron queue worker disabled by architecture decision.
+     * All executions are strictly on-demand per user click.
      */
     public static function processQueueBatch(int $maxJobs = 3): array
     {
-        $dirs = self::ensureDirectories();
-        $lockFile = $dirs['base'] . '/chronos2_worker.lock';
-        $lockFp = @fopen($lockFile, 'c+');
-        if ($lockFp === false || !@flock($lockFp, LOCK_EX | LOCK_NB)) {
-            if (is_resource($lockFp)) {
-                @fclose($lockFp);
-            }
-            return [
-                'status'    => 'BUSY',
-                'processed' => 0,
-                'message'   => 'Another Chronos-2 worker holds the active mutex.',
-            ];
-        }
-
-        $processed = [];
-        try {
-            $jobFiles = glob($dirs['queue'] . '/*.job.json') ?: [];
-            usort($jobFiles, static fn(string $a, string $b): int => (@filemtime($a) ?: 0) <=> (@filemtime($b) ?: 0));
-
-            foreach (array_slice($jobFiles, 0, max(1, $maxJobs)) as $jobFile) {
-                $raw = @file_get_contents($jobFile);
-                $job = $raw ? json_decode($raw, true) : null;
-                if (!is_array($job)) {
-                    @unlink($jobFile);
-                    continue;
-                }
-
-                $cacheKey = (string) ($job['cache_key'] ?? '');
-                $symbol = (string) ($job['symbol'] ?? 'SPOTBRENT');
-                $provider = (string) ($job['provider'] ?? 'tvdatafeed');
-                $timeframe = (string) ($job['timeframe'] ?? 'H1');
-                $originOpenMs = (int) ($job['origin_open_time_utc_ms'] ?? 0);
-                $horizon = (int) ($job['horizon_bars'] ?? self::DEFAULT_HORIZON);
-                $contextBars = (int) ($job['context_bars'] ?? self::DEFAULT_CONTEXT_BARS);
-                $inputFile = (string) ($job['input_file'] ?? self::getInputFilePath($cacheKey));
-
-                $res = self::executeSingleJobUnderLock(
-                    $cacheKey,
-                    $symbol,
-                    $provider,
-                    $timeframe,
-                    $originOpenMs,
-                    $horizon,
-                    $contextBars,
-                    $inputFile,
-                    $jobFile
-                );
-                $processed[] = [
-                    'cache_key' => $cacheKey,
-                    'symbol'    => $symbol,
-                    'timeframe' => $timeframe,
-                    'status'    => $res['status'] ?? 'UNKNOWN',
-                ];
-            }
-        } finally {
-            @flock($lockFp, LOCK_UN);
-            @fclose($lockFp);
-        }
-
         return [
-            'status'    => 'OK',
-            'processed' => count($processed),
-            'jobs'      => $processed,
+            'status'    => 'DISABLED',
+            'processed' => 0,
+            'message'   => 'Cron queue processing is disabled. Chronos-2 execution is strictly on-demand per user request.',
         ];
     }
 
@@ -523,7 +462,7 @@ final class Chronos2QueueManager
         return 'python3';
     }
 
-    private static function executeSingleJobUnderLock(
+    private static function executeDirectJobUnderLock(
         string $cacheKey,
         string $symbol,
         string $provider,
@@ -531,8 +470,7 @@ final class Chronos2QueueManager
         int $originOpenMs,
         int $horizon,
         int $contextBars,
-        string $inputFile,
-        string $jobFile
+        string $inputFile
     ): array {
         $cacheFile = self::getCacheFilePath($cacheKey);
         $workerScript = dirname(__DIR__, 3) . '/scripts/chronos2_worker.py';
@@ -541,16 +479,15 @@ final class Chronos2QueueManager
         if (!is_file($workerScript)) {
             return [
                 'status' => 'ERROR',
-                'error'  => 'chronos2_worker.py script is missing.',
+                'error'  => 'Chronos-2 worker script is missing at ' . $workerScript,
             ];
         }
 
-        // Update job status to RUNNING
-        if (is_file($jobFile)) {
-            $jobData = json_decode((string) @file_get_contents($jobFile), true) ?: [];
-            $jobData['status'] = 'RUNNING';
-            $jobData['started_at_utc_ms'] = (int) round(microtime(true) * 1000);
-            @file_put_contents($jobFile, json_encode($jobData, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES), LOCK_EX);
+        if (!function_exists('exec')) {
+            return [
+                'status' => 'ERROR',
+                'error'  => 'PHP exec() function is disabled on this server host environment.',
+            ];
         }
 
         $cmd = sprintf(
@@ -569,27 +506,28 @@ final class Chronos2QueueManager
 
         $outputLines = [];
         $exitCode = 1;
-        if (function_exists('exec')) {
-            @exec($cmd, $outputLines, $exitCode);
-        }
+        @exec($cmd, $outputLines, $exitCode);
 
         if ($exitCode === 0 && is_file($cacheFile)) {
             $decoded = json_decode((string) @file_get_contents($cacheFile), true);
             if (is_array($decoded) && ($decoded['status'] ?? '') === 'READY') {
-                @unlink($jobFile);
                 $decoded['served_from_cache'] = false;
                 return $decoded;
             }
         }
 
-        // If exec is unavailable or failed, keep job in queue or report error detail
-        $errDetail = trim(implode("\n", array_slice($outputLines, -8)));
+        // Capture real, visible error from python / system
+        $errDetail = trim(implode("\n", array_slice($outputLines, -10)));
         if (is_file($cacheFile)) {
             $errJson = json_decode((string) @file_get_contents($cacheFile), true);
             if (is_array($errJson) && !empty($errJson['error'])) {
                 $errDetail = (string) $errJson['error'];
             }
             @unlink($cacheFile);
+        }
+
+        if ($errDetail === '') {
+            $errDetail = sprintf('Python worker failed with exit code %d using binary "%s".', $exitCode, $pythonBin);
         }
 
         return [
@@ -600,7 +538,7 @@ final class Chronos2QueueManager
             'timeframe'               => $timeframe,
             'origin_open_time_utc_ms' => $originOpenMs,
             'horizon_bars'            => $horizon,
-            'error'                   => $errDetail !== '' ? $errDetail : 'Chronos-2 worker execution failed.',
+            'error'                   => $errDetail,
         ];
     }
 }

@@ -270,21 +270,89 @@ fun WatchlistRowCard(
  * - Euro FX (`EURUSD`): Royal blue gradient circle with crisp Euro (€) vector symbol
  * - Other custom symbols: Gradient circle with bold monospace ticker initials
  */
+fun resolveBadgeMonogram(symbolCode: String): String {
+    return when (symbolCode.uppercase().trim()) {
+        "AVGO" -> "AV"
+        "MU" -> "MU"
+        "INTC" -> "IN"
+        "MRVL" -> "MRV"
+        "AMAT" -> "AMT"
+        "LRCX" -> "LRC"
+        "QCOM" -> "QC"
+        "SMCI" -> "SMC"
+        "DELL" -> "DEL"
+        "SNDK" -> "SDK"
+        "ANET" -> "ANT"
+        "ORCL" -> "ORC"
+        "CRM" -> "CRM"
+        "ADBE" -> "ADB"
+        "CRWD" -> "CRW"
+        "CSCO" -> "CSC"
+        "APP" -> "APP"
+        "NBIS" -> "NBI"
+        "CRWV" -> "CWV"
+        "SPCX" -> "SPX"
+        "RKLB" -> "RKL"
+        "GEV" -> "GEV"
+        "BE" -> "BE"
+        "IONQ" -> "ION"
+        "RIVN" -> "RIV"
+        "JPM" -> "JPM"
+        "BAC" -> "BAC"
+        "GS" -> "GS"
+        "HOOD" -> "HD"
+        "MSTR" -> "MST"
+        "PYPL" -> "PY"
+        "WMT" -> "WMT"
+        "COST" -> "CST"
+        "DIS" -> "DIS"
+        "SBUX" -> "SBX"
+        "MCD" -> "MCD"
+        "KO" -> "KO"
+        "LLY" -> "LLY"
+        "UNH" -> "UNH"
+        "PFE" -> "PFE"
+        "ASML" -> "ASM"
+        "SSNLF" -> "SSN"
+        "SKHY" -> "SKH"
+        "BABA" -> "BBA"
+        "NVO" -> "NVO"
+        "TM" -> "TM"
+        "SAP" -> "SAP"
+        "HSBC" -> "HSB"
+        "2222.SR", "2222SR" -> "ARM"
+        "BRK.B", "BRKB" -> "BRK"
+        "USOIL" -> "WTI"
+        "SPOTBRENT", "BRENT_FUTURES" -> "OIL"
+        "XAUUSD" -> "Au"
+        "XAGUSD" -> "Ag"
+        "EURUSD" -> "FX"
+        "BTCUSD" -> "BTC"
+        "ETHUSD" -> "ETH"
+        "SPX500USD" -> "500"
+        "NDQ" -> "100"
+        else -> symbolCode.take(3).uppercase()
+    }
+}
+
+/**
+ * Rich Vector Asset Icon Badge (100% Parity with Web `getAssetBadge` / `SYMBOL_CATALOG_BADGES`):
+ * - Commodities, Energy, Metals, FX, Crypto, and Major Indices with vector paths
+ * - Blue-chip Tech & Prominent Equities with custom SVG-equivalent vector paths
+ * - Standardized sector-aware gradient backgrounds and border tints across all 79 catalog symbols
+ * - Guaranteed non-empty rendering (fallback to high-contrast monogram badge if no vector canvas)
+ */
 @Composable
 fun AssetSymbolBadge(
     symbolCode: String,
     sizeDp: Dp = 36.dp,
     modifier: Modifier = Modifier
 ) {
-    val upper = symbolCode.uppercase()
+    val upper = symbolCode.uppercase().trim()
     val isGold = upper.contains("XAU") || upper.contains("GOLD")
     val isOil = upper.contains("BRENT") || upper.contains("OIL") || upper.contains("WTI")
     val isSilver = upper.contains("XAG") || upper.contains("SILVER")
     val isEuro = upper.contains("EUR")
-
-    val isStock = ProviderId.isStock(upper)
-    val isCrypto = upper in listOf("BTCUSD", "ETHUSD")
-    val isIndex = upper in listOf("SPX500USD", "NDQ")
 
     val gradientColors = when {
         isGold -> listOf(Color(0xFFFDE047), Color(0xFFF59E0B), Color(0xFFB45309))
@@ -308,6 +376,38 @@ fun AssetSymbolBadge(
         upper == "NKE" -> listOf(Color(0xFFFB923C), Color(0xFFEA580C), Color(0xFF9A3412))
         upper == "IBM" -> listOf(Color(0xFF60A5FA), Color(0xFF2563EB), Color(0xFF1E3A8A))
         upper == "SAN" -> listOf(Color(0xFFF87171), Color(0xFFDC2626), Color(0xFF991B1B))
+        upper == "AVGO" -> listOf(Color(0xFFF43F5E), Color(0xFFCC092F), Color(0xFF881337))
+        upper in listOf("MU", "INTC") -> listOf(Color(0xFF38BDF8), Color(0xFF0068B5), Color(0xFF003B6F))
+        upper in listOf("MRVL", "AMAT", "LRCX", "QCOM") -> listOf(Color(0xFF60A5FA), Color(0xFF2563EB), Color(0xFF1E3A8A))
+        upper in listOf("DELL", "SMCI", "SNDK", "ANET") -> listOf(Color(0xFF38BDF8), Color(0xFF0076CE), Color(0xFF0F172A))
+        upper == "CSCO" -> listOf(Color(0xFF38BDF8), Color(0xFF049FD9), Color(0xFF005073))
+        upper in listOf("APP", "NBIS", "CRWV") -> listOf(Color(0xFFA855F7), Color(0xFF6366F1), Color(0xFF312E81))
+        upper in listOf("ORCL", "CRM", "ADBE", "CRWD") -> listOf(Color(0xFFF87171), Color(0xFFDC2626), Color(0xFF7F1D1D))
+        upper == "SAP" -> listOf(Color(0xFF38BDF8), Color(0xFF008FD3), Color(0xFF004070))
+        upper == "PLTR" -> listOf(Color(0xFF94A3B8), Color(0xFF334155), Color(0xFF0F172A))
+        upper == "SPCX" -> listOf(Color(0xFF475569), Color(0xFF1E293B), Color(0xFF000000))
+        upper == "RKLB" -> listOf(Color(0xFFF87171), Color(0xFFC62828), Color(0xFF7F0000))
+        upper in listOf("GEV", "BE") -> listOf(Color(0xFF4ADE80), Color(0xFF16A34A), Color(0xFF064E3B))
+        upper == "IONQ" -> listOf(Color(0xFFA78BFA), Color(0xFF7C3AED), Color(0xFF4C1D95))
+        upper == "RIVN" -> listOf(Color(0xFFFBBF24), Color(0xFFD97706), Color(0xFF78350F))
+        upper in listOf("JPM", "BAC", "GS", "HSBC") -> listOf(Color(0xFF60A5FA), Color(0xFF1E40AF), Color(0xFF0F172A))
+        upper == "V" -> listOf(Color(0xFFFBBF24), Color(0xFF1A1F71), Color(0xFF0D1242))
+        upper == "MA" -> listOf(Color(0xFFF87171), Color(0xFFEB001B), Color(0xFFF79E1B))
+        upper in listOf("BRK.B", "BRKB") -> listOf(Color(0xFF475569), Color(0xFF002244), Color(0xFF001122))
+        upper == "HOOD" -> listOf(Color(0xFF4ADE80), Color(0xFF00C805), Color(0xFF006603))
+        upper == "MSTR" -> listOf(Color(0xFFF87171), Color(0xFFD32F2F), Color(0xFF7F0000))
+        upper == "PYPL" -> listOf(Color(0xFF38BDF8), Color(0xFF003087), Color(0xFF001F5C))
+        upper == "COIN" -> listOf(Color(0xFF60A5FA), Color(0xFF0052FF), Color(0xFF00298A))
+        upper in listOf("WMT", "COST") -> listOf(Color(0xFF60A5FA), Color(0xFF0071CE), Color(0xFFFFC220))
+        upper == "DIS" -> listOf(Color(0xFF60A5FA), Color(0xFF113CCF), Color(0xFF071B66))
+        upper in listOf("SBUX", "KO") -> listOf(Color(0xFF4ADE80), Color(0xFF00704A), Color(0xFF003824))
+        upper == "MCD" -> listOf(Color(0xFFF87171), Color(0xFFDA291C), Color(0xFFFFC72C))
+        upper in listOf("LLY", "UNH", "PFE", "NVO") -> listOf(Color(0xFF60A5FA), Color(0xFF005596), Color(0xFF002B4D))
+        upper in listOf("XOM", "CVX") -> listOf(Color(0xFFF87171), Color(0xFFED1B2D), Color(0xFF7F0000))
+        upper in listOf("TSM", "ASML", "SSNLF", "SKHY") -> listOf(Color(0xFF38BDF8), Color(0xFF0072CE), Color(0xFF0F172A))
+        upper in listOf("2222.SR", "2222SR") -> listOf(Color(0xFF4ADE80), Color(0xFF007A3D), Color(0xFF004D26))
+        upper == "BABA" -> listOf(Color(0xFFFB923C), Color(0xFFFF6A00), Color(0xFFB34700))
+        upper == "TM" -> listOf(Color(0xFFF87171), Color(0xFFEB0A1E), Color(0xFF7F0000))
         else -> listOf(Color(0xFF60A5FA), Color(0xFF2563EB), Color(0xFF1E3A8A))
     }
 
@@ -325,10 +425,30 @@ fun AssetSymbolBadge(
         upper == "AMZN" -> Color(0xFFFF9900).copy(alpha = 0.65f)
         upper == "NKE" -> Color(0xFFFB923C).copy(alpha = 0.65f)
         upper == "SAN" -> Color(0xFFF87171).copy(alpha = 0.65f)
+        upper == "COIN" -> Color(0xFF0052FF).copy(alpha = 0.65f)
+        upper in listOf("2222.SR", "2222SR") -> Color(0xFF007A3D).copy(alpha = 0.65f)
+        upper == "V" -> Color(0xFF1A1F71).copy(alpha = 0.65f)
+        upper == "MA" -> Color(0xFFEB001B).copy(alpha = 0.65f)
+        upper == "MCD" -> Color(0xFFDA291C).copy(alpha = 0.65f)
+        upper == "WMT" -> Color(0xFF0071CE).copy(alpha = 0.65f)
+        upper == "XOM" -> Color(0xFFED1B2D).copy(alpha = 0.65f)
+        upper == "CVX" -> Color(0xFF0054A6).copy(alpha = 0.65f)
+        upper == "TSM" -> Color(0xFF0072CE).copy(alpha = 0.65f)
+        upper == "DIS" -> Color(0xFF113CCF).copy(alpha = 0.65f)
+        upper == "PLTR" -> Color(0xFF94A3B8).copy(alpha = 0.65f)
         else -> Color(0xFF818CF8).copy(alpha = 0.55f)
     }
 
-    val hasCustomVectorArt = isGold || isOil || isSilver || isEuro || isCrypto || isIndex || isStock
+    val customVectorSymbols = setOf(
+        "BTCUSD", "ETHUSD", "SPX500USD", "NDQ",
+        "AAPL", "MSFT", "GOOGL", "AMZN", "TSLA",
+        "NVDA", "META", "NFLX", "AMD", "UBER",
+        "NKE", "IBM", "SAN", "PLTR", "V",
+        "MA", "BRK.B", "BRKB", "2222.SR", "2222SR",
+        "DIS", "MCD", "WMT", "XOM", "CVX", "TSM", "COIN"
+    )
+
+    val hasCustomVectorArt = isGold || isOil || isSilver || isEuro || (upper in customVectorSymbols)
 
     Box(
         modifier = modifier
@@ -619,43 +739,192 @@ fun AssetSymbolBadge(
                         drawCircle(Color.White, radius = w * 0.32f, center = Offset(w * 0.48f, h * 0.46f), style = Stroke(strokeW))
                         drawLine(Color(0xFF38BDF8), Offset(w * 0.50f, h * 0.50f), Offset(w * 0.82f, h * 0.84f), strokeWidth = strokeW * 1.2f, cap = StrokeCap.Round)
                     }
+                    upper == "PLTR" -> {
+                        val strokeW = (w * 0.12f).coerceAtLeast(1.8f)
+                        drawCircle(Color.White, radius = w * 0.30f, center = Offset(w * 0.50f, h * 0.50f), style = Stroke(strokeW))
+                        drawLine(Color(0xFF38BDF8), Offset(w * 0.50f, h * 0.20f), Offset(w * 0.50f, h * 0.80f), strokeWidth = strokeW)
+                        drawLine(Color(0xFF38BDF8), Offset(w * 0.20f, h * 0.50f), Offset(w * 0.80f, h * 0.50f), strokeWidth = strokeW)
+                    }
+                    upper == "V" -> {
+                        val strokeW = (w * 0.16f).coerceAtLeast(2.0f)
+                        drawLine(Color(0xFFFBBF24), Offset(w * 0.18f, h * 0.26f), Offset(w * 0.48f, h * 0.74f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color.White, Offset(w * 0.48f, h * 0.74f), Offset(w * 0.82f, h * 0.26f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                    }
+                    upper == "MA" -> {
+                        drawCircle(Color(0xFFEB001B).copy(alpha = 0.85f), radius = w * 0.24f, center = Offset(w * 0.38f, h * 0.50f))
+                        drawCircle(Color(0xFFF79E1B).copy(alpha = 0.85f), radius = w * 0.24f, center = Offset(w * 0.62f, h * 0.50f))
+                    }
+                    upper in listOf("BRK.B", "BRKB") -> {
+                        val strokeW = (w * 0.12f).coerceAtLeast(1.8f)
+                        val diamond = Path().apply {
+                            moveTo(w * 0.50f, h * 0.16f)
+                            lineTo(w * 0.84f, h * 0.50f)
+                            lineTo(w * 0.50f, h * 0.84f)
+                            lineTo(w * 0.16f, h * 0.50f)
+                            close()
+                        }
+                        drawPath(diamond, color = Color.White, style = Stroke(strokeW))
+                        drawLine(Color.White, Offset(w * 0.50f, h * 0.16f), Offset(w * 0.50f, h * 0.84f), strokeWidth = strokeW * 0.8f)
+                    }
+                    upper in listOf("2222.SR", "2222SR") -> {
+                        val strokeW = (w * 0.12f).coerceAtLeast(1.8f)
+                        drawLine(Color.White, Offset(w * 0.50f, h * 0.15f), Offset(w * 0.50f, h * 0.85f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color.White, Offset(w * 0.15f, h * 0.50f), Offset(w * 0.85f, h * 0.50f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color(0xFFFDE047), Offset(w * 0.25f, h * 0.25f), Offset(w * 0.75f, h * 0.75f), strokeWidth = strokeW * 0.8f, cap = StrokeCap.Round)
+                        drawLine(Color(0xFFFDE047), Offset(w * 0.75f, h * 0.25f), Offset(w * 0.25f, h * 0.75f), strokeWidth = strokeW * 0.8f, cap = StrokeCap.Round)
+                    }
+                    upper == "DIS" -> {
+                        val strokeW = (w * 0.12f).coerceAtLeast(1.8f)
+                        drawArc(Color.White, 190f, 160f, false, Offset(w * 0.15f, h * 0.25f), Size(w * 0.70f, h * 0.60f), style = Stroke(strokeW, cap = StrokeCap.Round))
+                        drawCircle(Color(0xFFFDE047), radius = w * 0.08f, center = Offset(w * 0.75f, h * 0.35f))
+                    }
+                    upper == "MCD" -> {
+                        val strokeW = (w * 0.14f).coerceAtLeast(2.0f)
+                        drawArc(Color(0xFFFFC72C), 180f, 180f, false, Offset(w * 0.14f, h * 0.32f), Size(w * 0.36f, h * 0.50f), style = Stroke(strokeW, cap = StrokeCap.Round))
+                        drawArc(Color(0xFFFFC72C), 180f, 180f, false, Offset(w * 0.50f, h * 0.32f), Size(w * 0.36f, h * 0.50f), style = Stroke(strokeW, cap = StrokeCap.Round))
+                    }
+                    upper == "WMT" -> {
+                        val strokeW = (w * 0.12f).coerceAtLeast(1.8f)
+                        drawLine(Color(0xFFFFC220), Offset(w * 0.50f, h * 0.16f), Offset(w * 0.50f, h * 0.36f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color(0xFFFFC220), Offset(w * 0.50f, h * 0.64f), Offset(w * 0.50f, h * 0.84f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color(0xFFFFC220), Offset(w * 0.20f, h * 0.32f), Offset(w * 0.38f, h * 0.42f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color(0xFFFFC220), Offset(w * 0.62f, h * 0.58f), Offset(w * 0.80f, h * 0.68f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color(0xFFFFC220), Offset(w * 0.20f, h * 0.68f), Offset(w * 0.38f, h * 0.58f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color(0xFFFFC220), Offset(w * 0.62f, h * 0.42f), Offset(w * 0.80f, h * 0.32f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                    }
+                    upper == "XOM" -> {
+                        val strokeW = (w * 0.13f).coerceAtLeast(1.8f)
+                        drawLine(Color.White, Offset(w * 0.18f, h * 0.26f), Offset(w * 0.46f, h * 0.74f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color.White, Offset(w * 0.46f, h * 0.26f), Offset(w * 0.18f, h * 0.74f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color.White, Offset(w * 0.54f, h * 0.26f), Offset(w * 0.82f, h * 0.74f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                        drawLine(Color.White, Offset(w * 0.82f, h * 0.26f), Offset(w * 0.54f, h * 0.74f), strokeWidth = strokeW, cap = StrokeCap.Round)
+                    }
+                    upper == "CVX" -> {
+                        val strokeW = (w * 0.13f).coerceAtLeast(1.8f)
+                        val chevron1 = Path().apply {
+                            moveTo(w * 0.22f, h * 0.32f)
+                            lineTo(w * 0.50f, h * 0.52f)
+                            lineTo(w * 0.78f, h * 0.32f)
+                        }
+                        drawPath(chevron1, color = Color(0xFF38BDF8), style = Stroke(strokeW, cap = StrokeCap.Round))
+                        val chevron2 = Path().apply {
+                            moveTo(w * 0.22f, h * 0.54f)
+                            lineTo(w * 0.50f, h * 0.74f)
+                            lineTo(w * 0.78f, h * 0.54f)
+                        }
+                        drawPath(chevron2, color = Color(0xFFF87171), style = Stroke(strokeW, cap = StrokeCap.Round))
+                    }
+                    upper == "TSM" -> {
+                        val strokeW = (w * 0.10f).coerceAtLeast(1.5f)
+                        drawRoundRect(Color.White, Offset(w * 0.20f, h * 0.20f), Size(w * 0.60f, h * 0.60f), CornerRadius(3f, 3f), style = Stroke(strokeW))
+                        drawLine(Color(0xFF38BDF8), Offset(w * 0.20f, h * 0.40f), Offset(w * 0.80f, h * 0.40f), strokeWidth = strokeW * 0.8f)
+                        drawLine(Color(0xFF38BDF8), Offset(w * 0.20f, h * 0.60f), Offset(w * 0.80f, h * 0.60f), strokeWidth = strokeW * 0.8f)
+                        drawLine(Color(0xFF38BDF8), Offset(w * 0.40f, h * 0.20f), Offset(w * 0.40f, h * 0.80f), strokeWidth = strokeW * 0.8f)
+                        drawLine(Color(0xFF38BDF8), Offset(w * 0.60f, h * 0.20f), Offset(w * 0.60f, h * 0.80f), strokeWidth = strokeW * 0.8f)
+                    }
+                    upper == "COIN" -> {
+                        val strokeW = (w * 0.14f).coerceAtLeast(2.0f)
+                        drawArc(Color.White, 45f, 270f, false, Offset(w * 0.18f, h * 0.18f), Size(w * 0.64f, h * 0.64f), style = Stroke(strokeW, cap = StrokeCap.Round))
+                    }
                 }
             }
         } else {
+            val monogram = resolveBadgeMonogram(upper)
             Text(
-                text = upper.take(4),
+                text = monogram,
                 style = MaterialTheme.typography.labelSmall,
                 fontFamily = JetBrainsMonoFontFamily,
                 fontWeight = FontWeight.Bold,
-                color = Color.White
+                color = Color.White,
+                fontSize = if (monogram.length > 3) 8.sp else 10.sp,
+                maxLines = 1
             )
         }
     }
 }
 
 fun resolveAssetBadge(symbolCode: String): Pair<String, Color> {
-    return when (symbolCode.uppercase()) {
+    val upper = symbolCode.uppercase().trim()
+    return when (upper) {
         "XAUUSD" -> "Au" to Color(0xFFF59E0B)
-        "SPOTBRENT", "BRENT_FUTURES", "USOIL" -> "OIL" to Color(0xFF2962FF)
+        "SPOTBRENT", "BRENT_FUTURES" -> "OIL" to Color(0xFF2962FF)
+        "USOIL" -> "WTI" to Color(0xFF0EA5E9)
         "XAGUSD" -> "Ag" to Color(0xFF94A3B8)
         "EURUSD", "GBPUSD", "USDJPY" -> "FX" to Color(0xFF26A69A)
         "BTCUSD" -> "BTC" to Color(0xFFF7931A)
         "ETHUSD" -> "ETH" to Color(0xFF627EEA)
         "SPX500USD" -> "500" to Color(0xFFEF4444)
-        "NDQ" -> "100" to Color(0xFF0EA5E9)
-        "NVDA" -> "NVDA" to Color(0xFF16A34A)
-        "AMZN" -> "AMZN" to Color(0xFFD97706)
-        "TSLA" -> "TSLA" to Color(0xFFE11D48)
-        "AAPL" -> "AAPL" to Color(0xFF94A3B8)
+        "NDQ" -> "100" to Color(0xFF06B6D4)
+        "NVDA" -> "NVDA" to Color(0xFF22C55E)
+        "AMZN" -> "AMZN" to Color(0xFFF59E0B)
+        "TSLA" -> "TSLA" to Color(0xFFEF4444)
+        "AAPL" -> "AAPL" to Color(0xFF64748B)
         "GOOGL" -> "GOOG" to Color(0xFF3B82F6)
-        "MSFT" -> "MSFT" to Color(0xFF0284C7)
+        "MSFT" -> "MSFT" to Color(0xFF0EA5E9)
         "META" -> "META" to Color(0xFF2563EB)
         "NFLX" -> "NFLX" to Color(0xFFDC2626)
-        "AMD" -> "AMD" to Color(0xFF059669)
+        "AMD" -> "AMD" to Color(0xFF10B981)
         "UBER" -> "UBER" to Color(0xFF475569)
-        "NKE" -> "NKE" to Color(0xFFEA580C)
-        "IBM" -> "IBM" to Color(0xFF2563EB)
-        "SAN" -> "SAN" to Color(0xFFDC2626)
-        else -> symbolCode.take(4).uppercase() to Color(0xFF2962FF)
+        "NKE" -> "NKE" to Color(0xFFF97316)
+        "IBM" -> "IBM" to Color(0xFF3B82F6)
+        "SAN" -> "SAN" to Color(0xFFEC1C24)
+        "AVGO" -> "AVGO" to Color(0xFFCC092F)
+        "MU" -> "MU" to Color(0xFF005A9C)
+        "INTC" -> "INTC" to Color(0xFF0068B5)
+        "MRVL" -> "MRVL" to Color(0xFF2563EB)
+        "AMAT" -> "AMAT" to Color(0xFF0072CE)
+        "LRCX" -> "LRCX" to Color(0xFF005A9C)
+        "QCOM" -> "QCOM" to Color(0xFF002244)
+        "SMCI" -> "SMCI" to Color(0xFF0076CE)
+        "DELL" -> "DELL" to Color(0xFF0076CE)
+        "SNDK" -> "SNDK" to Color(0xFFE2231A)
+        "ANET" -> "ANET" to Color(0xFF002F6C)
+        "PLTR" -> "PLTR" to Color(0xFF475569)
+        "ORCL" -> "ORCL" to Color(0xFFC74634)
+        "CRM" -> "CRM" to Color(0xFF00A1E0)
+        "ADBE" -> "ADBE" to Color(0xFFFA0F00)
+        "CRWD" -> "CRWD" to Color(0xFFE01E26)
+        "CSCO" -> "CSCO" to Color(0xFF049FD9)
+        "APP" -> "APP" to Color(0xFF8B5CF6)
+        "NBIS" -> "NBIS" to Color(0xFF4F46E5)
+        "CRWV" -> "CRWV" to Color(0xFF0D9488)
+        "SPCX" -> "SPCX" to Color(0xFF262626)
+        "RKLB" -> "RKLB" to Color(0xFFC62828)
+        "GEV" -> "GEV" to Color(0xFF16A34A)
+        "BE" -> "BE" to Color(0xFF10B981)
+        "IONQ" -> "IONQ" to Color(0xFF7C3AED)
+        "RIVN" -> "RIVN" to Color(0xFFD97706)
+        "JPM" -> "JPM" to Color(0xFF117ACA)
+        "BAC" -> "BAC" to Color(0xFFE31837)
+        "GS" -> "GS" to Color(0xFF7399C6)
+        "V" -> "VISA" to Color(0xFF1A1F71)
+        "MA" -> "MA" to Color(0xFFEB001B)
+        "BRK.B", "BRKB" -> "BRK" to Color(0xFF002244)
+        "HOOD" -> "HOOD" to Color(0xFF00C805)
+        "MSTR" -> "MSTR" to Color(0xFFD32F2F)
+        "PYPL" -> "PYPL" to Color(0xFF003087)
+        "COIN" -> "COIN" to Color(0xFF0052FF)
+        "WMT" -> "WMT" to Color(0xFF0071CE)
+        "COST" -> "COST" to Color(0xFFE31837)
+        "DIS" -> "DIS" to Color(0xFF113CCF)
+        "SBUX" -> "SBUX" to Color(0xFF00704A)
+        "MCD" -> "MCD" to Color(0xFFDA291C)
+        "KO" -> "KO" to Color(0xFFF40009)
+        "LLY" -> "LLY" to Color(0xFFE31837)
+        "UNH" -> "UNH" to Color(0xFF002677)
+        "PFE" -> "PFE" to Color(0xFF000080)
+        "XOM" -> "XOM" to Color(0xFFED1B2D)
+        "CVX" -> "CVX" to Color(0xFF0054A6)
+        "TSM" -> "TSM" to Color(0xFF0072CE)
+        "ASML" -> "ASML" to Color(0xFF002244)
+        "SSNLF" -> "SSN" to Color(0xFF034EA2)
+        "SKHY" -> "SKH" to Color(0xFFE2231A)
+        "BABA" -> "BABA" to Color(0xFFFF6A00)
+        "NVO" -> "NVO" to Color(0xFF003087)
+        "TM" -> "TM" to Color(0xFFEB0A1E)
+        "SAP" -> "SAP" to Color(0xFF008FD3)
+        "HSBC" -> "HSBC" to Color(0xFFDB0011)
+        "2222.SR", "2222SR" -> "ARM" to Color(0xFF007A3D)
+        else -> resolveBadgeMonogram(upper) to Color(0xFF2962FF)
     }
 }

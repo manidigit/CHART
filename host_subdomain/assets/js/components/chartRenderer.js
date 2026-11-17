@@ -1319,12 +1319,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           ctx.restore();
         }
       }
-    } else if (tab.chronosStatus === 'PROCESSING' || tab.chronosStatus === 'QUEUED') {
+    } else if (tab.chronosStatus === 'PROCESSING') {
       ctx.save();
       const procText =
         i18n && i18n.getCurrentLanguage() === 'fa'
           ? 'Chronos-2: در حال پردازش پیش‌بینی...'
-          : 'Chronos-2: Processing forecast...';
+          : 'Chronos-2: Running model...';
       ctx.font = 'bold 11px "JetBrains Mono", sans-serif';
       const pTw = ctx.measureText(procText).width + 18;
       const pX = Math.max(12, chartW - pTw - 12);
@@ -1339,6 +1339,30 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
       ctx.fillStyle = chronosColor;
       ctx.fillText(procText, pX + 9, pY + 14.5);
+      ctx.restore();
+    } else if (tab.chronosStatus === 'ERROR') {
+      ctx.save();
+      const rawErr = String(tab.chronosError || '').trim();
+      const errMsg = rawErr.length > 78 ? rawErr.slice(0, 75) + '...' : rawErr;
+      const errText = errMsg
+        ? `Chronos-2 Error: ${errMsg}`
+        : i18n && i18n.getCurrentLanguage() === 'fa'
+          ? 'Chronos-2: خطا در اجرای مدل پایتون'
+          : 'Chronos-2: Execution failed';
+      ctx.font = 'bold 11px "JetBrains Mono", sans-serif';
+      const eTw = Math.min(chartW - 24, ctx.measureText(errText).width + 20);
+      const eX = Math.max(12, chartW - eTw - 12);
+      const eY = topPad + 12;
+      ctx.fillStyle = isDark ? 'rgba(42, 18, 22, 0.94)' : 'rgba(254, 242, 242, 0.96)';
+      ctx.strokeStyle = 'rgba(239, 83, 80, 0.9)';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(eX, eY, eTw, 24, 5);
+      else ctx.rect(eX, eY, eTw, 24);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = isDark ? '#FCA5A5' : '#DC2626';
+      ctx.fillText(errText, eX + 10, eY + 15.5, eTw - 20);
       ctx.restore();
     }
   }

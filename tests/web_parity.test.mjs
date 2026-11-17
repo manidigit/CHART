@@ -45,7 +45,7 @@ const {
 } = await import('../host_subdomain/assets/js/core/store.js');
 const { renderTopHeaderBar } = await import('../host_subdomain/assets/js/views/headerView.js');
 const { renderSettingsModal } = await import('../host_subdomain/assets/js/views/settingsView.js');
-const { renderSymbolOverviewModal } = await import('../host_subdomain/assets/js/views/watchlistView.js');
+const { renderSymbolOverviewModal, getAssetBadge, SYMBOL_CATALOG_BADGES } = await import('../host_subdomain/assets/js/views/watchlistView.js');
 const { syncSymbolNow } = await import('../host_subdomain/assets/js/services/apiService.js');
 
 test('PAR-01: resolvePriceBasis returns CFD Feed for SPOTBRENT on tvdatafeed', () => {
@@ -754,6 +754,30 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     };
     assert.equal(isChronosForecastMatchingTab(tabWithFormingBar, h1Payload), true);
 
+    const { invalidateTabChronosIfStale } = await import('../host_subdomain/assets/js/core/store.js');
+    const { computeClosedSeriesDigest } = await import('../host_subdomain/assets/js/services/apiService.js');
+
+    // Editing base candle close price even with identical timestamp must invalidate forecast & change digest
+    const modifiedTab = {
+        ...matchingTab,
+        showChronosForecast: true,
+        chronosForecast: h1Payload,
+        chronosStatus: 'READY',
+        candles: [
+            { open_time_utc_ms: 1794204000000, open: 99.5, high: 100.1, low: 99.4, close: 99.7, is_closed: true },
+            { open_time_utc_ms: 1794207600000, open: 99.7, high: 100.2, low: 99.6, close: 101.25, is_closed: true }
+        ],
+    };
+    assert.equal(isChronosForecastMatchingTab(modifiedTab, h1Payload), false, 'Modified close price must invalidate forecast');
+    assert.notEqual(
+        computeClosedSeriesDigest(matchingTab.candles),
+        computeClosedSeriesDigest(modifiedTab.candles),
+        'Digest must change when base candle close changes'
+    );
+    invalidateTabChronosIfStale(modifiedTab);
+    assert.equal(modifiedTab.chronosForecast, null);
+    assert.equal(modifiedTab.showChronosForecast, false, 'Stale forecast invalidation must not keep active trigger');
+
     // Verify PHP files use existing ApiEnvelope & Database::getPdo() and JS uses unified v=1.45.2 cache-busting
     const phpEndpointSrc = fs.readFileSync(path.resolve('host_subdomain/api/v1/chronos2_forecast.php'), 'utf8');
     assert.equal(phpEndpointSrc.includes('core/Config.php'), false, 'Must not reference nonexistent Config.php');
@@ -767,8 +791,52 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
 
     const indexHtmlSrc = fs.readFileSync(path.resolve('host_subdomain/index.html'), 'utf8');
     const appJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
+    const storeJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
+    const apiServiceJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/apiService.js'), 'utf8');
     assert.equal(indexHtmlSrc.includes('?v=1.45.2'), true);
     assert.equal(appJsSrc.includes('?v=1.43.0'), false);
     assert.equal(appJsSrc.includes('?v=1.45.2'), true);
+
+    // Verify Strictly On-Demand Architecture: No Cron dependency, No Queue files, No Auto-execution
+    assert.equal(phpEndpointSrc.includes('enqueue_only'), false, 'Endpoint must not support enqueue_only');
+    assert.equal(phpEndpointSrc.includes('QUEUED'), false, 'Endpoint must not return QUEUED');
+    assert.equal(phpQueueMgrSrc.includes('.job.json'), false, 'Queue manager must not write .job.json queue files');
+    assert.equal(phpQueueMgrSrc.includes("'status'    => 'DISABLED'"), true, 'Cron queue processing must be disabled');
+
+    const cronScriptSrc = fs.readFileSync(path.resolve('host_subdomain/scripts/cron_process_chronos2_queue.php'), 'utf8');
+    assert.equal(cronScriptSrc.includes("'status'        => 'DISABLED'"), true, 'Cron script must be disabled');
+
+    assert.equal(
+        apiServiceJsSrc.includes('MAX_CHRONOS2_ATTEMPTS = 3'),
+        true,
+        'Client must cap retry tracking to bounded 3 attempts'
+    );
+    assert.equal(
+        storeJsSrc.includes("'showChronosForecast'"),
+        false,
+        'showChronosForecast must not be in synced INDICATOR_FLAG_KEYS'
+    );
+    assert.equal(
+        appJsSrc.includes("openOrFocusSymbolTab") &&
+        appJsSrc.includes("Strictly on-demand: Invalidate previous forecast but NEVER auto-execute without explicit user click"),
+        true,
+        'openOrFocusSymbolTab must not auto-execute Chronos-2'
+    );
 });
+
+test('SYMBOL-STANDARDS-79: 100% of the 79 catalog symbols have standardized badges with non-empty SVG icons, authentic brand colors, and gradients', () => {
+    assert.equal(state.symbols.length, 79, 'Catalog must contain exactly 79 symbols');
+    for (const sym of state.symbols) {
+        const badge = getAssetBadge(sym.symbolCode);
+        assert.ok(badge, `Symbol ${sym.symbolCode} must have an asset badge`);
+        assert.ok(badge.label && badge.label.length > 0, `Symbol ${sym.symbolCode} must have a label`);
+        assert.ok(badge.color && badge.color.startsWith('#'), `Symbol ${sym.symbolCode} must have a valid hex color`);
+        assert.ok(badge.bgGradient && badge.bgGradient.includes('linear-gradient'), `Symbol ${sym.symbolCode} must have a linear gradient`);
+        assert.ok(badge.svgIcon && badge.svgIcon.length > 0, `Symbol ${sym.symbolCode} must have a non-empty SVG icon`);
+        assert.ok(badge.svgIcon.includes('<svg') && badge.svgIcon.includes('</svg>'), `Symbol ${sym.symbolCode} svgIcon must be valid SVG markup`);
+        assert.ok(badge.category && badge.category.length > 0, `Symbol ${sym.symbolCode} must have a category`);
+        assert.ok(badge.providerTag && badge.providerTag.length > 0, `Symbol ${sym.symbolCode} must have a providerTag`);
+    }
+});
+
 

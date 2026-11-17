@@ -20,6 +20,7 @@ import {
   CHRONOS2_PINNED_REVISION_SHA,
   isChronosForecastMatchingTab,
   clearTabChronosForecast,
+  invalidateTabChronosIfStale,
 } from '../core/store.js?v=1.45.2';
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.45.2';
 import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.45.2';
@@ -1445,6 +1446,7 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
           tab.timeframe = tabTf;
           tab.candles =
             syncedByTf[tabTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tabTf);
+          invalidateTabChronosIfStale(tab);
         }
       }
 
@@ -1748,25 +1750,59 @@ export async function fetchImportBatches(limit = 20) {
 
 const _chronos2MemoryCache = new Map();
 const _chronos2PollTimers = new Map();
+const MAX_CHRONOS2_ATTEMPTS = 3;
 
-export function buildClientChronos2CacheKey(symbolCode, provider, timeframe, originOpenMs, horizonBars = 30) {
+export function clearChronos2TimerForTab(tabKey) {
+  if (_chronos2PollTimers.has(tabKey)) {
+    clearTimeout(_chronos2PollTimers.get(tabKey));
+    _chronos2PollTimers.delete(tabKey);
+  }
+}
+
+export function computeClosedSeriesDigest(closedCandles = []) {
+  const slice = Array.isArray(closedCandles) ? closedCandles.slice(-256) : [];
+  if (slice.length === 0) return 'empty';
+  let h = 2166136261;
+  for (let i = 0; i < slice.length; i++) {
+    const c = slice[i];
+    const s = `${Number(c?.open_time_utc_ms || 0)}:${Number(c?.close || 0)}`;
+    for (let j = 0; j < s.length; j++) {
+      h ^= s.charCodeAt(j);
+      h = Math.imul(h, 16777619);
+    }
+  }
+  return `${slice.length}_${(h >>> 0).toString(16)}`;
+}
+
+export function buildClientChronos2CacheKey(
+  symbolCode,
+  provider,
+  timeframe,
+  originOpenMs,
+  horizonBars = 30,
+  seriesDigest = ''
+) {
   const sym = String(symbolCode || '').trim().toUpperCase();
   const prov = String(provider || 'tvdatafeed').trim().toLowerCase();
   const tf = String(timeframe || 'M15').trim().toUpperCase();
   const h = Math.max(1, Math.min(120, Math.round(Number(horizonBars) || 30)));
-  return `${sym}|${prov}|${tf}|${Number(originOpenMs)}|H${h}|${CHRONOS2_PINNED_MODEL_ID}@${CHRONOS2_PINNED_REVISION_SHA}`;
+  const sig = seriesDigest ? `|${seriesDigest}` : '';
+  return `${sym}|${prov}|${tf}|${Number(originOpenMs)}|H${h}|${CHRONOS2_PINNED_MODEL_ID}@${CHRONOS2_PINNED_REVISION_SHA}${sig}`;
 }
 
 /**
- * Fetches or enqueues a real Chronos-2 forecast for the active chart tab.
- * - Uses only closed candles (Close values).
+ * Executes or fetches a real Chronos-2 forecast strictly on-demand per user request.
+ * - Strictly on-demand: NO background cron, NO automated triggers on tab switch/new candle.
  * - Checks deterministic cache (memory -> static server cache -> PHP API).
- * - Polls automatically if status is PROCESSING / QUEUED.
- * - Strictly verifies series identity before mutating tab state.
+ * - If worker is computing, tracks only this user request with max 3 bounded attempts.
+ * - Exposes real, visible errors immediately if host environment limits worker execution.
  */
-export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRefresh = false) {
+export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRefresh = false, attempt = 1) {
   if (!tab || !tab.showChronosForecast) {
-    if (tab) clearTabChronosForecast(tab);
+    if (tab) {
+      clearChronos2TimerForTab(tab.tabId || `${tab.symbolCode}_${tab.timeframe}`);
+      clearTabChronosForecast(tab);
+    }
     return null;
   }
 
@@ -1777,8 +1813,8 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
     1,
     Math.min(120, Math.round(Number(tab.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30)))
   );
+  const tabKey = tab.tabId || `${symbolCode}_${timeframe}`;
 
-  const stepMs = PriceFormatter.stepMilliseconds(timeframe);
   const nowMs = Date.now();
   const allCandles = Array.isArray(tab.candles) ? tab.candles : [];
   const closedCandles = allCandles.filter((c) => {
@@ -1794,6 +1830,7 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
   });
 
   if (closedCandles.length < 32) {
+    clearChronos2TimerForTab(tabKey);
     tab.chronosForecast = null;
     tab.chronosStatus = 'ERROR';
     tab.chronosError = `Insufficient closed candles (${closedCandles.length}/32)`;
@@ -1803,24 +1840,34 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
 
   const lastClosedCandle = closedCandles[closedCandles.length - 1];
   const originOpenMs = Number(lastClosedCandle.open_time_utc_ms);
-  const clientCacheKey = buildClientChronos2CacheKey(symbolCode, provider, timeframe, originOpenMs, horizonBars);
+  const seriesDigest = computeClosedSeriesDigest(closedCandles);
+  const clientCacheKey = buildClientChronos2CacheKey(
+    symbolCode,
+    provider,
+    timeframe,
+    originOpenMs,
+    horizonBars,
+    seriesDigest
+  );
 
   // If current tab already holds a valid matching forecast and no refresh was forced, keep it
   if (!forceRefresh && isChronosForecastMatchingTab(tab, tab.chronosForecast)) {
+    clearChronos2TimerForTab(tabKey);
     tab.chronosStatus = 'READY';
     tab.chronosError = '';
     return tab.chronosForecast;
   }
 
-  // Clear any stale forecast from a previous symbol, provider, timeframe, or older candle immediately
+  // Invalidate any stale forecast from a previous symbol, provider, timeframe, or older candle immediately
   if (!isChronosForecastMatchingTab(tab, tab.chronosForecast)) {
     tab.chronosForecast = null;
   }
 
-  // 1. Check client memory cache
+  // 1. Check client memory cache (instant response, zero server/worker overhead)
   if (!forceRefresh && _chronos2MemoryCache.has(clientCacheKey)) {
     const memHit = _chronos2MemoryCache.get(clientCacheKey);
     if (isChronosForecastMatchingTab(tab, memHit)) {
+      clearChronos2TimerForTab(tabKey);
       tab.chronosForecast = memHit;
       tab.chronosStatus = 'READY';
       tab.chronosError = '';
@@ -1829,7 +1876,7 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
     }
   }
 
-  // Mark as PROCESSING while checking server cache / worker queue
+  // Mark as PROCESSING while checking server cache / direct worker execution
   tab.chronosStatus = 'PROCESSING';
   tab.chronosError = '';
   if (typeof onRenderUpdate === 'function') onRenderUpdate();
@@ -1842,6 +1889,7 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
       if (staticRes.ok) {
         const staticPayload = await staticRes.json();
         if (isChronosForecastMatchingTab(tab, staticPayload)) {
+          clearChronos2TimerForTab(tabKey);
           staticPayload.served_from_cache = true;
           _chronos2MemoryCache.set(clientCacheKey, staticPayload);
           tab.chronosForecast = staticPayload;
@@ -1852,11 +1900,11 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
         }
       }
     } catch {
-      // Static file not yet generated; proceed to PHP API endpoint
+      // Static file not present; proceed to direct on-demand PHP API execution
     }
   }
 
-  // 3. Request from PHP + Python + Cron queue endpoint
+  // 3. Direct synchronous on-demand execution via PHP API (PHP -> Python Worker)
   const contextSlice = closedCandles.slice(-256).map((c) => ({
     open_time_utc_ms: Number(c.open_time_utc_ms),
     open: Number(c.open),
@@ -1892,10 +1940,12 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
       String(tab.provider || 'tvdatafeed').toLowerCase() !== provider ||
       String(tab.timeframe || 'M15').toUpperCase() !== timeframe
     ) {
+      clearChronos2TimerForTab(tabKey);
       return null;
     }
 
     if (payload && payload.status === 'READY' && isChronosForecastMatchingTab(tab, payload)) {
+      clearChronos2TimerForTab(tabKey);
       _chronos2MemoryCache.set(clientCacheKey, payload);
       tab.chronosForecast = payload;
       tab.chronosStatus = 'READY';
@@ -1904,32 +1954,47 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
       return payload;
     }
 
-    if (payload && (payload.status === 'PROCESSING' || payload.status === 'QUEUED')) {
+    if (payload && payload.status === 'PROCESSING') {
       tab.chronosForecast = null;
       tab.chronosStatus = 'PROCESSING';
       tab.chronosError = '';
       if (typeof onRenderUpdate === 'function') onRenderUpdate();
 
-      const tabKey = tab.tabId || `${symbolCode}_${timeframe}`;
-      if (_chronos2PollTimers.has(tabKey)) {
-        clearTimeout(_chronos2PollTimers.get(tabKey));
+      // Bounded retry strictly for this user request (up to MAX_CHRONOS2_ATTEMPTS)
+      const currentAttempt = Number(attempt || 1);
+      clearChronos2TimerForTab(tabKey);
+
+      if (currentAttempt < MAX_CHRONOS2_ATTEMPTS) {
+        const timerId = setTimeout(() => {
+          _chronos2PollTimers.delete(tabKey);
+          if (
+            tab.showChronosForecast &&
+            String(tab.symbolCode || '').toUpperCase() === symbolCode &&
+            String(tab.timeframe || 'M15').toUpperCase() === timeframe
+          ) {
+            requestChronos2ForecastForTab(tab, onRenderUpdate, false, currentAttempt + 1).catch(() => {});
+          }
+        }, 2500);
+        _chronos2PollTimers.set(tabKey, timerId);
+        return null;
       }
-      const timerId = setTimeout(() => {
-        _chronos2PollTimers.delete(tabKey);
-        if (tab.showChronosForecast) {
-          requestChronos2ForecastForTab(tab, onRenderUpdate, false).catch(() => {});
-        }
-      }, 3000);
-      _chronos2PollTimers.set(tabKey, timerId);
+
+      // Max attempts exceeded: stop immediately and display clear error
+      tab.chronosStatus = 'ERROR';
+      tab.chronosError = 'Chronos-2 worker is busy or timed out. Please click Chronos-2 to retry.';
+      if (typeof onRenderUpdate === 'function') onRenderUpdate();
       return null;
     }
 
+    // Direct failure: display real visible error returned by worker/host
+    clearChronos2TimerForTab(tabKey);
     tab.chronosForecast = null;
     tab.chronosStatus = 'ERROR';
-    tab.chronosError = (payload && payload.error) || 'Chronos-2 forecast unavailable';
+    tab.chronosError = (payload && (payload.error || payload.message)) || `Server returned error (${res.status})`;
     if (typeof onRenderUpdate === 'function') onRenderUpdate();
     return null;
   } catch (err) {
+    clearChronos2TimerForTab(tabKey);
     tab.chronosForecast = null;
     tab.chronosStatus = 'ERROR';
     tab.chronosError = err && err.message ? err.message : 'Chronos-2 connection error';

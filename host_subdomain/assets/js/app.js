@@ -32,6 +32,7 @@ import {
   isFocusPullSuspended,
   isChronosForecastMatchingTab,
   clearTabChronosForecast,
+  invalidateTabChronosIfStale,
 } from './core/store.js?v=1.45.2';
 import {
   syncServerAuthStatus,
@@ -54,6 +55,7 @@ import {
   uploadHistoricalImport,
   fetchImportBatches,
   requestChronos2ForecastForTab,
+  clearChronos2TimerForTab,
 } from './services/apiService.js?v=1.45.2';
 import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.45.2';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.45.2';
@@ -254,6 +256,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     );
     if (!isChronosForecastMatchingTab(existing, existing.chronosForecast)) {
       clearTabChronosForecast(existing);
+      existing.showChronosForecast = false;
     }
     state.activeTabId = existing.tabId;
     saveActiveTabId(state.activeTabId);
@@ -313,6 +316,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     newTab.chronosHorizonBars = Number(
       (curActive && curActive.chronosHorizonBars) || state.chartPreferences.chronosHorizonBars || 30
     );
+    newTab.showChronosForecast = false;
     newTab.chronosForecast = null;
     newTab.chronosStatus = 'IDLE';
     newTab.chronosError = '';
@@ -458,18 +462,24 @@ function renderOhlcvOverlay(activeTab) {
       const hLen = activeTab.chronosForecast.forecast.length;
       const bandTag = activeTab.showChronosBand !== false ? ' · Q25–Q75' : '';
       pushPill(true, cCol, `Chronos-2 Q50 (+${hLen}${bandTag})`, 'toggle-chronos-forecast');
-    } else if (activeTab.chronosStatus === 'PROCESSING' || activeTab.chronosStatus === 'QUEUED') {
+    } else if (activeTab.chronosStatus === 'PROCESSING') {
       pushPill(
         true,
         cCol,
-        isFa ? 'Chronos-2: در حال پردازش...' : 'Chronos-2: Processing...',
+        isFa ? 'Chronos-2: در حال پردازش...' : 'Chronos-2: Running...',
         'toggle-chronos-forecast'
       );
     } else if (activeTab.chronosStatus === 'ERROR') {
+      const rawErr = String(activeTab.chronosError || '').trim();
+      const shortErr = rawErr.length > 56 ? rawErr.slice(0, 53) + '...' : rawErr;
       pushPill(
         true,
         '#EF5350',
-        isFa ? 'Chronos-2: در انتظار داده بسته' : 'Chronos-2: Waiting for closed bars',
+        shortErr
+          ? `Chronos-2 Error: ${shortErr}`
+          : isFa
+            ? 'Chronos-2: خطا در اجرای مدل'
+            : 'Chronos-2: Execution failed',
         'toggle-chronos-forecast'
       );
     } else {
@@ -652,16 +662,9 @@ export function renderApp() {
       );
       if (activeTab.showChronosForecast) {
         if (!isChronosForecastMatchingTab(activeTab, activeTab.chronosForecast)) {
+          // Strictly on-demand: Invalidate previous forecast but NEVER auto-execute without explicit user click
           activeTab.chronosForecast = null;
-          if (
-            Array.isArray(activeTab.candles) &&
-            activeTab.candles.length >= 32 &&
-            activeTab.chronosStatus !== 'PROCESSING'
-          ) {
-            requestChronos2ForecastForTab(activeTab, () => {
-              redrawActiveCanvas();
-            }).catch(() => {});
-          }
+          activeTab.chronosStatus = 'IDLE';
         }
       } else if (activeTab.chronosForecast) {
         clearTabChronosForecast(activeTab);
@@ -1618,6 +1621,7 @@ function bindSettingsForms() {
     for (const t of state.openTabs) {
       if (t.symbolCode === symbolCode && t.provider === provider && t.timeframe === timeframe) {
         t.candles = merged.slice(-2500);
+        invalidateTabChronosIfStale(t);
       }
     }
   };
@@ -2013,6 +2017,7 @@ document.addEventListener('click', async (e) => {
     activeTab.verticalPriceOffset = 0.0;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
     clearTabChronosForecast(activeTab);
+    activeTab.showChronosForecast = false;
     activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
     if (activeTab.candles && activeTab.candles.length > 0) {
       activeTab.visibleCount = Math.min(Math.max(24, activeTab.visibleCount || 48), Math.max(24, activeTab.candles.length));
@@ -2052,6 +2057,7 @@ document.addEventListener('click', async (e) => {
     const tfChanged = activeTab.timeframe !== targetTf;
     if (tfChanged) {
       clearTabChronosForecast(activeTab);
+      activeTab.showChronosForecast = false;
     }
     activeTab.timeframe = targetTf;
     activeTab.chartId = `${activeTab.symbolCode}_${targetTf}`;
@@ -2247,6 +2253,7 @@ document.addEventListener('click', async (e) => {
     if (activeTab.showChronosForecast) {
       activeTab.scrollOffset = 0;
     } else {
+      clearChronos2TimerForTab(activeTab.tabId || `${activeTab.symbolCode}_${activeTab.timeframe}`);
       clearTabChronosForecast(activeTab);
     }
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
@@ -2254,6 +2261,7 @@ document.addEventListener('click', async (e) => {
     redrawActiveCanvas();
     if (activeTab.showChronosForecast) {
       requestChronos2ForecastForTab(activeTab, () => {
+        renderApp();
         redrawActiveCanvas();
       }).catch(() => {});
     }
@@ -2272,6 +2280,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
     redrawActiveCanvas();
     requestChronos2ForecastForTab(activeTab, () => {
+      renderApp();
       redrawActiveCanvas();
     }).catch(() => {});
   } else if (action === 'set-workspace-view') {

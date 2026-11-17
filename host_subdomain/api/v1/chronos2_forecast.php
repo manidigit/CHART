@@ -21,9 +21,10 @@ use ChartIntelligence\Core\Chronos2QueueManager;
  *
  * - Accepts GET or POST parameters:
  *   `symbol`, `provider`, `timeframe`, `horizon` (default 30), `context_bars` (default 256),
- *   `mode` (`auto` | `cache_only` | `enqueue_only`), and optional `candles` (closed candles from active tab).
+ *   `mode` (`auto` | `cache_only`), and optional `candles` (closed candles from active tab).
+ * - Strictly ON-DEMAND: executes PHP -> Python Worker directly on user click (no Cron, no queue).
  * - Enforces single-instance execution via `flock` mutex.
- * - Caches by `(symbol, provider, timeframe, last_closed_candle_ms, horizon, model_revision)`.
+ * - Caches by `(symbol, provider, timeframe, last_closed_candle_ms, horizon, model_revision)` and validates base candle digest.
  */
 
 if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
@@ -71,27 +72,25 @@ if (count($closedCandles) < Chronos2QueueManager::MIN_CLOSED_BARS) {
 
 $lastClosedBar = $closedCandles[count($closedCandles) - 1];
 $originOpenMs = (int) ($lastClosedBar['open_time_utc_ms'] ?? 0);
+$lastClosedPrice = isset($lastClosedBar['close']) ? (float) $lastClosedBar['close'] : null;
 $cacheKey = Chronos2QueueManager::buildCacheKey($symbol, $provider, $timeframe, $originOpenMs, $horizon);
 
 if ($mode === 'cache_only') {
-    $cached = Chronos2QueueManager::readCachedForecast($cacheKey, $symbol, $provider, $timeframe, $originOpenMs, $horizon);
+    $ctxSlice = array_slice($closedCandles, -$contextBars);
+    $closeVals = array_map(static fn(array $c): float => (float) ($c['close'] ?? 0.0), array_values($ctxSlice));
+    $ctxSha = hash('sha256', (string) json_encode($closeVals));
+    $cached = Chronos2QueueManager::readCachedForecast(
+        $cacheKey,
+        $symbol,
+        $provider,
+        $timeframe,
+        $originOpenMs,
+        $horizon,
+        $lastClosedPrice,
+        $ctxSha
+    );
     if ($cached !== null) {
         ApiEnvelope::sendSuccess($cached, 'chronos2_forecast_cached');
-    }
-    $jobFile = Chronos2QueueManager::getJobFilePath($cacheKey);
-    if (is_file($jobFile)) {
-        http_response_code(202);
-        ApiEnvelope::sendSuccess([
-            'status'                  => 'PROCESSING',
-            'cache_key'               => $cacheKey,
-            'symbol'                  => $symbol,
-            'provider'                => $provider,
-            'timeframe'               => $timeframe,
-            'origin_open_time_utc_ms' => $originOpenMs,
-            'horizon_bars'            => $horizon,
-            'model_id'                => Chronos2QueueManager::MODEL_ID,
-            'hf_revision_sha'         => Chronos2QueueManager::MODEL_REVISION,
-        ], 'chronos2_forecast_processing');
     }
     ApiEnvelope::sendSuccess([
         'status'                  => 'NOT_CACHED',
@@ -104,20 +103,18 @@ if ($mode === 'cache_only') {
     ], 'chronos2_forecast_not_cached');
 }
 
-$executeIfLockFree = ($mode !== 'enqueue_only');
 $result = Chronos2QueueManager::requestOrRunForecast(
     $symbol,
     $provider,
     $timeframe,
     $closedCandles,
     $horizon,
-    $contextBars,
-    $executeIfLockFree
+    $contextBars
 );
 
 $httpStatus = match ($result['status'] ?? 'ERROR') {
     'READY' => 200,
-    'PROCESSING', 'QUEUED' => 202,
+    'PROCESSING' => 202,
     default => 500,
 };
 

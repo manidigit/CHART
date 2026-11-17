@@ -1206,7 +1206,7 @@ function loadOpenTabsFromStorage() {
       ...t,
       provider: 'tvdatafeed',
       showFutureProjection: false,
-      showChronosForecast: Boolean(t.showChronosForecast),
+      showChronosForecast: false,
       showChronosBand: t.showChronosBand !== false,
       chronosHorizonBars: Math.max(1, Math.min(120, Number(t.chronosHorizonBars || 30))),
       chronosForecast: null,
@@ -1454,7 +1454,6 @@ export const INDICATOR_FLAG_KEYS = [
   'showFvg',
   'showVolumeProfile',
   'showPivotPoints',
-  'showChronosForecast',
   'showChronosBand',
 ];
 
@@ -1772,7 +1771,7 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showPivotPoints: Boolean(t.showPivotPoints),
     pivotType: String(t.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase(),
     showFutureProjection: false,
-    showChronosForecast: Boolean(t.showChronosForecast),
+    showChronosForecast: false,
     showChronosBand: t.showChronosBand !== false,
     chronosHorizonBars: Math.max(1, Math.min(120, Number(t.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30))),
     isMagnetMode: Boolean(t.isMagnetMode),
@@ -1965,20 +1964,32 @@ export function isChronosForecastMatchingTab(tab, forecastPayload = tab?.chronos
   if (candles.length === 0) return false;
   const nowMs = Date.now();
   let lastClosedOpenMs = 0;
+  let lastClosedPrice = NaN;
   for (let i = candles.length - 1; i >= 0; i--) {
     const c = candles[i];
     const openMs = Number(c?.open_time_utc_ms || 0);
     if (openMs > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(openMs, tabTf, nowMs, tabSym)) {
       lastClosedOpenMs = openMs;
+      lastClosedPrice = Number(c?.close);
       break;
     }
   }
   if (lastClosedOpenMs <= 0) {
-    lastClosedOpenMs = Number(candles[candles.length - 1]?.open_time_utc_ms || 0);
+    const tail = candles[candles.length - 1];
+    lastClosedOpenMs = Number(tail?.open_time_utc_ms || 0);
+    lastClosedPrice = Number(tail?.close);
   }
   if (lastClosedOpenMs <= 0) return false;
 
-  return Number(series.origin_open_time_utc_ms) === lastClosedOpenMs;
+  if (Number(series.origin_open_time_utc_ms) !== lastClosedOpenMs) return false;
+  if (
+    series.last_closed_price !== undefined &&
+    Number.isFinite(lastClosedPrice) &&
+    Math.abs(Number(series.last_closed_price) - lastClosedPrice) > 1e-8
+  ) {
+    return false;
+  }
+  return true;
 }
 
 export function clearTabChronosForecast(tab) {
@@ -1986,5 +1997,13 @@ export function clearTabChronosForecast(tab) {
   tab.chronosForecast = null;
   tab.chronosStatus = 'IDLE';
   tab.chronosError = '';
+}
+
+export function invalidateTabChronosIfStale(tab) {
+  if (!tab) return;
+  if (tab.chronosForecast && !isChronosForecastMatchingTab(tab, tab.chronosForecast)) {
+    clearTabChronosForecast(tab);
+    tab.showChronosForecast = false;
+  }
 }
 
