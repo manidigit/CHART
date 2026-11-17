@@ -187,6 +187,24 @@
     - `.github/workflows/backtest.yml`
     - `host_subdomain/assets/js/forecast/`, `host_subdomain/assets/js/views/forecastView.js`, `host_subdomain/assets/js/views/analysisView.js`, `host_subdomain/api/v1/forecast/`, `host_subdomain/api/v1/forecast.php`
 
+---
 
+## ۱۰. رفع باگ پاک شدن وضعیت `PROCESSING`/`ERROR` و عدم نمایش پیش‌بینی یا خطای `Chronos-2` روی نمودار (`v1.46.1`) — ✅ حل شد
 
-
+- **اولویت:** بحرانی (Critical / P0)
+- **تاریخ ثبت و اصلاح:** ۱۷ نوامبر ۲۰۲۶
+- **ریشه مشکل گزارش‌شده روی `SPOTBRENT 15m` (اسکرین‌شات کاربر):**
+  1. در متد `renderApp()` فایل `host_subdomain/assets/js/app.js`، شرط قدیمی `!isChronosForecastMatchingTab(activeTab, activeTab.chronosForecast)` هنگامی که `chronosForecast === null` بود (یعنی دقیقاً هنگام `PROCESSING` یا `ERROR`) مقدار `activeTab.chronosStatus` را بلافاصله به `'IDLE'` بازنشانی می‌کرد. در نتیجه:
+     - وضعیت `Running...` هیچ‌گاه نمایش داده نمی‌شد؛
+     - پیام خطای واقعی سرور/پایتون (`chronosError`) بلافاصله ناپدید می‌شد و نوار بالا به‌اشتباه به متن پیش‌فرض `Chronos-2 Q50` برمی‌گشت در حالی که فضای آینده خالی می‌ماند.
+  2. متد `requestChronos2ForecastForTab` در `apiService.js` ساختار خطاهای `ApiEnvelope::sendError` (`message_key` / `error_code`) یا پاسخ‌های متنی غیر-JSON سرور را خوانش نمی‌کرد و فقط `payload.error || payload.message` را چک می‌کرد.
+  3. نسخه فایل‌های استاتیک و کش مرورگر هنوز روی `v=1.45.2` باقی مانده بود و در `status.php` عنوان قدیمی `Forecast Engine Archived` دیده می‌شد.
+- **اصلاحات اعمال‌شده:**
+  1. **`host_subdomain/assets/js/core/store.js` و `host_subdomain/assets/js/app.js`:**
+     - افزودن تابع خالص `reconcileTabChronosStateOnRender(tab)` و استفاده از آن در `renderApp()` به‌گونه‌ای که صرفاً پیش‌بینی منقضی‌شده غیر-`null` ابطال شود و وضعیت‌های `PROCESSING` و `ERROR` (به‌همراه `chronosError`) هنگام رندر و باز-رندر کاملاً حفظ شوند؛ همچنین جلوگیری از ریست ناخواسته وضعیت تب فعال در `openOrFocusSymbolTab` هنگام کلیک مجدد روی همان نماد و تایم‌فریم.
+  2. **`host_subdomain/assets/js/services/apiService.js`:**
+     - افزودن `extractChronos2ErrorMessage(httpStatus, rawText, jsonPayload)` و خوانش امن `res.text()` + `JSON.parse` برای استخراج دقیق `error`، `message`، `message_key` (`ApiEnvelope::sendError`) و متن خطاهای غیر-HTML سرور جهت نمایش مستقیم روی بوم نمودار و چیپ وضعیت.
+  3. **ارتقای نسخه کش‌باستینگ به `v=1.46.1`:**
+     - به‌روزرسانی تمامی importهای ماژول‌های ES، `host_subdomain/index.html`، `host_subdomain/assets/js/core/i18n.js`، `package.json` و `host_subdomain/api/v1/system/status.php` (`version: 1.46.1` و `phase: Phase 1-3 Core Engine & On-Demand Chronos-2 Forecast (v1.46.1)`).
+  4. **تست رگرسیون (`tests/web_parity.test.mjs`):**
+     - افزودن تست‌های واحد برای `reconcileTabChronosStateOnRender` (حفظ `PROCESSING` و `ERROR` و ابطال کش منقضی‌شده)، `extractChronos2ErrorMessage` و کنترل یکپارچگی `v=1.46.1`.

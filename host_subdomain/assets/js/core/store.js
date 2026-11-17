@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.45.2';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.45.2';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.46.1';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.46.1';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -2004,6 +2004,28 @@ export function invalidateTabChronosIfStale(tab) {
   if (tab.chronosForecast && !isChronosForecastMatchingTab(tab, tab.chronosForecast)) {
     clearTabChronosForecast(tab);
     tab.showChronosForecast = false;
+  }
+}
+
+export function reconcileTabChronosStateOnRender(tab) {
+  if (!tab) return;
+  if (tab.showChronosForecast) {
+    if (tab.chronosForecast) {
+      if (isChronosForecastMatchingTab(tab, tab.chronosForecast)) {
+        tab.chronosStatus = 'READY';
+        tab.chronosError = '';
+      } else {
+        // Strictly on-demand: Invalidate previous forecast without auto-executing,
+        // while preserving active PROCESSING / ERROR states from explicit user clicks.
+        tab.chronosForecast = null;
+        if (tab.chronosStatus === 'READY') {
+          tab.chronosStatus = 'IDLE';
+          tab.chronosError = '';
+        }
+      }
+    }
+  } else if (tab.chronosForecast || tab.chronosStatus !== 'IDLE' || tab.chronosError) {
+    clearTabChronosForecast(tab);
   }
 }
 

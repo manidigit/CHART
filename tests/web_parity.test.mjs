@@ -754,8 +754,8 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     };
     assert.equal(isChronosForecastMatchingTab(tabWithFormingBar, h1Payload), true);
 
-    const { invalidateTabChronosIfStale } = await import('../host_subdomain/assets/js/core/store.js');
-    const { computeClosedSeriesDigest } = await import('../host_subdomain/assets/js/services/apiService.js');
+    const { invalidateTabChronosIfStale, reconcileTabChronosStateOnRender } = await import('../host_subdomain/assets/js/core/store.js');
+    const { computeClosedSeriesDigest, extractChronos2ErrorMessage } = await import('../host_subdomain/assets/js/services/apiService.js');
 
     // Editing base candle close price even with identical timestamp must invalidate forecast & change digest
     const modifiedTab = {
@@ -778,7 +778,74 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     assert.equal(modifiedTab.chronosForecast, null);
     assert.equal(modifiedTab.showChronosForecast, false, 'Stale forecast invalidation must not keep active trigger');
 
-    // Verify PHP files use existing ApiEnvelope & Database::getPdo() and JS uses unified v=1.45.2 cache-busting
+    // Regression: renderApp() reconciliation MUST NOT wipe PROCESSING or ERROR states to IDLE when chronosForecast is null
+    const processingTab = {
+        ...matchingTab,
+        showChronosForecast: true,
+        chronosForecast: null,
+        chronosStatus: 'PROCESSING',
+        chronosError: '',
+    };
+    reconcileTabChronosStateOnRender(processingTab);
+    assert.equal(processingTab.chronosStatus, 'PROCESSING', 'PROCESSING state must survive render reconciliation');
+
+    const erroredTab = {
+        ...matchingTab,
+        showChronosForecast: true,
+        chronosForecast: null,
+        chronosStatus: 'ERROR',
+        chronosError: 'PHP exec() is disabled on this shared hosting environment',
+    };
+    reconcileTabChronosStateOnRender(erroredTab);
+    assert.equal(erroredTab.chronosStatus, 'ERROR', 'ERROR state must survive render reconciliation');
+    assert.equal(erroredTab.chronosError, 'PHP exec() is disabled on this shared hosting environment');
+
+    const staleReadyTab = {
+        ...matchingTab,
+        timeframe: 'M15',
+        showChronosForecast: true,
+        chronosForecast: h1Payload,
+        chronosStatus: 'READY',
+        chronosError: '',
+    };
+    reconcileTabChronosStateOnRender(staleReadyTab);
+    assert.equal(staleReadyTab.chronosForecast, null);
+    assert.equal(staleReadyTab.chronosStatus, 'IDLE');
+
+    const disabledTab = {
+        ...erroredTab,
+        showChronosForecast: false,
+    };
+    reconcileTabChronosStateOnRender(disabledTab);
+    assert.equal(disabledTab.chronosStatus, 'IDLE');
+    assert.equal(disabledTab.chronosError, '');
+
+    // Regression: ApiEnvelope errors (message_key / error_code), worker data.error, and raw text errors must surface cleanly
+    assert.equal(
+        extractChronos2ErrorMessage(422, '', {
+            ok: false,
+            error_code: 'ERR_INSUFFICIENT_CLOSED_CANDLES',
+            message_key: 'Insufficient closed candles for SPOTBRENT (M15): 12 closed bars available, minimum 32 required.',
+        }),
+        'Insufficient closed candles for SPOTBRENT (M15): 12 closed bars available, minimum 32 required.'
+    );
+    assert.equal(
+        extractChronos2ErrorMessage(500, '', {
+            ok: true,
+            data: { status: 'ERROR', error: 'PHP exec() function is disabled by host configuration.' },
+        }),
+        'PHP exec() function is disabled by host configuration.'
+    );
+    assert.equal(
+        extractChronos2ErrorMessage(502, 'Upstream Python worker gateway timeout', null),
+        'Upstream Python worker gateway timeout'
+    );
+    assert.equal(
+        extractChronos2ErrorMessage(500, '<html><body>500 Internal Server Error</body></html>', null),
+        'Server returned error (500)'
+    );
+
+    // Verify PHP files use existing ApiEnvelope & Database::getPdo() and JS uses unified v=1.46.1 cache-busting
     const phpEndpointSrc = fs.readFileSync(path.resolve('host_subdomain/api/v1/chronos2_forecast.php'), 'utf8');
     assert.equal(phpEndpointSrc.includes('core/Config.php'), false, 'Must not reference nonexistent Config.php');
     assert.equal(phpEndpointSrc.includes('core/Response.php'), false, 'Must not reference nonexistent Response.php');
@@ -793,9 +860,11 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     const appJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
     const storeJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
     const apiServiceJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/apiService.js'), 'utf8');
-    assert.equal(indexHtmlSrc.includes('?v=1.45.2'), true);
+    assert.equal(indexHtmlSrc.includes('?v=1.46.1'), true);
+    assert.equal(indexHtmlSrc.includes('?v=1.45.2'), false);
     assert.equal(appJsSrc.includes('?v=1.43.0'), false);
-    assert.equal(appJsSrc.includes('?v=1.45.2'), true);
+    assert.equal(appJsSrc.includes('?v=1.45.2'), false);
+    assert.equal(appJsSrc.includes('?v=1.46.1'), true);
 
     // Verify Strictly On-Demand Architecture: No Cron dependency, No Queue files, No Auto-execution
     assert.equal(phpEndpointSrc.includes('enqueue_only'), false, 'Endpoint must not support enqueue_only');
@@ -817,10 +886,10 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
         'showChronosForecast must not be in synced INDICATOR_FLAG_KEYS'
     );
     assert.equal(
-        appJsSrc.includes("openOrFocusSymbolTab") &&
-        appJsSrc.includes("Strictly on-demand: Invalidate previous forecast but NEVER auto-execute without explicit user click"),
+        appJsSrc.includes('openOrFocusSymbolTab') &&
+        appJsSrc.includes('reconcileTabChronosStateOnRender(activeTab)'),
         true,
-        'openOrFocusSymbolTab must not auto-execute Chronos-2'
+        'app.js must delegate render reconciliation to reconcileTabChronosStateOnRender(activeTab)'
     );
 });
 

@@ -21,9 +21,9 @@ import {
   isChronosForecastMatchingTab,
   clearTabChronosForecast,
   invalidateTabChronosIfStale,
-} from '../core/store.js?v=1.45.2';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.45.2';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.45.2';
+} from '../core/store.js?v=1.46.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.46.1';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.46.1';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
@@ -1790,6 +1790,21 @@ export function buildClientChronos2CacheKey(
   return `${sym}|${prov}|${tf}|${Number(originOpenMs)}|H${h}|${CHRONOS2_PINNED_MODEL_ID}@${CHRONOS2_PINNED_REVISION_SHA}${sig}`;
 }
 
+export function extractChronos2ErrorMessage(httpStatus, rawText = '', jsonPayload = null) {
+  const payload = jsonPayload && jsonPayload.data ? jsonPayload.data : jsonPayload;
+  const candidate =
+    (payload && (payload.error || payload.message || payload.message_key || payload.error_code)) ||
+    (jsonPayload && (jsonPayload.error || jsonPayload.message || jsonPayload.message_key || jsonPayload.error_code)) ||
+    '';
+  const trimmed = String(candidate || '').trim();
+  if (trimmed) return trimmed;
+  const text = String(rawText || '').replace(/\s+/g, ' ').trim();
+  if (text && !text.startsWith('<')) {
+    return text.length > 160 ? text.slice(0, 157) + '...' : text;
+  }
+  return `Server returned error (${httpStatus || 'unknown'})`;
+}
+
 /**
  * Executes or fetches a real Chronos-2 forecast strictly on-demand per user request.
  * - Strictly on-demand: NO background cron, NO automated triggers on tab switch/new candle.
@@ -1930,7 +1945,15 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
       }),
     });
 
-    const json = await res.json().catch(() => null);
+    const rawText = await res.text().catch(() => '');
+    let json = null;
+    if (rawText) {
+      try {
+        json = JSON.parse(rawText);
+      } catch {
+        json = null;
+      }
+    }
     const payload = json && json.data ? json.data : json;
 
     // Verify tab hasn't switched symbol/provider/timeframe while awaiting response
@@ -1990,7 +2013,7 @@ export async function requestChronos2ForecastForTab(tab, onRenderUpdate, forceRe
     clearChronos2TimerForTab(tabKey);
     tab.chronosForecast = null;
     tab.chronosStatus = 'ERROR';
-    tab.chronosError = (payload && (payload.error || payload.message)) || `Server returned error (${res.status})`;
+    tab.chronosError = extractChronos2ErrorMessage(res.status, rawText, json);
     if (typeof onRenderUpdate === 'function') onRenderUpdate();
     return null;
   } catch (err) {

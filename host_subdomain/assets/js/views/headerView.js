@@ -1,12 +1,12 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.45.2';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.46.1';
 import {
   state,
   escapeHtml,
   getIndicatorColorPalette,
   UNIVERSAL_COLOR_PALETTE,
   DEFAULT_INDICATOR_COLORS,
-} from '../core/store.js?v=1.45.2';
-import { renderSymbolBadge } from './watchlistView.js?v=1.45.2';
+} from '../core/store.js?v=1.46.1';
+import { renderSymbolBadge } from './watchlistView.js?v=1.46.1';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab

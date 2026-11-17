@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.45.2';
+import { I18nManager } from './core/i18n.js?v=1.46.1';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -33,7 +33,8 @@ import {
   isChronosForecastMatchingTab,
   clearTabChronosForecast,
   invalidateTabChronosIfStale,
-} from './core/store.js?v=1.45.2';
+  reconcileTabChronosStateOnRender,
+} from './core/store.js?v=1.46.1';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -56,26 +57,26 @@ import {
   fetchImportBatches,
   requestChronos2ForecastForTab,
   clearChronos2TimerForTab,
-} from './services/apiService.js?v=1.45.2';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.45.2';
-import { GapDetector } from './algorithms/gapDetector.js?v=1.45.2';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.45.2';
-import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.45.2';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.45.2';
-import { renderLoginScreen } from './views/loginView.js?v=1.45.2';
+} from './services/apiService.js?v=1.46.1';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.46.1';
+import { GapDetector } from './algorithms/gapDetector.js?v=1.46.1';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.46.1';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.46.1';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.46.1';
+import { renderLoginScreen } from './views/loginView.js?v=1.46.1';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.45.2';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.45.2';
+} from './views/headerView.js?v=1.46.1';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.46.1';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.45.2';
-import { renderSettingsModal } from './views/settingsView.js?v=1.45.2';
-import { renderRightIconRail } from './views/navigationView.js?v=1.45.2';
+} from './views/watchlistView.js?v=1.46.1';
+import { renderSettingsModal } from './views/settingsView.js?v=1.46.1';
+import { renderRightIconRail } from './views/navigationView.js?v=1.46.1';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -240,6 +241,14 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
   const cached = getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
   const drawKey = `${symbolCode}_${tf}`;
   if (existing) {
+    const prevTf = existing.timeframe;
+    const prevProv = existing.provider;
+    const isSameTabContext = Boolean(
+      curActive &&
+        curActive.tabId === existing.tabId &&
+        prevTf === tf &&
+        prevProv === sym.activeProvider
+    );
     existing.timeframe = tf;
     existing.chartId = drawKey;
     existing.provider = sym.activeProvider;
@@ -254,7 +263,10 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     existing.chronosHorizonBars = Number(
       (curActive && curActive.chronosHorizonBars) || existing.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30
     );
-    if (!isChronosForecastMatchingTab(existing, existing.chronosForecast)) {
+    if (!isSameTabContext && !isChronosForecastMatchingTab(existing, existing.chronosForecast)) {
+      clearTabChronosForecast(existing);
+      existing.showChronosForecast = false;
+    } else if (existing.chronosForecast && !isChronosForecastMatchingTab(existing, existing.chronosForecast)) {
       clearTabChronosForecast(existing);
       existing.showChronosForecast = false;
     }
@@ -660,15 +672,9 @@ export function renderApp() {
         activeTab.provider,
         activeTab.timeframe
       );
-      if (activeTab.showChronosForecast) {
-        if (!isChronosForecastMatchingTab(activeTab, activeTab.chronosForecast)) {
-          // Strictly on-demand: Invalidate previous forecast but NEVER auto-execute without explicit user click
-          activeTab.chronosForecast = null;
-          activeTab.chronosStatus = 'IDLE';
-        }
-      } else if (activeTab.chronosForecast) {
-        clearTabChronosForecast(activeTab);
-      }
+      // Strictly on-demand: Invalidate previous forecast but NEVER auto-execute without explicit user click
+      // while preserving PROCESSING and ERROR states from explicit user clicks.
+      reconcileTabChronosStateOnRender(activeTab);
     }
 
     state.activeWorkspaceView = 'chart';

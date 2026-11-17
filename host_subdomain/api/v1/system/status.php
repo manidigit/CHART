@@ -131,8 +131,8 @@ $phpRuntime = [
 
 ApiEnvelope::sendSuccess([
     'status' => 'healthy',
-    'version' => '1.45.2',
-    'phase' => 'Phase 1-3 Core Engine & Multi-Asset Charting (Forecast Engine Archived for Redesign)',
+    'version' => '1.46.1',
+    'phase' => 'Phase 1-3 Core Engine & On-Demand Chronos-2 Forecast (v1.46.1)',
     'server_time_utc' => $nowUtc,
     'server_time_ms' => $nowMs,
     'database' => [
