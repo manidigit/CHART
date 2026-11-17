@@ -4,7 +4,7 @@
 - **Version:** 1.0.4
 - **Date:** 2026-11-17
 - **Status:** Reusable intake protocol; Chronos-2 is the sole Phase 1 active-model candidate, subject to implementation and acceptance gates
-- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.2
+- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.3
 - **Purpose:** Evaluate candidate GitHub repositories and other model implementations consistently before deciding whether to research, prototype, test or integrate them.
 
 ---
