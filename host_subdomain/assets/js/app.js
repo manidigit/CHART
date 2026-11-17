@@ -80,7 +80,6 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.1';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.1';
-import { renderRightIconRail } from './views/navigationView.js?v=1.47.1';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;

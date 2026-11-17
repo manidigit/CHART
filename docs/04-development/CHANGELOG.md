@@ -22,6 +22,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Unified cache-busting to `?v=1.47.1` across `index.html`, all ES modules under `host_subdomain/assets/js/`, `package.json`, and `host_subdomain/api/v1/system/status.php`.
   - Extended `STRUCTURAL-FORECAST-JS` in `tests/web_parity.test.mjs` with lifecycle reconciliation, canvas rendering, future crosshair hover, and silent-catch static regression checks (**12/12 passed** via `node --test tests/web_parity.test.mjs`).
 
+### Removed (Dead / Temporary Files Cleanup)
+- Removed obsolete/temporary unreferenced artifacts while preserving `/archive/` and inactive `Chronos-2` architecture files per prior decisions:
+  - Deleted `/feasibility_test/` (`probe.php`, `runner.php`, `standalone_chronos.py`, `results/`).
+  - Deleted dead stub `host_subdomain/assets/js/views/navigationView.js` and removed its unused `renderRightIconRail` import from `host_subdomain/assets/js/app.js`.
+  - Deleted `host_subdomain/scripts/generate_chronos2_chart_preview.py` and the duplicate image `host_subdomain/data/chronos2/chronos2_spotbrent_chart_verification.png` (preserving the documentation copy in `docs/assets/`).
+
 ---
 
 ## [1.47.0] - 2026-11-17

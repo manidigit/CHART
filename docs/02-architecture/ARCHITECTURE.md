@@ -62,10 +62,11 @@
   - `assets/js/`:
     - `app.js` (نقطه ورود، رویدادهای بوم و اکشن‌ها)
     - `core/store.js`, `core/i18n.js`
-    - `services/apiService.js`
+    - `services/apiService.js`, `services/structuralForecastService.js`
+    - `workers/structuralForecastWorker.js`
     - `components/chartRenderer.js`
-    - `algorithms/`: `drawingGeometry.js`, `priceFormatter.js`, `technicalIndicators.js`, `timeframeAggregator.js`
-    - `views/`: `headerView.js`, `navigationView.js`, `toolRailView.js`, `watchlistView.js`, `analysisView.js`, `settingsView.js`, `loginView.js`
+    - `algorithms/`: `candleImport.js`, `drawingGeometry.js`, `gapDetector.js`, `priceFormatter.js`, `structuralForecastEngine.js`, `technicalIndicators.js`, `timeframeAggregator.js`
+    - `views/`: `headerView.js`, `toolRailView.js`, `watchlistView.js`, `settingsView.js`, `loginView.js`
 - **سرور PHP و اسکریپت‌ها (`host_subdomain/`):**
   - `api/v1/`: `auth.php`, `candles_sync.php`, `workspace_sync.php`, `status.php`, `system/status.php`
   - `api/v1/core/`: `ApiEnvelope.php`, `Database.php`
