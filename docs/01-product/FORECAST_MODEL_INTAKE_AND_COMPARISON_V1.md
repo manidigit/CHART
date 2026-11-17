@@ -1,10 +1,10 @@
 # CHART Forecast — Model Intake and Comparison Framework
 ## چارچوب بررسی، پذیرش و مقایسه مدل‌های پیشنهادی
 
-- **Version:** 1.0.1
+- **Version:** 1.0.2
 - **Date:** 2026-11-17
-- **Status:** Reusable intake protocol; no candidate model is pre-approved
-- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.2.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.0
+- **Status:** Reusable intake protocol; Chronos-2 is the sole Phase 1 active-model candidate, subject to implementation and acceptance gates
+- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.2.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.1
 - **Purpose:** Evaluate candidate GitHub repositories and other model implementations consistently before deciding whether to research, prototype, test or integrate them.
 
 ---
@@ -303,6 +303,7 @@ No need to pre-filter candidates by algorithm family. Candidate repositories may
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial repository intake, evidence classification, technical review, licensing, experiment protocol, integration fit and disposition framework |
 | 1.0.1 | 2026-11-17 | Added source-level screening records for Chronos-2, PatchTST, Time-Series-Library and Moirai 2.0 |
+| 1.0.2 | 2026-11-17 | Recorded the Phase 1 decision: Chronos-2 is the sole active-model candidate; other candidates are deferred pending evidence-based review; clarified that selection is not performance or OHLC approval |
 
 
 ---
@@ -380,3 +381,61 @@ Do not convert Chronos-2 quantiles into synthetic OHLC candles for the primary a
 ### 15.6. Items not yet fully screened
 
 TimesFM, OpenLTM, Large-Time-Series-Model, NeuralForecast implementations of N-BEATS/N-HiTS, TFT implementations, TimeXer, TimeMixer, iTransformer, TimesNet, ChanFormer and the financial benchmark repositories have not received a complete source/license/runtime review in this pass. No positive or negative disposition is implied for them.
+
+
+---
+
+## 16. Phase 1 model decision and expansion gate — 2026-11-17
+
+### 16.1. Decision
+
+**Chronos-2 is the sole model selected for the CHART Forecast Phase 1 implementation and controlled evaluation path.** No second forecasting model is in the Phase 1 operational scope.
+
+This is a sequencing and scope decision based on the first source-level screening. It is not a finding that Chronos-2 is financially accurate, superior to all alternatives, production-approved, or capable of native complete OHLC candle generation.
+
+The decision allows implementation and controlled experimentation to proceed without expanding the model surface prematurely.
+
+### 16.2. Candidate status
+
+- **Chronos-2:** sole Phase 1 model; proceed to implementation planning and controlled evaluation. Its native quantile output must be preserved. It remains subject to integration, output-contract, runtime, licensing-revision and acceptance checks.
+- **PatchTST:** deferred candidate; not enabled or included in Phase 1.
+- **THUML Time-Series-Library:** research reference only; not a Phase 1 model or canonical evaluation platform.
+- **Moirai 2.0:** research-only candidate; commercial deployment remains blocked pending explicit licensing clearance for the weights.
+- **Other screened or previously listed candidates:** deferred/unreviewed as stated in their individual records. Deferral is not rejection and does not imply a negative technical judgment.
+
+### 16.3. Required diagnostic sequence before model expansion
+
+If Phase 1 results are weak, incomplete or visually unsatisfactory, do not immediately add another model. Diagnose the failure in this order and preserve evidence for each step:
+
+1. **Market data:** confirm instrument identity, provider/venue/contract, OHLCV integrity, timestamps, gaps, sessions and source consistency.
+2. **Data preparation:** verify history window, sampling, missing-value handling, normalization, feature construction and absence of temporal leakage.
+3. **Chronos-2 execution:** verify exact model/weight revision, inference interface, context length, covariates, quantile levels, device/runtime configuration and reproducibility.
+4. **Forecast horizon:** test whether the selected timeframe and requested horizon are supported and whether error or uncertainty changes with horizon.
+5. **Output interpretation and display:** distinguish native model output from adapters or presentation transformations; verify that the chart does not distort, fabricate or mislabel the forecast.
+6. **Evaluation protocol:** verify forecast-origin alignment, eligible actuals, baselines, metrics, sample coverage and regime/instrument diversity.
+
+Only after these checks may the team conclude that the remaining limitation is intrinsic to Chronos-2 or that its native output is insufficient for a defined product requirement.
+
+### 16.4. Formal gate for admitting another model
+
+A new model may be proposed for a later phase only when a written review establishes all of the following:
+
+- the failure or unmet requirement is reproducible;
+- data, preparation, execution, horizon, display and evaluation causes have been investigated and ruled out or quantified;
+- the limitation is attributable to Chronos-2 itself, or a clearly defined capability absent from its native output is required;
+- the proposed candidate has completed the evidence, source, weight-license, runtime and security review in this framework;
+- a controlled, like-for-like experiment and relevant baselines are defined before execution;
+- the expected benefit justifies the added operational, maintenance and comparison complexity;
+- the scope change is explicitly approved and recorded in the system/product documentation.
+
+Until this gate is passed, Chronos-2 remains the only Phase 1 model. The architecture must retain model-independent extension points, but extensibility is not a reason to activate additional models prematurely.
+
+### 16.5. Output integrity remains mandatory
+
+Chronos-2's native quantile forecasts are not complete native OHLC candles and do not constitute a joint candle-path distribution. Do not manufacture Open, High or Low values from Close quantiles, perturbations or arbitrary spreads and label them as model-predicted candles.
+
+The Phase 1 experiment may inspect and visualize native quantile outputs in an explicitly identified experimental representation. The product requirement for meaningful future OHLC candles remains open until an output method satisfies structural validity and predictive evaluation. A display adapter must never conceal the distinction between model output and derived presentation.
+
+### 16.6. Current evidence boundary
+
+At the time of this decision, Chronos-2 has passed source-level screening only. It has **not** passed CHART-specific runtime evaluation, walk-forward performance testing, product acceptance or production approval. No accuracy, profitability or OHLC-quality claim is authorized by this Phase 1 selection.
