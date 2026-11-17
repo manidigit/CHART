@@ -210,8 +210,8 @@ def render_panel_mvg(x0: float, y0: float, w: float, h: float, title: str, candl
 
 def main():
     W, H = 1440, 920
-    h1_candles, h1_fc = load_panel_data("SPOTBRENT", "H1", "SPOTBRENT_tvdatafeed_H1_1794207600000_H30.json", 72)
-    m15_candles, m15_fc = load_panel_data("SPOTBRENT", "M15", "SPOTBRENT_tvdatafeed_M15_1794213000000_H30.json", 72)
+    h1_candles, h1_fc = load_panel_data("SPOTBRENT", "H1", "SPOTBRENT_tvdatafeed_H1_1794916800000_H30.json", 72)
+    m15_candles, m15_fc = load_panel_data("SPOTBRENT", "M15", "SPOTBRENT_tvdatafeed_M15_1794920400000_H30.json", 72)
 
     mvg_lines = [
         f"viewbox 0 0 {W} {H}",
