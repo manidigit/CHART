@@ -304,7 +304,7 @@ No need to pre-filter candidates by algorithm family. Candidate repositories may
 | 1.0.0 | 2026-11-17 | Initial repository intake, evidence classification, technical review, licensing, experiment protocol, integration fit and disposition framework |
 | 1.0.1 | 2026-11-17 | Added source-level screening records for Chronos-2, PatchTST, Time-Series-Library and Moirai 2.0 |
 | 1.0.2 | 2026-11-17 | Recorded the Phase 1 decision: Chronos-2 is the sole active-model candidate; other candidates are deferred pending evidence-based review; clarified that selection is not performance or OHLC approval |
-| 1.0.3 | 2026-11-17 | Reframed Phase 1 model evaluation around structured price-path quality, swings, corrections and reversals; candle OHLC is deferred and broad uninformative uncertainty cones are rejected |
+| 1.0.3 | 2026-11-17 | Reframed Phase 1 model evaluation around structured price-path quality, swings, corrections and reversals; candle OHLC is deferred and broad uninformative uncertainty cones are rejected |\n| 1.0.4 | 2026-11-17 | Added Chronos-2 input/output source findings, Close-only baseline order and model-specific evaluation gates |
 
 
 ---
