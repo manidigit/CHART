@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.0';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.47.0';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.47.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.47.1';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.47.1';
 import {
   state,
   getInstrumentSpec,
@@ -8,7 +8,7 @@ import {
   hexToRgba,
   isChronosForecastMatchingTab,
   isStructuralForecastMatchingTab,
-} from '../core/store.js?v=1.47.0';
+} from '../core/store.js?v=1.47.1';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -323,13 +323,17 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const showChronosBand = tab.showChronosBand !== false;
 
   const activeForecastPoints = hasValidStructuralForecast ? structuralPoints : chronosPoints;
-  const isAnyForecastShown = Boolean(tab.showStructuralForecast || tab.showChronosForecast);
-  const activeHorizonCount = tab.showStructuralForecast
-    ? structuralPoints.length || Number(tab.forecastHorizonBars || prefs.forecastHorizonBars || 30)
-    : chronosPoints.length || Number(tab.chronosHorizonBars || prefs.chronosHorizonBars || 30);
+  const hasAnyValidForecast =
+    (hasValidStructuralForecast && structuralPoints.length > 0) ||
+    (hasValidChronosForecast && chronosPoints.length > 0);
+  const activeHorizonCount = hasValidStructuralForecast
+    ? structuralPoints.length
+    : hasValidChronosForecast
+      ? chronosPoints.length
+      : 0;
 
   const chronosHorizonSlots =
-    isAnyForecastShown && offset === 0
+    hasAnyValidForecast && offset === 0
       ? Math.max(1, Math.min(120, activeHorizonCount))
       : 0;
 
@@ -1167,14 +1171,15 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
     if (hasValidStructuralForecast && structuralPoints.length > 0) {
       const originOpenMs = Number(tab.structuralForecast.series?.origin_open_time_utc_ms || 0);
-      let originIdx = -1;
-      for (let i = visible.length - 1; i >= 0; i--) {
-        const cMs = Number(visible[i].open_time_utc_ms || (visible[i].openTimeSec ? visible[i].openTimeSec * 1000 : 0));
+      let globalOriginIdx = -1;
+      for (let i = candles.length - 1; i >= 0; i--) {
+        const cMs = Number(candles[i].open_time_utc_ms || (candles[i].openTimeSec ? candles[i].openTimeSec * 1000 : 0));
         if (cMs === originOpenMs) {
-          originIdx = i;
+          globalOriginIdx = i;
           break;
         }
       }
+      const originIdx = globalOriginIdx >= 0 ? globalOriginIdx - startIdx : -1;
 
       // Highlight historical Swing Highs / Lows used for structural wave calibration when visible
       const histSwings = Array.isArray(tab.structuralForecast.swings) ? tab.structuralForecast.swings : [];
@@ -1199,8 +1204,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         ctx.restore();
       }
 
-      if (originIdx >= 0) {
-        const originCandle = visible[originIdx];
+      if (globalOriginIdx >= 0) {
+        const originCandle = candles[globalOriginIdx];
         const originClose = Number(originCandle.close);
         const originX = idxToX(originIdx);
         const originY = priceToY(originClose);
@@ -1223,7 +1228,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
               yQ75: priceToY(q75),
             };
           })
-          .filter((p) => Number.isFinite(p.q50) && p.x <= chartW + slotW);
+          .filter((p) => Number.isFinite(p.q50) && p.x >= -slotW);
 
         if (pts.length > 0) {
           const lastPt = pts[pts.length - 1];
@@ -1405,6 +1410,27 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
       ctx.fillStyle = isDark ? '#FCD34D' : '#B45309';
       ctx.fillText(errText, eX + 10, eY + 15.5, eTw - 20);
+      ctx.restore();
+    } else {
+      ctx.save();
+      const staleText =
+        i18n && i18n.getCurrentLanguage() === 'fa'
+          ? 'پیش‌بینی ساختاری: برای محاسبه مجدد روی Forecast کلیک کنید'
+          : 'Structural Forecast: Click Forecast to calculate';
+      ctx.font = 'bold 11px "JetBrains Mono", sans-serif';
+      const sTw = Math.min(chartW - 24, ctx.measureText(staleText).width + 20);
+      const sX = Math.max(12, chartW - sTw - 12);
+      const sY = topPad + 12;
+      ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.92)' : 'rgba(255, 255, 255, 0.94)';
+      ctx.strokeStyle = hexToRgba(fcColor, 0.8);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(sX, sY, sTw, 22, 5);
+      else ctx.rect(sX, sY, sTw, 22);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = fcColor;
+      ctx.fillText(staleText, sX + 10, sY + 14.5, sTw - 20);
       ctx.restore();
     }
   } else if (tab.showChronosForecast) {
@@ -2701,10 +2727,18 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
   ctx.restore();
 
-  // Crosshair (Vertical + Horizontal + Price Pill + Adaptive UTC Time Pill, including future Chronos-2 slots)
+  // Crosshair (Vertical + Horizontal + Price Pill + Adaptive Time Pill, including future Forecast slots)
+  const hoverForecastPoints = hasValidStructuralForecast
+    ? structuralPoints
+    : hasValidChronosForecast
+      ? chronosPoints
+      : [];
+  const hoverForecastColor = hasValidStructuralForecast
+    ? indPal.structuralForecastPath || '#8B5CF6'
+    : indPal.chronosQ50 || '#A855F7';
   const maxInteractiveSlot =
-    hasValidChronosForecast && offset === 0
-      ? visible.length + chronosPoints.length - 1
+    hasAnyValidForecast && offset === 0
+      ? visible.length + hoverForecastPoints.length - 1
       : visible.length - 1;
   const hoverIdx =
     tab.hoverIndex !== null && tab.hoverIndex !== undefined
@@ -2718,7 +2752,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   if (hoverIdx !== null && hoverIdx >= 0 && hoverIdx <= maxInteractiveSlot) {
     const isFutureHover = hoverIdx >= visible.length;
     const futureStepIdx = isFutureHover ? hoverIdx - visible.length : -1;
-    const fPt = isFutureHover && chronosPoints[futureStepIdx] ? chronosPoints[futureStepIdx] : null;
+    const fPt = isFutureHover && hoverForecastPoints[futureStepIdx] ? hoverForecastPoints[futureStepIdx] : null;
     const hc = !isFutureHover ? visible[hoverIdx] : null;
     const hx = idxToX(hoverIdx);
     const defaultPrice = fPt ? Number(fPt.q50_median) : hc ? Number(hc.close) : minP;
@@ -2743,7 +2777,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.stroke();
     ctx.restore();
 
-    const pillBgCross = isFutureHover ? (indPal.chronosQ50 || '#A855F7') : isDark ? '#2A2E39' : '#1E293B';
+    const pillBgCross = isFutureHover ? hoverForecastColor : isDark ? '#2A2E39' : '#1E293B';
     ctx.fillStyle = pillBgCross;
     ctx.fillRect(chartW, hy - 10, rightAxisW, 20);
     ctx.fillStyle = '#FFFFFF';
@@ -2752,7 +2786,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.fillText(PriceFormatter.formatPrice(hoverPrice, tab.decimals), chartW + 6, hy + 4);
 
     const rawTimeMs = fPt
-      ? fPt.target_open_time_utc_ms
+      ? fPt.open_time_utc_ms || fPt.target_open_time_utc_ms
       : hc
         ? hc.open_time_utc_ms || hc.openTimeUtc || hc.open_time_utc_iso
         : 0;
@@ -2766,13 +2800,14 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.fillText(timeText, tx + 7, topPad + totalChartH + 16);
 
     if (fPt) {
-      const tipText = `Chronos-2 (+${fPt.step}) · Q50: ${PriceFormatter.formatPrice(fPt.q50_median, tab.decimals)} · Q25–Q75: [${PriceFormatter.formatPrice(fPt.q25, tab.decimals)} – ${PriceFormatter.formatPrice(fPt.q75, tab.decimals)}]`;
+      const prefix = hasValidStructuralForecast ? 'Structural JS' : 'Chronos-2';
+      const tipText = `${prefix} (+${fPt.step}) · Path: ${PriceFormatter.formatPrice(fPt.q50_median, tab.decimals)} · Band: [${PriceFormatter.formatPrice(fPt.q25, tab.decimals)} – ${PriceFormatter.formatPrice(fPt.q75, tab.decimals)}]`;
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
       const tipW = ctx.measureText(tipText).width + 14;
       const tipX = Math.max(8, Math.min(chartW - tipW - 8, hx - tipW / 2));
       const tipY = Math.max(topPad + 8, priceToY(Number(fPt.q75)) - 26);
       ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.94)' : 'rgba(255, 255, 255, 0.96)';
-      ctx.strokeStyle = indPal.chronosQ50 || '#A855F7';
+      ctx.strokeStyle = hoverForecastColor;
       ctx.lineWidth = 1;
       ctx.beginPath();
       if (ctx.roundRect) ctx.roundRect(tipX, tipY, tipW, 19, 4);

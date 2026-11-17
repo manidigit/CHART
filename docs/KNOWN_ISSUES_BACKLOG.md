@@ -237,3 +237,25 @@
      - فایل‌ها و مستندات `Chronos-2` برای معماری آینده حفظ و صرفاً به‌صورت `Disabled / Inactive` نگهداری شدند و موتور بومی هرگز نام `Chronos-2` را روی خروجی خود نمی‌گذارد.
   5. **کش‌باستینگ `v=1.47.0` و تست پاریتی:**
      - تمامی ماژول‌ها، `index.html`، `package.json` و `status.php` به `v=1.47.0` ارتقا یافتند و ۱۲/۱۲ تست در `tests/web_parity.test.mjs` (از جمله تست روی داده‌های واقعی `SPOTBRENT_M15.json`) پاس شدند.
+
+---
+
+## ۱۲. رفع ریشه‌ای باگ «نمایش‌ندادن مسیر پیش‌بینی بومی با وجود فعال‌شدن دکمه‌های `Forecast` / `Band` و رزرو ۳۰ اسلات خالی» (`v1.47.1`) — ✅ حل و تست شد
+
+- **اولویت:** بحرانی (Critical / P0)
+- **تاریخ کشف و اصلاح:** ۱۷ نوامبر ۲۰۲۶
+- **شرح نقص گزارش‌شده:**
+  - در نسخه `v1.47.0` پس از کلیک روی `Forecast`، دکمه‌های `Forecast` و `Band` آبی می‌شدند، چیپ `Forecast (Structural JS)` نمایش داده می‌شد و ۳۰ اسلات خالی سمت راست چارت باز می‌ماند، اما نه مسیر `Structural JS` رسم می‌شد، نه باند عدم قطعیت و نه بنر `Analyzing...` یا `Forecast Limitation`.
+- **علت‌های ریشه‌ای شناسایی‌شده:**
+  1. تابع `reconcileTabStructuralForecastOnRender(tab)` در `store.js` هنگام باز-رندر، وضعیت‌های منقضی یا ناهماهنگ را به `structuralForecastStatus = 'IDLE'` و `structuralForecast = null` برمی‌گرداند **بدون آن‌که `tab.showStructuralForecast` را خاموش کند** (همچنین `INDICATOR_FLAG_KEYS` فاقد `'showForecastBand'` بود).
+  2. در `structuralForecastService.js` بخش ساخت/فیلتر کندل‌های پیش از `try` بدون حفاظت استثنا اجرا می‌شد، بافر race بین درخواست‌های هم‌زمان (`_structuralReqSeq`) وجود نداشت و تغییر مرز آخرین کندل بسته در میانه محاسبه خطای کنترل‌شده نمی‌داد. در `app.js` نیز `.catch(() => {})` هر استثنای احتمالی را بی‌صدا می‌بلعید.
+  3. در `apiService.js` هنگام `downloadWorkspaceSync()`، آبجکت `openTabs` جایگزین می‌شد بدون حفظ فیلدهای اجرایی پیش‌بینی (`showStructuralForecast`, `structuralForecast`, `structuralForecastStatus`, `structuralForecastError`) و بدون سینک `showForecastBand` و `forecastHorizonBars`.
+  4. در `chartRenderer.js` رزرو ۳۰ اسلات آینده حتی بدون خروجی معتبر انجام می‌شد، نقطه مبدا صرفاً درون آرایه `visible` جستجو می‌شد (که با پن/اسکرول گم می‌شد)، `structuralPoints` در هاور کراس‌هیر اسلات‌های آینده لحاظ نشده بود و در حالت نامعتبر `IDLE` پیام راهنما رسم نمی‌شد. در `app.js` نیز برچسب روند در نوار OHLC فیلد اشتباه `structure?.trend_bias` را می‌خواند.
+- **اصلاحات اعمال‌شده در `v1.47.1`:**
+  - **`host_subdomain/assets/js/core/store.js`:** افزودن `'showForecastBand'` به `INDICATOR_FLAG_KEYS` (با حفظ حذف `'showStructuralForecast'`) و پاک‌سازی کامل `tab.showStructuralForecast = false` در `reconcileTabStructuralForecastOnRender(tab)` هنگام منقضی‌شدن `READY` یا حالت یتیم `IDLE` (با حفظ `COMPUTING`, `INSUFFICIENT_EVIDENCE` و `ERROR`).
+  - **`host_subdomain/assets/js/services/structuralForecastService.js`:** پوشش کامل `try/catch`، توالی درخواست `_structuralReqSeq` برای جلوگیری از overwrite با خروجی قدیمی، مرتب‌سازی صعودی کندل‌های بسته و مدیریت کنترل‌شده جابه‌جایی مرز کندل بسته.
+  - **`host_subdomain/assets/js/services/apiService.js`:** سینک `showForecastBand` و `forecastHorizonBars` در `uploadWorkspaceSync()` و حفظ state اجرایی پیش‌بینی در `downloadWorkspaceSync()`.
+  - **`host_subdomain/assets/js/components/chartRenderer.js`:** رزرو اسلات آینده منحصراً هنگام وجود پیش‌بینی معتبر (`hasAnyValidForecast`)، محاسبه `originIdx` روی کل `candles` برای حفظ رسم هنگام پن و زوم، پشتیبانی کامل از هاور کراس‌هیر روی نقاط `Structural JS (+step)` و نمایش پیام راهنما روی بوم در وضعیت یتیم.
+  - **`host_subdomain/assets/js/app.js`:** اصلاح خوانش `engine?.params?.structure_bias` در نوار OHLC، هیدراته‌کردن `activeTab.candles`، تنظیم هم‌زمان `COMPUTING` پیش از رندر، و جایگزینی `.catch(() => {})` با ثبت صریح وضعیت `ERROR` و رندر مجدد بوم.
+  - **کش‌باستینگ `v=1.47.1` و تست رگرسیون (`tests/web_parity.test.mjs`):** ارتقای همه ماژول‌های ES، `index.html`، `package.json` و `status.php` به `v=1.47.1`؛ افزودن تست‌های رگرسیون `reconcileTabStructuralForecastOnRender`، رسم بوم و هاور کراس‌هیر `Structural JS` و کنترل عدم وجود `.catch(() => {})` روی `requestStructuralForecastForTab` (**۱۲/۱۲ پاس** در `node --test tests/web_parity.test.mjs`).
+

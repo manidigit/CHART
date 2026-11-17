@@ -846,7 +846,7 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
         'Server returned error (500)'
     );
 
-    // Verify PHP files use existing ApiEnvelope & Database::getPdo() and JS uses unified v=1.47.0 cache-busting
+    // Verify PHP files use existing ApiEnvelope & Database::getPdo() and JS uses unified v=1.47.1 cache-busting
     const phpEndpointSrc = fs.readFileSync(path.resolve('host_subdomain/api/v1/chronos2_forecast.php'), 'utf8');
     assert.equal(phpEndpointSrc.includes('core/Config.php'), false, 'Must not reference nonexistent Config.php');
     assert.equal(phpEndpointSrc.includes('core/Response.php'), false, 'Must not reference nonexistent Response.php');
@@ -861,12 +861,14 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     const appJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
     const storeJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
     const apiServiceJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/apiService.js'), 'utf8');
-    assert.equal(indexHtmlSrc.includes('?v=1.47.0'), true);
+    assert.equal(indexHtmlSrc.includes('?v=1.47.1'), true);
+    assert.equal(indexHtmlSrc.includes('?v=1.47.0'), false);
     assert.equal(indexHtmlSrc.includes('?v=1.46.1'), false);
     assert.equal(indexHtmlSrc.includes('?v=1.45.2'), false);
     assert.equal(appJsSrc.includes('?v=1.43.0'), false);
     assert.equal(appJsSrc.includes('?v=1.46.1'), false);
-    assert.equal(appJsSrc.includes('?v=1.47.0'), true);
+    assert.equal(appJsSrc.includes('?v=1.47.0'), false);
+    assert.equal(appJsSrc.includes('?v=1.47.1'), true);
 
     // Verify Strictly On-Demand Architecture: No Cron dependency, No Queue files, No Auto-execution
     assert.equal(phpEndpointSrc.includes('enqueue_only'), false, 'Endpoint must not support enqueue_only');
@@ -1114,9 +1116,108 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
     assert.equal(modifiedStructTab.showStructuralForecast, false);
     assert.equal(modifiedStructTab.structuralForecastStatus, 'IDLE');
 
-    // Verify showStructuralForecast is NOT synced across symbols in INDICATOR_FLAG_KEYS
+    // Regression: Stale READY or orphaned IDLE forecast must NOT strand showStructuralForecast=true with empty future slots
+    const staleReadyTab = {
+        ...testTab,
+        candles: [
+            ...tabCandles.slice(0, -1),
+            { ...tabCandles[tabCandles.length - 1], open_time_utc_ms: lastTabOpenMs, close: tabCandles[tabCandles.length - 1].close + 2.5 },
+        ],
+    };
+    reconcileTabStructuralForecastOnRender(staleReadyTab);
+    assert.equal(staleReadyTab.structuralForecast, null);
+    assert.equal(staleReadyTab.structuralForecastStatus, 'IDLE');
+    assert.equal(staleReadyTab.showStructuralForecast, false);
+
+    const orphanedIdleTab = {
+        ...testTab,
+        structuralForecast: null,
+        structuralForecastStatus: 'IDLE',
+        structuralForecastError: '',
+    };
+    reconcileTabStructuralForecastOnRender(orphanedIdleTab);
+    assert.equal(orphanedIdleTab.showStructuralForecast, false);
+
+    // Regression: Canvas rendering & future crosshair hover for Structural JS Forecast
+    const prevWin = globalThis.window;
+    const prevDoc = globalThis.document;
+    globalThis.window = { devicePixelRatio: 1 };
+    globalThis.document = { documentElement: { dataset: {} }, body: { classList: { add() {}, remove() {} } } };
+    try {
+        const { renderCandlestickCanvas } = await import('../host_subdomain/assets/js/components/chartRenderer.js');
+        const drawTexts = [];
+        const mockCtx = new Proxy(
+            {},
+            {
+                get(_, prop) {
+                    if (prop === 'measureText') return (t) => ({ width: String(t).length * 7 });
+                    if (prop === 'createLinearGradient') return () => ({ addColorStop() {} });
+                    if (prop === 'fillText') return (txt, x, y) => drawTexts.push({ txt: String(txt), x, y });
+                    return () => {};
+                },
+                set() {
+                    return true;
+                },
+            }
+        );
+        const mockCanvas = {
+            parentElement: { clientWidth: 1000, clientHeight: 500 },
+            getBoundingClientRect: () => ({ width: 1000, height: 500 }),
+            style: {},
+            getContext: () => mockCtx,
+        };
+
+        const renderTab = {
+            ...testTab,
+            visibleCount: 48,
+            scrollOffset: 0,
+            decimals: 3,
+            hoverIndex: 48, // First future forecast slot when 48 visible candles are displayed
+        };
+        await requestStructuralForecastForTab(renderTab, null, true);
+        assert.equal(renderTab.structuralForecastStatus, 'READY');
+        renderCandlestickCanvas(mockCanvas, renderTab, { getCurrentLanguage: () => 'en', t: (k) => k });
+        assert.ok(
+            drawTexts.some((d) => d.txt.startsWith('Structural JS (+30')),
+            'Canvas must render Structural JS badge inside forecast zone'
+        );
+        assert.ok(
+            drawTexts.some((d) => d.txt.startsWith('Fcst ')),
+            'Canvas must render central forecast level label on right axis'
+        );
+        assert.ok(
+            drawTexts.some((d) => d.txt.startsWith('Structural JS (+1) · Path:')),
+            'Crosshair hover over future forecast slots must render Structural JS tooltip'
+        );
+
+        // When status is ERROR without valid forecast, no future horizon slots are stranded blank & limitation banner is shown
+        drawTexts.length = 0;
+        const errCanvasTab = {
+            ...renderTab,
+            structuralForecast: null,
+            structuralForecastStatus: 'ERROR',
+            structuralForecastError: 'Test error notice',
+            hoverIndex: null,
+        };
+        renderCandlestickCanvas(mockCanvas, errCanvasTab, { getCurrentLanguage: () => 'en', t: (k) => k });
+        assert.ok(
+            drawTexts.some((d) => d.txt.includes('Forecast Limitation: Test error notice')),
+            'Canvas must render explicit Forecast Limitation notice on ERROR'
+        );
+    } finally {
+        globalThis.window = prevWin;
+        globalThis.document = prevDoc;
+    }
+
+    // Verify showStructuralForecast is NOT synced across symbols in INDICATOR_FLAG_KEYS and app.js never swallows forecast errors silently
     const storeJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
     assert.equal(storeJsSrc.includes("'showStructuralForecast'"), false);
+    const appJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
+    const structCallMatches = [...appJsSrc.matchAll(/requestStructuralForecastForTab\([^\n]*\n(?:[^\n]*\n){0,4}[^\n]*\)\.catch\(([^)]*)\)/g)];
+    assert.ok(structCallMatches.length >= 2, 'app.js must attach explicit .catch error handlers to requestStructuralForecastForTab calls');
+    for (const m of structCallMatches) {
+        assert.notEqual(m[1].trim(), '', 'requestStructuralForecastForTab .catch handler must accept err and surface ERROR state');
+    }
 
     // 5) Static compliance: zero exec(), python, chronos2_forecast, Math.random, Math.sin, Math.cos in new browser forecast modules
     const engineSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/algorithms/structuralForecastEngine.js'), 'utf8');

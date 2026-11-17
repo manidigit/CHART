@@ -22,9 +22,9 @@ import {
   clearTabChronosForecast,
   invalidateTabChronosIfStale,
   invalidateTabStructuralForecastIfStale,
-} from '../core/store.js?v=1.47.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.0';
+} from '../core/store.js?v=1.47.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.1';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
@@ -507,6 +507,8 @@ export async function uploadWorkspaceSync() {
           showPivotPoints: Boolean(t.showPivotPoints),
           pivotType: String(t.pivotType || p.pivotType || 'STANDARD').toUpperCase(),
           showFutureProjection: false,
+          showForecastBand: t.showForecastBand !== false,
+          forecastHorizonBars: Math.max(1, Math.min(120, Number(t.forecastHorizonBars || p.forecastHorizonBars || 30))),
           pitchforkVariant: t.pitchforkVariant || p.pitchforkVariant || 'original',
           isLogScale: Boolean(t.isLogScale),
           isMagnetMode: Boolean(t.isMagnetMode),
@@ -797,6 +799,28 @@ export async function downloadWorkspaceSync() {
             showPivotPoints: resolveFlag('showPivotPoints'),
             pivotType: String(t.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase(),
             showFutureProjection: false,
+            showForecastBand:
+              t.showForecastBand !== undefined
+                ? Boolean(t.showForecastBand)
+                : prevLocal?.showForecastBand !== undefined
+                  ? Boolean(prevLocal.showForecastBand)
+                  : state.chartPreferences.showForecastBand !== false,
+            forecastHorizonBars: Math.max(
+              1,
+              Math.min(
+                120,
+                Number(
+                  t.forecastHorizonBars ||
+                    prevLocal?.forecastHorizonBars ||
+                    state.chartPreferences.forecastHorizonBars ||
+                    30
+                )
+              )
+            ),
+            showStructuralForecast: Boolean(prevLocal && prevLocal.timeframe === tf && prevLocal.showStructuralForecast),
+            structuralForecast: prevLocal && prevLocal.timeframe === tf ? prevLocal.structuralForecast || null : null,
+            structuralForecastStatus: prevLocal && prevLocal.timeframe === tf ? prevLocal.structuralForecastStatus || 'IDLE' : 'IDLE',
+            structuralForecastError: prevLocal && prevLocal.timeframe === tf ? prevLocal.structuralForecastError || '' : '',
             pitchforkVariant: t.pitchforkVariant || state.chartPreferences.pitchforkVariant || 'original',
             isMagnetMode: Boolean(t.isMagnetMode),
             isLogScale: t.isLogScale !== undefined ? Boolean(t.isLogScale) : Boolean(state.chartPreferences.isLogScale),

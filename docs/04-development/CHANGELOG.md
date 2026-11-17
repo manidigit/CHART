@@ -7,6 +7,33 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.47.1] - 2026-11-17
+
+### Fixed (Native Browser Structural Forecast Lifecycle, Rendering & Crosshair Reliability)
+- **Root-Cause Fix for Empty Forecast Horizon Zone & Stranded `IDLE` State (`store.js`, `app.js`, `apiService.js`):**
+  - Updated `reconcileTabStructuralForecastOnRender(tab)` so mismatched/stale `READY` or orphaned non-`COMPUTING`/`INSUFFICIENT_EVIDENCE`/`ERROR` states cleanly call `clearTabStructuralForecast(tab)` and reset `tab.showStructuralForecast = false` instead of stranding `showStructuralForecast: true` with blank future horizon slots.
+  - Added `'showForecastBand'` to `INDICATOR_FLAG_KEYS` (keeping `'showStructuralForecast'` explicitly excluded so active forecast state never leaks across symbols) and preserved runtime forecast fields (`showStructuralForecast`, `showForecastBand`, `forecastHorizonBars`, `structuralForecast`, `structuralForecastStatus`, `structuralForecastError`) across `downloadWorkspaceSync()` tab rebuilds while persisting `showForecastBand` and `forecastHorizonBars` in `uploadWorkspaceSync()`.
+  - Hydrated `activeTab.candles` before forecast launch in `toggle-structural-forecast` and `set-forecast-horizon`, set `structuralForecastStatus = 'COMPUTING'` synchronously before `renderApp()`, replaced silent `.catch(() => {})` handlers in `app.js` with explicit `ERROR` state rendering, and fixed the OHLC overlay pill trend-bias lookup to read `engine?.params?.structure_bias`.
+- **Service Sequence Guard & Error Safety (`structuralForecastService.js`):**
+  - Wrapped the full `requestStructuralForecastForTab` execution body in `try/catch`, sorted closed candles strictly in ascending chronological order, added monotonic `_structuralReqSeq` checks against stale async worker completions, and added bounded closed-candle boundary retry / explicit error reporting.
+- **Canvas Slot Reservation, Global Origin Resolution & Future Crosshair (`chartRenderer.js`):**
+  - Reserved future X-axis horizon slots only when a valid forecast (`hasAnyValidForecast`) actually contains forecast points; resolved `originOpenMs` across the full `candles` array (fixing panning/zooming disappearance); added fallback canvas guidance notice for orphaned state; and wired `structuralPoints` into future crosshair hover (`Structural JS (+step) · Path: ... · Band: [...]`).
+- **Cache-Busting & Regression Verification:**
+  - Unified cache-busting to `?v=1.47.1` across `index.html`, all ES modules under `host_subdomain/assets/js/`, `package.json`, and `host_subdomain/api/v1/system/status.php`.
+  - Extended `STRUCTURAL-FORECAST-JS` in `tests/web_parity.test.mjs` with lifecycle reconciliation, canvas rendering, future crosshair hover, and silent-catch static regression checks (**12/12 passed** via `node --test tests/web_parity.test.mjs`).
+
+---
+
+## [1.47.0] - 2026-11-17
+
+### Added & Changed (Shared-Hosting Redesign: Native In-Browser Structural Wave Forecast `structural_wave_js`)
+- **Pure Client-Side Structural Forecast Engine (`structuralForecastEngine.js`, `structuralForecastWorker.js`, `structuralForecastService.js`):**
+  - Designed and shipped a zero-backend forecast engine running directly in the browser on real **closed OHLC candles** (`is_closed !== false`) strictly on explicit user click—requiring **no** PHP `exec()`, Python/PyTorch, Cron, or external API, and using zero `Math.random`/`Math.sin`/`Math.cos` or synthetic OHLC bars.
+  - Preserved `chronos2` PHP/Python files intact and inactive on shared hosting while guaranteeing `engine.is_chronos2 === false` on all native browser forecast outputs.
+  - Implements 7-stage structural analysis: ATR-filtered Swing High/Low extraction, trend/range regime classification (`BULLISH_STRUCTURE` / `BEARISH_STRUCTURE` / `ROTATIONAL_RANGE`), historical impulse/retracement leg ratios, volatility regime detection (`EXPANDING` / `COMPRESSING` / `NORMAL`), structured turning points, smooth central path (`q50_median`), and horizon-scaled quantile uncertainty bands (`q10`..`q90`) with honest `INSUFFICIENT_EVIDENCE` reporting.
+
+---
+
 ## [1.46.0] - 2026-11-17
 
 ### Added (Phase 1 Real `amazon/chronos-2` Forecast Integration on CHART Canvas)

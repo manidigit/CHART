@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.47.0';
+import { I18nManager } from './core/i18n.js?v=1.47.1';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -38,7 +38,7 @@ import {
   clearTabStructuralForecast,
   invalidateTabStructuralForecastIfStale,
   reconcileTabStructuralForecastOnRender,
-} from './core/store.js?v=1.47.0';
+} from './core/store.js?v=1.47.1';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -60,27 +60,27 @@ import {
   uploadHistoricalImport,
   fetchImportBatches,
   clearChronos2TimerForTab,
-} from './services/apiService.js?v=1.47.0';
-import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.0';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.0';
-import { GapDetector } from './algorithms/gapDetector.js?v=1.47.0';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.0';
-import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.0';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.0';
-import { renderLoginScreen } from './views/loginView.js?v=1.47.0';
+} from './services/apiService.js?v=1.47.1';
+import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.1';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
+import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.1';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.1';
+import { renderLoginScreen } from './views/loginView.js?v=1.47.1';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.47.0';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.0';
+} from './views/headerView.js?v=1.47.1';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.1';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.47.0';
-import { renderSettingsModal } from './views/settingsView.js?v=1.47.0';
-import { renderRightIconRail } from './views/navigationView.js?v=1.47.0';
+} from './views/watchlistView.js?v=1.47.1';
+import { renderSettingsModal } from './views/settingsView.js?v=1.47.1';
+import { renderRightIconRail } from './views/navigationView.js?v=1.47.1';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -496,7 +496,15 @@ function renderOhlcvOverlay(activeTab) {
       const fPayload = activeTab.structuralForecast;
       const hLen = fPayload.forecast.length;
       const bandTag = activeTab.showForecastBand !== false ? ' · Band' : '';
-      const bias = fPayload.structure?.trend_bias || '';
+      const rawBias = fPayload.engine?.params?.structure_bias || fPayload.structure?.trend_bias || '';
+      const bias =
+        rawBias === 'BULLISH_STRUCTURE'
+          ? 'Bullish'
+          : rawBias === 'BEARISH_STRUCTURE'
+            ? 'Bearish'
+            : rawBias === 'ROTATIONAL_RANGE'
+              ? 'Range'
+              : rawBias;
       const biasTag = bias ? ` · ${bias}` : '';
       pushPill(true, fCol, `Forecast (+${hLen}${bandTag}${biasTag})`, 'toggle-structural-forecast');
     } else if (activeTab.structuralForecastStatus === 'COMPUTING') {
@@ -2323,6 +2331,17 @@ document.addEventListener('click', async (e) => {
     activeTab.showStructuralForecast = !activeTab.showStructuralForecast;
     if (activeTab.showStructuralForecast) {
       activeTab.scrollOffset = 0;
+      if (!activeTab.candles || activeTab.candles.length === 0) {
+        activeTab.candles = getCachedOrAggregatedCandles(
+          activeTab.symbolCode,
+          activeTab.provider,
+          activeTab.timeframe
+        );
+      }
+      if (!isStructuralForecastMatchingTab(activeTab, activeTab.structuralForecast)) {
+        activeTab.structuralForecastStatus = 'COMPUTING';
+        activeTab.structuralForecastError = '';
+      }
     } else {
       clearTabStructuralForecast(activeTab);
     }
@@ -2333,7 +2352,13 @@ document.addEventListener('click', async (e) => {
       requestStructuralForecastForTab(activeTab, () => {
         renderApp();
         redrawActiveCanvas();
-      }).catch(() => {});
+      }).catch((err) => {
+        activeTab.structuralForecast = null;
+        activeTab.structuralForecastStatus = 'ERROR';
+        activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
+        renderApp();
+        redrawActiveCanvas();
+      });
     }
   } else if (action === 'toggle-forecast-band' && activeTab) {
     const nextBand = activeTab.showForecastBand === false;
@@ -2349,13 +2374,27 @@ document.addEventListener('click', async (e) => {
     activeTab.showStructuralForecast = true;
     activeTab.scrollOffset = 0;
     clearTabStructuralForecast(activeTab);
+    activeTab.structuralForecastStatus = 'COMPUTING';
+    if (!activeTab.candles || activeTab.candles.length === 0) {
+      activeTab.candles = getCachedOrAggregatedCandles(
+        activeTab.symbolCode,
+        activeTab.provider,
+        activeTab.timeframe
+      );
+    }
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
     requestStructuralForecastForTab(activeTab, () => {
       renderApp();
       redrawActiveCanvas();
-    }).catch(() => {});
+    }).catch((err) => {
+      activeTab.structuralForecast = null;
+      activeTab.structuralForecastStatus = 'ERROR';
+      activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
+      renderApp();
+      redrawActiveCanvas();
+    });
   } else if (
     (action === 'toggle-chronos-forecast' || action === 'toggle-chronos-band' || action === 'set-chronos-horizon') &&
     activeTab

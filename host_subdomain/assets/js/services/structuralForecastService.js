@@ -2,13 +2,13 @@ import {
   state,
   isStructuralForecastMatchingTab,
   clearTabStructuralForecast,
-} from '../core/store.js?v=1.47.0';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.0';
+} from '../core/store.js?v=1.47.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
 import {
   computeStructuralForecast,
   computeClosedCandlesDigest,
   STRUCTURAL_FORECAST_ENGINE_ID,
-} from '../algorithms/structuralForecastEngine.js?v=1.47.0';
+} from '../algorithms/structuralForecastEngine.js?v=1.47.1';
 
 const _structuralForecastMemoryCache = new Map();
 let _workerInstance = null;
@@ -49,14 +49,21 @@ function runInBrowserWorkerOrInline(params) {
     try {
       if (!_workerInstance) {
         _workerInstance = new Worker(
-          new URL('../workers/structuralForecastWorker.js?v=1.47.0', import.meta.url),
+          new URL('../workers/structuralForecastWorker.js?v=1.47.1', import.meta.url),
           { type: 'module' }
         );
       }
       const reqId = ++_workerSeq;
       const timer = setTimeout(() => {
         // Fallback to deterministic inline calculation if worker stalls
-        finish(computeStructuralForecast(params));
+        try {
+          finish(computeStructuralForecast(params));
+        } catch (fallbackErr) {
+          finish({
+            status: 'ERROR',
+            error: fallbackErr && fallbackErr.message ? fallbackErr.message : 'Structural forecast calculation failed',
+          });
+        }
       }, 2500);
 
       const handleMsg = (ev) => {
@@ -68,7 +75,14 @@ function runInBrowserWorkerOrInline(params) {
         if (msg.ok && msg.result) {
           finish(msg.result);
         } else {
-          finish(computeStructuralForecast(params));
+          try {
+            finish(computeStructuralForecast(params));
+          } catch (fallbackErr) {
+            finish({
+              status: 'ERROR',
+              error: (msg && msg.error) || (fallbackErr && fallbackErr.message) || 'Structural forecast worker error',
+            });
+          }
         }
       };
 
@@ -77,7 +91,14 @@ function runInBrowserWorkerOrInline(params) {
         _workerInstance?.removeEventListener('message', handleMsg);
         _workerInstance?.removeEventListener('error', handleErr);
         _workerInstance = null;
-        finish(computeStructuralForecast(params));
+        try {
+          finish(computeStructuralForecast(params));
+        } catch (fallbackErr) {
+          finish({
+            status: 'ERROR',
+            error: fallbackErr && fallbackErr.message ? fallbackErr.message : 'Structural forecast error',
+          });
+        }
       };
 
       _workerInstance.addEventListener('message', handleMsg);
@@ -85,7 +106,14 @@ function runInBrowserWorkerOrInline(params) {
       _workerInstance.postMessage({ requestId: reqId, params });
     } catch {
       _workerInstance = null;
-      finish(computeStructuralForecast(params));
+      try {
+        finish(computeStructuralForecast(params));
+      } catch (fallbackErr) {
+        finish({
+          status: 'ERROR',
+          error: fallbackErr && fallbackErr.message ? fallbackErr.message : 'Structural forecast error',
+        });
+      }
     }
   });
 }
@@ -96,78 +124,87 @@ function runInBrowserWorkerOrInline(params) {
  * - Checks in-memory deterministic cache keyed by closed candle series digest.
  * - Offloads computation to Web Worker when available in browser.
  */
-export async function requestStructuralForecastForTab(tab, onRenderUpdate, forceRefresh = false) {
+export async function requestStructuralForecastForTab(
+  tab,
+  onRenderUpdate,
+  forceRefresh = false,
+  _retriedBoundary = false
+) {
   if (!tab || !tab.showStructuralForecast) {
     if (tab) clearTabStructuralForecast(tab);
     return null;
   }
 
-  const symbolCode = String(tab.symbolCode || '').trim().toUpperCase();
-  const provider = String(tab.provider || 'tvdatafeed').trim().toLowerCase();
-  const timeframe = String(tab.timeframe || 'M15').trim().toUpperCase();
-  const horizonBars = Math.max(
-    1,
-    Math.min(120, Math.round(Number(tab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30)))
-  );
+  const reqSeq = (tab._structuralReqSeq = (tab._structuralReqSeq || 0) + 1);
 
-  const nowMs = Date.now();
-  const allCandles = Array.isArray(tab.candles) ? tab.candles : [];
-  const closedCandles = allCandles.filter((c) => {
-    const openMs = Number(c?.open_time_utc_ms || 0);
-    const closeVal = Number(c?.close);
-    return (
-      openMs > 0 &&
-      Number.isFinite(closeVal) &&
-      closeVal > 0 &&
-      c?.is_closed !== false &&
-      PriceFormatter.isCandleClosed(openMs, timeframe, nowMs, symbolCode)
+  try {
+    const symbolCode = String(tab.symbolCode || '').trim().toUpperCase();
+    const provider = String(tab.provider || 'tvdatafeed').trim().toLowerCase();
+    const timeframe = String(tab.timeframe || 'M15').trim().toUpperCase();
+    const horizonBars = Math.max(
+      1,
+      Math.min(120, Math.round(Number(tab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30)))
     );
-  });
 
-  if (closedCandles.length === 0) {
-    tab.structuralForecast = null;
-    tab.structuralForecastStatus = 'INSUFFICIENT_EVIDENCE';
-    tab.structuralForecastError = 'No closed candles available for structural analysis.';
-    if (typeof onRenderUpdate === 'function') onRenderUpdate();
-    return null;
-  }
+    const nowMs = Date.now();
+    const allCandles = Array.isArray(tab.candles) ? tab.candles : [];
+    const closedCandles = allCandles
+      .filter((c) => {
+        const openMs = Number(c?.open_time_utc_ms || 0);
+        const closeVal = Number(c?.close);
+        return (
+          openMs > 0 &&
+          Number.isFinite(closeVal) &&
+          closeVal > 0 &&
+          c?.is_closed !== false &&
+          PriceFormatter.isCandleClosed(openMs, timeframe, nowMs, symbolCode)
+        );
+      })
+      .sort((a, b) => Number(a.open_time_utc_ms) - Number(b.open_time_utc_ms));
 
-  if (!forceRefresh && isStructuralForecastMatchingTab(tab, tab.structuralForecast)) {
-    tab.structuralForecastStatus = 'READY';
-    tab.structuralForecastError = '';
-    if (typeof onRenderUpdate === 'function') onRenderUpdate();
-    return tab.structuralForecast;
-  }
+    if (closedCandles.length === 0) {
+      tab.structuralForecast = null;
+      tab.structuralForecastStatus = 'INSUFFICIENT_EVIDENCE';
+      tab.structuralForecastError = 'No closed candles available for structural analysis.';
+      if (typeof onRenderUpdate === 'function') onRenderUpdate();
+      return null;
+    }
 
-  const lastClosedCandle = closedCandles[closedCandles.length - 1];
-  const originOpenMs = Number(lastClosedCandle.open_time_utc_ms);
-  const digest = computeClosedCandlesDigest(closedCandles);
-  const cacheKey = buildStructuralForecastCacheKey(
-    symbolCode,
-    provider,
-    timeframe,
-    originOpenMs,
-    horizonBars,
-    digest
-  );
-
-  if (!forceRefresh && _structuralForecastMemoryCache.has(cacheKey)) {
-    const cached = _structuralForecastMemoryCache.get(cacheKey);
-    if (cached && cached.status === 'READY' && isStructuralForecastMatchingTab(tab, cached)) {
-      cached.served_from_cache = true;
-      tab.structuralForecast = cached;
+    if (!forceRefresh && isStructuralForecastMatchingTab(tab, tab.structuralForecast)) {
       tab.structuralForecastStatus = 'READY';
       tab.structuralForecastError = '';
       if (typeof onRenderUpdate === 'function') onRenderUpdate();
-      return cached;
+      return tab.structuralForecast;
     }
-  }
 
-  tab.structuralForecastStatus = 'COMPUTING';
-  tab.structuralForecastError = '';
-  if (typeof onRenderUpdate === 'function') onRenderUpdate();
+    const lastClosedCandle = closedCandles[closedCandles.length - 1];
+    const originOpenMs = Number(lastClosedCandle.open_time_utc_ms);
+    const digest = computeClosedCandlesDigest(closedCandles);
+    const cacheKey = buildStructuralForecastCacheKey(
+      symbolCode,
+      provider,
+      timeframe,
+      originOpenMs,
+      horizonBars,
+      digest
+    );
 
-  try {
+    if (!forceRefresh && _structuralForecastMemoryCache.has(cacheKey)) {
+      const cached = _structuralForecastMemoryCache.get(cacheKey);
+      if (cached && cached.status === 'READY' && isStructuralForecastMatchingTab(tab, cached)) {
+        cached.served_from_cache = true;
+        tab.structuralForecast = cached;
+        tab.structuralForecastStatus = 'READY';
+        tab.structuralForecastError = '';
+        if (typeof onRenderUpdate === 'function') onRenderUpdate();
+        return cached;
+      }
+    }
+
+    tab.structuralForecastStatus = 'COMPUTING';
+    tab.structuralForecastError = '';
+    if (typeof onRenderUpdate === 'function') onRenderUpdate();
+
     const result = await runInBrowserWorkerOrInline({
       candles: closedCandles.slice(-360),
       symbolCode,
@@ -177,8 +214,9 @@ export async function requestStructuralForecastForTab(tab, onRenderUpdate, force
       nowMs,
     });
 
-    // Verify tab still matches user's target while async worker ran
+    // Verify tab and request sequence still match user's explicit request
     if (
+      tab._structuralReqSeq !== reqSeq ||
       !tab.showStructuralForecast ||
       String(tab.symbolCode || '').toUpperCase() !== symbolCode ||
       String(tab.provider || 'tvdatafeed').toLowerCase() !== provider ||
@@ -187,13 +225,23 @@ export async function requestStructuralForecastForTab(tab, onRenderUpdate, force
       return null;
     }
 
-    if (result && result.status === 'READY' && isStructuralForecastMatchingTab(tab, result)) {
-      _structuralForecastMemoryCache.set(cacheKey, result);
-      tab.structuralForecast = result;
-      tab.structuralForecastStatus = 'READY';
-      tab.structuralForecastError = '';
+    if (result && result.status === 'READY' && Array.isArray(result.forecast) && result.forecast.length > 0) {
+      if (isStructuralForecastMatchingTab(tab, result)) {
+        _structuralForecastMemoryCache.set(cacheKey, result);
+        tab.structuralForecast = result;
+        tab.structuralForecastStatus = 'READY';
+        tab.structuralForecastError = '';
+        if (typeof onRenderUpdate === 'function') onRenderUpdate();
+        return result;
+      }
+      if (!_retriedBoundary) {
+        return requestStructuralForecastForTab(tab, onRenderUpdate, true, true);
+      }
+      tab.structuralForecast = null;
+      tab.structuralForecastStatus = 'ERROR';
+      tab.structuralForecastError = 'Candle series updated during forecast calculation; click Forecast to retry.';
       if (typeof onRenderUpdate === 'function') onRenderUpdate();
-      return result;
+      return null;
     }
 
     tab.structuralForecast = result || null;
@@ -205,6 +253,7 @@ export async function requestStructuralForecastForTab(tab, onRenderUpdate, force
     if (typeof onRenderUpdate === 'function') onRenderUpdate();
     return result;
   } catch (err) {
+    if (tab._structuralReqSeq !== reqSeq) return null;
     tab.structuralForecast = null;
     tab.structuralForecastStatus = 'ERROR';
     tab.structuralForecastError = err && err.message ? err.message : 'Structural forecast error';

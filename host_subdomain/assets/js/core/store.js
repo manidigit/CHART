@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.0';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.1';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -1465,6 +1465,7 @@ export const INDICATOR_FLAG_KEYS = [
   'showVolumeProfile',
   'showPivotPoints',
   'showChronosBand',
+  'showForecastBand',
 ];
 
 export function syncIndicatorsAcrossTabsAndPrefs(sourceTab, skipSave = false) {
@@ -2122,12 +2123,17 @@ export function reconcileTabStructuralForecastOnRender(tab) {
         tab.structuralForecastStatus = 'READY';
         tab.structuralForecastError = '';
       } else {
-        tab.structuralForecast = null;
-        if (tab.structuralForecastStatus === 'READY') {
-          tab.structuralForecastStatus = 'IDLE';
-          tab.structuralForecastError = '';
-        }
+        // Never leave showStructuralForecast=true stranded in IDLE with empty reserved slots
+        clearTabStructuralForecast(tab);
+        tab.showStructuralForecast = false;
       }
+    } else if (
+      tab.structuralForecastStatus !== 'COMPUTING' &&
+      tab.structuralForecastStatus !== 'INSUFFICIENT_EVIDENCE' &&
+      tab.structuralForecastStatus !== 'ERROR'
+    ) {
+      clearTabStructuralForecast(tab);
+      tab.showStructuralForecast = false;
     }
   } else if (
     tab.structuralForecast ||

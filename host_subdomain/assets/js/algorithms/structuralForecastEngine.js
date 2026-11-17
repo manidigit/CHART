@@ -1,6 +1,6 @@
-import { PriceFormatter } from './priceFormatter.js?v=1.47.0';
-import { TechnicalIndicators } from './technicalIndicators.js?v=1.47.0';
-import { GapDetector } from './gapDetector.js?v=1.47.0';
+import { PriceFormatter } from './priceFormatter.js?v=1.47.1';
+import { TechnicalIndicators } from './technicalIndicators.js?v=1.47.1';
+import { GapDetector } from './gapDetector.js?v=1.47.1';
 
 /**
  * Native Browser Structural Wave Forecast Engine (JS)
