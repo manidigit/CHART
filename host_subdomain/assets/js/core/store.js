@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.46.1';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.46.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.0';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -126,6 +126,8 @@ export const DEFAULT_PREFS = {
   showChronosForecast: false,
   showChronosBand: true,
   chronosHorizonBars: 30,
+  showStructuralForecast: false,
+  showForecastBand: true,
   forecastRenderMode: 'FAN_CHART',
   forecastHorizonBars: 30,
   forecastPluginConfig: null,
@@ -183,8 +185,10 @@ export const DEFAULT_INDICATOR_COLORS = {
   ichimoku: '#06B6D4', // Turquoise Cloud
   overlayMacd: '#3B82F6', // Blue Overlay
   futureProjection: '#8B5CF6', // Violet Projection
-  chronosQ50: '#A855F7', // Chronos-2 Q50 Central Path (Vibrant Violet)
-  chronosBand: '#A855F7', // Chronos-2 Q25-Q75 Band
+  structuralForecastPath: '#8B5CF6', // Native Structural Forecast Path (Violet)
+  structuralForecastBand: '#8B5CF6', // Native Structural Forecast Uncertainty Band
+  chronosQ50: '#A855F7', // Chronos-2 Q50 Central Path (Preserved Inactive)
+  chronosBand: '#A855F7', // Chronos-2 Q25-Q75 Band (Preserved Inactive)
 
   // Smart Money Concepts & Killzones
   smcStructure: '#38BDF8', // Sky Blue
@@ -1212,6 +1216,12 @@ function loadOpenTabsFromStorage() {
       chronosForecast: null,
       chronosStatus: 'IDLE',
       chronosError: '',
+      showStructuralForecast: false,
+      showForecastBand: t.showForecastBand !== false,
+      forecastHorizonBars: Math.max(1, Math.min(120, Number(t.forecastHorizonBars || 30))),
+      structuralForecast: null,
+      structuralForecastStatus: 'IDLE',
+      structuralForecastError: '',
     }));
   } catch {
     return [];
@@ -1774,6 +1784,9 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showChronosForecast: false,
     showChronosBand: t.showChronosBand !== false,
     chronosHorizonBars: Math.max(1, Math.min(120, Number(t.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30))),
+    showStructuralForecast: false,
+    showForecastBand: t.showForecastBand !== false,
+    forecastHorizonBars: Math.max(1, Math.min(120, Number(t.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30))),
     isMagnetMode: Boolean(t.isMagnetMode),
     activeDrawingColor:
       t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',
@@ -2026,6 +2039,102 @@ export function reconcileTabChronosStateOnRender(tab) {
     }
   } else if (tab.chronosForecast || tab.chronosStatus !== 'IDLE' || tab.chronosError) {
     clearTabChronosForecast(tab);
+  }
+}
+
+export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.structuralForecast) {
+  if (!tab || !forecastPayload || typeof forecastPayload !== 'object') return false;
+  if (forecastPayload.status !== 'READY') return false;
+  if (!Array.isArray(forecastPayload.forecast) || forecastPayload.forecast.length === 0) return false;
+
+  const engine = forecastPayload.engine || {};
+  const series = forecastPayload.series || {};
+  const params = engine.params || {};
+
+  if (engine.engine_id !== 'structural_wave_js' || engine.is_chronos2 !== false) return false;
+
+  const tabSym = String(tab.symbolCode || '').trim().toUpperCase();
+  const tabProv = String(tab.provider || 'tvdatafeed').trim().toLowerCase();
+  const tabTf = String(tab.timeframe || 'M15').trim().toUpperCase();
+  const tabHorizon = Math.max(
+    1,
+    Math.min(120, Math.round(Number(tab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30)))
+  );
+
+  if (String(series.symbol || '').trim().toUpperCase() !== tabSym) return false;
+  if (String(series.provider || '').trim().toLowerCase() !== tabProv) return false;
+  if (String(series.timeframe || '').trim().toUpperCase() !== tabTf) return false;
+  if (Number(params.horizon_bars || 0) !== tabHorizon) return false;
+
+  const candles = Array.isArray(tab.candles) ? tab.candles : [];
+  if (candles.length === 0) return false;
+  const nowMs = Date.now();
+  let lastClosedOpenMs = 0;
+  let lastClosedPrice = NaN;
+  for (let i = candles.length - 1; i >= 0; i--) {
+    const c = candles[i];
+    const openMs = Number(c?.open_time_utc_ms || 0);
+    if (openMs > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(openMs, tabTf, nowMs, tabSym)) {
+      lastClosedOpenMs = openMs;
+      lastClosedPrice = Number(c?.close);
+      break;
+    }
+  }
+  if (lastClosedOpenMs <= 0) return false;
+  if (Number(series.origin_open_time_utc_ms) !== lastClosedOpenMs) return false;
+  if (
+    series.last_closed_price !== undefined &&
+    Number.isFinite(lastClosedPrice) &&
+    Math.abs(Number(series.last_closed_price) - lastClosedPrice) > 1e-5
+  ) {
+    return false;
+  }
+  return true;
+}
+
+export function clearTabStructuralForecast(tab) {
+  if (!tab) return;
+  tab.structuralForecast = null;
+  tab.structuralForecastStatus = 'IDLE';
+  tab.structuralForecastError = '';
+}
+
+export function invalidateTabStructuralForecastIfStale(tab) {
+  if (!tab) return;
+  if (tab.structuralForecast && !isStructuralForecastMatchingTab(tab, tab.structuralForecast)) {
+    clearTabStructuralForecast(tab);
+    tab.showStructuralForecast = false;
+  } else if (
+    tab.showStructuralForecast &&
+    (tab.structuralForecastStatus === 'INSUFFICIENT_EVIDENCE' || tab.structuralForecastStatus === 'ERROR')
+  ) {
+    // Allow user to re-click after data sync completes without leaving stale error active
+    clearTabStructuralForecast(tab);
+    tab.showStructuralForecast = false;
+  }
+}
+
+export function reconcileTabStructuralForecastOnRender(tab) {
+  if (!tab) return;
+  if (tab.showStructuralForecast) {
+    if (tab.structuralForecast && tab.structuralForecast.status === 'READY') {
+      if (isStructuralForecastMatchingTab(tab, tab.structuralForecast)) {
+        tab.structuralForecastStatus = 'READY';
+        tab.structuralForecastError = '';
+      } else {
+        tab.structuralForecast = null;
+        if (tab.structuralForecastStatus === 'READY') {
+          tab.structuralForecastStatus = 'IDLE';
+          tab.structuralForecastError = '';
+        }
+      }
+    }
+  } else if (
+    tab.structuralForecast ||
+    (tab.structuralForecastStatus && tab.structuralForecastStatus !== 'IDLE') ||
+    tab.structuralForecastError
+  ) {
+    clearTabStructuralForecast(tab);
   }
 }
 

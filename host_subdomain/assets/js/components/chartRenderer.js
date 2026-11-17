@@ -1,13 +1,14 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.46.1';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.46.1';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.46.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.0';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.47.0';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.47.0';
 import {
   state,
   getInstrumentSpec,
   getIndicatorColorPalette,
   hexToRgba,
   isChronosForecastMatchingTab,
-} from '../core/store.js?v=1.46.1';
+  isStructuralForecastMatchingTab,
+} from '../core/store.js?v=1.47.0';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -308,31 +309,40 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
   if (!Number.isFinite(rawMin) || !Number.isFinite(rawMax)) return;
 
-  // Chronos-2 Forecast validation & Y-axis auto-scale integration
+  // Active Forecast validation (Native JS Structural Forecast prioritized; Chronos-2 preserved inactive)
+  const hasValidStructuralForecast =
+    Boolean(tab.showStructuralForecast) && isStructuralForecastMatchingTab(tab, tab.structuralForecast);
+  const structuralPoints = hasValidStructuralForecast ? tab.structuralForecast.forecast : [];
+  const showForecastBand = tab.showForecastBand !== false;
+
   const hasValidChronosForecast =
-    Boolean(tab.showChronosForecast) && isChronosForecastMatchingTab(tab, tab.chronosForecast);
+    !tab.showStructuralForecast &&
+    Boolean(tab.showChronosForecast) &&
+    isChronosForecastMatchingTab(tab, tab.chronosForecast);
   const chronosPoints = hasValidChronosForecast ? tab.chronosForecast.forecast : [];
   const showChronosBand = tab.showChronosBand !== false;
+
+  const activeForecastPoints = hasValidStructuralForecast ? structuralPoints : chronosPoints;
+  const isAnyForecastShown = Boolean(tab.showStructuralForecast || tab.showChronosForecast);
+  const activeHorizonCount = tab.showStructuralForecast
+    ? structuralPoints.length || Number(tab.forecastHorizonBars || prefs.forecastHorizonBars || 30)
+    : chronosPoints.length || Number(tab.chronosHorizonBars || prefs.chronosHorizonBars || 30);
+
   const chronosHorizonSlots =
-    tab.showChronosForecast && offset === 0
-      ? Math.max(
-          1,
-          Math.min(
-            120,
-            chronosPoints.length || Number(tab.chronosHorizonBars || prefs.chronosHorizonBars || 30)
-          )
-        )
+    isAnyForecastShown && offset === 0
+      ? Math.max(1, Math.min(120, activeHorizonCount))
       : 0;
 
-  if (hasValidChronosForecast && offset === 0) {
-    for (let i = 0; i < chronosPoints.length; i++) {
-      const fp = chronosPoints[i];
+  if ((hasValidStructuralForecast || hasValidChronosForecast) && offset === 0) {
+    const includeBand = hasValidStructuralForecast ? showForecastBand : showChronosBand;
+    for (let i = 0; i < activeForecastPoints.length; i++) {
+      const fp = activeForecastPoints[i];
       const q50 = Number(fp.q50_median);
       if (Number.isFinite(q50) && q50 > 0) {
         if (q50 < rawMin) rawMin = q50;
         if (q50 > rawMax) rawMax = q50;
       }
-      if (showChronosBand) {
+      if (includeBand) {
         const q25 = Number(fp.q25);
         const q75 = Number(fp.q75);
         if (Number.isFinite(q25) && q25 > 0 && q25 < rawMin) rawMin = q25;
@@ -430,9 +440,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           ...visible,
           ...Array.from({ length: chronosHorizonSlots }, (_, k) => ({
             open_time_utc_ms:
-              hasValidChronosForecast && chronosPoints[k]?.target_open_time_utc_ms
-                ? Number(chronosPoints[k].target_open_time_utc_ms)
-                : lastVisOpenMs + (k + 1) * stepMsAxis,
+              hasValidStructuralForecast && structuralPoints[k]?.open_time_utc_ms
+                ? Number(structuralPoints[k].open_time_utc_ms)
+                : hasValidChronosForecast && chronosPoints[k]?.target_open_time_utc_ms
+                  ? Number(chronosPoints[k].target_open_time_utc_ms)
+                  : lastVisOpenMs + (k + 1) * stepMsAxis,
           })),
         ]
       : visible;
@@ -1148,8 +1160,255 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // CHRONOS-2 REAL FORECAST OVERLAY (Q50 Central Path + Optional Q25..Q75 Uncertainty Band)
-  if (tab.showChronosForecast) {
+  // NATIVE BROWSER STRUCTURAL WAVE FORECAST OVERLAY (Zero PHP exec / Zero Python / Zero Cron)
+  if (tab.showStructuralForecast) {
+    const fcColor = indPal.structuralForecastPath || '#8B5CF6';
+    const fcBandCol = indPal.structuralForecastBand || fcColor;
+
+    if (hasValidStructuralForecast && structuralPoints.length > 0) {
+      const originOpenMs = Number(tab.structuralForecast.series?.origin_open_time_utc_ms || 0);
+      let originIdx = -1;
+      for (let i = visible.length - 1; i >= 0; i--) {
+        const cMs = Number(visible[i].open_time_utc_ms || (visible[i].openTimeSec ? visible[i].openTimeSec * 1000 : 0));
+        if (cMs === originOpenMs) {
+          originIdx = i;
+          break;
+        }
+      }
+
+      // Highlight historical Swing Highs / Lows used for structural wave calibration when visible
+      const histSwings = Array.isArray(tab.structuralForecast.swings) ? tab.structuralForecast.swings : [];
+      if (histSwings.length > 0) {
+        ctx.save();
+        const visibleByMs = new Map();
+        for (let i = 0; i < visible.length; i++) {
+          const cMs = Number(visible[i].open_time_utc_ms || (visible[i].openTimeSec ? visible[i].openTimeSec * 1000 : 0));
+          visibleByMs.set(cMs, i);
+        }
+        for (const sw of histSwings) {
+          const vIdx = visibleByMs.get(Number(sw.open_time_utc_ms));
+          if (vIdx === undefined) continue;
+          const sx = idxToX(vIdx);
+          const sy = priceToY(Number(sw.price));
+          if (sy < topPad || sy > topPad + chartH) continue;
+          ctx.fillStyle = sw.type === 'HIGH' ? 'rgba(239, 83, 80, 0.82)' : 'rgba(38, 166, 154, 0.82)';
+          ctx.beginPath();
+          ctx.arc(sx, sy, 2.7, 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
+
+      if (originIdx >= 0) {
+        const originCandle = visible[originIdx];
+        const originClose = Number(originCandle.close);
+        const originX = idxToX(originIdx);
+        const originY = priceToY(originClose);
+
+        const pts = structuralPoints
+          .map((fp, idx) => {
+            const stepNum = Number(fp.step || idx + 1);
+            const x = idxToX(originIdx + stepNum);
+            const q50 = Number(fp.q50_median);
+            const q25 = Number(fp.q25);
+            const q75 = Number(fp.q75);
+            return {
+              step: stepNum,
+              x,
+              q50,
+              q25,
+              q75,
+              yQ50: priceToY(q50),
+              yQ25: priceToY(q25),
+              yQ75: priceToY(q75),
+            };
+          })
+          .filter((p) => Number.isFinite(p.q50) && p.x <= chartW + slotW);
+
+        if (pts.length > 0) {
+          const lastPt = pts[pts.length - 1];
+          const params = tab.structuralForecast.engine?.params || {};
+          const quality = tab.structuralForecast.data_quality || {};
+
+          ctx.save();
+          // 1. Future Forecast Zone background & vertical anchor divider at last closed candle
+          ctx.fillStyle = isDark ? hexToRgba(fcColor, 0.04) : hexToRgba(fcColor, 0.032);
+          ctx.fillRect(originX, topPad, Math.max(0, Math.min(chartW, lastPt.x + slotW * 0.5) - originX), chartH);
+
+          ctx.strokeStyle = hexToRgba(fcColor, 0.55);
+          ctx.lineWidth = 1.2;
+          ctx.setLineDash([4, 4]);
+          ctx.beginPath();
+          ctx.moveTo(originX, topPad);
+          ctx.lineTo(originX, topPad + chartH);
+          ctx.stroke();
+          ctx.setLineDash([]);
+
+          // 2. Optional Empirical Uncertainty Band
+          if (showForecastBand) {
+            ctx.fillStyle = hexToRgba(fcBandCol, isDark ? 0.18 : 0.14);
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            for (let i = 0; i < pts.length; i++) {
+              ctx.lineTo(pts[i].x, pts[i].yQ75);
+            }
+            for (let i = pts.length - 1; i >= 0; i--) {
+              ctx.lineTo(pts[i].x, pts[i].yQ25);
+            }
+            ctx.closePath();
+            ctx.fill();
+
+            ctx.strokeStyle = hexToRgba(fcBandCol, 0.62);
+            ctx.lineWidth = 1.1;
+            ctx.setLineDash([3, 3]);
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ75);
+            ctx.stroke();
+
+            ctx.beginPath();
+            ctx.moveTo(originX, originY);
+            for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ25);
+            ctx.stroke();
+            ctx.setLineDash([]);
+
+            queueRightLevelLabel(
+              lastPt.yQ75,
+              `Upper ${PriceFormatter.formatPrice(lastPt.q75, tab.decimals)}`,
+              hexToRgba(fcBandCol, 0.92)
+            );
+            queueRightLevelLabel(
+              lastPt.yQ25,
+              `Lower ${PriceFormatter.formatPrice(lastPt.q25, tab.decimals)}`,
+              hexToRgba(fcBandCol, 0.92)
+            );
+          }
+
+          // 3. Central Structured Wave Path (smooth segmented interpolation)
+          ctx.strokeStyle = hexToRgba(fcColor, 0.25);
+          ctx.lineWidth = 4.6;
+          ctx.lineJoin = 'round';
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(originX, originY);
+          for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ50);
+          ctx.stroke();
+
+          ctx.strokeStyle = fcColor;
+          ctx.lineWidth = 2.4;
+          ctx.beginPath();
+          ctx.moveTo(originX, originY);
+          for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ50);
+          ctx.stroke();
+
+          // Anchor point on last closed candle Close
+          ctx.fillStyle = fcColor;
+          ctx.beginPath();
+          ctx.arc(originX, originY, 3.6, 0, Math.PI * 2);
+          ctx.fill();
+
+          // Probable Turning Points (reversal nodes along future path)
+          const tps = Array.isArray(tab.structuralForecast.turning_points) ? tab.structuralForecast.turning_points : [];
+          for (const tp of tps) {
+            const pMatch = pts.find((p) => p.step === Number(tp.step));
+            if (!pMatch) continue;
+            ctx.save();
+            ctx.translate(pMatch.x, pMatch.yQ50);
+            ctx.rotate(Math.PI / 4);
+            ctx.fillStyle = '#FFFFFF';
+            ctx.strokeStyle = fcColor;
+            ctx.lineWidth = 1.8;
+            ctx.fillRect(-3.4, -3.4, 6.8, 6.8);
+            ctx.strokeRect(-3.4, -3.4, 6.8, 6.8);
+            ctx.restore();
+          }
+
+          // Info badge inside forecast zone (explicitly identifies Native Structural Wave JS)
+          const biasShort =
+            params.structure_bias === 'BULLISH_STRUCTURE'
+              ? 'Bullish'
+              : params.structure_bias === 'BEARISH_STRUCTURE'
+                ? 'Bearish'
+                : 'Range';
+          const volShort =
+            params.volatility_regime === 'EXPANDING'
+              ? 'HighVol'
+              : params.volatility_regime === 'COMPRESSING'
+                ? 'LowVol'
+                : 'NormVol';
+          const gradeTag = quality.confidence_grade || 'LOW';
+          const badgeTxt = `Structural JS (+${pts.length} · ${biasShort} · ${volShort} · ${gradeTag})`;
+          ctx.font = 'bold 10px "JetBrains Mono", monospace';
+          const bTw = Math.min(chartW - 24, ctx.measureText(badgeTxt).width + 14);
+          const bX = Math.min(chartW - bTw - 8, Math.max(8, originX + 6));
+          const bY = topPad + 10;
+          ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.90)' : 'rgba(255, 255, 255, 0.94)';
+          ctx.strokeStyle = hexToRgba(fcColor, 0.78);
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          if (ctx.roundRect) ctx.roundRect(bX, bY, bTw, 18, 4);
+          else ctx.rect(bX, bY, bTw, 18);
+          ctx.fill();
+          ctx.stroke();
+          ctx.fillStyle = fcColor;
+          ctx.fillText(badgeTxt, bX + 7, bY + 12.5, bTw - 12);
+
+          queueRightLevelLabel(
+            lastPt.yQ50,
+            `Fcst ${PriceFormatter.formatPrice(lastPt.q50, tab.decimals)}`,
+            fcColor
+          );
+          ctx.restore();
+        }
+      }
+    } else if (tab.structuralForecastStatus === 'COMPUTING') {
+      ctx.save();
+      const procText =
+        i18n && i18n.getCurrentLanguage() === 'fa'
+          ? 'پیش‌بینی ساختاری: در حال تحلیل امواج و نوسان...'
+          : 'Structural Forecast: Analyzing swings & volatility...';
+      ctx.font = 'bold 11px "JetBrains Mono", sans-serif';
+      const pTw = Math.min(chartW - 24, ctx.measureText(procText).width + 18);
+      const pX = Math.max(12, chartW - pTw - 12);
+      const pY = topPad + 12;
+      ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.92)' : 'rgba(255, 255, 255, 0.94)';
+      ctx.strokeStyle = hexToRgba(fcColor, 0.8);
+      ctx.lineWidth = 1.2;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(pX, pY, pTw, 22, 5);
+      else ctx.rect(pX, pY, pTw, 22);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = fcColor;
+      ctx.fillText(procText, pX + 9, pY + 14.5, pTw - 18);
+      ctx.restore();
+    } else if (tab.structuralForecastStatus === 'INSUFFICIENT_EVIDENCE' || tab.structuralForecastStatus === 'ERROR') {
+      ctx.save();
+      const rawErr = String(tab.structuralForecastError || '').trim();
+      const errMsg = rawErr.length > 78 ? rawErr.slice(0, 75) + '...' : rawErr;
+      const errText = errMsg
+        ? `Forecast Limitation: ${errMsg}`
+        : i18n && i18n.getCurrentLanguage() === 'fa'
+          ? 'شواهد ساختاری کافی برای ترسیم پیش‌بینی معتبر وجود ندارد'
+          : 'Insufficient structural evidence for forecast';
+      ctx.font = 'bold 11px "JetBrains Mono", sans-serif';
+      const eTw = Math.min(chartW - 24, ctx.measureText(errText).width + 20);
+      const eX = Math.max(12, chartW - eTw - 12);
+      const eY = topPad + 12;
+      ctx.fillStyle = isDark ? 'rgba(42, 28, 16, 0.94)' : 'rgba(255, 251, 235, 0.96)';
+      ctx.strokeStyle = 'rgba(245, 158, 11, 0.9)';
+      ctx.lineWidth = 1.3;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(eX, eY, eTw, 24, 5);
+      else ctx.rect(eX, eY, eTw, 24);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = isDark ? '#FCD34D' : '#B45309';
+      ctx.fillText(errText, eX + 10, eY + 15.5, eTw - 20);
+      ctx.restore();
+    }
+  } else if (tab.showChronosForecast) {
+    // CHRONOS-2 REAL FORECAST OVERLAY (Preserved Independent Inactive Engine)
     const chronosColor = indPal.chronosQ50 || '#A855F7';
     const chronosBandCol = indPal.chronosBand || chronosColor;
 

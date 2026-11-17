@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.46.1';
+import { I18nManager } from './core/i18n.js?v=1.47.0';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -34,7 +34,11 @@ import {
   clearTabChronosForecast,
   invalidateTabChronosIfStale,
   reconcileTabChronosStateOnRender,
-} from './core/store.js?v=1.46.1';
+  isStructuralForecastMatchingTab,
+  clearTabStructuralForecast,
+  invalidateTabStructuralForecastIfStale,
+  reconcileTabStructuralForecastOnRender,
+} from './core/store.js?v=1.47.0';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -55,28 +59,28 @@ import {
   fetchSymbolIntel,
   uploadHistoricalImport,
   fetchImportBatches,
-  requestChronos2ForecastForTab,
   clearChronos2TimerForTab,
-} from './services/apiService.js?v=1.46.1';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.46.1';
-import { GapDetector } from './algorithms/gapDetector.js?v=1.46.1';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.46.1';
-import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.46.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.46.1';
-import { renderLoginScreen } from './views/loginView.js?v=1.46.1';
+} from './services/apiService.js?v=1.47.0';
+import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.0';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.0';
+import { GapDetector } from './algorithms/gapDetector.js?v=1.47.0';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.0';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.0';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.0';
+import { renderLoginScreen } from './views/loginView.js?v=1.47.0';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.46.1';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.46.1';
+} from './views/headerView.js?v=1.47.0';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.0';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.46.1';
-import { renderSettingsModal } from './views/settingsView.js?v=1.46.1';
-import { renderRightIconRail } from './views/navigationView.js?v=1.46.1';
+} from './views/watchlistView.js?v=1.47.0';
+import { renderSettingsModal } from './views/settingsView.js?v=1.47.0';
+import { renderRightIconRail } from './views/navigationView.js?v=1.47.0';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -263,12 +267,22 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     existing.chronosHorizonBars = Number(
       (curActive && curActive.chronosHorizonBars) || existing.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30
     );
+    existing.forecastHorizonBars = Number(
+      (curActive && curActive.forecastHorizonBars) || existing.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30
+    );
     if (!isSameTabContext && !isChronosForecastMatchingTab(existing, existing.chronosForecast)) {
       clearTabChronosForecast(existing);
       existing.showChronosForecast = false;
     } else if (existing.chronosForecast && !isChronosForecastMatchingTab(existing, existing.chronosForecast)) {
       clearTabChronosForecast(existing);
       existing.showChronosForecast = false;
+    }
+    if (!isSameTabContext && !isStructuralForecastMatchingTab(existing, existing.structuralForecast)) {
+      clearTabStructuralForecast(existing);
+      existing.showStructuralForecast = false;
+    } else if (existing.structuralForecast && !isStructuralForecastMatchingTab(existing, existing.structuralForecast)) {
+      clearTabStructuralForecast(existing);
+      existing.showStructuralForecast = false;
     }
     state.activeTabId = existing.tabId;
     saveActiveTabId(state.activeTabId);
@@ -332,6 +346,14 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     newTab.chronosForecast = null;
     newTab.chronosStatus = 'IDLE';
     newTab.chronosError = '';
+    newTab.forecastHorizonBars = Number(
+      (curActive && curActive.forecastHorizonBars) || state.chartPreferences.forecastHorizonBars || 30
+    );
+    newTab.showForecastBand = curActive ? curActive.showForecastBand !== false : state.chartPreferences.showForecastBand !== false;
+    newTab.showStructuralForecast = false;
+    newTab.structuralForecast = null;
+    newTab.structuralForecastStatus = 'IDLE';
+    newTab.structuralForecastError = '';
     state.openTabs.push(newTab);
     state.activeTabId = tabId;
     saveActiveTabId(state.activeTabId);
@@ -467,6 +489,43 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showObv, pal.obv, 'OBV', 'toggle-obv');
   pushPill(activeTab.showCmf20, pal.cmf20, 'CMF 20', 'toggle-cmf20');
   pushPill(activeTab.showRoc12, pal.roc12, 'ROC 12', 'toggle-roc12');
+  if (activeTab.showStructuralForecast) {
+    const fCol = pal.structuralForecastPath || '#8B5CF6';
+    const isFa = i18n.getCurrentLanguage() === 'fa';
+    if (isStructuralForecastMatchingTab(activeTab, activeTab.structuralForecast)) {
+      const fPayload = activeTab.structuralForecast;
+      const hLen = fPayload.forecast.length;
+      const bandTag = activeTab.showForecastBand !== false ? ' · Band' : '';
+      const bias = fPayload.structure?.trend_bias || '';
+      const biasTag = bias ? ` · ${bias}` : '';
+      pushPill(true, fCol, `Forecast (+${hLen}${bandTag}${biasTag})`, 'toggle-structural-forecast');
+    } else if (activeTab.structuralForecastStatus === 'COMPUTING') {
+      pushPill(
+        true,
+        fCol,
+        isFa ? 'پیش‌بینی: در حال تحلیل...' : 'Forecast: Analyzing...',
+        'toggle-structural-forecast'
+      );
+    } else if (
+      activeTab.structuralForecastStatus === 'INSUFFICIENT_EVIDENCE' ||
+      activeTab.structuralForecastStatus === 'ERROR'
+    ) {
+      const rawErr = String(activeTab.structuralForecastError || '').trim();
+      const shortErr = rawErr.length > 56 ? rawErr.slice(0, 53) + '...' : rawErr;
+      pushPill(
+        true,
+        '#F59E0B',
+        shortErr
+          ? `Forecast: ${shortErr}`
+          : isFa
+            ? 'پیش‌بینی: داده کافی نیست'
+            : 'Forecast: Insufficient Evidence',
+        'toggle-structural-forecast'
+      );
+    } else {
+      pushPill(true, fCol, 'Forecast (Structural JS)', 'toggle-structural-forecast');
+    }
+  }
   if (activeTab.showChronosForecast) {
     const cCol = pal.chronosQ50 || '#A855F7';
     const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -672,8 +731,9 @@ export function renderApp() {
         activeTab.provider,
         activeTab.timeframe
       );
-      // Strictly on-demand: Invalidate previous forecast but NEVER auto-execute without explicit user click
-      // while preserving PROCESSING and ERROR states from explicit user clicks.
+      // Strictly on-demand: Invalidate previous forecast without auto-executing without explicit user click
+      // while preserving PROCESSING / COMPUTING / INSUFFICIENT_EVIDENCE / ERROR states from explicit user clicks.
+      reconcileTabStructuralForecastOnRender(activeTab);
       reconcileTabChronosStateOnRender(activeTab);
     }
 
@@ -1627,6 +1687,7 @@ function bindSettingsForms() {
     for (const t of state.openTabs) {
       if (t.symbolCode === symbolCode && t.provider === provider && t.timeframe === timeframe) {
         t.candles = merged.slice(-2500);
+        invalidateTabStructuralForecastIfStale(t);
         invalidateTabChronosIfStale(t);
       }
     }
@@ -2022,6 +2083,8 @@ document.addEventListener('click', async (e) => {
     activeTab.priceScaleFactor = 1.0;
     activeTab.verticalPriceOffset = 0.0;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
+    clearTabStructuralForecast(activeTab);
+    activeTab.showStructuralForecast = false;
     clearTabChronosForecast(activeTab);
     activeTab.showChronosForecast = false;
     activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
@@ -2062,6 +2125,8 @@ document.addEventListener('click', async (e) => {
 
     const tfChanged = activeTab.timeframe !== targetTf;
     if (tfChanged) {
+      clearTabStructuralForecast(activeTab);
+      activeTab.showStructuralForecast = false;
       clearTabChronosForecast(activeTab);
       activeTab.showChronosForecast = false;
     }
@@ -2254,41 +2319,56 @@ document.addEventListener('click', async (e) => {
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
-  } else if (action === 'toggle-chronos-forecast' && activeTab) {
-    activeTab.showChronosForecast = !activeTab.showChronosForecast;
-    if (activeTab.showChronosForecast) {
+  } else if (action === 'toggle-structural-forecast' && activeTab) {
+    activeTab.showStructuralForecast = !activeTab.showStructuralForecast;
+    if (activeTab.showStructuralForecast) {
       activeTab.scrollOffset = 0;
     } else {
-      clearChronos2TimerForTab(activeTab.tabId || `${activeTab.symbolCode}_${activeTab.timeframe}`);
-      clearTabChronosForecast(activeTab);
+      clearTabStructuralForecast(activeTab);
     }
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
-    if (activeTab.showChronosForecast) {
-      requestChronos2ForecastForTab(activeTab, () => {
+    if (activeTab.showStructuralForecast) {
+      requestStructuralForecastForTab(activeTab, () => {
         renderApp();
         redrawActiveCanvas();
       }).catch(() => {});
     }
-  } else if (action === 'toggle-chronos-band' && activeTab) {
-    activeTab.showChronosBand = activeTab.showChronosBand === false;
+  } else if (action === 'toggle-forecast-band' && activeTab) {
+    const nextBand = activeTab.showForecastBand === false;
+    activeTab.showForecastBand = nextBand;
+    state.chartPreferences.showForecastBand = nextBand;
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
-  } else if (action === 'set-chronos-horizon' && activeTab) {
+  } else if (action === 'set-forecast-horizon' && activeTab) {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
-    activeTab.chronosHorizonBars = hVal;
-    activeTab.showChronosForecast = true;
+    activeTab.forecastHorizonBars = hVal;
+    state.chartPreferences.forecastHorizonBars = hVal;
+    activeTab.showStructuralForecast = true;
     activeTab.scrollOffset = 0;
-    clearTabChronosForecast(activeTab);
+    clearTabStructuralForecast(activeTab);
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
-    requestChronos2ForecastForTab(activeTab, () => {
+    requestStructuralForecastForTab(activeTab, () => {
       renderApp();
       redrawActiveCanvas();
     }).catch(() => {});
+  } else if (
+    (action === 'toggle-chronos-forecast' || action === 'toggle-chronos-band' || action === 'set-chronos-horizon') &&
+    activeTab
+  ) {
+    clearChronos2TimerForTab(activeTab.tabId || `${activeTab.symbolCode}_${activeTab.timeframe}`);
+    clearTabChronosForecast(activeTab);
+    activeTab.showChronosForecast = false;
+    showFloatingToast(
+      i18n.getCurrentLanguage() === 'fa'
+        ? 'موتور Chronos-2 روی هاست اشتراکی غیرفعال است؛ از موتور Forecast بومی مرورگر استفاده کنید.'
+        : 'Chronos-2 is inactive on shared hosting; please use the Native Browser Forecast.'
+    );
+    renderApp();
   } else if (action === 'set-workspace-view') {
     if (el.getAttribute('data-view') === 'forecast') {
       return;
@@ -3033,6 +3113,12 @@ async function handleChartSnapshot() {
       if (activeTab.showObv) activePills.push({ label: 'OBV', color: pal.obv });
       if (activeTab.showCmf20) activePills.push({ label: 'CMF', color: pal.cmf20 });
       if (activeTab.showRoc12) activePills.push({ label: 'ROC', color: pal.roc12 });
+      if (activeTab.showStructuralForecast) {
+        activePills.push({
+          label: `Forecast (+${activeTab.forecastHorizonBars || 30})`,
+          color: pal.structuralForecastPath || '#8B5CF6',
+        });
+      }
       if (activeTab.showChronosForecast) {
         activePills.push({
           label: `Chronos-2 Q50 (+${activeTab.chronosHorizonBars || 30})`,

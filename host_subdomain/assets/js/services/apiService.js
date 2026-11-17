@@ -21,9 +21,10 @@ import {
   isChronosForecastMatchingTab,
   clearTabChronosForecast,
   invalidateTabChronosIfStale,
-} from '../core/store.js?v=1.46.1';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.46.1';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.46.1';
+  invalidateTabStructuralForecastIfStale,
+} from '../core/store.js?v=1.47.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.0';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.0';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
@@ -1447,6 +1448,7 @@ export async function syncSymbolNow(symbolCode, requestedTf, renderCallback, for
           tab.candles =
             syncedByTf[tabTf] || getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tabTf);
           invalidateTabChronosIfStale(tab);
+          invalidateTabStructuralForecastIfStale(tab);
         }
       }
 

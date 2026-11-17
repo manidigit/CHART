@@ -1,12 +1,12 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.46.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.0';
 import {
   state,
   escapeHtml,
   getIndicatorColorPalette,
   UNIVERSAL_COLOR_PALETTE,
   DEFAULT_INDICATOR_COLORS,
-} from '../core/store.js?v=1.46.1';
-import { renderSymbolBadge } from './watchlistView.js?v=1.46.1';
+} from '../core/store.js?v=1.47.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.47.0';
 
 export function renderTopHeaderBar(activeTab, i18n) {
   const sym = activeTab
@@ -57,7 +57,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showFvg ? 1 : 0) +
       (activeTab.showVolumeProfile ? 1 : 0) +
       (activeTab.showPivotPoints ? 1 : 0) +
-      (activeTab.showChronosForecast ? 1 : 0)
+      (activeTab.showStructuralForecast ? 1 : 0)
     : 1;
 
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -304,25 +304,25 @@ export function renderTopHeaderBar(activeTab, i18n) {
           }
         </button>
 
-        <!-- Chronos-2 Real Forecast Overlay Quick Toggle + Band Toggle -->
-        <div class="tv-toolbar-group" title="Chronos-2 Forecast (amazon/chronos-2)">
+        <!-- Native Browser Structural Wave Forecast Quick Toggle + Uncertainty Band Toggle -->
+        <div class="tv-toolbar-group" title="${isFa ? 'موتور پیش‌بینی ساختاری بومی (جاوااسکریپت — روی کندل‌های بسته‌شده)' : 'Native Structural Forecast (Browser JS — Closed Candles)'}">
           <button
             type="button"
-            class="tv-tool-btn ${activeTab && activeTab.showChronosForecast ? 'active' : ''}"
-            data-action="toggle-chronos-forecast"
-            title="${isFa ? 'پیش‌بینی Chronos-2 (مسیر میانه Q50 روی کندل‌های بسته‌شده)' : 'Chronos-2 Forecast (Q50 Median on Closed Candles)'}"
+            class="tv-tool-btn ${activeTab && activeTab.showStructuralForecast ? 'active' : ''}"
+            data-action="toggle-structural-forecast"
+            title="${isFa ? 'پیش‌بینی ساختاری (تحلیل Swing، امواج حرکتی/اصلاحی و محدوده عدم قطعیت در مرورگر)' : 'Structural Forecast (Swing, Impulse/Correction Waves & Uncertainty Band in Browser)'}"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 17 9 11 13 15 21 7"/><circle cx="21" cy="7" r="2"/></svg>
-            <span class="ltr-num">Chronos-2</span>
+            <span class="ltr-num">${isFa ? 'Forecast' : 'Forecast'}</span>
           </button>
           ${
-            activeTab && activeTab.showChronosForecast
+            activeTab && activeTab.showStructuralForecast
               ? `<button
                   type="button"
-                  class="tv-tool-btn ltr-num ${activeTab.showChronosBand !== false ? 'active' : ''}"
-                  data-action="toggle-chronos-band"
-                  title="${isFa ? 'نمایش/مخفی‌سازی باند عدم قطعیت Q25 تا Q75' : 'Toggle Q25–Q75 Uncertainty Band'}"
-                >Q25–Q75</button>`
+                  class="tv-tool-btn ltr-num ${activeTab.showForecastBand !== false ? 'active' : ''}"
+                  data-action="toggle-forecast-band"
+                  title="${isFa ? 'نمایش/مخفی‌سازی محدوده عدم قطعیت پیش‌بینی' : 'Toggle Forecast Uncertainty Band'}"
+                >${isFa ? 'Band' : 'Band'}</button>`
               : ''
           }
         </div>
@@ -594,7 +594,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
   const activeIndCat = state.activeIndicatorCategory || 'all';
   const indCategories = [
     { key: 'all', label: isFa ? 'همه (All)' : 'All' },
-    { key: 'chronos', label: isFa ? 'پیش‌بینی Chronos-2' : 'Chronos-2 Forecast' },
+    { key: 'forecast', label: isFa ? 'پیش‌بینی ساختاری' : 'Structural Forecast' },
     { key: 'ma', label: isFa ? 'میانگین‌ها (MA)' : 'Moving Averages' },
     { key: 'bands_levels', label: isFa ? 'کانال و سطوح' : 'Bands & Levels' },
     { key: 'trend_smc', label: isFa ? 'روند و SMC' : 'Trend & SMC' },
@@ -637,34 +637,34 @@ export function renderIndicatorsModal(activeTab, i18n) {
 
         <div class="tv-modal-body" style="display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding-bottom: 14px;">
           ${
-            activeIndCat === 'all' || activeIndCat === 'chronos'
+            activeIndCat === 'all' || activeIndCat === 'forecast' || activeIndCat === 'chronos'
               ? `
           ${renderSectionHeader(
-            isFa ? 'موتور پیش‌بینی سری زمانی Chronos-2 (amazon/chronos-2)' : 'Chronos-2 Time-Series Forecast Engine (amazon/chronos-2)',
+            isFa ? 'موتور پیش‌بینی ساختاری بومی (Native Structural Forecast · JS)' : 'Native Browser Structural Wave Forecast (JS)',
             isFa
-              ? 'ورودی صرفاً Close کندل‌های بسته‌شده · خروجی کامل ۲۱ کوانتایل · مسیر مرکزی Q50 و باند Q25–Q75 · بدون تولید کندل مصنوعی'
-              : 'Closed-candle Close series only · Full 21 native quantiles · Q50 central path & Q25–Q75 uncertainty band · Zero synthetic OHLC'
+              ? 'استخراج Swingهای واقعی، تحلیل امواج حرکتی/اصلاحی، رژیم نوسان، نقاط برگشت احتمالی و محدوده عدم قطعیت روی مرورگر — بدون PHP exec یا Python'
+              : 'Real closed-candle swings, impulse/correction wave geometry, volatility regime, probable turning points & uncertainty bands — 100% in-browser'
           )}
           ${renderToggleRow(
-            'chronosQ50',
-            pal.chronosQ50,
-            isFa ? 'مسیر پیش‌بینی Chronos-2 (Q50 Median)' : 'Chronos-2 Forecast Path (Q50 Median)',
+            'structuralForecastPath',
+            pal.structuralForecastPath || '#8B5CF6',
+            isFa ? 'مسیر پیش‌بینی ساختاری (Structural Path)' : 'Structural Forecast Central Path',
             isFa
-              ? 'نمایش مسیر میانه نقطه‌ای (Q50) در ادامه آخرین کندل بسته‌شده (Revision: 29ec3766d3)'
-              : 'Display pointwise median (Q50) path extending right from the last closed candle (Revision: 29ec3766d3)',
-            Boolean(activeTab.showChronosForecast),
-            'toggle-chronos-forecast',
-            'Q50'
+              ? 'رسم مسیر مرکزی ساختارمند از آخرین کندل بسته‌شده به همراه نقاط برگشت احتمالی (بدون کندل مصنوعی یا نویز سینوسی)'
+              : 'Structured central wave projection anchored on last closed candle with probable reversal nodes (zero synthetic OHLC or sine noise)',
+            Boolean(activeTab.showStructuralForecast),
+            'toggle-structural-forecast',
+            'WAVE'
           )}
           <div class="card-subtle" style="padding: 8px 11px; margin-top: -3px; border-top: 1px dashed var(--border);">
             <div class="row-between" style="font-size: 11.5px; margin-bottom: 7px; flex-wrap: wrap; gap: 6px;">
-              <span style="color: var(--text-muted);">${isFa ? 'باند عدم قطعیت (Q25 تا Q75):' : 'Uncertainty Band (Q25 to Q75):'}</span>
+              <span style="color: var(--text-muted);">${isFa ? 'محدوده عدم قطعیت (Uncertainty Band):' : 'Uncertainty Band:'}</span>
               <button
                 type="button"
-                class="btn btn-sm ${activeTab.showChronosBand !== false ? 'btn-primary' : ''}"
-                data-action="toggle-chronos-band"
+                class="btn btn-sm ${activeTab.showForecastBand !== false ? 'btn-primary' : ''}"
+                data-action="toggle-forecast-band"
               >
-                ${activeTab.showChronosBand !== false ? (isFa ? 'نمایش باند Q25–Q75 ✓' : 'Q25–Q75 Band ON ✓') : isFa ? 'باند خاموش' : 'Band OFF'}
+                ${activeTab.showForecastBand !== false ? (isFa ? 'محدوده عدم قطعیت فعال ✓' : 'Uncertainty Band ON ✓') : isFa ? 'محدوده خاموش' : 'Band OFF'}
               </button>
             </div>
             <div class="row-between" style="font-size: 11.5px; flex-wrap: wrap; gap: 6px;">
@@ -672,11 +672,26 @@ export function renderIndicatorsModal(activeTab, i18n) {
               <div class="chip-group ltr-num">
                 ${[15, 30, 45, 60]
                   .map((hVal) => {
-                    const curH = Number(activeTab.chronosHorizonBars || state.chartPreferences.chronosHorizonBars || 30);
-                    return `<button type="button" class="chip ${curH === hVal ? 'active' : ''}" data-action="set-chronos-horizon" data-horizon="${hVal}">${hVal}</button>`;
+                    const curH = Number(activeTab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30);
+                    return `<button type="button" class="chip ${curH === hVal ? 'active' : ''}" data-action="set-forecast-horizon" data-horizon="${hVal}">${hVal}</button>`;
                   })
                   .join('')}
               </div>
+            </div>
+          </div>
+          <div class="card-subtle" style="padding: 8px 11px; opacity: 0.68; border-style: dashed;">
+            <div class="row-between" style="gap: 8px; flex-wrap: wrap;">
+              <div>
+                <div style="font-size: 12px; font-weight: 700; color: var(--text-muted);">
+                  ${isFa ? 'Chronos-2 (amazon/chronos-2) — موتور مستقل غیرفعال' : 'Chronos-2 (amazon/chronos-2) — Inactive Preserved Engine'}
+                </div>
+                <div style="font-size: 11px; color: var(--text-muted); margin-top: 2px;">
+                  ${isFa ? 'به‌علت غیرفعال بودن exec/Python روی هاست اشتراکی، این موتور در حالت رزرو و غیرفعال نگهداری شده است.' : 'Preserved inactive for future architecture (requires Python/PyTorch host).'}
+                </div>
+              </div>
+              <button type="button" class="btn btn-sm" disabled aria-disabled="true" style="cursor: not-allowed;">
+                ${isFa ? 'غیرفعال' : 'Disabled'}
+              </button>
             </div>
           </div>
           `

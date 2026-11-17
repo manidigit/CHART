@@ -721,21 +721,22 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     assert.equal(matchingTab.chronosForecast, null);
     assert.equal(matchingTab.chronosStatus, 'IDLE');
 
-    // Verify top header & indicators modal expose Chronos-2 forecast & Q25-Q75 band toggles
+    // Verify top header & indicators modal expose Native Browser Structural Forecast & Uncertainty Band toggles and mark Chronos-2 disabled
     const mockI18n = { getCurrentLanguage: () => 'fa', t: (k) => k };
-    const topBarHtml = renderTopHeaderBar({ ...matchingTab, showChronosForecast: true, showChronosBand: true }, mockI18n);
-    assert.ok(topBarHtml.includes('data-action="toggle-chronos-forecast"'));
-    assert.ok(topBarHtml.includes('data-action="toggle-chronos-band"'));
+    const topBarHtml = renderTopHeaderBar({ ...matchingTab, showStructuralForecast: true, showForecastBand: true }, mockI18n);
+    assert.ok(topBarHtml.includes('data-action="toggle-structural-forecast"'));
+    assert.ok(topBarHtml.includes('data-action="toggle-forecast-band"'));
 
     const prevModal = state.activeModal;
     const prevCat = state.activeIndicatorCategory;
     try {
         state.activeModal = 'indicators';
         state.activeIndicatorCategory = 'all';
-        const indHtml = renderIndicatorsModal({ ...matchingTab, showChronosForecast: true, showChronosBand: true }, mockI18n);
-        assert.ok(indHtml.includes('data-action="toggle-chronos-forecast"'));
-        assert.ok(indHtml.includes('data-action="toggle-chronos-band"'));
-        assert.ok(indHtml.includes('data-action="set-chronos-horizon"'));
+        const indHtml = renderIndicatorsModal({ ...matchingTab, showStructuralForecast: true, showForecastBand: true }, mockI18n);
+        assert.ok(indHtml.includes('data-action="toggle-structural-forecast"'));
+        assert.ok(indHtml.includes('data-action="toggle-forecast-band"'));
+        assert.ok(indHtml.includes('data-action="set-forecast-horizon"'));
+        assert.ok(indHtml.includes('disabled aria-disabled="true"'));
     } finally {
         state.activeModal = prevModal;
         state.activeIndicatorCategory = prevCat;
@@ -845,7 +846,7 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
         'Server returned error (500)'
     );
 
-    // Verify PHP files use existing ApiEnvelope & Database::getPdo() and JS uses unified v=1.46.1 cache-busting
+    // Verify PHP files use existing ApiEnvelope & Database::getPdo() and JS uses unified v=1.47.0 cache-busting
     const phpEndpointSrc = fs.readFileSync(path.resolve('host_subdomain/api/v1/chronos2_forecast.php'), 'utf8');
     assert.equal(phpEndpointSrc.includes('core/Config.php'), false, 'Must not reference nonexistent Config.php');
     assert.equal(phpEndpointSrc.includes('core/Response.php'), false, 'Must not reference nonexistent Response.php');
@@ -860,11 +861,12 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     const appJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
     const storeJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
     const apiServiceJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/apiService.js'), 'utf8');
-    assert.equal(indexHtmlSrc.includes('?v=1.46.1'), true);
+    assert.equal(indexHtmlSrc.includes('?v=1.47.0'), true);
+    assert.equal(indexHtmlSrc.includes('?v=1.46.1'), false);
     assert.equal(indexHtmlSrc.includes('?v=1.45.2'), false);
     assert.equal(appJsSrc.includes('?v=1.43.0'), false);
-    assert.equal(appJsSrc.includes('?v=1.45.2'), false);
-    assert.equal(appJsSrc.includes('?v=1.46.1'), true);
+    assert.equal(appJsSrc.includes('?v=1.46.1'), false);
+    assert.equal(appJsSrc.includes('?v=1.47.0'), true);
 
     // Verify Strictly On-Demand Architecture: No Cron dependency, No Queue files, No Auto-execution
     assert.equal(phpEndpointSrc.includes('enqueue_only'), false, 'Endpoint must not support enqueue_only');
@@ -907,5 +909,226 @@ test('SYMBOL-STANDARDS-79: 100% of the 79 catalog symbols have standardized badg
         assert.ok(badge.providerTag && badge.providerTag.length > 0, `Symbol ${sym.symbolCode} must have a providerTag`);
     }
 });
+
+test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purely in JS on real closed OHLC candles, produces deterministic structured turning points without exec/Python/sin/random/OHLC, and preserves honest INSUFFICIENT_EVIDENCE states', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const {
+        computeStructuralForecast,
+        STRUCTURAL_FORECAST_ENGINE_ID,
+        STRUCTURAL_FORECAST_SCHEMA,
+        STRUCTURAL_FORECAST_MIN_CLOSED_BARS,
+    } = await import('../host_subdomain/assets/js/algorithms/structuralForecastEngine.js');
+    const {
+        requestStructuralForecastForTab,
+        clearStructuralForecastCache,
+    } = await import('../host_subdomain/assets/js/services/structuralForecastService.js');
+    const {
+        state,
+        isStructuralForecastMatchingTab,
+        invalidateTabStructuralForecastIfStale,
+        reconcileTabStructuralForecastOnRender,
+    } = await import('../host_subdomain/assets/js/core/store.js');
+
+    // 1) Real SPOTBRENT M15 closed candle fixture test
+    const rawSpot = JSON.parse(fs.readFileSync(path.resolve('host_subdomain/data/tvdatafeed/SPOTBRENT_M15.json'), 'utf8'));
+    const realSlice = rawSpot.candles.slice(-260).map((c) => ({
+        open_time_utc_ms: Number(c.open_time_utc_ms),
+        open: Number(c.open),
+        high: Number(c.high),
+        low: Number(c.low),
+        close: Number(c.close),
+        volume: Number(c.volume || 0),
+        is_closed: c.is_closed !== false,
+    }));
+    const lastRealOpenMs = realSlice[realSlice.length - 1].open_time_utc_ms;
+    const realResA = computeStructuralForecast({
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        candles: realSlice,
+        horizonBars: 30,
+        nowMs: lastRealOpenMs + 3_600_000,
+    });
+    const realResB = computeStructuralForecast({
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        candles: realSlice,
+        horizonBars: 30,
+        nowMs: lastRealOpenMs + 3_600_000,
+    });
+
+    assert.equal(realResA.schema, STRUCTURAL_FORECAST_SCHEMA);
+    assert.equal(realResA.status, 'READY');
+    assert.equal(realResA.engine.engine_id, STRUCTURAL_FORECAST_ENGINE_ID);
+    assert.equal(realResA.engine.is_chronos2, false, 'Must NEVER identify as Chronos-2');
+    assert.equal(realResA.forecast.length, 30);
+    assert.ok(realResA.swings.length >= 3, 'Must detect real structural swings');
+    assert.ok(realResA.turning_points.length >= 2, 'Must project structured turning points (not a flat straight line)');
+    assert.equal(realResA.series.origin_open_time_utc_ms, lastRealOpenMs);
+    assert.ok(Math.abs(realResA.series.last_closed_price - realSlice[realSlice.length - 1].close) < 1e-6);
+
+    // Monotonic quantile bounds + timestamps + zero synthetic OHLC
+    for (let i = 0; i < realResA.forecast.length; i++) {
+        const pt = realResA.forecast[i];
+        assert.equal(pt.step, i + 1);
+        assert.ok(pt.q10 <= pt.q25 && pt.q25 <= pt.q50_median && pt.q50_median <= pt.q75 && pt.q75 <= pt.q90);
+        assert.equal('open' in pt || 'high' in pt || 'low' in pt || 'close' in pt, false, 'Must NOT fabricate synthetic OHLC candles');
+        if (i === 0) {
+            assert.ok(pt.open_time_utc_ms > lastRealOpenMs);
+        } else {
+            assert.ok(pt.open_time_utc_ms > realResA.forecast[i - 1].open_time_utc_ms);
+        }
+        // Determinism check across repeated runs
+        assert.equal(pt.q50_median, realResB.forecast[i].q50_median);
+        assert.equal(pt.q25, realResB.forecast[i].q25);
+        assert.equal(pt.q75, realResB.forecast[i].q75);
+    }
+
+    // 2) Forming tail bar must be excluded & forecast still anchored on last closed candle
+    const withUnclosedTail = [
+        ...realSlice,
+        {
+            open_time_utc_ms: lastRealOpenMs + 900_000,
+            open: realSlice[realSlice.length - 1].close,
+            high: realSlice[realSlice.length - 1].close + 0.5,
+            low: realSlice[realSlice.length - 1].close - 0.5,
+            close: realSlice[realSlice.length - 1].close + 0.25,
+            volume: 100,
+            is_closed: false,
+        },
+    ];
+    const unclosedRes = computeStructuralForecast({
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        candles: withUnclosedTail,
+        horizonBars: 30,
+        nowMs: lastRealOpenMs + 3_600_000,
+    });
+    assert.equal(unclosedRes.status, 'READY');
+    assert.equal(unclosedRes.series.origin_open_time_utc_ms, lastRealOpenMs);
+    assert.equal(unclosedRes.forecast[0].q50_median, realResA.forecast[0].q50_median);
+
+    // 3) Honest INSUFFICIENT_EVIDENCE for short series & degenerate flat series
+    const shortRes = computeStructuralForecast({
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        candles: realSlice.slice(0, STRUCTURAL_FORECAST_MIN_CLOSED_BARS - 5),
+        horizonBars: 30,
+        nowMs: lastRealOpenMs + 3_600_000,
+    });
+    assert.equal(shortRes.status, 'INSUFFICIENT_EVIDENCE');
+    assert.equal(shortRes.forecast.length, 0);
+    assert.ok(shortRes.data_quality.limitations.length >= 1);
+
+    const flatCandles = Array.from({ length: 60 }, (_, idx) => ({
+        open_time_utc_ms: 1700000000000 + idx * 900_000,
+        open: 100,
+        high: 100,
+        low: 100,
+        close: 100,
+        volume: 10,
+        is_closed: true,
+    }));
+    const flatRes = computeStructuralForecast({
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        candles: flatCandles,
+        horizonBars: 30,
+        nowMs: 1700000000000 + 70 * 900_000,
+    });
+    assert.equal(flatRes.status, 'INSUFFICIENT_EVIDENCE');
+    assert.equal(flatRes.forecast.length, 0);
+    assert.ok(flatRes.data_quality.limitations.length >= 1);
+
+    // 4) Service cache + tab matching + render reconciliation + stale invalidation
+    clearStructuralForecastCache();
+    const nowAnchoredStep = 900_000;
+    const baseUtc = Math.floor((Date.now() - 200 * nowAnchoredStep) / nowAnchoredStep) * nowAnchoredStep;
+    const tabCandles = realSlice.slice(0, 120).map((c, idx) => ({
+        ...c,
+        open_time_utc_ms: baseUtc + idx * nowAnchoredStep,
+        is_closed: true,
+    }));
+    const lastTabOpenMs = tabCandles[tabCandles.length - 1].open_time_utc_ms;
+    const testTab = {
+        tabId: 'tab_spot_test',
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        candles: tabCandles,
+        showStructuralForecast: true,
+        showForecastBand: true,
+        forecastHorizonBars: 30,
+        structuralForecast: null,
+        structuralForecastStatus: 'IDLE',
+        structuralForecastError: '',
+    };
+
+    const firstSvc = await requestStructuralForecastForTab(testTab, null);
+    assert.equal(firstSvc.status, 'READY');
+    assert.equal(firstSvc.served_from_cache, false);
+    assert.equal(testTab.structuralForecastStatus, 'READY');
+    assert.equal(isStructuralForecastMatchingTab(testTab, testTab.structuralForecast), true);
+
+    // Subsequent click on same closed series hits in-memory cache cleanly
+    testTab.structuralForecast = null;
+    const cachedSvc = await requestStructuralForecastForTab(testTab, null);
+    assert.equal(cachedSvc.status, 'READY');
+    assert.equal(cachedSvc.served_from_cache, true);
+
+    // Regression: COMPUTING & INSUFFICIENT_EVIDENCE survive render reconciliation
+    const computingTab = {
+        ...testTab,
+        structuralForecast: null,
+        structuralForecastStatus: 'COMPUTING',
+        structuralForecastError: '',
+    };
+    reconcileTabStructuralForecastOnRender(computingTab);
+    assert.equal(computingTab.structuralForecastStatus, 'COMPUTING');
+
+    const insufficientTab = {
+        ...testTab,
+        structuralForecast: null,
+        structuralForecastStatus: 'INSUFFICIENT_EVIDENCE',
+        structuralForecastError: 'Not enough swings',
+    };
+    reconcileTabStructuralForecastOnRender(insufficientTab);
+    assert.equal(insufficientTab.structuralForecastStatus, 'INSUFFICIENT_EVIDENCE');
+    assert.equal(insufficientTab.structuralForecastError, 'Not enough swings');
+
+    // Editing closed bar price invalidates structural forecast without auto-running
+    const modifiedStructTab = {
+        ...testTab,
+        candles: [
+            ...tabCandles.slice(0, -1),
+            { ...tabCandles[tabCandles.length - 1], open_time_utc_ms: lastTabOpenMs, close: tabCandles[tabCandles.length - 1].close + 2.5 },
+        ],
+    };
+    invalidateTabStructuralForecastIfStale(modifiedStructTab);
+    assert.equal(modifiedStructTab.structuralForecast, null);
+    assert.equal(modifiedStructTab.showStructuralForecast, false);
+    assert.equal(modifiedStructTab.structuralForecastStatus, 'IDLE');
+
+    // Verify showStructuralForecast is NOT synced across symbols in INDICATOR_FLAG_KEYS
+    const storeJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
+    assert.equal(storeJsSrc.includes("'showStructuralForecast'"), false);
+
+    // 5) Static compliance: zero exec(), python, chronos2_forecast, Math.random, Math.sin, Math.cos in new browser forecast modules
+    const engineSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/algorithms/structuralForecastEngine.js'), 'utf8');
+    const svcSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/structuralForecastService.js'), 'utf8');
+    const workerSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/workers/structuralForecastWorker.js'), 'utf8');
+    for (const [label, src] of [['engine', engineSrc], ['service', svcSrc], ['worker', workerSrc]]) {
+        const codeOnly = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+        assert.equal(/\bMath\.(random|sin|cos)\b/.test(codeOnly), false, `${label} must not contain Math.random/sin/cos`);
+        assert.equal(/\bexec\s*\(|chronos2_forecast|python3?\b|shell_exec|proc_open/.test(codeOnly), false, `${label} must not depend on PHP exec, Python, or Chronos-2 endpoint`);
+    }
+    assert.equal(state.chartPreferences.showStructuralForecast, false);
+});
+
 
 
