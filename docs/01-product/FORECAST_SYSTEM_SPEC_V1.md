@@ -1,7 +1,7 @@
 # CHART Forecast — System Specification
 ## سند جامع تعریف سیستم پیش‌بینی، چرخه عمر اجرا و رفتارهای قابل مشاهده
 
-- **Version:** 1.0.2
+- **Version:** 1.0.3
 - **Date:** 2026-11-17
 - **Status:** Model-agnostic system specification; Phase 1 operational scope is limited to Chronos-2, subject to implementation and acceptance gates
 - **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0
@@ -615,9 +615,28 @@ A change to model-specific implementation must not silently redefine the system 
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial model-independent system specification: responsibilities, lifecycle, multi-model execution, comparison, live/replay workflows, state semantics, provenance, governance and acceptance gates |
 | 1.0.1 | 2026-11-17 | Recorded Chronos-2 as the sole Phase 1 model; retained model-independent extension points and added a formal evidence-based gate before future model expansion |
-| 1.0.2 | 2026-11-17 | Aligned Phase 1 system behavior with structured price-path priority, line output acceptance, deferred OHLC candles and meaningful uncertainty visualization |
+| 1.0.2 | 2026-11-17 | Aligned Phase 1 system behavior with structured price-path priority, line output acceptance, deferred OHLC candles and meaningful uncertainty visualization |\n| 1.0.3 | 2026-11-17 | Added a binding Chronos-2 Phase 1 input/output contract, native quantile semantics, Close-only baseline, path interpretation and walk-forward evaluation reference |
 | 1.0.2 | 2026-11-17 | Aligned Phase 1 acceptance with the revised product priority: structured price path over candle rendering; line output is valid, while broad uninformative uncertainty cones are rejected |
 
 ---
 
 **Final principle:** CHART Forecast is a system for making forecasts observable, attributable, comparable and testable. It must preserve model diversity and expose evidence honestly. The system must never manufacture certainty, conceal failure or confuse visualization with predictive performance.
+
+
+## 23. Chronos-2 Phase 1 execution contract
+
+The model-specific contract is maintained in [FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md](./FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md). It is subordinate to this System Specification and the Product Foundation, and normative for the Phase 1 Chronos-2 adapter and experiment design.
+
+Implementation must follow these rules:
+
+1. Begin with the documented Close-only univariate baseline. OHLC multivariate targets, returns, volume and technical covariates are separate ablation experiments, not implicit additions.
+2. Pin and record the exact model-weight revision, package/runtime versions, input identity, preprocessing, context length, prediction length, quantile levels and effective inference arguments.
+3. Preserve the raw Chronos-2 quantile tensor. The pointwise median may be rendered as a central line only when labelled accurately; it is not a sampled joint trajectory.
+4. Do not create Open/High/Low values from Close quantiles, fixed spreads, sine offsets, random perturbations or arbitrary post-processing.
+5. Do not connect marginal quantiles into coherent-looking alternative paths without evidence of temporal joint coherence.
+6. Derive market-structure events only in a separately identified interpretation layer, with method/version/provenance and measurable event definitions. Do not attribute system-derived labels to Chronos-2.
+7. Read context capacity, prediction capacity and supported quantiles from the loaded artifact. Numeric runtime choices not yet measured remain experiment parameters, not hidden constants.
+8. Evaluate with rolling/walk-forward origins and identical baselines, instruments, horizons and actuals. Endpoint error alone cannot establish path quality.
+
+A failure to produce meaningful swings, corrections or reversals must be reported as a model/output limitation after the data, adapter, configuration, horizon, display and evaluation checks. It must not be repaired by drawing artificial market structure into the forecast.
+
