@@ -1,10 +1,10 @@
 # CHART Forecast — Model-Independent Acceptance Test Plan
 ## برنامه آزمون پذیرش سیستم، مستقل از مدل و الگوریتم
 
-- **Version:** 1.0.0
+- **Version:** 1.0.1
 - **Date:** 2026-11-17
 - **Status:** Normative acceptance scenarios for system design and future implementation
-- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.2.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.0
+- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0 and FORECAST_SYSTEM_SPEC_V1.md v1.0.2
 - **Scope:** Observable system behavior; no specific model or algorithm is assumed.
 
 ---
@@ -189,8 +189,27 @@ Passing this plan does not establish:
 
 Those require model-specific experiments and operational measurements.
 
-## 8. Version history
+## 8. Phase 1 path-quality acceptance scenarios
+
+The Phase 1 forecast is evaluated primarily as a time-ordered price path. Complete OHLC candles are not required for Phase 1 acceptance. A line/path output is valid only if it preserves meaningful market structure.
+
+| ID | Scenario | Required result |
+|---|---|---|
+| P-01 | Model forecasts a persistent trend with intermediate pullbacks | The path preserves direction changes and material corrections; it is not reduced to a straight trend line |
+| P-02 | Historical test segment contains material swing highs and lows | The forecast path is evaluated for swing timing, direction and price-area error; omitted or invented pivots are measurable |
+| P-03 | Forecast includes a likely reversal or correction | The path represents the intermediate move and turning area rather than only the final destination |
+| P-04 | Model output is smooth or monotonic despite a structurally volatile test set | The result is not accepted as structurally adequate solely because endpoint error is low |
+| P-05 | Uncertainty is visualized | Bands/scenarios retain a readable central path and have measurable coverage and width; a broad cone that covers most upper/lower outcomes without useful path information fails |
+| P-06 | Native quantiles are marginal and not joint temporal scenarios | The system does not arbitrarily connect quantile values into a fabricated coherent path; native output and any derived view remain distinguishable |
+| P-07 | Forecast is rendered as a line rather than candles | This is accepted for Phase 1 if timestamps, path structure, provenance and evaluation are correct |
+| P-08 | Future support/resistance or turning zones are displayed | Each zone is time/price-bounded, linked to evidence and identified as model-native or system-derived; it is not presented as a guaranteed reversal |
+| P-09 | Forecast is rendered as OHLC candles | OHLC constraints and native-versus-derived provenance checks still apply; candle rendering is not a Phase 1 prerequisite |
+
+Path-quality evaluation should include, where measurable: direction/regime transitions, swing-high/low detection, pivot timing and price error, correction depth/duration, reversal event precision/recall, path-shape similarity, and uncertainty coverage-versus-width. No single metric should substitute for visual inspection and walk-forward statistical evidence.
+
+## 9. Version history
 
 | Version | Date | Change |
 |---|---|---|
 | 1.0.0 | 2026-11-17 | Initial model-independent acceptance scenarios for readiness, execution, output, chart, persistence, evaluation, replay, security and cross-platform integrity |
+| 1.0.1 | 2026-11-17 | Added Phase 1 path-structure acceptance cases; clarified that line output is valid and complete OHLC is deferred |
