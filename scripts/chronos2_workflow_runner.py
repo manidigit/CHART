@@ -42,6 +42,7 @@ def closed_candles(payload: dict[str, Any], timeframe: str, label: str) -> list[
     now_ms = int(dt.datetime.now(dt.timezone.utc).timestamp() * 1000)
     step = STEP_MS[timeframe]
     result: dict[int, dict[str, Any]] = {}
+    previous_open_ms = 0
     for index, row in enumerate(rows):
         if not isinstance(row, dict):
             fail(f"{label}: candle #{index} is not an object.")
@@ -52,17 +53,24 @@ def closed_candles(payload: dict[str, Any], timeframe: str, label: str) -> list[
             fail(f"{label}: invalid timestamp/close at candle #{index}.")
         if open_ms <= 0 or not math.isfinite(close) or close <= 0:
             fail(f"{label}: invalid timestamp/close at candle #{index}.")
-        if row.get("is_closed") in (False, 0, "0", "false"):
+        if row.get("timeframe") is not None and str(row.get("timeframe")).upper() != timeframe:
+            fail(f"{label}: mixed timeframe at candle #{index}.")
+        if row.get("is_closed") not in (True, 1, "1"):
             continue
         if open_ms + step > now_ms:
             continue
+        if open_ms <= previous_open_ms:
+            fail(f"{label}: duplicate or non-ascending candle timestamp at candle #{index}.")
+        previous_open_ms = open_ms
         result[open_ms] = row
     return [result[key] for key in sorted(result)]
 
 
-def verify_identity(payload: dict[str, Any], symbol: str, timeframe: str, label: str) -> None:
+def verify_identity(payload: dict[str, Any], symbol: str, exchange: str, timeframe: str, label: str) -> None:
     if str(payload.get("symbol", "")).upper() != symbol:
         fail(f"{label}: symbol metadata does not equal {symbol}.")
+    if str(payload.get("exchange", "")).upper() != exchange:
+        fail(f"{label}: exchange metadata does not equal {exchange}.")
     if str(payload.get("provider", "")).lower() != "tvdatafeed":
         fail(f"{label}: provider metadata must be tvdatafeed.")
     if str(payload.get("timeframe", "")).upper() != timeframe:
@@ -81,10 +89,11 @@ def main() -> None:
     args = parser.parse_args()
 
     symbol, timeframe, horizon = args.symbol, args.timeframe, args.horizon
+    exchange = {"SPOTBRENT": "PEPPERSTONE", "XAUUSD": "OANDA"}[symbol]
     fresh_payload = load_json(args.input)
     site_payload = load_json(args.reference)
-    verify_identity(fresh_payload, symbol, timeframe, "fresh TradingView input")
-    verify_identity(site_payload, symbol, timeframe, "published site reference")
+    verify_identity(fresh_payload, symbol, exchange, timeframe, "fresh TradingView input")
+    verify_identity(site_payload, symbol, exchange, timeframe, "published site reference")
 
     fresh_rows = closed_candles(fresh_payload, timeframe, "fresh TradingView input")
     site_rows = closed_candles(site_payload, timeframe, "published site reference")
