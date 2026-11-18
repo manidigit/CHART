@@ -701,6 +701,13 @@ class Phase1AlgorithmsTest {
     }
 
     @Test
+    fun rsi_handlesFlatRisingAndFallingMarkets() {
+        assertEquals(50.0, PriceFormatterAlgorithm.computeRsiValues(listOf(10.0, 10.0, 10.0), 2)[2]!!, 1e-9)
+        assertEquals(100.0, PriceFormatterAlgorithm.computeRsiValues(listOf(10.0, 11.0, 12.0), 2)[2]!!, 1e-9)
+        assertEquals(0.0, PriceFormatterAlgorithm.computeRsiValues(listOf(12.0, 11.0, 10.0), 2)[2]!!, 1e-9)
+    }
+
+    @Test
     fun atr_usesTrueRangeAndWilderSmoothing() {
         val bars = listOf(
             CandleValidatorAlgorithm.sanitizeAndValidate(
