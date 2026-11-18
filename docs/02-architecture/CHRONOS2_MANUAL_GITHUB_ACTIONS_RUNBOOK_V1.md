@@ -29,18 +29,31 @@ Timeframe mapping used by the workflow: M15 → 15; H1 → 60; H4 → 240; D1 �
 
 ## Required GitHub configuration
 
-Add these repository Secrets:
+### Where the FTP configuration is stored
 
-- FORECAST_FTP_HOST
-- FORECAST_FTP_PORT (normally 21)
-- FORECAST_FTP_USER
-- FORECAST_FTP_PASSWORD
+The FTP connection configuration has been entered in the GitHub repository settings. It is **not stored in the source code, workflow YAML, or this document**.
 
-Add this repository Variable:
+Repository: `manidigit/CHART`  
+Settings location: **Settings → Secrets and variables → Actions**
 
-- FORECAST_FTP_REMOTE_ROOT — FTP-visible path to the website document root that contains data/tvdatafeed/ and data/chronos2/. Use the path as seen after logging in with the FTP account; it may be relative to that account's home directory.
+Create/maintain the following under **Repository secrets**:
 
-The workflow uses Python's standard-library FTP client. No SSH key or SFTP configuration is required.
+| Name | Type | Purpose |
+|---|---|---|
+| `FORECAST_FTP_HOST` | Secret | FTP server hostname or IP address |
+| `FORECAST_FTP_PORT` | Secret | FTP port; normally `21` |
+| `FORECAST_FTP_USER` | Secret | Full cPanel FTP username |
+| `FORECAST_FTP_PASSWORD` | Secret | FTP account password |
+
+Create/maintain the following under **Repository variables**:
+
+| Name | Type | Purpose |
+|---|---|---|
+| `FORECAST_FTP_REMOTE_ROOT` | Variable | Optional FTP-visible base directory. The workflow's remote paths are resolved from this directory. |
+
+**Important for future AI agents and maintainers:** before changing FTP code or diagnosing an FTP failure, inspect this repository's **Settings → Secrets and variables → Actions** and verify that the names above exist and are assigned to the correct type. GitHub does not reveal saved secret values through the repository files/API; do not ask the user to paste passwords or copy credentials into documentation, commits, issues, or logs. If a value must be changed, the repository owner should update it directly in GitHub Settings. The variable may be empty when the FTP account's login directory is already the intended website document root. Confirm the FTP account's actual starting directory before changing it.
+
+The workflow reads the four secrets through `${{ secrets.* }}` and the optional root through `${{ vars.FORECAST_FTP_REMOTE_ROOT }}`. The workflow uses Python's standard-library FTP client; no SSH key or SFTP configuration is used.
 
 ## Data alignment gate
 
@@ -75,7 +88,8 @@ The website reads only the deterministic static cache filename using fetch with 
 
 ## Known operational checks before first production use
 
-1. Configure the four FTP secrets and the remote-root variable.
+1. Verify the four named repository secrets and the repository variable in **Settings → Secrets and variables → Actions**. Do not expose their values.
+2. Confirm `FORECAST_FTP_REMOTE_ROOT` matches the FTP account's login directory and intended website document root.
 3. Run one manual workflow for a single symbol/timeframe/horizon.
 4. Inspect the Actions log for the site-reference timestamp, fresh-input timestamp, exact dependency versions, model load/inference and successful FTP cache publish.
 5. Open the matching website tab and confirm the static JSON is accepted by the existing origin gate.
