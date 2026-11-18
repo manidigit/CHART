@@ -56,8 +56,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showSmcStructure ? 1 : 0) +
       (activeTab.showFvg ? 1 : 0) +
       (activeTab.showVolumeProfile ? 1 : 0) +
-      (activeTab.showPivotPoints ? 1 : 0) +
-      (activeTab.showStructuralForecast ? 1 : 0)
+      (activeTab.showPivotPoints ? 1 : 0)
     : 1;
 
   const isFa = i18n.getCurrentLanguage() === 'fa';
