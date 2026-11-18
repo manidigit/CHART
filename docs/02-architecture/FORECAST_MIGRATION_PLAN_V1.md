@@ -324,3 +324,62 @@
 | پیاده‌سازی پایلوت | هنوز انجام نشده |
 | خاموش‌سازی مدل/مسیر قدیمی | انجام نشده |
 
+
+
+## 12. اجرای پایلوت Native Model Adapter — 2026-11-18
+
+### 12.1. دامنه پیاده‌سازی‌شده
+
+پایلوت naive_persistence بدون بازنویسی الگوریتم موجود به مسیر انتخاب و رسم موتور جدید متصل شد:
+
+- تابع adaptNativeModelTrajectory() در forecastContract.js فقط trajectory موفق و کامل را می‌پذیرد؛ تعداد نقاط باید دقیقاً برابر افق باشد و کوانتایل‌ها باید finite، مثبت و مرتب باشند.
+- Adapter خروجی واقعی ForecastEngine.modelTrajectories را به envelope صریح native_model_adapter نگاشت می‌کند؛ q10/q25/q50/q75/q90 و metadata مدل حفظ می‌شوند.
+- وضعیت ارزیابی اصلی در provenance.status و model.forecast_status حفظ می‌شود. READY در envelope فقط به معنی قابل‌رسم‌بودن payload است، نه تأیید کیفیت پیش‌بینی.
+- انتخاب‌گر موتور Structural اکنون گزینه Naive Persistence · Pilot دارد. اجرای آن از همان ForecastEngine موجود انجام می‌شود.
+- تغییر افق در حالت پایلوت از Adapter عبور می‌کند و افق‌های بالاتر از 60 برای این مدل نمایش داده نمی‌شوند؛ سقف ForecastEngine رعایت می‌شود.
+- فقط مسیر مدل منتخب روی نمودار رسم می‌شود؛ مسیرهای Legacy و Chronos هم‌زمان فعال نمی‌شوند.
+- رسم فقط مسیر میانی و باند q25–q75 است؛ هیچ OHLC مصنوعی تولید نمی‌شود.
+- انتخاب مدل Structural و مدل Forecast Studio در ذخیره‌سازی تب نگهداری می‌شوند.
+- اعتبارسنجی payload، تطبیق نماد/منبع/تایم‌فریم/آخرین کندل بسته/افق/شناسه مدل را بررسی می‌کند؛ خروجی stale پذیرفته نمی‌شود.
+- برچسب نمودار، مسیر Native را به‌عنوان render only و وضعیت واقعی ارزیابی Forecast Engine را نمایش می‌دهد.
+
+### 12.2. فایل‌های تغییرکرده
+
+- host_subdomain/assets/js/forecast/forecastContract.js
+- host_subdomain/assets/js/core/store.js
+- host_subdomain/assets/js/views/forecastView.js
+- host_subdomain/assets/js/components/chartRenderer.js
+- host_subdomain/assets/js/app.js
+- tests/web_parity.test.mjs
+
+### 12.3. شواهد آزمون و انتشار
+
+- Web Parity / Architecture Tests: 15 از 15 موفق در اجرای GitHub Actions مربوط به Commit 486a53206b4d958087e2f13eb61dfab6e798d8c4.
+- PHP syntax checks مربوط به Chronos-2: موفق.
+- Web package artifact: ساخته و بارگذاری شد.
+- cPanel deployment: پاسخ ok=true؛ تعداد 123 فایل منتشر شد؛ snapshot با شناسه snapshot_20261118_224743 ثبت شد.
+- Seed داده‌های tvdatafeed در همان اجرای deploy: تعداد 42,294 کندل.
+- Build و Android Unit/Robolectric Tests مستقل از تست وب هستند و باید جداگانه در همان Workflow نتیجه نهایی بگیرند.
+- Deploy فوق مربوط به نسخه‌ای است که پایلوت Native را در UI موتور Structural در دسترس قرار می‌دهد؛ تأیید اجرای واقعی روی مرورگر کاربر همچنان نیازمند بازکردن سایت و آزمون دستی انتخاب/اجرا/تغییر افق/تعویض تب است.
+
+### 12.4. محدودیت و مرز پذیرش
+
+این پایلوت، اثبات مسیر انتخاب → اجرای مدل موجود → Adapter → Renderer است؛ مهاجرت کامل تمام مدل‌های رجیستری محسوب نمی‌شود. قرارداد native_model_adapter در این مرحله از envelope سازگار با Structural renderer استفاده می‌کند و هنوز قرارداد عمومی نهایی برای تمام capabilityهای مدل‌ها نیست.
+
+Legacy Forecast Studio، موتور Structural JS و Historical Analogs حذف یا خاموش نشده‌اند. هیچ ادعایی درباره افزایش دقت پیش‌بینی مطرح نیست. پذیرش کیفیت مدل همچنان باید با Walk-forward/OOS مستقل انجام شود.
+
+### 12.5. وضعیت پایلوت
+
+| Gate | وضعیت |
+|---|---|
+| Adapter برای trajectory واقعی Naive Persistence | انجام شد |
+| گزینه مستقل در UI موتور جدید | انجام شد |
+| اجرای دستی و تغییر افق | پیاده‌سازی شد |
+| جلوگیری از overlay موازی | حفظ شد |
+| تطبیق سری و invalidation | پیاده‌سازی شد |
+| ذخیره انتخاب مدل در سطح تب | انجام شد |
+| تست وب | 15/15 موفق |
+| انتشار Web روی cPanel | تأیید شد |
+| تست نهایی Android Workflow | در حال اجرا در زمان ثبت این بخش |
+| تست دستی روی مرورگر Production | نیازمند تأیید کاربر |
+| مهاجرت مدل‌های بعدی | در صف؛ پس از پذیرش پایلوت |
