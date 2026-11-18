@@ -1,0 +1,181 @@
+name: Chronos-2 Manual Forecast
+
+on:
+  workflow_dispatch:
+    inputs:
+      symbol:
+        description: "CHART symbol code"
+        required: true
+        type: choice
+        options: [SPOTBRENT, XAUUSD]
+      timeframe:
+        description: "CHART timeframe code"
+        required: true
+        type: choice
+        options: [M15, H1, H4, D1, W1]
+      horizon:
+        description: "Forecast horizon in bars"
+        required: true
+        type: choice
+        options: ["15", "30", "45", "60"]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: chronos2-${{ inputs.symbol }}-${{ inputs.timeframe }}-${{ inputs.horizon }}
+  cancel-in-progress: false
+
+jobs:
+  forecast:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    env:
+      FORECAST_FTP_HOST: ${{ secrets.FORECAST_FTP_HOST }}
+      FORECAST_FTP_PORT: ${{ secrets.FORECAST_FTP_PORT }}
+      FORECAST_FTP_USER: ${{ secrets.FORECAST_FTP_USER }}
+      FORECAST_FTP_PASSWORD: ${{ secrets.FORECAST_FTP_PASSWORD }}
+      FORECAST_FTP_REMOTE_ROOT: ${{ vars.FORECAST_FTP_REMOTE_ROOT }}
+      SYMBOL: ${{ inputs.symbol }}
+      TIMEFRAME: ${{ inputs.timeframe }}
+      HORIZON: ${{ inputs.horizon }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Static syntax checks
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m py_compile scripts/chronos2_workflow_runner.py scripts/chronos2_ftp_transfer.py host_subdomain/scripts/chronos2_worker.py host_subdomain/scripts/sync_tvdatafeed.py
+          node --input-type=module --check < host_subdomain/assets/js/services/apiService.js
+
+      - name: Validate inputs and map CHART timeframe to TradingView interval
+        shell: bash
+        run: |
+          set -euo pipefail
+          case "$SYMBOL" in
+            SPOTBRENT) EXCHANGE="PEPPERSTONE" ;;
+            XAUUSD) EXCHANGE="OANDA" ;;
+            *) echo "::error::Unsupported symbol code: $SYMBOL"; exit 1 ;;
+          esac
+          case "$TIMEFRAME" in
+            M15) TV_INTERVAL="15" ;;
+            H1)  TV_INTERVAL="60" ;;
+            H4)  TV_INTERVAL="240" ;;
+            D1)  TV_INTERVAL="1D" ;;
+            W1)  TV_INTERVAL="1W" ;;
+            *) echo "::error::Unsupported CHART timeframe: $TIMEFRAME"; exit 1 ;;
+          esac
+          case "$HORIZON" in
+            15|30|45|60) ;;
+            *) echo "::error::Unsupported horizon: $HORIZON"; exit 1 ;;
+          esac
+          echo "EXCHANGE=$EXCHANGE" >> "$GITHUB_ENV"
+          echo "TV_INTERVAL=$TV_INTERVAL" >> "$GITHUB_ENV"
+          echo "Mapped $TIMEFRAME to TradingView interval $TV_INTERVAL"
+
+      - name: Check required FTP configuration
+        shell: bash
+        run: |
+          set -euo pipefail
+          for name in FORECAST_FTP_HOST FORECAST_FTP_PORT FORECAST_FTP_USER FORECAST_FTP_PASSWORD; do
+            if [ -z "${!name:-}" ]; then
+              echo "::error::Missing required GitHub secret: $name"
+              exit 1
+            fi
+          done
+          if ! [[ "$FORECAST_FTP_PORT" =~ ^[0-9]+$ ]]; then
+            echo "::error::FORECAST_FTP_PORT must be numeric"; exit 1
+          fi
+          echo "FTP remote root: ${FORECAST_FTP_REMOTE_ROOT:-account-home}"
+
+      - name: Install pinned Chronos-2 runtime
+
+        shell: bash
+        run: |
+          set -euo pipefail
+          python -m pip install --upgrade pip
+          python -m pip install --index-url https://download.pytorch.org/whl/cpu "torch==2.15.0+cpu"
+          python -m pip install "transformers==5.23.0" "chronos-forecasting==2.3.2"
+          python - <<'PY'
+          import importlib.metadata, platform, torch, transformers
+          assert platform.python_version().startswith("3.11."), platform.python_version()
+          expected = {"torch": "2.15.0+cpu", "transformers": "5.23.0", "chronos-forecasting": "2.3.2"}
+          for package, wanted in expected.items():
+              actual = importlib.metadata.version(package)
+              if actual != wanted:
+                  raise SystemExit(f"{package}: expected {wanted}, got {actual}")
+          print("Python:", platform.python_version())
+          print("PyTorch:", torch.__version__)
+          print("Transformers:", transformers.__version__)
+          print("Chronos-forecasting:", importlib.metadata.version("chronos-forecasting"))
+          PY
+
+      - name: Download published site reference candles over FTP
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/chronos2/input"
+          python scripts/chronos2_ftp_transfer.py download \
+            --remote "data/tvdatafeed/${SYMBOL}_${TIMEFRAME}.json" \
+            --local "$RUNNER_TEMP/chronos2/input/site_reference.json"
+
+      - name: Fetch fresh candles using existing CHART sync script
+
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/chronos2/input/fresh"
+          python host_subdomain/scripts/sync_tvdatafeed.py \
+            --symbol "$SYMBOL" --exchange "$EXCHANGE" --bars 5000 \
+            --output-dir "$RUNNER_TEMP/chronos2/input/fresh"
+          test -s "$RUNNER_TEMP/chronos2/input/fresh/${SYMBOL}_${TIMEFRAME}.json"
+
+      - name: Validate origin and run Chronos-2
+        id: forecast
+        shell: bash
+        run: |
+          set -euo pipefail
+          python scripts/chronos2_workflow_runner.py \
+            --symbol "$SYMBOL" --timeframe "$TIMEFRAME" --horizon "$HORIZON" \
+            --input "$RUNNER_TEMP/chronos2/input/fresh/${SYMBOL}_${TIMEFRAME}.json" \
+            --reference "$RUNNER_TEMP/chronos2/input/site_reference.json" \
+            --worker host_subdomain/scripts/chronos2_worker.py \
+            --output-dir "$RUNNER_TEMP/chronos2/output" | tee "$RUNNER_TEMP/chronos2/runner.log"
+          OUTPUT_FILE="$(sed -n 's/^CHRONOS2_OUTPUT_FILE=//p' "$RUNNER_TEMP/chronos2/runner.log" | tail -n 1)"
+          OUTPUT_NAME="$(sed -n 's/^CHRONOS2_OUTPUT_NAME=//p' "$RUNNER_TEMP/chronos2/runner.log" | tail -n 1)"
+          test -n "$OUTPUT_FILE" && test -s "$OUTPUT_FILE"
+          echo "output_file=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
+          echo "output_name=$OUTPUT_NAME" >> "$GITHUB_OUTPUT"
+
+      - name: Publish validated cache and preserve run history over FTP
+        shell: bash
+        run: |
+          set -euo pipefail
+          OUTPUT_FILE="${{ steps.forecast.outputs.output_file }}"
+          OUTPUT_NAME="${{ steps.forecast.outputs.output_name }}"
+          RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
+          HISTORY_NAME="${OUTPUT_NAME%.json}_${RUN_STAMP}_run${GITHUB_RUN_ID}.json"
+          python scripts/chronos2_ftp_transfer.py publish \
+            --local "$OUTPUT_FILE" \
+            --cache-remote "data/chronos2/cache/$OUTPUT_NAME" \
+            --history-remote "data/chronos2/history/$HISTORY_NAME"
+          echo "Published $OUTPUT_NAME and retained history/$HISTORY_NAME"
+
+      - name: Upload diagnostics
+
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: chronos2-${{ inputs.symbol }}-${{ inputs.timeframe }}-${{ inputs.horizon }}-${{ github.run_id }}
+          path: |
+            ${{ runner.temp }}/chronos2/runner.log
+            ${{ runner.temp }}/chronos2/output/*.json
+          if-no-files-found: ignore
+          retention-days: 14
