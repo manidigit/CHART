@@ -81,6 +81,7 @@ import {
 } from './views/watchlistView.js?v=1.47.1';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.1';
 import { renderForecastStudioView, renderForecastStudioFanCanvas } from './views/forecastView.js?v=2.0.1';
+import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -2339,6 +2340,45 @@ document.addEventListener('click', async (e) => {
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
+  } else if (action === 'set-forecast-subtab') {
+    state.forecastStudioTab = String(el.getAttribute('data-tab') || 'overview');
+    renderApp();
+  } else if (action === 'set-forecast-coord-mode') {
+    state.forecastCoordView = el.getAttribute('data-mode') === 'coordinated' ? 'coordinated' : 'independent';
+    renderApp();
+  } else if (action === 'set-forecast-render-mode' && activeTab) {
+    activeTab.forecastRenderMode = String(el.getAttribute('data-mode') || 'FAN_CHART');
+    state.chartPreferences.forecastRenderMode = activeTab.forecastRenderMode;
+    savePreferences();
+    renderApp();
+  } else if (action === 'set-forecast-model' && activeTab) {
+    activeTab.selectedForecastModelId = String(el.getAttribute('data-model') || 'AUTO');
+    state.chartPreferences.selectedForecastModelId = activeTab.selectedForecastModelId;
+    savePreferences();
+    renderApp();
+  } else if (action === 'toggle-forecast-model') {
+    const modelId = String(el.getAttribute('data-model') || '');
+    if (modelId) {
+      const current = defaultForecastRegistry.getConfig(modelId);
+      defaultForecastRegistry.setEnabled(modelId, !(current && current.enabled));
+      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
+      savePreferences();
+      renderApp();
+    }
+  } else if (action === 'set-forecast-model-weight') {
+    const modelId = String(el.getAttribute('data-model') || '');
+    const weight = Number(el.getAttribute('data-weight'));
+    if (modelId && Number.isFinite(weight)) {
+      defaultForecastRegistry.setWeight(modelId, weight);
+      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
+      savePreferences();
+      renderApp();
+    }
+  } else if (action === 'reset-forecast-models') {
+    defaultForecastRegistry.resetDefaults();
+    state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
+    savePreferences();
+    renderApp();
   } else if (action === 'toggle-structural-forecast' && activeTab) {
     activeTab.showStructuralForecast = !activeTab.showStructuralForecast;
     if (activeTab.showStructuralForecast) {
