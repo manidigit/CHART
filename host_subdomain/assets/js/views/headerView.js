@@ -152,7 +152,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
     })
     .join('');
 
-  const isForecastView = false;
+  const isForecastView = state.activeWorkspaceView === 'forecast';
   const isSettingsActive = state.activeModal === 'settings';
   const isOverviewActive = !isSettingsActive && Boolean(state.symbolOverviewCode);
   const isWatchlistActive =
@@ -160,13 +160,13 @@ export function renderTopHeaderBar(activeTab, i18n) {
     !isOverviewActive &&
     Boolean(state.isSideDrawerOpen);
 
-  const forecastDisabledTitle = isFa ? 'پیش‌بینی (در حال بازطراحی)' : 'Forecast (Redesigning)';
+  const forecastDisabledTitle = isFa ? 'ورود به فضای مستقل پیش‌بینی' : 'Open dedicated Forecast workspace';
 
   const topWorkspaceNavHtml = `
         <div class="tv-toolbar-group tv-top-nav-group" role="navigation" aria-label="Workspace Navigation">
           <button
             type="button"
-            class="tv-tool-btn ${!isOverviewActive && !isSettingsActive ? 'active' : ''}"
+            class="tv-tool-btn ${!isOverviewActive && !isSettingsActive && !isForecastView ? 'active' : ''}"
             data-action="set-workspace-view"
             data-view="chart"
             title="${chartNavLabel}"
@@ -176,11 +176,9 @@ export function renderTopHeaderBar(activeTab, i18n) {
           </button>
           <button
             type="button"
-            class="tv-tool-btn is-disabled"
+            class="tv-tool-btn ${isForecastView ? 'active' : ''}"
             data-action="set-workspace-view"
             data-view="forecast"
-            disabled
-            aria-disabled="true"
             title="${forecastDisabledTitle}"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
@@ -303,29 +301,6 @@ export function renderTopHeaderBar(activeTab, i18n) {
               : ''
           }
         </button>
-
-        <!-- Native Browser Structural Wave Forecast Quick Toggle + Uncertainty Band Toggle -->
-        <div class="tv-toolbar-group" title="${isFa ? 'موتور پیش‌بینی ساختاری بومی (جاوااسکریپت — روی کندل‌های بسته‌شده)' : 'Native Structural Forecast (Browser JS — Closed Candles)'}">
-          <button
-            type="button"
-            class="tv-tool-btn ${activeTab && activeTab.showStructuralForecast ? 'active' : ''}"
-            data-action="toggle-structural-forecast"
-            title="${isFa ? 'پیش‌بینی ساختاری (تحلیل Swing، امواج حرکتی/اصلاحی و محدوده عدم قطعیت در مرورگر)' : 'Structural Forecast (Swing, Impulse/Correction Waves & Uncertainty Band in Browser)'}"
-          >
-            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 17 9 11 13 15 21 7"/><circle cx="21" cy="7" r="2"/></svg>
-            <span class="ltr-num">${isFa ? 'Forecast' : 'Forecast'}</span>
-          </button>
-          ${
-            activeTab && activeTab.showStructuralForecast
-              ? `<button
-                  type="button"
-                  class="tv-tool-btn ltr-num ${activeTab.showForecastBand !== false ? 'active' : ''}"
-                  data-action="toggle-forecast-band"
-                  title="${isFa ? 'نمایش/مخفی‌سازی محدوده عدم قطعیت پیش‌بینی' : 'Toggle Forecast Uncertainty Band'}"
-                >${isFa ? 'Band' : 'Band'}</button>`
-              : ''
-          }
-        </div>
 
         <div class="tv-divider"></div>
 
@@ -594,7 +569,6 @@ export function renderIndicatorsModal(activeTab, i18n) {
   const activeIndCat = state.activeIndicatorCategory || 'all';
   const indCategories = [
     { key: 'all', label: isFa ? 'همه (All)' : 'All' },
-    { key: 'forecast', label: isFa ? 'پیش‌بینی ساختاری' : 'Structural Forecast' },
     { key: 'ma', label: isFa ? 'میانگین‌ها (MA)' : 'Moving Averages' },
     { key: 'bands_levels', label: isFa ? 'کانال و سطوح' : 'Bands & Levels' },
     { key: 'trend_smc', label: isFa ? 'روند و SMC' : 'Trend & SMC' },
@@ -637,7 +611,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
 
         <div class="tv-modal-body" style="display: flex; flex-direction: column; gap: 6px; overflow-y: auto; padding-bottom: 14px;">
           ${
-            activeIndCat === 'all' || activeIndCat === 'forecast' || activeIndCat === 'chronos'
+            activeIndCat === '__forecast_legacy_removed__'
               ? `
           ${renderSectionHeader(
             isFa ? 'موتور پیش‌بینی ساختاری بومی (Native Structural Forecast · JS)' : 'Native Browser Structural Wave Forecast (JS)',
