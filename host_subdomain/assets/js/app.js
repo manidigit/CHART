@@ -2983,6 +2983,27 @@ document.addEventListener('input', (e) => {
 document.addEventListener('change', async (e) => {
   const el = e.target;
   const action = el.getAttribute('data-action');
+  if (action === 'set-forecast-model-param') {
+    const modelId = String(el.getAttribute('data-model-id') || '');
+    const paramKey = String(el.getAttribute('data-param-key') || '');
+    const value = Number(el.value);
+    if (modelId && paramKey && Number.isFinite(value)) {
+      defaultForecastRegistry.setParams(modelId, { [paramKey]: value });
+      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
+      savePreferences();
+    }
+    return;
+  }
+  if (action === 'set-forecast-model-weight') {
+    const modelId = String(el.getAttribute('data-model-id') || '');
+    const weight = Number(el.value);
+    if (modelId && Number.isFinite(weight)) {
+      defaultForecastRegistry.setWeight(modelId, weight);
+      state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
+      savePreferences();
+    }
+    return;
+  }
   if (action === 'toggle-remember-creds') {
     state.rememberCredentials = Boolean(el.checked);
     localStorage.setItem('ci_remember_creds', state.rememberCredentials ? 'true' : 'false');
