@@ -38,7 +38,7 @@ import {
   clearTabStructuralForecast,
   invalidateTabStructuralForecastIfStale,
   reconcileTabStructuralForecastOnRender,
-} from './core/store.js?v=1.47.1';
+} from './core/store.js?v=1.47.2';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -66,13 +66,13 @@ import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.2';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.3';
 import { renderLoginScreen } from './views/loginView.js?v=1.47.1';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.47.4';
+} from './views/headerView.js?v=1.47.5';
 import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.1';
 import {
   renderRightSplitPanel,
@@ -80,7 +80,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.1';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.1';
-import { renderForecastStudioView, renderForecastStudioFanCanvas } from './views/forecastView.js?v=2.0.2';
+import { renderForecastStudioView, renderForecastStudioFanCanvas } from './views/forecastView.js?v=2.0.3';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
 
