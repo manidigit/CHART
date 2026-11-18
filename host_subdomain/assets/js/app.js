@@ -2381,6 +2381,28 @@ document.addEventListener('click', async (e) => {
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
+  } else if (action === 'set-forecast-engine') {
+    state.forecastEngineMode = el.getAttribute('data-engine') === 'structural' ? 'structural' : 'legacy';
+    renderApp();
+  } else if (action === 'set-structural-forecast-horizon' && activeTab) {
+    const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
+    activeTab.forecastHorizonBars = hVal;
+    state.chartPreferences.forecastHorizonBars = hVal;
+    activeTab.showStructuralForecast = true;
+    activeTab.scrollOffset = 0;
+    clearTabStructuralForecast(activeTab);
+    activeTab.structuralForecastStatus = 'COMPUTING';
+    savePreferences();
+    renderApp();
+    requestStructuralForecastForTab(activeTab, () => {
+      renderApp();
+      redrawActiveCanvas();
+    }).catch((err) => {
+      activeTab.structuralForecast = null;
+      activeTab.structuralForecastStatus = 'ERROR';
+      activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
+      renderApp();
+    });
   } else if (action === 'set-forecast-subtab') {
     state.forecastStudioTab = String(el.getAttribute('data-tab') || 'overview');
     renderApp();
