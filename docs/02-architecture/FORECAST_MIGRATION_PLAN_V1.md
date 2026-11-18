@@ -357,6 +357,7 @@
 - Web Parity / Architecture Tests: 16 از 16 موفق در اجرای GitHub Actions مربوط به Commit 486a53206b4d958087e2f13eb61dfab6e798d8c4.
 - PHP syntax checks مربوط به Chronos-2: موفق.
 - Web package artifact: ساخته و بارگذاری شد.
+- Android Debug APK artifact: ساخته و بارگذاری شد؛ Build و Unit/Robolectric Tests موفق.
 - cPanel deployment: پاسخ ok=true؛ تعداد 123 فایل منتشر شد؛ snapshot با شناسه snapshot_20261118_230019 ثبت شد.
 - Seed داده‌های tvdatafeed در همان اجرای deploy: تعداد 42,294 کندل.
 - Build و Android Unit/Robolectric Tests مستقل از تست وب هستند و باید جداگانه در همان Workflow نتیجه نهایی بگیرند.
