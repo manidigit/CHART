@@ -2421,14 +2421,13 @@ document.addEventListener('click', async (e) => {
     );
     renderApp();
   } else if (action === 'set-workspace-view') {
-    if (el.getAttribute('data-view') === 'forecast') {
-      return;
-    }
-    state.activeWorkspaceView = 'chart';
+    const requestedView = el.getAttribute('data-view') === 'forecast' ? 'forecast' : 'chart';
+    state.activeWorkspaceView = requestedView;
     state.activeModal = null;
     state.symbolOverviewCode = null;
+    state.isSideDrawerOpen = false;
     renderApp();
-    redrawActiveCanvas();
+    if (requestedView === 'chart') redrawActiveCanvas();
   } else if (action === 'toggle-timezone-mode') {
     const nextTz = state.chartPreferences.timezoneMode === 'LOCAL' ? 'UTC' : 'LOCAL';
     state.chartPreferences.timezoneMode = nextTz;
