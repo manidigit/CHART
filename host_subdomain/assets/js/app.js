@@ -732,7 +732,7 @@ function renderForecastWorkspaceContent(activeTab) {
   if (selected === 'legacy') return switcher + renderForecastStudioView(activeTab, i18n);
   const status = activeTab?.structuralForecastStatus || 'IDLE';
   const enabled = Boolean(activeTab?.showStructuralForecast);
-  const horizon = Number(activeTab?.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30);
+  const horizon = Number(activeTab?.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30);
   const statusText = status === 'READY' ? (isFa ? 'آماده' : 'Ready')
     : status === 'COMPUTING' ? (isFa ? 'در حال محاسبه' : 'Computing')
     : status === 'INSUFFICIENT_EVIDENCE' ? (isFa ? 'شواهد ناکافی' : 'Insufficient evidence')
@@ -2405,8 +2405,8 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'set-structural-forecast-horizon' && activeTab) {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
-    activeTab.forecastHorizonBars = hVal;
-    state.chartPreferences.forecastHorizonBars = hVal;
+    activeTab.structuralForecastHorizonBars = hVal;
+    state.chartPreferences.structuralForecastHorizonBars = hVal;
     activeTab.showStructuralForecast = true;
     activeTab.scrollOffset = 0;
     clearTabStructuralForecast(activeTab);
@@ -2525,8 +2525,8 @@ document.addEventListener('click', async (e) => {
       renderApp();
       return;
     }
-    activeTab.forecastHorizonBars = hVal;
-    state.chartPreferences.forecastHorizonBars = hVal;
+    activeTab.structuralForecastHorizonBars = hVal;
+    state.chartPreferences.structuralForecastHorizonBars = hVal;
     activeTab.showStructuralForecast = true;
     activeTab.scrollOffset = 0;
     clearTabStructuralForecast(activeTab);
@@ -3330,7 +3330,7 @@ async function handleChartSnapshot() {
       if (activeTab.showRoc12) activePills.push({ label: 'ROC', color: pal.roc12 });
       if (activeTab.showStructuralForecast) {
         activePills.push({
-          label: `Forecast (+${activeTab.forecastHorizonBars || 30})`,
+          label: `Forecast (+${activeTab.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30})`,
           color: pal.structuralForecastPath || '#8B5CF6',
         });
       }
