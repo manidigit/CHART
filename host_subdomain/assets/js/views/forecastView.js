@@ -16,7 +16,7 @@ import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/mode
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=2.0.0';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=2.0.0';
 import { ForecastWorkerClient } from '../forecast/forecastWorkerClient.js?v=2.0.0';
-import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=2.0.0';
+import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.11';
 import { renderSymbolBadge } from './watchlistView.js?v=1.43.0';
 
 const MODEL_OVERLAY_COLORS = {
