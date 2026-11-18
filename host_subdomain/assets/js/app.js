@@ -2457,6 +2457,7 @@ document.addEventListener('click', async (e) => {
     activeTab.selectedForecastModelId = String(el.getAttribute('data-model-id') || 'AUTO');
     state.chartPreferences.selectedForecastModelId = activeTab.selectedForecastModelId;
     savePreferences();
+    saveOpenTabsToStorage();
     renderApp();
   } else if (action === 'toggle-forecast-model') {
     const modelId = String(el.getAttribute('data-model-id') || '');
