@@ -2967,8 +2967,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ctx.fillText(timeText, tx + 7, topPad + totalChartH + 16);
 
     if (fPt) {
-      const prefix = hasValidStructuralForecast ? 'Structural JS' : 'Chronos-2';
-      const tipText = `${prefix} (+${fPt.step}) · Path: ${PriceFormatter.formatPrice(fPt.q50_median, tab.decimals)} · Band: [${PriceFormatter.formatPrice(fPt.q25, tab.decimals)} – ${PriceFormatter.formatPrice(fPt.q75, tab.decimals)}]`;
+      const prefix = hasValidStructuralForecast
+        ? (isHistoricalAnalogSelected ? 'Historical Analogs' : 'Structural JS')
+        : 'Chronos-2';
+      const tipText = isHistoricalAnalogSelected
+        ? `${prefix} (+${fPt.step}) · Path: ${PriceFormatter.formatPrice(fPt.q50_median, tab.decimals)} · Illustrative`
+        : `${prefix} (+${fPt.step}) · Path: ${PriceFormatter.formatPrice(fPt.q50_median, tab.decimals)} · Band: [${PriceFormatter.formatPrice(fPt.q25, tab.decimals)} – ${PriceFormatter.formatPrice(fPt.q75, tab.decimals)}]`;
       ctx.font = 'bold 10px "JetBrains Mono", monospace';
       const tipW = ctx.measureText(tipText).width + 14;
       const tipX = Math.max(8, Math.min(chartW - tipW - 8, hx - tipW / 2));
