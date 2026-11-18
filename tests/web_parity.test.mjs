@@ -31,7 +31,7 @@ test('ARCH-01: every browser module shares one canonical store.js module URL', a
         assert.ok(match, `Missing shared store import in ${file}`);
         versions.push(match[1]);
     }
-    assert.deepEqual([...new Set(versions)], ['1.47.11'], 'All UI, chart, forecast and service modules must share one store singleton');
+    assert.deepEqual([...new Set(versions)], ['1.47.12'], 'All UI, chart, forecast and service modules must share one store singleton');
 });
 
 const memStore = new Map();
