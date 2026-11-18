@@ -2059,7 +2059,7 @@ export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.stru
   const tabTf = String(tab.timeframe || 'M15').trim().toUpperCase();
   const tabHorizon = Math.max(
     1,
-    Math.min(120, Math.round(Number(tab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30)))
+    Math.min(120, Math.round(Number(tab.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30)))
   );
 
   if (String(series.symbol || '').trim().toUpperCase() !== tabSym) return false;
