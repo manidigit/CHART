@@ -312,6 +312,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   // Active Forecast validation (Native JS Structural Forecast prioritized; Chronos-2 preserved inactive)
   const hasValidStructuralForecast =
     Boolean(tab.showStructuralForecast) && isStructuralForecastMatchingTab(tab, tab.structuralForecast);
+  const isNativeModelAdapter = tab.structuralForecast?.engine?.engine_id === 'native_model_adapter';
   const selectedStructuralModel = String(tab.structuralForecastModel || 'structural_wave_js');
   const isHistoricalAnalogSelected = selectedStructuralModel === 'empirical_analogs';
   const selectedAnalogPath = isHistoricalAnalogSelected
@@ -1406,9 +1407,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
                 : 'NormVol';
           const gradeTag = quality.confidence_grade || 'LOW';
           const analogCount = Number((tab.structuralForecast.model_diagnostics || {}).empirical_analogs?.matched_count || 0);
-          const badgeTxt = isHistoricalAnalogSelected
-            ? `Historical Analogs (+${pts.length} · ${analogCount} matches · illustrative)`
-            : `Structural JS (+${pts.length} · ${biasShort} · ${volShort} · ${gradeTag})`;
+          const badgeTxt = isNativeModelAdapter
+            ? `${tab.structuralForecast.model?.name || tab.structuralForecast.model?.id || 'Native Model'} (+${pts.length} · render only · ${tab.structuralForecast.model?.forecast_status || 'UNASSESSED'})`
+            : isHistoricalAnalogSelected
+              ? `Historical Analogs (+${pts.length} · ${analogCount} matches · illustrative)`
+              : `Structural JS (+${pts.length} · ${biasShort} · ${volShort} · ${gradeTag})`;
           ctx.font = 'bold 10px "JetBrains Mono", monospace';
           const bTw = Math.min(chartW - 24, ctx.measureText(badgeTxt).width + 14);
           const bX = Math.min(chartW - bTw - 8, Math.max(8, originX + 6));
@@ -1426,7 +1429,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
           queueRightLevelLabel(
             lastPt.yQ50,
-            `${isHistoricalAnalogSelected ? 'Analog' : 'Fcst'} ${PriceFormatter.formatPrice(lastPt.q50, tab.decimals)}`,
+            `${isNativeModelAdapter ? (tab.structuralForecast.model?.id || 'Model') : isHistoricalAnalogSelected ? 'Analog' : 'Fcst'} ${PriceFormatter.formatPrice(lastPt.q50, tab.decimals)}`,
             fcColor
           );
           ctx.restore();

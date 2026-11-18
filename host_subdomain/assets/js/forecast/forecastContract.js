@@ -469,3 +469,26 @@ export function containsForbiddenTradingTerms(payload) {
 }
 
 export { CALENDAR_PROFILES, CALENDAR_REGISTRY_VERSION, resolveCalendarSpec };
+/** Strict representation adapter for one existing model trajectory. */
+export function adaptNativeModelTrajectory(trajectory, context = {}) {
+  const modelId = String(trajectory?.modelId || '').trim();
+  const points = Array.isArray(trajectory?.points) ? trajectory.points : [];
+  const horizonBars = Math.round(Number(context.horizonBars));
+  if (!modelId || trajectory?.status !== 'SUCCESS' || !Number.isInteger(horizonBars) || horizonBars < 1 || points.length !== horizonBars) return null;
+  const forecast = [];
+  for (let i = 0; i < points.length; i++) {
+    const p = points[i] || {};
+    const q10 = Number(p.q10), q25 = Number(p.q25), q50 = Number(p.q50), q75 = Number(p.q75), q90 = Number(p.q90);
+    if (![q10,q25,q50,q75,q90].every(Number.isFinite) || !(q10 > 0 && q10 <= q25 && q25 <= q50 && q50 <= q75 && q75 <= q90)) return null;
+    forecast.push({ step: i + 1, q10, q25, q50_median: q50, q75, q90, timestamp_utc_ms: Number(p.timestampUtcMs || p.timestamp_utc_ms || 0) || null });
+  }
+  const symbol = String(context.symbolCode || '').trim().toUpperCase();
+  const provider = String(context.provider || 'tvdatafeed').trim().toLowerCase();
+  const timeframe = String(context.timeframe || 'M15').trim().toUpperCase();
+  const originOpenMs = Number(context.originOpenTimeUtcMs), lastClosedPrice = Number(context.lastClosedPrice);
+  if (!symbol || !provider || !timeframe || !(originOpenMs > 0) || !(lastClosedPrice > 0) || !Number.isFinite(lastClosedPrice)) return null;
+  return { status: 'READY', forecast, engine: { engine_id: 'native_model_adapter', is_chronos2: false, params: { horizon_bars: horizonBars, model_id: modelId }, model_version: String(trajectory.modelVersion || '') },
+    series: { symbol, provider, timeframe, origin_open_time_utc_ms: originOpenMs, last_closed_price: lastClosedPrice },
+    model: { id: modelId, name: String(trajectory.modelName || modelId), is_approximation: Boolean(trajectory.isApproximation), is_calibrated_interval: Boolean(trajectory.isCalibratedInterval), execution_runtime: String(trajectory.executionRuntime || ''), forecast_status: String(context.forecastStatus || '') },
+    provenance: { source: 'ForecastEngine.modelTrajectories', status: String(context.forecastStatus || ''), inputHash: String(context.inputHash || ''), illustrative_only: modelId === 'empirical_analogs' } };
+}

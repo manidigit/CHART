@@ -66,7 +66,7 @@ import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.7';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.8';
 import { renderLoginScreen } from './views/loginView.js?v=1.47.2';
 import {
   renderTopHeaderBar,
@@ -80,7 +80,8 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.2';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
-import { renderForecastStudioView, renderForecastStudioFanCanvas } from './views/forecastView.js?v=2.0.5';
+import { renderForecastStudioView, renderForecastStudioFanCanvas, buildForecastForTab } from './views/forecastView.js?v=2.0.6';
+import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.1';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
 
@@ -2589,6 +2590,23 @@ document.addEventListener('click', async (e) => {
         : 'Chronos-2 is inactive on shared hosting; please use the Native Browser Forecast.'
     );
     renderApp();
+  } else if (action === 'apply-native-forecast-to-chart' && activeTab) {
+    if (activeTab.showStructuralForecast && activeTab.structuralForecast?.engine?.engine_id === 'native_model_adapter') {
+      activeTab.showStructuralForecast = false; clearTabStructuralForecast(activeTab); saveOpenTabsToStorage(); renderApp(); redrawActiveCanvas(); return;
+    }
+    const built = buildForecastForTab(activeTab);
+    const requestedId = String(activeTab.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
+    const selectedId = requestedId === 'AUTO' ? 'naive_persistence' : requestedId;
+    const trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === selectedId);
+    const candles = Array.isArray(activeTab.candles) ? activeTab.candles : [];
+    const lastClosed = [...candles].reverse().find((c) => { const ms = Number(c?.open_time_utc_ms || 0); return ms > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(ms, activeTab.timeframe || 'M15', Date.now(), activeTab.symbolCode || 'XAUUSD'); });
+    const adapted = adaptNativeModelTrajectory(trajectory, { symbolCode: activeTab.symbolCode, provider: activeTab.provider, timeframe: activeTab.timeframe, horizonBars: built?.result?.horizonBars, originOpenTimeUtcMs: lastClosed?.open_time_utc_ms, lastClosedPrice: lastClosed?.close, forecastStatus: built?.result?.status, inputHash: built?.result?.inputHash });
+    if (!adapted) { showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'مدل انتخاب‌شده خروجی کامل و قابل‌رسم برای این داده ندارد.' : 'The selected model has no complete, renderable trajectory for this data.'); return; }
+    activeTab.forecastHorizonBars = built.result.horizonBars; activeTab.structuralForecastHorizonBars = built.result.horizonBars;
+    activeTab.structuralForecastModel = selectedId; activeTab.structuralForecast = adapted; activeTab.structuralForecastStatus = 'READY'; activeTab.structuralForecastError = '';
+    activeTab.showStructuralForecast = true; activeTab.showFutureProjection = false; activeTab.showChronosForecast = false; clearTabChronosForecast(activeTab);
+    state.forecastEngineMode = 'structural'; state.chartPreferences.forecastEngineMode = 'structural'; activeTab.scrollOffset = 0;
+    savePreferences(); saveOpenTabsToStorage(); state.activeWorkspaceView = 'chart'; renderApp(); redrawActiveCanvas();
   } else if (action === 'apply-forecast-to-chart' || action === 'toggle-legacy-forecast-chart') {
     if (!activeTab || !Array.isArray(activeTab.legacyForecast?.points) || activeTab.legacyForecast.points.length === 0) {
       showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'ابتدا پیش‌بینی سیستم قدیمی را در Forecast Studio محاسبه کنید.' : 'Calculate the legacy forecast in Forecast Studio first.');

@@ -11,7 +11,7 @@ import {
   SELECTION_MODE,
   normalizeRenderMode,
   clampHorizonBars,
-} from '../forecast/forecastContract.js?v=2.0.0';
+} from '../forecast/forecastContract.js?v=2.0.1';
 import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=2.0.1';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=2.0.0';
@@ -625,8 +625,8 @@ export function renderForecastStudioView(activeTab, i18n) {
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
               ${isFa ? 'ثبت در دفتر محلی' : 'Record Local Snapshot'}
             </button>
-            <button type="button" class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary' : ''}" data-action="apply-forecast-to-chart" ${!Array.isArray(fc?.points) || fc.points.length === 0 ? 'disabled' : ''}>
-              ${activeTab?.showFutureProjection ? (isFa ? '✓ پیش‌بینی روی چارت فعال است' : '✓ Forecast on Chart') : (isFa ? 'نمایش سیستم قدیمی روی چارت' : 'Show Legacy Forecast on Chart')}
+            <button type="button" class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary' : ''}" data-action="apply-native-forecast-to-chart" ${!Array.isArray(fc?.points) || fc.points.length === 0 ? 'disabled' : ''}>
+              ${activeTab?.showStructuralForecast && activeTab?.structuralForecast?.engine?.engine_id === 'native_model_adapter' ? (isFa ? '✓ مدل جدید روی چارت فعال است' : '✓ Native Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
             </button>
           </div>
         </div>

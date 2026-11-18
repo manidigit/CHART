@@ -1311,3 +1311,15 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
 
 
 
+
+test('FORECAST-ADAPTER-01: adapts only complete successful trajectories and preserves source status', async () => {
+  const { adaptNativeModelTrajectory } = await import('../host_subdomain/assets/js/forecast/forecastContract.js');
+  const trajectory = { modelId: 'naive_persistence', modelName: 'Naive Persistence', modelVersion: '2.0.0', executionRuntime: 'NATIVE_JS', status: 'SUCCESS', points: [{ q10: 98, q25: 99, q50: 100, q75: 101, q90: 102 }, { q10: 97, q25: 99, q50: 100, q75: 102, q90: 103 }] };
+  const context = { symbolCode: 'XAUUSD', provider: 'twelvedata', timeframe: 'H1', horizonBars: 2, originOpenTimeUtcMs: 1795000000000, lastClosedPrice: 100, forecastStatus: 'INSUFFICIENT_EVIDENCE', inputHash: 'hash-1' };
+  const adapted = adaptNativeModelTrajectory(trajectory, context);
+  assert.equal(adapted.status, 'READY'); assert.equal(adapted.engine.engine_id, 'native_model_adapter'); assert.equal(adapted.forecast[1].q50_median, 100);
+  assert.equal(adapted.provenance.status, 'INSUFFICIENT_EVIDENCE');
+  assert.equal(adaptNativeModelTrajectory({ ...trajectory, points: trajectory.points.slice(0, 1) }, context), null);
+  assert.equal(adaptNativeModelTrajectory({ ...trajectory, status: 'FAILED' }, context), null);
+  assert.equal(adaptNativeModelTrajectory({ ...trajectory, points: [{ ...trajectory.points[0], q25: 103 }, trajectory.points[1]] }, context), null);
+});

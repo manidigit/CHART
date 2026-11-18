@@ -1788,6 +1788,7 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showStructuralForecast: false,
     showForecastBand: t.showForecastBand !== false,
     forecastHorizonBars: Math.max(1, Math.min(120, Number(t.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30))),
+    selectedForecastModelId: String(t.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO'),
     isMagnetMode: Boolean(t.isMagnetMode),
     activeDrawingColor:
       t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',
@@ -2052,15 +2053,15 @@ export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.stru
   const series = forecastPayload.series || {};
   const params = engine.params || {};
 
-  if (engine.engine_id !== 'structural_wave_js' || engine.is_chronos2 !== false) return false;
+  const isNativeModelAdapter = engine.engine_id === 'native_model_adapter';
+  if (!['structural_wave_js', 'native_model_adapter'].includes(engine.engine_id) || engine.is_chronos2 !== false) return false;
 
   const tabSym = String(tab.symbolCode || '').trim().toUpperCase();
   const tabProv = String(tab.provider || 'tvdatafeed').trim().toLowerCase();
   const tabTf = String(tab.timeframe || 'M15').trim().toUpperCase();
-  const tabHorizon = Math.max(
-    1,
-    Math.min(120, Math.round(Number(tab.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30)))
-  );
+  const tabHorizon = isNativeModelAdapter
+    ? Math.max(1, Math.min(120, Math.round(Number(tab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30))))
+    : Math.max(1, Math.min(120, Math.round(Number(tab.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30))));
 
   if (String(series.symbol || '').trim().toUpperCase() !== tabSym) return false;
   if (String(series.provider || '').trim().toLowerCase() !== tabProv) return false;
