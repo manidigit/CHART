@@ -778,7 +778,7 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     assert.ok(legacyForecastHtml.includes('data-action="set-forecast-horizon"'));
     assert.ok(legacyForecastHtml.includes('data-action="set-forecast-render-mode"'));
     assert.ok(legacyForecastHtml.includes('data-action="set-forecast-subtab"'));
-    assert.ok(legacyForecastHtml.includes('data-action="apply-forecast-to-chart"'), 'Legacy Forecast Studio must expose its apply-to-chart action');
+    assert.ok(legacyForecastHtml.includes('data-action="apply-native-forecast-to-chart"'), 'Forecast Studio must expose the native-model apply-to-chart action');
     } finally {
         state.activeModal = prevModal;
         state.activeIndicatorCategory = prevCat;
