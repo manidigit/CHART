@@ -2401,8 +2401,17 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-forecast-engine') {
     state.forecastEngineMode = el.getAttribute('data-engine') === 'structural' ? 'structural' : 'legacy';
     state.chartPreferences.forecastEngineMode = state.forecastEngineMode;
+    if (activeTab) {
+      if (state.forecastEngineMode === 'structural') {
+        activeTab.showFutureProjection = false;
+      } else {
+        activeTab.showStructuralForecast = false;
+        clearTabStructuralForecast(activeTab);
+      }
+    }
     savePreferences();
     renderApp();
+    redrawActiveCanvas();
   } else if (action === 'set-structural-forecast-horizon' && activeTab) {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
     activeTab.structuralForecastHorizonBars = hVal;
@@ -2564,6 +2573,25 @@ document.addEventListener('click', async (e) => {
         : 'Chronos-2 is inactive on shared hosting; please use the Native Browser Forecast.'
     );
     renderApp();
+  } else if (action === 'apply-forecast-to-chart' || action === 'toggle-legacy-forecast-chart') {
+    if (!activeTab || !Array.isArray(activeTab.legacyForecast?.points) || activeTab.legacyForecast.points.length === 0) {
+      showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'ابتدا پیش‌بینی سیستم قدیمی را در Forecast Studio محاسبه کنید.' : 'Calculate the legacy forecast in Forecast Studio first.');
+      return;
+    }
+    const enableLegacy = !activeTab.showFutureProjection;
+    activeTab.showFutureProjection = enableLegacy;
+    if (enableLegacy) {
+      state.forecastEngineMode = 'legacy';
+      state.chartPreferences.forecastEngineMode = 'legacy';
+      activeTab.showStructuralForecast = false;
+      clearTabStructuralForecast(activeTab);
+      activeTab.showChronosForecast = false;
+      clearTabChronosForecast(activeTab);
+      state.activeWorkspaceView = 'chart';
+    }
+    savePreferences();
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'set-workspace-view') {
     const requestedView = el.getAttribute('data-view') === 'forecast' ? 'forecast' : 'chart';
     state.activeWorkspaceView = requestedView;
