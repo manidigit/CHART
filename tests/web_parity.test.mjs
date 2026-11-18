@@ -520,16 +520,13 @@ test('UI-PARITY & TIMEFRAME-SYNC: default by_symbol mode, RTL Settings, disabled
         candles: []
     };
     try {
-        state.activeWorkspaceView = 'forecast'; // even if stale state asks for forecast, UI remains on chart
+        state.activeWorkspaceView = 'chart';
         const chartHeaderHtml = renderTopHeaderBar(sampleTab, mockI18n);
         assert.ok(chartHeaderHtml.includes('tv-open-tabs-strip'));
         assert.ok(chartHeaderHtml.includes('data-action="set-timeframe"'));
         assert.ok(chartHeaderHtml.includes('data-modal="indicators"'));
         assert.ok(chartHeaderHtml.includes('data-view="forecast"'), 'Forecast nav button must remain present');
-        assert.ok(
-            /data-view="forecast"[^>]*disabled[^>]*aria-disabled="true"|disabled[^>]*data-view="forecast"/.test(chartHeaderHtml),
-            'Forecast nav button must be disabled'
-        );
+        assert.equal(/data-view="forecast"[^>]*disabled|disabled[^>]*data-view="forecast"/.test(chartHeaderHtml), false, 'Forecast nav button must be enabled');
         assert.equal(chartHeaderHtml.includes('toggle-future-projection'), false, 'Future projection indicator toggle must be removed');
         assert.equal(chartHeaderHtml.includes('data-action="export-candles-json"'), false, 'JSON export button must be removed from chart topbar');
 
@@ -738,8 +735,8 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     // Verify top header & indicators modal expose Native Browser Structural Forecast & Uncertainty Band toggles and mark Chronos-2 disabled
     const mockI18n = { getCurrentLanguage: () => 'fa', t: (k) => k };
     const topBarHtml = renderTopHeaderBar({ ...matchingTab, showStructuralForecast: true, showForecastBand: true }, mockI18n);
-    assert.ok(topBarHtml.includes('data-action="toggle-structural-forecast"'));
-    assert.ok(topBarHtml.includes('data-action="toggle-forecast-band"'));
+    assert.equal(topBarHtml.includes('data-action="toggle-structural-forecast"'), false, 'Forecast engine controls must not be duplicated in the chart toolbar');
+    assert.equal(topBarHtml.includes('data-action="toggle-forecast-band"'), false, 'Forecast band controls belong to the Forecast workspace');
 
     const prevModal = state.activeModal;
     const prevCat = state.activeIndicatorCategory;
@@ -747,10 +744,17 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
         state.activeModal = 'indicators';
         state.activeIndicatorCategory = 'all';
         const indHtml = renderIndicatorsModal({ ...matchingTab, showStructuralForecast: true, showForecastBand: true }, mockI18n);
-        assert.ok(indHtml.includes('data-action="toggle-structural-forecast"'));
-        assert.ok(indHtml.includes('data-action="toggle-forecast-band"'));
-        assert.ok(indHtml.includes('data-action="set-forecast-horizon"'));
-        assert.ok(indHtml.includes('disabled aria-disabled="true"'));
+        assert.equal(indHtml.includes('data-action="toggle-structural-forecast"'), false, 'Forecast engines must not appear as indicators');
+        assert.equal(indHtml.includes('data-action="toggle-forecast-band"'), false, 'Forecast bands must not appear as indicators');
+        assert.equal(indHtml.includes('data-action="set-forecast-horizon"'), false, 'Forecast horizon must not appear as an indicator setting');
+        assert.ok(indHtml.includes('RSI') || indHtml.includes('MACD'), 'Indicators modal remains dedicated to technical indicators');
+    }
+    const { renderForecastStudioView } = await import('../host_subdomain/assets/js/views/forecastView.js');
+    state.chartPreferences = { ...state.chartPreferences, forecastHorizonBars: 30 };
+    const legacyForecastHtml = renderForecastStudioView(matchingTab, mockI18n);
+    assert.ok(legacyForecastHtml.includes('data-action="set-forecast-horizon"'));
+    assert.ok(legacyForecastHtml.includes('data-action="set-forecast-render-mode"'));
+    assert.ok(legacyForecastHtml.includes('data-action="set-forecast-subtab"'));
     } finally {
         state.activeModal = prevModal;
         state.activeIndicatorCategory = prevCat;
