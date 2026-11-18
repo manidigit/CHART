@@ -110,6 +110,40 @@ function getActiveTab() {
   return state.openTabs.find((t) => t.tabId === state.activeTabId) || state.openTabs[0] || null;
 }
 
+function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
+  if (!tab) return false;
+  const built = buildForecastForTab(tab);
+  const trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === modelId);
+  const candles = Array.isArray(tab.candles) ? tab.candles : [];
+  const lastClosed = [...candles].reverse().find((c) => {
+    const ms = Number(c?.open_time_utc_ms || 0);
+    return ms > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(ms, tab.timeframe || 'M15', Date.now(), tab.symbolCode || 'XAUUSD');
+  });
+  const adapted = adaptNativeModelTrajectory(trajectory, {
+    symbolCode: tab.symbolCode, provider: tab.provider, timeframe: tab.timeframe,
+    horizonBars: built?.result?.horizonBars, originOpenTimeUtcMs: lastClosed?.open_time_utc_ms,
+    lastClosedPrice: lastClosed?.close, forecastStatus: built?.result?.status, inputHash: built?.result?.inputHash,
+  });
+  if (!adapted) {
+    tab.structuralForecast = null;
+    tab.showStructuralForecast = false;
+    tab.structuralForecastStatus = 'INSUFFICIENT_EVIDENCE';
+    tab.structuralForecastError = `${modelId} has no complete trajectory for the current closed-candle series.`;
+    return false;
+  }
+  tab.forecastHorizonBars = built.result.horizonBars;
+  tab.structuralForecastHorizonBars = built.result.horizonBars;
+  tab.structuralForecastModel = modelId;
+  tab.structuralForecast = adapted;
+  tab.structuralForecastStatus = 'READY';
+  tab.structuralForecastError = '';
+  tab.showStructuralForecast = true;
+  tab.showFutureProjection = false;
+  tab.showChronosForecast = false;
+  clearTabChronosForecast(tab);
+  return true;
+}
+
 function ensureInitialTabs(forceHydrate = false) {
   if (state.openTabs && state.openTabs.length > 0) {
     if (state._tabsHydrated && !forceHydrate) {
@@ -2434,15 +2468,23 @@ document.addEventListener('click', async (e) => {
     activeTab.structuralForecastStatus = 'COMPUTING';
     savePreferences();
     renderApp();
-    requestStructuralForecastForTab(activeTab, () => {
+    if (activeTab.structuralForecastModel === 'naive_persistence') {
+      activeTab.forecastHorizonBars = Math.max(10, Math.min(60, hVal));
+      applyNativeModelForecastToTab(activeTab, 'naive_persistence');
+      saveOpenTabsToStorage();
       renderApp();
       redrawActiveCanvas();
-    }).catch((err) => {
-      activeTab.structuralForecast = null;
-      activeTab.structuralForecastStatus = 'ERROR';
-      activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
-      renderApp();
-    });
+    } else {
+      requestStructuralForecastForTab(activeTab, () => {
+        renderApp();
+        redrawActiveCanvas();
+      }).catch((err) => {
+        activeTab.structuralForecast = null;
+        activeTab.structuralForecastStatus = 'ERROR';
+        activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
+        renderApp();
+      });
+    }
   } else if (action === 'set-forecast-subtab') {
     state.forecastStudioTab = String(el.getAttribute('data-tab') || 'overview');
     renderApp();
@@ -2522,22 +2564,7 @@ document.addEventListener('click', async (e) => {
     if (activeTab.showStructuralForecast) {
       if (activeTab.structuralForecastModel === 'naive_persistence') {
         activeTab.forecastHorizonBars = Math.max(10, Math.min(60, Number(activeTab.structuralForecastHorizonBars || 30)));
-        const built = buildForecastForTab(activeTab);
-        const trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === 'naive_persistence');
-        const candles = Array.isArray(activeTab.candles) ? activeTab.candles : [];
-        const lastClosed = [...candles].reverse().find((c) => { const ms = Number(c?.open_time_utc_ms || 0); return ms > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(ms, activeTab.timeframe || 'M15', Date.now(), activeTab.symbolCode || 'XAUUSD'); });
-        const adapted = adaptNativeModelTrajectory(trajectory, { symbolCode: activeTab.symbolCode, provider: activeTab.provider, timeframe: activeTab.timeframe, horizonBars: built?.result?.horizonBars, originOpenTimeUtcMs: lastClosed?.open_time_utc_ms, lastClosedPrice: lastClosed?.close, forecastStatus: built?.result?.status, inputHash: built?.result?.inputHash });
-        if (!adapted) {
-          activeTab.showStructuralForecast = false;
-          activeTab.structuralForecastStatus = 'INSUFFICIENT_EVIDENCE';
-          activeTab.structuralForecastError = 'Naive Persistence has no complete trajectory for the current closed-candle series.';
-        } else {
-          activeTab.forecastHorizonBars = built.result.horizonBars;
-          activeTab.structuralForecastHorizonBars = built.result.horizonBars;
-          activeTab.structuralForecast = adapted;
-          activeTab.structuralForecastStatus = 'READY';
-          activeTab.structuralForecastError = '';
-        }
+        applyNativeModelForecastToTab(activeTab, 'naive_persistence');
         saveOpenTabsToStorage();
         renderApp();
         redrawActiveCanvas();
@@ -2623,17 +2650,12 @@ document.addEventListener('click', async (e) => {
     if (activeTab.showStructuralForecast && activeTab.structuralForecast?.engine?.engine_id === 'native_model_adapter') {
       activeTab.showStructuralForecast = false; clearTabStructuralForecast(activeTab); saveOpenTabsToStorage(); renderApp(); redrawActiveCanvas(); return;
     }
-    const built = buildForecastForTab(activeTab);
     const requestedId = String(activeTab.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
     const selectedId = requestedId === 'AUTO' ? 'naive_persistence' : requestedId;
-    const trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === selectedId);
-    const candles = Array.isArray(activeTab.candles) ? activeTab.candles : [];
-    const lastClosed = [...candles].reverse().find((c) => { const ms = Number(c?.open_time_utc_ms || 0); return ms > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(ms, activeTab.timeframe || 'M15', Date.now(), activeTab.symbolCode || 'XAUUSD'); });
-    const adapted = adaptNativeModelTrajectory(trajectory, { symbolCode: activeTab.symbolCode, provider: activeTab.provider, timeframe: activeTab.timeframe, horizonBars: built?.result?.horizonBars, originOpenTimeUtcMs: lastClosed?.open_time_utc_ms, lastClosedPrice: lastClosed?.close, forecastStatus: built?.result?.status, inputHash: built?.result?.inputHash });
-    if (!adapted) { showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'مدل انتخاب‌شده خروجی کامل و قابل‌رسم برای این داده ندارد.' : 'The selected model has no complete, renderable trajectory for this data.'); return; }
-    activeTab.forecastHorizonBars = built.result.horizonBars; activeTab.structuralForecastHorizonBars = built.result.horizonBars;
-    activeTab.structuralForecastModel = selectedId; activeTab.structuralForecast = adapted; activeTab.structuralForecastStatus = 'READY'; activeTab.structuralForecastError = '';
-    activeTab.showStructuralForecast = true; activeTab.showFutureProjection = false; activeTab.showChronosForecast = false; clearTabChronosForecast(activeTab);
+    if (!applyNativeModelForecastToTab(activeTab, selectedId)) {
+      showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'مدل انتخاب‌شده خروجی کامل و قابل‌رسم برای این داده ندارد.' : 'The selected model has no complete, renderable trajectory for this data.');
+      return;
+    }
     state.forecastEngineMode = 'structural'; state.chartPreferences.forecastEngineMode = 'structural'; activeTab.scrollOffset = 0;
     savePreferences(); saveOpenTabsToStorage(); state.activeWorkspaceView = 'chart'; renderApp(); redrawActiveCanvas();
   } else if (action === 'apply-forecast-to-chart' || action === 'toggle-legacy-forecast-chart') {
