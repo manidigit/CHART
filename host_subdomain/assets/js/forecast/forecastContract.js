@@ -489,6 +489,6 @@ export function adaptNativeModelTrajectory(trajectory, context = {}) {
   if (!symbol || !provider || !timeframe || !(originOpenMs > 0) || !(lastClosedPrice > 0) || !Number.isFinite(lastClosedPrice)) return null;
   return { status: 'READY', forecast, engine: { engine_id: 'native_model_adapter', is_chronos2: false, params: { horizon_bars: horizonBars, model_id: modelId }, model_version: String(trajectory.modelVersion || '') },
     series: { symbol, provider, timeframe, origin_open_time_utc_ms: originOpenMs, last_closed_price: lastClosedPrice },
-    model: { id: modelId, name: String(trajectory.modelName || modelId), is_approximation: Boolean(trajectory.isApproximation), is_calibrated_interval: Boolean(trajectory.isCalibratedInterval), execution_runtime: String(trajectory.executionRuntime || ''), forecast_status: String(context.forecastStatus || '') },
+    model: { id: modelId, name: String(trajectory.modelName || modelId), is_approximation: Boolean(trajectory.isApproximation), is_calibrated_interval: Boolean(trajectory.isCalibratedInterval), execution_runtime: String(trajectory.executionRuntime || ''), source_engine_status: String(context.forecastStatus || '') },
     provenance: { source: 'ForecastEngine.modelTrajectories', status: String(context.forecastStatus || ''), inputHash: String(context.inputHash || ''), illustrative_only: modelId === 'empirical_analogs' } };
 }
