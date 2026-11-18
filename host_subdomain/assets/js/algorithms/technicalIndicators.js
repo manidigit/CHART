@@ -237,7 +237,13 @@ export const TechnicalIndicators = {
     avgGain /= period;
     avgLoss /= period;
 
-    out[period] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+    const rsiFromAverages = () => {
+      if (avgGain === 0 && avgLoss === 0) return 50;
+      if (avgLoss === 0) return 100;
+      if (avgGain === 0) return 0;
+      return 100 - 100 / (1 + avgGain / avgLoss);
+    };
+    out[period] = rsiFromAverages();
 
     for (let i = period + 1; i < n; i++) {
       const diff = Number(candles[i].close || 0) - Number(candles[i - 1].close || 0);
@@ -245,7 +251,7 @@ export const TechnicalIndicators = {
       const loss = diff < 0 ? -diff : 0;
       avgGain = (avgGain * (period - 1) + gain) / period;
       avgLoss = (avgLoss * (period - 1) + loss) / period;
-      out[i] = avgLoss === 0 ? 100 : 100 - 100 / (1 + avgGain / avgLoss);
+      out[i] = rsiFromAverages();
     }
     return out;
   },
