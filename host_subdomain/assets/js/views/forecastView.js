@@ -611,33 +611,8 @@ export function renderForecastStudioView(activeTab, i18n) {
             ${fc && fc.regime ? `<span class="ci-fc-regime-badge ltr-num">${escapeHtml(fc.regime)}</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
-            <button
-              type="button"
-              class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary ci-fc-apply-btn is-checked' : 'ci-fc-apply-btn'}"
-              data-action="apply-forecast-to-chart"
-              aria-pressed="${activeTab?.showFutureProjection ? 'true' : 'false'}"
-              title="${
-                activeTab?.showFutureProjection
-                  ? isFa
-                    ? 'کلیک برای برداشتن تیک و مخفی کردن پیش‌بینی روی چارت'
-                    : 'Click to untick and hide forecast overlay on chart'
-                  : isFa
-                    ? 'اعمال پیش‌بینی روی چارت و بازگشت به نمای چارت'
-                    : 'Apply forecast to chart and switch to Chart view'
-              }"
-            >
-              ${
-                activeTab?.showFutureProjection
-                  ? isFa
-                    ? '✓ نمایش روی چارت فعال است (لغو تیک)'
-                    : '✓ Apply & View on Chart'
-                  : isFa
-                    ? '☐ اعمال روی چارت و مشاهده'
-                    : '☐ Apply & View on Chart'
-              }
-            </button>
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
-              ${isFa ? 'ثبت در دفتر کل + همگام‌سازی' : 'Record & Sync Snapshot'}
+              ${isFa ? 'ثبت در دفتر محلی' : 'Record Local Snapshot'}
             </button>
           </div>
         </div>
@@ -1275,7 +1250,7 @@ function renderLedgerPanel(decimals, isFa) {
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn btn-sm btn-primary" data-action="record-forecast-snapshot">${isFa ? 'ثبت اسنپ‌شات فعلی' : 'Record Current Snapshot'}</button>
           <button type="button" class="btn btn-sm" data-action="evaluate-forecast-outcomes">${isFa ? 'ارزیابی سررسید و Ambiguous' : 'Evaluate Matured Outcomes'}</button>
-          <button type="button" class="btn btn-sm" data-action="refresh-forecast-ledger">${isFa ? 'دریافت از سرور' : 'Refresh Server Ledger'}</button>
+          <button type="button" class="btn btn-sm" data-action="refresh-forecast-ledger">${isFa ? 'به‌روزرسانی دفتر محلی' : 'Refresh Local Ledger'}</button>
         </div>
       </div>
     </div>
