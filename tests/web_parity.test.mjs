@@ -1323,3 +1323,11 @@ test('FORECAST-ADAPTER-01: adapts only complete successful trajectories and pres
   assert.equal(adaptNativeModelTrajectory({ ...trajectory, status: 'FAILED' }, context), null);
   assert.equal(adaptNativeModelTrajectory({ ...trajectory, points: [{ ...trajectory.points[0], q25: 103 }, trajectory.points[1]] }, context), null);
 });
+test('FORECAST-MODEL-SELECTION-01: new Structural selector exposes registry models and routes native model choices through the adapter', async () => {
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const storeSource = await readFile(new URL('../host_subdomain/assets/js/core/store.js', import.meta.url), 'utf8');
+  assert.ok(appSource.includes('const nativeModelChoices = defaultForecastRegistry.list()'));
+  assert.ok(appSource.includes('const nativeModelButtons = nativeModelChoices.map'));
+  assert.ok(appSource.includes('applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel)') || appSource.includes("applyNativeModelForecastToTab(activeTab, 'naive_persistence')"));
+  assert.ok(storeSource.includes("String(params.model_id || '') !== String(tab.structuralForecastModel || 'naive_persistence')"));
+});

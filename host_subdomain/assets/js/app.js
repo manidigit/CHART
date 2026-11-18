@@ -757,6 +757,14 @@ function renderFallbackErrorBoundary(err) {
 
 function renderForecastWorkspaceContent(activeTab) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
+  defaultForecastRegistry.applyConfig(state.chartPreferences.forecastPluginConfig);
+  const nativeModelChoices = defaultForecastRegistry.list();
+  const nativeModelButtons = nativeModelChoices.map((model) => {
+    const available = model.enabled && Number(model.weight) > 0;
+    const label = `${model.name}${model.experimentalOnly ? ' · Approximation' : ''}${available ? '' : ' · Disabled'}`;
+    return `<button type="button" class="chip ${activeTab?.structuralForecastModel === model.id ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="${escapeHtml(model.id)}" ${available ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
+  }).join('');
+  const isNativeModelSelected = !['structural_wave_js', 'empirical_analogs'].includes(activeTab?.structuralForecastModel || 'structural_wave_js');
   const selected = (state.chartPreferences.forecastEngineMode || state.forecastEngineMode) === 'structural' ? 'structural' : 'legacy';
   const switcher = `
     <div class="ci-fc-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
@@ -776,7 +784,7 @@ function renderForecastWorkspaceContent(activeTab) {
     <section class="ci-forecast-studio" style="max-width:1100px;margin:0 auto;">
       <div class="ci-fc-header">
         <div class="ci-fc-title-row"><h2>${isFa ? 'موتور تحلیل ساختاری جدید' : 'New Structural Analysis Engine'}</h2><span class="ci-fc-status-badge">${statusText}</span></div>
-        <p>${isFa ? 'این موتور مستقل از Forecast Studio قدیمی است. محاسبات آن در مرورگر و بر پایه کندل‌های بسته‌شده انجام می‌شود و خروجی فقط روی چارت اصلی نمایش داده می‌شود.' : 'Independent from the legacy Forecast Studio. Runs in-browser on closed candles; its output is rendered only on the main chart.'}</p>
+        <p>${isFa ? 'مدل‌های Structural و Native در این بخش قابل انتخاب‌اند. در هر لحظه فقط یک مسیر روی چارت اصلی رسم می‌شود؛ Legacy همچنان مستقل و قابل بازگشت است.' : 'Select Structural or Native models here. Only one path is rendered on the main chart at a time; Legacy remains independently available.'}</p>
       </div>
       <div class="ci-fc-card">
         <div class="row-between" style="gap:12px;flex-wrap:wrap;">
@@ -786,15 +794,16 @@ function renderForecastWorkspaceContent(activeTab) {
         <div style="margin-top:16px;">
           <div style="font-weight:700;font-size:12px;margin-bottom:8px;">${isFa ? 'مدل پیش‌بینی برای نمایش' : 'Forecast model to display'}</div>
           <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button type="button" class="chip ${(activeTab?.structuralForecastModel || 'structural_wave_js') === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">${isFa ? 'Structural JS' : 'Structural JS'}</button>
-            <button type="button" class="chip ${activeTab?.structuralForecastModel === 'empirical_analogs' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="empirical_analogs">${isFa ? 'Historical Analogs' : 'Historical Analogs'}</button>
-            <button type="button" class="chip ${activeTab?.structuralForecastModel === 'naive_persistence' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="naive_persistence">Naive Persistence · Pilot</button>
+            <button type="button" class="chip ${(activeTab?.structuralForecastModel || 'structural_wave_js') === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">Structural JS</button>
+            <button type="button" class="chip ${activeTab?.structuralForecastModel === 'empirical_analogs' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="empirical_analogs">Historical Analogs</button>
+            <button type="button" class="chip ${activeTab?.structuralForecastModel === 'ensemble' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="ensemble">Calibrated Ensemble</button>
+            ${nativeModelButtons}
           </div>
           <div style="color:var(--text-muted);font-size:11px;margin-top:7px;">${isFa ? 'در هر لحظه فقط مدل انتخاب‌شده روی نمودار رسم می‌شود.' : 'Only the selected model is plotted at a time.'}</div>
         </div>
         <div class="row-between" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
           <span>${isFa ? 'افق تحلیل (تعداد کندل آینده)' : 'Analysis horizon (future bars)'}</span>
-          <div class="chip-group ltr-num">${[15,30,45,60,90,120].filter(h => activeTab?.structuralForecastModel !== 'naive_persistence' || h <= 60).map(h=>`<button type="button" class="chip ${horizon===h?'active':''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">${h}</button>`).join('')}</div>
+          <div class="chip-group ltr-num">${[15,30,45,60,90,120].filter(h => !isNativeModelSelected || h <= 60).map(h=>`<button type="button" class="chip ${horizon===h?'active':''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">${h}</button>`).join('')}</div>
         </div>
         ${activeTab?.structuralForecastModel === 'empirical_analogs' ? '' : `
         <div class="row-between" style="margin-top:12px;gap:10px;flex-wrap:wrap;">
@@ -2468,7 +2477,7 @@ document.addEventListener('click', async (e) => {
     activeTab.structuralForecastStatus = 'COMPUTING';
     savePreferences();
     renderApp();
-    if (activeTab.structuralForecastModel === 'naive_persistence') {
+    if (!['structural_wave_js', 'empirical_analogs'].includes(activeTab.structuralForecastModel || 'structural_wave_js')) {
       activeTab.forecastHorizonBars = Math.max(10, Math.min(60, hVal));
       applyNativeModelForecastToTab(activeTab, 'naive_persistence');
       saveOpenTabsToStorage();
@@ -2562,7 +2571,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
     redrawActiveCanvas();
     if (activeTab.showStructuralForecast) {
-      if (activeTab.structuralForecastModel === 'naive_persistence') {
+      if (!['structural_wave_js', 'empirical_analogs'].includes(activeTab.structuralForecastModel || 'structural_wave_js')) {
         activeTab.forecastHorizonBars = Math.max(10, Math.min(60, Number(activeTab.structuralForecastHorizonBars || 30)));
         applyNativeModelForecastToTab(activeTab, 'naive_persistence');
         saveOpenTabsToStorage();
@@ -2583,7 +2592,7 @@ document.addEventListener('click', async (e) => {
     }
   } else if (action === 'set-structural-forecast-model' && activeTab) {
     const requestedModel = String(el.getAttribute('data-model') || '');
-    activeTab.structuralForecastModel = ['empirical_analogs', 'naive_persistence'].includes(requestedModel) ? requestedModel : 'structural_wave_js';
+    activeTab.structuralForecastModel = ['structural_wave_js', 'empirical_analogs', 'ensemble'].includes(requestedModel) || defaultForecastRegistry.getPlugin(requestedModel) ? requestedModel : 'structural_wave_js';
     if (activeTab.showStructuralForecast) {
       activeTab.showStructuralForecast = false;
       clearTabStructuralForecast(activeTab);
