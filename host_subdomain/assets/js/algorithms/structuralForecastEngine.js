@@ -18,7 +18,7 @@ import { EmpiricalAnalogEngine } from '../forecast/forecastEngine.js?v=2.0.0';
  *  - Never identifies itself as Chronos-2
  */
 
-export const STRUCTURAL_FORECAST_ENGINE_ID = 'structural_wave_js_empirical_analogs_v1';
+export const STRUCTURAL_FORECAST_ENGINE_ID = 'structural_wave_js';
 export const STRUCTURAL_FORECAST_SCHEMA = 'chart_structural_forecast_v1';
 export const STRUCTURAL_FORECAST_MIN_CLOSED_BARS = 40;
 
