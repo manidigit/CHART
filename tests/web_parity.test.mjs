@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { register } from 'node:module';
+import { readFile } from 'node:fs/promises';
 
 // Register inline loader to strip browser cache-busting query strings (?v=...) during Node ESM resolution
 register(
@@ -9,6 +10,29 @@ register(
             'export async function resolve(specifier, context, nextResolve) { return nextResolve(specifier.replace(/\\?v=[0-9.]+$/, ""), context); }'
         )
 );
+
+
+test('ARCH-01: every browser module shares one canonical store.js module URL', async () => {
+    const files = [
+        '../host_subdomain/assets/js/app.js',
+        '../host_subdomain/assets/js/services/apiService.js',
+        '../host_subdomain/assets/js/services/structuralForecastService.js',
+        '../host_subdomain/assets/js/components/chartRenderer.js',
+        '../host_subdomain/assets/js/views/forecastView.js',
+        '../host_subdomain/assets/js/views/headerView.js',
+        '../host_subdomain/assets/js/views/loginView.js',
+        '../host_subdomain/assets/js/views/settingsView.js',
+        '../host_subdomain/assets/js/views/watchlistView.js',
+    ];
+    const versions = [];
+    for (const file of files) {
+        const source = await readFile(new URL(file, import.meta.url), 'utf8');
+        const match = source.match(/from\\s+['"][^'"]*core\\/store\\.js\\?v=([0-9.]+)['"]/);
+        assert.ok(match, `Missing shared store import in ${file}`);
+        versions.push(match[1]);
+    }
+    assert.deepEqual([...new Set(versions)], ['1.47.11'], 'All UI, chart, forecast and service modules must share one store singleton');
+});
 
 const memStore = new Map();
 globalThis.localStorage = {
