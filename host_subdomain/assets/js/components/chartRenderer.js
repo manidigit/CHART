@@ -312,8 +312,24 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   // Active Forecast validation (Native JS Structural Forecast prioritized; Chronos-2 preserved inactive)
   const hasValidStructuralForecast =
     Boolean(tab.showStructuralForecast) && isStructuralForecastMatchingTab(tab, tab.structuralForecast);
-  const structuralPoints = hasValidStructuralForecast ? tab.structuralForecast.forecast : [];
-  const showForecastBand = tab.showForecastBand !== false;
+  const selectedStructuralModel = String(tab.structuralForecastModel || 'structural_wave_js');
+  const isHistoricalAnalogSelected = selectedStructuralModel === 'empirical_analogs';
+  const selectedAnalogPath = isHistoricalAnalogSelected
+    ? (tab.structuralForecast?.model_paths || []).find(
+        (path) => path.model_id === 'empirical_analogs' && Array.isArray(path.points) && path.points.length > 0
+      )
+    : null;
+  const structuralPoints = hasValidStructuralForecast
+    ? (isHistoricalAnalogSelected
+        ? (selectedAnalogPath?.points || []).map((point) => ({
+            step: Number(point.step),
+            q50_median: Number(point.price),
+            q25: Number(point.price),
+            q75: Number(point.price),
+          }))
+        : tab.structuralForecast.forecast)
+    : [];
+  const showForecastBand = !isHistoricalAnalogSelected && tab.showForecastBand !== false;
 
   const hasValidChronosForecast =
     !tab.showStructuralForecast &&
@@ -366,7 +382,9 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
 
   if (hasValidStructuralForecast && offset === 0) {
-    for (const modelPath of (tab.structuralForecast.model_paths || [])) {
+    for (const modelPath of (tab.structuralForecast.model_paths || []).filter((path) =>
+      path.model_id === (isHistoricalAnalogSelected ? 'empirical_analogs' : selectedStructuralModel)
+    )) {
       for (const point of (modelPath.points || [])) {
         const price = Number(point.price);
         if (Number.isFinite(price) && price > 0) {
@@ -1208,7 +1226,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
   // NATIVE BROWSER STRUCTURAL WAVE FORECAST OVERLAY (Zero PHP exec / Zero Python / Zero Cron)
   if (tab.showStructuralForecast) {
-    const fcColor = indPal.structuralForecastPath || '#8B5CF6';
+    const fcColor = isHistoricalAnalogSelected ? '#F59E0B' : (indPal.structuralForecastPath || '#8B5CF6');
     const fcBandCol = indPal.structuralForecastBand || fcColor;
 
     if (hasValidStructuralForecast && structuralPoints.length > 0) {
@@ -1224,7 +1242,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       const originIdx = globalOriginIdx >= 0 ? globalOriginIdx - startIdx : -1;
 
       // Highlight historical Swing Highs / Lows used for structural wave calibration when visible
-      const histSwings = Array.isArray(tab.structuralForecast.swings) ? tab.structuralForecast.swings : [];
+      const histSwings = !isHistoricalAnalogSelected && Array.isArray(tab.structuralForecast.swings) ? tab.structuralForecast.swings : [];
       if (histSwings.length > 0) {
         ctx.save();
         const visibleByMs = new Map();
@@ -1350,7 +1368,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
           // 3b. First imported legacy model: Causal Historical Analogs (illustrative medoid path).
           // Draw as an independent path so the native structural projection remains visible for comparison.
-          const analogPath = (tab.structuralForecast.model_paths || []).find(
+          const analogPath = !isHistoricalAnalogSelected && (tab.structuralForecast.model_paths || []).find(
             (path) => path.model_id === 'empirical_analogs' && Array.isArray(path.points) && path.points.length > 0
           );
           if (analogPath) {
@@ -1397,7 +1415,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           ctx.fill();
 
           // Probable Turning Points (reversal nodes along future path)
-          const tps = Array.isArray(tab.structuralForecast.turning_points) ? tab.structuralForecast.turning_points : [];
+          const tps = !isHistoricalAnalogSelected && Array.isArray(tab.structuralForecast.turning_points) ? tab.structuralForecast.turning_points : [];
           for (const tp of tps) {
             const pMatch = pts.find((p) => p.step === Number(tp.step));
             if (!pMatch) continue;
@@ -1426,7 +1444,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
                 ? 'LowVol'
                 : 'NormVol';
           const gradeTag = quality.confidence_grade || 'LOW';
-          const badgeTxt = `Structural JS (+${pts.length} · ${biasShort} · ${volShort} · ${gradeTag})`;
+          const analogCount = Number((tab.structuralForecast.model_diagnostics || {}).empirical_analogs?.matched_count || 0);
+          const badgeTxt = isHistoricalAnalogSelected
+            ? `Historical Analogs (+${pts.length} · ${analogCount} matches · illustrative)`
+            : `Structural JS (+${pts.length} · ${biasShort} · ${volShort} · ${gradeTag})`;
           ctx.font = 'bold 10px "JetBrains Mono", monospace';
           const bTw = Math.min(chartW - 24, ctx.measureText(badgeTxt).width + 14);
           const bX = Math.min(chartW - bTw - 8, Math.max(8, originX + 6));
@@ -1444,7 +1465,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
           queueRightLevelLabel(
             lastPt.yQ50,
-            `Fcst ${PriceFormatter.formatPrice(lastPt.q50, tab.decimals)}`,
+            `${isHistoricalAnalogSelected ? 'Analog' : 'Fcst'} ${PriceFormatter.formatPrice(lastPt.q50, tab.decimals)}`,
             fcColor
           );
           ctx.restore();
