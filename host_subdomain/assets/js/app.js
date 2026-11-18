@@ -61,7 +61,7 @@ import {
   fetchImportBatches,
   clearChronos2TimerForTab,
 } from './services/apiService.js?v=1.47.1';
-import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.1';
+import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.4';
 import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
