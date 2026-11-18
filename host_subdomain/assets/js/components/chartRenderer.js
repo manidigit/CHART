@@ -365,6 +365,18 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
+  if (hasValidStructuralForecast && offset === 0) {
+    for (const modelPath of (tab.structuralForecast.model_paths || [])) {
+      for (const point of (modelPath.points || [])) {
+        const price = Number(point.price);
+        if (Number.isFinite(price) && price > 0) {
+          rawMin = Math.min(rawMin, price);
+          rawMax = Math.max(rawMax, price);
+        }
+      }
+    }
+  }
+
   if ((hasValidStructuralForecast || hasValidChronosForecast) && offset === 0) {
     const includeBand = hasValidStructuralForecast ? showForecastBand : showChronosBand;
     for (let i = 0; i < activeForecastPoints.length; i++) {
@@ -1335,6 +1347,48 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           ctx.moveTo(originX, originY);
           for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ50);
           ctx.stroke();
+
+          // 3b. First imported legacy model: Causal Historical Analogs (illustrative medoid path).
+          // Draw as an independent path so the native structural projection remains visible for comparison.
+          const analogPath = (tab.structuralForecast.model_paths || []).find(
+            (path) => path.model_id === 'empirical_analogs' && Array.isArray(path.points) && path.points.length > 0
+          );
+          if (analogPath) {
+            const analogByStep = new Map(analogPath.points.map((point) => [Number(point.step), Number(point.price)]));
+            const analogPts = pts
+              .map((point) => ({ x: point.x, price: analogByStep.get(point.step) }))
+              .filter((point) => Number.isFinite(point.price) && point.price > 0);
+            if (analogPts.length > 0) {
+              ctx.save();
+              ctx.strokeStyle = '#F59E0B';
+              ctx.lineWidth = 2.2;
+              ctx.lineJoin = 'round';
+              ctx.lineCap = 'round';
+              ctx.setLineDash([5, 4]);
+              ctx.beginPath();
+              ctx.moveTo(originX, originY);
+              for (const point of analogPts) ctx.lineTo(point.x, priceToY(point.price));
+              ctx.stroke();
+              ctx.setLineDash([]);
+              const analogMeta = (tab.structuralForecast.model_diagnostics || {}).empirical_analogs || {};
+              const analogLabel = `Historical Analogs · ${Number(analogMeta.matched_count || 0)} matches`;
+              ctx.font = 'bold 9.5px "JetBrains Mono", monospace';
+              const analogW = Math.min(chartW - 24, ctx.measureText(analogLabel).width + 12);
+              const analogX = Math.max(8, Math.min(chartW - analogW - 8, originX + 6));
+              const analogY = topPad + 34;
+              ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.90)' : 'rgba(255, 255, 255, 0.94)';
+              ctx.strokeStyle = 'rgba(245, 158, 11, 0.82)';
+              ctx.lineWidth = 1;
+              ctx.beginPath();
+              if (ctx.roundRect) ctx.roundRect(analogX, analogY, analogW, 17, 4);
+              else ctx.rect(analogX, analogY, analogW, 17);
+              ctx.fill();
+              ctx.stroke();
+              ctx.fillStyle = '#F59E0B';
+              ctx.fillText(analogLabel, analogX + 6, analogY + 11.5, analogW - 12);
+              ctx.restore();
+            }
+          }
 
           // Anchor point on last closed candle Close
           ctx.fillStyle = fcColor;
