@@ -719,6 +719,47 @@ function renderFallbackErrorBoundary(err) {
   `;
 }
 
+function renderForecastWorkspaceContent(activeTab) {
+  const isFa = i18n.getCurrentLanguage() === 'fa';
+  const selected = state.forecastEngineMode === 'structural' ? 'structural' : 'legacy';
+  const switcher = `
+    <div class="ci-fc-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
+      <strong style="font-size:12px;">${isFa ? 'موتور فعال:' : 'Selected engine:'}</strong>
+      <button type="button" class="chip ${selected === 'legacy' ? 'active' : ''}" data-action="set-forecast-engine" data-engine="legacy">${isFa ? 'سیستم قدیمی · Forecast Studio' : 'Legacy · Forecast Studio'}</button>
+      <button type="button" class="chip ${selected === 'structural' ? 'active' : ''}" data-action="set-forecast-engine" data-engine="structural">${isFa ? 'سیستم جدید · Structural' : 'New · Structural'}</button>
+    </div>`;
+  if (selected === 'legacy') return switcher + renderForecastStudioView(activeTab, i18n);
+  const status = activeTab?.structuralForecastStatus || 'IDLE';
+  const enabled = Boolean(activeTab?.showStructuralForecast);
+  const horizon = Number(activeTab?.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30);
+  const statusText = status === 'READY' ? (isFa ? 'آماده' : 'Ready')
+    : status === 'COMPUTING' ? (isFa ? 'در حال محاسبه' : 'Computing')
+    : status === 'INSUFFICIENT_EVIDENCE' ? (isFa ? 'شواهد ناکافی' : 'Insufficient evidence')
+    : status === 'ERROR' ? (isFa ? 'خطا' : 'Error') : (isFa ? 'اجرا نشده' : 'Not run');
+  return switcher + `
+    <section class="ci-forecast-studio" style="max-width:1100px;margin:0 auto;">
+      <div class="ci-fc-header">
+        <div class="ci-fc-title-row"><h2>${isFa ? 'موتور تحلیل ساختاری جدید' : 'New Structural Analysis Engine'}</h2><span class="ci-fc-status-badge">${statusText}</span></div>
+        <p>${isFa ? 'این موتور مستقل از Forecast Studio قدیمی است. محاسبات آن در مرورگر و بر پایه کندل‌های بسته‌شده انجام می‌شود و خروجی فقط روی چارت اصلی نمایش داده می‌شود.' : 'Independent from the legacy Forecast Studio. Runs in-browser on closed candles; its output is rendered only on the main chart.'}</p>
+      </div>
+      <div class="ci-fc-card">
+        <div class="row-between" style="gap:12px;flex-wrap:wrap;">
+          <div><strong>${activeTab?.symbolCode || '—'} · ${activeTab?.timeframe || '—'}</strong><div style="color:var(--text-muted);font-size:12px;margin-top:5px;">${isFa ? 'وضعیت موتور:' : 'Engine status:'} ${statusText}</div></div>
+          <button type="button" class="btn btn-primary" data-action="toggle-structural-forecast">${enabled ? (isFa ? 'خاموش‌کردن موتور' : 'Disable engine') : (isFa ? 'اجرای تحلیل ساختاری' : 'Run structural analysis')}</button>
+        </div>
+        <div class="row-between" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
+          <span>${isFa ? 'افق تحلیل (تعداد کندل آینده)' : 'Analysis horizon (future bars)'}</span>
+          <div class="chip-group ltr-num">${[15,30,45,60,90,120].map(h=>`<button type="button" class="chip ${horizon===h?'active':''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">${h}</button>`).join('')}</div>
+        </div>
+        <div class="row-between" style="margin-top:12px;gap:10px;flex-wrap:wrap;">
+          <span>${isFa ? 'محدوده عدم قطعیت' : 'Uncertainty band'}</span>
+          <button type="button" class="btn btn-sm ${activeTab?.showForecastBand !== false ? 'btn-primary' : ''}" data-action="toggle-forecast-band">${activeTab?.showForecastBand !== false ? (isFa ? 'فعال' : 'On') : (isFa ? 'خاموش' : 'Off')}</button>
+        </div>
+        ${activeTab?.structuralForecastError ? `<p style="color:var(--bear);margin-top:12px;">${escapeHtml(activeTab.structuralForecastError)}</p>` : ''}
+      </div>
+    </section>`;
+}
+
 export function renderApp() {
   try {
     applyTheme();
@@ -778,7 +819,7 @@ export function renderApp() {
       <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''} ${isForecastWorkspace ? 'is-forecast-view' : ''}">
         ${renderTopHeaderBar(activeTab, i18n)}
         ${isForecastWorkspace
-          ? `<main class="forecast-workspace">${renderForecastStudioView(activeTab, i18n)}</main>`
+          ? `<main class="forecast-workspace">${renderForecastWorkspaceContent(activeTab)}</main>`
           : `
             <div class="tv-main-area">
               ${renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
