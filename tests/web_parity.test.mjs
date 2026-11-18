@@ -27,7 +27,7 @@ test('ARCH-01: every browser module shares one canonical store.js module URL', a
     const versions = [];
     for (const file of files) {
         const source = await readFile(new URL(file, import.meta.url), 'utf8');
-        const match = source.match(/from\\s+['"][^'"]*core\\/store\\.js\\?v=([0-9.]+)['"]/);
+        const match = source.match(/from\s+['"][^'"]*core\/store\.js\?v=([0-9.]+)['"]/);
         assert.ok(match, `Missing shared store import in ${file}`);
         versions.push(match[1]);
     }
