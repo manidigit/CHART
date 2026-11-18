@@ -61,12 +61,12 @@ import {
   fetchImportBatches,
   clearChronos2TimerForTab,
 } from './services/apiService.js?v=1.47.2';
-import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.5';
+import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.6';
 import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.4';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.5';
 import { renderLoginScreen } from './views/loginView.js?v=1.47.2';
 import {
   renderTopHeaderBar,
