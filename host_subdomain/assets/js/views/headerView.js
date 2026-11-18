@@ -183,6 +183,9 @@ export function renderTopHeaderBar(activeTab, i18n) {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
             <span>${forecastNavLabel}</span>
           </button>
+          ${!isForecastView && Array.isArray(activeTab?.legacyForecast?.points) && activeTab.legacyForecast.points.length > 0
+            ? `<button type="button" class="tv-tool-btn ${activeTab.showFutureProjection ? 'active' : ''}" data-action="toggle-legacy-forecast-chart" title="${isFa ? 'نمایش یا مخفی‌کردن پیش‌بینی سیستم قدیمی روی چارت' : 'Toggle legacy Forecast Studio overlay'}"><span>${isFa ? 'پیش‌بینی قدیمی' : 'Legacy Forecast'}</span></button>`
+            : ''}
           <button
             type="button"
             class="tv-tool-btn ${isOverviewActive ? 'active' : ''}"
