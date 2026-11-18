@@ -760,10 +760,12 @@ function renderForecastWorkspaceContent(activeTab) {
           <span>${isFa ? 'افق تحلیل (تعداد کندل آینده)' : 'Analysis horizon (future bars)'}</span>
           <div class="chip-group ltr-num">${[15,30,45,60,90,120].map(h=>`<button type="button" class="chip ${horizon===h?'active':''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">${h}</button>`).join('')}</div>
         </div>
+        ${activeTab?.structuralForecastModel === 'empirical_analogs' ? '' : `
         <div class="row-between" style="margin-top:12px;gap:10px;flex-wrap:wrap;">
           <span>${isFa ? 'محدوده عدم قطعیت' : 'Uncertainty band'}</span>
           <button type="button" class="btn btn-sm ${activeTab?.showForecastBand !== false ? 'btn-primary' : ''}" data-action="toggle-forecast-band">${activeTab?.showForecastBand !== false ? (isFa ? 'فعال' : 'On') : (isFa ? 'خاموش' : 'Off')}</button>
-        </div>
+        </div>`}
+
         ${activeTab?.structuralForecastError ? `<p style="color:var(--bear);margin-top:12px;">${escapeHtml(activeTab.structuralForecastError)}</p>` : ''}
       </div>
     </section>`;
