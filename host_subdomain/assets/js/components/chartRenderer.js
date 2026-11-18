@@ -8,7 +8,7 @@ import {
   hexToRgba,
   isChronosForecastMatchingTab,
   isStructuralForecastMatchingTab,
-} from '../core/store.js?v=1.47.1';
+} from '../core/store.js?v=1.47.2';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
