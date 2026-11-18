@@ -748,8 +748,7 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
         assert.equal(indHtml.includes('data-action="toggle-forecast-band"'), false, 'Forecast bands must not appear as indicators');
         assert.equal(indHtml.includes('data-action="set-forecast-horizon"'), false, 'Forecast horizon must not appear as an indicator setting');
         assert.ok(indHtml.includes('RSI') || indHtml.includes('MACD'), 'Indicators modal remains dedicated to technical indicators');
-    }
-    const { renderForecastStudioView } = await import('../host_subdomain/assets/js/views/forecastView.js');
+        const { renderForecastStudioView } = await import('../host_subdomain/assets/js/views/forecastView.js');
     state.chartPreferences = { ...state.chartPreferences, forecastHorizonBars: 30 };
     const legacyForecastHtml = renderForecastStudioView(matchingTab, mockI18n);
     assert.ok(legacyForecastHtml.includes('data-action="set-forecast-horizon"'));
