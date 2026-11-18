@@ -670,4 +670,56 @@ class Phase1AlgorithmsTest {
         assertTrue(vpEia!!.isEstimated)
         assertEquals("BTCUSD_H4", UtcTimeAnchorAlgorithm.canonicalChartKey("btcusd", "h4"))
     }
+
+    @Test
+    fun deterministicIndicators_matchGoldenReferenceValues() {
+        val closes = listOf(1.0, 2.0, 3.0, 4.0)
+
+        val sma = PriceFormatterAlgorithm.computeSmaValues(closes, 2)
+        assertNull(sma[0])
+        assertEquals(1.5, sma[1]!!, 1e-9)
+        assertEquals(2.5, sma[2]!!, 1e-9)
+        assertEquals(3.5, sma[3]!!, 1e-9)
+
+        val ema = PriceFormatterAlgorithm.computeEmaValues(closes, 2)
+        assertNull(ema[0])
+        assertEquals(1.5, ema[1]!!, 1e-9)
+        assertEquals(2.5, ema[2]!!, 1e-9)
+        assertEquals(3.5, ema[3]!!, 1e-9)
+
+        // Population standard deviation: [1,2] => mean 1.5, sigma 0.5.
+        val bands = PriceFormatterAlgorithm.computeBollingerBands(closes, 2, 2.0)
+        assertNull(bands[0])
+        assertEquals(1.5, bands[1]!!.middle, 1e-9)
+        assertEquals(2.5, bands[1]!!.upper, 1e-9)
+        assertEquals(0.5, bands[1]!!.lower, 1e-9)
+        assertEquals(2.5, bands[2]!!.middle, 1e-9)
+        assertEquals(3.5, bands[2]!!.upper, 1e-9)
+        assertEquals(1.5, bands[2]!!.lower, 1e-9)
+
+        assertTrue(PriceFormatterAlgorithm.computeBollingerBands(closes, 1, 2.0).all { it == null })
+    }
+
+    @Test
+    fun atr_usesTrueRangeAndWilderSmoothing() {
+        val bars = listOf(
+            CandleValidatorAlgorithm.sanitizeAndValidate(
+                1_000L, "M15", BigDecimal("10"), BigDecimal("12"), BigDecimal("9"),
+                BigDecimal("11"), BigDecimal("1")
+            )!!,
+            CandleValidatorAlgorithm.sanitizeAndValidate(
+                901_000L, "M15", BigDecimal("11"), BigDecimal("14"), BigDecimal("10"),
+                BigDecimal("13"), BigDecimal("1")
+            )!!,
+            CandleValidatorAlgorithm.sanitizeAndValidate(
+                1_801_000L, "M15", BigDecimal("13"), BigDecimal("15"), BigDecimal("12"),
+                BigDecimal("14"), BigDecimal("1")
+            )!!
+        )
+        val atr = PriceFormatterAlgorithm.computeAtrValues(bars, 2)
+        assertNull(atr[0])
+        // TRs are 3, 4, 3. Initial ATR=(3+4)/2=3.5; Wilder update=(3.5+3)/2=3.25.
+        assertEquals(3.5, atr[1]!!, 1e-9)
+        assertEquals(3.25, atr[2]!!, 1e-9)
+    }
 }
