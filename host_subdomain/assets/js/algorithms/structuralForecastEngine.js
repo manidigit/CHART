@@ -1,6 +1,7 @@
 import { PriceFormatter } from './priceFormatter.js?v=1.47.1';
 import { TechnicalIndicators } from './technicalIndicators.js?v=1.47.1';
 import { GapDetector } from './gapDetector.js?v=1.47.1';
+import { EmpiricalAnalogEngine } from '../forecast/forecastEngine.js?v=2.0.0';
 
 /**
  * Native Browser Structural Wave Forecast Engine (JS)
@@ -17,7 +18,7 @@ import { GapDetector } from './gapDetector.js?v=1.47.1';
  *  - Never identifies itself as Chronos-2
  */
 
-export const STRUCTURAL_FORECAST_ENGINE_ID = 'structural_wave_js';
+export const STRUCTURAL_FORECAST_ENGINE_ID = 'structural_wave_js_empirical_analogs_v1';
 export const STRUCTURAL_FORECAST_SCHEMA = 'chart_structural_forecast_v1';
 export const STRUCTURAL_FORECAST_MIN_CLOSED_BARS = 40;
 
@@ -358,6 +359,8 @@ export function computeStructuralForecast({
     swings: extraQuality.swings || [],
     turning_points: [],
     forecast: [],
+    model_paths: [],
+    model_diagnostics: { empirical_analogs: { status: 'NOT_RUN', matched_count: 0, reason: 'Structural evidence unavailable.' } },
     served_from_cache: false,
     error: limitations[0] || 'Insufficient structural evidence for forecast.',
   });
@@ -643,6 +646,44 @@ export function computeStructuralForecast({
   }
   limitations.push('Structural projection reflects historical wave & volatility behavior, not certainty.');
 
+  // First legacy-model integration: Causal Historical Analogs.
+  // This produces a real historical analog close-path, rebased to the current close.
+  // It is intentionally an illustrative path, not a calibrated probability or synthetic OHLC.
+  let empiricalAnalogResult = {
+    status: 'INSUFFICIENT_EVIDENCE',
+    reason: horizon < 10 ? 'Causal Historical Analogs requires a minimum 10-bar horizon.' : 'Historical analog search was not completed.',
+    matchedCount: 0,
+    representativePaths: [],
+  };
+  if (horizon >= 10) {
+    const analogEngine = new EmpiricalAnalogEngine(24, horizon, cleanTf);
+    empiricalAnalogResult = analogEngine.projectEmpirical(
+      closedCandles,
+      { lastClose, atr14: volInfo.atrNow },
+      horizon,
+      forecast.map((point) => point.open_time_utc_ms)
+    );
+  }
+  const chosenAnalogPath =
+    (empiricalAnalogResult.representativePaths || []).find((path) => path.id === 'ANALOG_CENTER') ||
+    (empiricalAnalogResult.representativePaths || [])[0] ||
+    null;
+  const empiricalModelPaths = chosenAnalogPath && Array.isArray(chosenAnalogPath.closes)
+    ? [{
+        model_id: 'empirical_analogs',
+        path_id: chosenAnalogPath.id,
+        label: chosenAnalogPath.label,
+        illustrative_only: true,
+        matched_count: Number(empiricalAnalogResult.matchedCount || 0),
+        distance: Number(chosenAnalogPath.distance || 0),
+        points: chosenAnalogPath.closes.slice(0, horizon).map((price, index) => ({
+          step: index + 1,
+          price: Number(price),
+          open_time_utc_ms: forecast[index]?.open_time_utc_ms || 0,
+        })).filter((point) => Number.isFinite(point.price) && point.price > 0),
+      }]
+    : [];
+
   const confidenceGrade = structureClarity >= 0.56 && closedCandles.length >= 90 && gapCount <= 1 ? 'MODERATE' : 'LOW';
 
   return {
@@ -696,6 +737,16 @@ export function computeStructuralForecast({
     })),
     turning_points: turningPoints,
     forecast,
+    model_paths: empiricalModelPaths,
+    model_diagnostics: {
+      empirical_analogs: {
+        status: empiricalAnalogResult.status || 'INSUFFICIENT_EVIDENCE',
+        matched_count: Number(empiricalAnalogResult.matchedCount || 0),
+        reason: String(empiricalAnalogResult.reason || ''),
+        path_id: chosenAnalogPath?.id || '',
+        illustrative_only: true,
+      },
+    },
     served_from_cache: false,
     error: '',
   };
