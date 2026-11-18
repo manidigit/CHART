@@ -1010,6 +1010,12 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
     assert.equal(realResA.forecast.length, 30);
     assert.ok(realResA.swings.length >= 3, 'Must detect real structural swings');
     assert.ok(realResA.turning_points.length >= 2, 'Must project structured turning points (not a flat straight line)');
+    assert.equal(realResA.model_diagnostics.empirical_analogs.status, 'SUCCESS');
+    assert.ok(realResA.model_diagnostics.empirical_analogs.matched_count >= 6, 'Causal Historical Analogs must find at least six non-overlapping historical matches');
+    assert.equal(realResA.model_paths[0].model_id, 'empirical_analogs');
+    assert.equal(realResA.model_paths[0].illustrative_only, true);
+    assert.equal(realResA.model_paths[0].points.length, 30);
+    assert.equal('open' in realResA.model_paths[0].points[0] || 'high' in realResA.model_paths[0].points[0] || 'low' in realResA.model_paths[0].points[0] || 'close' in realResA.model_paths[0].points[0], false, 'Historical analog path must remain a close-only path, not fabricated OHLC');
     assert.equal(realResA.series.origin_open_time_utc_ms, lastRealOpenMs);
     assert.ok(Math.abs(realResA.series.last_closed_price - realSlice[realSlice.length - 1].close) < 1e-6);
 
@@ -1225,6 +1231,10 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
         assert.ok(
             drawTexts.some((d) => d.txt.startsWith('Structural JS (+30')),
             'Canvas must render Structural JS badge inside forecast zone'
+        );
+        assert.ok(
+            drawTexts.some((d) => d.txt.startsWith('Historical Analogs')),
+            'Canvas must render the imported Causal Historical Analogs path label'
         );
         assert.ok(
             drawTexts.some((d) => d.txt.startsWith('Fcst ')),
