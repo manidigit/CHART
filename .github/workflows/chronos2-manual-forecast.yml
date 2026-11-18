@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile scripts/chronos2_workflow_runner.py host_subdomain/scripts/chronos2_worker.py host_subdomain/scripts/sync_tvdatafeed.py
+          python -m py_compile scripts/chronos2_workflow_runner.py scripts/chronos2_ftp_transfer.py host_subdomain/scripts/chronos2_worker.py host_subdomain/scripts/sync_tvdatafeed.py
           node --input-type=module --check < host_subdomain/assets/js/services/apiService.js
 
       - name: Validate inputs and map CHART timeframe to TradingView interval
