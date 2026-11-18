@@ -66,7 +66,7 @@ import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.5';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.6';
 import { renderLoginScreen } from './views/loginView.js?v=1.47.2';
 import {
   renderTopHeaderBar,
@@ -747,6 +747,14 @@ function renderForecastWorkspaceContent(activeTab) {
         <div class="row-between" style="gap:12px;flex-wrap:wrap;">
           <div><strong>${activeTab?.symbolCode || '—'} · ${activeTab?.timeframe || '—'}</strong><div style="color:var(--text-muted);font-size:12px;margin-top:5px;">${isFa ? 'وضعیت موتور:' : 'Engine status:'} ${statusText}</div></div>
           <button type="button" class="btn btn-primary" data-action="toggle-structural-forecast">${enabled ? (isFa ? 'خاموش‌کردن موتور' : 'Disable engine') : (isFa ? 'اجرای تحلیل ساختاری' : 'Run structural analysis')}</button>
+        </div>
+        <div style="margin-top:16px;">
+          <div style="font-weight:700;font-size:12px;margin-bottom:8px;">${isFa ? 'مدل پیش‌بینی برای نمایش' : 'Forecast model to display'}</div>
+          <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="chip ${(activeTab?.structuralForecastModel || 'structural_wave_js') === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">${isFa ? 'Structural JS' : 'Structural JS'}</button>
+            <button type="button" class="chip ${activeTab?.structuralForecastModel === 'empirical_analogs' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="empirical_analogs">${isFa ? 'Historical Analogs' : 'Historical Analogs'}</button>
+          </div>
+          <div style="color:var(--text-muted);font-size:11px;margin-top:7px;">${isFa ? 'در هر لحظه فقط مدل انتخاب‌شده روی نمودار رسم می‌شود.' : 'Only the selected model is plotted at a time.'}</div>
         </div>
         <div class="row-between" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
           <span>${isFa ? 'افق تحلیل (تعداد کندل آینده)' : 'Analysis horizon (future bars)'}</span>
@@ -2518,6 +2526,12 @@ document.addEventListener('click', async (e) => {
         redrawActiveCanvas();
       });
     }
+  } else if (action === 'set-structural-forecast-model' && activeTab) {
+    const requestedModel = String(el.getAttribute('data-model') || '');
+    activeTab.structuralForecastModel = requestedModel === 'empirical_analogs' ? 'empirical_analogs' : 'structural_wave_js';
+    saveOpenTabs();
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'toggle-forecast-band' && activeTab) {
     const nextBand = activeTab.showForecastBand === false;
     activeTab.showForecastBand = nextBand;
