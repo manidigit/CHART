@@ -5,7 +5,7 @@ import {
   getIndicatorColorPalette,
   UNIVERSAL_COLOR_PALETTE,
   DEFAULT_INDICATOR_COLORS,
-} from '../core/store.js?v=1.47.1';
+} from '../core/store.js?v=1.47.2';
 import { renderSymbolBadge } from './watchlistView.js?v=1.47.1';
 
 export function renderTopHeaderBar(activeTab, i18n) {
