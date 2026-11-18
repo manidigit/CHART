@@ -8,7 +8,7 @@ import {
   computeStructuralForecast,
   computeClosedCandlesDigest,
   STRUCTURAL_FORECAST_ENGINE_ID,
-} from '../algorithms/structuralForecastEngine.js?v=1.47.1';
+} from '../algorithms/structuralForecastEngine.js?v=1.47.2';
 
 const _structuralForecastMemoryCache = new Map();
 let _workerInstance = null;
@@ -49,7 +49,7 @@ function runInBrowserWorkerOrInline(params) {
     try {
       if (!_workerInstance) {
         _workerInstance = new Worker(
-          new URL('../workers/structuralForecastWorker.js?v=1.47.1', import.meta.url),
+          new URL('../workers/structuralForecastWorker.js?v=1.47.2', import.meta.url),
           { type: 'module' }
         );
       }
