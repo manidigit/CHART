@@ -1328,6 +1328,6 @@ test('FORECAST-MODEL-SELECTION-01: new Structural selector exposes registry mode
   const storeSource = await readFile(new URL('../host_subdomain/assets/js/core/store.js', import.meta.url), 'utf8');
   assert.ok(appSource.includes('const nativeModelChoices = defaultForecastRegistry.list()'));
   assert.ok(appSource.includes('const nativeModelButtons = nativeModelChoices.map'));
-  assert.ok(appSource.includes('applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel)') || appSource.includes("applyNativeModelForecastToTab(activeTab, 'naive_persistence')"));
+  assert.ok(appSource.includes('applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel)'), 'Selected registry model ID must reach the adapter unchanged');
   assert.ok(storeSource.includes("String(params.model_id || '') !== String(tab.structuralForecastModel || 'naive_persistence')"));
 });
