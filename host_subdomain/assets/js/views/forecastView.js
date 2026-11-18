@@ -498,6 +498,17 @@ export function renderForecastStudioView(activeTab, i18n) {
   const built = buildForecastForTab(activeTab);
   const fc = built ? built.result : null;
   state._lastForecastResult = fc;
+  if (activeTab) {
+    activeTab.legacyForecast = fc;
+    const last = Array.isArray(activeTab.candles) && activeTab.candles.length ? activeTab.candles[activeTab.candles.length - 1] : null;
+    activeTab.legacyForecastMeta = {
+      symbolCode: String(activeTab.symbolCode || '').toUpperCase(),
+      provider: String(activeTab.provider || 'tvdatafeed').toLowerCase(),
+      timeframe: String(activeTab.timeframe || 'M15').toUpperCase(),
+      lastCandleOpenMs: Number(last?.open_time_utc_ms || 0),
+      lastCandleClose: Number(last?.close || 0),
+    };
+  }
   const horizons = [10, 15, 20, 30, 45, 60];
   const horizonButtons = horizons
     .map(
@@ -613,6 +624,9 @@ export function renderForecastStudioView(activeTab, i18n) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
               ${isFa ? 'ثبت در دفتر محلی' : 'Record Local Snapshot'}
+            </button>
+            <button type="button" class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary' : ''}" data-action="apply-forecast-to-chart" ${!Array.isArray(fc?.points) || fc.points.length === 0 ? 'disabled' : ''}>
+              ${activeTab?.showFutureProjection ? (isFa ? '✓ پیش‌بینی روی چارت فعال است' : '✓ Forecast on Chart') : (isFa ? 'نمایش سیستم قدیمی روی چارت' : 'Show Legacy Forecast on Chart')}
             </button>
           </div>
         </div>
