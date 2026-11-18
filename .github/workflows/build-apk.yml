@@ -6,6 +6,10 @@ on:
     branches:
       - main
 
+concurrency:
+  group: chart-main-build-and-deploy
+  cancel-in-progress: false
+
 jobs:
   build-android-apk:
     name: Build Android APK
