@@ -360,7 +360,7 @@
 - Android Debug APK artifact: ساخته و بارگذاری شد؛ Build و Unit/Robolectric Tests موفق.
 - cPanel deployment: پاسخ ok=true؛ تعداد 123 فایل منتشر شد؛ snapshot با شناسه snapshot_20261118_230019 ثبت شد.
 - Seed داده‌های tvdatafeed در همان اجرای deploy: تعداد 42,294 کندل.
-- Build و Android Unit/Robolectric Tests مستقل از تست وب هستند و باید جداگانه در همان Workflow نتیجه نهایی بگیرند.
+- Build و Android Unit/Robolectric Tests نیز در Workflow `44416660390` موفق شدند و APK artifact بارگذاری شد.
 - Deploy فوق مربوط به نسخه‌ای است که پایلوت Native را در UI موتور Structural در دسترس قرار می‌دهد؛ تأیید اجرای واقعی روی مرورگر کاربر همچنان نیازمند بازکردن سایت و آزمون دستی انتخاب/اجرا/تغییر افق/تعویض تب است.
 
 ### 12.4. محدودیت و مرز پذیرش
@@ -373,17 +373,17 @@ Legacy Forecast Studio، موتور Structural JS و Historical Analogs حذف �
 
 | Gate | وضعیت |
 |---|---|
-| Adapter برای trajectory واقعی Naive Persistence | انجام شد |
-| گزینه مستقل در UI موتور جدید | انجام شد |
+| Adapter عمومی برای trajectory مدل‌های رجیستری Native | انجام شد؛ Naive Persistence پایلوت اولیه بود |
+| انتخاب‌گر مستقل 10 مدل رجیستری + Ensemble + Structural JS + Historical Analogs | انجام شد |
 | اجرای دستی و تغییر افق | پیاده‌سازی شد |
 | جلوگیری از overlay موازی | حفظ شد |
 | تطبیق سری و invalidation | پیاده‌سازی شد |
 | ذخیره انتخاب مدل در سطح تب | انجام شد |
-| تست وب | 15/15 موفق |
+| تست وب | 16/16 موفق |
 | انتشار Web روی cPanel | تأیید شد |
-| تست نهایی Android Workflow | در اجرای کامل قبلی موفق؛ اجرای جاری پس از تغییر OOS در حال اجرا |
+| Build و Android Unit/Robolectric Tests | موفق در Workflow 44416660390 |
 | تست دستی روی مرورگر Production | نیازمند تأیید کاربر |
-| مهاجرت مدل‌های بعدی | در صف؛ پس از پذیرش پایلوت |
+| OOS per-model diagnostics | متصل به Adapter؛ status هر مدل مستقل نمایش داده می‌شود |
 
 ## 12.6. گسترش انتخاب‌گر به کل رجیستری و اتصال OOS per-model — 2026-11-18
 
