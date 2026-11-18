@@ -754,6 +754,7 @@ function renderForecastWorkspaceContent(activeTab) {
           <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
             <button type="button" class="chip ${(activeTab?.structuralForecastModel || 'structural_wave_js') === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">${isFa ? 'Structural JS' : 'Structural JS'}</button>
             <button type="button" class="chip ${activeTab?.structuralForecastModel === 'empirical_analogs' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="empirical_analogs">${isFa ? 'Historical Analogs' : 'Historical Analogs'}</button>
+            <button type="button" class="chip ${activeTab?.structuralForecastModel === 'naive_persistence' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="naive_persistence">Naive Persistence · Pilot</button>
           </div>
           <div style="color:var(--text-muted);font-size:11px;margin-top:7px;">${isFa ? 'در هر لحظه فقط مدل انتخاب‌شده روی نمودار رسم می‌شود.' : 'Only the selected model is plotted at a time.'}</div>
         </div>
@@ -2519,21 +2520,47 @@ document.addEventListener('click', async (e) => {
     renderApp();
     redrawActiveCanvas();
     if (activeTab.showStructuralForecast) {
-      requestStructuralForecastForTab(activeTab, () => {
+      if (activeTab.structuralForecastModel === 'naive_persistence') {
+        const built = buildForecastForTab(activeTab);
+        const trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === 'naive_persistence');
+        const candles = Array.isArray(activeTab.candles) ? activeTab.candles : [];
+        const lastClosed = [...candles].reverse().find((c) => { const ms = Number(c?.open_time_utc_ms || 0); return ms > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(ms, activeTab.timeframe || 'M15', Date.now(), activeTab.symbolCode || 'XAUUSD'); });
+        const adapted = adaptNativeModelTrajectory(trajectory, { symbolCode: activeTab.symbolCode, provider: activeTab.provider, timeframe: activeTab.timeframe, horizonBars: built?.result?.horizonBars, originOpenTimeUtcMs: lastClosed?.open_time_utc_ms, lastClosedPrice: lastClosed?.close, forecastStatus: built?.result?.status, inputHash: built?.result?.inputHash });
+        if (!adapted) {
+          activeTab.showStructuralForecast = false;
+          activeTab.structuralForecastStatus = 'INSUFFICIENT_EVIDENCE';
+          activeTab.structuralForecastError = 'Naive Persistence has no complete trajectory for the current closed-candle series.';
+        } else {
+          activeTab.forecastHorizonBars = built.result.horizonBars;
+          activeTab.structuralForecastHorizonBars = built.result.horizonBars;
+          activeTab.structuralForecast = adapted;
+          activeTab.structuralForecastStatus = 'READY';
+          activeTab.structuralForecastError = '';
+        }
+        saveOpenTabsToStorage();
         renderApp();
         redrawActiveCanvas();
-      }).catch((err) => {
-        activeTab.structuralForecast = null;
-        activeTab.structuralForecastStatus = 'ERROR';
-        activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
-        renderApp();
-        redrawActiveCanvas();
-      });
+      } else {
+        requestStructuralForecastForTab(activeTab, () => {
+          renderApp();
+          redrawActiveCanvas();
+        }).catch((err) => {
+          activeTab.structuralForecast = null;
+          activeTab.structuralForecastStatus = 'ERROR';
+          activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
+          renderApp();
+          redrawActiveCanvas();
+        });
+      }
     }
   } else if (action === 'set-structural-forecast-model' && activeTab) {
     const requestedModel = String(el.getAttribute('data-model') || '');
-    activeTab.structuralForecastModel = requestedModel === 'empirical_analogs' ? 'empirical_analogs' : 'structural_wave_js';
-    saveOpenTabs();
+    activeTab.structuralForecastModel = ['empirical_analogs', 'naive_persistence'].includes(requestedModel) ? requestedModel : 'structural_wave_js';
+    if (activeTab.showStructuralForecast) {
+      activeTab.showStructuralForecast = false;
+      clearTabStructuralForecast(activeTab);
+    }
+    saveOpenTabsToStorage();
     renderApp();
     redrawActiveCanvas();
   } else if (action === 'toggle-forecast-band' && activeTab) {
