@@ -130,6 +130,7 @@ export const DEFAULT_PREFS = {
   showForecastBand: true,
   forecastRenderMode: 'FAN_CHART',
   forecastHorizonBars: 30,
+  structuralForecastHorizonBars: 30,
   forecastPluginConfig: null,
   forecastWorkerUrl: '',
   selectedForecastModelId: 'AUTO',
