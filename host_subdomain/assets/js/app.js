@@ -80,6 +80,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.1';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.1';
+import { renderForecastStudioView, renderForecastStudioFanCanvas } from './views/forecastView.js?v=2.0.1';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -744,10 +745,10 @@ export function renderApp() {
       reconcileTabChronosStateOnRender(activeTab);
     }
 
-    state.activeWorkspaceView = 'chart';
+    const isForecastWorkspace = state.activeWorkspaceView === 'forecast';
     if (typeof document !== 'undefined') {
-      document.documentElement?.classList?.remove('is-forecast-scroll');
-      document.body?.classList?.remove('is-forecast-scroll');
+      document.documentElement?.classList?.toggle('is-forecast-scroll', isForecastWorkspace);
+      document.body?.classList?.toggle('is-forecast-scroll', isForecastWorkspace);
     }
 
     const scrollPositions = {};
@@ -773,34 +774,46 @@ export function renderApp() {
     });
 
     root.innerHTML = `
-      <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''}">
+      <div class="tv-app-shell ${state.isFullscreen ? 'is-fullscreen' : ''} ${isForecastWorkspace ? 'is-forecast-view' : ''}">
         ${renderTopHeaderBar(activeTab, i18n)}
-
-        <div class="tv-main-area">
-          ${renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
-
-          <main class="chart-workspace">
-            <div class="chart-canvas-box">
-              ${renderOhlcvOverlay(activeTab)}
-              <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
+        ${isForecastWorkspace
+          ? `<main class="forecast-workspace">${renderForecastStudioView(activeTab, i18n)}</main>`
+          : `
+            <div class="tv-main-area">
+              ${renderLeftToolRail(activeTab, i18n, state.activeRailPopup)}
+              <main class="chart-workspace">
+                <div class="chart-canvas-box">
+                  ${renderOhlcvOverlay(activeTab)}
+                  <canvas id="main-chart-canvas" class="chart-canvas"></canvas>
+                </div>
+                ${renderBottomChartBar(activeTab, i18n)}
+              </main>
+              ${renderRightSplitPanel(activeTab, i18n)}
             </div>
-            ${renderBottomChartBar(activeTab, i18n)}
-          </main>
-          ${renderRightSplitPanel(activeTab, i18n)}
-        </div>
-
+          `}
         ${renderSettingsModal(i18n)}
-        ${renderIndicatorsModal(activeTab, i18n)}
+        ${isForecastWorkspace ? '' : renderIndicatorsModal(activeTab, i18n)}
         ${renderSymbolOverviewModal(i18n)}
         ${renderAddSymbolModal()}
-        ${renderMobileBottomSheet(activeTab, state.mobileSheet, i18n)}
+        ${isForecastWorkspace ? '' : renderMobileBottomSheet(activeTab, state.mobileSheet, i18n)}
       </div>
     `;
 
     bindSettingsForms();
-    bindPanelResizers();
-    bindCanvasEvents(activeTab);
-    redrawActiveCanvas();
+    if (isForecastWorkspace) {
+      renderForecastStudioFanCanvas(
+        document.getElementById('forecast-studio-canvas'),
+        activeTab?.candles || [],
+        state._lastForecastResult || null,
+        Number(activeTab?.decimals || 2),
+        document.documentElement.getAttribute('data-theme') !== 'light',
+        state.forecastCoordView || 'independent'
+      );
+    } else {
+      bindPanelResizers();
+      bindCanvasEvents(activeTab);
+      redrawActiveCanvas();
+    }
 
     scrollSelectors.forEach((sel) => {
       const element = document.querySelector(sel);
