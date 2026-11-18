@@ -354,14 +354,22 @@ object PriceFormatterAlgorithm {
                 lossSum += loss
                 avgGain = gainSum / period.toDouble()
                 avgLoss = lossSum / period.toDouble()
-                val rs = if (avgLoss == 0.0) 100.0 else avgGain / avgLoss
-                val rsi = if (avgLoss == 0.0) 100.0 else 100.0 - (100.0 / (1.0 + rs))
+                val rsi = when {
+                    avgGain == 0.0 && avgLoss == 0.0 -> 50.0
+                    avgLoss == 0.0 -> 100.0
+                    avgGain == 0.0 -> 0.0
+                    else -> 100.0 - (100.0 / (1.0 + avgGain / avgLoss))
+                }
                 result.add(rsi.coerceIn(0.0, 100.0))
             } else {
                 avgGain = (avgGain * (period - 1) + gain) / period.toDouble()
                 avgLoss = (avgLoss * (period - 1) + loss) / period.toDouble()
-                val rs = if (avgLoss == 0.0) 100.0 else avgGain / avgLoss
-                val rsi = if (avgLoss == 0.0) 100.0 else 100.0 - (100.0 / (1.0 + rs))
+                val rsi = when {
+                    avgGain == 0.0 && avgLoss == 0.0 -> 50.0
+                    avgLoss == 0.0 -> 100.0
+                    avgGain == 0.0 -> 0.0
+                    else -> 100.0 - (100.0 / (1.0 + avgGain / avgLoss))
+                }
                 result.add(rsi.coerceIn(0.0, 100.0))
             }
         }
