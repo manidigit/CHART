@@ -1248,7 +1248,7 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
 
         // Selecting Historical Analogs must replace (not overlay) the Structural JS path.
         drawTexts.length = 0;
-        const analogCanvasTab = { ...renderTab, structuralForecastModel: 'empirical_analogs', hoverIndex: null };
+        const analogCanvasTab = { ...renderTab, structuralForecastModel: 'empirical_analogs', hoverIndex: 48 };
         renderCandlestickCanvas(mockCanvas, analogCanvasTab, { getCurrentLanguage: () => 'en', t: (k) => k });
         assert.ok(
             drawTexts.some((d) => d.txt.startsWith('Historical Analogs (+30')),
@@ -1262,6 +1262,10 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
         assert.ok(
             drawTexts.some((d) => d.txt.startsWith('Analog ')),
             'Right axis must identify the selected analog forecast price'
+        );
+        assert.ok(
+            drawTexts.some((d) => d.txt.startsWith('Historical Analogs (+1)') && d.txt.includes('Illustrative')),
+            'Future crosshair tooltip must identify the selected analog path as illustrative'
         );
 
         // When status is ERROR without valid forecast, no future horizon slots are stranded blank & limitation banner is shown
