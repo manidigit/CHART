@@ -721,7 +721,7 @@ function renderFallbackErrorBoundary(err) {
 
 function renderForecastWorkspaceContent(activeTab) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
-  const selected = state.forecastEngineMode === 'structural' ? 'structural' : 'legacy';
+  const selected = (state.chartPreferences.forecastEngineMode || state.forecastEngineMode) === 'structural' ? 'structural' : 'legacy';
   const switcher = `
     <div class="ci-fc-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
       <strong style="font-size:12px;">${isFa ? 'موتور فعال:' : 'Selected engine:'}</strong>
@@ -2383,6 +2383,8 @@ document.addEventListener('click', async (e) => {
     redrawActiveCanvas();
   } else if (action === 'set-forecast-engine') {
     state.forecastEngineMode = el.getAttribute('data-engine') === 'structural' ? 'structural' : 'legacy';
+    state.chartPreferences.forecastEngineMode = state.forecastEngineMode;
+    savePreferences();
     renderApp();
   } else if (action === 'set-structural-forecast-horizon' && activeTab) {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
