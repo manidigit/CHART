@@ -2479,7 +2479,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
     if (!['structural_wave_js', 'empirical_analogs'].includes(activeTab.structuralForecastModel || 'structural_wave_js')) {
       activeTab.forecastHorizonBars = Math.max(10, Math.min(60, hVal));
-      applyNativeModelForecastToTab(activeTab, 'naive_persistence');
+      applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel);
       saveOpenTabsToStorage();
       renderApp();
       redrawActiveCanvas();
@@ -2573,7 +2573,7 @@ document.addEventListener('click', async (e) => {
     if (activeTab.showStructuralForecast) {
       if (!['structural_wave_js', 'empirical_analogs'].includes(activeTab.structuralForecastModel || 'structural_wave_js')) {
         activeTab.forecastHorizonBars = Math.max(10, Math.min(60, Number(activeTab.structuralForecastHorizonBars || 30)));
-        applyNativeModelForecastToTab(activeTab, 'naive_persistence');
+        applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel);
         saveOpenTabsToStorage();
         renderApp();
         redrawActiveCanvas();
