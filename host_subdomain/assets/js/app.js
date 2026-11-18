@@ -760,7 +760,7 @@ function renderForecastWorkspaceContent(activeTab) {
         </div>
         <div class="row-between" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
           <span>${isFa ? 'افق تحلیل (تعداد کندل آینده)' : 'Analysis horizon (future bars)'}</span>
-          <div class="chip-group ltr-num">${[15,30,45,60,90,120].map(h=>`<button type="button" class="chip ${horizon===h?'active':''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">${h}</button>`).join('')}</div>
+          <div class="chip-group ltr-num">${[15,30,45,60,90,120].filter(h => activeTab?.structuralForecastModel !== 'naive_persistence' || h <= 60).map(h=>`<button type="button" class="chip ${horizon===h?'active':''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">${h}</button>`).join('')}</div>
         </div>
         ${activeTab?.structuralForecastModel === 'empirical_analogs' ? '' : `
         <div class="row-between" style="margin-top:12px;gap:10px;flex-wrap:wrap;">
@@ -2521,6 +2521,7 @@ document.addEventListener('click', async (e) => {
     redrawActiveCanvas();
     if (activeTab.showStructuralForecast) {
       if (activeTab.structuralForecastModel === 'naive_persistence') {
+        activeTab.forecastHorizonBars = Math.max(10, Math.min(60, Number(activeTab.structuralForecastHorizonBars || 30)));
         const built = buildForecastForTab(activeTab);
         const trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === 'naive_persistence');
         const candles = Array.isArray(activeTab.candles) ? activeTab.candles : [];
