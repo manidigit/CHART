@@ -754,6 +754,7 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     assert.ok(legacyForecastHtml.includes('data-action="set-forecast-horizon"'));
     assert.ok(legacyForecastHtml.includes('data-action="set-forecast-render-mode"'));
     assert.ok(legacyForecastHtml.includes('data-action="set-forecast-subtab"'));
+    assert.ok(legacyForecastHtml.includes('data-action="apply-forecast-to-chart"'), 'Legacy Forecast Studio must expose its apply-to-chart action');
     } finally {
         state.activeModal = prevModal;
         state.activeIndicatorCategory = prevCat;
@@ -1093,6 +1094,9 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
     assert.equal(firstSvc.served_from_cache, false);
     assert.equal(testTab.structuralForecastStatus, 'READY');
     assert.equal(isStructuralForecastMatchingTab(testTab, testTab.structuralForecast), true);
+    // Structural horizon is independent: changing the legacy Forecast Studio horizon must not stale this result.
+    const legacyHorizonChangedTab = { ...testTab, forecastHorizonBars: 10 };
+    assert.equal(isStructuralForecastMatchingTab(legacyHorizonChangedTab, testTab.structuralForecast), true);
 
     // Subsequent click on same closed series hits in-memory cache cleanly
     testTab.structuralForecast = null;
