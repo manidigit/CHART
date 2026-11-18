@@ -72,7 +72,7 @@ import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.47.1';
+} from './views/headerView.js?v=1.47.3';
 import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.1';
 import {
   renderRightSplitPanel,
