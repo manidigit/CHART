@@ -1,4 +1,4 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.43.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
 import {
   RENDER_MODES,
   FORECAST_STATUS,
@@ -12,12 +12,12 @@ import {
   normalizeRenderMode,
   clampHorizonBars,
 } from '../forecast/forecastContract.js?v=2.0.0';
-import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=2.0.0';
-import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=2.0.0';
+import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=2.0.1';
+import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=2.0.1';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=2.0.0';
 import { ForecastWorkerClient } from '../forecast/forecastWorkerClient.js?v=2.0.0';
 import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.11';
-import { renderSymbolBadge } from './watchlistView.js?v=1.43.0';
+import { renderSymbolBadge } from './watchlistView.js?v=1.47.2';
 
 const MODEL_OVERLAY_COLORS = {
   empirical_analogs: '#F59E0B',
