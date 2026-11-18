@@ -249,3 +249,78 @@
 - تعیین قرارداد خروجی مشترک شامل Close path، quantiles، OHLC واقعی، scenarios و metadata.
 - تعیین دقیق مدل‌های چهارگانه‌ای که کاربر در نسخه جدید دیده است و تطبیق آن‌ها با شناسه‌های موجود.
 - افزودن تست رگرسیون برای عدم نمایش هم‌زمان Legacy/Structural/Chronos مگر در حالت Compare صریح.
+
+
+## 11. ممیزی مسیر انتخاب و رسم مدل‌ها — 2026-11-18 (بازبینی دوم)
+
+این بخش نتیجه ردیابی توابع واقعی از UI تا چارت است و جایگزین فرض‌های اولیه درباره «انتقال چهار مدل» می‌شود.
+
+### 11.1. مسیر واقعی Legacy Forecast تا چارت
+
+1. `renderForecastStudioView()` در `forecastView.js` تابع `buildForecastForTab(activeTab)` را فراخوانی می‌کند.
+2. `buildForecastForTab()` از `ForecastEngine.project()` استفاده می‌کند و `selectedForecastModelId` را از state تب/تنظیمات می‌خواند.
+3. `ForecastEngine.project()` برای مدل‌های فعال `modelTrajectories[]` می‌سازد؛ هر trajectory شامل `modelId`، وضعیت، metadata و نقاط کوانتایلی q10..q90 است.
+4. `selectOosChartWinner()` مدل منتخب را با توجه به درخواست کاربر و وضعیت ارزیابی OOS تعیین می‌کند؛ `selectedChartModelId` و `points` نهایی در نتیجه ثبت می‌شوند.
+5. `renderForecastStudioView()` نتیجه را در `activeTab.legacyForecast` و مشخصات نماد/منبع/تایم‌فریم/آخرین کندل را در `legacyForecastMeta` قرار می‌دهد.
+6. دکمه `apply-forecast-to-chart` فقط نمایش همان نتیجه را فعال می‌کند و مسیرهای Structural و Chronos را خاموش می‌کند.
+7. `chartRenderer.js` مسیر `legacyForecast` را فقط در صورت تطبیق metadata و وضعیت `VALID` یا `PROVISIONAL` می‌پذیرد و q10/q50/q90 را برای مقیاس و رسم به کار می‌برد.
+
+پس Legacy Forecast صرفاً یک صفحه قدیمی نیست؛ از طریق `chartRenderer.js` همین نمودار اصلی را تغذیه می‌کند. مهاجرت درست باید این pipeline را به مدل/Renderer مقصد منتقل کند، نه اینکه تنها UI را جابه‌جا کند.
+
+### 11.2. آنچه واقعاً در انتخاب‌گر مدل قابل انتخاب است
+
+انتخاب‌گر دستی فعلی در `forecastView.js` این شناسه‌ها را دارد:
+- `AUTO`
+- `native_arima_diff`
+- `native_prophet_decomp`
+- `native_seq_recurrent_approx`
+- `native_quantile_attention_approx`
+- `empirical_analogs`
+- `naive_persistence`
+- `ensemble`
+- به‌علاوه مدل‌های `py_*` که واقعاً در خروجی Worker دریافت شوند.
+
+بنابراین وجود ده پلاگین در رجیستری به معنی وجود ده انتخاب دستی در UI نیست. شناسه‌های `historical_drift`، `kalman_momentum`، `garch_volatility`، `arima_ets` و `gaussian_process` در فهرست انتخاب دستی فعلی دیده نمی‌شوند؛ ممکن است در محاسبه/مقایسه/وزن‌دهی حضور داشته باشند، اما مسیر انتخاب مستقیم آن‌ها باید جداگانه تصمیم‌گیری شود.
+
+### 11.3. تفاوت مهم وضعیت پیش‌بینی و قابلیت رسم
+
+- Forecast Engine می‌تواند `INSUFFICIENT_EVIDENCE` برگرداند، در حالی که داده‌های مدل/trajectory ممکن است وجود داشته باشند.
+- Renderer مسیر Legacy در حال حاضر فقط `VALID` و `PROVISIONAL` را برای رسم می‌پذیرد.
+- این رفتار باید در طراحی قرارداد جدید آگاهانه حفظ یا بازتعریف شود؛ نباید صرف وجود نقاط، وضعیت ناکافی را به پیش‌بینی معتبر تبدیل کنیم.
+- در Structural JS نیز `model_paths` و `forecast` دو سطح خروجی متفاوت‌اند. مسیر Historical Analogs فقط در حالت انتخاب آن مدل رسم می‌شود و به OHLC ساختگی تبدیل نمی‌شود.
+
+### 11.4. تصمیم اجرایی پایلوت — پیش از گسترش به همه مدل‌ها
+
+**پایلوت انتقال باید ابتدا روی مسیر `naive_persistence` انجام شود، اما الگوریتم آن بازنویسی نشود.**
+
+دامنه پایلوت:
+1. استفاده از خروجی واقعی `modelTrajectories.find(modelId === 'naive_persistence')` در Forecast Engine موجود.
+2. ساخت Adapter مستقل که metadata سری، زمان‌های آینده، نقاط q10/q25/q50/q75/q90، وضعیت اجرا، شناسه و نسخه مدل را به قرارداد مقصد نگاشت کند.
+3. اتصال Adapter به انتخاب‌گر سیستم جدید به‌صورت گزینه مستقل و ذخیره انتخاب در سطح تب؛ بدون تغییر انتخاب‌گر Legacy.
+4. نمایش فقط مدل منتخب؛ خاموش‌بودن مدل‌های دیگر به‌صورت پیش‌فرض و Compare فقط با اقدام صریح کاربر.
+5. عدم ساخت OHLC مصنوعی؛ خروجی پایلوت به‌صورت مسیر میانی و باند کوانتایلی نمایش داده شود.
+6. حفظ کنترل تطبیق نماد، منبع داده، تایم‌فریم، آخرین کندل بسته و invalidation؛ خروجی stale نباید رسم شود.
+7. تست‌های واحد برای Adapter، تست integration برای تغییر مدل/تب/سری، و تست Canvas برای عدم overlay ناخواسته.
+8. اجرای Walk-forward/OOS موجود برای بررسی کیفیت مدل؛ تست رندر فقط کیفیت نمایش را پوشش می‌دهد.
+
+### 11.5. Gate قبل از پیاده‌سازی پایلوت
+
+- باید قرارداد schema فعلی Structural و تابع `isStructuralForecastMatchingTab()` به‌طور کامل بررسی شوند.
+- باید روشن شود آیا مقصد درست، توسعه قرارداد Structural است یا یک قرارداد عمومی `forecastModelResult` که Structural، Chronos و Native Statistical را به‌عنوان capabilityهای متفاوت پشتیبانی کند.
+- مسیر state تب و ذخیره‌سازی آن باید با `saveOpenTabs()` و `chartPreferences` سازگار باشد.
+- تست موجود `tests/web_parity.test.mjs` باید توسعه یابد تا انتخاب مدل، سری/تب و عدم نمایش هم‌زمان را پوشش دهد.
+- تا پیش از عبور این Gate، هیچ کد Legacy حذف/غیرفعال نشود.
+
+### 11.6. وضعیت ممیزی دوم
+
+| مورد | نتیجه |
+|---|---|
+| زنجیره Forecast Studio → ForecastEngine → modelTrajectories → legacyForecast → chartRenderer | ردیابی شد |
+| مسیر ذخیره metadata برای تطبیق سری | ردیابی شد |
+| رفتار دکمه Apply روی چارت | ردیابی شد |
+| شناسه‌های قابل انتخاب دستی در UI | استخراج شد |
+| تفاوت status پیش‌بینی با مجازبودن رسم | شناسایی شد |
+| مقصد دقیق Adapter و قرارداد نهایی | نیازمند بررسی schema و تست |
+| پیاده‌سازی پایلوت | هنوز انجام نشده |
+| خاموش‌سازی مدل/مسیر قدیمی | انجام نشده |
+
