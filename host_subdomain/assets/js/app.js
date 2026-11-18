@@ -38,7 +38,7 @@ import {
   clearTabStructuralForecast,
   invalidateTabStructuralForecastIfStale,
   reconcileTabStructuralForecastOnRender,
-} from './core/store.js?v=1.47.11';
+} from './core/store.js?v=1.47.12';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -66,7 +66,7 @@ import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.8';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.9';
 import { renderLoginScreen } from './views/loginView.js?v=1.47.2';
 import {
   renderTopHeaderBar,
@@ -81,7 +81,7 @@ import {
 } from './views/watchlistView.js?v=1.47.2';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
 import { renderForecastStudioView, renderForecastStudioFanCanvas, buildForecastForTab } from './views/forecastView.js?v=2.0.6';
-import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.1';
+import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.2';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
 
