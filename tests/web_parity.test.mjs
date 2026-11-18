@@ -48,6 +48,20 @@ const { renderSettingsModal } = await import('../host_subdomain/assets/js/views/
 const { renderSymbolOverviewModal, getAssetBadge, SYMBOL_CATALOG_BADGES } = await import('../host_subdomain/assets/js/views/watchlistView.js');
 const { syncSymbolNow } = await import('../host_subdomain/assets/js/services/apiService.js');
 
+test('IND-01: RSI returns neutral for flat prices and extremes for one-sided movement', () => {
+    const candles = (closes) => closes.map((close, i) => ({
+        open_time_utc_ms: Date.UTC(2026, 0, 1) + i * 60_000,
+        open: close,
+        high: close,
+        low: close,
+        close,
+        volume: 1
+    }));
+    assert.equal(TechnicalIndicators.computeRsi(candles([10, 10, 10]), 2)[2], 50);
+    assert.equal(TechnicalIndicators.computeRsi(candles([10, 11, 12]), 2)[2], 100);
+    assert.equal(TechnicalIndicators.computeRsi(candles([12, 11, 10]), 2)[2], 0);
+});
+
 test('PAR-01: resolvePriceBasis returns CFD Feed for SPOTBRENT on tvdatafeed', () => {
     assert.equal(resolvePriceBasis('SPOTBRENT', 'tvdatafeed'), 'CFD Feed');
     assert.equal(resolvePriceBasis('SPOTBRENT', 'yahoo_finance'), 'Futures Ref');
