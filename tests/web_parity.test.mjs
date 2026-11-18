@@ -1232,9 +1232,10 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
             drawTexts.some((d) => d.txt.startsWith('Structural JS (+30')),
             'Canvas must render Structural JS badge inside forecast zone'
         );
-        assert.ok(
+        assert.equal(
             drawTexts.some((d) => d.txt.startsWith('Historical Analogs')),
-            'Canvas must render the imported Causal Historical Analogs path label'
+            false,
+            'Default Structural JS selection must not overlay Historical Analogs'
         );
         assert.ok(
             drawTexts.some((d) => d.txt.startsWith('Fcst ')),
@@ -1243,6 +1244,24 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
         assert.ok(
             drawTexts.some((d) => d.txt.startsWith('Structural JS (+1) · Path:')),
             'Crosshair hover over future forecast slots must render Structural JS tooltip'
+        );
+
+        // Selecting Historical Analogs must replace (not overlay) the Structural JS path.
+        drawTexts.length = 0;
+        const analogCanvasTab = { ...renderTab, structuralForecastModel: 'empirical_analogs', hoverIndex: null };
+        renderCandlestickCanvas(mockCanvas, analogCanvasTab, { getCurrentLanguage: () => 'en', t: (k) => k });
+        assert.ok(
+            drawTexts.some((d) => d.txt.startsWith('Historical Analogs (+30')),
+            'Canvas must render the selected Historical Analogs model badge'
+        );
+        assert.equal(
+            drawTexts.some((d) => d.txt.startsWith('Structural JS (+30')),
+            false,
+            'Historical Analogs selection must hide the Structural JS forecast'
+        );
+        assert.ok(
+            drawTexts.some((d) => d.txt.startsWith('Analog ')),
+            'Right axis must identify the selected analog forecast price'
         );
 
         // When status is ERROR without valid forecast, no future horizon slots are stranded blank & limitation banner is shown
