@@ -82,6 +82,7 @@ import {
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.1';
 import { renderForecastStudioView, renderForecastStudioFanCanvas } from './views/forecastView.js?v=2.0.1';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
+import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -2381,6 +2382,22 @@ document.addEventListener('click', async (e) => {
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
+  } else if (action === 'record-forecast-snapshot') {
+    const result = state._lastForecastResult;
+    if (result && result.status && result.status !== 'DATA_NOT_READY') {
+      const entry = defaultForecastLedger.appendFromForecast(result);
+      showFloatingToast(entry ? (i18n.getCurrentLanguage() === 'fa' ? 'پیش‌بینی در دفتر محلی ثبت شد.' : 'Forecast snapshot saved to local ledger.') : (i18n.getCurrentLanguage() === 'fa' ? 'ثبت پیش‌بینی انجام نشد.' : 'Forecast snapshot could not be recorded.'));
+    } else {
+      showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'خروجی معتبری برای ثبت وجود ندارد.' : 'No forecast result is available to record.');
+    }
+    renderApp();
+  } else if (action === 'evaluate-forecast-outcomes' && activeTab) {
+    const events = defaultForecastLedger.evaluateMaturedForecasts(activeTab.candles || [], activeTab.symbolCode, activeTab.timeframe);
+    showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? `${events.length} رویداد سررسید بررسی شد.` : `${events.length} matured forecast events evaluated.`);
+    renderApp();
+  } else if (action === 'refresh-forecast-ledger') {
+    showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'دفتر محلی به‌روز است؛ همگام‌سازی سرور در این نسخه فعال نیست.' : 'Local ledger is current; server sync is not enabled in this web build.');
+    renderApp();
   } else if (action === 'set-forecast-engine') {
     state.forecastEngineMode = el.getAttribute('data-engine') === 'structural' ? 'structural' : 'legacy';
     state.chartPreferences.forecastEngineMode = state.forecastEngineMode;
