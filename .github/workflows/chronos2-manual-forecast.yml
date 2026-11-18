@@ -31,12 +31,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 90
     env:
-      FORECAST_SFTP_HOST: ${{ secrets.FORECAST_SFTP_HOST }}
-      FORECAST_SFTP_PORT: ${{ secrets.FORECAST_SFTP_PORT }}
-      FORECAST_SFTP_USER: ${{ secrets.FORECAST_SFTP_USER }}
-      FORECAST_SFTP_PRIVATE_KEY: ${{ secrets.FORECAST_SFTP_PRIVATE_KEY }}
-      FORECAST_SFTP_HOST_FINGERPRINT: ${{ secrets.FORECAST_SFTP_HOST_FINGERPRINT }}
-      FORECAST_SFTP_REMOTE_ROOT: ${{ vars.FORECAST_SFTP_REMOTE_ROOT }}
+      FORECAST_FTP_HOST: ${{ secrets.FORECAST_FTP_HOST }}
+      FORECAST_FTP_PORT: ${{ secrets.FORECAST_FTP_PORT }}
+      FORECAST_FTP_USER: ${{ secrets.FORECAST_FTP_USER }}
+      FORECAST_FTP_PASSWORD: ${{ secrets.FORECAST_FTP_PASSWORD }}
+      FORECAST_FTP_REMOTE_ROOT: ${{ vars.FORECAST_FTP_REMOTE_ROOT }}
       SYMBOL: ${{ inputs.symbol }}
       TIMEFRAME: ${{ inputs.timeframe }}
       HORIZON: ${{ inputs.horizon }}
@@ -81,24 +80,23 @@ jobs:
           echo "TV_INTERVAL=$TV_INTERVAL" >> "$GITHUB_ENV"
           echo "Mapped $TIMEFRAME to TradingView interval $TV_INTERVAL"
 
-      - name: Check required SFTP configuration
+      - name: Check required FTP configuration
         shell: bash
         run: |
           set -euo pipefail
-          for name in FORECAST_SFTP_HOST FORECAST_SFTP_PORT FORECAST_SFTP_USER FORECAST_SFTP_PRIVATE_KEY FORECAST_SFTP_HOST_FINGERPRINT FORECAST_SFTP_REMOTE_ROOT; do
+          for name in FORECAST_FTP_HOST FORECAST_FTP_PORT FORECAST_FTP_USER FORECAST_FTP_PASSWORD; do
             if [ -z "${!name:-}" ]; then
-              echo "::error::Missing required GitHub secret/variable: $name"
+              echo "::error::Missing required GitHub secret: $name"
               exit 1
             fi
           done
-          if ! [[ "$FORECAST_SFTP_PORT" =~ ^[0-9]+$ ]]; then
-            echo "::error::FORECAST_SFTP_PORT must be numeric"; exit 1
+          if ! [[ "$FORECAST_FTP_PORT" =~ ^[0-9]+$ ]]; then
+            echo "::error::FORECAST_FTP_PORT must be numeric"; exit 1
           fi
-          if ! [[ "$FORECAST_SFTP_REMOTE_ROOT" =~ ^/[A-Za-z0-9._/-]+$ ]]; then
-            echo "::error::FORECAST_SFTP_REMOTE_ROOT must be an absolute safe path"; exit 1
-          fi
+          echo "FTP remote root: ${FORECAST_FTP_REMOTE_ROOT:-account-home}"
 
       - name: Install pinned Chronos-2 runtime
+
         shell: bash
         run: |
           set -euo pipefail
@@ -119,37 +117,17 @@ jobs:
           print("Chronos-forecasting:", importlib.metadata.version("chronos-forecasting"))
           PY
 
-      - name: Configure and verify SSH host identity
-        shell: bash
-        run: |
-          set -euo pipefail
-          install -d -m 700 "$HOME/.ssh"
-          printf '%s\n' "$FORECAST_SFTP_PRIVATE_KEY" > "$HOME/.ssh/forecast_key"
-          chmod 600 "$HOME/.ssh/forecast_key"
-          ssh-keyscan -T 15 -p "$FORECAST_SFTP_PORT" "$FORECAST_SFTP_HOST" > "$HOME/.ssh/forecast_known_hosts" 2>/dev/null
-          test -s "$HOME/.ssh/forecast_known_hosts"
-          ACTUAL="$(ssh-keygen -lf "$HOME/.ssh/forecast_known_hosts" -E sha256 | awk '{print $2}' | sort -u)"
-          if ! printf '%s\n' "$ACTUAL" | grep -Fxq "$FORECAST_SFTP_HOST_FINGERPRINT"; then
-            echo "::error::SFTP host fingerprint mismatch. Refusing connection."; exit 1
-          fi
-          echo "SFTP host fingerprint verified."
-
-      - name: Download published site reference candles
+      - name: Download published site reference candles over FTP
         shell: bash
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/chronos2/input"
-          REF_NAME="${SYMBOL}_${TIMEFRAME}.json"
-          printf 'cd %s\nget data/tvdatafeed/%s %s\n' \
-            "$FORECAST_SFTP_REMOTE_ROOT" "$REF_NAME" "$RUNNER_TEMP/chronos2/input/site_reference.json" \
-            > "$RUNNER_TEMP/chronos2/download.sftp"
-          sftp -b "$RUNNER_TEMP/chronos2/download.sftp" \
-            -P "$FORECAST_SFTP_PORT" -oBatchMode=yes -oStrictHostKeyChecking=yes \
-            -oUserKnownHostsFile="$HOME/.ssh/forecast_known_hosts" \
-            -i "$HOME/.ssh/forecast_key" "$FORECAST_SFTP_USER@$FORECAST_SFTP_HOST"
-          test -s "$RUNNER_TEMP/chronos2/input/site_reference.json"
+          python scripts/chronos2_ftp_transfer.py download \
+            --remote "data/tvdatafeed/${SYMBOL}_${TIMEFRAME}.json" \
+            --local "$RUNNER_TEMP/chronos2/input/site_reference.json"
 
       - name: Fetch fresh candles using existing CHART sync script
+
         shell: bash
         run: |
           set -euo pipefail
@@ -176,7 +154,7 @@ jobs:
           echo "output_file=$OUTPUT_FILE" >> "$GITHUB_OUTPUT"
           echo "output_name=$OUTPUT_NAME" >> "$GITHUB_OUTPUT"
 
-      - name: Publish validated cache and preserve run history over SFTP
+      - name: Publish validated cache and preserve run history over FTP
         shell: bash
         run: |
           set -euo pipefail
@@ -184,17 +162,14 @@ jobs:
           OUTPUT_NAME="${{ steps.forecast.outputs.output_name }}"
           RUN_STAMP="$(date -u +%Y%m%dT%H%M%SZ)"
           HISTORY_NAME="${OUTPUT_NAME%.json}_${RUN_STAMP}_run${GITHUB_RUN_ID}.json"
-          CACHE_TMP="data/chronos2/cache/${OUTPUT_NAME}.tmp.${GITHUB_RUN_ID}"
-          printf 'cd %s\n-mkdir data/chronos2/cache\n-mkdir data/chronos2/history\nput %s data/chronos2/history/%s\nput %s %s\nrename %s %s\n' \
-            "$FORECAST_SFTP_REMOTE_ROOT" "$OUTPUT_FILE" "$HISTORY_NAME" "$OUTPUT_FILE" "$CACHE_TMP" "$CACHE_TMP" "data/chronos2/cache/$OUTPUT_NAME" \
-            > "$RUNNER_TEMP/chronos2/publish.sftp"
-          sftp -b "$RUNNER_TEMP/chronos2/publish.sftp" \
-            -P "$FORECAST_SFTP_PORT" -oBatchMode=yes -oStrictHostKeyChecking=yes \
-            -oUserKnownHostsFile="$HOME/.ssh/forecast_known_hosts" \
-            -i "$HOME/.ssh/forecast_key" "$FORECAST_SFTP_USER@$FORECAST_SFTP_HOST"
+          python scripts/chronos2_ftp_transfer.py publish \
+            --local "$OUTPUT_FILE" \
+            --cache-remote "data/chronos2/cache/$OUTPUT_NAME" \
+            --history-remote "data/chronos2/history/$HISTORY_NAME"
           echo "Published $OUTPUT_NAME and retained history/$HISTORY_NAME"
 
       - name: Upload diagnostics
+
         if: always()
         uses: actions/upload-artifact@v4
         with:
