@@ -143,7 +143,7 @@ export async function requestStructuralForecastForTab(
     const timeframe = String(tab.timeframe || 'M15').trim().toUpperCase();
     const horizonBars = Math.max(
       1,
-      Math.min(120, Math.round(Number(tab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30)))
+      Math.min(120, Math.round(Number(tab.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30)))
     );
 
     const nowMs = Date.now();
