@@ -77,7 +77,7 @@ The website reads only the deterministic static cache filename using fetch with 
 
 1. Configure the four FTP secrets and the remote-root variable.
 3. Run one manual workflow for a single symbol/timeframe/horizon.
-4. Inspect the Actions log for the site-reference timestamp, fresh-input timestamp, exact dependency versions, model load/inference and successful atomic publish.
+4. Inspect the Actions log for the site-reference timestamp, fresh-input timestamp, exact dependency versions, model load/inference and successful FTP cache publish.
 5. Open the matching website tab and confirm the static JSON is accepted by the existing origin gate.
 6. Confirm that a normal APK/site deployment does not erase remote-only cache/history files. The current deployment workflow bundles tracked host_subdomain/ files and snapshots only selected directories; its data/cache persistence behavior remains a separate verification item and has not been changed here.
 
