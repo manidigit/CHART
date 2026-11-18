@@ -2,7 +2,7 @@
 
 Version: 1.0.0  
 Date: 2026-11-17  
-Status: Implemented on a review branch; first live SFTP/model run still required.
+Status: Implemented on a review branch; first live FTP/model run still required.
 
 ## Execution model
 
@@ -10,10 +10,10 @@ Status: Implemented on a review branch; first live SFTP/model run still required
 - No Cron, schedule, push trigger, website-triggered execution, or tab-change execution exists.
 - Inputs are CHART symbol code, CHART timeframe code, and horizon (15/30/45/60).
 - The workflow runs the existing host_subdomain/scripts/sync_tvdatafeed.py in a temporary runner directory. It does not commit or deploy temporary market data.
-- The published site reference is downloaded from the configured SFTP document root and compared with fresh input before inference.
+- The published site reference is downloaded from the configured FTP document root and compared with fresh input before inference.
 - The pinned host_subdomain/scripts/chronos2_worker.py produces native Chronos-2 quantiles.
 - Only a validated READY JSON is uploaded to data/chronos2/cache/; every valid run is also retained under data/chronos2/history/.
-- Upload uses a temporary remote filename followed by SFTP rename. No old cache or history files are deleted.
+- Upload uses a temporary remote filename followed by FTP rename. Each valid run is retained in history; the active cache file is replaced.
 
 ## Workflow inputs
 
@@ -31,17 +31,16 @@ Timeframe mapping used by the workflow: M15 → 15; H1 → 60; H4 → 240; D1 �
 
 Add these repository Secrets:
 
-- FORECAST_SFTP_HOST
-- FORECAST_SFTP_PORT
-- FORECAST_SFTP_USER
-- FORECAST_SFTP_PRIVATE_KEY — private key in OpenSSH PEM/OpenSSH text form; never commit it.
-- FORECAST_SFTP_HOST_FINGERPRINT — expected SHA256 fingerprint, using the exact SHA256:... value obtained from the hosting provider.
+- FORECAST_FTP_HOST
+- FORECAST_FTP_PORT (normally 21)
+- FORECAST_FTP_USER
+- FORECAST_FTP_PASSWORD
 
 Add this repository Variable:
 
-- FORECAST_SFTP_REMOTE_ROOT — absolute SFTP path to the website document root that contains data/tvdatafeed/ and data/chronos2/.
+- FORECAST_FTP_REMOTE_ROOT — FTP-visible path to the website document root that contains data/tvdatafeed/ and data/chronos2/. Use the path as seen after logging in with the FTP account; it may be relative to that account's home directory.
 
-The workflow fails before model execution if a required value is missing or the SSH host fingerprint differs. It does not disable host-key checking.
+The workflow uses Python's standard-library FTP client. No SSH key or SFTP configuration is required.
 
 ## Data alignment gate
 
@@ -76,8 +75,7 @@ The website reads only the deterministic static cache filename using fetch with 
 
 ## Known operational checks before first production use
 
-1. Configure all SFTP secrets and the remote-root variable.
-2. Confirm that the host supports key-authenticated SFTP and the supplied fingerprint.
+1. Configure the four FTP secrets and the remote-root variable.
 3. Run one manual workflow for a single symbol/timeframe/horizon.
 4. Inspect the Actions log for the site-reference timestamp, fresh-input timestamp, exact dependency versions, model load/inference and successful atomic publish.
 5. Open the matching website tab and confirm the static JSON is accepted by the existing origin gate.
