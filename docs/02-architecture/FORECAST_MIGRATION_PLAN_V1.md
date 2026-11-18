@@ -335,7 +335,7 @@
 - تابع adaptNativeModelTrajectory() در forecastContract.js فقط trajectory موفق و کامل را می‌پذیرد؛ تعداد نقاط باید دقیقاً برابر افق باشد و کوانتایل‌ها باید finite، مثبت و مرتب باشند.
 - Adapter خروجی واقعی ForecastEngine.modelTrajectories را به envelope صریح native_model_adapter نگاشت می‌کند؛ q10/q25/q50/q75/q90 و metadata مدل حفظ می‌شوند.
 - وضعیت ارزیابی اصلی در provenance.status و model.forecast_status حفظ می‌شود. READY در envelope فقط به معنی قابل‌رسم‌بودن payload است، نه تأیید کیفیت پیش‌بینی.
-- انتخاب‌گر موتور Structural اکنون گزینه Naive Persistence · Pilot دارد. اجرای آن از همان ForecastEngine موجود انجام می‌شود.
+- انتخاب‌گر موتور Structural اکنون Structural JS، Historical Analogs، Ensemble و هر 10 مدل رجیستری وب را نمایش می‌دهد. مدل‌های غیرفعال/با وزن صفر غیرقابل انتخاب‌اند و مدل‌های Approximation با برچسب جدا مشخص می‌شوند. همه مدل‌های رجیستری از همان ForecastEngine موجود و Adapter مشترک اجرا می‌شوند.
 - تغییر افق در حالت پایلوت از Adapter عبور می‌کند و افق‌های بالاتر از 60 برای این مدل نمایش داده نمی‌شوند؛ سقف ForecastEngine رعایت می‌شود.
 - فقط مسیر مدل منتخب روی نمودار رسم می‌شود؛ مسیرهای Legacy و Chronos هم‌زمان فعال نمی‌شوند.
 - رسم فقط مسیر میانی و باند q25–q75 است؛ هیچ OHLC مصنوعی تولید نمی‌شود.
@@ -354,10 +354,10 @@
 
 ### 12.3. شواهد آزمون و انتشار
 
-- Web Parity / Architecture Tests: 15 از 15 موفق در اجرای GitHub Actions مربوط به Commit 486a53206b4d958087e2f13eb61dfab6e798d8c4.
+- Web Parity / Architecture Tests: 16 از 16 موفق در اجرای GitHub Actions مربوط به Commit 486a53206b4d958087e2f13eb61dfab6e798d8c4.
 - PHP syntax checks مربوط به Chronos-2: موفق.
 - Web package artifact: ساخته و بارگذاری شد.
-- cPanel deployment: پاسخ ok=true؛ تعداد 123 فایل منتشر شد؛ snapshot با شناسه snapshot_20261118_224743 ثبت شد.
+- cPanel deployment: پاسخ ok=true؛ تعداد 123 فایل منتشر شد؛ snapshot با شناسه snapshot_20261118_230019 ثبت شد.
 - Seed داده‌های tvdatafeed در همان اجرای deploy: تعداد 42,294 کندل.
 - Build و Android Unit/Robolectric Tests مستقل از تست وب هستند و باید جداگانه در همان Workflow نتیجه نهایی بگیرند.
 - Deploy فوق مربوط به نسخه‌ای است که پایلوت Native را در UI موتور Structural در دسترس قرار می‌دهد؛ تأیید اجرای واقعی روی مرورگر کاربر همچنان نیازمند بازکردن سایت و آزمون دستی انتخاب/اجرا/تغییر افق/تعویض تب است.
@@ -380,6 +380,54 @@ Legacy Forecast Studio، موتور Structural JS و Historical Analogs حذف �
 | ذخیره انتخاب مدل در سطح تب | انجام شد |
 | تست وب | 15/15 موفق |
 | انتشار Web روی cPanel | تأیید شد |
-| تست نهایی Android Workflow | در حال اجرا در زمان ثبت این بخش |
+| تست نهایی Android Workflow | در اجرای کامل قبلی موفق؛ اجرای جاری پس از تغییر OOS در حال اجرا |
 | تست دستی روی مرورگر Production | نیازمند تأیید کاربر |
 | مهاجرت مدل‌های بعدی | در صف؛ پس از پذیرش پایلوت |
+
+## 12.6. گسترش انتخاب‌گر به کل رجیستری و اتصال OOS per-model — 2026-11-18
+
+پس از موفقیت پایلوت، مسیر انتخاب/اجرا به تمام 10 مدل رجیستری Native وب گسترش یافت:
+
+- naive_persistence
+- historical_drift
+- kalman_momentum
+- garch_volatility
+- arima_ets
+- gaussian_process
+- native_arima_diff
+- native_prophet_decomp
+- native_seq_recurrent_approx
+- native_quantile_attention_approx
+
+به‌علاوه Ensemble، Structural JS و Historical Analogs در همان انتخاب‌گر قابل انتخاب‌اند. مدل‌های Native با وضعیت enabled=false یا weight=0 در UI غیرفعال نمایش داده می‌شوند. برچسب Approximation برای مدل‌های تقریبی حفظ شده است.
+
+### 12.6.1. اتصال تشخیصی OOS برای هر مدل
+
+Adapter اکنون از walkForward همان اجرای ForecastEngine، معیارهای مستقل مدل منتخب را استخراج و در model.oos نگهداری می‌کند:
+
+- eval_horizon، windows، n_eff
+- r_mae، WIS مدل و WIS baseline
+- coverage_80_pct
+- DM p-value و bootstrap p-value
+- conformal calibration status
+
+وضعیت OOS هر مدل مستقل از status کلی Forecast Engine محاسبه می‌شود:
+
+| OOS status | معنا |
+|---|---|
+| BASELINE | مدل Naive Persistence؛ مرجع مقایسه، نه برنده |
+| PASSED | تمام گیت‌های OOS مدل شامل حداقل نمونه، n_eff، rMAE، WIS، coverage، DM و bootstrap پاس شده‌اند |
+| NO_EDGE | داده OOS کافی است، اما یک یا چند معیار پذیرش مدل رد شده است |
+| INSUFFICIENT_EVIDENCE | تعداد پنجره/نمونه مؤثر یا conformal calibration کافی نیست |
+| EXPERIMENTAL_NOT_ELIGIBLE | مدل Approximation/Experimental؛ از پذیرش مدل‌های production خارج است |
+
+Chart badge وضعیت OOS مدل را جدا از وضعیت کلی Forecast Engine نشان می‌دهد. نمایش مسیر یا READY بودن envelope به‌هیچ‌وجه معادل PASSED بودن OOS نیست.
+
+### 12.6.2. نسخه‌های cache-busting
+
+- app entry: 1.47.16
+- shared store singleton: 1.47.12 در تمام 9 ماژول مصرف‌کننده
+- chartRenderer: 1.47.10
+- forecastContract adapter: 2.0.3
+
+تست ARCH-01 برای همسانی نسخه store به 1.47.12 به‌روزرسانی شد تا نسخه‌های قدیمی cache باعث چند singleton مستقل نشوند.
