@@ -487,8 +487,32 @@ export function adaptNativeModelTrajectory(trajectory, context = {}) {
   const timeframe = String(context.timeframe || 'M15').trim().toUpperCase();
   const originOpenMs = Number(context.originOpenTimeUtcMs), lastClosedPrice = Number(context.lastClosedPrice);
   if (!symbol || !provider || !timeframe || !(originOpenMs > 0) || !(lastClosedPrice > 0) || !Number.isFinite(lastClosedPrice)) return null;
+  const walkForward = context.walkForward && typeof context.walkForward === 'object' ? context.walkForward : {};
+  const isExperimentalOnly = Boolean(trajectory.isApproximation || trajectory.experimentalOnly || context.experimentalOnly);
+  const oosMetric = modelId === 'naive_persistence' ? walkForward.naiveMetrics
+    : modelId === 'ensemble' ? walkForward.ensembleMetrics
+    : (Array.isArray(walkForward.modelBenchmarks) ? walkForward.modelBenchmarks.find((m) => m?.modelId === modelId) : null);
+  const finiteOrNull = (value) => Number.isFinite(Number(value)) ? Number(value) : null;
+  const oosWindows = Number(oosMetric?.windows || oosMetric?.evaluatedWindows || 0);
+  const oosNEff = Number(oosMetric?.nEff || 0);
+  const calibrationStatus = String(walkForward.conformalCalibration?.calibrationStatus || 'UNAVAILABLE');
+  let oosStatus = 'INSUFFICIENT_EVIDENCE';
+  if (modelId === 'naive_persistence') oosStatus = 'BASELINE';
+  else if (isExperimentalOnly) oosStatus = 'EXPERIMENTAL_NOT_ELIGIBLE';
+  else if (oosMetric?.status === 'SUCCESS' && oosWindows >= 30 && oosNEff >= 25 && calibrationStatus === 'CALIBRATED_NORMALIZED') {
+    const passes = Number(oosMetric.rMae) < 1 && Number(oosMetric.wis) < Number(walkForward.wisNaiveDistributional) &&
+      Number(oosMetric.coverage80Pct) >= 72 && Number(oosMetric.coverage80Pct) <= 88 &&
+      Number(oosMetric.dmPValue) <= 0.05 && Number(oosMetric.bootPValue) <= 0.10;
+    oosStatus = passes ? 'PASSED' : 'NO_EDGE';
+  }
+  const oos = {
+    status: oosStatus, eval_horizon: finiteOrNull(walkForward.evalHorizon), windows: oosWindows, n_eff: finiteOrNull(oosNEff),
+    r_mae: finiteOrNull(oosMetric?.rMae), wis: finiteOrNull(oosMetric?.wis), naive_wis: finiteOrNull(walkForward.wisNaiveDistributional),
+    coverage_80_pct: finiteOrNull(oosMetric?.coverage80Pct), dm_p_value: finiteOrNull(oosMetric?.dmPValue),
+    bootstrap_p_value: finiteOrNull(oosMetric?.bootPValue), conformal_status: calibrationStatus,
+  };
   return { status: 'READY', forecast, engine: { engine_id: 'native_model_adapter', is_chronos2: false, params: { horizon_bars: horizonBars, model_id: modelId }, model_version: String(trajectory.modelVersion || '') },
     series: { symbol, provider, timeframe, origin_open_time_utc_ms: originOpenMs, last_closed_price: lastClosedPrice },
-    model: { id: modelId, name: String(trajectory.modelName || modelId), is_approximation: Boolean(trajectory.isApproximation), is_calibrated_interval: Boolean(trajectory.isCalibratedInterval), execution_runtime: String(trajectory.executionRuntime || ''), source_engine_status: String(context.forecastStatus || '') },
+    model: { id: modelId, name: String(trajectory.modelName || modelId), is_approximation: Boolean(trajectory.isApproximation), is_experimental_only: isExperimentalOnly, is_calibrated_interval: Boolean(trajectory.isCalibratedInterval), execution_runtime: String(trajectory.executionRuntime || ''), source_engine_status: String(context.forecastStatus || ''), oos },
     provenance: { source: 'ForecastEngine.modelTrajectories', status: String(context.forecastStatus || ''), inputHash: String(context.inputHash || ''), illustrative_only: modelId === 'empirical_analogs' } };
 }

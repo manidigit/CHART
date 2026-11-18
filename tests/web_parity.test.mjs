@@ -1320,6 +1320,12 @@ test('FORECAST-ADAPTER-01: adapts only complete successful trajectories and pres
   assert.equal(adapted.status, 'READY'); assert.equal(adapted.engine.engine_id, 'native_model_adapter'); assert.equal(adapted.forecast[1].q50_median, 100);
   assert.equal(adapted.provenance.status, 'INSUFFICIENT_EVIDENCE');
   assert.equal(adapted.model.source_engine_status, 'INSUFFICIENT_EVIDENCE');
+  assert.equal(adapted.model.oos.status, 'BASELINE');
+  const passingWalkForward = { evalHorizon: 10, wisNaiveDistributional: 10, conformalCalibration: { calibrationStatus: 'CALIBRATED_NORMALIZED' }, modelBenchmarks: [{ modelId: 'test_candidate', status: 'SUCCESS', windows: 30, nEff: 30, rMae: 0.9, wis: 9, coverage80Pct: 80, dmPValue: 0.04, bootPValue: 0.05 }] };
+  const candidate = adaptNativeModelTrajectory({ ...trajectory, modelId: 'test_candidate' }, { ...context, walkForward: passingWalkForward });
+  assert.equal(candidate.model.oos.status, 'PASSED');
+  const experimental = adaptNativeModelTrajectory({ ...trajectory, modelId: 'test_candidate', isApproximation: true }, { ...context, walkForward: passingWalkForward });
+  assert.equal(experimental.model.oos.status, 'EXPERIMENTAL_NOT_ELIGIBLE');
   assert.equal(adaptNativeModelTrajectory({ ...trajectory, points: trajectory.points.slice(0, 1) }, context), null);
   assert.equal(adaptNativeModelTrajectory({ ...trajectory, status: 'FAILED' }, context), null);
   assert.equal(adaptNativeModelTrajectory({ ...trajectory, points: [{ ...trajectory.points[0], q25: 103 }, trajectory.points[1]] }, context), null);

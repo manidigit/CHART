@@ -1408,7 +1408,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           const gradeTag = quality.confidence_grade || 'LOW';
           const analogCount = Number((tab.structuralForecast.model_diagnostics || {}).empirical_analogs?.matched_count || 0);
           const badgeTxt = isNativeModelAdapter
-            ? `${tab.structuralForecast.model?.name || tab.structuralForecast.model?.id || 'Native Model'} (+${pts.length} · render only · ${`engine ${tab.structuralForecast.model?.source_engine_status || 'UNASSESSED'}`})`
+            ? `${tab.structuralForecast.model?.name || tab.structuralForecast.model?.id || 'Native Model'} (+${pts.length} · render only · OOS ${tab.structuralForecast.model?.oos?.status || 'NOT_EVALUATED'} · engine ${tab.structuralForecast.model?.source_engine_status || 'UNASSESSED'})`
             : isHistoricalAnalogSelected
               ? `Historical Analogs (+${pts.length} · ${analogCount} matches · illustrative)`
               : `Structural JS (+${pts.length} · ${biasShort} · ${volShort} · ${gradeTag})`;
