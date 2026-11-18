@@ -2,7 +2,7 @@ import {
   state,
   isStructuralForecastMatchingTab,
   clearTabStructuralForecast,
-} from '../core/store.js?v=1.47.1';
+} from '../core/store.js?v=1.47.2';
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
 import {
   computeStructuralForecast,
