@@ -80,7 +80,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.1';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.1';
-import { renderForecastStudioView, renderForecastStudioFanCanvas } from './views/forecastView.js?v=2.0.1';
+import { renderForecastStudioView, renderForecastStudioFanCanvas } from './views/forecastView.js?v=2.0.2';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
 
