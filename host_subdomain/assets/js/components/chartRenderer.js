@@ -314,7 +314,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     Boolean(tab.showStructuralForecast) && isStructuralForecastMatchingTab(tab, tab.structuralForecast);
   const isNativeModelAdapter = tab.structuralForecast?.engine?.engine_id === 'native_model_adapter';
   const selectedStructuralModel = String(tab.structuralForecastModel || 'structural_wave_js');
-  const isHistoricalAnalogSelected = selectedStructuralModel === 'empirical_analogs';
+  const isHistoricalAnalogSelected = !isNativeModelAdapter && selectedStructuralModel === 'empirical_analogs';
   const selectedAnalogPath = isHistoricalAnalogSelected
     ? (tab.structuralForecast?.model_paths || []).find(
         (path) => path.model_id === 'empirical_analogs' && Array.isArray(path.points) && path.points.length > 0
