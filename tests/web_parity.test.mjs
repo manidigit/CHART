@@ -1438,7 +1438,7 @@ test('FORECAST-NEW-MODEL-CONFIG-01: New Native workspace reuses model weights an
   assert.match(viewSource, /data-action="set-forecast-model-weight"/);
   assert.match(viewSource, /data-action="set-forecast-model-param"/);
   assert.match(viewSource, /options\.includeRemoteWorker === false/);
-  assert.match(appSource, /Native Model Configuration|تنظیمات مدل‌های Native/);
+  assert.match(appSource, /Models & Configuration|مدل‌ها و تنظیمات/);
 });
 
 
