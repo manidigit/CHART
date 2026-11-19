@@ -571,6 +571,7 @@ export function renderForecastStudioView(activeTab, i18n) {
     })),
   ];
   // Ensemble is an engine-level aggregation option, not a registry plugin.
+  modelChoices.push({ id: 'empirical_analogs', label: isFa ? 'آنالوگ‌های تاریخی علّی' : 'Causal Historical Analogs' });
   modelChoices.push({ id: 'ensemble', label: 'Ensemble (V2)' });
   const modelButtons = modelChoices
     .map(
