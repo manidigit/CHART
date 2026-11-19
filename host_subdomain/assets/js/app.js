@@ -38,7 +38,7 @@ import {
   clearTabStructuralForecast,
   invalidateTabStructuralForecastIfStale,
   reconcileTabStructuralForecastOnRender,
-} from './core/store.js?v=1.47.13';
+} from './core/store.js?v=1.47.14';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -122,7 +122,7 @@ function getActiveTab() {
 function invalidateForecastAfterModelConfigChange(tab, changedModelId = '') {
   if (!tab) return;
   const selectedEngine = state.chartPreferences.forecastEngineMode || state.forecastEngineMode;
-  const selectedNativeModel = !['structural_wave_js', 'empirical_analogs'].includes(tab.structuralForecastModel || 'structural_wave_js');
+  const selectedNativeModel = (tab.structuralForecastModel || 'structural_wave_js') !== 'structural_wave_js';
   if (selectedEngine === 'structural' && selectedNativeModel) {
     if (!changedModelId || changedModelId === tab.structuralForecastModel) {
       tab.showStructuralForecast = false;
@@ -828,27 +828,37 @@ function renderFallbackErrorBoundary(err) {
 function renderForecastWorkspaceContent(activeTab) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
   defaultForecastRegistry.applyConfig(state.chartPreferences.forecastPluginConfig);
+  const activeCode = activeTab?.symbolCode || state.symbols.find((s) => s.inWatchlist)?.symbolCode || 'SPOTBRENT';
+  const decimals = Number(activeTab?.decimals || 2);
+  const currentModel = String(activeTab?.structuralForecastModel || 'structural_wave_js');
   const nativeModelChoices = defaultForecastRegistry.list();
   const nativeModelButtons = [
     { id: 'AUTO', name: isFa ? 'خودکار (بهترین OOS)' : 'Auto (OOS Best)', enabled: true, weight: 1, experimentalOnly: false },
     ...nativeModelChoices,
+    { id: 'empirical_analogs', name: isFa ? 'آنالوگ‌های تاریخی علّی' : 'Causal Historical Analogs', enabled: true, weight: 1, experimentalOnly: false },
     { id: 'ensemble', name: 'Calibrated Ensemble (V2)', enabled: true, weight: 1, experimentalOnly: false },
   ].map((model) => {
     const available = model.enabled && Number(model.weight) > 0;
     const label = `${model.name}${model.experimentalOnly ? ' · Approximation' : ''}${available ? '' : ' · Disabled'}`;
-    return `<button type="button" class="chip ${activeTab?.structuralForecastModel === model.id ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="${escapeHtml(model.id)}" ${available ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
+    return `<button type="button" class="chip ${currentModel === model.id ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="${escapeHtml(model.id)}" ${available ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
   }).join('');
-  const isNativeModelSelected = !['structural_wave_js', 'empirical_analogs'].includes(activeTab?.structuralForecastModel || 'structural_wave_js');
+  const isNativeModelSelected = currentModel !== 'structural_wave_js';
   const selected = (state.chartPreferences.forecastEngineMode || state.forecastEngineMode || 'structural') === 'legacy' ? 'legacy' : 'structural';
   const usesNativeEvaluation = selected === 'structural' && isNativeModelSelected;
   const rawHorizon = Number(activeTab?.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || activeTab?.forecastHorizonBars || 30);
   const horizon = isNativeModelSelected
     ? Math.max(10, Math.min(60, rawHorizon))
     : Math.max(15, Math.min(120, rawHorizon));
-  const nativeModelId = String(activeTab?.structuralForecastModel || 'AUTO');
+  const nativeModelId = isNativeModelSelected ? currentModel : String(activeTab?.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
   const nativeTab = ['overview', 'models', 'backtest', 'ledger'].includes(state.forecastStudioTab) ? state.forecastStudioTab : 'overview';
   const needsNativeEvaluation = usesNativeEvaluation || nativeTab !== 'overview';
-  const nativeEvaluation = needsNativeEvaluation ? buildForecastForTab(activeTab, { horizonBars: Math.max(10, Math.min(60, horizon)), selectedModelId: usesNativeEvaluation ? nativeModelId : (activeTab?.selectedForecastModelId || 'AUTO'), workerUrl: '' })?.result : null;
+  const nativeEvaluation = (selected === 'structural' || needsNativeEvaluation)
+    ? buildForecastForTab(activeTab, {
+        horizonBars: Math.max(10, Math.min(60, horizon)),
+        selectedModelId: nativeModelId,
+        workerUrl: '',
+      })?.result
+    : null;
   const comparisonCandidates = (nativeEvaluation?.modelTrajectories || []).filter((model) => model.status === 'SUCCESS' && Array.isArray(model.points) && model.modelId !== nativeEvaluation?.selectedChartModelId);
   const savedCompareIds = state.chartPreferences.forecastCompareModelIds;
   const visibleCompareIds = Array.isArray(savedCompareIds) ? savedCompareIds : comparisonCandidates.map((model) => model.modelId);
@@ -869,28 +879,48 @@ function renderForecastWorkspaceContent(activeTab) {
         })),
       }
     : null;
-  if (structuralPreview) state._lastForecastResult = structuralPreview;
+  const structuralBannerHtml = !usesNativeEvaluation && nativeTab === 'overview'
+    ? `<div class="ci-fc-card" style="margin-bottom:12px;border-color:rgba(139,92,246,0.45);">
+        <div class="row-between" style="gap:10px;flex-wrap:wrap;">
+          <div>
+            <strong style="font-size:13px;">${isFa ? 'موتور موج ساختاری (Structural JS)' : 'Structural Wave JS Engine'}</strong>
+            <div class="ltr-num" style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
+              ${escapeHtml(activeTab?.structuralForecastStatus || 'IDLE')}${structuralForecast?.engine?.params?.structure_bias ? ' · ' + escapeHtml(structuralForecast.engine.params.structure_bias) : ''}${structuralForecast?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(structuralForecast.engine.params.volatility_regime) : ''}${structuralPreview ? ' · ' + structuralPreview.points.length + ' bars ready' : ''}
+            </div>
+            ${activeTab?.structuralForecastError ? `<div style="color:var(--bear);font-size:11.5px;margin-top:4px;">${escapeHtml(activeTab.structuralForecastError)}</div>` : ''}
+          </div>
+          <button type="button" class="btn btn-sm btn-primary" data-action="toggle-structural-forecast">${activeTab?.showStructuralForecast && structuralForecast?.engine?.engine_id === 'structural_wave_js' ? (isFa ? '✓ موج ساختاری روی چارت فعال است' : '✓ Structural JS on Chart') : (isFa ? 'اجرا و رسم موج ساختاری روی چارت' : 'Run & Plot Structural JS on Chart')}</button>
+        </div>
+      </div>`
+    : '';
+  const overviewContent = nativeEvaluation
+    ? structuralBannerHtml + renderOverviewPanel(nativeEvaluation, activeTab, decimals, isFa, state.forecastCoordView || 'independent')
+    : structuralBannerHtml + '<div class="ci-fc-card"><canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas"></canvas></div>';
   const nativePanel = nativeTab === 'overview'
-    ? (usesNativeEvaluation
-      ? renderOverviewPanel(nativeEvaluation, activeTab, Number(activeTab?.decimals || 2), isFa, state.forecastCoordView || 'independent')
-      : '<div class="ci-fc-card"><div class="row-between" style="gap:8px;flex-wrap:wrap;"><strong>' + (isFa ? 'نمای کلی مدل ساختاری' : 'Structural Model Overview') + '</strong><span class="ci-fc-status-badge">' + escapeHtml(activeTab?.structuralForecastStatus || 'IDLE') + '</span></div>' + (structuralPreview ? '<canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas" style="margin-top:10px;"></canvas>' : '<p style="font-size:12px;color:var(--text-muted);">' + escapeHtml(activeTab?.structuralForecastError || (isFa ? 'برای نمایش مسیر، ابتدا تحلیل ساختاری را اجرا کنید.' : 'Run structural analysis to generate a preview path.')) + '</p>') + '<div class="ltr-num" style="font-size:12px;margin-top:8px;">' + (isFa ? 'مدل انتخاب‌شده: ' : 'Selected model: ') + escapeHtml(activeTab?.structuralForecastModel || 'structural_wave_js') + (structuralForecast?.engine?.params?.structure_bias ? ' · ' + escapeHtml(structuralForecast.engine.params.structure_bias) : '') + (structuralForecast?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(structuralForecast.engine.params.volatility_regime) : '') + '</div><p style="font-size:11px;color:var(--text-muted);">' + (isFa ? 'تنظیمات، Walk-Forward و Ledger در تب‌های دیگر همین صفحه در دسترس‌اند. برای Fan/Scenario آماری و مقایسه Native، یک مدل Native یا AUTO انتخاب کنید.' : 'Configuration, Walk-Forward and Ledger are available in the other tabs. Select a Native model or AUTO for statistical Fan/Scenario and Native comparisons.') + '</p></div>')
+    ? overviewContent
     : nativeTab === 'models'
       ? renderModelsPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa)
       : nativeTab === 'backtest'
         ? renderBacktestPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa)
         : renderLedgerPanel(Number(activeTab?.decimals || 2), isFa);
-  const nativeTabs = [['overview', isFa ? 'پیش‌بینی و سناریوها' : 'Projection & Scenarios'], ['models', isFa ? 'مدل‌ها و تنظیمات' : 'Models & Configuration'], ['backtest', isFa ? 'Walk-Forward و کالیبراسیون' : 'Walk-Forward & Calibration'], ['ledger', isFa ? 'دفتر پیش‌بینی و چرخه عمر' : 'Forecast Ledger & Lifecycle']];
+  const nativeTabs = [['overview', isFa ? 'پیش‌بینی و سناریوها (V2.1)' : 'Projection & Event Tree'], ['models', isFa ? 'مدل‌ها و تنظیمات' : 'Models & Configuration'], ['backtest', isFa ? 'Walk-Forward و کالیبراسیون' : 'Walk-Forward & Calibration'], ['ledger', isFa ? 'دفتر کل SHA-256 و چرخه عمر' : 'SHA-256 Ledger & Lifecycle']];
   const nativeTabNav = nativeTabs.map(([id, label]) => '<button type="button" class="ci-fc-subtab ' + (nativeTab === id ? 'active' : '') + '" data-action="set-forecast-subtab" data-tab="' + id + '">' + label + '</button>').join('');
-  const chartModels = (nativeEvaluation?.modelTrajectories || []).map((m) => '<button type="button" class="chip ' + ((nativeModelId === m.modelId || (nativeModelId === 'AUTO' && nativeEvaluation?.selectedChartModelId === m.modelId)) ? 'active' : '') + '" data-action="set-structural-forecast-model" data-model="' + escapeHtml(m.modelId) + '" ' + (m.status === 'SUCCESS' ? '' : 'disabled') + '>' + escapeHtml(m.modelName || m.modelId) + (m.isApproximation ? ' · APPROX' : '') + '</button>').join('');
-  const modes = [['FAN_CHART', isFa ? 'ابری کوانتایل (Fan)' : 'Quantile Fan'], ['HYBRID', isFa ? 'ترکیبی (Fan + Bars)' : 'Hybrid'], ['GHOST_CANDLES', isFa ? 'میله‌های کوانتایل' : 'Quantile Bars']];
+  const modes = [
+    ['FAN_CHART', isFa ? 'ابری کوانتایل (Fan)' : 'Quantile Fan'],
+    ['HYBRID', isFa ? 'ترکیبی (Fan + Bars)' : 'Hybrid (Fan + Bars)'],
+    ['GHOST_CANDLES', isFa ? 'میله‌های کوانتایل' : 'Quantile Bars'],
+  ];
   const activeMode = activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART';
-  const nativeEvaluationPanels = '<div class="ci-fc-card" style="margin-top:12px;">' +
-    '<div class="row-between" style="gap:8px;flex-wrap:wrap;"><strong>' + (isFa ? 'کنترل و ارزیابی پیش‌بینی' : 'Forecast Controls & Evaluation') + '</strong>' +
-    (usesNativeEvaluation ? '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">' + (isFa ? 'ثبت Snapshot' : 'Record Snapshot') + '</button><button type="button" class="btn btn-sm btn-primary" data-action="apply-native-forecast-to-chart">' + (isFa ? 'اعمال مدل روی چارت' : 'Apply Model to Chart') + '</button></div>' : '') + '</div>' +
-    (usesNativeEvaluation ? '<div style="margin-top:10px;"><strong style="font-size:12px;">' + (isFa ? 'مسیر مدل فعال (یا انتخاب مستقیم)' : 'Active / Select chart model') + '</strong><div class="chip-group" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">' + chartModels + '</div></div>' + (comparisonCandidates.length ? '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);"><strong style="font-size:12px;">' + (isFa ? 'نمایش هم‌زمان مسیرهای مقایسه‌ای (پیش‌نمایش و چارت اصلی)' : 'Visible comparison overlays (Preview & Main Chart)') + '</strong><div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:7px;">' + comparisonCandidates.map((model) => '<label class="chip ' + (visibleCompareIds.includes(model.modelId) ? 'active' : '') + '" style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" data-action="toggle-forecast-compare-model" data-model-id="' + escapeHtml(model.modelId) + '" ' + (visibleCompareIds.includes(model.modelId) ? 'checked' : '') + ' />' + escapeHtml(model.modelName || model.modelId) + '</label>').join('') + '</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:5px;">' + (isFa ? 'مسیرهای انتخاب‌شده در پیش‌نمایش و روی چارت اصلی (به‌صورت خط‌چین مقایسه‌ای) هم‌زمان نمایش داده می‌شوند.' : 'Selected paths appear in the preview and as dashed comparison paths on the main chart.') + '</div></div>' : '') : '<p style="font-size:11px;color:var(--text-muted);">' + (isFa ? 'تب‌های تنظیمات و ارزیابی زیر، خانواده Native را مستقل از مدل ساختاری انتخاب‌شده بررسی می‌کنند.' : 'The configuration and evaluation tabs below inspect the Native model family independently of the selected Structural model.') + '</p>') +
-    '<div class="row-between" style="gap:8px;flex-wrap:wrap;margin-top:10px;"><span>' + (isFa ? 'حالت نمایش روی چارت' : 'Chart render mode') + '</span><div class="chip-group">' + modes.map(([id, label]) => '<button type="button" class="chip ' + (activeMode === id ? 'active' : '') + '" data-action="set-forecast-render-mode" data-mode="' + id + '">' + label + '</button>').join('') + '</div></div>' +
-    '<div class="row-between" style="gap:8px;flex-wrap:wrap;margin-top:10px;"><span>' + (isFa ? 'هماهنگی چندتایم‌فریمی (MTF)' : 'Multi-timeframe coordination (MTF)') + '</span><div class="chip-group"><button type="button" class="chip ' + ((state.forecastCoordView || 'independent') === 'independent' ? 'active' : '') + '" data-action="set-forecast-coord-mode" data-coord="independent">' + (isFa ? 'مستقل (Independent)' : 'Independent') + '</button><button type="button" class="chip ' + (state.forecastCoordView === 'coordinated' ? 'active' : '') + '" data-action="set-forecast-coord-mode" data-coord="coordinated">' + (isFa ? 'هماهنگ (Coordinated)' : 'Coordinated') + '</button></div></div>' +
-    '<div class="ci-fc-subtabs-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 10px;">' + nativeTabNav + '</div><div class="ci-fc-body">' + nativePanel + '</div></div>';
+  const coordView = state.forecastCoordView === 'coordinated' ? 'coordinated' : 'independent';
+  const compareStripHtml = comparisonCandidates.length
+    ? `<div class="ci-fc-control-group ci-fc-control-group-full" style="padding-top:6px;border-top:1px solid var(--border);">
+        <span class="ci-fc-ctrl-label">${isFa ? 'مسیرهای مقایسه‌ای (پیش‌نمایش و چارت اصلی):' : 'Compare Overlays (Preview & Chart):'}</span>
+        <div class="chip-group" style="display:flex;gap:6px;flex-wrap:wrap;">
+          ${comparisonCandidates.map((model) => `<label class="chip ${visibleCompareIds.includes(model.modelId) ? 'active' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" data-action="toggle-forecast-compare-model" data-model-id="${escapeHtml(model.modelId)}" ${visibleCompareIds.includes(model.modelId) ? 'checked' : ''} />${escapeHtml(model.modelName || model.modelId)}</label>`).join('')}
+        </div>
+      </div>`
+    : '';
+  const nativeEvaluationPanels = '<div class="ci-fc-card" style="display:none;" aria-hidden="true"></div>';
   const switcher = `
     <div class="ci-fc-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
       <strong style="font-size:12px;">${isFa ? 'موتور فعال:' : 'Selected engine:'}</strong>
@@ -898,14 +928,17 @@ function renderForecastWorkspaceContent(activeTab) {
       <button type="button" class="chip ${selected === 'structural' ? 'active' : ''}" data-action="set-forecast-engine" data-engine="structural">${isFa ? 'سیستم جدید · Structural' : 'New · Structural'}</button>
     </div>`;
   if (selected === 'legacy') return switcher + renderForecastStudioView(activeTab, i18n);
-  const status = activeTab?.structuralForecastStatus || 'IDLE';
-  const enabled = Boolean(activeTab?.showStructuralForecast);
-  const statusText = status === 'READY' ? (isFa ? 'آماده' : 'Ready')
-    : status === 'COMPUTING' ? (isFa ? 'در حال محاسبه' : 'Computing')
-    : status === 'INSUFFICIENT_EVIDENCE' ? (isFa ? 'شواهد ناکافی' : 'Insufficient evidence')
-    : status === 'ERROR' ? (isFa ? 'خطا' : 'Error') : (isFa ? 'اجرا نشده' : 'Not run');
-  const evalStatus = nativeEvaluation?.status || '';
+
+  const evalStatus = nativeEvaluation?.status || 'DATA_NOT_READY';
   const evalStatusClass = evalStatus === 'VALID' ? 'ci-fc-badge-valid' : evalStatus === 'PROVISIONAL' ? 'ci-fc-badge-provisional' : 'ci-fc-badge-blocked';
+  const evalStatusLabelMap = {
+    VALID: isFa ? 'تأییدشده (VALID)' : 'VALID',
+    PROVISIONAL: isFa ? 'موقت / OOD (PROVISIONAL)' : 'PROVISIONAL',
+    NO_EDGE: isFa ? 'بدون برتری آماری (NO_EDGE)' : 'NO_EDGE',
+    INSUFFICIENT_EVIDENCE: isFa ? 'شواهد آماری ناکافی (INSUFFICIENT_EVIDENCE)' : 'INSUFFICIENT_EVIDENCE',
+    DATA_NOT_READY: isFa ? 'داده آماده نیست (DATA_NOT_READY)' : 'DATA_NOT_READY',
+  };
+  const evalStatusLabel = evalStatusLabelMap[evalStatus] || evalStatus;
   const evalEdgeGate = nativeEvaluation?.noEdgeGate;
   const evalEdgeBadge = evalEdgeGate
     ? `<span class="ci-fc-status-badge ${evalEdgeGate.hasEdge ? 'ci-fc-badge-edge' : 'ci-fc-badge-no-edge'} ltr-num">${escapeHtml(evalEdgeGate.gateState)}</span>`
@@ -918,55 +951,80 @@ function renderForecastWorkspaceContent(activeTab) {
     ? `<span class="ci-fc-regime-badge ltr-num">${escapeHtml(nativeEvaluation.regime)}</span>`
     : '';
   const horizonOptions = isNativeModelSelected ? [10, 15, 20, 30, 45, 60] : [15, 30, 45, 60, 90, 120];
+  const isNativePlotted = Boolean(activeTab?.showStructuralForecast && activeTab?.structuralForecast?.engine?.engine_id === 'native_model_adapter');
+  const isStructuralPlotted = Boolean(activeTab?.showStructuralForecast && activeTab?.structuralForecast?.engine?.engine_id === 'structural_wave_js');
+  const primaryChartAction = isNativeModelSelected ? 'apply-native-forecast-to-chart' : 'toggle-structural-forecast';
+  const isPrimaryPlotted = isNativeModelSelected ? isNativePlotted : isStructuralPlotted;
+
   return switcher + `
-    <section class="ci-forecast-studio" style="max-width:1100px;margin:0 auto;">
+    <section class="ci-forecast-studio">
       <div class="ci-fc-header">
-        <div class="ci-fc-title-row" style="flex-wrap:wrap;gap:8px;">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
-            ${activeTab?.symbolCode ? renderSymbolBadge(activeTab.symbolCode, 26) : ''}
-            <h2>${isFa ? 'موتور پیش‌بینی و تحلیل ساختاری جدید' : 'New Forecast & Structural Analysis Engine'}</h2>
-            <span class="ci-fc-status-badge">${statusText}</span>
-            ${evalStatus ? `<span class="ci-fc-status-badge ${evalStatusClass} ltr-num">${escapeHtml(evalStatus)}</span>` : ''}
+        <div class="ci-fc-title-row">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
+            ${renderSymbolBadge(activeCode, 28)}
+            <span class="ltr-num" style="font-weight:800;font-size:14px;color:var(--text-strong);">${escapeHtml(activeCode)}</span>
+            <span class="ci-fc-status-badge ${evalStatusClass} ltr-num">${escapeHtml(evalStatusLabel)}</span>
             ${evalEdgeBadge}
             ${evalOodBadge}
             ${evalRegimeBadge}
           </div>
-        </div>
-        <p>${isFa ? 'تمام مدل‌های بومی مرورگر (AUTO بر اساس OOS، Structural JS، Historical Analogs، ۱۰ مدل رجیستری و Ensemble) به همراه حالت‌های رسم Fan / Hybrid / Quantile Bars و لایه MTF روی چارت اصلی قابل اجرا هستند. سیستم Legacy همچنان مستقل و قابل بازگشت است.' : 'All browser-native models (AUTO OOS, Structural JS, Historical Analogs, 10 registry models, and Ensemble) with Fan / Hybrid / Quantile Bars and MTF coordination render directly on the main chart. Legacy remains independently available.'}</p>
-      </div>
-      <div class="ci-fc-card">
-        <div class="row-between" style="gap:12px;flex-wrap:wrap;">
-          <div><strong>${activeTab?.symbolCode || '—'} · ${activeTab?.timeframe || '—'}</strong><div style="color:var(--text-muted);font-size:12px;margin-top:5px;">${isFa ? 'وضعیت موتور:' : 'Engine status:'} ${statusText}</div></div>
-          <button type="button" class="btn btn-primary" data-action="toggle-structural-forecast">${enabled ? (isFa ? 'خاموش‌کردن موتور' : 'Disable engine') : (isFa ? 'اجرا و رسم روی چارت' : 'Run & plot on chart')}</button>
-        </div>
-        <div style="margin-top:16px;">
-          <div style="font-weight:700;font-size:12px;margin-bottom:8px;">${isFa ? 'مدل پیش‌بینی برای نمایش' : 'Forecast model to display'}</div>
-          <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
-            <button type="button" class="chip ${(activeTab?.structuralForecastModel || 'structural_wave_js') === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">Structural JS</button>
-            <button type="button" class="chip ${activeTab?.structuralForecastModel === 'empirical_analogs' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="empirical_analogs">Historical Analogs</button>
-            ${nativeModelButtons}
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
+            <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
+              ${isFa ? 'ثبت در دفتر محلی' : 'Record Local Snapshot'}
+            </button>
+            <button type="button" class="btn btn-sm ${isPrimaryPlotted ? 'btn-primary' : ''}" data-action="${primaryChartAction}" ${isNativeModelSelected && (!Array.isArray(nativeEvaluation?.points) || nativeEvaluation.points.length === 0) ? 'disabled' : ''}>
+              ${isPrimaryPlotted ? (isFa ? '✓ مدل انتخاب‌شده روی چارت فعال است' : '✓ Selected Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
+            </button>
+            ${!isNativeModelSelected ? `<button type="button" class="btn btn-sm" style="display:none;" data-action="apply-native-forecast-to-chart" aria-hidden="true"></button>` : ''}
           </div>
-          <div style="color:var(--text-muted);font-size:11px;margin-top:7px;">${isFa ? 'مدل انتخاب‌شده به‌عنوان مسیر اصلی روی نمودار رسم می‌شود؛ در مدل‌های Native می‌توانید مسیرهای مقایسه‌ای را نیز پایین فعال کنید.' : 'The selected model is plotted as the primary path; for Native models you can also toggle dashed comparison paths below.'}</div>
         </div>
-        <div class="ci-fc-card" style="margin-top:12px;border-style:dashed;">
-          <div style="font-weight:700;font-size:12px;margin-bottom:8px;">${isFa ? 'قابلیت‌های Legacy که هنوز به New منتقل و تأیید نشده‌اند' : 'Legacy capabilities not yet migrated and verified in New'}</div>
-          <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
-            <span class="chip" aria-disabled="true" title="${isFa ? 'اتصال Chronos-2 به موتور New فعلاً به‌دلیل محدودیت هاست اشتراکی کنار گذاشته شده است.' : 'Chronos-2 is shelved on shared hosting.'}">${isFa ? 'Chronos-2 · منتقل‌نشده' : 'Chronos-2 · Not migrated'}</span>
-            <span class="chip" aria-disabled="true" title="${isFa ? 'مدل‌های Python Worker روی هاست اشتراکی پشتیبانی نمی‌شوند.' : 'Python Worker models are unsupported on shared hosting.'}">${isFa ? 'مدل‌های Python · منتقل‌نشده' : 'Python models · Not migrated'}</span>
-          </div>
-          <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">${isFa ? 'این موارد عمداً غیرفعال‌اند؛ نسخه Legacy از طریق انتخاب‌گر موتور بالا در دسترس می‌ماند.' : 'These items are intentionally inactive. The Legacy implementation remains available through the engine switch above.'}</div>
-        </div>
-        <div class="row-between" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
-          <span>${isFa ? 'افق پیش‌بینی (تعداد کندل آینده)' : 'Forecast horizon (future bars)'}</span>
-          <div class="chip-group ltr-num">${horizonOptions.map(h=>`<button type="button" class="chip ${horizon===h?'active':''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">+${h}</button>`).join('')}</div>
-        </div>
-        ${activeTab?.structuralForecastModel === 'empirical_analogs' ? '' : `
-        <div class="row-between" style="margin-top:12px;gap:10px;flex-wrap:wrap;">
-          <span>${isFa ? 'محدوده عدم قطعیت (باندهای کوانتایل)' : 'Uncertainty band (quantile corridors)'}</span>
-          <button type="button" class="btn btn-sm ${activeTab?.showForecastBand !== false ? 'btn-primary' : ''}" data-action="toggle-forecast-band">${activeTab?.showForecastBand !== false ? (isFa ? 'فعال' : 'On') : (isFa ? 'خاموش' : 'Off')}</button>
-        </div>`}
 
-        ${activeTab?.structuralForecastError ? `<p style="color:var(--bear);margin-top:12px;">${escapeHtml(activeTab.structuralForecastError)}</p>` : ''}
+        <div class="ci-fc-controls-row">
+          <div class="ci-fc-control-group ci-fc-control-group-full">
+            <span class="ci-fc-ctrl-label">${isFa ? 'مدل پیش‌بینی چارت:' : 'Chart Model:'}</span>
+            <div class="chip-group">
+              <button type="button" class="chip ${currentModel === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">Structural JS</button>
+              ${nativeModelButtons}
+            </div>
+          </div>
+          <div class="ci-fc-control-group">
+            <span class="ci-fc-ctrl-label">${isFa ? 'افق پیش‌بینی (کندل):' : 'Horizon (bars):'}</span>
+            <div class="chip-group ltr-num">${horizonOptions.map((h) => `<button type="button" class="chip ${horizon === h ? 'active' : ''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">+${h}</button>`).join('')}</div>
+          </div>
+          <div class="ci-fc-control-group">
+            <span class="ci-fc-ctrl-label">${isFa ? 'حالت نمایش:' : 'Render Mode:'}</span>
+            <div class="chip-group">${modes.map(([id, label]) => `<button type="button" class="chip ${activeMode === id ? 'active' : ''}" data-action="set-forecast-render-mode" data-mode="${id}">${label}</button>`).join('')}</div>
+          </div>
+          <div class="ci-fc-control-group">
+            <span class="ci-fc-ctrl-label">${isFa ? 'لایه MTF:' : 'MTF Layer:'}</span>
+            <div class="chip-group">
+              <button type="button" class="chip ${coordView === 'independent' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="independent">${isFa ? 'مستقل (Independent)' : 'Independent'}</button>
+              <button type="button" class="chip ${coordView === 'coordinated' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="coordinated">${isFa ? 'هماهنگ (Coordinated)' : 'Coordinated'}</button>
+            </div>
+          </div>
+          <div class="ci-fc-control-group">
+            <span class="ci-fc-ctrl-label">${isFa ? 'باند عدم‌قطعیت:' : 'Uncertainty Band:'}</span>
+            <div class="chip-group">
+              <button type="button" class="chip ${activeTab?.showForecastBand !== false ? 'active' : ''}" data-action="toggle-forecast-band">${activeTab?.showForecastBand !== false ? (isFa ? 'فعال' : 'On') : (isFa ? 'خاموش' : 'Off')}</button>
+            </div>
+          </div>
+          ${compareStripHtml}
+          <div class="ci-fc-control-group ci-fc-control-group-full" style="padding-top:6px;border-top:1px dashed var(--border);">
+            <span class="ci-fc-ctrl-label" title="${isFa ? 'قابلیت‌های Legacy که روی هاست اشتراکی کنار گذاشته شده‌اند' : 'Legacy capabilities not yet migrated and verified in New'}">${isFa ? 'خارج از هاست اشتراکی:' : 'Legacy capabilities not yet migrated and verified in New:'}</span>
+            <div class="chip-group">
+              <span class="chip" aria-disabled="true" title="${isFa ? 'Chronos-2 فعلاً روی هاست اشتراکی کنار گذاشته شده است.' : 'Chronos-2 is shelved on shared hosting.'}">${isFa ? 'Chronos-2 · منتقل‌نشده' : 'Chronos-2 · Not migrated'}</span>
+              <span class="chip" aria-disabled="true" title="${isFa ? 'مدل‌های Python Worker روی هاست اشتراکی پشتیبانی نمی‌شوند.' : 'Python Worker models are unsupported on shared hosting.'}">${isFa ? 'مدل‌های Python · منتقل‌نشده' : 'Python models · Not migrated'}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="ci-fc-subtabs-bar">
+          ${nativeTabNav}
+        </div>
+      </div>
+
+      <div class="ci-fc-body">
+        ${nativePanel}
       </div>
       ${nativeEvaluationPanels}
     </section>`;
@@ -2668,27 +2726,35 @@ document.addEventListener('click', async (e) => {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
     activeTab.structuralForecastHorizonBars = hVal;
     state.chartPreferences.structuralForecastHorizonBars = hVal;
-    activeTab.showStructuralForecast = true;
-    activeTab.scrollOffset = 0;
-    clearTabStructuralForecast(activeTab);
-    activeTab.structuralForecastStatus = 'COMPUTING';
+    if (hVal >= 10 && hVal <= 60) {
+      activeTab.forecastHorizonBars = hVal;
+      state.chartPreferences.forecastHorizonBars = hVal;
+    }
+    const wasPlotted = Boolean(activeTab.showStructuralForecast);
+    if (wasPlotted) {
+      activeTab.scrollOffset = 0;
+      clearTabStructuralForecast(activeTab);
+      activeTab.structuralForecastStatus = 'COMPUTING';
+    }
     savePreferences();
     renderApp();
-    if (!['structural_wave_js', 'empirical_analogs'].includes(activeTab.structuralForecastModel || 'structural_wave_js')) {
-      applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel);
-      saveOpenTabsToStorage();
-      renderApp();
-      redrawActiveCanvas();
-    } else {
-      requestStructuralForecastForTab(activeTab, () => {
+    if (wasPlotted) {
+      if ((activeTab.structuralForecastModel || 'structural_wave_js') !== 'structural_wave_js') {
+        applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel);
+        saveOpenTabsToStorage();
         renderApp();
         redrawActiveCanvas();
-      }).catch((err) => {
-        activeTab.structuralForecast = null;
-        activeTab.structuralForecastStatus = 'ERROR';
-        activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
-        renderApp();
-      });
+      } else {
+        requestStructuralForecastForTab(activeTab, () => {
+          renderApp();
+          redrawActiveCanvas();
+        }).catch((err) => {
+          activeTab.structuralForecast = null;
+          activeTab.structuralForecastStatus = 'ERROR';
+          activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
+          renderApp();
+        });
+      }
     }
   } else if (action === 'toggle-forecast-compare-model') {
     const modelId = String(el.getAttribute('data-model-id') || '');
@@ -2855,7 +2921,10 @@ document.addEventListener('click', async (e) => {
     renderApp();
     redrawActiveCanvas();
     if (activeTab.showStructuralForecast) {
-      if (!['structural_wave_js', 'empirical_analogs'].includes(activeTab.structuralForecastModel || 'structural_wave_js')) {
+      if (state.activeWorkspaceView === 'forecast') {
+        state.activeWorkspaceView = 'chart';
+      }
+      if ((activeTab.structuralForecastModel || 'structural_wave_js') !== 'structural_wave_js') {
         applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel);
         saveOpenTabsToStorage();
         renderApp();
@@ -2948,7 +3017,7 @@ document.addEventListener('click', async (e) => {
       activeTab.showStructuralForecast = false; clearTabStructuralForecast(activeTab); saveOpenTabsToStorage(); renderApp(); redrawActiveCanvas(); return;
     }
     const requestedId = String(activeTab.structuralForecastModel || activeTab.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
-    const selectedId = ['structural_wave_js', 'empirical_analogs'].includes(requestedId) ? (activeTab.selectedForecastModelId || 'AUTO') : requestedId;
+    const selectedId = requestedId === 'structural_wave_js' ? (activeTab.selectedForecastModelId || 'AUTO') : requestedId;
     if (!applyNativeModelForecastToTab(activeTab, selectedId)) {
       showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'مدل انتخاب‌شده خروجی کامل و قابل‌رسم برای این داده ندارد.' : 'The selected model has no complete, renderable trajectory for this data.');
       return;
@@ -3230,6 +3299,7 @@ document.addEventListener('click', async (e) => {
     state.activeModal = null;
     state.activeWorkspaceView = 'chart';
     renderApp();
+    redrawActiveCanvas();
   } else if (action === 'take-chart-snapshot') {
     await handleChartSnapshot();
   } else if (action === 'move-watchlist-symbol') {

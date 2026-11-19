@@ -1791,7 +1791,7 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     showForecastBand: t.showForecastBand !== false,
     forecastHorizonBars: Math.max(1, Math.min(120, Number(t.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30))),
     selectedForecastModelId: String(t.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO'),
-    structuralForecastModel: /^[a-z0-9_]+$/.test(String(t.structuralForecastModel || '')) ? String(t.structuralForecastModel) : 'structural_wave_js',
+    structuralForecastModel: /^(AUTO|[a-z0-9_]+)$/.test(String(t.structuralForecastModel || '')) ? String(t.structuralForecastModel) : 'structural_wave_js',
     isMagnetMode: Boolean(t.isMagnetMode),
     activeDrawingColor:
       t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',

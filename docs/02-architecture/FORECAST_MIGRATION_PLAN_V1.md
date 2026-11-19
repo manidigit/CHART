@@ -947,3 +947,16 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
    - سیستم Legacy در گام ۱ دست‌نخورده و فعال باقی ماند (غیرفعال‌سازی مرحله‌ای بخش‌های منتقل‌شده برای **گام ۲** و پس از تست کاربری گام ۱ برنامه‌ریزی شده است).
    - بررسی سینتکس `node --check` برای فایل‌های تغییریافته و تمامی **۳۵/۳۵ تست `tests/web_parity.test.mjs`** (شامل `FORECAST-PHASE1-PARITY-01` و `FORECAST-PHASE1-PARITY-02`) با موفقیت پاس شدند؛ تأیید مرورگری زنده در Production همچنان Gate بعدی پیش از گام ۲ است.
 
+### 12.1. هم‌ترازی کامل داشبورد ۱۲-پنلی Forecast Studio در سیستم جدید (`v1.47.36`) — 2026-11-19
+
+پس از مقایسه تصویری نسخه `v1.47.35` سیستم جدید با داشبورد کامل `Legacy · Forecast Studio`، شکاف ساختاری زیر شناسایی و رفع شد:
+
+1. **علت ریشه‌ای نمایش ناقص در `v1.47.35`:** در `app.js` مدل `empirical_analogs` از `isNativeModelSelected` حذف شده بود و هنگام انتخاب `structural_wave_js` یا `empirical_analogs` در تب Overview، اجرای `buildForecastForTab()` و رندر `renderOverviewPanel()` انجام نمی‌شد؛ در نتیجه کاربر به‌جای ۱۲ پنل کامل استودیو فقط کارت خالی `Structural Model Overview · IDLE` می‌دید. همچنین در `store.js` عبارت باقاعده `/^[a-z0-9_]+$/` اجازه ذخیره مقدار حروف بزرگ `AUTO` را پس از reload نمی‌داد.
+2. **اصلاحات اعمال‌شده در `v1.47.36` (`app.js`, `store.js`, `index.html`):**
+   - چیدمان سیستم جدید دقیقاً به ساختار تمام‌عرض `.ci-forecast-studio` (هدر، نشانگرهای `VALID/INSUFFICIENT_EVIDENCE`، `Edge Gate`، `OOD`، `Regime`، دکمه‌های `Record Local Snapshot` و `Show Selected Model on Chart`، نوار فشرده `.ci-fc-controls-row`، کنترل باند عدم‌قطعیت، Compare Overlays و ساب‌تب‌های ۴گانه) هم‌تراز شد.
+   - مدل `empirical_analogs` (`Causal Historical Analogs`) اکنون به‌طور کامل در مسیر Native Studio قرار دارد و برای **همه مدل‌ها** (از جمله `Structural JS`، `Causal Historical Analogs`، `AUTO`، ۱۰ مدل رجیستری و `Calibrated Ensemble`) تمامی ۱۲ پنل استودیو (`Calibrated Quantile Fan`، `OOS Selection Gate`، `Conformal Calibration`، `12-Model Trajectory Comparison`، `11 Side-by-Side mini-charts`، `Analog Medoids`، `NO_EDGE`، `Aleatoric vs Epistemic`، `MTF Coordination Check`، `3-Scenario Event Tree` با `Plot Reference Bands on Chart` متصل به `redrawActiveCanvas()`، `Key Zones` و `Horizon Step Quantile Ladder`) به‌صورت زنده رندر می‌شوند.
+   - در حالت انتخاب `Structural JS`، یک نوار وضعیت فشرده `Structural Wave JS Engine` بالای پنل‌های ۱۲گانه قرار می‌گیرد بدون آنکه `state._lastForecastResult` را بازنویسی یا مینی‌چارت‌ها را خراب کند.
+   - ذخیره‌سازی پایدار `AUTO` در `store.js` اصلاح و کلید کش به `app.js?v=1.47.36` و `store.js?v=1.47.14` (در تمامی ۹ ماژول) ارتقا یافت.
+3. **راستی‌آزمایی محلی:** `node --check` روی تمامی ۱۱ ماژول JS تغییریافته و **۳۶/۳۶ تست `tests/web_parity.test.mjs`** (شامل تست جدید `FORECAST-PHASE1-STUDIO-PARITY-03`) بدون خطا پاس شدند. Legacy همچنان تا تأیید مرورگری کاربر برای ورود به گام ۲ فعال است.
+
+

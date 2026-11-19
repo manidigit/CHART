@@ -22,7 +22,7 @@ import {
   clearTabChronosForecast,
   invalidateTabChronosIfStale,
   invalidateTabStructuralForecastIfStale,
-} from '../core/store.js?v=1.47.13';
+} from '../core/store.js?v=1.47.14';
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
 import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.1';
 

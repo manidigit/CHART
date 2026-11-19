@@ -329,7 +329,10 @@
 ### ۶.۵. تکمیل گام ۱ سیستم جدید و تصمیم کنار گذاشتن موقت Python/Chronos-2 — 2026-11-19
 
 - **تصمیم صریح محصول (`FCST-CHRONOS-01`):** با توجه به محدودیت هاست اشتراکی، مدل‌های Python و Chronos-2 فعلاً کنار گذاشته شدند (Shelved) و تمرکز کامل روی برابری ۱۰۰٪ مدل‌ها و کنترل‌های مرورگری در سیستم جدید قرار گرفت.
-- **تغییرات گام ۱ (`v1.47.35`):** افزودن انتخاب `AUTO (OOS)` به سیستم جدید و تطبیق واقعی آن با `selectedChartModelId`، پیاده‌سازی کامل `Quantile Fan (Q10..Q90 + Q25..Q75)`، `Hybrid` و `Quantile Bars` در رندرر چارت اصلی (`chartRenderer.js?v=1.47.22`)، اتصال لایه `Coordinated MTF` و بازترسیم زنده چارت اصلی هنگام تغییر حالت نمایش/MTF/Compare، افزودن نشانگرهای هدر (`VALID/NO_EDGE/OOD/Regime`) و حذف ردیف تکراری افق.
-- **راستی‌آزمایی محلی:** `node --check` روی ماژول‌های تغییریافته و **۳۵/۳۵ تست `tests/web_parity.test.mjs`** با موفقیت پاس شدند.
+- **تغییرات گام ۱ (`v1.47.35` و تکمیل داشبورد ۱۲-پنلی در `v1.47.36`):**
+  - در `v1.47.35`: افزودن انتخاب `AUTO (OOS)` به سیستم جدید و تطبیق واقعی آن با `selectedChartModelId`، پیاده‌سازی کامل `Quantile Fan (Q10..Q90 + Q25..Q75)`، `Hybrid` و `Quantile Bars` در رندرر چارت اصلی (`chartRenderer.js?v=1.47.22`)، اتصال لایه `Coordinated MTF` و بازترسیم زنده چارت اصلی هنگام تغییر حالت نمایش/MTF/Compare.
+  - در `v1.47.36`: هم‌ترازی ۱۰۰٪ چیدمان New با داشبورد تمام‌عرض `.ci-forecast-studio` و رندر بدون‌شرط هر ۱۲ پنل استودیو (شامل `Calibrated Quantile Fan`، `OOS Gate`، `Conformal Calibration`، `12-Model Comparison`، `11 Side-by-Side mini-charts`، `Analog Medoids`، `NO_EDGE`، `Aleatoric vs Epistemic`، `MTF Coordination`، `3-Scenario Event Tree` با `Plot Reference Bands on Chart` متصل به `redrawActiveCanvas()`، `Key Zones` و `Horizon Step Quantile Ladder`) برای همه مدل‌ها از جمله `Causal Historical Analogs` و `Structural JS`؛ همچنین رفع باگ ذخیره نشدن `AUTO` در `store.js?v=1.47.14` و ارتقای `app.js?v=1.47.36`.
+- **راستی‌آزمایی محلی:** `node --check` روی تمامی ۱۱ ماژول JS تغییریافته و **۳۶/۳۶ تست `tests/web_parity.test.mjs`** (شامل `FORECAST-PHASE1-STUDIO-PARITY-03`) با موفقیت پاس شدند.
 - **مرحله بعدی:** سیستم Legacy تا تأیید تست مرورگری گام ۱ دست‌نخورده و فعال مانده است؛ پس از تأیید کاربر، **گام ۲** (غیرفعال‌سازی شفاف بخش‌های منتقل‌شده در Legacy بدون حذف کد) اجرا می‌شود. `FCST-STARTUP-01` و `FCST-E2E-01` تا تأیید زنده روی هاست همچنان باز می‌مانند.
+
 

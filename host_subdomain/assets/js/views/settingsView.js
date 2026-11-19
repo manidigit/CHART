@@ -6,7 +6,7 @@ import {
   getLocalByokKeys,
   getInstrumentSpec,
   normalizeHexForWeb,
-} from '../core/store.js?v=1.47.13';
+} from '../core/store.js?v=1.47.14';
 import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.47.1';
 
 export function renderLanguageThemeBar(i18n) {

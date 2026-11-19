@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.47.36] - 2026-11-19
+
+### Fixed & Improved (Full 12-Panel Forecast Studio Parity in New Workspace)
+- **Full-Width `.ci-forecast-studio` Parity Layout (`app.js`):**
+  - Replaced the sparse card wrapper in `renderForecastWorkspaceContent()` with the full-width `.ci-forecast-studio` header, status badges (`VALID / INSUFFICIENT_EVIDENCE`, `Edge Gate`, `OOD`, `Regime`), `Record Local Snapshot` and `Show Selected Model on Chart` buttons, compact `.ci-fc-controls-row`, `Uncertainty Band` toggle, inline `Compare Overlays`, and 4-tab bar.
+- **Unconditional 12-Panel Live Rendering for All Models (`app.js`):**
+  - Routed `empirical_analogs` (`Causal Historical Analogs`) through the full Native Studio & `applyNativeModelForecastToTab()` instead of falling back to an empty `IDLE` placeholder.
+  - Evaluated `nativeEvaluation = buildForecastForTab(...)` unconditionally when `selected === 'structural'` so all 12 Studio panels (`Calibrated Quantile Fan`, `OOS Selection Gate`, `Conformal Calibration`, `12-Model Trajectory Comparison`, `11 Side-by-Side mini-charts`, `Analog Medoids`, `NO_EDGE` banner, `Aleatoric vs Epistemic`, `MTF Coordination Check`, `3-Scenario Event Tree`, `Key Zones`, and `Horizon Step Quantile Ladder`) render live even when `Causal Historical Analogs` or `Structural JS` is active.
+  - Wired `Plot Reference Bands on Chart` (`project-scenario-levels`) to call `redrawActiveCanvas()` immediately and kept `Structural JS` status in a compact top banner without overwriting `state._lastForecastResult`.
+- **Persistence & Cache Invalidation (`store.js`, `index.html`, all 9 ES module importers):**
+  - Fixed `store.js` tab hydration regex from `/^[a-z0-9_]+$/` to `/^(AUTO|[a-z0-9_]+)$/` so uppercase `'AUTO'` persists across reloads.
+  - Bumped cache keys to `app.js?v=1.47.36` and canonical `store.js?v=1.47.14` across all 9 importing modules.
+- **Verification & Documentation:**
+  - Verified `node --check` on all 11 modified JS modules and **36/36** passing tests in `tests/web_parity.test.mjs` (added `FORECAST-PHASE1-STUDIO-PARITY-03`).
+  - Updated `FORECAST_MIGRATION_PLAN_V1.md`, `FORECAST_LEGACY_PARITY_MATRIX_V1.md`, and `OPEN_ISSUES.md`; Legacy remains untouched pending browser verification and Phase 2 approval.
+
+---
+
 ## [1.47.35] - 2026-11-19
 
 ### Added & Improved (Phase 1 New Forecast Parity: AUTO OOS, Main Chart Render Modes & Coordinated MTF)

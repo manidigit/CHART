@@ -132,7 +132,7 @@ test('ARCH-01: every browser module shares one canonical store.js module URL', a
         assert.ok(match, `Missing shared store import in ${file}`);
         versions.push(match[1]);
     }
-    assert.deepEqual([...new Set(versions)], ['1.47.13'], 'All UI, chart, forecast and service modules must share one store singleton');
+    assert.deepEqual([...new Set(versions)], ['1.47.14'], 'All UI, chart, forecast and service modules must share one store singleton');
 });
 
 const memStore = new Map();
@@ -1661,4 +1661,20 @@ test('FORECAST-PHASE1-PARITY-02: New UI exposes AUTO OOS, unified horizon, and w
   assert.match(renderer, /Q90 \$\{PriceFormatter\.formatPrice/);
   assert.match(renderer, /MTF:Coord/);
 });
+
+test('FORECAST-PHASE1-STUDIO-PARITY-03: New workspace renders full 12-panel Forecast Studio for all models including empirical_analogs & Structural JS and persists AUTO', async () => {
+  const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const store = await readFile(new URL('../host_subdomain/assets/js/core/store.js', import.meta.url), 'utf8');
+  assert.match(app, /const isNativeModelSelected = currentModel !== 'structural_wave_js'/);
+  assert.match(app, /const nativeEvaluation = \(selected === 'structural' \|\| needsNativeEvaluation\)/);
+  assert.match(app, /<section class="ci-forecast-studio">/);
+  assert.match(app, /class="ci-fc-controls-row"/);
+  assert.match(app, /class="ci-fc-subtabs-bar"/);
+  assert.match(app, /class="ci-fc-body"/);
+  assert.match(app, /id: 'empirical_analogs', name: isFa \? 'آنالوگ‌های تاریخی علّی' : 'Causal Historical Analogs'/);
+  assert.match(app, /data-action="toggle-forecast-band"/);
+  assert.match(app, /action === 'project-scenario-levels'[\s\S]{0,1400}redrawActiveCanvas\(\)/);
+  assert.match(store, /structuralForecastModel:\s*\/\^\(AUTO\|\[a-z0-9_\]\+\)\$\/\.test/);
+});
+
 
