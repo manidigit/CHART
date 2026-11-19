@@ -1035,6 +1035,158 @@ export function renderModelsPanel(fc, decimals, isFa, options = {}) {
   `;
 }
 
+export function runHistoricalForecastReplay(activeTab, options = {}) {
+  if (!activeTab) return { status: 'DATA_NOT_READY', reason: 'No active chart tab', windows: [] };
+  const sourceCandles = Array.isArray(activeTab.candles) && activeTab.candles.length
+    ? activeTab.candles
+    : getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, activeTab.timeframe);
+  const candles = sourceCandles.filter((c) =>
+    Number.isFinite(Number(c.open)) &&
+    Number.isFinite(Number(c.high)) &&
+    Number.isFinite(Number(c.low)) &&
+    Number.isFinite(Number(c.close)) &&
+    Number(c.close) > 0
+  ).slice().sort((a, b) => Number(a.open_time_utc_ms || a.openTimeUtcMs || 0) - Number(b.open_time_utc_ms || b.openTimeUtcMs || 0));
+  const horizonBars = clampHorizonBars(options.horizonBars || activeTab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30);
+  const selectedModelId = String(options.selectedModelId || activeTab.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
+  const maxWindows = Math.max(2, Math.min(4, Number(options.maxWindows || 3)));
+  const windows = [];
+  const lastAnchor = candles.length - horizonBars - 1;
+  const firstAnchor = lastAnchor - (maxWindows - 1) * horizonBars;
+  if (firstAnchor < 154) {
+    const result = {
+      status: 'INSUFFICIENT_HISTORY',
+      reason: `Historical Replay needs at least 155 training candles plus ${horizonBars * maxWindows} future candles; available: ${candles.length}.`,
+      symbolCode: activeTab.symbolCode,
+      timeframe: activeTab.timeframe,
+      horizonBars,
+      windows: [],
+    };
+    state._forecastReplayResult = result;
+    return result;
+  }
+
+  defaultForecastRegistry.applyConfig(state.chartPreferences.forecastPluginConfig);
+  for (let anchorIndex = firstAnchor; anchorIndex <= lastAnchor; anchorIndex += horizonBars) {
+    const trainingCandles = candles.slice(0, anchorIndex + 1);
+    const actualCandles = candles.slice(anchorIndex + 1, anchorIndex + 1 + horizonBars);
+    if (actualCandles.length !== horizonBars) continue;
+
+    const forecast = ForecastEngine.project(trainingCandles, {
+      symbolCode: activeTab.symbolCode,
+      providerId: 'tvdatafeed',
+      timeframe: activeTab.timeframe,
+      horizonBars,
+      renderMode: normalizeRenderMode(activeTab.forecastRenderMode || state.chartPreferences.forecastRenderMode || RENDER_MODES.FAN_CHART),
+      selectedScenarioId: activeTab.selectedScenarioId || state.chartPreferences.selectedScenarioId || 'SCENARIO_A',
+      selectedModelId,
+      registry: defaultForecastRegistry,
+      workerUrl: '',
+    });
+    if (!forecast || forecast.status === FORECAST_STATUS.DATA_NOT_READY || !Array.isArray(forecast.points) || forecast.points.length !== horizonBars) {
+      windows.push({
+        status: forecast?.status || 'FAILED',
+        reason: forecast?.readiness?.issues?.join('; ') || forecast?.selectionReason || 'Forecast did not produce a complete path',
+        anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || 0),
+      });
+      continue;
+    }
+
+    const errors = [];
+    let covered = 0;
+    let directionHits = 0;
+    const anchorClose = Number(trainingCandles[trainingCandles.length - 1].close);
+    const actualTerminal = Number(actualCandles[actualCandles.length - 1].close);
+    const predictedTerminal = Number(forecast.points[horizonBars - 1].q50);
+    for (let i = 0; i < horizonBars; i++) {
+      const actual = Number(actualCandles[i].close);
+      const predicted = Number(forecast.points[i].q50);
+      const q10 = Number(forecast.points[i].q10);
+      const q90 = Number(forecast.points[i].q90);
+      errors.push(Math.abs(predicted - actual));
+      if (actual >= q10 && actual <= q90) covered += 1;
+    }
+    directionHits = (predictedTerminal >= anchorClose) === (actualTerminal >= anchorClose) ? 1 : 0;
+    const mae = errors.reduce((sum, value) => sum + value, 0) / errors.length;
+    windows.push({
+      status: forecast.status,
+      modelId: forecast.selectedChartModelId || selectedModelId,
+      anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || 0),
+      actualTerminal,
+      predictedTerminal,
+      mae,
+      maePct: anchorClose > 0 ? (mae / anchorClose) * 100 : null,
+      coverage80Pct: (covered / horizonBars) * 100,
+      directionHit: directionHits === 1,
+      inputHash: forecast.inputHash,
+      trainingBars: trainingCandles.length,
+      actualBars: actualCandles.length,
+    });
+  }
+
+  const scored = windows.filter((w) => Number.isFinite(w.mae));
+  const result = {
+    status: scored.length === maxWindows ? 'COMPLETED' : scored.length > 0 ? 'PARTIAL' : 'FAILED',
+    reason: scored.length === maxWindows
+      ? 'All replay windows were forecast using data available strictly before each anchor.'
+      : `${scored.length}/${maxWindows} replay windows produced scoreable forecasts.`,
+    symbolCode: activeTab.symbolCode,
+    timeframe: activeTab.timeframe,
+    horizonBars,
+    selectedModelId,
+    windows,
+    summary: scored.length ? {
+      meanMae: scored.reduce((sum, w) => sum + w.mae, 0) / scored.length,
+      meanMaePct: scored.reduce((sum, w) => sum + Number(w.maePct || 0), 0) / scored.length,
+      meanCoverage80Pct: scored.reduce((sum, w) => sum + w.coverage80Pct, 0) / scored.length,
+      directionAccuracyPct: (scored.filter((w) => w.directionHit).length / scored.length) * 100,
+      scoredWindows: scored.length,
+    } : null,
+    leakagePolicy: 'TRAINING_SLICE_ENDS_AT_ANCHOR; FUTURE_CANDLES_USED_ONLY_FOR_SCORING',
+    generatedAtUtcMs: Date.now(),
+  };
+  state._forecastReplayResult = result;
+  return result;
+}
+
+function renderHistoricalReplaySection(isFa, decimals) {
+  const replay = state._forecastReplayResult;
+  const sameContext = replay && replay.symbolCode === (getActiveTabSymbolForReplay() || replay.symbolCode);
+  const rows = sameContext && Array.isArray(replay.windows) ? replay.windows.map((w, index) => `
+    <tr>
+      <td class="ltr-num">${index + 1}</td>
+      <td class="ltr-num">${w.anchorTimeUtcMs ? new Date(w.anchorTimeUtcMs).toISOString().replace('T', ' ').slice(0, 16) : '—'}</td>
+      <td class="ltr-num">${escapeHtml(w.status || '—')}</td>
+      <td class="ltr-num">${Number.isFinite(w.predictedTerminal) ? PriceFormatter.formatPrice(w.predictedTerminal, decimals) : '—'}</td>
+      <td class="ltr-num">${Number.isFinite(w.actualTerminal) ? PriceFormatter.formatPrice(w.actualTerminal, decimals) : '—'}</td>
+      <td class="ltr-num">${Number.isFinite(w.maePct) ? w.maePct.toFixed(3) + '%' : '—'}</td>
+      <td class="ltr-num">${Number.isFinite(w.coverage80Pct) ? w.coverage80Pct.toFixed(1) + '%' : '—'}</td>
+    </tr>`).join('') : '';
+  const summary = sameContext && replay.summary ? `
+    <div class="ci-fc-ladder-grid ltr-num">
+      <div class="ci-fc-mini-stat"><span>Mean MAE</span><strong>${replay.summary.meanMaePct.toFixed(3)}%</strong></div>
+      <div class="ci-fc-mini-stat"><span>80% Coverage</span><strong>${replay.summary.meanCoverage80Pct.toFixed(1)}%</strong></div>
+      <div class="ci-fc-mini-stat"><span>Direction Accuracy</span><strong>${replay.summary.directionAccuracyPct.toFixed(1)}%</strong></div>
+      <div class="ci-fc-mini-stat"><span>Scored Windows</span><strong>${replay.summary.scoredWindows}</strong></div>
+    </div>` : '';
+  return `
+    <div class="ci-fc-card" style="margin-top:12px;">
+      <div class="row-between" style="gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <div><strong>${isFa ? 'بازپخش تاریخی بدون نشت داده' : 'Historical Replay · Leakage-Safe'}</strong>
+          <div style="font-size:11px;color:var(--text-muted);">${isFa ? 'سه مبدأ گذشته؛ آموزش فقط با کندل‌های قبل از مبدأ و آینده فقط برای امتیازدهی.' : 'Three historical anchors; training uses only candles before each anchor. Future bars are scoring-only.'}</div>
+        </div>
+        <button type="button" class="btn btn-sm btn-primary" data-action="run-forecast-replay">${isFa ? 'اجرای بازپخش تاریخی' : 'Run Historical Replay'}</button>
+      </div>
+      ${sameContext ? `<span class="ci-fc-status-badge ${replay.status === 'COMPLETED' ? 'ci-fc-badge-valid' : 'ci-fc-badge-provisional'} ltr-num">${escapeHtml(replay.status)}</span><p style="font-size:11px;color:var(--text-muted);">${escapeHtml(replay.reason)}</p>${summary}<div style="overflow-x:auto;margin-top:8px;"><table class="ci-fc-table"><thead><tr><th>#</th><th>Anchor UTC</th><th>Status</th><th>Predicted</th><th>Actual</th><th>MAE %</th><th>80% Cov.</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p style="font-size:11px;color:var(--text-muted);">${isFa ? 'برای نماد و تایم‌فریم فعلی هنوز بازپخش اجرا نشده است.' : 'No replay has been run for the current symbol/timeframe.'}</p>`}
+    </div>
+  `;
+}
+
+function getActiveTabSymbolForReplay() {
+  const tab = state.openTabs?.find((item) => item.tabId === state.activeTabId) || state.openTabs?.[0];
+  return tab ? tab.symbolCode : '';
+}
+
 export function renderBacktestPanel(fc, decimals, isFa) {
   const wf = fc?.walkForward;
   if (!wf || wf.evaluatedWindows === 0 || !wf.ensembleMetrics) {
