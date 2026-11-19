@@ -1052,7 +1052,7 @@ function renderModelsPanel(fc, decimals, isFa) {
   `;
 }
 
-function renderBacktestPanel(fc, decimals, isFa) {
+export function renderBacktestPanel(fc, decimals, isFa) {
   const wf = fc?.walkForward;
   if (!wf || wf.evaluatedWindows === 0 || !wf.ensembleMetrics) {
     return `
@@ -1199,7 +1199,7 @@ function renderBacktestPanel(fc, decimals, isFa) {
   `;
 }
 
-function renderLedgerPanel(decimals, isFa) {
+export function renderLedgerPanel(decimals, isFa) {
   const entries = defaultForecastLedger.loadEntries().slice().reverse();
   const audit = defaultForecastLedger.verifyChain();
   const lifecycleEvents = defaultForecastLedger.loadLifecycleEvents().slice().reverse();
