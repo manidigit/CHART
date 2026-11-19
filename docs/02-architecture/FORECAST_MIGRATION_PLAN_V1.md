@@ -644,3 +644,7 @@ Disabled کردن یک قابلیت در New به معنی خاموش‌کردن
 ### 18.2. آخرین وضعیت آزمون
 
 Workflow run `44496501529` برای commit `fbcb55082f20e50f82a57c3b6b9c3770f5fe1495` با نتیجه موفق پایان یافت: ۱۸ تست Web parity، PHP lint، ساخت Artifact وب و Build/Test اندروید موفق بودند. با این حال مرحله cPanel remote upload به دلیل در دسترس نبودن Secrets skip شد؛ بنابراین این Run **Deploy موفق به Production را ثابت نمی‌کند**. جزئیات و شناسه‌های مشکل در `OPEN_ISSUES.md §5` نگهداری می‌شوند.
+
+### 18.3. اصلاح دامنه واقعی Ledger و Walk-forward
+
+ممیزی تکمیلی نشان داد موتور `evaluateWalkForward()` در مسیر Native از طریق `buildForecastForTab()` اجرا می‌شود و خروجی OOS به Adapter مدل می‌رسد؛ بنابراین این موتور از نظر کد کاملاً غایب نیست. همچنین `ForecastLedger` در Forecast Studio وجود دارد، اما ذخیره‌سازی آن محلی (`localStorage`) و محدود به ۱۲۰ Snapshot/۲۴۰ رویداد Lifecycle است و Server Sync فعال نیست. آنچه هنوز برای New پذیرفته نشده، workflow یکپارچه UI/گزارش، persistence قابل اتکا و چنددستگاهی، تست lifecycle کامل و Historical Replay مستقل است. این اصلاح، برچسب‌های Pending در New را تغییر نمی‌دهد؛ آن برچسب‌ها وضعیت پذیرش قابلیت در New را نشان می‌دهند، نه نبود هرگونه کد در Legacy یا موتورهای مشترک.
