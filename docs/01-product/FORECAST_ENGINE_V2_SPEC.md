@@ -1,8 +1,8 @@
 # CHART Forecast Engine V2 (Rev 2.1) — Technical Specification
 
 > **مشخصات فنی جامع موتور پیش‌بینی نسل دوم (`forecast-contract/v2` / `2.1.0`)**  
-> **وضعیت:** ✅ پیاده‌سازی کامل و تأییدشده در هر سه پلتفرم (`Android Kotlin`، `Web ES6 JS`، `PHP API` و `Python Worker`)  
-> **تاریخ به‌روزرسانی:** ۱۶ نوامبر ۲۰۲۶  
+> **وضعیت:** مشخصات قرارداد و الگوریتم‌های V2؛ وجود کد در چند پلتفرم به‌تنهایی اثبات اجرای Production یا پذیرش یکپارچه نیست. مسیر New Web در حال حاضر Native JavaScript است؛ Python Worker روی هاست اشتراکی غیرفعال است و وضعیت هر Runtime باید جداگانه ارزیابی شود.  
+> **تاریخ به‌روزرسانی:** ۱۹ نوامبر ۲۰۲۶  
 > **سند مرجع قبلی:** [`SMC_ANALOG_ENGINE_REFACTOR_SPEC.md`](./SMC_ANALOG_ENGINE_REFACTOR_SPEC.md) · [`CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md`](./CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md)
 
 ---

@@ -20,12 +20,97 @@ test('FORECAST-MIGRATION-UI-01: New workspace discloses legacy capabilities that
     assert.match(appSource, /renderBacktestPanel\(nativeEvaluation/);
     assert.match(appSource, /renderLedgerPanel\(Number\(activeTab\?\.decimals \|\| 2\), isFa\)/);
     assert.match(appSource, /usesNativeEvaluation\s*=\s*selected === 'structural' && isNativeModelSelected/);
-    assert.match(appSource, /Historical Replay · Not migrated/);
-    assert.match(appSource, /Calibrated Ensemble · Not migrated/);
-    assert.doesNotMatch(appSource, /data-model="ensemble"/);
+    assert.match(appSource, /id: 'ensemble', name: 'Calibrated Ensemble \(V2\)'/);
     // These are disclosure-only labels, not executable selection controls.
     assert.match(appSource, /<span class="chip" aria-disabled="true"/);
     assert.match(appSource, /Legacy · Forecast Studio/);
+});
+
+test('FORECAST-MIGRATION-UI-02: New Native is the first-use default and the legacy engine remains opt-in', async () => {
+    const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+    assert.match(appSource, /forecastEngineMode\s*\|\|\s*'structural'/);
+    assert.match(appSource, /data-engine="legacy"/);
+    assert.match(appSource, /data-engine="structural"/);
+});
+
+test('FORECAST-REGISTRY-01: all ten native model plugins are registered', async () => {
+    const { defaultForecastRegistry } = await import('../host_subdomain/assets/js/forecast/modelRegistry.js');
+    const models = defaultForecastRegistry.list();
+    const ids = models.map((model) => model.id);
+    assert.equal(models.length, 10);
+    for (const id of [
+        'naive_persistence',
+        'historical_drift',
+        'kalman_momentum',
+        'garch_volatility',
+        'arima_ets',
+        'gaussian_process',
+        'native_arima_diff',
+        'native_prophet_decomp',
+        'native_seq_recurrent_approx',
+        'native_quantile_attention_approx',
+    ]) assert.ok(ids.includes(id), `Missing registered model: ${id}`);
+});
+
+test('FORECAST-MIGRATION-MODELS-01: the model picker is generated from the complete native registry', async () => {
+    const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+    assert.match(viewSource, /defaultForecastRegistry\.list\(\)\.map/);
+    assert.match(viewSource, /id: 'empirical_analogs'/);
+    assert.match(viewSource, /id: 'ensemble'/);
+    assert.doesNotMatch(viewSource, /ForecastWorkerClient/);
+    assert.doesNotMatch(viewSource, /ci-forecast-worker-url/);
+});
+
+test('FORECAST-REPLAY-01: historical replay separates pre-anchor training from future-only scoring', async () => {
+    const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+    const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+    assert.match(viewSource, /trainingCandles\s*=\s*candles\.slice\(0,\s*anchorIndex\s*\+\s*1\)/);
+    assert.match(viewSource, /actualCandles\s*=\s*candles\.slice\(anchorIndex\s*\+\s*1/);
+    assert.match(viewSource, /FUTURE_CANDLES_USED_ONLY_FOR_SCORING/);
+    assert.match(viewSource, /data-action="run-forecast-replay"/);
+    assert.match(viewSource, /data-action="set-forecast-replay-windows"/);
+    assert.match(viewSource, /ci_forecast_replay_history_v1/);
+    assert.match(viewSource, /forecastReplayFromDate/);
+    assert.match(viewSource, /Date\.parse\(/);
+    assert.match(viewSource, /forecast-replay-canvas/);
+    assert.match(viewSource, /actualPoints/);
+    assert.match(viewSource, /Play Replay/);
+    assert.match(viewSource, /Saved Replay Run Comparison/);
+    assert.match(appSource, /ci-forecast-replay-from/);
+    assert.match(appSource, /action === 'toggle-forecast-replay-playback'/);
+    assert.match(appSource, /stopForecastReplayPlayback/);
+    assert.match(appSource, /action === 'set-forecast-replay-window'/);
+    assert.match(appSource, /action === 'set-forecast-replay-windows'/);
+    assert.match(appSource, /runHistoricalForecastReplay\(activeTab/);
+});
+
+test('FORECAST-RUNTIME-01: New Native forecast never invokes an external Python worker', async () => {
+    const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+    const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+    assert.match(viewSource, /const workerUrl = ''/);
+    assert.doesNotMatch(viewSource, /ForecastWorkerClient\.infer/);
+    assert.doesNotMatch(appSource, /save-forecast-worker-url/);
+});
+
+test('FORECAST-REPLAY-02: replay refuses insufficient history instead of fabricating forecast windows', async () => {
+    const { runHistoricalForecastReplay } = await import('../host_subdomain/assets/js/views/forecastView.js');
+    const candles = Array.from({ length: 30 }, (_, index) => ({
+        open_time_utc_ms: (index + 1) * 900000,
+        open: 100 + index,
+        high: 101 + index,
+        low: 99 + index,
+        close: 100.5 + index,
+        volume: 1,
+    }));
+    const result = await runHistoricalForecastReplay({
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        candles,
+    }, { horizonBars: 10, maxWindows: 3 });
+    assert.equal(result.status, 'INSUFFICIENT_HISTORY');
+    assert.equal(result.windows.length, 0);
+    assert.match(result.reason, /155 training candles/);
 });
 
 test('ARCH-01: every browser module shares one canonical store.js module URL', async () => {
@@ -1350,7 +1435,8 @@ test('FORECAST-MODEL-SELECTION-01: new Structural selector exposes registry mode
   const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
   const storeSource = await readFile(new URL('../host_subdomain/assets/js/core/store.js', import.meta.url), 'utf8');
   assert.ok(appSource.includes('const nativeModelChoices = defaultForecastRegistry.list()'));
-  assert.ok(appSource.includes('const nativeModelButtons = nativeModelChoices.map'));
+  assert.ok(appSource.includes('const nativeModelButtons = ['));
+  assert.ok(appSource.includes("id: 'ensemble', name: 'Calibrated Ensemble (V2)'"));
   assert.ok(appSource.includes('applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel)'), 'Selected registry model ID must reach the adapter unchanged');
   assert.ok(storeSource.includes("String(params.model_id || '') !== String(tab.structuralForecastModel || 'naive_persistence')"));
 });
@@ -1432,12 +1518,12 @@ test('FORECAST-NEW-EVALUATION-01: New Native workspace reuses Legacy Walk-Forwar
 test('FORECAST-NEW-MODEL-CONFIG-01: New Native workspace reuses model weights and parameter controls without exposing a Python worker URL', async () => {
   const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
   const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
-  assert.match(appSource, /renderModelsPanel\(nativeEvaluation,[\s\S]*includeRemoteWorker:\s*false/);
-  assert.match(viewSource, /export function renderModelsPanel\(fc, decimals, isFa, options = \{\}\)/);
+  assert.match(appSource, /renderModelsPanel\(nativeEvaluation, Number\(activeTab\?\.decimals \|\| 2\), isFa\)/);
+  assert.match(viewSource, /export function renderModelsPanel\(fc, decimals, isFa\)/);
   assert.match(viewSource, /data-action="toggle-forecast-model"/);
   assert.match(viewSource, /data-action="set-forecast-model-weight"/);
   assert.match(viewSource, /data-action="set-forecast-model-param"/);
-  assert.match(viewSource, /options\.includeRemoteWorker === false/);
+  assert.doesNotMatch(viewSource, /ForecastWorkerClient|REMOTE_DL_WORKER_SPEC|ci-forecast-worker-url/);
   assert.match(appSource, /Models & Configuration|مدل‌ها و تنظیمات/);
 });
 
@@ -1474,7 +1560,7 @@ test('FORECAST-NEW-STUDIO-01: New Native workspace restores Forecast Studio work
   assert.ok(view.includes('buildForecastForTab(activeTab, overrides = {})'));
   assert.ok(view.includes('overrides.horizonBars'));
   assert.ok(view.includes('overrides.selectedModelId'));
-  assert.ok(view.includes("overrides.workerUrl !== undefined"));
+  assert.ok(view.includes("const workerUrl = ''"));
   assert.ok(app.includes("workerUrl: ''"));
   assert.ok(view.includes("providerId: activeTab.provider || 'tvdatafeed'"));
   assert.ok(!view.includes("providerId: activeTab.provider || 'twelvedata'"));

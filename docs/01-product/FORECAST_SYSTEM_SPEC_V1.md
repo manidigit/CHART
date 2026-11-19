@@ -1,13 +1,13 @@
 # CHART Forecast — System Specification
 ## سند جامع تعریف سیستم پیش‌بینی، چرخه عمر اجرا و رفتارهای قابل مشاهده
 
-- **Version:** 1.0.4
-- **Date:** 2026-11-17
-- **Status:** Model-agnostic system specification; Phase 1 operational scope is limited to Chronos-2, subject to implementation and acceptance gates
+- **Version:** 1.0.5
+- **Date:** 2026-11-19
+- **Status:** Model-agnostic system specification. Current New Web implementation uses the Native JavaScript registry, Structural JS, causal Historical Analogs, model configuration, Walk-Forward, local Ledger and a limited leakage-safe Replay. Full migration and production acceptance remain open.
 - **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0
 - **Scope:** Product/system behavior, lifecycle, user workflows, model independence, comparison, persistence semantics, evaluation boundaries and acceptance gates
-- **Phase 1 model scope:** Chronos-2 is the sole selected model for initial implementation and controlled evaluation; no additional model is enabled in Phase 1.
-- **Explicit exclusion:** This document does not select software architecture, programming language, provider or deployment topology. The Phase 1 model decision does not establish predictive performance or production approval.
+- **Current Web model scope:** 10 registered Native JavaScript models plus Structural JS, causal Historical Analogs and calibrated Ensemble are selectable. Chronos-2/Python Worker are not part of the New shared-hosting runtime.
+- **Runtime and data constraints:** TradingView is the only active market-data source. New Web forecast inference runs in Native JavaScript; no Python runtime or Cron is required on the shared host. Model availability does not establish predictive performance or production approval.
 
 ---
 
@@ -533,7 +533,7 @@ The following gates must be met in order:
 - Product Foundation and this System Specification are internally consistent.
 - Core terms and boundaries are unambiguous.
 - The existing chart remains the display surface.
-- Phase 1 model scope is explicitly documented as Chronos-2 only; its selection is not a performance or production approval.
+- Current New Web model scope and runtime limits are governed by the versioned header and FORECAST_MIGRATION_PLAN_V1.md; the 2026-11-17 Chronos-2-only decision is historical and superseded.
 
 ### Gate B — Execution and identity
 - One request can create independently identifiable model runs.
@@ -571,7 +571,7 @@ Passing these gates does not prove that a model is accurate. It proves that the 
 
 ## 19. Decisions deliberately left open
 
-The Phase 1 model choice is fixed as Chronos-2 only. The following decisions remain open:
+The 2026-11-17 Chronos-2-only model choice is superseded for the current New Web runtime by the Native JavaScript registry. The following decisions remain open:
 - whether and when a later phase should admit additional models, subject to the formal expansion gate;
 - how many models may run concurrently in a future multi-model phase;
 - which programming language or execution environment should host a model;
@@ -588,13 +588,13 @@ These decisions must be made using evidence from candidate model reviews, integr
 
 ## 20. Phase 1 model and required execution sequence
 
-The Phase 1 model is **Chronos-2 only**, as recorded in FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md. The immediate next work is to complete the system implementation and controlled evaluation path around this single model, prioritizing a time-ordered price path that represents trend changes, impulse moves, pullbacks, swing highs/lows and likely reversal areas. A line/path output is acceptable in Phase 1; complete OHLC candles are deferred.
+The current New Web runtime exposes 10 registered Native JavaScript models, Structural JS, causal Historical Analogs and calibrated Ensemble. Chronos-2 remains excluded from New until an external execution path can be dispatched securely and its result lifecycle is integrated. The immediate acceptance work is to validate the Native paths on real TradingView history, preserve the time-ordered price path, and avoid claims of accuracy before OOS evaluation. A line/path output remains acceptable; complete OHLC candles are deferred.
 
 Chronos-2 has passed source-level screening only. It is not yet CHART-runtime-verified, performance-validated, product-accepted or production-approved. Passing system acceptance gates establishes that the system handles outputs honestly; it does not establish forecast accuracy.
 
 If results are inadequate, first diagnose data identity/quality, preparation, model configuration and execution, horizon, output interpretation/display, and evaluation methodology. Do not add models as a substitute for this diagnosis.
 
-Any later candidate must be independently assessed using FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md and pass its formal model-expansion gate. Deferral of other candidates is not rejection; no additional candidate is enabled in Phase 1.
+Any additional model or external runtime must be independently assessed using FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md and pass its formal model-expansion gate. The current registry does not waive licensing, runtime, provenance or OOS acceptance requirements.
 
 Phase 1 display and acceptance must not reward a smooth but structurally empty line. The forecast path must be assessed for intermediate movement, meaningful corrections, swing points and reversal timing/areas. If uncertainty is displayed, its width and empirical coverage must be evaluated together; a broad cone that hides the central path is not an acceptable substitute for a useful forecast. Native quantiles must not be arbitrarily linked into fabricated coherent paths.
 

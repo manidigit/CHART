@@ -3,10 +3,10 @@
 
 **Document ID:** CHART-FORECAST-STUDIO-PD-002  
 **Version:** 2.0  
-**Status:** Product and architecture direction — pending implementation-level reconciliation  
+**Status:** Historical target-direction reference; implementation truth is governed by FORECAST_PRODUCT_FOUNDATION_V1.md and FORECAST_MIGRATION_PLAN_V1.md. The current New Web path is Native JavaScript and does not yet claim full OHLC candle forecasting or complete Legacy parity.  
 **Project:** CHART  
 **Scope:** Forecast Studio / Lab، تولید کندل آینده OHLC، سازگاری چندتایم‌فریمی، تحلیل سناریو، اعتبارسنجی، اتصال به چارت و ثبت سوابق  
-**تاریخ:** 2026-11-16
+**تاریخ بازنگری وضعیت:** 2026-11-19
 
 ---
 

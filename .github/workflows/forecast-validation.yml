@@ -1,0 +1,39 @@
+name: Forecast Native Validation
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'host_subdomain/assets/js/forecast/**'
+      - 'host_subdomain/assets/js/views/forecastView.js'
+      - 'host_subdomain/assets/js/app.js'
+      - 'tests/**'
+      - '.github/workflows/forecast-validation.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  forecast-web-validation:
+    name: Forecast web parity and syntax
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Run web parity tests
+        run: node --test tests/web_parity.test.mjs
+
+      - name: Check changed forecast JavaScript syntax
+        run: |
+          node --check host_subdomain/assets/js/views/forecastView.js
+          node --check host_subdomain/assets/js/app.js
+          node --check host_subdomain/assets/js/forecast/modelRegistry.js
+          node --check host_subdomain/assets/js/forecast/forecastEngine.js

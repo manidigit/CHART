@@ -80,13 +80,22 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.2';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
-import { renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel } from './views/forecastView.js?v=2.0.11';
+import { renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=2.0.18';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.3';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
+let forecastReplayPlaybackIntervalId = null;
+
+function stopForecastReplayPlayback() {
+  if (forecastReplayPlaybackIntervalId !== null) {
+    window.clearInterval(forecastReplayPlaybackIntervalId);
+    forecastReplayPlaybackIntervalId = null;
+  }
+  state._forecastReplayPlaying = false;
+}
 let canvasResizeObserver = null;
 let lastColorInputInteractMs = 0;
 
@@ -797,13 +806,16 @@ function renderForecastWorkspaceContent(activeTab) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
   defaultForecastRegistry.applyConfig(state.chartPreferences.forecastPluginConfig);
   const nativeModelChoices = defaultForecastRegistry.list();
-  const nativeModelButtons = nativeModelChoices.map((model) => {
+  const nativeModelButtons = [
+    ...nativeModelChoices,
+    { id: 'ensemble', name: 'Calibrated Ensemble (V2)', enabled: true, weight: 1, experimentalOnly: false },
+  ].map((model) => {
     const available = model.enabled && Number(model.weight) > 0;
     const label = `${model.name}${model.experimentalOnly ? ' · Approximation' : ''}${available ? '' : ' · Disabled'}`;
     return `<button type="button" class="chip ${activeTab?.structuralForecastModel === model.id ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="${escapeHtml(model.id)}" ${available ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
   }).join('');
   const isNativeModelSelected = !['structural_wave_js', 'empirical_analogs'].includes(activeTab?.structuralForecastModel || 'structural_wave_js');
-  const selected = (state.chartPreferences.forecastEngineMode || state.forecastEngineMode) === 'structural' ? 'structural' : 'legacy';
+  const selected = (state.chartPreferences.forecastEngineMode || state.forecastEngineMode || 'structural') === 'legacy' ? 'legacy' : 'structural';
   const usesNativeEvaluation = selected === 'structural' && isNativeModelSelected;
   const horizon = Math.max(10, Math.min(60, Number(activeTab?.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30)));
   const nativeModelId = String(activeTab?.structuralForecastModel || 'naive_persistence');
@@ -836,7 +848,7 @@ function renderForecastWorkspaceContent(activeTab) {
       ? renderOverviewPanel(nativeEvaluation, activeTab, Number(activeTab?.decimals || 2), isFa, state.forecastCoordView || 'independent')
       : '<div class="ci-fc-card"><div class="row-between" style="gap:8px;flex-wrap:wrap;"><strong>' + (isFa ? 'نمای کلی مدل ساختاری' : 'Structural Model Overview') + '</strong><span class="ci-fc-status-badge">' + escapeHtml(activeTab?.structuralForecastStatus || 'IDLE') + '</span></div>' + (structuralPreview ? '<canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas" style="margin-top:10px;"></canvas>' : '<p style="font-size:12px;color:var(--text-muted);">' + escapeHtml(activeTab?.structuralForecastError || (isFa ? 'برای نمایش مسیر، ابتدا تحلیل ساختاری را اجرا کنید.' : 'Run structural analysis to generate a preview path.')) + '</p>') + '<div class="ltr-num" style="font-size:12px;margin-top:8px;">' + (isFa ? 'مدل انتخاب‌شده: ' : 'Selected model: ') + escapeHtml(activeTab?.structuralForecastModel || 'structural_wave_js') + (structuralForecast?.engine?.params?.structure_bias ? ' · ' + escapeHtml(structuralForecast.engine.params.structure_bias) : '') + (structuralForecast?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(structuralForecast.engine.params.volatility_regime) : '') + '</div><p style="font-size:11px;color:var(--text-muted);">' + (isFa ? 'تنظیمات، Walk-Forward و Ledger در تب‌های دیگر همین صفحه در دسترس‌اند. برای Fan/Scenario آماری و مقایسه Native، یک مدل Native انتخاب کنید.' : 'Configuration, Walk-Forward and Ledger are available in the other tabs. Select a Native model for statistical Fan/Scenario and Native comparisons.') + '</p></div>')
     : nativeTab === 'models'
-      ? renderModelsPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa, { includeRemoteWorker: false })
+      ? renderModelsPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa)
       : nativeTab === 'backtest'
         ? renderBacktestPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa)
         : renderLedgerPanel(Number(activeTab?.decimals || 2), isFa);
@@ -861,7 +873,6 @@ function renderForecastWorkspaceContent(activeTab) {
   if (selected === 'legacy') return switcher + renderForecastStudioView(activeTab, i18n);
   const status = activeTab?.structuralForecastStatus || 'IDLE';
   const enabled = Boolean(activeTab?.showStructuralForecast);
-
   const statusText = status === 'READY' ? (isFa ? 'آماده' : 'Ready')
     : status === 'COMPUTING' ? (isFa ? 'در حال محاسبه' : 'Computing')
     : status === 'INSUFFICIENT_EVIDENCE' ? (isFa ? 'شواهد ناکافی' : 'Insufficient evidence')
@@ -882,7 +893,6 @@ function renderForecastWorkspaceContent(activeTab) {
           <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
             <button type="button" class="chip ${(activeTab?.structuralForecastModel || 'structural_wave_js') === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">Structural JS</button>
             <button type="button" class="chip ${activeTab?.structuralForecastModel === 'empirical_analogs' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="empirical_analogs">Historical Analogs</button>
-            <span class="chip" aria-disabled="true" title="${isFa ? 'موتور Structural فعلی مسیر اجرایی Ensemble ندارد؛ تا زمان انتقال و آزمون غیرفعال است.' : 'The current Structural engine has no Ensemble execution path; disabled until migrated and tested.'}">${isFa ? 'Calibrated Ensemble · منتقل‌نشده' : 'Calibrated Ensemble · Not migrated'}</span>
             ${nativeModelButtons}
           </div>
           <div style="color:var(--text-muted);font-size:11px;margin-top:7px;">${isFa ? 'در هر لحظه فقط مدل انتخاب‌شده روی نمودار رسم می‌شود.' : 'Only the selected model is plotted at a time.'}</div>
@@ -892,7 +902,6 @@ function renderForecastWorkspaceContent(activeTab) {
           <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
             <span class="chip" aria-disabled="true" title="${isFa ? 'اتصال Chronos-2 به موتور New هنوز پیاده‌سازی و تأیید نشده است.' : 'Chronos-2 is not yet integrated and verified in the New engine.'}">${isFa ? 'Chronos-2 · منتقل‌نشده' : 'Chronos-2 · Not migrated'}</span>
             <span class="chip" aria-disabled="true" title="${isFa ? 'مدل‌های Python Worker هنوز در New قابل انتخاب نیستند.' : 'Python Worker models are not selectable in New yet.'}">${isFa ? 'مدل‌های Python · منتقل‌نشده' : 'Python models · Not migrated'}</span>
-            <span class="chip" aria-disabled="true" title="${isFa ? 'Replay تاریخی در New هنوز ارائه نشده است.' : 'Historical replay is not yet available in New.'}">${isFa ? 'Historical Replay · منتقل‌نشده' : 'Historical Replay · Not migrated'}</span>
           </div>
           <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">${isFa ? 'این موارد عمداً غیرفعال‌اند؛ نسخه Legacy از طریق انتخاب‌گر موتور بالا در دسترس می‌ماند.' : 'These items are intentionally inactive. The Legacy implementation remains available through the engine switch above.'}</div>
         </div>
@@ -940,6 +949,10 @@ export function renderApp() {
     }
 
     const isForecastWorkspace = state.activeWorkspaceView === 'forecast';
+    const activeReplay = state._forecastReplayResult;
+    if (state._forecastReplayPlaying && (!isForecastWorkspace || activeReplay?.symbolCode !== activeTab?.symbolCode || activeReplay?.timeframe !== activeTab?.timeframe)) {
+      stopForecastReplayPlayback();
+    }
     if (typeof document !== 'undefined') {
       document.documentElement?.classList?.toggle('is-forecast-scroll', isForecastWorkspace);
       document.body?.classList?.toggle('is-forecast-scroll', isForecastWorkspace);
@@ -1003,6 +1016,27 @@ export function renderApp() {
         document.documentElement.getAttribute('data-theme') !== 'light',
         state.forecastCoordView || 'independent'
       );
+      const replayResult = state._forecastReplayResult;
+      if (replayResult && replayResult.symbolCode === activeTab?.symbolCode && replayResult.timeframe === activeTab?.timeframe) {
+        const replayIndex = Math.max(0, Math.min(Number(state.chartPreferences.forecastReplaySelectedWindow || 0), (replayResult.windows || []).length - 1));
+        const replayWindow = replayResult.windows?.[replayIndex];
+        if (replayWindow?.forecastPoints?.length && replayWindow?.historyCandles?.length) {
+          renderForecastStudioFanCanvas(
+            document.getElementById('forecast-replay-canvas'),
+            replayWindow.historyCandles,
+            {
+              points: replayWindow.forecastPoints,
+              actualPoints: replayWindow.actualPoints || [],
+              selectedChartModelId: replayWindow.modelId || 'ensemble',
+              renderMode: 'FAN_CHART',
+              modelTrajectories: [],
+            },
+            Number(activeTab?.decimals || 2),
+            document.documentElement.getAttribute('data-theme') !== 'light',
+            'independent'
+          );
+        }
+      }
       const comparisonResult = state._lastForecastResult;
       document.querySelectorAll('canvas[data-forecast-compare-model]').forEach((canvas) => {
         const modelId = canvas.getAttribute('data-forecast-compare-model');
@@ -2564,7 +2598,9 @@ document.addEventListener('click', async (e) => {
     showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'دفتر محلی به‌روز است؛ همگام‌سازی سرور در این نسخه فعال نیست.' : 'Local ledger is current; server sync is not enabled in this web build.');
     renderApp();
   } else if (action === 'set-forecast-engine') {
-    state.forecastEngineMode = el.getAttribute('data-engine') === 'structural' ? 'structural' : 'legacy';
+    const selectedEngine = el.getAttribute('data-engine') === 'structural' ? 'structural' : 'legacy';
+    if (selectedEngine === 'legacy') stopForecastReplayPlayback();
+    state.forecastEngineMode = selectedEngine;
     state.chartPreferences.forecastEngineMode = state.forecastEngineMode;
     if (activeTab) {
       if (state.forecastEngineMode === 'structural') {
@@ -2614,6 +2650,74 @@ document.addEventListener('click', async (e) => {
       savePreferences();
       renderApp();
     }
+  } else if (action === 'toggle-forecast-replay-playback') {
+    const replay = state._forecastReplayResult;
+    if (state._forecastReplayPlaying) {
+      stopForecastReplayPlayback();
+      renderApp();
+    } else if (Array.isArray(replay?.windows) && replay.windows.length > 1) {
+      state._forecastReplayPlaying = true;
+      forecastReplayPlaybackIntervalId = window.setInterval(() => {
+        const currentReplay = state._forecastReplayResult;
+        if (!Array.isArray(currentReplay?.windows) || currentReplay.windows.length < 2) {
+          stopForecastReplayPlayback();
+          renderApp();
+          return;
+        }
+        const currentIndex = Number(state.chartPreferences.forecastReplaySelectedWindow || 0);
+        state.chartPreferences.forecastReplaySelectedWindow = (currentIndex + 1) % currentReplay.windows.length;
+        renderApp();
+      }, 1200);
+      renderApp();
+    }
+  } else if (action === 'set-forecast-replay-window') {
+    const selectedIndex = Math.max(0, Number(el.getAttribute('data-index') || 0));
+    state.chartPreferences.forecastReplaySelectedWindow = selectedIndex;
+    savePreferences();
+    renderApp();
+  } else if (action === 'set-forecast-replay-windows') {
+    const requestedWindows = Number(el.getAttribute('data-windows') || 3);
+    state.chartPreferences.forecastReplayWindowCount = [3, 5, 10].includes(requestedWindows) ? requestedWindows : 3;
+    savePreferences();
+    renderApp();
+  } else if (action === 'run-forecast-replay' && activeTab) {
+    stopForecastReplayPlayback();
+    const isFa = i18n.getCurrentLanguage() === 'fa';
+    state.chartPreferences.forecastReplayFromDate = String(document.getElementById('ci-forecast-replay-from')?.value || '').trim();
+    state.chartPreferences.forecastReplayToDate = String(document.getElementById('ci-forecast-replay-to')?.value || '').trim();
+    savePreferences();
+    state._forecastReplayResult = {
+      status: 'RUNNING',
+      symbolCode: activeTab.symbolCode,
+      timeframe: activeTab.timeframe,
+      fromDate: state.chartPreferences.forecastReplayFromDate,
+      toDate: state.chartPreferences.forecastReplayToDate,
+      windows: [],
+      reason: isFa ? 'بازپخش در حال اجراست؛ داده آینده فقط برای امتیازدهی استفاده می‌شود.' : 'Replay is running; future candles are scoring-only.',
+    };
+    renderApp();
+    runHistoricalForecastReplay(activeTab, {
+      maxWindows: Number(state.chartPreferences.forecastReplayWindowCount || 3),
+      fromDate: state.chartPreferences.forecastReplayFromDate,
+      toDate: state.chartPreferences.forecastReplayToDate,
+    })
+      .then((replay) => {
+        showFloatingToast(replay.status === 'COMPLETED'
+          ? (isFa ? 'بازپخش تاریخی با موفقیت اجرا شد.' : 'Historical replay completed.')
+          : (isFa ? `بازپخش تاریخی: ${replay.status} — ${replay.reason}` : `Historical replay: ${replay.status} — ${replay.reason}`));
+        renderApp();
+      })
+      .catch((error) => {
+        state._forecastReplayResult = {
+          status: 'FAILED',
+          symbolCode: activeTab.symbolCode,
+          timeframe: activeTab.timeframe,
+          windows: [],
+          reason: String(error?.message || error || 'Unknown replay error'),
+        };
+        showFloatingToast(isFa ? 'اجرای بازپخش تاریخی ناموفق بود.' : 'Historical replay failed.');
+        renderApp();
+      });
   } else if (action === 'set-forecast-subtab') {
     state.forecastStudioTab = String(el.getAttribute('data-tab') || 'overview');
     renderApp();
@@ -2662,11 +2766,6 @@ document.addEventListener('click', async (e) => {
       invalidateForecastAfterModelConfigChange(activeTab, modelId);
       renderApp();
     }
-  } else if (action === 'save-forecast-worker-url') {
-    const workerInput = document.getElementById('ci-forecast-worker-url');
-    state.chartPreferences.forecastWorkerUrl = String(workerInput?.value || '').trim();
-    savePreferences();
-    renderApp();
   } else if (action === 'reset-forecast-models') {
     defaultForecastRegistry.resetDefaults();
     state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();

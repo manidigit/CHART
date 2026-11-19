@@ -12,10 +12,10 @@ import {
   normalizeRenderMode,
   clampHorizonBars,
 } from '../forecast/forecastContract.js?v=2.0.3';
-import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=2.0.1';
+import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=2.0.1';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=2.0.0';
-import { ForecastWorkerClient } from '../forecast/forecastWorkerClient.js?v=2.0.0';
+
 import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.12';
 import { renderSymbolBadge } from './watchlistView.js?v=1.47.2';
 
@@ -59,7 +59,8 @@ export function buildForecastForTab(activeTab, overrides = {}) {
   }
   const horizonBars = clampHorizonBars(overrides.horizonBars || activeTab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
   const renderMode = normalizeRenderMode(overrides.renderMode || activeTab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.FAN_CHART);
-  const workerUrl = overrides.workerUrl !== undefined ? String(overrides.workerUrl || '') : (prefs.forecastWorkerUrl || '');
+  // Shared-hosting production policy: inference is native JavaScript only. No Python worker URL is read or invoked.
+  const workerUrl = '';
 
   const higherTf = resolveHigherTimeframe(activeTab.timeframe);
   const higherCandles = higherTf
@@ -130,34 +131,7 @@ export function buildForecastForTab(activeTab, overrides = {}) {
         : null,
   });
 
-  if (workerUrl && result && result.status !== FORECAST_STATUS.DATA_NOT_READY) {
-    const cachedWorker = state._workerForecastByKey[result.inputHash];
-    if (cachedWorker) {
-      result = ForecastEngine.applyRemoteWorkerResponse(result, cachedWorker, selectedModelId);
-    } else if (!state._workerPendingKeys[result.inputHash]) {
-      state._workerPendingKeys[result.inputHash] = true;
-      ForecastWorkerClient.infer(workerUrl, {
-        symbolCode: activeTab.symbolCode,
-        timeframe: activeTab.timeframe,
-        horizonBars,
-        candles,
-        inputHash: result.inputHash,
-      })
-        .then((workerWrap) => {
-          delete state._workerPendingKeys[result.inputHash];
-          if (workerWrap) {
-            state._workerForecastByKey[result.inputHash] = workerWrap;
-            state._forecastBuildMemo = null;
-            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-              window.dispatchEvent(new CustomEvent('ci-forecast-worker-updated'));
-            }
-          }
-        })
-        .catch(() => {
-          delete state._workerPendingKeys[result.inputHash];
-        });
-    }
-  }
+
 
   if (result && result.status !== FORECAST_STATUS.DATA_NOT_READY) {
     if (!lastStored || lastStored.inputHash !== result.inputHash) {
@@ -234,6 +208,13 @@ export function renderForecastStudioFanCanvas(
     const hi = Number(p.q90 ?? p.high);
     if (Number.isFinite(lo)) minP = Math.min(minP, lo);
     if (Number.isFinite(hi)) maxP = Math.max(maxP, hi);
+  }
+  for (const actual of Array.isArray(forecast?.actualPoints) ? forecast.actualPoints : []) {
+    const close = Number(actual.close ?? actual);
+    if (Number.isFinite(close)) {
+      minP = Math.min(minP, close);
+      maxP = Math.max(maxP, close);
+    }
   }
   const padPrice = Math.max(1e-6, (maxP - minP) * 0.08);
   minP -= padPrice;
@@ -435,6 +416,23 @@ export function renderForecastStudioFanCanvas(
     ctx.stroke();
     ctx.setLineDash([]);
 
+    // Optional historical replay actual path; scoring data is displayed separately from the forecast q50.
+    const actualReplayPoints = Array.isArray(forecast?.actualPoints) ? forecast.actualPoints : [];
+    if (actualReplayPoints.length > 0) {
+      ctx.save();
+      ctx.strokeStyle = isDark ? '#CBD5E1' : '#475569';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(xOf(hist.length - 1), yOf(Number(hist[hist.length - 1].close)));
+      actualReplayPoints.forEach((point, idx) => {
+        ctx.lineTo(xOf(hist.length + idx), yOf(Number(point.close ?? point)));
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
+
     // Present divider line
     ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.75)' : 'rgba(15,23,42,0.7)';
     ctx.lineWidth = 1.4;
@@ -590,19 +588,15 @@ export function renderForecastStudioView(activeTab, i18n) {
     (activeTab && activeTab.selectedForecastModelId) || state.chartPreferences.selectedForecastModelId || 'AUTO'
   );
   const modelChoices = [
-    { id: 'AUTO', label: isFa ? 'خودکار (بهترین OOS)' : 'Auto (OOS Winner)' },
-    { id: 'native_arima_diff', label: 'ARIMA(p,d,q)' },
-    { id: 'native_prophet_decomp', label: isFa ? 'Prophet (تقریبی)' : 'Prophet (Approx)' },
-    { id: 'native_seq_recurrent_approx', label: isFa ? 'Recurrent MC (تقریبی)' : 'Recurrent MC (Approx)' },
-    { id: 'native_quantile_attention_approx', label: isFa ? 'TFT Attention (تقریبی)' : 'TFT Attention (Approx)' },
-    { id: 'empirical_analogs', label: isFa ? 'آنالوگ‌های علّی' : 'Empirical Analogs' },
-    { id: 'naive_persistence', label: 'Naive Baseline' },
-    { id: 'ensemble', label: 'Ensemble (V2)' },
+    { id: 'AUTO', label: isFa ? 'خودکار (بر اساس ارزیابی OOS)' : 'Auto (OOS evaluated)' },
+    ...defaultForecastRegistry.list().map((model) => ({
+      id: model.id,
+      label: `${model.name}${model.experimentalOnly ? (isFa ? ' (تقریبی)' : ' (Approximation)') : ''}`,
+    })),
   ];
-  const remoteTrajs = (fc?.modelTrajectories || []).filter((t) => String(t.modelId || '').startsWith('py_'));
-  for (const rt of remoteTrajs) {
-    modelChoices.push({ id: rt.modelId, label: `${rt.modelName} (Python)` });
-  }
+  // Ensemble is an engine-level aggregation option, not a registry plugin.
+  modelChoices.push({ id: 'empirical_analogs', label: isFa ? 'آنالوگ‌های تاریخی علّی' : 'Causal Historical Analogs' });
+  modelChoices.push({ id: 'ensemble', label: 'Ensemble (V2)' });
   const modelButtons = modelChoices
     .map(
       (m) =>
@@ -1005,11 +999,9 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
   `;
 }
 
-export function renderModelsPanel(fc, decimals, isFa, options = {}) {
+export function renderModelsPanel(fc, decimals, isFa) {
   const plugins = defaultForecastRegistry.list();
   const contribMap = new Map((fc?.modelContributions || []).map((c) => [c.modelId, c]));
-  const workerUrl = state.chartPreferences.forecastWorkerUrl || '';
-  const workerInfo = fc?.remoteWorker || { status: 'LOCAL_STATISTICAL_ONLY', configured: Boolean(workerUrl) };
 
   const cards = plugins
     .map((p) => {
@@ -1063,24 +1055,222 @@ export function renderModelsPanel(fc, decimals, isFa, options = {}) {
 
     <div class="ci-fc-grid-2">${cards}</div>
 
-    ${options.includeRemoteWorker === false ? '' : `    <div class="ci-fc-card" style="margin-top:12px;">
-      <div class="row-between" style="margin-bottom:6px;flex-wrap:wrap;gap:8px;">
-        <strong style="font-size:13px;">${escapeHtml(REMOTE_DL_WORKER_SPEC.name)}</strong>
-        <span class="ci-fc-family-tag ltr-num">${escapeHtml(workerInfo.status)}</span>
+
+  `;
+}
+
+export async function runHistoricalForecastReplay(activeTab, options = {}) {
+  if (!activeTab) return { status: 'DATA_NOT_READY', reason: 'No active chart tab', windows: [] };
+  const sourceCandles = Array.isArray(activeTab.candles) && activeTab.candles.length
+    ? activeTab.candles
+    : getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, activeTab.timeframe);
+  const candles = sourceCandles.filter((c) =>
+    Number.isFinite(Number(c.open)) &&
+    Number.isFinite(Number(c.high)) &&
+    Number.isFinite(Number(c.low)) &&
+    Number.isFinite(Number(c.close)) &&
+    Number(c.close) > 0
+  ).slice().sort((a, b) => Number(a.open_time_utc_ms || a.openTimeUtcMs || 0) - Number(b.open_time_utc_ms || b.openTimeUtcMs || 0));
+  const horizonBars = clampHorizonBars(options.horizonBars || activeTab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30);
+  const selectedModelId = String(options.selectedModelId || activeTab.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
+  const maxWindows = Math.max(2, Math.min(10, Math.round(Number(options.maxWindows || state.chartPreferences.forecastReplayWindowCount || 3))));
+  const fromDate = String(options.fromDate ?? state.chartPreferences.forecastReplayFromDate ?? '').trim();
+  const toDate = String(options.toDate ?? state.chartPreferences.forecastReplayToDate ?? '').trim();
+  const fromMs = fromDate ? Date.parse(`${fromDate}T00:00:00.000Z`) : null;
+  const toMs = toDate ? Date.parse(`${toDate}T23:59:59.999Z`) : null;
+  const windows = [];
+  const invalidRange = (fromDate && !Number.isFinite(fromMs)) || (toDate && !Number.isFinite(toMs)) || (fromMs != null && toMs != null && fromMs > toMs);
+  if (invalidRange) {
+    const result = { status: 'INVALID_DATE_RANGE', reason: 'Replay date range is invalid. Use UTC dates with From <= To.', symbolCode: activeTab.symbolCode, timeframe: activeTab.timeframe, horizonBars, fromDate, toDate, windows: [] };
+    state._forecastReplayResult = result;
+    return result;
+  }
+
+  let firstAnchor = 154;
+  if (fromMs != null) {
+    const firstInRange = candles.findIndex((c) => Number(c.open_time_utc_ms || c.openTimeUtcMs || 0) >= fromMs);
+    if (firstInRange < 0) firstAnchor = candles.length;
+    else firstAnchor = Math.max(firstAnchor, firstInRange);
+  }
+  let lastAnchor = candles.length - horizonBars - 1;
+  if (toMs != null) {
+    let lastInRange = -1;
+    for (let i = 0; i < candles.length; i++) {
+      if (Number(candles[i].open_time_utc_ms || candles[i].openTimeUtcMs || 0) <= toMs) lastInRange = i;
+      else break;
+    }
+    lastAnchor = Math.min(lastAnchor, lastInRange - horizonBars);
+  }
+  if (firstAnchor > lastAnchor || firstAnchor < 154) {
+    const result = {
+      status: 'INSUFFICIENT_HISTORY',
+      reason: `The selected range needs 155 training candles and ${horizonBars} future candles after each anchor; available: ${candles.length}.`,
+      symbolCode: activeTab.symbolCode,
+      timeframe: activeTab.timeframe,
+      horizonBars,
+      fromDate,
+      toDate,
+      windows: [],
+    };
+    state._forecastReplayResult = result;
+    return result;
+  }
+  const anchorIndexes = Array.from({ length: maxWindows }, (_, i) =>
+    Math.round(firstAnchor + ((lastAnchor - firstAnchor) * i) / Math.max(1, maxWindows - 1))
+  ).filter((value, index, all) => all.indexOf(value) === index);
+
+  defaultForecastRegistry.applyConfig(state.chartPreferences.forecastPluginConfig);
+  for (const anchorIndex of anchorIndexes) {
+    const trainingCandles = candles.slice(0, anchorIndex + 1);
+    const actualCandles = candles.slice(anchorIndex + 1, anchorIndex + 1 + horizonBars);
+    if (actualCandles.length !== horizonBars) continue;
+    // Yield between windows so the chart remains responsive during manual replay.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    const forecast = ForecastEngine.project(trainingCandles, {
+      symbolCode: activeTab.symbolCode,
+      providerId: 'tvdatafeed',
+      timeframe: activeTab.timeframe,
+      horizonBars,
+      renderMode: normalizeRenderMode(activeTab.forecastRenderMode || state.chartPreferences.forecastRenderMode || RENDER_MODES.FAN_CHART),
+      selectedScenarioId: activeTab.selectedScenarioId || state.chartPreferences.selectedScenarioId || 'SCENARIO_A',
+      selectedModelId,
+      registry: defaultForecastRegistry,
+      workerUrl: '',
+    });
+    if (!forecast || forecast.status === FORECAST_STATUS.DATA_NOT_READY || !Array.isArray(forecast.points) || forecast.points.length !== horizonBars) {
+      windows.push({
+        status: forecast?.status || 'FAILED',
+        reason: forecast?.readiness?.issues?.join('; ') || forecast?.selectionReason || 'Forecast did not produce a complete path',
+        anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || trainingCandles[trainingCandles.length - 1]?.openTimeUtcMs || 0),
+      });
+      continue;
+    }
+
+    const errors = [];
+    let covered = 0;
+    let directionHits = 0;
+    const anchorClose = Number(trainingCandles[trainingCandles.length - 1].close);
+    const actualTerminal = Number(actualCandles[actualCandles.length - 1].close);
+    const predictedTerminal = Number(forecast.points[horizonBars - 1].q50);
+    for (let i = 0; i < horizonBars; i++) {
+      const actual = Number(actualCandles[i].close);
+      const predicted = Number(forecast.points[i].q50);
+      const q10 = Number(forecast.points[i].q10);
+      const q90 = Number(forecast.points[i].q90);
+      errors.push(Math.abs(predicted - actual));
+      if (actual >= q10 && actual <= q90) covered += 1;
+    }
+    directionHits = (predictedTerminal >= anchorClose) === (actualTerminal >= anchorClose) ? 1 : 0;
+    const mae = errors.reduce((sum, value) => sum + value, 0) / errors.length;
+    windows.push({
+      status: forecast.status,
+      modelId: forecast.selectedChartModelId || selectedModelId,
+      anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || trainingCandles[trainingCandles.length - 1]?.openTimeUtcMs || 0),
+      actualTerminal,
+      predictedTerminal,
+      mae,
+      maePct: anchorClose > 0 ? (mae / anchorClose) * 100 : null,
+      coverage80Pct: (covered / horizonBars) * 100,
+      directionHit: directionHits === 1,
+      inputHash: forecast.inputHash,
+      trainingBars: trainingCandles.length,
+      actualBars: actualCandles.length,
+      historyCandles: trainingCandles.slice(-48).map((c) => ({
+        open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),
+        open_time_utc_ms: Number(c.open_time_utc_ms || c.openTimeUtcMs || 0),
+      })),
+      forecastPoints: forecast.points,
+      actualPoints: actualCandles.map((c) => ({ close: Number(c.close) })),
+    });
+  }
+
+  const scored = windows.filter((w) => Number.isFinite(w.mae));
+  const result = {
+    status: scored.length === maxWindows ? 'COMPLETED' : scored.length > 0 ? 'PARTIAL' : 'FAILED',
+    reason: scored.length === maxWindows
+      ? 'All replay windows were forecast using data available strictly before each anchor.'
+      : `${scored.length}/${maxWindows} replay windows produced scoreable forecasts.`,
+    symbolCode: activeTab.symbolCode,
+    timeframe: activeTab.timeframe,
+    horizonBars,
+    selectedModelId,
+    fromDate,
+    toDate,
+    maxWindows,
+    windows,
+    summary: scored.length ? {
+      meanMae: scored.reduce((sum, w) => sum + w.mae, 0) / scored.length,
+      meanMaePct: scored.reduce((sum, w) => sum + Number(w.maePct || 0), 0) / scored.length,
+      meanCoverage80Pct: scored.reduce((sum, w) => sum + w.coverage80Pct, 0) / scored.length,
+      directionAccuracyPct: (scored.filter((w) => w.directionHit).length / scored.length) * 100,
+      scoredWindows: scored.length,
+    } : null,
+    leakagePolicy: 'TRAINING_SLICE_ENDS_AT_ANCHOR; FUTURE_CANDLES_USED_ONLY_FOR_SCORING',
+    generatedAtUtcMs: Date.now(),
+  };
+  state._forecastReplayResult = result;
+  if (scored.length > 0) {
+    try {
+      const storageKey = 'ci_forecast_replay_history_v1';
+      const stored = JSON.parse(globalThis.localStorage?.getItem(storageKey) || '[]');
+      const history = Array.isArray(stored) ? stored : [];
+      history.push(result);
+      globalThis.localStorage?.setItem(storageKey, JSON.stringify(history.slice(-20)));
+    } catch (_) {}
+  }
+  return result;
+}
+
+function renderHistoricalReplaySection(isFa, decimals) {
+  const replay = state._forecastReplayResult;
+  const activeTab = state.openTabs?.find((item) => item.tabId === state.activeTabId) || state.openTabs?.[0];
+  const sameContext = replay && replay.symbolCode === activeTab?.symbolCode && replay.timeframe === activeTab?.timeframe;
+  const windowCount = Number(state.chartPreferences.forecastReplayWindowCount || 3);
+  const replayFromDate = String(state.chartPreferences.forecastReplayFromDate || '');
+  const replayToDate = String(state.chartPreferences.forecastReplayToDate || '');
+  const requestedReplayIndex = Math.max(0, Number(state.chartPreferences.forecastReplaySelectedWindow || 0));
+  const selectedReplayIndex = sameContext && replay.windows?.length ? Math.min(requestedReplayIndex, replay.windows.length - 1) : 0;
+  const selectedReplayWindow = sameContext ? replay.windows?.[selectedReplayIndex] : null;
+  let replayHistory = [];
+  try {
+    const stored = JSON.parse(globalThis.localStorage?.getItem('ci_forecast_replay_history_v1') || '[]');
+    replayHistory = Array.isArray(stored) ? stored.filter((item) => item.symbolCode === activeTab?.symbolCode && item.timeframe === activeTab?.timeframe).slice(-5).reverse() : [];
+  } catch (_) {}
+  const rows = sameContext && Array.isArray(replay.windows) ? replay.windows.map((w, index) => `
+    <tr>
+      <td class="ltr-num"><button type="button" class="chip ${selectedReplayIndex === index ? 'active' : ''}" data-action="set-forecast-replay-window" data-index="${index}">${index + 1}</button></td>
+      <td class="ltr-num">${w.anchorTimeUtcMs ? new Date(w.anchorTimeUtcMs).toISOString().replace('T', ' ').slice(0, 16) : '—'}</td>
+      <td class="ltr-num">${escapeHtml(w.status || '—')}</td>
+      <td class="ltr-num">${Number.isFinite(w.predictedTerminal) ? PriceFormatter.formatPrice(w.predictedTerminal, decimals) : '—'}</td>
+      <td class="ltr-num">${Number.isFinite(w.actualTerminal) ? PriceFormatter.formatPrice(w.actualTerminal, decimals) : '—'}</td>
+      <td class="ltr-num">${Number.isFinite(w.maePct) ? w.maePct.toFixed(3) + '%' : '—'}</td>
+      <td class="ltr-num">${Number.isFinite(w.coverage80Pct) ? w.coverage80Pct.toFixed(1) + '%' : '—'}</td>
+    </tr>`).join('') : '';
+  const summary = sameContext && replay.summary ? `
+    <div class="ci-fc-ladder-grid ltr-num">
+      <div class="ci-fc-mini-stat"><span>Mean MAE</span><strong>${replay.summary.meanMaePct.toFixed(3)}%</strong></div>
+      <div class="ci-fc-mini-stat"><span>80% Coverage</span><strong>${replay.summary.meanCoverage80Pct.toFixed(1)}%</strong></div>
+      <div class="ci-fc-mini-stat"><span>Direction Accuracy</span><strong>${replay.summary.directionAccuracyPct.toFixed(1)}%</strong></div>
+      <div class="ci-fc-mini-stat"><span>Scored Windows</span><strong>${replay.summary.scoredWindows}</strong></div>
+    </div>` : '';
+  return `
+    <div class="ci-fc-card" style="margin-top:12px;">
+      <div class="row-between" style="gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+        <div><strong>${isFa ? 'بازپخش تاریخی بدون نشت داده' : 'Historical Replay · Leakage-Safe'}</strong>
+          <div style="font-size:11px;color:var(--text-muted);">${isFa ? `${windowCount} مبدأ تاریخی؛ آموزش فقط با کندل‌های قبل از مبدأ و آینده فقط برای امتیازدهی.` : `${windowCount} historical anchors; training uses only candles before each anchor. Future bars are scoring-only.`}</div>
+        </div>
+        <div class="chip-group"><span class="ci-fc-ctrl-label">${isFa ? 'تعداد مبدأ:' : 'Windows:'}</span>${[3,5,10].map((count) => `<button type="button" class="chip ${windowCount === count ? 'active' : ''}" data-action="set-forecast-replay-windows" data-windows="${count}">${count}</button>`).join('')}</div>
+        <button type="button" class="btn btn-sm btn-primary" data-action="run-forecast-replay" ${sameContext && replay.status === 'RUNNING' ? 'disabled' : ''}>${isFa ? 'اجرای بازپخش تاریخی' : 'Run Historical Replay'}</button>
+        <button type="button" class="btn btn-sm" data-action="toggle-forecast-replay-playback" ${sameContext && replay.windows?.length > 1 ? '' : 'disabled'}>${state._forecastReplayPlaying ? (isFa ? 'توقف پخش' : 'Pause Playback') : (isFa ? 'پخش خودکار' : 'Play Replay')}</button>
       </div>
-      <p style="font-size:11.5px;color:var(--text-muted);margin:0 0 8px 0;">
-        ${
-          isFa
-            ? 'پشتیبانی اختیاری از سرور استنتاج Python خارجی (Chronos-2 Apache 2.0 / TimesFM 2.5 / N-HiTS). در نبود سرویس خارجی، وضعیت صادقانه LOCAL_STATISTICAL_ONLY نمایش داده می‌شود و هیچ خروجی مصنوعی تولید نمی‌گردد.'
-            : 'Optional external Python inference worker bridge (Chronos-2 Apache 2.0 / TimesFM 2.5 / N-HiTS). Never simulates DL weights when unconfigured.'
-        }
-      </p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
-        <input type="url" class="input-field ltr-num" id="ci-forecast-worker-url" style="flex:1 1 200px;min-width:min(200px, 100%);max-width:100%;" placeholder="https://worker.example.com" value="${escapeHtml(workerUrl)}" />
-        <button type="button" class="btn btn-sm btn-primary" data-action="save-forecast-worker-url">${isFa ? 'ذخیره آدرس Worker' : 'Save Worker URL'}</button>
+      <div class="row-between" style="gap:8px;flex-wrap:wrap;margin:8px 0;">
+        <label class="ci-fc-param-item ltr-num"><span>${isFa ? 'از تاریخ UTC' : 'From UTC'}</span><input type="date" id="ci-forecast-replay-from" value="${escapeHtml(replayFromDate)}" /></label>
+        <label class="ci-fc-param-item ltr-num"><span>${isFa ? 'تا تاریخ UTC' : 'To UTC'}</span><input type="date" id="ci-forecast-replay-to" value="${escapeHtml(replayToDate)}" /></label>
       </div>
-    </div>`}
-  
+      ${sameContext ? `<span class="ci-fc-status-badge ${replay.status === 'COMPLETED' ? 'ci-fc-badge-valid' : 'ci-fc-badge-provisional'} ltr-num">${escapeHtml(replay.status)}</span><p style="font-size:11px;color:var(--text-muted);">${escapeHtml(replay.reason)}</p>${summary}<div style="overflow-x:auto;margin-top:8px;"><table class="ci-fc-table"><thead><tr><th>#</th><th>Anchor UTC</th><th>Status</th><th>Predicted</th><th>Actual</th><th>MAE %</th><th>80% Cov.</th></tr></thead><tbody>${rows}</tbody></table></div>${selectedReplayWindow?.forecastPoints?.length ? `<div class="row-between" style="margin-top:10px;gap:8px;flex-wrap:wrap;"><strong>${isFa ? 'مسیر پیش‌بینی در برابر مسیر واقعی' : 'Forecast vs Actual · Selected Replay Window'}</strong><span class="ltr-num">${selectedReplayIndex + 1}/${replay.windows.length}</span></div><canvas id="forecast-replay-canvas" class="ci-fc-preview-canvas" style="margin-top:8px;min-height:220px;"></canvas><div style="font-size:10px;color:var(--text-muted);">${isFa ? 'خط بنفش/نارنجی: میانه پیش‌بینی · خط خاکستری نقطه‌چین: قیمت واقعی بعد از مبدأ' : 'Dashed forecast median vs dotted realized closes after the historical anchor.'}</div>` : ''}` : `<p style="font-size:11px;color:var(--text-muted);">${isFa ? 'برای نماد و تایم‌فریم فعلی هنوز بازپخش اجرا نشده است.' : 'No replay has been run for the current symbol/timeframe.'}</p>`}
+      ${replayHistory.length ? `<div style="overflow-x:auto;margin-top:12px;"><strong style="font-size:11.5px;">${isFa ? 'مقایسه اجراهای ذخیره‌شده' : 'Saved Replay Run Comparison'}</strong><table class="ci-fc-table"><thead><tr><th>${isFa ? 'زمان UTC' : 'Run UTC'}</th><th>${isFa ? 'بازه' : 'Range'}</th><th>${isFa ? 'وضعیت' : 'Status'}</th><th>MAE %</th><th>80% Cov.</th><th>Dir. Acc.</th></tr></thead><tbody>${replayHistory.map((item) => `<tr><td class="ltr-num">${new Date(item.generatedAtUtcMs).toISOString().slice(0, 16).replace('T', ' ')}</td><td class="ltr-num">${escapeHtml(item.fromDate || '—')} → ${escapeHtml(item.toDate || '—')}</td><td class="ltr-num">${escapeHtml(item.status)}</td><td class="ltr-num">${item.summary ? item.summary.meanMaePct.toFixed(3) + '%' : '—'}</td><td class="ltr-num">${item.summary ? item.summary.meanCoverage80Pct.toFixed(1) + '%' : '—'}</td><td class="ltr-num">${item.summary ? item.summary.directionAccuracyPct.toFixed(1) + '%' : '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}
+    </div>
   `;
 }
 
@@ -1092,6 +1282,7 @@ export function renderBacktestPanel(fc, decimals, isFa) {
         <strong>${isFa ? 'ارزیابی Nested Walk-Forward نیاز به تاریخچه بیشتر دارد' : 'Nested Walk-Forward Backtest Unavailable'}</strong>
         <p style="color:var(--text-muted);font-size:12.5px;">${escapeHtml(wf?.acceptanceReason || 'Need >= N_op_min clean bars (155 for H=10, 1248+ for H=30 statistical gate) to execute disjoint 4-way purged walk-forward.')}</p>
       </div>
+      ${renderHistoricalReplaySection(isFa, decimals)}
     `;
   }
 
@@ -1228,6 +1419,7 @@ export function renderBacktestPanel(fc, decimals, isFa) {
     `
         : ''
     }
+    ${renderHistoricalReplaySection(isFa, decimals)}
   `;
 }
 

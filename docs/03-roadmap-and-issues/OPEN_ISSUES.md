@@ -1,6 +1,6 @@
 # CHART — فهرست مسائل باز، نواقص راستی‌آزمایی‌شده و وضعیت ممیزی (`OPEN_ISSUES`)
 
-> **نسخه:** `1.45.4` · **تاریخ ممیزی و تکمیل:** `2026-11-19`  
+> **نسخه:** `1.45.5` · **تاریخ ممیزی و تکمیل:** `2026-11-19`  
 > این فایل وضعیت واقعی مسائل باز (`INF-01` تا `SEC-01` و یافته‌های ممیزی `AUTH-01` / `INF-03` / `ENG-01b` / `PAR-01` / `ENG-03b` / `QA-01` / `UI-02` / `IND-01` و وضعیت آرشیوشده بخش پیش‌بینی) را روی **PHP + MariaDB (`host_subdomain`)**، **کلاینت وب**، **اپلیکیشن اندروید (Kotlin/Compose)** و **CI/CD (`build-apk.yml`)** ثبت می‌کند.
 
 ---
@@ -20,6 +20,9 @@
   - **`PRED-CORE-ARCHIVED` (آرشیو کامل کدهای پیش‌بینی پیشین برای بازطراحی از صفر — `v1.45.1`):** تمام کدهای اجرایی، ویوها، اندپوینت‌ها، اسکریپت‌ها و تست‌های مربوط به پیش‌بینی (`forecast/`, `ForecastLabScreen.kt`, `PredictionScreen.kt`, `forecastView.js`, `analysisView.js`, `api/v1/forecast*`, `python_worker/`, `scripts/backtest.js`, `tests/forecast_v2*`, `tests/phase4_forecast*`) به پوشه **`/archive/`** منتقل شدند؛ تمامی مستندات (`/docs/` از جمله `FORECAST_PRODUCT_FOUNDATION_V1.md`) و مایگریشن‌های SQL (`003_*` و `004_*`) بدون حذف دست‌نخورده باقی مانده‌اند و تب **`Forecast`** به همراه دکمه‌های ورود مرتبط در اندروید و وب در حالت **غیرفعال (`disabled`)** قرار گرفتند.
   - **`TIMEFRAME-SYNC-WEB` (رفع گیرکردن تعویض تایم‌فریم در وب — `v1.45.1`):** افزودن لغو خودکار درخواست‌های قدیمی با `AbortController` به‌ازای هر نماد در `apiService.js`، تایم‌اوت `10s / 4s` برای بک‌اند و WebSocket، نگاشت کامل ۷۹ نماد به بورس صحیح در `resolveTradingViewWsSpec`، محدودکردن هم‌زمانی سینک پس‌زمینه واچ‌لیست (`BATCH_SIZE = 2`) و بهینه‌سازی تایم‌اوت/فچ ثانویه `H4 -> H1` در `TvDatafeedAdapter.php`.
 - **باقی‌مانده و نیازمند اقدام:** رفع فوری مشکل سوئیچ چارت از واچ‌لیست و تایم‌فریم (`CHART-STALL-01` / `KNOWN_ISSUES_BACKLOG.md §5`)، بررسی مستقیم سرور زنده cPanel پس از استقرار (`INF-01`/`INF-02` عملیاتی و بخش ۴.۱)، طراحی و پیاده‌سازی مجدد سیستم پیش‌بینی بر مبنای [`FORECAST_PRODUCT_FOUNDATION_V1.md`](../01-product/FORECAST_PRODUCT_FOUNDATION_V1.md)، و تکمیل فازهای ۵ و ۶.
+
+
+> **اصلاحیه ممیزی Forecast — 2026-11-19:** بخش تاریخی `PRED-CORE-ARCHIVED` در پایین این سند وضعیت نسخه قدیمی قبل از بازطراحی را توصیف می‌کند و نباید به‌عنوان وضعیت فعلی New Native خوانده شود. موتور New Native و رجیستری ۱۰مدلی اکنون در مسیر اجرایی وب وجود دارند؛ بااین‌حال مهاجرت محصول کامل نیست. انتخاب‌گر مدل از رجیستری ساخته می‌شود، گزینه‌های Historical Analogs و Ensemble جدا هستند و مسیر Python Worker از New حذف شده است تا هاست اشتراکی به اجرای Python وابسته نشود. موارد باز قطعی: آزمون عملکرد Replay در تاریخچه بزرگ و ممیزی مستقل عدم نشت داده، اتصال Chronos-2 از طریق Runtime خارجی امن یا تصمیم رسمی حذف آن، ممیزی نهایی کنترل‌های Android/API طبق `FORECAST_LEGACY_PARITY_MATRIX_V1.md`، آزمون E2E مرورگر/Production، ارزیابی OOS واقعی به‌ازای نماد/تایم‌فریم و تکمیل ثبت provenance. Ensemble در New اکنون انتخاب‌پذیر است؛ Chronos-2 و Python همچنان به‌دلیل Runtime هاست اشتراکی غیرفعال‌اند. هیچ‌یک از این موارد صرفاً با سبزشدن CI بسته محسوب نمی‌شوند.
 
 ---
 
@@ -104,8 +107,8 @@
 | `FCST-DEPLOY-01` | P0 | **ناپایداری دسترسی Deployment Secrets در Runهای قبلی**؛ وضعیت هر انتشار باید از خروجی انتقال فایل تأیید شود. | Runهای `44516442724`، `44516802833`، `44529239192`، `44529496676`، `44530093903`، `44530137222` و `44531190348` با خروجی صریح `ok:true`, `deployed_files:123` و `seeded_tvdatafeed_candles:42291` پایان یافتند؛ بین برخی Runها شکست تست یا لغو نیز رخ داد و نباید این موارد را زنجیره موفقیت پیوسته تلقی کرد. | نتیجه واقعی remote upload در هر Run کنترل شود؛ چندین انتشار اخیر تأیید شده‌اند، اما همه Runهای بین آن‌ها موفق نبوده‌اند. | `STABLE_RECENTLY / MULTIPLE_DEPLOYS_CONFIRMED` |
 | `FCST-PROD-01` | P1 | **نبود آزمون مرورگر تعاملی روی نسخه Production** بعد از آخرین Deploy. | Run `44534781037` با `ok:true`, `deployed_files:123`, snapshot `snapshot_20261119_133610` تأیید شد؛ Web parity برابر ۲۷/۲۷، PHP lint و TradingView extraction موفق؛ Android APK و Unit/Robolectric tests نیز موفق‌اند. ابزار مرورگر تعاملی در این محیط در دسترس نیست. | Browser E2E واقعی شامل انتخاب مدل، اجرای پیش‌بینی، رسم، Compare، Ledger، Walk-Forward و rollback پیش از خاموش‌سازی Legacy. | `OPEN / BROWSER_E2E_NOT_VERIFIED` |
 | `FCST-API-01` | P1 | **تست Provider guard در حال حاضر ایستا است، نه آزمون HTTP واقعی.** | `CHRONOS2-PROVIDER-GUARD-01` ترتیب کد allow-list را بررسی می‌کند؛ endpoint در محیط cPanel اجرا نشده است. | بعداً تست Integration برای رد Provider غیر از `tvdatafeed` و مسیر مجاز TradingView اضافه شود؛ بدون نیاز به اجرای مدل سنگین. | `OPEN / STATIC_TEST_ONLY` |
-| `FCST-EVAL-01` | P1 | **چرخه کامل ارزیابی و persistence هنوز کامل نیست؛ UIهای اصلی اکنون در New Native متصل شده‌اند.** | Overview/Scenario، Models، Walk-Forward/Calibration، Ledger، انتخاب مدل، Snapshot، Apply-to-chart، Render Mode و MTF controls در New Native با reuse پنل‌ها و Renderer موجود متصل شدند؛ `buildForecastForTab(overrides)` جداسازی تنظیمات horizon/model را انجام می‌دهد. Ledger همچنان `localStorage` با سقف ۱۲۰ Snapshot و ۲۴۰ Lifecycle event است و Server Sync ندارد؛ Historical Replay مستقل نیز هنوز عرضه نشده است. | پذیرش UI/عملکرد New با CI و بررسی Production؛ persistence چنددستگاهی و Replay جداگانه در فهرست کارهای باز باقی بمانند. | `PARTIAL / NEW_STUDIO_UI_CONNECTED — LOCAL_ONLY_REPLAY_PENDING` |
-| `FCST-ENS-01` | P2 | **Calibrated Ensemble مسیر اجرایی در Structural JS ندارد.** | مسیر `ensemble` در `structuralForecastEngine.js` وجود ندارد؛ گزینه New غیرفعال شده است. | تا زمانی که وزن‌دهی، آموزش/کالیبراسیون، ارزیابی OOS و تست مقایسه وجود ندارد، غیرفعال بماند. | `OPEN / NOT_IMPLEMENTED` |
+| `FCST-EVAL-01` | P1 | **چرخه کامل ارزیابی و persistence هنوز کامل نیست؛ UIهای اصلی اکنون در New Native متصل شده‌اند.** | Overview/Scenario، Models، Walk-Forward/Calibration، Ledger، انتخاب مدل، Snapshot، Apply-to-chart، Render Mode و MTF controls در New Native با reuse پنل‌ها و Renderer موجود متصل شدند؛ `buildForecastForTab(overrides)` جداسازی تنظیمات horizon/model را انجام می‌دهد. Ledger همچنان `localStorage` با سقف ۱۲۰ Snapshot و ۲۴۰ Lifecycle event است و Server Sync ندارد. Historical Replay اکنون در New Native با UTC range، پنجره‌های ۳/۵/۱۰، ارزیابی بدون leakage، chart overlay، Play/Pause و ذخیره/مقایسه محلی ۲۰ اجرا عرضه شده است؛ عملکرد تاریخچه بزرگ و ممیزی مستقل آن باز است. | پذیرش UI/عملکرد New با CI و بررسی Production؛ persistence چنددستگاهی و Replay جداگانه در فهرست کارهای باز باقی بمانند. | `PARTIAL / NEW_STUDIO_UI_AND_REPLAY_CONNECTED — LOCAL_LEDGER_ONLY` |
+| `FCST-ENS-01` | P2 | **Calibrated Ensemble باید از نظر کیفیت OOS و وزن‌دهی پذیرفته شود.** | گزینه `ensemble` در New Native انتخاب‌پذیر است و مسیر اجرا/نمایش دارد؛ اما وجود مسیر اجرایی اثبات برتری یا پذیرش آماری نیست. | Walk-Forward و OOS مستقل برای هر نماد/تایم‌فریم، ارزیابی وزن‌ها، baseline comparison و جلوگیری از leakage تکمیل شود. | `IMPLEMENTED_IN_CODE / OOS_ACCEPTANCE_PENDING` |
 | `FCST-MODEL-CFG-01` | P1 | **تنظیمات فعال‌سازی/وزن/پارامتر مدل‌های Native در New در دسترس نبود.** | پنل موجود `renderModelsPanel()` به New Native منتقل شد؛ کنترل Worker خارجی عمداً از New حذف است. باگ خواندن شناسه وزن (`data-model-id`) و باقی‌ماندن خروجی stale نیز اصلاح شد. تست `FORECAST-NEW-MODEL-CONFIG-01/02` در Run `44515867849` پاس شد. | حفظ رگرسیون؛ تغییر وزن/پارامتر مدل باید Forecast قبلی را invalidate کند. | `CLOSED / NEW_UI_AND_CI_VERIFIED` |
 | `FCST-COMPARE-01` | P2 | **Compare چندمدلی باید در Preview و Main Chart هم‌زمان و قابل‌کنترل باشد.** | Preview دارای انتخاب مستقل overlay و Side-by-Side است؛ Main Chart نیز مسیر q50 مدل‌های Native موفق و انتخاب‌شده را با خط‌چین و برچسب مدل رسم می‌کند. CI در Run `44534781037`، ۲۷/۲۷ تست را پاس کرد. | Browser E2E برای بررسی تعامل واقعی و خوانایی overlayها روی Production باقی است؛ تا آن زمان Legacy خاموش نشود. | `IMPLEMENTED_IN_CODE / CI_VERIFIED — BROWSER_E2E_PENDING` |
 | `FCST-MODEL-QA-01` | P1 | **پذیرش کیفیت پیش‌بینی مدل‌ها با CI ساختاری اثبات نمی‌شود.** | تست‌های CI قرارداد، مسیر اجرا و Adapter را بررسی می‌کنند؛ امتیاز واقعی OOS به نماد/تایم‌فریم/افق و حجم نمونه وابسته است و هنوز گزارش پذیرش عملیاتی سراسری ثبت نشده است. | برای هر مدل و ترکیب نماد/تایم‌فریم، Walk-Forward با نمونه کافی، baseline و معیارهای مصوب اجرا و نتیجه نسخه‌دار ثبت شود؛ هیچ ادعای دقت از روی CI نشود. | `OPEN / OOS_ACCEPTANCE_PENDING` |
@@ -133,7 +136,7 @@
 - مسیر Native از `buildForecastForTab()` ارزیابی Nested Walk-Forward را اجرا می‌کند و وضعیت OOS را به Adapter مدل می‌دهد؛ این بخش، کد اجرایی موجود است.
 - `ForecastLedger` در Forecast Studio قابلیت Snapshot و Lifecycle محلی، Hash Chain و ارزیابی سررسید دارد؛ ذخیره‌سازی آن `localStorage` است و سقف نگهداری فعلی ۱۲۰ Snapshot و ۲۴۰ رویداد Lifecycle است.
 - handler به‌روزرسانی Ledger در UI صریحاً اعلام می‌کند Server Sync در این Web build فعال نیست. بنابراین این Ledger، دفترکل ابری/چنددستگاهی محسوب نمی‌شود.
-- پنل گزارش Ledger و Backtest در Forecast Studio قرار دارد و در New Structural به‌عنوان workflow کامل عرضه نشده؛ Historical Replay نیز هنوز مستقل و قابل پذیرش نیست.
+- پنل Ledger و Backtest در New Native متصل است؛ Replay پایه نیز عرضه شده، اما Server Sync چنددستگاهی و پذیرش عملکرد/مرورگر آن باز است.
 - تست `FORECAST-LEDGER-01` برای زنجیره Snapshot/Lifecycle و جلوگیری از ارزیابی تکراری اضافه شد. این تست، پذیرش persistence ابری یا Replay نیست.
 
 ### ۵.۳. نکته تکمیلی Ledger برای پیگیری بعدی
@@ -160,7 +163,7 @@
 - ارزیابی با همان `buildForecastForTab()` و `evaluateWalkForward()` اجرا می‌شود؛ الگوریتم یا مدل از نو نوشته نشده است.
 - دکمه ثبت Snapshot در New از همان `defaultForecastLedger` و همان handler قبلی استفاده می‌کند؛ دکمه ارزیابی سررسید نیز همان Lifecycle evaluator را صدا می‌زند.
 - ورودی maturity اکنون فقط کندل‌های بسته TradingView را می‌پذیرد، timestamp تکراری را حذف و داده را صعودی مرتب می‌کند.
-- Ledger همچنان محلی است: حداکثر ۱۲۰ Snapshot و ۲۴۰ رویداد Lifecycle؛ همگام‌سازی سرور/چنددستگاهی منتقل نشده است. Historical Replay نیز خارج از این batch است.
+- Ledger همچنان محلی است: حداکثر ۱۲۰ Snapshot و ۲۴۰ رویداد Lifecycle؛ همگام‌سازی سرور/چنددستگاهی منتقل نشده است. Historical Replay پایه با تاریخ UTC، پنجره‌های قابل انتخاب، chart overlay و history محلی اکنون در New فعال است.
 - نسخه ورودی وب به `app.js?v=1.47.21` افزایش یافت.
 - تست ایستای `FORECAST-NEW-EVALUATION-01` برای اتصال پنل‌ها و guard کندل بسته اضافه شد؛ نتیجه CI پس از اجرای Workflow ثبت می‌شود.
 
@@ -206,7 +209,7 @@
 - بازبینی کاربر درست بود: New Native قبلاً فاقد Overview/Scenario، تب‌های اصلی Studio، انتخاب مدل مستقل، Snapshot، Apply-to-chart، Render Mode و MTF بود.
 - Commitهای `9f86505` و `e66cb2f` این مسیرها را با reuse توابع موجود به New متصل کردند.
 - تست رگرسیون `FORECAST-NEW-STUDIO-01` اضافه شد. نتیجه پذیرش منوط به CI و Browser E2E است.
-- Chronos-2/Python Worker به Runtime مستقل نیاز دارد؛ Historical Replay و Calibrated Ensemble هنوز مسیر اجرایی ندارند.
+- Chronos-2/Python Worker به Runtime مستقل و مسیر dispatch امن نیاز دارد؛ Historical Replay و Calibrated Ensemble در New مسیر اجرایی دارند و اکنون باید از نظر عملکرد، OOS و پذیرش مرورگری ارزیابی شوند.
 
 - تکمیل ایزولاسیون New: حتی اگر Legacy قبلاً Worker URL ذخیره کرده باشد، New Native آن را با `workerUrl: ''` نادیده می‌گیرد؛ اجرای Python Worker از مسیر New فعال نمی‌شود. Cache-busting به `app.js?v=1.47.23` و `forecastView.js?v=2.0.9` افزایش یافت.
 
@@ -269,3 +272,55 @@
 - cPanel Deploy: `ok:true`, `deployed_files:123`, snapshot `snapshot_20261119_133610`. مقدار seed جدید صفر بود؛ این Run داده جدیدی برای seed نداشت و به معنی خطای دریافت داده نیست.
 - Android Debug APK و Unit/Robolectric tests موفق؛ artifact IDs: APK `14536815154` و Web `14534949557`.
 - Main Chart comparison overlay اکنون در کد و CI تأیید شده است؛ Browser E2E Production همچنان باز است.
+
+
+## ۶. وضعیت تجمیعی مهاجرت Forecast — بازنگری 2026-11-19
+
+این بخش آخرین وضعیت اجرایی را ثبت می‌کند و بر یادداشت‌های قدیمی‌تر این فایل اولویت دارد. مواردی که در یادداشت‌های قبلی «پیاده‌سازی‌نشده» توصیف شده‌اند ممکن است در New پیاده‌سازی شده باشند؛ وضعیت نهایی را از این بخش و Parity Matrix نسخه 1.1.0 بخوانید.
+
+### ۶.۱. انجام‌شده در کد شاخه New Native
+
+- انتخاب New Native به‌عنوان پیش‌فرض اولین استفاده و حفظ انتخاب Legacy برای Rollback.
+- انتخاب‌گر پویا برای ۱۰ مدل رجیستری، به‌علاوه Historical Analogs و Ensemble.
+- انتقال پنل تنظیمات مدل‌ها: enable/disable، وزن، پارامترها و reset.
+- ایزوله‌سازی Python Worker از New؛ URL Worker و اجرای خارجی در مسیر New استفاده نمی‌شود.
+- اتصال تب‌های Overview، Models، Walk-Forward، Ledger و کنترل‌های افق/Render Mode/MTF.
+- اتصال Structural JS و Historical Analogs با تفکیک خروجی واقعی مدل از مسیرهای illustrative.
+- Compare در Preview، نمودارهای Side-by-Side و overlay مسیرهای منتخب روی Main Chart.
+- Snapshot و Lifecycle Ledger محلی.
+- Historical Replay با پنجره‌های ۳/۵/۱۰، بازه UTC، آموزش قبل از anchor، امتیازدهی با آینده، MAE/coverage/direction، نمودار مقایسه با actual، Play/Pause و تاریخچه محلی ۲۰ اجرا.
+- حفظ سیاست TradingView-only و عدم افزودن Cron.
+- تست‌های Node شاخه مهاجرت: ۳۳/۳۳ پاس؛ Syntax check فایل‌های اصلی نیز پاس شده است.
+
+### ۶.۲. فهرست بازِ قابل اقدام
+
+| شناسه | اولویت | مورد باز | شرط بسته‌شدن |
+|---|---|---|---|
+| FCST-STARTUP-01 | P0 | تأیید رفع خطای بارگذاری workspace در محیط هاست پس از duplicate horizon fix | مشاهده بارگذاری موفق و ثبت نسخه/commit واقعاً سرو‌شده |
+| FCST-E2E-01 | P1 | Browser E2E کامل New Forecast | تست انتخاب مدل، تنظیمات، اجرا، Apply-to-chart، Compare، Replay، Snapshot و تغییر نماد/تایم‌فریم |
+| FCST-CHRONOS-01 | P1 | Runtime و اتصال Chronos-2 | dispatch امن و authenticated، lifecycle/result integration و محدودیت‌ها؛ یا تصمیم رسمی بازنشستگی |
+| FCST-LEGACY-AUDIT-01 | P1 | ممیزی کامل برابری Legacy در Web/API/Android | inventory یک‌به‌یک و تعیین Keep/Adapt/Replace/Retire همراه شواهد |
+| FCST-REPLAY-PERF-01 | P1 | عملکرد Replay در تاریخچه بزرگ | اندازه‌گیری زمان/حافظه و آزمون تاریخچه‌های نماینده |
+| FCST-REPLAY-LEAK-01 | P1 | اثبات عدم نشت داده در Replay | fixture مستقل و تست مرزهای زمانی که نشان دهد هیچ داده بعد از anchor وارد آموزش نمی‌شود |
+| FCST-OOS-01 | P1 | پذیرش کیفیت پیش‌بینی مدل‌ها | پروتکل ثابت، baseline، holdout و گزارش به‌ازای نماد/تایم‌فریم/افق/رژیم |
+| FCST-DATA-PROD-01 | P1 | تأیید TradingView-only در اجرای زنده | مشاهده Network/Runtime و اثبات عدم fallback به Provider دیگر و استفاده از کندل بسته |
+| FCST-LEDGER-SYNC-01 | P2 | همگام‌سازی Ledger با سرور/چنددستگاهی | قرارداد مالکیت/امنیت، ذخیره و بازیابی آزموده‌شده |
+| FCST-LEGACY-CLEANUP-01 | P2 | پاک‌سازی کد قدیمی | فقط پس از عبور جایگزین از پذیرش و بررسی نبود مصرف‌کننده |
+
+### ۶.۳. رخداد خطای startup و اصلاح ثبت‌شده
+
+- علت: دو اعلان `const horizon` در یک تابع در نسخه `main`؛ مرورگر پیش از بارگذاری Workspace کل ماژول را متوقف می‌کرد.
+- اصلاح کد در `main`: commit `a6349d7`.
+- Cache-busting در `host_subdomain/index.html`: commit `4bbcaed`، مقدار `app.js?v=1.47.30`.
+- بازخوانی فایل از GitHub پس از اصلاح، تنها یک اعلان horizon را در تابع نشان داد.
+- **وضعیت:** اصلاح منبع ثبت شده؛ تأیید اجرای موفق روی هاست هنوز انجام نشده و FCST-STARTUP-01 باز است.
+
+### ۶.۴. موانع و تصمیم‌های صریح
+
+1. هاست اشتراکی Python/exec قابل اتکا ندارد؛ نباید تلاش شود Python با ترفندهای PHP یا اجرای مستقیم روی cPanel فعال شود.
+2. Workflow دستی Chronos-2 در GitHub Actions معادل اتصال محصول نیست؛ تا ایجاد مسیر امن dispatch و دریافت نتیجه، Chronos در New قابل ارائه نیست.
+3. مدل‌های JavaScript با برچسب Approximation معادل LSTM/TFT/Prophet/ARIMA Python یا Chronos-2 نیستند.
+4. تست سبز، ساخت APK یا Deploy به‌تنهایی کیفیت پیش‌بینی و پذیرش کاربر را ثابت نمی‌کند.
+5. Legacy تا تکمیل E2E و تصمیم نهایی Chronos/مدل‌ها حذف یا غیرقابل‌بازگشت نمی‌شود.
+
+**وضعیت کلی:** انتقال قابلیت‌های اصلی UI و Native execution در شاخه New انجام شده است؛ مهاجرت محصول و پذیرش نهایی همچنان باز است. اولویت بعدی، بستن خطای startup در محیط واقعی و سپس E2E کامل است.

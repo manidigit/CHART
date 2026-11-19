@@ -3,10 +3,10 @@
 
 - **Version:** 1.0.0
 - **Date:** 2026-11-17
-- **Status:** Implementation handoff baseline; implementation parameters marked TBD are not authorized to be guessed
+- **Status:** Historical handoff artifact; superseded for the current New Web implementation by FORECAST_MIGRATION_PLAN_V1.md. Do not treat Chronos-2-only or Python Worker steps below as current runtime requirements.
 - **Target:** Gemini / engineering implementation agent
 - **Branch target:** `main` (implementation work must use a separate feature branch and reviewable commits)
-- **Model scope:** Chronos-2 only
+- **Historical model scope:** Chronos-2 only (this is not the current New Web model scope).
 - **Authority order:** Product Foundation → System Specification → Chronos-2 Input/Output & Path Contract → Acceptance Test Plan → this handoff for execution sequencing
 
 ---
