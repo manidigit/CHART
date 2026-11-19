@@ -53,7 +53,10 @@ test('FORECAST-REPLAY-01: historical replay separates pre-anchor training from f
     assert.match(viewSource, /ci_forecast_replay_history_v1/);
     assert.match(viewSource, /forecastReplayFromDate/);
     assert.match(viewSource, /Date\.parse\(/);
+    assert.match(viewSource, /forecast-replay-canvas/);
+    assert.match(viewSource, /actualPoints/);
     assert.match(appSource, /ci-forecast-replay-from/);
+    assert.match(appSource, /action === 'set-forecast-replay-window'/);
     assert.match(appSource, /action === 'set-forecast-replay-windows'/);
     assert.match(appSource, /runHistoricalForecastReplay\(activeTab/);
 });
