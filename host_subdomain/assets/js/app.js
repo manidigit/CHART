@@ -66,7 +66,7 @@ import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.10';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.20';
 import { renderLoginScreen } from './views/loginView.js?v=1.47.2';
 import {
   renderTopHeaderBar,
@@ -145,6 +145,19 @@ function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
     lastClosedPrice: lastClosed?.close, forecastStatus: built?.result?.status, inputHash: built?.result?.inputHash,
     walkForward: built?.result?.walkForward, experimentalOnly: Boolean(defaultForecastRegistry.getPlugin(modelId)?.experimentalOnly),
   });
+  if (adapted && Array.isArray(built?.result?.modelTrajectories)) {
+    adapted.comparisonTrajectories = built.result.modelTrajectories
+      .filter((item) => item.status === 'SUCCESS' && item.modelId !== modelId && Array.isArray(item.points) && item.points.length === adapted.forecast.length)
+      .map((item) => ({
+        modelId: String(item.modelId || ''),
+        modelName: String(item.modelName || item.modelId || 'Model'),
+        points: item.points.map((point) => ({
+          step: Number(point.step),
+          q50_median: Number(point.q50),
+        })).filter((point) => Number.isFinite(point.q50_median) && point.q50_median > 0),
+      }))
+      .filter((item) => item.modelId && item.points.length === adapted.forecast.length);
+  }
   if (!adapted) {
     tab.structuralForecast = null;
     tab.showStructuralForecast = false;

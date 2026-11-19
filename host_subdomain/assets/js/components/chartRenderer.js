@@ -396,6 +396,27 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
+  const storedCompareIds = state.chartPreferences?.forecastCompareModelIds;
+  const compareTrajectories = hasValidStructuralForecast && isNativeModelAdapter
+    ? (tab.structuralForecast.comparisonTrajectories || [])
+        .filter((item) => item.modelId !== selectedStructuralModel && Array.isArray(item.points) &&
+          item.points.length === structuralPoints.length &&
+          (!Array.isArray(storedCompareIds) || storedCompareIds.includes(item.modelId)))
+        .sort((a, b) => a.modelId.localeCompare(b.modelId))
+    : [];
+
+  if (hasValidStructuralForecast && offset === 0) {
+    for (const trajectory of compareTrajectories) {
+      for (const point of trajectory.points) {
+        const price = Number(point.q50_median);
+        if (Number.isFinite(price) && price > 0) {
+          rawMin = Math.min(rawMin, price);
+          rawMax = Math.max(rawMax, price);
+        }
+      }
+    }
+  }
+
   if ((hasValidStructuralForecast || hasValidChronosForecast) && offset === 0) {
     const includeBand = hasValidStructuralForecast ? showForecastBand : showChronosBand;
     for (let i = 0; i < activeForecastPoints.length; i++) {
@@ -1366,6 +1387,38 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           ctx.moveTo(originX, originY);
           for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ50);
           ctx.stroke();
+
+          // Optional main-chart comparison overlays: q50 paths only, no fabricated OHLC or bands.
+          if (isNativeModelAdapter && compareTrajectories.length > 0) {
+            const comparePalette = ['#38BDF8', '#F59E0B', '#A78BFA', '#34D399', '#FB7185', '#94A3B8'];
+            compareTrajectories.forEach((trajectory, trajectoryIndex) => {
+              const color = comparePalette[trajectoryIndex % comparePalette.length];
+              const comparePoints = trajectory.points.map((point, pointIndex) => ({
+                x: idxToX(originIdx + Number(point.step || pointIndex + 1)),
+                y: priceToY(Number(point.q50_median)),
+                price: Number(point.q50_median),
+              })).filter((point) => Number.isFinite(point.price) && point.price > 0 && Number.isFinite(point.y) && point.x >= -slotW);
+              if (comparePoints.length === 0) return;
+              ctx.save();
+              ctx.strokeStyle = color;
+              ctx.globalAlpha = 0.88;
+              ctx.lineWidth = 1.7;
+              ctx.setLineDash([5, 4]);
+              ctx.beginPath();
+              ctx.moveTo(originX, originY);
+              for (const point of comparePoints) ctx.lineTo(point.x, point.y);
+              ctx.stroke();
+              ctx.setLineDash([]);
+              const lastCompare = comparePoints[comparePoints.length - 1];
+              ctx.fillStyle = color;
+              ctx.beginPath();
+              ctx.arc(lastCompare.x, lastCompare.y, 2.7, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.font = '600 9px "JetBrains Mono", monospace';
+              ctx.fillText(trajectory.modelName.slice(0, 18), Math.max(4, Math.min(chartW - 100, lastCompare.x + 5)), Math.max(topPad + 24, lastCompare.y - 5));
+              ctx.restore();
+            });
+          }
 
           // Historical Analogs is rendered through the selected-model path above.
           // Never draw it as a secondary overlay while Structural JS is selected.

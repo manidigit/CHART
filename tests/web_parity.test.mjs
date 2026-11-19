@@ -1497,3 +1497,15 @@ test('FORECAST-NEW-COMPARE-01: New workspace exposes persistent independent comp
   assert.ok(view.includes('Side-by-side selected model paths'));
   assert.ok(app.includes("querySelectorAll('canvas[data-forecast-compare-model]')"));
 });
+
+test('FORECAST-NEW-COMPARE-02: selected Native model carries successful peer trajectories to the main chart renderer', async () => {
+  const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../host_subdomain/assets/js/components/chartRenderer.js', import.meta.url), 'utf8');
+  assert.match(app, /adapted\.comparisonTrajectories = built\.result\.modelTrajectories/);
+  assert.match(app, /item\.status === 'SUCCESS'.*item\.modelId !== modelId/);
+  assert.match(renderer, /const compareTrajectories = hasValidStructuralForecast && isNativeModelAdapter/);
+  assert.match(renderer, /state\.chartPreferences\?\.forecastCompareModelIds/);
+  assert.match(renderer, /Optional main-chart comparison overlays: q50 paths only/);
+  assert.match(renderer, /ctx\.setLineDash\(\[5, 4\]\)/);
+  assert.match(renderer, /trajectory\.modelName\.slice\(0, 18\)/);
+});
