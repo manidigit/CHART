@@ -12,10 +12,10 @@ import {
   normalizeRenderMode,
   clampHorizonBars,
 } from '../forecast/forecastContract.js?v=2.0.3';
-import { defaultForecastRegistry, REMOTE_DL_WORKER_SPEC } from '../forecast/modelRegistry.js?v=2.0.1';
+import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=2.0.1';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=2.0.0';
-import { ForecastWorkerClient } from '../forecast/forecastWorkerClient.js?v=2.0.0';
+
 import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.12';
 import { renderSymbolBadge } from './watchlistView.js?v=1.47.2';
 
@@ -59,7 +59,8 @@ export function buildForecastForTab(activeTab, overrides = {}) {
   }
   const horizonBars = clampHorizonBars(overrides.horizonBars || activeTab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
   const renderMode = normalizeRenderMode(overrides.renderMode || activeTab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.FAN_CHART);
-  const workerUrl = overrides.workerUrl !== undefined ? String(overrides.workerUrl || '') : (prefs.forecastWorkerUrl || '');
+  // Shared-hosting production policy: inference is native JavaScript only. No Python worker URL is read or invoked.
+  const workerUrl = '';
 
   const higherTf = resolveHigherTimeframe(activeTab.timeframe);
   const higherCandles = higherTf
@@ -130,34 +131,7 @@ export function buildForecastForTab(activeTab, overrides = {}) {
         : null,
   });
 
-  if (workerUrl && result && result.status !== FORECAST_STATUS.DATA_NOT_READY) {
-    const cachedWorker = state._workerForecastByKey[result.inputHash];
-    if (cachedWorker) {
-      result = ForecastEngine.applyRemoteWorkerResponse(result, cachedWorker, selectedModelId);
-    } else if (!state._workerPendingKeys[result.inputHash]) {
-      state._workerPendingKeys[result.inputHash] = true;
-      ForecastWorkerClient.infer(workerUrl, {
-        symbolCode: activeTab.symbolCode,
-        timeframe: activeTab.timeframe,
-        horizonBars,
-        candles,
-        inputHash: result.inputHash,
-      })
-        .then((workerWrap) => {
-          delete state._workerPendingKeys[result.inputHash];
-          if (workerWrap) {
-            state._workerForecastByKey[result.inputHash] = workerWrap;
-            state._forecastBuildMemo = null;
-            if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
-              window.dispatchEvent(new CustomEvent('ci-forecast-worker-updated'));
-            }
-          }
-        })
-        .catch(() => {
-          delete state._workerPendingKeys[result.inputHash];
-        });
-    }
-  }
+
 
   if (result && result.status !== FORECAST_STATUS.DATA_NOT_READY) {
     if (!lastStored || lastStored.inputHash !== result.inputHash) {
@@ -579,7 +553,7 @@ export function renderForecastStudioView(activeTab, i18n) {
   if (subTab === 'overview') {
     panelHtml = renderOverviewPanel(fc, activeTab, decimals, isFa, coordView);
   } else if (subTab === 'models') {
-    panelHtml = renderModelsPanel(fc, decimals, isFa);
+    panelHtml = renderModelsPanel(fc, decimals, isFa, { includeRemoteWorker: false });
   } else if (subTab === 'backtest') {
     panelHtml = renderBacktestPanel(fc, decimals, isFa);
   } else {
@@ -590,19 +564,14 @@ export function renderForecastStudioView(activeTab, i18n) {
     (activeTab && activeTab.selectedForecastModelId) || state.chartPreferences.selectedForecastModelId || 'AUTO'
   );
   const modelChoices = [
-    { id: 'AUTO', label: isFa ? 'خودکار (بهترین OOS)' : 'Auto (OOS Winner)' },
-    { id: 'native_arima_diff', label: 'ARIMA(p,d,q)' },
-    { id: 'native_prophet_decomp', label: isFa ? 'Prophet (تقریبی)' : 'Prophet (Approx)' },
-    { id: 'native_seq_recurrent_approx', label: isFa ? 'Recurrent MC (تقریبی)' : 'Recurrent MC (Approx)' },
-    { id: 'native_quantile_attention_approx', label: isFa ? 'TFT Attention (تقریبی)' : 'TFT Attention (Approx)' },
-    { id: 'empirical_analogs', label: isFa ? 'آنالوگ‌های علّی' : 'Empirical Analogs' },
-    { id: 'naive_persistence', label: 'Naive Baseline' },
-    { id: 'ensemble', label: 'Ensemble (V2)' },
+    { id: 'AUTO', label: isFa ? 'خودکار (بر اساس ارزیابی OOS)' : 'Auto (OOS evaluated)' },
+    ...defaultForecastRegistry.list().map((model) => ({
+      id: model.id,
+      label: `${model.name}${model.experimentalOnly ? (isFa ? ' (تقریبی)' : ' (Approximation)') : ''}`,
+    })),
   ];
-  const remoteTrajs = (fc?.modelTrajectories || []).filter((t) => String(t.modelId || '').startsWith('py_'));
-  for (const rt of remoteTrajs) {
-    modelChoices.push({ id: rt.modelId, label: `${rt.modelName} (Python)` });
-  }
+  // Ensemble is an engine-level aggregation option, not a registry plugin.
+  modelChoices.push({ id: 'ensemble', label: 'Ensemble (V2)' });
   const modelButtons = modelChoices
     .map(
       (m) =>
