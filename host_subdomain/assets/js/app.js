@@ -802,6 +802,17 @@ function renderForecastWorkspaceContent(activeTab) {
           </div>
           <div style="color:var(--text-muted);font-size:11px;margin-top:7px;">${isFa ? 'در هر لحظه فقط مدل انتخاب‌شده روی نمودار رسم می‌شود.' : 'Only the selected model is plotted at a time.'}</div>
         </div>
+        <div class="ci-fc-card" style="margin-top:12px;border-style:dashed;">
+          <div style="font-weight:700;font-size:12px;margin-bottom:8px;">${isFa ? 'قابلیت‌های Legacy که هنوز به New منتقل و تأیید نشده‌اند' : 'Legacy capabilities not yet migrated and verified in New'}</div>
+          <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
+            <span class="chip" aria-disabled="true" title="${isFa ? 'اتصال Chronos-2 به موتور New هنوز پیاده‌سازی و تأیید نشده است.' : 'Chronos-2 is not yet integrated and verified in the New engine.'}">${isFa ? 'Chronos-2 · منتقل‌نشده' : 'Chronos-2 · Not migrated'}</span>
+            <span class="chip" aria-disabled="true" title="${isFa ? 'مدل‌های Python Worker هنوز در New قابل انتخاب نیستند.' : 'Python Worker models are not selectable in New yet.'}">${isFa ? 'مدل‌های Python · منتقل‌نشده' : 'Python models · Not migrated'}</span>
+            <span class="chip" aria-disabled="true" title="${isFa ? 'ابزارهای Ledger و ارزیابی چرخه عمر Legacy هنوز در New پذیرش نشده‌اند.' : 'Legacy ledger and lifecycle evaluation are not yet accepted in New.'}">${isFa ? 'Ledger و ارزیابی · در انتظار انتقال' : 'Ledger & evaluation · Pending'}</span>
+            <span class="chip" aria-disabled="true" title="${isFa ? 'رابط Backtest و Walk-forward در New هنوز تکمیل و تأیید نشده است.' : 'Backtest and Walk-forward UI is not yet complete and verified in New.'}">${isFa ? 'Backtest / Walk-forward · در انتظار انتقال' : 'Backtest / Walk-forward · Pending'}</span>
+            <span class="chip" aria-disabled="true" title="${isFa ? 'Replay تاریخی در New هنوز ارائه نشده است.' : 'Historical replay is not yet available in New.'}">${isFa ? 'Historical Replay · منتقل‌نشده' : 'Historical Replay · Not migrated'}</span>
+          </div>
+          <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">${isFa ? 'این موارد عمداً غیرفعال‌اند؛ نسخه Legacy از طریق انتخاب‌گر موتور بالا در دسترس می‌ماند.' : 'These items are intentionally inactive. The Legacy implementation remains available through the engine switch above.'}</div>
+        </div>
         <div class="row-between" style="margin-top:16px;gap:10px;flex-wrap:wrap;">
           <span>${isFa ? 'افق تحلیل (تعداد کندل آینده)' : 'Analysis horizon (future bars)'}</span>
           <div class="chip-group ltr-num">${[15,30,45,60,90,120].filter(h => !isNativeModelSelected || h <= 60).map(h=>`<button type="button" class="chip ${horizon===h?'active':''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">${h}</button>`).join('')}</div>
