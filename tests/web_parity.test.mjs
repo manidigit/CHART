@@ -1454,19 +1454,19 @@ test('FORECAST-NEW-MODEL-CONFIG-02: model weight controls resolve the rendered d
 
 
 test('FORECAST-NEW-STUDIO-01: New Native workspace restores Forecast Studio workflows', async () => {
-  const app = await read('host_subdomain/assets/js/app.js');
-  const view = await read('host_subdomain/assets/js/views/forecastView.js');
-  assert.match(app, /renderOverviewPanel\(nativeEvaluation, activeTab/);
-  assert.match(app, /data-action=\"set-forecast-subtab\" data-tab=\"overview\"/);
-  assert.match(app, /data-action=\"set-forecast-subtab\" data-tab=\"models\"/);
-  assert.match(app, /data-action=\"set-forecast-subtab\" data-tab=\"backtest\"/);
-  assert.match(app, /data-action=\"set-forecast-subtab\" data-tab=\"ledger\"/);
-  assert.match(app, /data-action=\"record-forecast-snapshot\"/);
-  assert.match(app, /data-action=\"apply-native-forecast-to-chart\"/);
-  assert.match(app, /data-action=\"set-forecast-render-mode\"/);
-  assert.match(app, /data-action=\"set-forecast-coord-mode\"/);
+  const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const view = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+  assert.match(app, /renderOverviewPanel\\(nativeEvaluation, activeTab/);
+  assert.match(app, /const nativeTabs = \\[\\['overview'/);
+  assert.match(app, /\\['models', isFa/);
+  assert.match(app, /\\['backtest', isFa/);
+  assert.match(app, /\\['ledger', isFa/);
+  assert.match(app, /data-action="record-forecast-snapshot"/);
+  assert.match(app, /data-action="apply-native-forecast-to-chart"/);
+  assert.match(app, /data-action="set-forecast-render-mode"/);
+  assert.match(app, /data-action="set-forecast-coord-mode"/);
   assert.match(view, /export function renderOverviewPanel/);
-  assert.match(view, /buildForecastForTab\(activeTab, overrides = \{\}\)/);
-  assert.match(view, /overrides\.horizonBars/);
-  assert.match(view, /overrides\.selectedModelId/);
+  assert.match(view, /buildForecastForTab\\(activeTab, overrides = \\{\\}\\)/);
+  assert.match(view, /overrides\\.horizonBars/);
+  assert.match(view, /overrides\\.selectedModelId/);
 });
