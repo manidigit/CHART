@@ -627,3 +627,20 @@ Disabled کردن یک قابلیت در New به معنی خاموش‌کردن
 ### 17.5. گام بعدی
 
 ابتدا guard انحصاری TradingView و تست آن تثبیت می‌شود. سپس ممیزی قرارداد پاسخ Chronos-2 و lifecycle در Legacy تکمیل خواهد شد؛ اما اتصال فعال به New تا زمان حل Runtime مستقل متوقف می‌ماند. در این فاصله، کار مهاجرت روی قابلیت‌های Native JavaScript و حوزه‌های غیر وابسته به Python ادامه می‌یابد و Legacy بدون تغییر در دسترس می‌ماند.
+
+
+## 18. دفتر متمرکز موانع و ادامه مهاجرت — 2026-11-19
+
+از این تاریخ، تمام موانع و نواقص Forecast در فایل [`OPEN_ISSUES.md`](../03-roadmap-and-issues/OPEN_ISSUES.md) بخش ۵ با شناسه‌های پایدار `FCST-*` ثبت می‌شوند. این فایل برنامه مهاجرت، مرجع وضعیت قابلیت‌ها و تصمیم‌های معماری است؛ `OPEN_ISSUES.md` مرجع فهرست مشکلات و شواهد باز است. موارد اصلی فعلی عبارت‌اند از: Runtime پایتون روی هاست اشتراکی (`FCST-RT-01`)، عدم تأیید Deploy cPanel (`FCST-DEPLOY-01`)، نبود آزمون Production Browser (`FCST-PROD-01`)، ناکافی‌بودن تست Integration برای Provider guard (`FCST-API-01`)، مهاجرت‌نیافتن Ledger/Backtest/Replay (`FCST-EVAL-01`)، نبود Ensemble اجرایی (`FCST-ENS-01`) و تعارض اسناد تاریخی (`FCST-DOC-01`).
+
+### 18.1. ترتیب ادامه کار
+
+1. حفظ New/Legacy به‌صورت مستقل و برگشت‌پذیر؛ هیچ قابلیت Legacy پیش از پذیرش جایگزین خاموش نمی‌شود.
+2. ادامه ممیزی و مهاجرت قابلیت‌های مستقل از Python در Native JavaScript؛ اجرای مدل‌های Python تا حل `FCST-RT-01` متوقف است.
+3. انتقال Ledger و ارزیابی به‌صورت یک بسته کوچک و قابل آزمون، سپس Backtest/Walk-forward و Replay؛ هرکدام با قرارداد داده و آزمون چرخه عمر مستقل.
+4. رفع موانع Deploy/Production verification به‌عنوان شرط پذیرش نهایی UI، نه فرض ضمنی موفقیت CI.
+5. به‌روزرسانی همین سند و `OPEN_ISSUES.md` در هر batch؛ ثبت commit، تست، build، deploy و browser evidence به‌صورت جداگانه.
+
+### 18.2. آخرین وضعیت آزمون
+
+Workflow run `44496501529` برای commit `fbcb55082f20e50f82a57c3b6b9c3770f5fe1495` با نتیجه موفق پایان یافت: ۱۸ تست Web parity، PHP lint، ساخت Artifact وب و Build/Test اندروید موفق بودند. با این حال مرحله cPanel remote upload به دلیل در دسترس نبودن Secrets skip شد؛ بنابراین این Run **Deploy موفق به Production را ثابت نمی‌کند**. جزئیات و شناسه‌های مشکل در `OPEN_ISSUES.md §5` نگهداری می‌شوند.
