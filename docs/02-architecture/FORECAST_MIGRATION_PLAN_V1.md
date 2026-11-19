@@ -565,6 +565,8 @@ Disabled کردن یک قابلیت در New به معنی خاموش‌کردن
 
 این برچسب‌ها ادعای عدم وجود کد در مخزن نیستند؛ بیانگر آن‌اند که این قابلیت‌ها هنوز به‌عنوان گردش‌کار کامل و تأییدشده در New عرضه نشده‌اند. Legacy Forecast Studio از طریق Engine Switcher حفظ شده است.
 
+> **یادداشت وضعیت:** این بخش snapshot تاریخی قبل از اصلاحات 2026-11-19 است. در شاخه فعلی `forecast-completion-native-only` گزینه Ensemble در New Native دوباره به مسیر `ForecastEngine.project()` متصل و انتخاب‌پذیر شده است؛ بنابراین نتیجه‌گیری «هنوز پیاده‌سازی نشده» در این بخش دیگر وضعیت جاری نیست. پذیرش آماری/OOS آن همچنان باز است.
+
 ### 16.2. Ensemble: اصلاح گزینه گمراه‌کننده
 
 ممیزی مستقیم `host_subdomain/assets/js/algorithms/structuralForecastEngine.js` نشان داد که موتور Structural مسیر `model_paths` را برای `empirical_analogs` می‌سازد، اما هیچ مسیر اجرایی برای `ensemble` ندارد (جست‌وجوی مستقیم `ensemble` در فایل، نتیجه‌ای نداشت). در عین حال UI قبلاً دکمه فعال `Calibrated Ensemble` داشت که می‌توانست تصور اجرای Ensemble در موتور Structural را ایجاد کند.
