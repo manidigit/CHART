@@ -942,6 +942,8 @@ function loadPreferences() {
     const merged = {
       ...DEFAULT_PREFS,
       ...sanitized,
+      forecastEngineMode: 'structural',
+      showFutureProjection: false,
       indicatorCustomColors: normalizeIndicatorCustomColorsMap(sanitized.indicatorCustomColors),
       preferencesUpdatedAtMs: Number(sanitized.preferencesUpdatedAtMs || 0),
     };

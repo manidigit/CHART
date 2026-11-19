@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.47.38] - 2026-11-19
+
+### Removed & Cleaned Up (Phase 3 Migration: Permanent Removal of Legacy Forecast Studio UI, Handlers & Chart Overlay)
+- **Legacy UI & Engine Switcher Removal (`forecastView.js?v=2.0.20`, `headerView.js?v=1.47.8`, `app.js?v=1.47.38`):**
+  - Removed `renderForecastStudioView()`, temporary `LEGACY_MIGRATED_UI_DISABLED` flag, and unused `renderSymbolBadge` import from `forecastView.js` while keeping all shared Native Studio helpers (`buildForecastForTab`, `renderOverviewPanel`, `renderModelsPanel`, `renderBacktestPanel`, `renderLedgerPanel`, `renderForecastStudioFanCanvas`, `runHistoricalForecastReplay`) intact.
+  - Removed the `Legacy · Forecast Studio / New · Structural` switcher bar and Legacy-only click handlers (`set-forecast-engine`, `set-forecast-model`, `apply-forecast-to-chart`, `toggle-legacy-forecast-chart`, and the Legacy branch in `set-forecast-horizon`) from `app.js` so the Forecast tab opens directly into the single unified 12-panel Forecast Studio.
+  - Removed the deprecated `Legacy Forecast` button from `headerView.js`.
+- **Unified Main-Chart Forecast Pipeline & Backward-Compatible Preference Normalization (`chartRenderer.js?v=1.47.23`, `store.js?v=1.47.15`, `index.html`):**
+  - Removed the deprecated `legacyForecastPoints` / `hasValidLegacyForecast` scaling, time-axis branch, and canvas overlay drawing block from `chartRenderer.js`.
+  - Normalized legacy persisted preferences (`forecastEngineMode: 'legacy'` → `'structural'`, `showFutureProjection` → `false`) inside `loadPreferences()` in `store.js` and bumped canonical `store.js?v=1.47.15` across all 9 importing modules plus `app.js?v=1.47.38` in `index.html`.
+- **Verification & Documentation:**
+  - Verified `node --check` across all 10 modified JS modules and **37/37** passing tests in `tests/web_parity.test.mjs` (replaced Phase 2 check with `FORECAST-PHASE3-LEGACY-CLEANUP-01`).
+  - Updated `FORECAST_MIGRATION_PLAN_V1.md`, `FORECAST_LEGACY_PARITY_MATRIX_V1.md`, and `OPEN_ISSUES.md`; shelved Python/Chronos-2 files remain untouched.
+
+---
+
 ## [1.47.37] - 2026-11-19
 
 ### Changed (Phase 2 Migration: Progressive Disabling of Migrated Controls in Legacy Without Deletion)

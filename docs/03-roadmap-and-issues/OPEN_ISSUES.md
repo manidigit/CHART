@@ -341,5 +341,12 @@
 - **راستی‌آزمایی محلی:** `node --check` و **۳۷/۳۷ تست `tests/web_parity.test.mjs`** (شامل `FORECAST-PHASE2-LEGACY-DISABLE-01`) با موفقیت پاس شدند.
 - **وضعیت پاک‌سازی (`FCST-LEGACY-CLEANUP-01`):** هیچ کد یا فایلی از Legacy حذف نشده است؛ حذف کامل کدهای قدیمی منوط به تست نهایی کاربر و تأیید صریح ورود به **گام ۳** است.
 
+### ۶.۷. گام ۳: پاک‌سازی کامل Legacy Forecast Studio (`v1.47.38`) — 2026-11-19
+
+- **تکمیل `FCST-LEGACY-CLEANUP-01` (در کد وب):** با تأیید صریح کاربر، تابع `renderForecastStudioView()` و پرچم موقت `LEGACY_MIGRATED_UI_DISABLED` (`forecastView.js?v=2.0.20`)، سوییچر `Legacy / New` و handlerهای اختصاصی Legacy (`app.js?v=1.47.38`)، دکمه منسوخ نوار بالای چارت (`headerView.js?v=1.47.8`) و بلوک رندر `legacyForecastPoints` روی بوم اصلی (`chartRenderer.js?v=1.47.23`) به طور کامل پاک‌سازی شدند. تنظیمات قدیمی ذخیره‌شده کاربران در `store.js?v=1.47.15` به‌صورت خودکار به `'structural'` نرمال‌سازی می‌شوند.
+- **حفظ موتورهای مشترک و فایل‌های کنار گذاشته‌شده:** تمام پنل‌ها و موتورهای مشترک سیستم جدید (۱۲ پنل استودیو، ۱۰ مدل رجیستری، `AUTO`، `Causal Historical Analogs`، `Ensemble`، `Structural JS`، `Replay`، `Ledger`) دست‌نخورده و فعال‌اند؛ فایل‌های غیرفعال `Chronos-2 / Python` نیز دست‌نخورده حفظ شدند.
+- **راستی‌آزمایی محلی:** `node --check` روی تمامی ماژول‌های تغییریافته و **۳۷/۳۷ تست `tests/web_parity.test.mjs`** (شامل `FORECAST-PHASE3-LEGACY-CLEANUP-01`) با موفقیت پاس شدند.
+
+
 
 

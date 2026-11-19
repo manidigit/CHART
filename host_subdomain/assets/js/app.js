@@ -38,7 +38,7 @@ import {
   clearTabStructuralForecast,
   invalidateTabStructuralForecastIfStale,
   reconcileTabStructuralForecastOnRender,
-} from './core/store.js?v=1.47.14';
+} from './core/store.js?v=1.47.15';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -66,13 +66,13 @@ import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.22';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.23';
 import { renderLoginScreen } from './views/loginView.js?v=1.47.2';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.47.7';
+} from './views/headerView.js?v=1.47.8';
 import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.1';
 import {
   renderRightSplitPanel,
@@ -80,7 +80,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.2';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
-import { LEGACY_MIGRATED_UI_DISABLED, renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=2.0.19';
+import { renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=2.0.20';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.4';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
@@ -121,16 +121,10 @@ function getActiveTab() {
 
 function invalidateForecastAfterModelConfigChange(tab, changedModelId = '') {
   if (!tab) return;
-  const selectedEngine = state.chartPreferences.forecastEngineMode || state.forecastEngineMode;
   const selectedNativeModel = (tab.structuralForecastModel || 'structural_wave_js') !== 'structural_wave_js';
-  if (selectedEngine === 'structural' && selectedNativeModel) {
-    if (!changedModelId || changedModelId === tab.structuralForecastModel) {
-      tab.showStructuralForecast = false;
-      clearTabStructuralForecast(tab);
-    }
-  } else {
-    tab.legacyForecast = null;
-    tab.showFutureProjection = false;
+  if (selectedNativeModel && (!changedModelId || changedModelId === tab.structuralForecastModel || tab.structuralForecastModel === 'AUTO' || tab.structuralForecastModel === 'ensemble')) {
+    tab.showStructuralForecast = false;
+    clearTabStructuralForecast(tab);
   }
   saveOpenTabsToStorage();
 }
@@ -843,7 +837,7 @@ function renderForecastWorkspaceContent(activeTab) {
     return `<button type="button" class="chip ${currentModel === model.id ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="${escapeHtml(model.id)}" ${available ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
   }).join('');
   const isNativeModelSelected = currentModel !== 'structural_wave_js';
-  const selected = (state.chartPreferences.forecastEngineMode || state.forecastEngineMode || 'structural') === 'legacy' ? 'legacy' : 'structural';
+  const selected = 'structural';
   const usesNativeEvaluation = selected === 'structural' && isNativeModelSelected;
   const rawHorizon = Number(activeTab?.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || activeTab?.forecastHorizonBars || 30);
   const horizon = isNativeModelSelected
@@ -921,13 +915,6 @@ function renderForecastWorkspaceContent(activeTab) {
       </div>`
     : '';
   const nativeEvaluationPanels = '<div class="ci-fc-card" style="display:none;" aria-hidden="true"></div>';
-  const switcher = `
-    <div class="ci-fc-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
-      <strong style="font-size:12px;">${isFa ? 'موتور فعال:' : 'Selected engine:'}</strong>
-      <button type="button" class="chip ${selected === 'legacy' ? 'active' : ''}" data-action="set-forecast-engine" data-engine="legacy">${isFa ? 'سیستم قدیمی · Forecast Studio' : 'Legacy · Forecast Studio'}${LEGACY_MIGRATED_UI_DISABLED ? (isFa ? ' · بخش‌های منتقل‌شده غیرفعال' : ' · Migrated Disabled') : ''}</button>
-      <button type="button" class="chip ${selected === 'structural' ? 'active' : ''}" data-action="set-forecast-engine" data-engine="structural">${isFa ? 'سیستم جدید · Structural' : 'New · Structural'}</button>
-    </div>`;
-  if (selected === 'legacy') return switcher + renderForecastStudioView(activeTab, i18n);
 
   const evalStatus = nativeEvaluation?.status || 'DATA_NOT_READY';
   const evalStatusClass = evalStatus === 'VALID' ? 'ci-fc-badge-valid' : evalStatus === 'PROVISIONAL' ? 'ci-fc-badge-provisional' : 'ci-fc-badge-blocked';
@@ -956,7 +943,7 @@ function renderForecastWorkspaceContent(activeTab) {
   const primaryChartAction = isNativeModelSelected ? 'apply-native-forecast-to-chart' : 'toggle-structural-forecast';
   const isPrimaryPlotted = isNativeModelSelected ? isNativePlotted : isStructuralPlotted;
 
-  return switcher + `
+  return `
     <section class="ci-forecast-studio">
       <div class="ci-fc-header">
         <div class="ci-fc-title-row">
@@ -2706,22 +2693,6 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'refresh-forecast-ledger') {
     showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'دفتر محلی به‌روز است؛ همگام‌سازی سرور در این نسخه فعال نیست.' : 'Local ledger is current; server sync is not enabled in this web build.');
     renderApp();
-  } else if (action === 'set-forecast-engine') {
-    const selectedEngine = el.getAttribute('data-engine') === 'structural' ? 'structural' : 'legacy';
-    if (selectedEngine === 'legacy') stopForecastReplayPlayback();
-    state.forecastEngineMode = selectedEngine;
-    state.chartPreferences.forecastEngineMode = state.forecastEngineMode;
-    if (activeTab) {
-      if (state.forecastEngineMode === 'structural') {
-        activeTab.showFutureProjection = false;
-      } else {
-        activeTab.showStructuralForecast = false;
-        clearTabStructuralForecast(activeTab);
-      }
-    }
-    savePreferences();
-    renderApp();
-    redrawActiveCanvas();
   } else if (action === 'set-structural-forecast-horizon' && activeTab) {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
     activeTab.structuralForecastHorizonBars = hVal;
@@ -2856,16 +2827,6 @@ document.addEventListener('click', async (e) => {
     savePreferences();
     renderApp();
     redrawActiveCanvas();
-  } else if (action === 'set-forecast-model' && activeTab) {
-    if (LEGACY_MIGRATED_UI_DISABLED && (state.chartPreferences.forecastEngineMode || state.forecastEngineMode) === 'legacy') {
-      showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'انتخاب مدل به سیستم جدید (New · Structural) منتقل شده و در Legacy غیرفعال است.' : 'Model selection has migrated to New · Structural and is disabled in Legacy.');
-      return;
-    }
-    activeTab.selectedForecastModelId = String(el.getAttribute('data-model-id') || 'AUTO');
-    state.chartPreferences.selectedForecastModelId = activeTab.selectedForecastModelId;
-    savePreferences();
-    saveOpenTabsToStorage();
-    renderApp();
   } else if (action === 'toggle-forecast-model') {
     const modelId = String(el.getAttribute('data-model-id') || '');
     if (modelId) {
@@ -2970,17 +2931,6 @@ document.addEventListener('click', async (e) => {
     redrawActiveCanvas();
   } else if (action === 'set-forecast-horizon' && activeTab) {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
-    if (state.activeWorkspaceView === 'forecast') {
-      if (LEGACY_MIGRATED_UI_DISABLED && (state.chartPreferences.forecastEngineMode || state.forecastEngineMode) === 'legacy') {
-        showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'تنظیم افق به سیستم جدید (New · Structural) منتقل شده و در Legacy غیرفعال است.' : 'Horizon selection has migrated to New · Structural and is disabled in Legacy.');
-        return;
-      }
-      activeTab.forecastHorizonBars = hVal;
-      state.chartPreferences.forecastHorizonBars = hVal;
-      savePreferences();
-      renderApp();
-      return;
-    }
     activeTab.structuralForecastHorizonBars = hVal;
     state.chartPreferences.structuralForecastHorizonBars = hVal;
     activeTab.showStructuralForecast = true;
@@ -3032,36 +2982,6 @@ document.addEventListener('click', async (e) => {
     }
     state.forecastEngineMode = 'structural'; state.chartPreferences.forecastEngineMode = 'structural'; activeTab.scrollOffset = 0;
     savePreferences(); saveOpenTabsToStorage(); state.activeWorkspaceView = 'chart'; renderApp(); redrawActiveCanvas();
-  } else if (action === 'apply-forecast-to-chart' || action === 'toggle-legacy-forecast-chart') {
-    if (LEGACY_MIGRATED_UI_DISABLED) {
-      if (activeTab) activeTab.showFutureProjection = false;
-      showFloatingToast(
-        i18n.getCurrentLanguage() === 'fa'
-          ? 'رسم پیش‌بینی روی چارت به سیستم جدید (New · Structural) منتقل شده و در Legacy غیرفعال است.'
-          : 'Chart forecast overlay has migrated to New · Structural and is disabled in Legacy.'
-      );
-      renderApp();
-      redrawActiveCanvas();
-      return;
-    }
-    if (!activeTab || !Array.isArray(activeTab.legacyForecast?.points) || activeTab.legacyForecast.points.length === 0) {
-      showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'ابتدا پیش‌بینی سیستم قدیمی را در Forecast Studio محاسبه کنید.' : 'Calculate the legacy forecast in Forecast Studio first.');
-      return;
-    }
-    const enableLegacy = !activeTab.showFutureProjection;
-    activeTab.showFutureProjection = enableLegacy;
-    if (enableLegacy) {
-      state.forecastEngineMode = 'legacy';
-      state.chartPreferences.forecastEngineMode = 'legacy';
-      activeTab.showStructuralForecast = false;
-      clearTabStructuralForecast(activeTab);
-      activeTab.showChronosForecast = false;
-      clearTabChronosForecast(activeTab);
-      state.activeWorkspaceView = 'chart';
-    }
-    savePreferences();
-    renderApp();
-    redrawActiveCanvas();
   } else if (action === 'set-workspace-view') {
     const requestedView = el.getAttribute('data-view') === 'forecast' ? 'forecast' : 'chart';
     state.activeWorkspaceView = requestedView;

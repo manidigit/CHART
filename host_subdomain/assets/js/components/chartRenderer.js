@@ -8,7 +8,7 @@ import {
   hexToRgba,
   isChronosForecastMatchingTab,
   isStructuralForecastMatchingTab,
-} from '../core/store.js?v=1.47.14';
+} from '../core/store.js?v=1.47.15';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -338,18 +338,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     isChronosForecastMatchingTab(tab, tab.chronosForecast);
   const chronosPoints = hasValidChronosForecast ? tab.chronosForecast.forecast : [];
   const showChronosBand = tab.showChronosBand !== false;
-  const legacyMeta = tab.legacyForecastMeta || {};
-  const lastCandleForLegacy = candles[candles.length - 1];
-  const legacyMatchesTab =
-    String(legacyMeta.symbolCode || '') === String(tab.symbolCode || '').trim().toUpperCase() &&
-    String(legacyMeta.provider || '') === String(tab.provider || 'tvdatafeed').trim().toLowerCase() &&
-    String(legacyMeta.timeframe || '') === String(tab.timeframe || 'M15').trim().toUpperCase() &&
-    Number(legacyMeta.lastCandleOpenMs || 0) === Number(lastCandleForLegacy?.open_time_utc_ms || 0) &&
-    Math.abs(Number(legacyMeta.lastCandleClose || 0) - Number(lastCandleForLegacy?.close || 0)) < 1e-8;
-  const legacyForecastPoints = tab.showFutureProjection && !tab.showStructuralForecast && !tab.showChronosForecast &&
-    legacyMatchesTab && ['VALID', 'PROVISIONAL'].includes(String(tab.legacyForecast?.status || '')) &&
-    Array.isArray(tab.legacyForecast?.points) ? tab.legacyForecast.points : [];
-  const hasValidLegacyForecast = legacyForecastPoints.length > 0;
 
   const activeForecastPoints = hasValidStructuralForecast ? structuralPoints : chronosPoints;
   const hasAnyValidForecast =
@@ -361,26 +349,10 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ? chronosPoints.length
       : 0;
 
-  const chronosHorizonSlots =
+  const forecastHorizonSlots =
     hasAnyValidForecast && offset === 0
       ? Math.max(1, Math.min(120, activeHorizonCount))
       : 0;
-  const legacyHorizonSlots = hasValidLegacyForecast && offset === 0
-    ? Math.max(1, Math.min(120, legacyForecastPoints.length))
-    : 0;
-  const forecastHorizonSlots = Math.max(chronosHorizonSlots, legacyHorizonSlots);
-
-  if (hasValidLegacyForecast && offset === 0) {
-    for (const point of legacyForecastPoints) {
-      for (const value of [point.q10, point.q50, point.q90]) {
-        const price = Number(value);
-        if (Number.isFinite(price) && price > 0) {
-          rawMin = Math.min(rawMin, price);
-          rawMax = Math.max(rawMax, price);
-        }
-      }
-    }
-  }
 
   if (hasValidStructuralForecast && offset === 0) {
     for (const modelPath of (tab.structuralForecast.model_paths || []).filter((path) =>
@@ -534,9 +506,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
                 ? Number(structuralPoints[k].open_time_utc_ms)
                 : hasValidChronosForecast && chronosPoints[k]?.target_open_time_utc_ms
                   ? Number(chronosPoints[k].target_open_time_utc_ms)
-                  : hasValidLegacyForecast && legacyForecastPoints[k]?.openTimeUtcMs
-                    ? Number(legacyForecastPoints[k].openTimeUtcMs)
-                    : lastVisOpenMs + (k + 1) * stepMsAxis,
+                  : lastVisOpenMs + (k + 1) * stepMsAxis,
           })),
         ]
       : visible;
@@ -1868,68 +1838,6 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.fillStyle = isDark ? '#FCA5A5' : '#DC2626';
       ctx.fillText(errText, eX + 10, eY + 15.5, eTw - 20);
       ctx.restore();
-    }
-  }
-
-  // LEGACY FORECAST STUDIO overlay — independent from the structural engine.
-  if (hasValidLegacyForecast && offset === 0) {
-    const points = legacyForecastPoints
-      .map((point, idx) => ({
-        step: Math.max(1, Number(point.stepAhead || idx + 1)),
-        q10: Number(point.q10),
-        q50: Number(point.q50),
-        q90: Number(point.q90),
-      }))
-      .filter((point) => [point.q10, point.q50, point.q90].every((value) => Number.isFinite(value) && value > 0));
-    if (points.length > 0) {
-      const originIdx = visible.length - 1;
-      const originX = idxToX(originIdx);
-      const originY = priceToY(Number(visible[originIdx]?.close));
-      const projected = points.map((point) => ({
-        ...point,
-        x: idxToX(originIdx + point.step),
-        y10: priceToY(point.q10),
-        y50: priceToY(point.q50),
-        y90: priceToY(point.q90),
-      })).filter((point) => point.x <= chartW + slotW && Number.isFinite(point.y50));
-      if (projected.length > 0) {
-        const color = '#F59E0B';
-        ctx.save();
-        ctx.fillStyle = isDark ? 'rgba(245,158,11,0.10)' : 'rgba(217,119,6,0.10)';
-        ctx.beginPath();
-        ctx.moveTo(originX, originY);
-        for (const point of projected) ctx.lineTo(point.x, point.y90);
-        for (let i = projected.length - 1; i >= 0; i--) ctx.lineTo(projected[i].x, projected[i].y10);
-        ctx.closePath();
-        ctx.fill();
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 2.2;
-        ctx.lineJoin = 'round';
-        ctx.beginPath();
-        ctx.moveTo(originX, originY);
-        for (const point of projected) ctx.lineTo(point.x, point.y50);
-        ctx.stroke();
-        ctx.fillStyle = color;
-        ctx.beginPath();
-        ctx.arc(originX, originY, 3.2, 0, Math.PI * 2);
-        ctx.fill();
-        const last = projected[projected.length - 1];
-        queueRightLevelLabel(last.y50, `Legacy Fcst ${PriceFormatter.formatPrice(last.q50, tab.decimals)}`, color);
-        const badge = `Legacy Forecast Studio (+${projected.length})`;
-        ctx.font = 'bold 10px "JetBrains Mono", monospace';
-        const badgeW = Math.min(chartW - 24, ctx.measureText(badge).width + 14);
-        ctx.fillStyle = isDark ? 'rgba(19,23,34,0.92)' : 'rgba(255,255,255,0.94)';
-        ctx.strokeStyle = color;
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        if (ctx.roundRect) ctx.roundRect(10, topPad + 10, badgeW, 18, 4);
-        else ctx.rect(10, topPad + 10, badgeW, 18);
-        ctx.fill();
-        ctx.stroke();
-        ctx.fillStyle = color;
-        ctx.fillText(badge, 17, topPad + 22.5, badgeW - 12);
-        ctx.restore();
-      }
     }
   }
 

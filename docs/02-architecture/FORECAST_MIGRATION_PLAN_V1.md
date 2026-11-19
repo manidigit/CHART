@@ -975,5 +975,23 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
    - `node --check` روی فایل‌های تغییریافته و **۳۷/۳۷ تست `tests/web_parity.test.mjs`** (شامل تست جدید `FORECAST-PHASE2-LEGACY-DISABLE-01`) با موفقیت پاس شدند.
    - **پاک‌سازی نهایی کدهای Legacy (گام ۳ / Gate M6)** همچنان تا زمان تست نهایی کاربری و تأیید صریح کاربر مسدود و دست‌نخورده باقی می‌ماند.
 
+## 14. گام ۳: پاک‌سازی کامل رابط و رندرر Legacy Forecast Studio (`v1.47.38`) — 2026-11-19
+
+پس از تأیید صریح کاربر برای اجرای **گام ۳**، تمام بخش‌های منسوخ و اختصاصی `Legacy Forecast Studio` پاک‌سازی شدند و سیستم جدید به‌عنوان تنها استودیوی یکپارچه پیش‌بینی باقی ماند:
+
+1. **حذف کامل رابط قدیمی (`forecastView.js?v=2.0.20`, `headerView.js?v=1.47.8`):**
+   - تابع `renderForecastStudioView()`، پرچم موقت `LEGACY_MIGRATED_UI_DISABLED` و import بلااستفاده `renderSymbolBadge` از `forecastView.js` حذف شدند؛ تمامی توابع و پنل‌های مشترک مورد استفاده در سیستم جدید (`buildForecastForTab`، `renderOverviewPanel`، `renderModelsPanel`، `renderBacktestPanel`، `renderLedgerPanel`، `renderForecastStudioFanCanvas`، `runHistoricalForecastReplay`) بدون تغییر حفظ شدند.
+   - دکمه منسوخ `Legacy Forecast` از نوار بالای چارت (`headerView.js`) حذف شد.
+2. **حذف سوییچر و handlerهای قدیمی (`app.js?v=1.47.38`, `store.js?v=1.47.15`):**
+   - سوییچر `Legacy · Forecast Studio / New · Structural` و شاخه `selected === 'legacy'` از `renderForecastWorkspaceContent()` و همچنین handlerهای اختصاصی Legacy (`set-forecast-engine`، `set-forecast-model`، `apply-forecast-to-chart`، `toggle-legacy-forecast-chart` و شاخه Legacy در `set-forecast-horizon`) حذف شدند تا تب Forecast مستقیماً استودیوی یکپارچه ۱۲-پنلی را باز کند.
+   - در `loadPreferences()` فایل `store.js`، هر تنظیم ذخیره‌شده قدیمی (`forecastEngineMode: 'legacy'` یا `showFutureProjection: true`) به‌صورت امن به `forecastEngineMode: 'structural'` و `showFutureProjection: false` نرمال‌سازی می‌شود.
+3. **حذف رندرر منسوخ روی چارت اصلی (`chartRenderer.js?v=1.47.23`):**
+   - محاسبات `legacyForecastPoints` / `legacyMatchesTab` / `hasValidLegacyForecast`، مقیاس محور قیمت Legacy، شاخه محور زمان Legacy و بلوک رسم `LEGACY FORECAST STUDIO overlay` از `chartRenderer.js` حذف شدند تا رندرر چارت اصلی یک مسیر تمیز و یکپارچه (`structuralForecast` / `native_model_adapter`) داشته باشد.
+   - فایل‌های کنار گذاشته‌شده `Chronos-2` / Python و آرشیو پروژه طبق تصمیمات قبلی دست‌نخورده باقی ماندند.
+4. **راستی‌آزمایی و کش مرورگر:**
+   - کلیدهای کش به `app.js?v=1.47.38`، `store.js?v=1.47.15` (در تمام ۹ ماژول)، `chartRenderer.js?v=1.47.23`، `forecastView.js?v=2.0.20` و `headerView.js?v=1.47.8` ارتقا یافتند.
+   - بررسی سینتکس `node --check` روی تمامی ۱۰ ماژول تغییریافته و **۳۷/۳۷ تست `tests/web_parity.test.mjs`** (شامل تست جدید `FORECAST-PHASE3-LEGACY-CLEANUP-01`) با موفقیت پاس شدند.
+
+
 
 

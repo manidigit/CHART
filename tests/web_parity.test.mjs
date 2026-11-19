@@ -12,7 +12,7 @@ register(
 );
 
 
-test('FORECAST-MIGRATION-UI-01: New workspace discloses legacy capabilities that are not migrated', async () => {
+test('FORECAST-MIGRATION-UI-01: Unified Forecast Studio discloses shelved shared-hosting capabilities and removes Legacy switcher', async () => {
     const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
     assert.match(appSource, /Legacy capabilities not yet migrated and verified in New/);
     assert.match(appSource, /Chronos-2 · Not migrated/);
@@ -23,14 +23,16 @@ test('FORECAST-MIGRATION-UI-01: New workspace discloses legacy capabilities that
     assert.match(appSource, /id: 'ensemble', name: 'Calibrated Ensemble \(V2\)'/);
     // These are disclosure-only labels, not executable selection controls.
     assert.match(appSource, /<span class="chip" aria-disabled="true"/);
-    assert.match(appSource, /Legacy · Forecast Studio/);
+    assert.doesNotMatch(appSource, /Legacy · Forecast Studio/);
 });
 
-test('FORECAST-MIGRATION-UI-02: New Native is the first-use default and the legacy engine remains opt-in', async () => {
+test('FORECAST-MIGRATION-UI-02: Unified Forecast Studio is the sole active engine with legacy preference normalization', async () => {
     const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
-    assert.match(appSource, /forecastEngineMode\s*\|\|\s*'structural'/);
-    assert.match(appSource, /data-engine="legacy"/);
-    assert.match(appSource, /data-engine="structural"/);
+    const storeSource = await readFile(new URL('../host_subdomain/assets/js/core/store.js', import.meta.url), 'utf8');
+    assert.match(appSource, /const selected = 'structural';/);
+    assert.doesNotMatch(appSource, /data-engine="legacy"/);
+    assert.doesNotMatch(appSource, /set-forecast-engine/);
+    assert.match(storeSource, /forecastEngineMode:\s*'structural'/);
 });
 
 test('FORECAST-REGISTRY-01: all ten native model plugins are registered', async () => {
@@ -52,11 +54,13 @@ test('FORECAST-REGISTRY-01: all ten native model plugins are registered', async 
     ]) assert.ok(ids.includes(id), `Missing registered model: ${id}`);
 });
 
-test('FORECAST-MIGRATION-MODELS-01: the model picker is generated from the complete native registry', async () => {
+test('FORECAST-MIGRATION-MODELS-01: the unified model picker is generated from the complete native registry', async () => {
+    const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
     const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
-    assert.match(viewSource, /defaultForecastRegistry\.list\(\)\.map/);
-    assert.match(viewSource, /id: 'empirical_analogs'/);
-    assert.match(viewSource, /id: 'ensemble'/);
+    assert.match(appSource, /const nativeModelChoices = defaultForecastRegistry\.list\(\)/);
+    assert.match(appSource, /id: 'AUTO'/);
+    assert.match(appSource, /id: 'empirical_analogs'/);
+    assert.match(appSource, /id: 'ensemble'/);
     assert.doesNotMatch(viewSource, /ForecastWorkerClient/);
     assert.doesNotMatch(viewSource, /ci-forecast-worker-url/);
 });
@@ -132,7 +136,7 @@ test('ARCH-01: every browser module shares one canonical store.js module URL', a
         assert.ok(match, `Missing shared store import in ${file}`);
         versions.push(match[1]);
     }
-    assert.deepEqual([...new Set(versions)], ['1.47.14'], 'All UI, chart, forecast and service modules must share one store singleton');
+    assert.deepEqual([...new Set(versions)], ['1.47.15'], 'All UI, chart, forecast and service modules must share one store singleton');
 });
 
 const memStore = new Map();
@@ -873,13 +877,10 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
         assert.equal(indHtml.includes('data-action="toggle-forecast-band"'), false, 'Forecast bands must not appear as indicators');
         assert.equal(indHtml.includes('data-action="set-forecast-horizon"'), false, 'Forecast horizon must not appear as an indicator setting');
         assert.ok(indHtml.includes('RSI') || indHtml.includes('MACD'), 'Indicators modal remains dedicated to technical indicators');
-        const { renderForecastStudioView } = await import('../host_subdomain/assets/js/views/forecastView.js');
-    state.chartPreferences = { ...state.chartPreferences, forecastHorizonBars: 30 };
-    const legacyForecastHtml = renderForecastStudioView(matchingTab, mockI18n);
-    assert.ok(legacyForecastHtml.includes('data-action="set-forecast-horizon"'));
-    assert.ok(legacyForecastHtml.includes('data-action="set-forecast-render-mode"'));
-    assert.ok(legacyForecastHtml.includes('data-action="set-forecast-subtab"'));
-    assert.ok(legacyForecastHtml.includes('data-action="apply-native-forecast-to-chart"'), 'Forecast Studio must expose the native-model apply-to-chart action');
+        const forecastViewModule = await import('../host_subdomain/assets/js/views/forecastView.js');
+        assert.equal(typeof forecastViewModule.renderForecastStudioView, 'undefined', 'Legacy renderForecastStudioView must be removed in Phase 3');
+        assert.equal(typeof forecastViewModule.renderOverviewPanel, 'function', 'Shared renderOverviewPanel must remain available for unified Forecast Studio');
+        assert.equal(typeof forecastViewModule.buildForecastForTab, 'function', 'Shared buildForecastForTab must remain available for unified Forecast Studio');
     } finally {
         state.activeModal = prevModal;
         state.activeIndicatorCategory = prevCat;
@@ -1598,7 +1599,7 @@ test('FORECAST-NEW-COMPARE-02: selected Native model carries successful peer tra
 
 test('FORECAST-NEW-COMPARE-03: main chart renderer module cache is invalidated with comparison overlay release', async () => {
   const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
-  assert.match(app, /chartRenderer\.js\?v=1\.47\.22/);
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.23/);
 });
 
 test('FORECAST-PHASE1-PARITY-01: adapter preserves AUTO OOS metadata, render mode, and validated Coordinated MTF points', async () => {
@@ -1677,22 +1678,33 @@ test('FORECAST-PHASE1-STUDIO-PARITY-03: New workspace renders full 12-panel Fore
   assert.match(store, /structuralForecastModel:\s*\/\^\(AUTO\|\[a-z0-9_\]\+\)\$\/\.test/);
 });
 
-test('FORECAST-PHASE2-LEGACY-DISABLE-01: Phase 2 disables migrated Legacy controls transparently while preserving rollback and shared New panels', async () => {
-  const { LEGACY_MIGRATED_UI_DISABLED } = await import('../host_subdomain/assets/js/views/forecastView.js');
-  assert.equal(LEGACY_MIGRATED_UI_DISABLED, true);
+test('FORECAST-PHASE3-LEGACY-CLEANUP-01: Phase 3 removes Legacy Studio UI, chart overlay, and handlers while preserving shared Native Studio panels', async () => {
+  const viewMod = await import('../host_subdomain/assets/js/views/forecastView.js');
+  assert.equal(viewMod.renderForecastStudioView, undefined);
+  assert.equal(viewMod.LEGACY_MIGRATED_UI_DISABLED, undefined);
+  assert.equal(typeof viewMod.buildForecastForTab, 'function');
+  assert.equal(typeof viewMod.renderOverviewPanel, 'function');
+  assert.equal(typeof viewMod.renderModelsPanel, 'function');
+  assert.equal(typeof viewMod.renderBacktestPanel, 'function');
+  assert.equal(typeof viewMod.renderLedgerPanel, 'function');
+  assert.equal(typeof viewMod.runHistoricalForecastReplay, 'function');
+
   const view = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
   const header = await readFile(new URL('../host_subdomain/assets/js/views/headerView.js', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../host_subdomain/assets/js/components/chartRenderer.js', import.meta.url), 'utf8');
   const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
-  assert.match(view, /data-legacy-migration-phase="2"/);
-  assert.match(view, /data-legacy-migrated-locked="true"/);
-  assert.match(view, /Open in New · Structural/);
-  assert.match(view, /Chronos-2 \(Python \/ PyTorch\)/);
-  assert.match(view, /External Python Worker Models/);
-  assert.match(header, /data-action="toggle-legacy-forecast-chart" disabled aria-disabled="true"/);
-  assert.match(app, /LEGACY_MIGRATED_UI_DISABLED.*forecastView\.js\?v=2\.0\.19/);
-  assert.match(app, /headerView\.js\?v=1\.47\.7/);
-  assert.match(app, /action === 'apply-forecast-to-chart' \|\| action === 'toggle-legacy-forecast-chart'[\s\S]{0,220}if \(LEGACY_MIGRATED_UI_DISABLED\)/);
+  const store = await readFile(new URL('../host_subdomain/assets/js/core/store.js', import.meta.url), 'utf8');
+
+  assert.doesNotMatch(view, /export function renderForecastStudioView/);
+  assert.doesNotMatch(header, /toggle-legacy-forecast-chart/);
+  assert.doesNotMatch(renderer, /legacyForecastPoints|hasValidLegacyForecast|Legacy Forecast Studio/);
+  assert.doesNotMatch(app, /renderForecastStudioView|LEGACY_MIGRATED_UI_DISABLED|toggle-legacy-forecast-chart|apply-forecast-to-chart|set-forecast-engine|data-engine="legacy"/);
+  assert.match(app, /forecastView\.js\?v=2\.0\.20/);
+  assert.match(app, /headerView\.js\?v=1\.47\.8/);
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.23/);
+  assert.match(store, /forecastEngineMode:\s*'structural',\s*showFutureProjection:\s*false/);
 });
+
 
 
 

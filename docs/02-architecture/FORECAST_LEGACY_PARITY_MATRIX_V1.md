@@ -124,5 +124,13 @@ Following explicit product direction to shelve Python/Chronos-2 on shared hostin
 - **Locked Legacy Controls & Chart Overlay Guard:** Disabled all migrated buttons/sub-tabs in `renderForecastStudioView()`, locked `.ci-fc-body` read-only (`data-legacy-migrated-locked="true"`), disabled `toggle-legacy-forecast-chart` in `headerView.js?v=1.47.7`, and guarded Legacy click handlers in `app.js?v=1.47.37` without affecting shared panels used by New.
 - **Verification:** `node --check` passed and `tests/web_parity.test.mjs` passed **37/37** (added `FORECAST-PHASE2-LEGACY-DISABLE-01`). Final Legacy code removal remains reserved for Phase 3 after live user acceptance.
 
+## 8. Phase 3 — Legacy Forecast Studio Cleanup Completed (`v1.47.38`) — 2026-11-19
+
+- **Legacy UI & Switcher Removed:** Deleted `renderForecastStudioView()` and temporary `LEGACY_MIGRATED_UI_DISABLED` flag from `forecastView.js?v=2.0.20`, removed the `Legacy · Forecast Studio / New · Structural` switcher and Legacy-only action handlers (`set-forecast-engine`, `set-forecast-model`, `apply-forecast-to-chart`, `toggle-legacy-forecast-chart`) from `app.js?v=1.47.38`, and removed the deprecated `Legacy Forecast` button from `headerView.js?v=1.47.8`.
+- **Single Unified Main-Chart Forecast Pipeline:** Removed the `legacyForecastPoints` / `hasValidLegacyForecast` scaling, axis, and canvas overlay drawing block from `chartRenderer.js?v=1.47.23`; normalized any legacy persisted `forecastEngineMode` / `showFutureProjection` preferences in `store.js?v=1.47.15` (`loadPreferences()`) to `'structural'` / `false`.
+- **Shared Native Studio Preserved:** All shared statistical engines (`ForecastEngine`, 10 registry models, `AUTO`, `Causal Historical Analogs`, `Ensemble V2`, `Structural JS`) and shared Studio panel renderers (`buildForecastForTab`, `renderOverviewPanel`, `renderModelsPanel`, `renderBacktestPanel`, `renderLedgerPanel`, `renderForecastStudioFanCanvas`, `runHistoricalForecastReplay`) remain intact; shelved Python/Chronos-2 files remain untouched.
+- **Verification:** `node --check` passed on all 10 modified JS modules and `tests/web_parity.test.mjs` passed **37/37** (including `FORECAST-PHASE3-LEGACY-CLEANUP-01`).
+
+
 
 

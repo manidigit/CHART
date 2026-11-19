@@ -5,7 +5,7 @@ import {
   getIndicatorColorPalette,
   UNIVERSAL_COLOR_PALETTE,
   DEFAULT_INDICATOR_COLORS,
-} from '../core/store.js?v=1.47.14';
+} from '../core/store.js?v=1.47.15';
 import { renderSymbolBadge } from './watchlistView.js?v=1.47.2';
 
 export function renderTopHeaderBar(activeTab, i18n) {
@@ -183,9 +183,6 @@ export function renderTopHeaderBar(activeTab, i18n) {
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
             <span>${forecastNavLabel}</span>
           </button>
-          ${!isForecastView && Array.isArray(activeTab?.legacyForecast?.points) && activeTab.legacyForecast.points.length > 0
-            ? `<button type="button" class="tv-tool-btn" data-action="toggle-legacy-forecast-chart" disabled aria-disabled="true" style="opacity:0.5;cursor:not-allowed;" title="${isFa ? 'منتقل شد به سیستم جدید — از New · Structural استفاده کنید' : 'Migrated to New · Structural — disabled in Legacy'}"><span>${isFa ? 'پیش‌بینی قدیمی (منتقل شد)' : 'Legacy Forecast (Migrated)'}</span></button>`
-            : ''}
           <button
             type="button"
             class="tv-tool-btn ${isOverviewActive ? 'active' : ''}"
