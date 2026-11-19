@@ -2662,11 +2662,6 @@ document.addEventListener('click', async (e) => {
       invalidateForecastAfterModelConfigChange(activeTab, modelId);
       renderApp();
     }
-  } else if (action === 'save-forecast-worker-url') {
-    const workerInput = document.getElementById('ci-forecast-worker-url');
-    state.chartPreferences.forecastWorkerUrl = String(workerInput?.value || '').trim();
-    savePreferences();
-    renderApp();
   } else if (action === 'reset-forecast-models') {
     defaultForecastRegistry.resetDefaults();
     state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
