@@ -272,3 +272,55 @@
 - cPanel Deploy: `ok:true`, `deployed_files:123`, snapshot `snapshot_20261119_133610`. مقدار seed جدید صفر بود؛ این Run داده جدیدی برای seed نداشت و به معنی خطای دریافت داده نیست.
 - Android Debug APK و Unit/Robolectric tests موفق؛ artifact IDs: APK `14536815154` و Web `14534949557`.
 - Main Chart comparison overlay اکنون در کد و CI تأیید شده است؛ Browser E2E Production همچنان باز است.
+
+
+## ۶. وضعیت تجمیعی مهاجرت Forecast — بازنگری 2026-11-19
+
+این بخش آخرین وضعیت اجرایی را ثبت می‌کند و بر یادداشت‌های قدیمی‌تر این فایل اولویت دارد. مواردی که در یادداشت‌های قبلی «پیاده‌سازی‌نشده» توصیف شده‌اند ممکن است در New پیاده‌سازی شده باشند؛ وضعیت نهایی را از این بخش و Parity Matrix نسخه 1.1.0 بخوانید.
+
+### ۶.۱. انجام‌شده در کد شاخه New Native
+
+- انتخاب New Native به‌عنوان پیش‌فرض اولین استفاده و حفظ انتخاب Legacy برای Rollback.
+- انتخاب‌گر پویا برای ۱۰ مدل رجیستری، به‌علاوه Historical Analogs و Ensemble.
+- انتقال پنل تنظیمات مدل‌ها: enable/disable، وزن، پارامترها و reset.
+- ایزوله‌سازی Python Worker از New؛ URL Worker و اجرای خارجی در مسیر New استفاده نمی‌شود.
+- اتصال تب‌های Overview، Models، Walk-Forward، Ledger و کنترل‌های افق/Render Mode/MTF.
+- اتصال Structural JS و Historical Analogs با تفکیک خروجی واقعی مدل از مسیرهای illustrative.
+- Compare در Preview، نمودارهای Side-by-Side و overlay مسیرهای منتخب روی Main Chart.
+- Snapshot و Lifecycle Ledger محلی.
+- Historical Replay با پنجره‌های ۳/۵/۱۰، بازه UTC، آموزش قبل از anchor، امتیازدهی با آینده، MAE/coverage/direction، نمودار مقایسه با actual، Play/Pause و تاریخچه محلی ۲۰ اجرا.
+- حفظ سیاست TradingView-only و عدم افزودن Cron.
+- تست‌های Node شاخه مهاجرت: ۳۳/۳۳ پاس؛ Syntax check فایل‌های اصلی نیز پاس شده است.
+
+### ۶.۲. فهرست بازِ قابل اقدام
+
+| شناسه | اولویت | مورد باز | شرط بسته‌شدن |
+|---|---|---|---|
+| FCST-STARTUP-01 | P0 | تأیید رفع خطای بارگذاری workspace در محیط هاست پس از duplicate horizon fix | مشاهده بارگذاری موفق و ثبت نسخه/commit واقعاً سرو‌شده |
+| FCST-E2E-01 | P1 | Browser E2E کامل New Forecast | تست انتخاب مدل، تنظیمات، اجرا، Apply-to-chart، Compare، Replay، Snapshot و تغییر نماد/تایم‌فریم |
+| FCST-CHRONOS-01 | P1 | Runtime و اتصال Chronos-2 | dispatch امن و authenticated، lifecycle/result integration و محدودیت‌ها؛ یا تصمیم رسمی بازنشستگی |
+| FCST-LEGACY-AUDIT-01 | P1 | ممیزی کامل برابری Legacy در Web/API/Android | inventory یک‌به‌یک و تعیین Keep/Adapt/Replace/Retire همراه شواهد |
+| FCST-REPLAY-PERF-01 | P1 | عملکرد Replay در تاریخچه بزرگ | اندازه‌گیری زمان/حافظه و آزمون تاریخچه‌های نماینده |
+| FCST-REPLAY-LEAK-01 | P1 | اثبات عدم نشت داده در Replay | fixture مستقل و تست مرزهای زمانی که نشان دهد هیچ داده بعد از anchor وارد آموزش نمی‌شود |
+| FCST-OOS-01 | P1 | پذیرش کیفیت پیش‌بینی مدل‌ها | پروتکل ثابت، baseline، holdout و گزارش به‌ازای نماد/تایم‌فریم/افق/رژیم |
+| FCST-DATA-PROD-01 | P1 | تأیید TradingView-only در اجرای زنده | مشاهده Network/Runtime و اثبات عدم fallback به Provider دیگر و استفاده از کندل بسته |
+| FCST-LEDGER-SYNC-01 | P2 | همگام‌سازی Ledger با سرور/چنددستگاهی | قرارداد مالکیت/امنیت، ذخیره و بازیابی آزموده‌شده |
+| FCST-LEGACY-CLEANUP-01 | P2 | پاک‌سازی کد قدیمی | فقط پس از عبور جایگزین از پذیرش و بررسی نبود مصرف‌کننده |
+
+### ۶.۳. رخداد خطای startup و اصلاح ثبت‌شده
+
+- علت: دو اعلان `const horizon` در یک تابع در نسخه `main`؛ مرورگر پیش از بارگذاری Workspace کل ماژول را متوقف می‌کرد.
+- اصلاح کد در `main`: commit `a6349d7`.
+- Cache-busting در `host_subdomain/index.html`: commit `4bbcaed`، مقدار `app.js?v=1.47.30`.
+- بازخوانی فایل از GitHub پس از اصلاح، تنها یک اعلان horizon را در تابع نشان داد.
+- **وضعیت:** اصلاح منبع ثبت شده؛ تأیید اجرای موفق روی هاست هنوز انجام نشده و FCST-STARTUP-01 باز است.
+
+### ۶.۴. موانع و تصمیم‌های صریح
+
+1. هاست اشتراکی Python/exec قابل اتکا ندارد؛ نباید تلاش شود Python با ترفندهای PHP یا اجرای مستقیم روی cPanel فعال شود.
+2. Workflow دستی Chronos-2 در GitHub Actions معادل اتصال محصول نیست؛ تا ایجاد مسیر امن dispatch و دریافت نتیجه، Chronos در New قابل ارائه نیست.
+3. مدل‌های JavaScript با برچسب Approximation معادل LSTM/TFT/Prophet/ARIMA Python یا Chronos-2 نیستند.
+4. تست سبز، ساخت APK یا Deploy به‌تنهایی کیفیت پیش‌بینی و پذیرش کاربر را ثابت نمی‌کند.
+5. Legacy تا تکمیل E2E و تصمیم نهایی Chronos/مدل‌ها حذف یا غیرقابل‌بازگشت نمی‌شود.
+
+**وضعیت کلی:** انتقال قابلیت‌های اصلی UI و Native execution در شاخه New انجام شده است؛ مهاجرت محصول و پذیرش نهایی همچنان باز است. اولویت بعدی، بستن خطای startup در محیط واقعی و سپس E2E کامل است.
