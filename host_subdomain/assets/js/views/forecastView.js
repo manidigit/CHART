@@ -974,7 +974,7 @@ function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
   `;
 }
 
-function renderModelsPanel(fc, decimals, isFa) {
+export function renderModelsPanel(fc, decimals, isFa, options = {}) {
   const plugins = defaultForecastRegistry.list();
   const contribMap = new Map((fc?.modelContributions || []).map((c) => [c.modelId, c]));
   const workerUrl = state.chartPreferences.forecastWorkerUrl || '';
@@ -1032,7 +1032,7 @@ function renderModelsPanel(fc, decimals, isFa) {
 
     <div class="ci-fc-grid-2">${cards}</div>
 
-    <div class="ci-fc-card" style="margin-top:12px;">
+    ${options.includeRemoteWorker === false ? '' : `    <div class="ci-fc-card" style="margin-top:12px;">
       <div class="row-between" style="margin-bottom:6px;flex-wrap:wrap;gap:8px;">
         <strong style="font-size:13px;">${escapeHtml(REMOTE_DL_WORKER_SPEC.name)}</strong>
         <span class="ci-fc-family-tag ltr-num">${escapeHtml(workerInfo.status)}</span>
@@ -1048,7 +1048,8 @@ function renderModelsPanel(fc, decimals, isFa) {
         <input type="url" class="input-field ltr-num" id="ci-forecast-worker-url" style="flex:1 1 200px;min-width:min(200px, 100%);max-width:100%;" placeholder="https://worker.example.com" value="${escapeHtml(workerUrl)}" />
         <button type="button" class="btn btn-sm btn-primary" data-action="save-forecast-worker-url">${isFa ? 'ذخیره آدرس Worker' : 'Save Worker URL'}</button>
       </div>
-    </div>
+    </div>`}
+  
   `;
 }
 

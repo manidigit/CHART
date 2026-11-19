@@ -80,7 +80,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.2';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
-import { renderForecastStudioView, renderForecastStudioFanCanvas, buildForecastForTab, renderBacktestPanel, renderLedgerPanel } from './views/forecastView.js?v=2.0.6';
+import { renderForecastStudioView, renderForecastStudioFanCanvas, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel } from './views/forecastView.js?v=2.0.7';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.3';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
@@ -779,6 +779,11 @@ function renderForecastWorkspaceContent(activeTab) {
         <strong style="font-size:13px;">${isFa ? 'ارزیابی و دفتر پیش‌بینی مدل‌های Native' : 'Native Model Evaluation & Forecast Ledger'}</strong>
         <p style="font-size:11px;color:var(--text-muted);margin:5px 0 10px;">${isFa ? 'همان موتور Walk-Forward و Ledger موجود در Forecast Studio؛ بدون بازنویسی.' : 'Reuses the existing Forecast Studio Walk-Forward engine and Ledger.'}</p>
       </div>
+      <details class="ci-fc-card" style="margin:10px 0;" open>
+        <summary style="cursor:pointer;font-weight:700;font-size:13px;">${isFa ? 'تنظیمات مدل‌های Native' : 'Native Model Configuration'}</summary>
+        <p style="font-size:11px;color:var(--text-muted);margin:7px 0 10px;">${isFa ? 'فعال‌سازی، وزن و پارامترهای مدل‌ها؛ بدون تنظیم یا اتصال Worker خارجی.' : 'Enablement, weights and model parameters; no external worker configuration.'}</p>
+        ${renderModelsPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa, { includeRemoteWorker: false })}
+      </details>
       ${renderBacktestPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa)}
       ${renderLedgerPanel(Number(activeTab?.decimals || 2), isFa)}`
     : '';

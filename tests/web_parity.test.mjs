@@ -1427,3 +1427,16 @@ test('FORECAST-NEW-EVALUATION-01: New Native workspace reuses Legacy Walk-Forwar
   assert.match(ledgerSource, /const byOpenTime = new Map\(\)/);
   assert.match(ledgerSource, /Array\.from\(byOpenTime\.values\(\)\)\.sort/);
 });
+
+
+test('FORECAST-NEW-MODEL-CONFIG-01: New Native workspace reuses model weights and parameter controls without exposing a Python worker URL', async () => {
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+  assert.match(appSource, /renderModelsPanel\(nativeEvaluation,[\s\S]*includeRemoteWorker:\s*false/);
+  assert.match(viewSource, /export function renderModelsPanel\(fc, decimals, isFa, options = \{\}\)/);
+  assert.match(viewSource, /data-action="toggle-forecast-model"/);
+  assert.match(viewSource, /data-action="set-forecast-model-weight"/);
+  assert.match(viewSource, /data-action="set-forecast-model-param"/);
+  assert.match(viewSource, /options\.includeRemoteWorker === false/);
+  assert.match(appSource, /Native Model Configuration|تنظیمات مدل‌های Native/);
+});
