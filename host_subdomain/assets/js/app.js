@@ -167,7 +167,9 @@ function ensureInitialTabs(forceHydrate = false) {
 
     state.openTabs.forEach((tab) => {
       const sym = state.symbols.find((s) => s.symbolCode === tab.symbolCode);
-      const prov = tab.provider || (sym ? sym.activeProvider : 'tvdatafeed');
+      const requestedProvider = tab.provider || (sym ? sym.activeProvider : 'tvdatafeed');
+      const prov = isProviderEnabled(requestedProvider) ? String(requestedProvider).toLowerCase() : 'tvdatafeed';
+      tab.provider = prov;
       const tf =
         prov === 'eia_brent_spot'
           ? 'D1'
@@ -270,17 +272,19 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
   if (!sym) return;
   saveLastOpenedSymbol(symbolCode);
 
+  const provider = isProviderEnabled(sym.activeProvider) ? String(sym.activeProvider).toLowerCase() : 'tvdatafeed';
+  sym.activeProvider = provider;
   const curActive = getActiveTab();
   let existing = state.openTabs.find((t) => t.symbolCode === symbolCode);
   const rawTf = requestedTf || (existing ? existing.timeframe : sym.timeframe || 'M15');
   const tf =
-    sym.activeProvider === 'eia_brent_spot'
+    provider === 'eia_brent_spot'
       ? 'D1'
-      : sym.activeProvider === 'stooq' && rawTf !== 'W1'
+      : provider === 'stooq' && rawTf !== 'W1'
         ? 'D1'
         : rawTf;
 
-  const cached = getCachedOrAggregatedCandles(symbolCode, sym.activeProvider, tf);
+  const cached = getCachedOrAggregatedCandles(symbolCode, provider, tf);
   const drawKey = `${symbolCode}_${tf}`;
   if (existing) {
     const prevTf = existing.timeframe;
@@ -289,11 +293,11 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       curActive &&
         curActive.tabId === existing.tabId &&
         prevTf === tf &&
-        prevProv === sym.activeProvider
+        prevProv === provider
     );
     existing.timeframe = tf;
     existing.chartId = drawKey;
-    existing.provider = sym.activeProvider;
+    existing.provider = provider;
     existing.candles = cached.length > 0 ? cached : sym.candles || [];
     existing.drawings = state.drawingsByChartId[drawKey] || existing.drawings || [];
     for (const k of INDICATOR_FLAG_KEYS) {
@@ -331,7 +335,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       tabId,
       chartId: drawKey,
       symbolCode: sym.symbolCode,
-      provider: sym.activeProvider,
+      provider: provider,
       timeframe: tf,
       decimals: sym.decimals,
       candles: cached.length > 0 ? cached : sym.candles || [],
