@@ -59,7 +59,7 @@ export function buildForecastForTab(activeTab, overrides = {}) {
   }
   const horizonBars = clampHorizonBars(overrides.horizonBars || activeTab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
   const renderMode = normalizeRenderMode(overrides.renderMode || activeTab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.FAN_CHART);
-  const workerUrl = prefs.forecastWorkerUrl || '';
+  const workerUrl = overrides.workerUrl !== undefined ? String(overrides.workerUrl || '') : (prefs.forecastWorkerUrl || '');
 
   const higherTf = resolveHigherTimeframe(activeTab.timeframe);
   const higherCandles = higherTf

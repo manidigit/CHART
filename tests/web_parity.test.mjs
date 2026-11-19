@@ -1469,6 +1469,8 @@ test('FORECAST-NEW-STUDIO-01: New Native workspace restores Forecast Studio work
   assert.ok(view.includes('buildForecastForTab(activeTab, overrides = {})'));
   assert.ok(view.includes('overrides.horizonBars'));
   assert.ok(view.includes('overrides.selectedModelId'));
+  assert.ok(view.includes("overrides.workerUrl !== undefined"));
+  assert.ok(app.includes("workerUrl: ''"));
   assert.ok(view.includes("providerId: activeTab.provider || 'tvdatafeed'"));
   assert.ok(!view.includes("providerId: activeTab.provider || 'twelvedata'"));
 });

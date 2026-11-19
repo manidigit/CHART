@@ -131,6 +131,7 @@ function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
   const built = buildForecastForTab(tab, {
     horizonBars: Math.max(10, Math.min(60, Number(tab.structuralForecastHorizonBars || 30))),
     selectedModelId: modelId,
+    workerUrl: '',
   });
   const trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === modelId);
   const candles = Array.isArray(tab.candles) ? tab.candles : [];
@@ -793,7 +794,7 @@ function renderForecastWorkspaceContent(activeTab) {
   const usesNativeEvaluation = selected === 'structural' && isNativeModelSelected;
   const horizon = Math.max(10, Math.min(60, Number(activeTab?.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30)));
   const nativeModelId = String(activeTab?.structuralForecastModel || 'naive_persistence');
-  const nativeEvaluation = usesNativeEvaluation ? buildForecastForTab(activeTab, { horizonBars: horizon, selectedModelId: nativeModelId })?.result : null;
+  const nativeEvaluation = usesNativeEvaluation ? buildForecastForTab(activeTab, { horizonBars: horizon, selectedModelId: nativeModelId, workerUrl: '' })?.result : null;
   if (nativeEvaluation) state._lastForecastResult = nativeEvaluation;
   const nativeTab = ['overview', 'models', 'backtest', 'ledger'].includes(state.forecastStudioTab) ? state.forecastStudioTab : 'overview';
   const nativePanel = nativeTab === 'overview'
