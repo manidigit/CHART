@@ -978,8 +978,6 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
 export function renderModelsPanel(fc, decimals, isFa, options = {}) {
   const plugins = defaultForecastRegistry.list();
   const contribMap = new Map((fc?.modelContributions || []).map((c) => [c.modelId, c]));
-  const workerUrl = state.chartPreferences.forecastWorkerUrl || '';
-  const workerInfo = fc?.remoteWorker || { status: 'LOCAL_STATISTICAL_ONLY', configured: Boolean(workerUrl) };
 
   const cards = plugins
     .map((p) => {
@@ -1033,24 +1031,7 @@ export function renderModelsPanel(fc, decimals, isFa, options = {}) {
 
     <div class="ci-fc-grid-2">${cards}</div>
 
-    ${options.includeRemoteWorker === false ? '' : `    <div class="ci-fc-card" style="margin-top:12px;">
-      <div class="row-between" style="margin-bottom:6px;flex-wrap:wrap;gap:8px;">
-        <strong style="font-size:13px;">${escapeHtml(REMOTE_DL_WORKER_SPEC.name)}</strong>
-        <span class="ci-fc-family-tag ltr-num">${escapeHtml(workerInfo.status)}</span>
-      </div>
-      <p style="font-size:11.5px;color:var(--text-muted);margin:0 0 8px 0;">
-        ${
-          isFa
-            ? 'پشتیبانی اختیاری از سرور استنتاج Python خارجی (Chronos-2 Apache 2.0 / TimesFM 2.5 / N-HiTS). در نبود سرویس خارجی، وضعیت صادقانه LOCAL_STATISTICAL_ONLY نمایش داده می‌شود و هیچ خروجی مصنوعی تولید نمی‌گردد.'
-            : 'Optional external Python inference worker bridge (Chronos-2 Apache 2.0 / TimesFM 2.5 / N-HiTS). Never simulates DL weights when unconfigured.'
-        }
-      </p>
-      <div style="display:flex;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
-        <input type="url" class="input-field ltr-num" id="ci-forecast-worker-url" style="flex:1 1 200px;min-width:min(200px, 100%);max-width:100%;" placeholder="https://worker.example.com" value="${escapeHtml(workerUrl)}" />
-        <button type="button" class="btn btn-sm btn-primary" data-action="save-forecast-worker-url">${isFa ? 'ذخیره آدرس Worker' : 'Save Worker URL'}</button>
-      </div>
-    </div>`}
-  
+
   `;
 }
 
