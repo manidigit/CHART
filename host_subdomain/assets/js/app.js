@@ -80,7 +80,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.2';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
-import { renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel } from './views/forecastView.js?v=2.0.11';
+import { renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel } from './views/forecastView.js?v=2.0.12';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.3';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
@@ -803,7 +803,7 @@ function renderForecastWorkspaceContent(activeTab) {
     return `<button type="button" class="chip ${activeTab?.structuralForecastModel === model.id ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="${escapeHtml(model.id)}" ${available ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
   }).join('');
   const isNativeModelSelected = !['structural_wave_js', 'empirical_analogs'].includes(activeTab?.structuralForecastModel || 'structural_wave_js');
-  const selected = (state.chartPreferences.forecastEngineMode || state.forecastEngineMode) === 'structural' ? 'structural' : 'legacy';
+  const selected = (state.chartPreferences.forecastEngineMode || state.forecastEngineMode || 'structural') === 'legacy' ? 'legacy' : 'structural';
   const usesNativeEvaluation = selected === 'structural' && isNativeModelSelected;
   const horizon = Math.max(10, Math.min(60, Number(activeTab?.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30)));
   const nativeModelId = String(activeTab?.structuralForecastModel || 'naive_persistence');
