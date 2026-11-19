@@ -1,13 +1,13 @@
 # CHART Forecast — System Specification
 ## سند جامع تعریف سیستم پیش‌بینی، چرخه عمر اجرا و رفتارهای قابل مشاهده
 
-- **Version:** 1.0.4
-- **Date:** 2026-11-17
-- **Status:** Model-agnostic system specification; Phase 1 operational scope is limited to Chronos-2, subject to implementation and acceptance gates
+- **Version:** 1.0.5
+- **Date:** 2026-11-19
+- **Status:** Model-agnostic system specification. Current New Web implementation uses the Native JavaScript registry, Structural JS, causal Historical Analogs, model configuration, Walk-Forward, local Ledger and a limited leakage-safe Replay. Full migration and production acceptance remain open.
 - **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0
 - **Scope:** Product/system behavior, lifecycle, user workflows, model independence, comparison, persistence semantics, evaluation boundaries and acceptance gates
-- **Phase 1 model scope:** Chronos-2 is the sole selected model for initial implementation and controlled evaluation; no additional model is enabled in Phase 1.
-- **Explicit exclusion:** This document does not select software architecture, programming language, provider or deployment topology. The Phase 1 model decision does not establish predictive performance or production approval.
+- **Current Web model scope:** 10 registered Native JavaScript models plus Structural JS, causal Historical Analogs and calibrated Ensemble are selectable. Chronos-2/Python Worker are not part of the New shared-hosting runtime.
+- **Runtime and data constraints:** TradingView is the only active market-data source. New Web forecast inference runs in Native JavaScript; no Python runtime or Cron is required on the shared host. Model availability does not establish predictive performance or production approval.
 
 ---
 
