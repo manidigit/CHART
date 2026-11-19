@@ -1364,3 +1364,34 @@ test('CHRONOS2-PROVIDER-GUARD-01: Chronos-2 API rejects every provider except Tr
   assert.ok(providerGuard < candleResolution, 'Disallowed providers must be rejected before any candle lookup');
   assert.ok(endpoint.includes("'ERR_PROVIDER_NOT_ALLOWED'"), 'API must return a stable explicit error code');
 });
+
+
+test('FORECAST-LEDGER-01: local snapshot and lifecycle chains remain verifiable and mature exactly once', async () => {
+  const { ForecastLedger } = await import('../host_subdomain/assets/js/forecast/forecastLedger.js');
+  const ledger = new ForecastLedger('test_forecast_ledger_v1');
+  ledger.clear();
+  const entry = ledger.appendFromForecast({
+    contractVersion: 'forecast-contract/v2', engineVersion: '2.0.0',
+    symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 10,
+    anchorOpenTimeUtcMs: 1000000, anchorClose: 100,
+    status: 'VALID', regime: 'TREND', inputHash: 'ledger-test-input',
+    summary: { terminalQ50: 101, terminalQ10: 90, terminalQ90: 110 },
+    walkForward: { wisModel: 2.5 },
+    conformalCalibration: { calibrationStatus: 'CALIBRATED_NORMALIZED' },
+    generatedAtUtcMs: 1000001,
+    scenarios: [],
+  });
+  assert.ok(entry);
+  assert.equal(ledger.verifyChain().valid, true);
+  assert.equal(ledger.verifyChain().totalEntries, 1);
+  const candles = Array.from({ length: 10 }, (_, i) => ({
+    open_time_utc_ms: 1000001 + (i + 1) * 3600000,
+    high: 103, low: 98, close: 101,
+  }));
+  const events = ledger.evaluateMaturedForecasts(candles, 'SPOTBRENT', 'H1');
+  assert.deepEqual(events.map(e => e.horizonStep), [5, 10]);
+  assert.ok(events.every(e => e.evaluationOutcome === 'SUCCESS'));
+  assert.equal(ledger.verifyLifecycleChain().valid, true);
+  assert.equal(ledger.evaluateMaturedForecasts(candles, 'SPOTBRENT', 'H1').length, 0, 'Matured checkpoints must not be appended twice');
+  ledger.clear();
+});
