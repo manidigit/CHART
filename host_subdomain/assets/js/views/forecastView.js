@@ -405,6 +405,7 @@ export function renderForecastStudioFanCanvas(
         Array.isArray(t.points) &&
         t.points.length >= pts.length &&
         t.modelId !== forecast.selectedChartModelId &&
+        (!Array.isArray(forecast.visibleComparisonModelIds) || forecast.visibleComparisonModelIds.includes(t.modelId)) &&
         ['empirical_analogs', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_arima_statsmodels', 'py_prophet', 'py_lstm_mc', 'py_lstm_torch', 'py_tft', 'py_tft_torch'].includes(t.modelId)
     );
     overlayModels.forEach((tr) => {

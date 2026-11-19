@@ -797,7 +797,13 @@ function renderForecastWorkspaceContent(activeTab) {
   const nativeTab = ['overview', 'models', 'backtest', 'ledger'].includes(state.forecastStudioTab) ? state.forecastStudioTab : 'overview';
   const needsNativeEvaluation = usesNativeEvaluation || nativeTab !== 'overview';
   const nativeEvaluation = needsNativeEvaluation ? buildForecastForTab(activeTab, { horizonBars: horizon, selectedModelId: usesNativeEvaluation ? nativeModelId : (activeTab?.selectedForecastModelId || 'AUTO'), workerUrl: '' })?.result : null;
-  if (nativeEvaluation) state._lastForecastResult = nativeEvaluation;
+  const comparisonCandidates = (nativeEvaluation?.modelTrajectories || []).filter((model) => model.status === 'SUCCESS' && Array.isArray(model.points) && model.modelId !== nativeEvaluation?.selectedChartModelId);
+  const savedCompareIds = state.chartPreferences.forecastCompareModelIds;
+  const visibleCompareIds = Array.isArray(savedCompareIds) ? savedCompareIds : comparisonCandidates.map((model) => model.modelId);
+  if (nativeEvaluation) {
+    nativeEvaluation.visibleComparisonModelIds = visibleCompareIds;
+    state._lastForecastResult = nativeEvaluation;
+  }
   const structuralForecast = activeTab?.structuralForecast;
   const structuralPreview = !usesNativeEvaluation && nativeTab === 'overview' && structuralForecast?.status === 'READY' && Array.isArray(structuralForecast.forecast)
     ? {
@@ -829,7 +835,7 @@ function renderForecastWorkspaceContent(activeTab) {
   const nativeEvaluationPanels = '<div class="ci-fc-card" style="margin-top:12px;">' +
     '<div class="row-between" style="gap:8px;flex-wrap:wrap;"><strong>' + (isFa ? 'کنترل و ارزیابی پیش‌بینی' : 'Forecast Controls & Evaluation') + '</strong>' +
     (usesNativeEvaluation ? '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">' + (isFa ? 'ثبت Snapshot' : 'Record Snapshot') + '</button><button type="button" class="btn btn-sm btn-primary" data-action="apply-native-forecast-to-chart">' + (isFa ? 'اعمال مدل روی چارت' : 'Apply Model to Chart') + '</button></div>' : '') + '</div>' +
-    (usesNativeEvaluation ? '<div style="margin-top:10px;"><strong style="font-size:12px;">' + (isFa ? 'انتخاب مسیر مدل' : 'Select chart model') + '</strong><div class="chip-group" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">' + chartModels + '</div></div>' : '<p style="font-size:11px;color:var(--text-muted);">' + (isFa ? 'تب‌های تنظیمات و ارزیابی زیر، خانواده Native را مستقل از مدل ساختاری انتخاب‌شده بررسی می‌کنند.' : 'The configuration and evaluation tabs below inspect the Native model family independently of the selected Structural model.') + '</p>') +
+    (usesNativeEvaluation ? '<div style="margin-top:10px;"><strong style="font-size:12px;">' + (isFa ? 'انتخاب مسیر مدل' : 'Select chart model') + '</strong><div class="chip-group" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">' + chartModels + '</div></div>' + (comparisonCandidates.length ? '<div style="margin-top:12px;padding-top:10px;border-top:1px solid var(--border);"><strong style="font-size:12px;">' + (isFa ? 'نمایش هم‌زمان مسیرهای مقایسه‌ای در پیش‌نمایش' : 'Visible comparison overlays in preview') + '</strong><div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:7px;">' + comparisonCandidates.map((model) => '<label class="chip ' + (visibleCompareIds.includes(model.modelId) ? 'active' : '') + '" style="display:inline-flex;align-items:center;gap:6px;"><input type="checkbox" data-action="toggle-forecast-compare-model" data-model-id="' + escapeHtml(model.modelId) + '" ' + (visibleCompareIds.includes(model.modelId) ? 'checked' : '') + ' />' + escapeHtml(model.modelName || model.modelId) + '</label>').join('') + '</div><div style="font-size:10.5px;color:var(--text-muted);margin-top:5px;">' + (isFa ? 'این کنترل فقط مسیرهای موفق را در پیش‌نمایش Forecast Studio روشن/خاموش می‌کند؛ مدل اصلی چارت مستقل است.' : 'Toggles successful model paths in the Forecast Studio preview only; the main chart selection remains independent.') + '</div></div>' : '') : '<p style="font-size:11px;color:var(--text-muted);">' + (isFa ? 'تب‌های تنظیمات و ارزیابی زیر، خانواده Native را مستقل از مدل ساختاری انتخاب‌شده بررسی می‌کنند.' : 'The configuration and evaluation tabs below inspect the Native model family independently of the selected Structural model.') + '</p>') +
     '<div class="row-between" style="gap:8px;flex-wrap:wrap;margin-top:12px;"><span>' + (isFa ? 'افق پیش‌بینی' : 'Forecast horizon') + '</span><div class="chip-group ltr-num">' + [10,15,20,30,45,60].map((h) => '<button type="button" class="chip ' + (horizon === h ? 'active' : '') + '" data-action="set-structural-forecast-horizon" data-horizon="' + h + '">+' + h + '</button>').join('') + '</div></div>' +
     '<div class="row-between" style="gap:8px;flex-wrap:wrap;margin-top:10px;"><span>' + (isFa ? 'حالت نمایش' : 'Render mode') + '</span><div class="chip-group">' + modes.map(([id, label]) => '<button type="button" class="chip ' + (activeMode === id ? 'active' : '') + '" data-action="set-forecast-render-mode" data-mode="' + id + '">' + label + '</button>').join('') + '</div></div>' +
     '<div class="row-between" style="gap:8px;flex-wrap:wrap;margin-top:10px;"><span>' + (isFa ? 'هماهنگی چندتایم‌فریمی' : 'Multi-timeframe coordination') + '</span><div class="chip-group"><button type="button" class="chip ' + ((state.forecastCoordView || 'independent') === 'independent' ? 'active' : '') + '" data-action="set-forecast-coord-mode" data-coord="independent">Independent</button><button type="button" class="chip ' + (state.forecastCoordView === 'coordinated' ? 'active' : '') + '" data-action="set-forecast-coord-mode" data-coord="coordinated">Coordinated</button></div></div>' +
@@ -2570,6 +2576,17 @@ document.addEventListener('click', async (e) => {
         renderApp();
       });
     }
+  } else if (action === 'toggle-forecast-compare-model') {
+    const modelId = String(el.getAttribute('data-model-id') || '');
+    if (modelId) {
+      const currentResult = state._lastForecastResult;
+      const successfulIds = (currentResult?.modelTrajectories || []).filter((model) => model.status === 'SUCCESS' && model.modelId !== currentResult?.selectedChartModelId).map((model) => model.modelId);
+      const currentIds = Array.isArray(state.chartPreferences.forecastCompareModelIds) ? [...state.chartPreferences.forecastCompareModelIds] : successfulIds;
+      const nextIds = el.checked ? [...new Set([...currentIds, modelId])] : currentIds.filter((id) => id !== modelId);
+      state.chartPreferences.forecastCompareModelIds = nextIds;
+      savePreferences();
+      renderApp();
+    }
   } else if (action === 'set-forecast-subtab') {
     state.forecastStudioTab = String(el.getAttribute('data-tab') || 'overview');
     renderApp();
@@ -2672,6 +2689,11 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-structural-forecast-model' && activeTab) {
     const requestedModel = String(el.getAttribute('data-model') || '');
     activeTab.structuralForecastModel = ['structural_wave_js', 'empirical_analogs', 'ensemble'].includes(requestedModel) || defaultForecastRegistry.getPlugin(requestedModel) ? requestedModel : 'structural_wave_js';
+    if (defaultForecastRegistry.getPlugin(requestedModel)) {
+      activeTab.selectedForecastModelId = requestedModel;
+      state.chartPreferences.selectedForecastModelId = requestedModel;
+      savePreferences();
+    }
     if (activeTab.showStructuralForecast) {
       activeTab.showStructuralForecast = false;
       clearTabStructuralForecast(activeTab);

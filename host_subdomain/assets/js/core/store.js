@@ -133,6 +133,8 @@ export const DEFAULT_PREFS = {
   forecastPluginConfig: null,
   forecastWorkerUrl: '',
   selectedForecastModelId: 'AUTO',
+  forecastEngineMode: 'structural',
+  forecastCompareModelIds: null,
   pitchforkVariant: 'original',
   indicatorCustomColors: {},
   preferencesUpdatedAtMs: 0,

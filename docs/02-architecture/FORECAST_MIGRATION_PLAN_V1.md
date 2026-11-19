@@ -797,3 +797,13 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 - Artifactها: Web `14534022250`، APK `14533517048`.
 
 - Compare وضعیت جزئی دارد: Overview مدل‌های موفق را با endpoint/status و مسیر q50 overlay می‌کند؛ main chart همچنان یک مدل منتخب دارد. Multi-select visibility/legend مستقل و Side-by-Side در backlog باقی است.
+
+
+## 27. گسترش مقایسه چندمدلی و انتخاب پیش‌فرض New — 2026-11-19
+
+- موتور New به‌عنوان مقدار پیش‌فرض Preferences جدید تنظیم شد؛ Legacy همچنان قابل انتخاب و rollback است.
+- برای مسیرهای موفق مدل‌ها، checkbox مستقل نمایش/مخفی‌سازی به Forecast Studio Preview اضافه شد؛ انتخاب‌ها در Preferences ذخیره می‌شوند.
+- Renderer فقط overlayهای انتخاب‌شده را رسم می‌کند. مسیر منتخب اصلی مستقل باقی می‌ماند.
+- Side-by-Side مستقل و visibility چندمدلی روی Main Chart هنوز منتقل نشده و در OPEN_ISSUES.md باز می‌ماند.
+- Cache bust: app.js?v=1.47.27.
+- وضعیت: منتظر CI/Deploy.

@@ -235,3 +235,11 @@
 - Artifact وب `14534022250` و APK `14533517048`؛ Android build و Unit/Robolectric موفق.
 
 - `FCST-COMPARE-01` پس از انتقال Overview به `PARTIAL / STUDIO_PREVIEW_OVERLAY_ONLY` تغییر کرد: overlay و مقایسه کارت‌ها در Preview وجود دارد؛ کنترل چندمدلی مستقل روی چارت اصلی و Side-by-Side هنوز باقی است.
+
+
+### ۵.۱۴. تکمیل کنترل مقایسه چندمدلی در New — 2026-11-19
+
+- New موتور Structural را به‌عنوان پیش‌فرض تنظیمات جدید انتخاب می‌کند؛ Legacy همچنان با انتخاب صریح در دسترس است.
+- کنترل مستقل نمایش/مخفی‌سازی مسیر هر مدل موفق به Preview Forecast Studio اضافه شد؛ انتخاب‌ها در Preferences ذخیره می‌شوند و Renderer فقط مسیرهای انتخاب‌شده را overlay می‌کند.
+- این قابلیت فقط در Preview فعال است؛ کنترل visibility چندمدلی روی Main Chart و نمای Side-by-Side مستقل همچنان باز است.
+- تغییرات در انتظار CI و Deploy هستند.

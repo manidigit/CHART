@@ -1479,3 +1479,18 @@ test('FORECAST-NEW-STUDIO-01: New Native workspace restores Forecast Studio work
   assert.ok(view.includes("providerId: activeTab.provider || 'tvdatafeed'"));
   assert.ok(!view.includes("providerId: activeTab.provider || 'twelvedata'"));
 });
+
+
+test('FORECAST-NEW-COMPARE-01: New workspace exposes persistent independent comparison-overlay visibility and defaults to New engine', async () => {
+  const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const store = await readFile(new URL('../host_subdomain/assets/js/core/store.js', import.meta.url), 'utf8');
+  const view = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+  assert.ok(store.includes("forecastEngineMode: 'structural'"));
+  assert.ok(store.includes('forecastCompareModelIds: null'));
+  assert.ok(app.includes('comparisonCandidates'));
+  assert.ok(app.includes('visibleCompareIds'));
+  assert.ok(app.includes('data-action="toggle-forecast-compare-model"'));
+  assert.ok(app.includes("action === 'toggle-forecast-compare-model'"));
+  assert.ok(app.includes('state.chartPreferences.forecastCompareModelIds = nextIds'));
+  assert.ok(view.includes('forecast.visibleComparisonModelIds.includes(t.modelId)'));
+});
