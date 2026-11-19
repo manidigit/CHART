@@ -826,3 +826,12 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 - انتخاب visibility از همان forecastCompareModelIds ذخیره‌شده استفاده می‌کند؛ مدل منتخب به‌عنوان overlay تکراری رسم نمی‌شود.
 - Cache bust: app.js?v=1.47.29.
 - این تغییر Compare روی Main Chart را از نظر کد به New اضافه می‌کند؛ پذیرش نهایی به CI و تست تعاملی Production وابسته است.
+
+
+## 30. پذیرش CI و Deploy مقایسه چندمدلی Main Chart — 2026-11-19
+
+- Commit کد: `27211f53c1fb7ea71f37c0e48e13f11047e2a6da`؛ اصلاح cache module: `49c07d16383131dd7af66bc81398280e31592d81`.
+- Run `44534781037`: Web parity برابر ۲۷/۲۷، صفر شکست؛ PHP lint و TradingView extraction موفق.
+- cPanel Deploy با `ok:true`, ۱۲۳ فایل و snapshot `snapshot_20261119_133610` تأیید شد.
+- Android Debug APK و Unit/Robolectric tests موفق؛ artifact APK `14536815154` و Web package `14534949557`.
+- Compare در Preview، Side-by-Side و Main Chart اکنون از نظر کد و CI منتقل شده است؛ Browser E2E Production همچنان Gate پذیرش است.
