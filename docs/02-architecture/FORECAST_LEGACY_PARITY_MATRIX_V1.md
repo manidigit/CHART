@@ -58,7 +58,7 @@ Therefore, the workflow's existence is not evidence that Chronos-2 is integrated
 ## 4. Acceptance evidence and remaining gates
 
 Current branch validation:
-- 32/32 Node parity tests pass.
+- 33/33 Node parity tests pass.
 - Syntax checks pass for `app.js`, `forecastView.js`, `modelRegistry.js` and `forecastEngine.js`.
 
 Still required before declaring the entire migration complete:
