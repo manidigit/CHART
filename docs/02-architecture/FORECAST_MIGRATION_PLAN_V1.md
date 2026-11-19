@@ -548,3 +548,42 @@ Disabled کردن یک قابلیت در New به معنی خاموش‌کردن
 ### وضعیت اصلاح‌شده حوزه منابع داده
 
 حوزه «مهاجرت Providerهای دیگر» **NOT_APPLICABLE / خارج از محدوده** است. کار مجاز این حوزه محدود است به ممیزی و تضمین اینکه New و Legacy هر دو فقط از TradingView/tvdatafeed داده بگیرند و هیچ مسیر جایگزین ناخواسته‌ای فعال نشود. این تصمیم جایگزین هر عبارت قبلی در این سند است که انتقال Provider دیگر یا انتخاب پایلوت Provider دیگری را مطرح کرده باشد.
+
+
+## 16. اجرای مرحله بعد: شفافیت وضعیت انتقال در New — 2026-11-19
+
+### 16.1. تغییرات رابط کاربری
+
+در `host_subdomain/assets/js/app.js`، صفحه New Structural اکنون یک بخش مستقل با عنوان «قابلیت‌های Legacy که هنوز به New منتقل و تأیید نشده‌اند» دارد. موارد زیر به‌صورت chip غیرفعال و غیرقابل انتخاب اعلام می‌شوند:
+- Chronos-2
+- مدل‌های Python Worker
+- Ledger و ارزیابی چرخه عمر Legacy
+- Backtest / Walk-forward
+- Historical Replay
+
+این برچسب‌ها ادعای عدم وجود کد در مخزن نیستند؛ بیانگر آن‌اند که این قابلیت‌ها هنوز به‌عنوان گردش‌کار کامل و تأییدشده در New عرضه نشده‌اند. Legacy Forecast Studio از طریق Engine Switcher حفظ شده است.
+
+### 16.2. Ensemble: اصلاح گزینه گمراه‌کننده
+
+ممیزی مستقیم `host_subdomain/assets/js/algorithms/structuralForecastEngine.js` نشان داد که موتور Structural مسیر `model_paths` را برای `empirical_analogs` می‌سازد، اما هیچ مسیر اجرایی برای `ensemble` ندارد (جست‌وجوی مستقیم `ensemble` در فایل، نتیجه‌ای نداشت). در عین حال UI قبلاً دکمه فعال `Calibrated Ensemble` داشت که می‌توانست تصور اجرای Ensemble در موتور Structural را ایجاد کند.
+
+اصلاح انجام‌شده:
+- دکمه فعال Ensemble از انتخاب‌گر New حذف شد.
+- جایگزین آن یک chip غیرفعال با برچسب `Calibrated Ensemble · Not migrated` و توضیح علت شد.
+- این اصلاح صرفاً UI را صادق می‌کند؛ پیاده‌سازی Ensemble جدید هنوز انجام نشده است.
+- Historical Analogs در New فعال باقی می‌ماند؛ مسیر موتور Structural برای آن وجود دارد و خروجی باید همچنان `illustrative_only` تلقی شود.
+
+### 16.3. Cache bust و آزمون
+
+- نسخه ورودی `host_subdomain/index.html` از `app.js?v=1.47.17` به `app.js?v=1.47.18` افزایش یافت تا مرورگر نسخه قدیمی UI را از cache نخواند.
+- آزمون ایستا `FORECAST-MIGRATION-UI-01` به `tests/web_parity.test.mjs` اضافه شد تا وجود برچسب‌های مهاجرت، حفظ Legacy switcher و نبود action اجرایی برای Ensemble را بررسی کند.
+- Commit تغییر UI: `788ba61792e994973233f102b88dd67c24bb060b`
+- Commit غیرفعال‌سازی Ensemble: `8c234c7c903b92965245b6f16f15998572a88726`
+- Commit آزمون: `d9a06e0c9d0334af0dce6239acc0ae5fbc431e81`
+- Commit cache bust: `d5a6e388204352268a5e9adc733dd0e5d3cca0c7`
+
+### 16.4. وضعیت انتشار و کار باقیمانده
+
+در زمان ثبت این یادداشت، GitHub Actions برای commit `d5a6e388204352268a5e9adc733dd0e5d3cca0c7` یک اجرای push با شناسه `44488936275` ساخته و در وضعیت `pending` بوده است؛ هنوز نتیجه job، build یا deploy قابل اعلام نیست. تست محلی در این محیط اجرا نشده است.
+
+گام بعدی حوزه Forecast، انتقال قابلیت‌به‌قابلیت مسیرهای Legacy به New است: ابتدا قرارداد و مسیر اجرایی Chronos-2 و مدل‌های Python، سپس Ledger/ارزیابی و Backtest/Replay. تا زمان انتقال و تست end-to-end، این موارد در New غیرفعال می‌مانند و Legacy حذف نمی‌شود.
