@@ -797,7 +797,10 @@ function renderForecastWorkspaceContent(activeTab) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
   defaultForecastRegistry.applyConfig(state.chartPreferences.forecastPluginConfig);
   const nativeModelChoices = defaultForecastRegistry.list();
-  const nativeModelButtons = nativeModelChoices.map((model) => {
+  const nativeModelButtons = [
+    ...nativeModelChoices,
+    { id: 'ensemble', name: 'Calibrated Ensemble (V2)', enabled: true, weight: 1, experimentalOnly: false },
+  ].map((model) => {
     const available = model.enabled && Number(model.weight) > 0;
     const label = `${model.name}${model.experimentalOnly ? ' · Approximation' : ''}${available ? '' : ' · Disabled'}`;
     return `<button type="button" class="chip ${activeTab?.structuralForecastModel === model.id ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="${escapeHtml(model.id)}" ${available ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
@@ -882,7 +885,6 @@ function renderForecastWorkspaceContent(activeTab) {
           <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
             <button type="button" class="chip ${(activeTab?.structuralForecastModel || 'structural_wave_js') === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">Structural JS</button>
             <button type="button" class="chip ${activeTab?.structuralForecastModel === 'empirical_analogs' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="empirical_analogs">Historical Analogs</button>
-            <span class="chip" aria-disabled="true" title="${isFa ? 'موتور Structural فعلی مسیر اجرایی Ensemble ندارد؛ تا زمان انتقال و آزمون غیرفعال است.' : 'The current Structural engine has no Ensemble execution path; disabled until migrated and tested.'}">${isFa ? 'Calibrated Ensemble · منتقل‌نشده' : 'Calibrated Ensemble · Not migrated'}</span>
             ${nativeModelButtons}
           </div>
           <div style="color:var(--text-muted);font-size:11px;margin-top:7px;">${isFa ? 'در هر لحظه فقط مدل انتخاب‌شده روی نمودار رسم می‌شود.' : 'Only the selected model is plotted at a time.'}</div>
@@ -892,7 +894,6 @@ function renderForecastWorkspaceContent(activeTab) {
           <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
             <span class="chip" aria-disabled="true" title="${isFa ? 'اتصال Chronos-2 به موتور New هنوز پیاده‌سازی و تأیید نشده است.' : 'Chronos-2 is not yet integrated and verified in the New engine.'}">${isFa ? 'Chronos-2 · منتقل‌نشده' : 'Chronos-2 · Not migrated'}</span>
             <span class="chip" aria-disabled="true" title="${isFa ? 'مدل‌های Python Worker هنوز در New قابل انتخاب نیستند.' : 'Python Worker models are not selectable in New yet.'}">${isFa ? 'مدل‌های Python · منتقل‌نشده' : 'Python models · Not migrated'}</span>
-            <span class="chip" aria-disabled="true" title="${isFa ? 'Replay تاریخی در New هنوز ارائه نشده است.' : 'Historical replay is not yet available in New.'}">${isFa ? 'Historical Replay · منتقل‌نشده' : 'Historical Replay · Not migrated'}</span>
           </div>
           <div style="color:var(--text-muted);font-size:11px;margin-top:8px;">${isFa ? 'این موارد عمداً غیرفعال‌اند؛ نسخه Legacy از طریق انتخاب‌گر موتور بالا در دسترس می‌ماند.' : 'These items are intentionally inactive. The Legacy implementation remains available through the engine switch above.'}</div>
         </div>
