@@ -1395,3 +1395,19 @@ test('FORECAST-LEDGER-01: local snapshot and lifecycle chains remain verifiable 
   assert.equal(ledger.evaluateMaturedForecasts(candles, 'SPOTBRENT', 'H1').length, 0, 'Matured checkpoints must not be appended twice');
   ledger.clear();
 });
+
+
+test('FORECAST-DATA-SOURCE-GUARD-01: persisted chart tabs and symbol switching normalize disabled providers to TradingView', async () => {
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const hydrateStart = appSource.indexOf('function ensureInitialTabs(');
+  const switchStart = appSource.indexOf('function openOrFocusSymbolTab(');
+  const switchEnd = appSource.indexOf('function computePresetBarCount(', switchStart);
+  assert.ok(hydrateStart >= 0 && switchStart > hydrateStart && switchEnd > switchStart);
+  const hydrate = appSource.slice(hydrateStart, switchStart);
+  const switchTab = appSource.slice(switchStart, switchEnd);
+  assert.match(hydrate, /isProviderEnabled\(requestedProvider\)/, 'Persisted tab providers must pass the allow-list');
+  assert.match(hydrate, /tab\.provider = prov/, 'Normalized provider must be written back to tab state');
+  assert.match(switchTab, /const provider = isProviderEnabled\(sym\.activeProvider\)/, 'Symbol switching must normalize the active provider');
+  assert.match(switchTab, /existing\.provider = provider/);
+  assert.match(switchTab, /provider,\n\s*timeframe: tf/);
+});
