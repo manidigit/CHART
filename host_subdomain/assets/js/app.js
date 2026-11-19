@@ -80,7 +80,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.2';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
-import { renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel } from './views/forecastView.js?v=2.0.12';
+import { renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=2.0.13';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.3';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
@@ -2614,6 +2614,13 @@ document.addEventListener('click', async (e) => {
       savePreferences();
       renderApp();
     }
+  } else if (action === 'run-forecast-replay' && activeTab) {
+    const replay = runHistoricalForecastReplay(activeTab, { maxWindows: 3 });
+    const isFa = i18n.getCurrentLanguage() === 'fa';
+    showFloatingToast(replay.status === 'COMPLETED'
+      ? (isFa ? 'بازپخش تاریخی با موفقیت اجرا شد.' : 'Historical replay completed.')
+      : (isFa ? `بازپخش تاریخی: ${replay.status} — ${replay.reason}` : `Historical replay: ${replay.status} — ${replay.reason}`));
+    renderApp();
   } else if (action === 'set-forecast-subtab') {
     state.forecastStudioTab = String(el.getAttribute('data-tab') || 'overview');
     renderApp();
