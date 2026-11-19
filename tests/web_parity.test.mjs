@@ -1509,3 +1509,8 @@ test('FORECAST-NEW-COMPARE-02: selected Native model carries successful peer tra
   assert.match(renderer, /ctx\.setLineDash\(\[5, 4\]\)/);
   assert.match(renderer, /trajectory\.modelName\.slice\(0, 18\)/);
 });
+
+test('FORECAST-NEW-COMPARE-03: main chart renderer module cache is invalidated with comparison overlay release', async () => {
+  const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.21/);
+});
