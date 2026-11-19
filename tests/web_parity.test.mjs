@@ -20,6 +20,8 @@ test('FORECAST-MIGRATION-UI-01: New workspace discloses legacy capabilities that
     assert.match(appSource, /Ledger & evaluation · Pending/);
     assert.match(appSource, /Backtest \/ Walk-forward · Pending/);
     assert.match(appSource, /Historical Replay · Not migrated/);
+    assert.match(appSource, /Calibrated Ensemble · Not migrated/);
+    assert.doesNotMatch(appSource, /data-model="ensemble"/);
     // These are disclosure-only labels, not executable selection controls.
     assert.match(appSource, /<span class="chip" aria-disabled="true"/);
     assert.match(appSource, /Legacy · Forecast Studio/);
