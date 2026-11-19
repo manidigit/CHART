@@ -1409,5 +1409,5 @@ test('FORECAST-DATA-SOURCE-GUARD-01: persisted chart tabs and symbol switching n
   assert.match(hydrate, /tab\.provider = prov/, 'Normalized provider must be written back to tab state');
   assert.match(switchTab, /const provider = isProviderEnabled\(sym\.activeProvider\)/, 'Symbol switching must normalize the active provider');
   assert.match(switchTab, /existing\.provider = provider/);
-  assert.match(switchTab, /provider,\n\s*timeframe: tf/);
+  assert.match(switchTab, /provider:\s*provider,\s*timeframe: tf/);
 });
