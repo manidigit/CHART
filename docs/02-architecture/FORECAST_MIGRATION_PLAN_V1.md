@@ -795,3 +795,5 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 - Run `44531190348`: success؛ Web ۲۴/۲۴، Android build و tests موفق.
 - Deploy با ۱۲۳ فایل، snapshot `snapshot_20261119_131340` و ۴۲٬۲۹۱ کندل TradingView تأیید شد.
 - Artifactها: Web `14534022250`، APK `14533517048`.
+
+- Compare وضعیت جزئی دارد: Overview مدل‌های موفق را با endpoint/status و مسیر q50 overlay می‌کند؛ main chart همچنان یک مدل منتخب دارد. Multi-select visibility/legend مستقل و Side-by-Side در backlog باقی است.
