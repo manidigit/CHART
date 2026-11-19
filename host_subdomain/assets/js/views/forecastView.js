@@ -1197,6 +1197,8 @@ function renderHistoricalReplaySection(isFa, decimals) {
   const activeTab = state.openTabs?.find((item) => item.tabId === state.activeTabId) || state.openTabs?.[0];
   const sameContext = replay && replay.symbolCode === activeTab?.symbolCode && replay.timeframe === activeTab?.timeframe;
   const windowCount = Number(state.chartPreferences.forecastReplayWindowCount || 3);
+  const replayFromDate = String(state.chartPreferences.forecastReplayFromDate || '');
+  const replayToDate = String(state.chartPreferences.forecastReplayToDate || '');
   let replayHistory = [];
   try {
     const stored = JSON.parse(globalThis.localStorage?.getItem('ci_forecast_replay_history_v1') || '[]');
@@ -1227,6 +1229,9 @@ function renderHistoricalReplaySection(isFa, decimals) {
         </div>
         <div class="chip-group"><span class="ci-fc-ctrl-label">${isFa ? 'تعداد مبدأ:' : 'Windows:'}</span>${[3,5,10].map((count) => `<button type="button" class="chip ${windowCount === count ? 'active' : ''}" data-action="set-forecast-replay-windows" data-windows="${count}">${count}</button>`).join('')}</div>
         <button type="button" class="btn btn-sm btn-primary" data-action="run-forecast-replay" ${sameContext && replay.status === 'RUNNING' ? 'disabled' : ''}>${isFa ? 'اجرای بازپخش تاریخی' : 'Run Historical Replay'}</button>
+      <div class="row-between" style="gap:8px;flex-wrap:wrap;margin:8px 0;">
+        <label class="ci-fc-param-item ltr-num"><span>${isFa ? 'از تاریخ UTC' : 'From UTC'}</span><input type="date" id="ci-forecast-replay-from" value="${escapeHtml(replayFromDate)}" /></label>
+        <label class="ci-fc-param-item ltr-num"><span>${isFa ? 'تا تاریخ UTC' : 'To UTC'}</span><input type="date" id="ci-forecast-replay-to" value="${escapeHtml(replayToDate)}" /></label>
       </div>
       ${sameContext ? `<span class="ci-fc-status-badge ${replay.status === 'COMPLETED' ? 'ci-fc-badge-valid' : 'ci-fc-badge-provisional'} ltr-num">${escapeHtml(replay.status)}</span><p style="font-size:11px;color:var(--text-muted);">${escapeHtml(replay.reason)}</p>${summary}<div style="overflow-x:auto;margin-top:8px;"><table class="ci-fc-table"><thead><tr><th>#</th><th>Anchor UTC</th><th>Status</th><th>Predicted</th><th>Actual</th><th>MAE %</th><th>80% Cov.</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p style="font-size:11px;color:var(--text-muted);">${isFa ? 'برای نماد و تایم‌فریم فعلی هنوز بازپخش اجرا نشده است.' : 'No replay has been run for the current symbol/timeframe.'}</p>`}
       ${replayHistory.length ? `<div style="margin-top:10px;font-size:11px;color:var(--text-muted);">${isFa ? 'آخرین اجراهای ذخیره‌شده' : 'Saved replay runs'}: ${replayHistory.map((item) => `${new Date(item.generatedAtUtcMs).toISOString().slice(0, 16).replace('T', ' ')} · ${escapeHtml(item.status)} · ${item.summary ? item.summary.meanMaePct.toFixed(3) + '%' : '—'}`).join(' | ')}</div>` : ''}
