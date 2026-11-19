@@ -1003,6 +1003,27 @@ export function renderApp() {
         document.documentElement.getAttribute('data-theme') !== 'light',
         state.forecastCoordView || 'independent'
       );
+      const replayResult = state._forecastReplayResult;
+      if (replayResult && replayResult.symbolCode === activeTab?.symbolCode && replayResult.timeframe === activeTab?.timeframe) {
+        const replayIndex = Math.max(0, Math.min(Number(state.chartPreferences.forecastReplaySelectedWindow || 0), (replayResult.windows || []).length - 1));
+        const replayWindow = replayResult.windows?.[replayIndex];
+        if (replayWindow?.forecastPoints?.length && replayWindow?.historyCandles?.length) {
+          renderForecastStudioFanCanvas(
+            document.getElementById('forecast-replay-canvas'),
+            replayWindow.historyCandles,
+            {
+              points: replayWindow.forecastPoints,
+              actualPoints: replayWindow.actualPoints || [],
+              selectedChartModelId: replayWindow.modelId || 'ensemble',
+              renderMode: 'FAN_CHART',
+              modelTrajectories: [],
+            },
+            Number(activeTab?.decimals || 2),
+            document.documentElement.getAttribute('data-theme') !== 'light',
+            'independent'
+          );
+        }
+      }
       const comparisonResult = state._lastForecastResult;
       document.querySelectorAll('canvas[data-forecast-compare-model]').forEach((canvas) => {
         const modelId = canvas.getAttribute('data-forecast-compare-model');
@@ -2614,6 +2635,11 @@ document.addEventListener('click', async (e) => {
       savePreferences();
       renderApp();
     }
+  } else if (action === 'set-forecast-replay-window') {
+    const selectedIndex = Math.max(0, Number(el.getAttribute('data-index') || 0));
+    state.chartPreferences.forecastReplaySelectedWindow = selectedIndex;
+    savePreferences();
+    renderApp();
   } else if (action === 'set-forecast-replay-windows') {
     const requestedWindows = Number(el.getAttribute('data-windows') || 3);
     state.chartPreferences.forecastReplayWindowCount = [3, 5, 10].includes(requestedWindows) ? requestedWindows : 3;
