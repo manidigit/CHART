@@ -63,6 +63,27 @@ test('FORECAST-RUNTIME-01: New Native forecast never invokes an external Python 
     assert.doesNotMatch(appSource, /save-forecast-worker-url/);
 });
 
+test('FORECAST-REPLAY-02: replay refuses insufficient history instead of fabricating forecast windows', async () => {
+    const { runHistoricalForecastReplay } = await import('../host_subdomain/assets/js/views/forecastView.js');
+    const candles = Array.from({ length: 30 }, (_, index) => ({
+        open_time_utc_ms: (index + 1) * 900000,
+        open: 100 + index,
+        high: 101 + index,
+        low: 99 + index,
+        close: 100.5 + index,
+        volume: 1,
+    }));
+    const result = await runHistoricalForecastReplay({
+        symbolCode: 'SPOTBRENT',
+        provider: 'tvdatafeed',
+        timeframe: 'M15',
+        candles,
+    }, { horizonBars: 10, maxWindows: 3 });
+    assert.equal(result.status, 'INSUFFICIENT_HISTORY');
+    assert.equal(result.windows.length, 0);
+    assert.match(result.reason, /155 training candles/);
+});
+
 test('ARCH-01: every browser module shares one canonical store.js module URL', async () => {
     const files = [
         '../host_subdomain/assets/js/app.js',
