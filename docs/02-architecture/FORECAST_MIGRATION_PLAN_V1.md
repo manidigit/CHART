@@ -775,3 +775,5 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 - تب‌های Forecast Studio در New به انتخاب Native محدود نیستند: Models/Walk-Forward/Ledger همواره قابل دسترسی‌اند؛ Overview برای Structural JS و Historical Analogs توضیح صریح می‌دهد که نمودار Fan/Scenario به خروجی Native وابسته است. ارزیابی Native به‌صورت lazy هنگام نیاز محاسبه می‌شود.
 
 - Structural Preview: در New Overview، خروجی واقعی Structural (`forecast[]` با `q50_median`, `q10`, `q90`) به قرارداد نمایشی Canvas نگاشت می‌شود؛ مسیرهای Historical Analog فقط به‌صورت illustrative overlay هستند و به‌عنوان احتمال معرفی نمی‌شوند.
+
+- Structural Overview status binding از متغیر local دیرتر تعریف‌شده مستقل شد تا خطای Temporal Dead Zone رخ ندهد.
