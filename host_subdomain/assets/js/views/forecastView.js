@@ -112,7 +112,7 @@ export function buildForecastForTab(activeTab, overrides = {}) {
 
   let result = ForecastEngine.project(candles, {
     symbolCode: activeTab.symbolCode,
-    providerId: activeTab.provider || 'twelvedata',
+    providerId: activeTab.provider || 'tvdatafeed',
     timeframe: activeTab.timeframe,
     horizonBars,
     renderMode,
