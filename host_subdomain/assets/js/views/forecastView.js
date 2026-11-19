@@ -1050,24 +1050,53 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
   const horizonBars = clampHorizonBars(options.horizonBars || activeTab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30);
   const selectedModelId = String(options.selectedModelId || activeTab.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
   const maxWindows = Math.max(2, Math.min(10, Math.round(Number(options.maxWindows || state.chartPreferences.forecastReplayWindowCount || 3))));
+  const fromDate = String(options.fromDate ?? state.chartPreferences.forecastReplayFromDate ?? '').trim();
+  const toDate = String(options.toDate ?? state.chartPreferences.forecastReplayToDate ?? '').trim();
+  const fromMs = fromDate ? Date.parse(`${fromDate}T00:00:00.000Z`) : null;
+  const toMs = toDate ? Date.parse(`${toDate}T23:59:59.999Z`) : null;
   const windows = [];
-  const lastAnchor = candles.length - horizonBars - 1;
-  const firstAnchor = lastAnchor - (maxWindows - 1) * horizonBars;
-  if (firstAnchor < 154) {
+  const invalidRange = (fromDate && !Number.isFinite(fromMs)) || (toDate && !Number.isFinite(toMs)) || (fromMs != null && toMs != null && fromMs > toMs);
+  if (invalidRange) {
+    const result = { status: 'INVALID_DATE_RANGE', reason: 'Replay date range is invalid. Use UTC dates with From <= To.', symbolCode: activeTab.symbolCode, timeframe: activeTab.timeframe, horizonBars, fromDate, toDate, windows: [] };
+    state._forecastReplayResult = result;
+    return result;
+  }
+
+  let firstAnchor = 154;
+  if (fromMs != null) {
+    const firstInRange = candles.findIndex((c) => Number(c.open_time_utc_ms || c.openTimeUtcMs || 0) >= fromMs);
+    if (firstInRange < 0) firstAnchor = candles.length;
+    else firstAnchor = Math.max(firstAnchor, firstInRange);
+  }
+  let lastAnchor = candles.length - horizonBars - 1;
+  if (toMs != null) {
+    let lastInRange = -1;
+    for (let i = 0; i < candles.length; i++) {
+      if (Number(candles[i].open_time_utc_ms || candles[i].openTimeUtcMs || 0) <= toMs) lastInRange = i;
+      else break;
+    }
+    lastAnchor = Math.min(lastAnchor, lastInRange - horizonBars);
+  }
+  if (firstAnchor > lastAnchor || firstAnchor < 154) {
     const result = {
       status: 'INSUFFICIENT_HISTORY',
-      reason: `Historical Replay needs at least 155 training candles plus ${horizonBars * maxWindows} future candles; available: ${candles.length}.`,
+      reason: `The selected range needs 155 training candles and ${horizonBars} future candles after each anchor; available: ${candles.length}.`,
       symbolCode: activeTab.symbolCode,
       timeframe: activeTab.timeframe,
       horizonBars,
+      fromDate,
+      toDate,
       windows: [],
     };
     state._forecastReplayResult = result;
     return result;
   }
+  const anchorIndexes = Array.from({ length: maxWindows }, (_, i) =>
+    Math.round(firstAnchor + ((lastAnchor - firstAnchor) * i) / Math.max(1, maxWindows - 1))
+  ).filter((value, index, all) => all.indexOf(value) === index);
 
   defaultForecastRegistry.applyConfig(state.chartPreferences.forecastPluginConfig);
-  for (let anchorIndex = firstAnchor; anchorIndex <= lastAnchor; anchorIndex += horizonBars) {
+  for (const anchorIndex of anchorIndexes) {
     const trainingCandles = candles.slice(0, anchorIndex + 1);
     const actualCandles = candles.slice(anchorIndex + 1, anchorIndex + 1 + horizonBars);
     if (actualCandles.length !== horizonBars) continue;
@@ -1089,7 +1118,7 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
       windows.push({
         status: forecast?.status || 'FAILED',
         reason: forecast?.readiness?.issues?.join('; ') || forecast?.selectionReason || 'Forecast did not produce a complete path',
-        anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || 0),
+        anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || trainingCandles[trainingCandles.length - 1]?.openTimeUtcMs || 0),
       });
       continue;
     }
@@ -1113,7 +1142,7 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
     windows.push({
       status: forecast.status,
       modelId: forecast.selectedChartModelId || selectedModelId,
-      anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || 0),
+      anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || trainingCandles[trainingCandles.length - 1]?.openTimeUtcMs || 0),
       actualTerminal,
       predictedTerminal,
       mae,
@@ -1136,6 +1165,9 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
     timeframe: activeTab.timeframe,
     horizonBars,
     selectedModelId,
+    fromDate,
+    toDate,
+    maxWindows,
     windows,
     summary: scored.length ? {
       meanMae: scored.reduce((sum, w) => sum + w.mae, 0) / scored.length,
