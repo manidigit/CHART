@@ -211,3 +211,5 @@
 - تکمیل ایزولاسیون New: حتی اگر Legacy قبلاً Worker URL ذخیره کرده باشد، New Native آن را با `workerUrl: ''` نادیده می‌گیرد؛ اجرای Python Worker از مسیر New فعال نمی‌شود. Cache-busting به `app.js?v=1.47.23` و `forecastView.js?v=2.0.9` افزایش یافت.
 
 - تب‌های Overview، Models، Walk-Forward و Ledger اکنون در New همیشه قابل مشاهده‌اند؛ در انتخاب Structural JS/Historical Analogs، Overview توضیح می‌دهد که Fan/Scenario مربوط به Native است، اما تب‌های مدل/ارزیابی/دفتر همچنان در دسترس‌اند. محاسبه Native فقط هنگام انتخاب مدل Native یا بازکردن تب‌های ارزیابی انجام می‌شود تا محاسبه غیرضروری در هر رندر ایجاد نشود.
+
+- New Overview اکنون برای Structural JS و Historical Analogs نیز Preview تصویری مسیر را از خروجی واقعی `structuralForecast.forecast` نمایش می‌دهد؛ `q50_median` فقط به نام فیلد مورد انتظار Renderer نگاشت شده و q10/q90 اصلی حفظ می‌شوند. مسیرهای Historical Analog به‌صورت illustrative overlay نمایش داده می‌شوند، نه احتمال کالیبره‌شده.
