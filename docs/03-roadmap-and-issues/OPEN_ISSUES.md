@@ -134,3 +134,7 @@
 
 متد `evaluateMaturedForecasts()` اکنون هر ورودی دارای `close > 0` را در سری ارزیابی می‌پذیرد؛ این شرط به‌تنهایی تضمین نمی‌کند کندل بسته باشد یا timestampها یکتا و مرتب باشند. مسیر فعلی از کندل‌های ذخیره‌شده استفاده می‌کند، اما این فرض در مرز متد enforce نشده است. مورد با شناسه `FCST-LEDGER-02` ثبت شد تا قبل از اتکای عملیاتی به Ledger، با تست forming-tail، duplicate و out-of-order بسته شود.
 
+
+### ۵.۴. کنترل منبع داده در تب‌های ذخیره‌شده
+
+ممیزی تکمیلی نشان داد Store هنگام Hydration نمادها را به `tvdatafeed` محدود می‌کند، اما `ensureInitialTabs()` قبلاً مقدار `tab.provider` ذخیره‌شده در Workspace قدیمی را بدون allow-list می‌پذیرفت. در نتیجه یک تب قدیمی می‌توانست با Provider غیرفعال، cache key غیرمجاز را بخواند؛ حتی اگر مسیر sync نماد از TradingView استفاده کند. اصلاح در کد انجام شد: Provider تب‌های Hydrate‌شده و مسیر `openOrFocusSymbolTab()` اکنون از `isProviderEnabled()` عبور می‌کنند و مقدار غیرمجاز به `tvdatafeed` برمی‌گردد. تست `FORECAST-DATA-SOURCE-GUARD-01` این مرز را بررسی می‌کند. وضعیت نهایی پس از CI ثبت می‌شود.
