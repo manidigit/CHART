@@ -33,6 +33,25 @@ test('FORECAST-MIGRATION-UI-02: New Native is the first-use default and the lega
     assert.match(appSource, /data-engine="structural"/);
 });
 
+test('FORECAST-REGISTRY-01: all ten native model plugins are registered', async () => {
+    const { defaultForecastRegistry } = await import('../host_subdomain/assets/js/forecast/modelRegistry.js');
+    const models = defaultForecastRegistry.list();
+    const ids = models.map((model) => model.id);
+    assert.equal(models.length, 10);
+    for (const id of [
+        'naive_persistence',
+        'historical_drift',
+        'kalman_momentum',
+        'garch_volatility',
+        'arima_ets',
+        'gaussian_process',
+        'native_arima_diff',
+        'native_prophet_decomp',
+        'native_seq_recurrent_approx',
+        'native_quantile_attention_approx',
+    ]) assert.ok(ids.includes(id), `Missing registered model: ${id}`);
+});
+
 test('FORECAST-MIGRATION-MODELS-01: the model picker is generated from the complete native registry', async () => {
     const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
     assert.match(viewSource, /defaultForecastRegistry\.list\(\)\.map/);
