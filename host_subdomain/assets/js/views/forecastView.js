@@ -553,7 +553,7 @@ export function renderForecastStudioView(activeTab, i18n) {
   if (subTab === 'overview') {
     panelHtml = renderOverviewPanel(fc, activeTab, decimals, isFa, coordView);
   } else if (subTab === 'models') {
-    panelHtml = renderModelsPanel(fc, decimals, isFa, { includeRemoteWorker: false });
+    panelHtml = renderModelsPanel(fc, decimals, isFa);
   } else if (subTab === 'backtest') {
     panelHtml = renderBacktestPanel(fc, decimals, isFa);
   } else {
@@ -975,7 +975,7 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
   `;
 }
 
-export function renderModelsPanel(fc, decimals, isFa, options = {}) {
+export function renderModelsPanel(fc, decimals, isFa) {
   const plugins = defaultForecastRegistry.list();
   const contribMap = new Map((fc?.modelContributions || []).map((c) => [c.modelId, c]));
 
