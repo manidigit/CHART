@@ -209,6 +209,13 @@ export function renderForecastStudioFanCanvas(
     if (Number.isFinite(lo)) minP = Math.min(minP, lo);
     if (Number.isFinite(hi)) maxP = Math.max(maxP, hi);
   }
+  for (const actual of Array.isArray(forecast?.actualPoints) ? forecast.actualPoints : []) {
+    const close = Number(actual.close ?? actual);
+    if (Number.isFinite(close)) {
+      minP = Math.min(minP, close);
+      maxP = Math.max(maxP, close);
+    }
+  }
   const padPrice = Math.max(1e-6, (maxP - minP) * 0.08);
   minP -= padPrice;
   maxP += padPrice;
@@ -408,6 +415,23 @@ export function renderForecastStudioFanCanvas(
     pts.forEach((p, idx) => ctx.lineTo(xOf(hist.length + idx), yOf(p.q50)));
     ctx.stroke();
     ctx.setLineDash([]);
+
+    // Optional historical replay actual path; scoring data is displayed separately from the forecast q50.
+    const actualReplayPoints = Array.isArray(forecast?.actualPoints) ? forecast.actualPoints : [];
+    if (actualReplayPoints.length > 0) {
+      ctx.save();
+      ctx.strokeStyle = isDark ? '#CBD5E1' : '#475569';
+      ctx.lineWidth = 1.8;
+      ctx.setLineDash([2, 3]);
+      ctx.beginPath();
+      ctx.moveTo(xOf(hist.length - 1), yOf(Number(hist[hist.length - 1].close)));
+      actualReplayPoints.forEach((point, idx) => {
+        ctx.lineTo(xOf(hist.length + idx), yOf(Number(point.close ?? point)));
+      });
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.restore();
+    }
 
     // Present divider line
     ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.75)' : 'rgba(15,23,42,0.7)';
@@ -1152,6 +1176,12 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
       inputHash: forecast.inputHash,
       trainingBars: trainingCandles.length,
       actualBars: actualCandles.length,
+      historyCandles: trainingCandles.slice(-48).map((c) => ({
+        open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close),
+        open_time_utc_ms: Number(c.open_time_utc_ms || c.openTimeUtcMs || 0),
+      })),
+      forecastPoints: forecast.points,
+      actualPoints: actualCandles.map((c) => ({ close: Number(c.close) })),
     });
   }
 
