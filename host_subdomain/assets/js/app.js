@@ -2621,15 +2621,24 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'run-forecast-replay' && activeTab) {
     const isFa = i18n.getCurrentLanguage() === 'fa';
+    state.chartPreferences.forecastReplayFromDate = String(document.getElementById('ci-forecast-replay-from')?.value || '').trim();
+    state.chartPreferences.forecastReplayToDate = String(document.getElementById('ci-forecast-replay-to')?.value || '').trim();
+    savePreferences();
     state._forecastReplayResult = {
       status: 'RUNNING',
       symbolCode: activeTab.symbolCode,
       timeframe: activeTab.timeframe,
+      fromDate: state.chartPreferences.forecastReplayFromDate,
+      toDate: state.chartPreferences.forecastReplayToDate,
       windows: [],
       reason: isFa ? 'بازپخش در حال اجراست؛ داده آینده فقط برای امتیازدهی استفاده می‌شود.' : 'Replay is running; future candles are scoring-only.',
     };
     renderApp();
-    runHistoricalForecastReplay(activeTab, { maxWindows: Number(state.chartPreferences.forecastReplayWindowCount || 3) })
+    runHistoricalForecastReplay(activeTab, {
+      maxWindows: Number(state.chartPreferences.forecastReplayWindowCount || 3),
+      fromDate: state.chartPreferences.forecastReplayFromDate,
+      toDate: state.chartPreferences.forecastReplayToDate,
+    })
       .then((replay) => {
         showFloatingToast(replay.status === 'COMPLETED'
           ? (isFa ? 'بازپخش تاریخی با موفقیت اجرا شد.' : 'Historical replay completed.')
