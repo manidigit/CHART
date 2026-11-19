@@ -2,7 +2,7 @@
 
 - **نسخه:** 1.0.0
 - **تاریخ ثبت:** 2026-11-18
-- **وضعیت:** مسیر انتخاب/اجرا/رسم ۱۰ مدل رجیستری Native وب، Structural JS و Historical Analogs پیاده‌سازی شده؛ تنظیمات مدل‌ها، Walk-Forward و Ledger محلی نیز به New Native متصل شده‌اند. سه Run پیاپی اخیر CI و Deploy cPanel را با ۱۲۳ فایل تأیید کرده‌اند. پذیرش نهایی مرورگری و قابلیت‌های وابسته به Runtime مستقل همچنان باز هستند؛ Legacy حفظ شده است.
+- **وضعیت:** مسیر انتخاب/اجرا/رسم ۱۰ مدل رجیستری Native وب، Structural JS و Historical Analogs پیاده‌سازی شده؛ تنظیمات مدل‌ها، Walk-Forward و Ledger محلی نیز به New Native متصل شده‌اند. چهار Run پیاپی اخیر CI و Deploy cPanel را با ۱۲۳ فایل تأیید کرده‌اند. پذیرش نهایی مرورگری و قابلیت‌های وابسته به Runtime مستقل همچنان باز هستند؛ Legacy حفظ شده است.
 - **مخزن/شاخه مبنا:** `manidigit/CHART` / `main`
 - **مرجع محصول:** `FORECAST_PRODUCT_FOUNDATION_V1.md` و `FORECAST_SYSTEM_SPEC_V1.md`
 - **هدف:** انتقال تدریجی قابلیت‌های سیستم قدیمی به معماری جدید، با امکان انتخاب مستقل قابلیت‌های منتقل‌شده و خاموش‌کردن کنترل‌شده نسخه قدیمی پس از پذیرش.
@@ -749,3 +749,14 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 ### 21.4. Gateهای باقیمانده
 
 پذیرش نهایی New هنوز به Browser E2E روی Production، OOS acceptance واقعی مدل‌ها، Compare صریح، Historical Replay، Runtime مستقل Python، Ensemble کالیبره و persistence/provenance کامل Ledger وابسته است. شناسه و اقدام هر مورد در `OPEN_ISSUES.md` بخش ۵ ثبت شده است.
+
+
+## 22. تأیید همگام‌سازی نهایی مستندات و Deploy — 2026-11-19
+
+- Commit مستندات: `a732918ebda6905844b3ad77b531d241c5e8697e`.
+- Workflow run: `44516442724` با نتیجه کلی `success`.
+- Web parity: ۲۳/۲۳ پاس، صفر شکست؛ PHP lint موفق.
+- TradingView extraction موفق و cPanel remote upload با `deployed_files:123` تأیید شد.
+- Android Debug APK و Unit/Robolectric tests موفق شدند.
+- Artifact وب `14524589022` و APK `14526440962` ساخته شدند.
+- انتشار و مستندات همگام‌اند؛ تنها Browser E2E و قابلیت‌های فهرست‌شده در OPEN_ISSUES.md به‌عنوان Gateهای باقیمانده باز هستند.
