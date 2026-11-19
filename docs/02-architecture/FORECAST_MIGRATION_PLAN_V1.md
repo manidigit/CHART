@@ -656,3 +656,7 @@ Workflow run `44496501529` برای commit `fbcb55082f20e50f82a57c3b6b9c3770f5fe
 ### 18.5. سخت‌سازی TradingView-only در Workspaceهای قدیمی
 
 یک ریسک باقیمانده در Hydration کشف و اصلاح شد: `tab.provider` ذخیره‌شده از نسخه‌های قدیمی می‌توانست بدون بررسی allow-list وارد کلید کش شود. اکنون Hydration تب و مسیر تعویض نماد، Provider را با `isProviderEnabled()` اعتبارسنجی و هر مقدار غیر از `tvdatafeed` را به TradingView نرمال می‌کند. تست `FORECAST-DATA-SOURCE-GUARD-01` اضافه شد و نسخه ورودی وب به `1.47.19` افزایش یافت. این اصلاح مانع استفاده ناخواسته از cacheهای Provider قدیمی در تب‌های persisted می‌شود؛ نتیجه نهایی CI در گزارش بعدی ثبت خواهد شد.
+
+### 18.6. شواهد تکمیل CI برای تست Ledger
+
+Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` با نتیجه کلی موفق پایان یافت: ۱۹ تست Web parity (شامل `FORECAST-LEDGER-01`) پاس، PHP lint موفق، بسته وب ۱۲۲ فایلی با Artifact ID `14519788283` تولید و Build/Unit/Robolectric اندروید موفق شد. مرحله cPanel remote upload به علت نبودن Deployment Secrets skip شد؛ پس این Run انتشار روی Production را ثابت نمی‌کند. اصلاح بعدی Provider تب‌های قدیمی در commit `f0387f4c96bf4f2695ff4fdbe809e9506e5e7dcf` و تست مربوطه در Run `44508388118` قرار دارند و نتیجه آن جداگانه ثبت خواهد شد.
