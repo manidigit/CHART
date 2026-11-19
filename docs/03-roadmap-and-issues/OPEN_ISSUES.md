@@ -104,7 +104,7 @@
 | `FCST-DEPLOY-01` | P0 | **عدم انتشار خودکار روی cPanel در برخی Runها**؛ موفقیت Job الزاماً به معنی Deploy نیست. | Run `44496501529` تست‌ها و بسته‌بندی را موفق کرد، اما log مرحله Deploy پیام `cPanel deployment secrets not available ... skipping remote upload` را ثبت کرد. | دسترسی/شرط GitHub Secrets و محیط اجرای Workflow بررسی شود؛ تا اثبات انتقال فایل به سرور، Deploy را موفق اعلام نکنیم. | `OPEN / DEPLOY_NOT_VERIFIED` |
 | `FCST-PROD-01` | P1 | **نبود آزمون مرورگر روی نسخه Production** بعد از آخرین تغییرات. | تست‌های Node و Build در GitHub Actions هستند؛ مدرک Browser E2E یا بررسی دستی روی دامنه زنده موجود نیست. | پس از رفع مانع Deploy، smoke test واقعی New/Legacy، انتخاب مدل، رندر و خطاها انجام شود. | `OPEN / NOT_TESTED` |
 | `FCST-API-01` | P1 | **تست Provider guard در حال حاضر ایستا است، نه آزمون HTTP واقعی.** | `CHRONOS2-PROVIDER-GUARD-01` ترتیب کد allow-list را بررسی می‌کند؛ endpoint در محیط cPanel اجرا نشده است. | بعداً تست Integration برای رد Provider غیر از `tvdatafeed` و مسیر مجاز TradingView اضافه شود؛ بدون نیاز به اجرای مدل سنگین. | `OPEN / STATIC_TEST_ONLY` |
-| `FCST-EVAL-01` | P1 | **Ledger، ارزیابی OOS، Backtest، Walk-forward و Replay هنوز مهاجرت end-to-end ندارند.** | در New وضعیت این قابلیت‌ها Pending/Not migrated است؛ وجود مستندات یا کد Legacy پذیرش New محسوب نمی‌شود. | ابتدا inventory قراردادها و lifecycle، سپس انتقال یک قابلیت در هر مرحله با تست persistence، provenance، leakage و UI. | `OPEN / NOT_MIGRATED` |
+| `FCST-EVAL-01` | P1 | **چرخه ارزیابی و Ledger هنوز در New به‌صورت یک قابلیت کامل و قابل اتکا عرضه نشده است؛ بخشی از موتور ارزیابی Native وجود دارد.** | مسیر Native با `buildForecastForTab()` از `evaluateWalkForward()` استفاده می‌کند و نتیجه OOS را به Adapter می‌دهد. در مقابل، `ForecastLedger` فعلی بر `localStorage` متکی است (حداکثر ۱۲۰ Snapshot و ۲۴۰ رویداد Lifecycle)، Sync سرور در UI صریحاً غیرفعال است و پنل Ledger/Backtest در Forecast Studio باقی مانده؛ Historical Replay مستقل نیز موجود نیست. | آزمون زنجیره Ledger و maturity اضافه شود؛ سپس قرارداد persistence و گزارش OOS در New طراحی شود. Replay جداگانه ممیزی شود. | `OPEN / PARTIAL — LOCAL_ONLY_AND_UI_GAP` |
 | `FCST-ENS-01` | P2 | **Calibrated Ensemble مسیر اجرایی در Structural JS ندارد.** | مسیر `ensemble` در `structuralForecastEngine.js` وجود ندارد؛ گزینه New غیرفعال شده است. | تا زمانی که وزن‌دهی، آموزش/کالیبراسیون، ارزیابی OOS و تست مقایسه وجود ندارد، غیرفعال بماند. | `OPEN / NOT_IMPLEMENTED` |
 | `FCST-LEGACY-01` | P1 | **هم‌زیستی Legacy و New نیازمند کنترل overlay و مسیرهای مستقل است.** | Legacy حفظ شده؛ New انتخاب‌گر و Renderer جدا دارد؛ خاموش‌سازی Legacy هنوز مجاز نیست. | هر قابلیت پس از پذیرش New، با Feature Flag و آزمون rollback جداگانه از Legacy خارج شود. | `OPEN / PARALLEL_SYSTEMS` |
 | `FCST-DOC-01` | P2 | **تعارض تاریخی در مستندات Forecast پس از آرشیو قدیمی و پیاده‌سازی مجدد New.** | بعضی اسناد قدیمی Forecast را کاملاً Archived معرفی می‌کنند، در حالی که مسیر Native JS New دوباره پیاده‌سازی شده است. | سند Migration مرجع وضعیت جاری باشد؛ اسناد تاریخی با لینک به وضعیت جاری علامت‌گذاری شوند، نه بازنویسی بدون ممیزی. | `OPEN / DOC_RECONCILIATION` |
@@ -118,4 +118,15 @@
 - بسته وب ۱۲۲ فایل و Artifact ID `14516140010` ساخته شد.
 - **cPanel remote upload انجام نشد** چون Deployment Secrets در آن Run در دسترس نبودند؛ Browser test نیز انجام نشده است.
 - Build اندروید و Unit/Robolectric tests موفق بودند.
+
+
+### ۵.۲. اصلاح ممیزی: ارزیابی Native و Ledger محلی
+
+ممیزی تکمیلی `forecastView.js`، `walkForwardEvaluator.js`، `forecastLedger.js` و `app.js` نشان داد که ثبت مسئله FCST-EVAL-01 نباید به معنی «نبود کامل کد» تفسیر شود:
+
+- مسیر Native از `buildForecastForTab()` ارزیابی Nested Walk-Forward را اجرا می‌کند و وضعیت OOS را به Adapter مدل می‌دهد؛ این بخش، کد اجرایی موجود است.
+- `ForecastLedger` در Forecast Studio قابلیت Snapshot و Lifecycle محلی، Hash Chain و ارزیابی سررسید دارد؛ ذخیره‌سازی آن `localStorage` است و سقف نگهداری فعلی ۱۲۰ Snapshot و ۲۴۰ رویداد Lifecycle است.
+- handler به‌روزرسانی Ledger در UI صریحاً اعلام می‌کند Server Sync در این Web build فعال نیست. بنابراین این Ledger، دفترکل ابری/چنددستگاهی محسوب نمی‌شود.
+- پنل گزارش Ledger و Backtest در Forecast Studio قرار دارد و در New Structural به‌عنوان workflow کامل عرضه نشده؛ Historical Replay نیز هنوز مستقل و قابل پذیرش نیست.
+- تست `FORECAST-LEDGER-01` برای زنجیره Snapshot/Lifecycle و جلوگیری از ارزیابی تکراری اضافه شد. این تست، پذیرش persistence ابری یا Replay نیست.
 
