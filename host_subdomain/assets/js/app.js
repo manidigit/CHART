@@ -797,7 +797,7 @@ function renderForecastWorkspaceContent(activeTab) {
           <div class="chip-group" style="display:flex;gap:8px;flex-wrap:wrap;">
             <button type="button" class="chip ${(activeTab?.structuralForecastModel || 'structural_wave_js') === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">Structural JS</button>
             <button type="button" class="chip ${activeTab?.structuralForecastModel === 'empirical_analogs' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="empirical_analogs">Historical Analogs</button>
-            <button type="button" class="chip ${activeTab?.structuralForecastModel === 'ensemble' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="ensemble">Calibrated Ensemble</button>
+            <span class="chip" aria-disabled="true" title="${isFa ? 'موتور Structural فعلی مسیر اجرایی Ensemble ندارد؛ تا زمان انتقال و آزمون غیرفعال است.' : 'The current Structural engine has no Ensemble execution path; disabled until migrated and tested.'}">${isFa ? 'Calibrated Ensemble · منتقل‌نشده' : 'Calibrated Ensemble · Not migrated'}</span>
             ${nativeModelButtons}
           </div>
           <div style="color:var(--text-muted);font-size:11px;margin-top:7px;">${isFa ? 'در هر لحظه فقط مدل انتخاب‌شده روی نمودار رسم می‌شود.' : 'Only the selected model is plotted at a time.'}</div>
