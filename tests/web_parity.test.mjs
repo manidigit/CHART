@@ -136,7 +136,7 @@ test('ARCH-01: every browser module shares one canonical store.js module URL', a
         assert.ok(match, `Missing shared store import in ${file}`);
         versions.push(match[1]);
     }
-    assert.deepEqual([...new Set(versions)], ['1.47.39'], 'All UI, chart, forecast and service modules must share one store singleton');
+    assert.deepEqual([...new Set(versions)], ['1.47.40'], 'All UI, chart, forecast and service modules must share one store singleton');
 });
 
 test('ARCH-02: unified ES module cache-busting, global store singleton guard, overlay cleanup & focus-pull tab guard', async () => {
@@ -204,6 +204,87 @@ test('ARCH-02: unified ES module cache-busting, global store singleton guard, ov
         true,
         'downloadWorkspaceSync must respect isFocusPullSuspended() before overwriting open_tabs'
     );
+});
+
+test('STORAGE-QUOTA-01: full localStorage auto-evicts candle caches, never throws on tab/symbol switches, and triggers full DB backfill', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const storeMod = await import('../host_subdomain/assets/js/core/store.js');
+
+    // 1. Simulate a 5MB-saturated localStorage that rejects writes until ci_candles_v4_* keys are evicted
+    const prevLs = globalThis.localStorage;
+    const quotaMap = new Map([
+        ['ci_candles_v4_SPOTBRENT_tvdatafeed_M15', 'x'.repeat(2000)],
+        ['ci_candles_v4_BTCUSD_tvdatafeed_M30', 'y'.repeat(1800)],
+        ['ci_candles_v3_OLD_CACHE', 'z'.repeat(1500)],
+    ]);
+    const quotaBytesLimit = 5350;
+    const currentBytes = () => {
+        let total = 0;
+        for (const [k, v] of quotaMap.entries()) total += k.length + v.length;
+        return total;
+    };
+    globalThis.localStorage = {
+        get length() { return quotaMap.size; },
+        key: (i) => Array.from(quotaMap.keys())[i] ?? null,
+        getItem: (k) => (quotaMap.has(k) ? quotaMap.get(k) : null),
+        removeItem: (k) => quotaMap.delete(k),
+        setItem: (k, v) => {
+            const s = String(v);
+            const prevLen = quotaMap.has(k) ? quotaMap.get(k).length : 0;
+            const projected = currentBytes() - prevLen + (quotaMap.has(k) ? 0 : k.length) + s.length;
+            if (projected > quotaBytesLimit) {
+                const err = new Error('QuotaExceededError');
+                err.name = 'QuotaExceededError';
+                throw err;
+            }
+            quotaMap.set(k, s);
+        },
+        clear: () => quotaMap.clear(),
+    };
+
+    try {
+        const ok = storeMod.safeLocalStorageSet('ci_open_tabs_v2', JSON.stringify([{ symbolCode: 'SPOTBRENT' }, { symbolCode: 'NVDA' }]));
+        assert.equal(ok, true, 'safeLocalStorageSet must succeed after auto-evicting candle cache keys');
+        assert.equal(quotaMap.has('ci_candles_v3_OLD_CACHE'), false, 'Legacy candle cache must be evicted first');
+        assert.ok(quotaMap.get('ci_open_tabs_v2').includes('NVDA'), 'New NVDA tab must persist cleanly');
+
+        // 2. Simulate completely locked/read-only storage (always throws QuotaExceededError)
+        globalThis.localStorage = {
+            length: 0,
+            key: () => null,
+            getItem: () => null,
+            removeItem: () => {},
+            setItem: () => {
+                const err = new Error('QuotaExceededError');
+                err.name = 'QuotaExceededError';
+                throw err;
+            },
+            clear: () => {},
+        };
+
+        assert.doesNotThrow(() => storeMod.saveOpenTabsToStorage(true), 'saveOpenTabsToStorage must never throw on QuotaExceededError');
+        assert.doesNotThrow(() => storeMod.savePreferences(true), 'savePreferences must never throw on QuotaExceededError');
+        assert.doesNotThrow(() => storeMod.saveSymbolsToStorage(true), 'saveSymbolsToStorage must never throw on QuotaExceededError');
+        assert.doesNotThrow(() => storeMod.saveDrawings('NVDA_D1', [], true), 'saveDrawings must never throw on QuotaExceededError');
+        assert.doesNotThrow(() => storeMod.saveLastOpenedSymbol('NVDA'), 'saveLastOpenedSymbol must never throw on QuotaExceededError');
+        assert.doesNotThrow(() => storeMod.savePanelLayout(), 'savePanelLayout must never throw on QuotaExceededError');
+        assert.doesNotThrow(() => storeMod.saveCandlesToCache('NVDA_tvdatafeed_D1', []), 'saveCandlesToCache must never throw on QuotaExceededError');
+    } finally {
+        globalThis.localStorage = prevLs;
+    }
+
+    // 3. Static audit: zero unprotected bare localStorage.setItem calls in app.js, apiService.js, or store.js
+    const appSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
+    const apiSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/apiService.js'), 'utf8');
+    const storeSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
+    assert.equal(/\blocalStorage\.setItem\s*\(/.test(appSrc), false, 'app.js must route all writes through safeLocalStorageSet');
+    assert.equal(/\blocalStorage\.setItem\s*\(/.test(apiSrc), false, 'apiService.js must route all writes through safeLocalStorageSet');
+    assert.equal(/\blocalStorage\.setItem\s*\(/.test(storeSrc), false, 'store.js must route all writes through safeLocalStorageSet');
+
+    // 4. Verify openOrFocusSymbolTab triggers full backfill on empty watchlist symbols & click handler has try/catch
+    assert.match(appSrc, /const needsFullBackfill = !cached \|\| cached\.length < 30;\s*syncSymbolNow\(symbolCode, tf, renderApp, needsFullBackfill\);/);
+    assert.match(appSrc, /Click handler failed:/);
 });
 
 const memStore = new Map();
@@ -1072,14 +1153,14 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     const appJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
     const storeJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
     const apiServiceJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/apiService.js'), 'utf8');
-    assert.equal(indexHtmlSrc.includes('?v=1.47.39'), true);
+    assert.equal(indexHtmlSrc.includes('?v=1.47.40'), true);
     assert.equal(indexHtmlSrc.includes('?v=1.47.0'), false);
     assert.equal(indexHtmlSrc.includes('?v=1.46.1'), false);
     assert.equal(indexHtmlSrc.includes('?v=1.45.2'), false);
     assert.equal(appJsSrc.includes('?v=1.43.0'), false);
     assert.equal(appJsSrc.includes('?v=1.46.1'), false);
     assert.equal(appJsSrc.includes('?v=1.47.0'), false);
-    assert.equal(appJsSrc.includes('?v=1.47.39'), true);
+    assert.equal(appJsSrc.includes('?v=1.47.40'), true);
 
     // Verify Strictly On-Demand Architecture: No Cron dependency, No Queue files, No Auto-execution
     assert.equal(phpEndpointSrc.includes('enqueue_only'), false, 'Endpoint must not support enqueue_only');
@@ -1666,7 +1747,7 @@ test('FORECAST-NEW-COMPARE-02: selected Native model carries successful peer tra
 
 test('FORECAST-NEW-COMPARE-03: main chart renderer module cache is invalidated with comparison overlay release', async () => {
   const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
-  assert.match(app, /chartRenderer\.js\?v=1\.47\.39/);
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.40/);
 });
 
 test('FORECAST-PHASE1-PARITY-01: adapter preserves AUTO OOS metadata, render mode, and validated Coordinated MTF points', async () => {
@@ -1766,9 +1847,9 @@ test('FORECAST-PHASE3-LEGACY-CLEANUP-01: Phase 3 removes Legacy Studio UI, chart
   assert.doesNotMatch(header, /toggle-legacy-forecast-chart/);
   assert.doesNotMatch(renderer, /legacyForecastPoints|hasValidLegacyForecast|Legacy Forecast Studio/);
   assert.doesNotMatch(app, /renderForecastStudioView|LEGACY_MIGRATED_UI_DISABLED|toggle-legacy-forecast-chart|apply-forecast-to-chart|set-forecast-engine|data-engine="legacy"/);
-  assert.match(app, /forecastView\.js\?v=1\.47\.39/);
-  assert.match(app, /headerView\.js\?v=1\.47\.39/);
-  assert.match(app, /chartRenderer\.js\?v=1\.47\.39/);
+  assert.match(app, /forecastView\.js\?v=1\.47\.40/);
+  assert.match(app, /headerView\.js\?v=1\.47\.40/);
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.40/);
   assert.match(store, /forecastEngineMode:\s*'structural',\s*showFutureProjection:\s*false/);
 });
 

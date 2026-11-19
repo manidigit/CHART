@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.47.40] - 2026-11-19
+
+### Fixed (`STORAGE-QUOTA-01`: Watchlist Symbol Switch Freeze Caused by `localStorage` `QuotaExceededError`)
+- **Root Cause Fix — Uncaught `QuotaExceededError` in `saveOpenTabsToStorage()` (`core/store.js?v=1.47.40`, `app.js?v=1.47.40`, `services/apiService.js?v=1.47.40`, `core/i18n.js?v=1.47.40`):**
+  - Previously, `saveCandlesToCache()` mirrored up to `1,500` bars per `(symbol, provider, timeframe)` into `localStorage`, saturating the browser's 5 MB storage quota. Switching timeframes on the single initial tab (`SPOTBRENT`) kept `ci_open_tabs_v2` the same byte size and succeeded, but clicking ANY second symbol in the Watchlist expanded `ci_open_tabs_v2` and threw an uncaught `QuotaExceededError` inside `saveOpenTabsToStorage()`, aborting `openOrFocusSymbolTab()` before `syncSymbolNow()` and `renderApp()` could run (leaving the header/watchlist frozen on `SPOTBRENT 15m` while the 1s canvas timer rendered the newly pushed symbol underneath).
+  - Added centralized `safeLocalStorageSet()` + `evictCandleCachesFromLocalStorage()` in `core/store.js` that automatically evicts legacy/largest `ci_candles_v*` blobs on quota failure and never throws even when storage is completely locked/full.
+  - Capped the `localStorage` candle mirror in `saveCandlesToCache()` to `250` lightweight bars per series while retaining the full **5,000-bar** dataset in RAM (`state.candleCache`) and MariaDB.
+  - Routed EVERY `localStorage.setItem` across `store.js`, `app.js`, and `apiService.js` through `safeLocalStorageSet()` and wrapped `i18n.setLanguage()` in `try/catch`.
+- **Watchlist Full Backfill & Click Handler Safety (`app.js?v=1.47.40`):**
+  - Updated `openOrFocusSymbolTab()` to pass `needsFullBackfill = !cached || cached.length < 30` to `syncSymbolNow()` so lower watchlist symbols with no local cache immediately fetch their full history from MariaDB.
+  - Added a `try/catch` safety boundary around the async `document.addEventListener('click', ...)` dispatcher so UI actions never silently leave the DOM desynchronized.
+- **Unified Cache-Busting, Tests & Docs:**
+  - Bumped all 26 JS modules and `index.html` uniformly to `?v=1.47.40`.
+  - Verified `node --check` on all 26 JS modules and **39/39** passing tests in `tests/web_parity.test.mjs` (added `STORAGE-QUOTA-01` simulating saturated/locked `localStorage` + static zero-bare-`localStorage.setItem` audit).
+  - Updated `docs/04-development/CHANGELOG.md` and `docs/03-roadmap-and-issues/OPEN_ISSUES.md`.
+
+---
+
 ## [1.47.39] - 2026-11-19
 
 ### Fixed (Unified ES Module Cache-Busting, Global Store Singleton Guard, OHLC Overlay & Active-Tab Sync Protection)

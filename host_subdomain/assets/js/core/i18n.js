@@ -73,7 +73,11 @@ export class I18nManager {
 
   setLanguage(lang) {
     this.lang = lang === 'en' ? 'en' : 'fa';
-    localStorage.setItem('ci_lang', this.lang);
+    try {
+      localStorage.setItem('ci_lang', this.lang);
+    } catch {
+      // Ignore storage quota errors
+    }
     this.applyDocumentDirection();
   }
 

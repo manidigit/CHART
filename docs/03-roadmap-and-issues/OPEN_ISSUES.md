@@ -356,3 +356,14 @@
   3. اصلاح `redrawActiveCanvas()` در `app.js` برای حذف `.tv-ohlc-overlay` قدیمی در حالت خالی و درج خودکار آن هنگام لود شدن کندل‌ها.
   4. افزودن `suspendFocusPull(15000)` و به‌روزرسانی `preferencesUpdatedAtMs` در `saveOpenTabsToStorage()` و محافظ `preserveLocalTabSelection` در `downloadWorkspaceSync()` (`apiService.js`) جهت جلوگیری از بازنویسی تب و تایم‌فریم انتخابی کاربر توسط سینک پس‌زمینه.
 - **راستی‌آزمایی محلی:** `node --check` روی هر ۲۵ ماژول JS و **۳۸/۳۸ تست `tests/web_parity.test.mjs`** (شامل تست جدید `ARCH-02` برای یکتایی نسخه کل گراف ماژول‌ها و آزمون Runtime دوپاره نشدن `store.js`) با موفقیت پاس شدند.
+
+### ۶.۹. رفع قطعی قفل شدن واچ‌لیست و تایم‌فریم هنگام انتخاب سهم دوم (`STORAGE-QUOTA-01` — `v1.47.40`) — 2026-11-19
+
+- **علت ریشه‌ای واقعی (`QuotaExceededError` در `saveOpenTabsToStorage`):** تابع `saveCandlesToCache()` تا ۱۵۰۰ کندل برای هر `(نماد × تایم‌فریم)` در `localStorage` ذخیره می‌کرد و سقف ۵ مگابایتی مرورگر را پر می‌کرد. تعویض تایم‌فریم روی تک‌تب اولیه (`SPOTBRENT`) اندازه `ci_open_tabs_v2` را تغییر نمی‌داد و کار می‌کرد، اما به محض کلیک روی هر سهم دیگر در واچ‌لیست (`NVDA`، `BTCUSD` و سهم‌های پایین جدول)، افزوده شدن تب دوم باعث `QuotaExceededError` بدون `try/catch` در `saveOpenTabsToStorage()` می‌شد و اجرای `openOrFocusSymbolTab()` را پیش از `syncSymbolNow()` و `renderApp()` متوقف می‌کرد (در نتیجه هدر و واچ‌لیست روی `SPOTBRENT 15m` یخ می‌زدند در حالی که تایمر ۱ ثانیه‌ای بوم چارت سهم جدید را رسم می‌کرد).
+- **اصلاحات اعمال‌شده (`v1.47.40`):**
+  1. ایجاد `safeLocalStorageSet()` و `evictCandleCachesFromLocalStorage()` در `core/store.js` برای پاک‌سازی خودکار کش‌های حجیم `ci_candles_v*` هنگام پر شدن حافظه و عدم پرتاب خطا در هیچ شرایطی؛ همچنین محدود کردن کپی `localStorage` کندل‌ها به ۲۵۰ کندل سبک (با حفظ کامل ۵۰۰۰ کندل در RAM و دیتابیس MariaDB).
+  2. عبور تمام فراخوانی‌های `localStorage.setItem` در `store.js`، `app.js` و `apiService.js` از `safeLocalStorageSet()` و ایمن‌سازی `i18n.setLanguage()`.
+  3. ارسال `needsFullBackfill = !cached || cached.length < 30` به `syncSymbolNow()` در `openOrFocusSymbolTab()` برای لود فوری کندل سهم‌های پایین واچ‌لیست و افزودن `try/catch` روی handler کلیک `app.js`.
+  4. هم‌ترازی یکپارچه کل گراف ماژول‌ها و `index.html` روی `?v=1.47.40`.
+- **راستی‌آزمایی محلی:** `node --check` روی هر ۲۶ ماژول JS و **۳۹/۳۹ تست `tests/web_parity.test.mjs`** (شامل تست جدید `STORAGE-QUOTA-01` با شبیه‌سازی پر شدن/قفل شدن `localStorage` و ممیزی نبود `localStorage.setItem` محافظت‌نشده) با موفقیت پاس شدند.
+

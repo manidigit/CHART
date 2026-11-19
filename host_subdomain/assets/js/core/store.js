@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.39';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.39';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.40';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -10,6 +10,91 @@ const STORAGE_KEY_OPEN_TABS = 'ci_open_tabs_v2';
 const STORAGE_KEY_ACTIVE_TAB = 'ci_active_tab_v1';
 const STORAGE_KEY_BYOK_LOCAL = 'ci_byok_keys_v1';
 const STORAGE_CANDLES_PREFIX = 'ci_candles_v4_';
+const LOCAL_CANDLE_CACHE_MAX_BARS = 250;
+const LEGACY_CANDLE_PREFIXES = ['ci_candles_v1_', 'ci_candles_v2_', 'ci_candles_v3_', STORAGE_CANDLES_PREFIX];
+
+export function evictCandleCachesFromLocalStorage(excludeKey = '', maxToRemove = 6) {
+  try {
+    const ls = globalThis.localStorage;
+    if (!ls) return 0;
+    const keys = [];
+    if (typeof ls.length === 'number' && typeof ls.key === 'function') {
+      for (let i = 0; i < ls.length; i++) {
+        const k = ls.key(i);
+        if (k && k !== excludeKey && LEGACY_CANDLE_PREFIXES.some((p) => k.startsWith(p))) {
+          const val = ls.getItem(k);
+          keys.push({
+            key: k,
+            size: val ? val.length : 0,
+            isLegacy: !k.startsWith(STORAGE_CANDLES_PREFIX),
+          });
+        }
+      }
+    } else if (typeof Object.keys === 'function') {
+      for (const k of Object.keys(ls)) {
+        if (k && k !== excludeKey && LEGACY_CANDLE_PREFIXES.some((p) => k.startsWith(p))) {
+          const val = ls.getItem(k);
+          keys.push({
+            key: k,
+            size: val ? val.length : 0,
+            isLegacy: !k.startsWith(STORAGE_CANDLES_PREFIX),
+          });
+        }
+      }
+    }
+    if (keys.length === 0) return 0;
+    keys.sort((a, b) => Number(b.isLegacy) - Number(a.isLegacy) || b.size - a.size);
+    const limit = maxToRemove > 0 ? Math.min(keys.length, maxToRemove) : keys.length;
+    let removed = 0;
+    for (let i = 0; i < limit; i++) {
+      try {
+        ls.removeItem(keys[i].key);
+        removed++;
+      } catch {
+        // Ignore individual removal errors
+      }
+    }
+    return removed;
+  } catch {
+    return 0;
+  }
+}
+
+export function safeLocalStorageSet(key, value, { isCandleCache = false } = {}) {
+  try {
+    const ls = globalThis.localStorage;
+    if (!ls || typeof ls.setItem !== 'function') return false;
+    const strVal = String(value ?? '');
+    try {
+      ls.setItem(key, strVal);
+      return true;
+    } catch {
+      const freedFirst = evictCandleCachesFromLocalStorage(isCandleCache ? key : '', isCandleCache ? 4 : 8);
+      if (freedFirst > 0) {
+        try {
+          ls.setItem(key, strVal);
+          return true;
+        } catch {
+          // Fall through to full candle cache purge for critical non-candle state
+        }
+      }
+      if (!isCandleCache) {
+        const freedAll = evictCandleCachesFromLocalStorage('', 0);
+        if (freedAll > 0) {
+          try {
+            ls.setItem(key, strVal);
+            return true;
+          } catch {
+            // Storage still full or blocked; never crash UI/click handlers
+          }
+        }
+      }
+      return false;
+    }
+  } catch {
+    return false;
+  }
+}
 
 export function escapeHtml(str) {
   return String(str ?? '')
@@ -57,11 +142,7 @@ export function saveLocalByokKeys(keys = {}) {
     alphaVantageApiKey: String(keys.alphaVantageApiKey || '').trim(),
     finnhubApiKey: String(keys.finnhubApiKey || '').trim(),
   };
-  try {
-    localStorage.setItem(STORAGE_KEY_BYOK_LOCAL, JSON.stringify(clean));
-  } catch {
-    // Ignore storage quota warnings
-  }
+  safeLocalStorageSet(STORAGE_KEY_BYOK_LOCAL, JSON.stringify(clean));
   return clean;
 }
 
@@ -1353,18 +1434,18 @@ export function scheduleDebouncedCloudSync() {
 export function saveLastOpenedSymbol(symbolCode) {
   if (!symbolCode) return;
   state.lastOpenedSymbolCode = String(symbolCode).trim().toUpperCase();
-  localStorage.setItem(STORAGE_KEY_LAST_SYMBOL, state.lastOpenedSymbolCode);
+  safeLocalStorageSet(STORAGE_KEY_LAST_SYMBOL, state.lastOpenedSymbolCode);
 }
 
 export function savePanelLayout() {
-  localStorage.setItem('ci_right_panel_w', String(Math.round(state.rightPanelWidth || 310)));
-  localStorage.setItem('ci_wl_top_ratio', String(Number(state.watchlistTopRatio || 0.52).toFixed(3)));
+  safeLocalStorageSet('ci_right_panel_w', String(Math.round(state.rightPanelWidth || 310)));
+  safeLocalStorageSet('ci_wl_top_ratio', String(Number(state.watchlistTopRatio || 0.52).toFixed(3)));
 }
 
 export function saveActiveTabId(tabId) {
   state.activeTabId = tabId || null;
   try {
-    if (tabId) localStorage.setItem(STORAGE_KEY_ACTIVE_TAB, String(tabId));
+    if (tabId) safeLocalStorageSet(STORAGE_KEY_ACTIVE_TAB, String(tabId));
     else localStorage.removeItem(STORAGE_KEY_ACTIVE_TAB);
   } catch {
     // Ignore storage quota errors
@@ -1386,7 +1467,7 @@ export function savePreferences(skipCloudSync = false) {
   delete sanitized.stooqApiKey;
   delete sanitized.alphaVantageApiKey;
   delete sanitized.finnhubApiKey;
-  localStorage.setItem(STORAGE_KEY_PREFS, JSON.stringify(sanitized));
+  safeLocalStorageSet(STORAGE_KEY_PREFS, JSON.stringify(sanitized));
   if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
@@ -1742,7 +1823,7 @@ export function saveSymbolsToStorage(skipCloudSync = false) {
     lastSuccessfulFetchMs: Number(s.lastSuccessfulFetchMs || 0),
     isCustom: Boolean(s.isCustom),
   }));
-  localStorage.setItem(STORAGE_KEY_SYMBOLS, JSON.stringify(clean));
+  safeLocalStorageSet(STORAGE_KEY_SYMBOLS, JSON.stringify(clean));
   if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
@@ -1753,7 +1834,7 @@ export function saveDrawings(chartKey, drawingsList, skipCloudSync = false) {
   if (normKey && Array.isArray(drawingsList)) {
     state.drawingsByChartId[normKey] = drawingsList.map(normalizeDrawingObject).filter(Boolean);
   }
-  localStorage.setItem(STORAGE_KEY_DRAWINGS, JSON.stringify(state.drawingsByChartId));
+  safeLocalStorageSet(STORAGE_KEY_DRAWINGS, JSON.stringify(state.drawingsByChartId));
   if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
@@ -1823,7 +1904,7 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
       t.activeDrawingColorHex || t.activeDrawingColor || state.chartPreferences.defaultDrawingColorHex || '#2962FF',
     activeDrawingWidthPx: Number(t.activeDrawingWidthPx || state.chartPreferences.defaultDrawingWidthPx || 2.0),
   }));
-  localStorage.setItem(STORAGE_KEY_OPEN_TABS, JSON.stringify(clean));
+  safeLocalStorageSet(STORAGE_KEY_OPEN_TABS, JSON.stringify(clean));
   if (!skipCloudSync) {
     suspendFocusPull(15000);
     state.chartPreferences.preferencesUpdatedAtMs = Date.now();
@@ -1872,11 +1953,11 @@ export function saveCandlesToCache(key, candles, maxLimit = 5000, symbolCode = '
   state.candleCache[key] = normalized;
   _storeSingleton.candleCacheRev = (_storeSingleton.candleCacheRev || 1) + 1;
   _resolvedCandlesMemo.clear();
-  try {
-    localStorage.setItem(STORAGE_CANDLES_PREFIX + key, JSON.stringify(normalized.slice(-1500)));
-  } catch {
-    // Ignore storage quota warnings
-  }
+  safeLocalStorageSet(
+    STORAGE_CANDLES_PREFIX + key,
+    JSON.stringify(normalized.slice(-LOCAL_CANDLE_CACHE_MAX_BARS)),
+    { isCandleCache: true }
+  );
 }
 
 export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {

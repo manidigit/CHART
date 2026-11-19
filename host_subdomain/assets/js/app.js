@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.47.39';
+import { I18nManager } from './core/i18n.js?v=1.47.40';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -11,6 +11,7 @@ import {
   saveActiveTabId,
   saveLocalByokKeys,
   savePanelLayout,
+  safeLocalStorageSet,
   escapeHtml,
   sanitizeSymbolCode,
   getCachedOrAggregatedCandles,
@@ -38,7 +39,7 @@ import {
   clearTabStructuralForecast,
   invalidateTabStructuralForecastIfStale,
   reconcileTabStructuralForecastOnRender,
-} from './core/store.js?v=1.47.39';
+} from './core/store.js?v=1.47.40';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -60,30 +61,30 @@ import {
   uploadHistoricalImport,
   fetchImportBatches,
   clearChronos2TimerForTab,
-} from './services/apiService.js?v=1.47.39';
-import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.39';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.39';
-import { GapDetector } from './algorithms/gapDetector.js?v=1.47.39';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.39';
-import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.39';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.39';
-import { renderLoginScreen } from './views/loginView.js?v=1.47.39';
+} from './services/apiService.js?v=1.47.40';
+import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.40';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.40';
+import { GapDetector } from './algorithms/gapDetector.js?v=1.47.40';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.40';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.40';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.40';
+import { renderLoginScreen } from './views/loginView.js?v=1.47.40';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.47.39';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.39';
+} from './views/headerView.js?v=1.47.40';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.40';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.47.39';
-import { renderSettingsModal } from './views/settingsView.js?v=1.47.39';
-import { renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=1.47.39';
-import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=1.47.39';
-import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.47.39';
-import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.47.39';
+} from './views/watchlistView.js?v=1.47.40';
+import { renderSettingsModal } from './views/settingsView.js?v=1.47.40';
+import { renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=1.47.40';
+import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=1.47.40';
+import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.47.40';
+import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.47.40';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -112,7 +113,7 @@ function applyTheme() {
     document.body.classList.toggle('theme-dark', state.isDarkTheme);
     document.body.classList.toggle('theme-light', !state.isDarkTheme);
   }
-  localStorage.setItem('ci_theme_dark', state.isDarkTheme ? 'true' : 'false');
+  safeLocalStorageSet('ci_theme_dark', state.isDarkTheme ? 'true' : 'false');
 }
 
 function getActiveTab() {
@@ -462,7 +463,8 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
   }
 
   saveOpenTabs();
-  syncSymbolNow(symbolCode, tf, renderApp);
+  const needsFullBackfill = !cached || cached.length < 30;
+  syncSymbolNow(symbolCode, tf, renderApp, needsFullBackfill);
 }
 
 function computePresetBarCount(candles, rk) {
@@ -2199,6 +2201,7 @@ function bindSettingsForms() {
 }
 
 document.addEventListener('click', async (e) => {
+  try {
   const el = e.target.closest('[data-action]');
   if (!el) {
     if (state.activeRailPopup && !e.target.closest('.rail-flyout-menu') && !e.target.closest('.tool-rail-picker-wrap')) {
@@ -3359,6 +3362,10 @@ document.addEventListener('click', async (e) => {
       await syncSymbolNow(code, sym.timeframe || 'M15', renderApp, false);
     }
   }
+  } catch (err) {
+    console.error('[Chart Intelligence] Click handler failed:', err);
+    renderApp();
+  }
 });
 
 document.addEventListener('input', (e) => {
@@ -3449,7 +3456,7 @@ document.addEventListener('change', async (e) => {
   }
   if (action === 'toggle-remember-creds') {
     state.rememberCredentials = Boolean(el.checked);
-    localStorage.setItem('ci_remember_creds', state.rememberCredentials ? 'true' : 'false');
+    safeLocalStorageSet('ci_remember_creds', state.rememberCredentials ? 'true' : 'false');
     if (!state.rememberCredentials) {
       state.savedPassword = '';
       localStorage.removeItem('ci_saved_password');

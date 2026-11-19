@@ -6,12 +6,12 @@ import {
   SCENARIO_IDS,
   SCENARIO_STATUS,
   enforceMonotonicQuantiles,
-} from './forecastContract.js?v=1.47.39';
-import { extractForecastFeatures } from './featureExtractor.js?v=1.47.39';
+} from './forecastContract.js?v=1.47.40';
+import { extractForecastFeatures } from './featureExtractor.js?v=1.47.40';
 import {
   clamp,
   fitAndEvaluateScenarioLogit,
-} from './statisticalTests.js?v=1.47.39';
+} from './statisticalTests.js?v=1.47.40';
 
 function normalCdf(z) {
   const t = 1 / (1 + 0.2316419 * Math.abs(z));

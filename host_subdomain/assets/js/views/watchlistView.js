@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.39';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.47.39';
-import { state, getAssetClass, escapeHtml, getInstrumentSpec, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.39';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.47.40';
+import { state, getAssetClass, escapeHtml, getInstrumentSpec, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.40';
 
 export function getSymbolCategoryKey(symbolCode) {
   const code = String(symbolCode || '').toUpperCase();

@@ -23,9 +23,10 @@ import {
   invalidateTabChronosIfStale,
   invalidateTabStructuralForecastIfStale,
   isFocusPullSuspended,
-} from '../core/store.js?v=1.47.39';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.39';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.39';
+  safeLocalStorageSet,
+} from '../core/store.js?v=1.47.40';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.40';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
@@ -34,7 +35,7 @@ let pendingWorkspaceSync = false;
 function clearLocalAuthSession(clearOfflineVerifier = false) {
   localStorage.removeItem('ci_session_token');
   localStorage.removeItem('ci_saved_password');
-  localStorage.setItem('ci_auto_authenticated', 'false');
+  safeLocalStorageSet('ci_auto_authenticated', 'false');
   state.isAuthenticated = false;
   if (clearOfflineVerifier) {
     localStorage.removeItem(STORAGE_OFFLINE_SALT);
@@ -64,8 +65,8 @@ async function saveOfflinePasswordVerifier(password) {
       .join('');
     const hashHex = await computeSaltedPasswordDigest(password, saltHex);
     if (hashHex) {
-      localStorage.setItem(STORAGE_OFFLINE_SALT, saltHex);
-      localStorage.setItem(STORAGE_OFFLINE_HASH, hashHex);
+      safeLocalStorageSet(STORAGE_OFFLINE_SALT, saltHex);
+      safeLocalStorageSet(STORAGE_OFFLINE_HASH, hashHex);
     }
   } catch {
     // Ignore WebCrypto unavailable
@@ -131,7 +132,7 @@ export async function syncServerAuthStatus() {
         state.isOwnerRegistered = true;
         state.ownerUsername = json.data.owner_username || state.ownerUsername;
         state.ownerEmail = json.data.owner_email || state.ownerEmail;
-        localStorage.setItem('ci_auto_authenticated', 'true');
+        safeLocalStorageSet('ci_auto_authenticated', 'true');
         return;
       }
     } catch {
@@ -156,11 +157,11 @@ export async function syncServerAuthStatus() {
       state.isOwnerRegistered = Boolean(json.data.is_owner_registered);
       if (json.data.owner_username) {
         state.ownerUsername = json.data.owner_username;
-        localStorage.setItem('ci_owner_username', state.ownerUsername);
+        safeLocalStorageSet('ci_owner_username', state.ownerUsername);
       }
       if (json.data.owner_email) {
         state.ownerEmail = json.data.owner_email;
-        localStorage.setItem('ci_owner_email', state.ownerEmail);
+        safeLocalStorageSet('ci_owner_email', state.ownerEmail);
       }
       if (json.data.is_authenticated) {
         state.isAuthenticated = true;
@@ -201,17 +202,17 @@ export async function loginOrRegisterOwner(username, email, password) {
       state.isAuthenticated = true;
       state.ownerUsername = (json.data && json.data.owner_username) || username;
       state.ownerEmail = (json.data && json.data.owner_email) || email || state.ownerEmail;
-      localStorage.setItem('ci_owner_username', state.ownerUsername);
-      if (state.ownerEmail) localStorage.setItem('ci_owner_email', state.ownerEmail);
+      safeLocalStorageSet('ci_owner_username', state.ownerUsername);
+      if (state.ownerEmail) safeLocalStorageSet('ci_owner_email', state.ownerEmail);
 
       const token = json.data && json.data.session_token;
       if (token) {
-        localStorage.setItem('ci_session_token', token);
+        safeLocalStorageSet('ci_session_token', token);
       }
       localStorage.removeItem('ci_saved_password');
 
       if (state.rememberCredentials) {
-        localStorage.setItem('ci_auto_authenticated', 'true');
+        safeLocalStorageSet('ci_auto_authenticated', 'true');
         await saveOfflinePasswordVerifier(password);
       } else {
         localStorage.removeItem('ci_auto_authenticated');
@@ -233,7 +234,7 @@ export async function loginOrRegisterOwner(username, email, password) {
       (await verifyOfflinePassword(password))
     ) {
       state.isAuthenticated = true;
-      localStorage.setItem('ci_auto_authenticated', 'true');
+      safeLocalStorageSet('ci_auto_authenticated', 'true');
       return { ok: true };
     }
     return { ok: false, errorKey: 'error_invalid_credentials' };
@@ -258,7 +259,7 @@ export async function updateOwnerEmailOnServer(email) {
     const json = await res.json();
     if (json && json.ok) {
       state.ownerEmail = email;
-      localStorage.setItem('ci_owner_email', email);
+      safeLocalStorageSet('ci_owner_email', email);
       return { ok: true };
     }
     return { ok: false, errorKey: mapAuthErrorKey(res.status, json, 'error_invalid_email') };
@@ -286,7 +287,7 @@ export async function updateOwnerPasswordOnServer(newPassword) {
     if (json && json.ok) {
       const nextToken = json.data && json.data.session_token;
       if (nextToken) {
-        localStorage.setItem('ci_session_token', nextToken);
+        safeLocalStorageSet('ci_session_token', nextToken);
       }
       localStorage.removeItem('ci_saved_password');
       if (state.rememberCredentials) {
@@ -326,7 +327,7 @@ export async function confirmPasswordResetCode(email, code, newPassword) {
     if (json && json.ok) {
       const nextToken = json.data && json.data.session_token;
       if (nextToken) {
-        localStorage.setItem('ci_session_token', nextToken);
+        safeLocalStorageSet('ci_session_token', nextToken);
       }
       localStorage.removeItem('ci_saved_password');
       if (state.rememberCredentials) {
@@ -576,7 +577,7 @@ export async function downloadWorkspaceSync() {
           }
         }
         state.drawingsByChartId = mergedDrawings;
-        localStorage.setItem('ci_drawings_v2', JSON.stringify(state.drawingsByChartId));
+        safeLocalStorageSet('ci_drawings_v2', JSON.stringify(state.drawingsByChartId));
       }
 
       const localPrefsSnapshot = { ...(state.chartPreferences || {}) };
@@ -721,7 +722,7 @@ export async function downloadWorkspaceSync() {
         ws.open_tabs.lastOpenedSymbolCode
       ) {
         state.lastOpenedSymbolCode = String(ws.open_tabs.lastOpenedSymbolCode).trim().toUpperCase();
-        localStorage.setItem('ci_last_opened_symbol', state.lastOpenedSymbolCode);
+        safeLocalStorageSet('ci_last_opened_symbol', state.lastOpenedSymbolCode);
       }
       if (incomingOpenTabs.length > 0 && (!preserveLocalTabSelection || !state.openTabs || state.openTabs.length === 0)) {
         const existingBySym = new Map((state.openTabs || []).map((et) => [et.symbolCode, et]));

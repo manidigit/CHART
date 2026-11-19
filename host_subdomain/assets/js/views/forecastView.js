@@ -1,4 +1,4 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.39';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
 import {
   RENDER_MODES,
   FORECAST_STATUS,
@@ -11,12 +11,12 @@ import {
   SELECTION_MODE,
   normalizeRenderMode,
   clampHorizonBars,
-} from '../forecast/forecastContract.js?v=1.47.39';
-import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.47.39';
-import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.39';
-import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.39';
+} from '../forecast/forecastContract.js?v=1.47.40';
+import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.47.40';
+import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.40';
+import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.40';
 
-import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.39';
+import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.40';
 
 const MODEL_OVERLAY_COLORS = {
   empirical_analogs: '#F59E0B',

@@ -5,7 +5,7 @@ import {
   getCandleCloseMsForCalendar,
   inspectCalendarGaps,
   resolveCalendarSpec,
-} from './calendarRegistry.js?v=1.47.39';
+} from './calendarRegistry.js?v=1.47.40';
 
 export const CONTRACT_VERSION = 'forecast-contract/v2';
 export const LEGACY_CONTRACT_VERSION = 'forecast-contract/v1';
