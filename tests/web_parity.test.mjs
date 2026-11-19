@@ -1411,3 +1411,18 @@ test('FORECAST-DATA-SOURCE-GUARD-01: persisted chart tabs and symbol switching n
   assert.match(switchTab, /existing\.provider = provider/);
   assert.match(switchTab, /provider:\s*provider,\s*timeframe: tf/);
 });
+
+
+test('FORECAST-NEW-EVALUATION-01: New Native workspace reuses Legacy Walk-Forward and Ledger panels; Ledger rejects open and duplicate candles', async () => {
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+  const ledgerSource = await readFile(new URL('../host_subdomain/assets/js/forecast/forecastLedger.js', import.meta.url), 'utf8');
+  assert.match(appSource, /usesNativeEvaluation\s*=\s*selected === 'structural' && isNativeModelSelected/);
+  assert.match(appSource, /renderBacktestPanel\(nativeEvaluation/);
+  assert.match(appSource, /renderLedgerPanel\(Number\(activeTab\?\.decimals \|\| 2\), isFa\)/);
+  assert.match(viewSource, /export function renderBacktestPanel\(/);
+  assert.match(viewSource, /export function renderLedgerPanel\(/);
+  assert.match(ledgerSource, /PriceFormatter\.isCandleClosed\(/);
+  assert.match(ledgerSource, /const byOpenTime = new Map\(\)/);
+  assert.match(ledgerSource, /Array\.from\(byOpenTime\.values\(\)\)\.sort/);
+});
