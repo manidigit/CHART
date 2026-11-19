@@ -107,7 +107,7 @@
 | `FCST-EVAL-01` | P1 | **چرخه ارزیابی و Ledger هنوز در New به‌صورت یک قابلیت کامل و قابل اتکا عرضه نشده است؛ بخشی از موتور ارزیابی Native وجود دارد.** | مسیر Native با `buildForecastForTab()` از `evaluateWalkForward()` استفاده می‌کند و نتیجه OOS را به Adapter می‌دهد. در مقابل، `ForecastLedger` فعلی بر `localStorage` متکی است (حداکثر ۱۲۰ Snapshot و ۲۴۰ رویداد Lifecycle)، Sync سرور در UI صریحاً غیرفعال است و پنل Ledger/Backtest در Forecast Studio باقی مانده؛ Historical Replay مستقل نیز موجود نیست. | آزمون زنجیره Ledger و maturity اضافه شود؛ سپس قرارداد persistence و گزارش OOS در New طراحی شود. Replay جداگانه ممیزی شود. | `OPEN / PARTIAL — LOCAL_ONLY_AND_UI_GAP` |
 | `FCST-ENS-01` | P2 | **Calibrated Ensemble مسیر اجرایی در Structural JS ندارد.** | مسیر `ensemble` در `structuralForecastEngine.js` وجود ندارد؛ گزینه New غیرفعال شده است. | تا زمانی که وزن‌دهی، آموزش/کالیبراسیون، ارزیابی OOS و تست مقایسه وجود ندارد، غیرفعال بماند. | `OPEN / NOT_IMPLEMENTED` |
 | `FCST-LEGACY-01` | P1 | **هم‌زیستی Legacy و New نیازمند کنترل overlay و مسیرهای مستقل است.** | Legacy حفظ شده؛ New انتخاب‌گر و Renderer جدا دارد؛ خاموش‌سازی Legacy هنوز مجاز نیست. | هر قابلیت پس از پذیرش New، با Feature Flag و آزمون rollback جداگانه از Legacy خارج شود. | `OPEN / PARALLEL_SYSTEMS` |
-| `FCST-DOC-01` | P2 | **تعارض تاریخی در مستندات Forecast پس از آرشیو قدیمی و پیاده‌سازی مجدد New.** | بعضی اسناد قدیمی Forecast را کاملاً Archived معرفی می‌کنند، در حالی که مسیر Native JS New دوباره پیاده‌سازی شده است. | سند Migration مرجع وضعیت جاری باشد؛ اسناد تاریخی با لینک به وضعیت جاری علامت‌گذاری شوند، نه بازنویسی بدون ممیزی. | `OPEN / DOC_RECONCILIATION` |
+| `FCST-LEDGER-02` | P1 | **اعتبارسنجی ورودی ارزیابی Ledger در برابر کندل باز و ترتیب داده کافی نیست.** | `evaluateMaturedForecasts()` در حال حاضر کندل‌ها را بر اساس `close > 0` فیلتر می‌کند و صراحتاً `is_closed !== false`، یکتایی timestamp یا ترتیب زمانی را کنترل نمی‌کند؛ مسیر فعلی UI معمولاً کندل‌های ذخیره‌شده را می‌دهد، اما قرارداد خود متد محافظ کافی ندارد. | پیش از اتکا به Ledger، ورودی را به کندل‌های بسته، مرتب و یکتا محدود و آزمون forming-tail / duplicate / out-of-order اضافه کنیم. | `OPEN / INPUT_VALIDATION_GAP` |\n| `FCST-DOC-01` | P2 | **تعارض تاریخی در مستندات Forecast پس از آرشیو قدیمی و پیاده‌سازی مجدد New.** | بعضی اسناد قدیمی Forecast را کاملاً Archived معرفی می‌کنند، در حالی که مسیر Native JS New دوباره پیاده‌سازی شده است. | سند Migration مرجع وضعیت جاری باشد؛ اسناد تاریخی با لینک به وضعیت جاری علامت‌گذاری شوند، نه بازنویسی بدون ممیزی. | `OPEN / DOC_RECONCILIATION` |
 
 ### ۵.۱. شواهد CI آخرین اصلاح Chronos-2
 
@@ -129,4 +129,8 @@
 - handler به‌روزرسانی Ledger در UI صریحاً اعلام می‌کند Server Sync در این Web build فعال نیست. بنابراین این Ledger، دفترکل ابری/چنددستگاهی محسوب نمی‌شود.
 - پنل گزارش Ledger و Backtest در Forecast Studio قرار دارد و در New Structural به‌عنوان workflow کامل عرضه نشده؛ Historical Replay نیز هنوز مستقل و قابل پذیرش نیست.
 - تست `FORECAST-LEDGER-01` برای زنجیره Snapshot/Lifecycle و جلوگیری از ارزیابی تکراری اضافه شد. این تست، پذیرش persistence ابری یا Replay نیست.
+
+### ۵.۳. نکته تکمیلی Ledger برای پیگیری بعدی
+
+متد `evaluateMaturedForecasts()` اکنون هر ورودی دارای `close > 0` را در سری ارزیابی می‌پذیرد؛ این شرط به‌تنهایی تضمین نمی‌کند کندل بسته باشد یا timestampها یکتا و مرتب باشند. مسیر فعلی از کندل‌های ذخیره‌شده استفاده می‌کند، اما این فرض در مرز متد enforce نشده است. مورد با شناسه `FCST-LEDGER-02` ثبت شد تا قبل از اتکای عملیاتی به Ledger، با تست forming-tail، duplicate و out-of-order بسته شود.
 
