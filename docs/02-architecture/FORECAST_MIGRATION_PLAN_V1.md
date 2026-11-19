@@ -652,3 +652,7 @@ Workflow run `44496501529` برای commit `fbcb55082f20e50f82a57c3b6b9c3770f5fe
 ### 18.4. ریسک ورودی ارزیابی Ledger
 
 در ممیزی Ledger مشخص شد `evaluateMaturedForecasts()` صرفاً `close > 0` را برای پاک‌سازی کندل‌ها اعمال می‌کند و در مرز متد، بسته‌بودن کندل، یکتایی timestamp و ترتیب زمانی را enforce نمی‌کند. چون maturity نباید با کندل در حال تشکیل جلو بیفتد، این مورد با شناسه `FCST-LEDGER-02` در دفتر مشکلات ثبت شده است؛ رفع آن و آزمون forming-tail/duplicate/out-of-order پیش از پذیرش کامل Ledger الزامی است.
+
+### 18.5. سخت‌سازی TradingView-only در Workspaceهای قدیمی
+
+یک ریسک باقیمانده در Hydration کشف و اصلاح شد: `tab.provider` ذخیره‌شده از نسخه‌های قدیمی می‌توانست بدون بررسی allow-list وارد کلید کش شود. اکنون Hydration تب و مسیر تعویض نماد، Provider را با `isProviderEnabled()` اعتبارسنجی و هر مقدار غیر از `tvdatafeed` را به TradingView نرمال می‌کند. تست `FORECAST-DATA-SOURCE-GUARD-01` اضافه شد و نسخه ورودی وب به `1.47.19` افزایش یافت. این اصلاح مانع استفاده ناخواسته از cacheهای Provider قدیمی در تب‌های persisted می‌شود؛ نتیجه نهایی CI در گزارش بعدی ثبت خواهد شد.
