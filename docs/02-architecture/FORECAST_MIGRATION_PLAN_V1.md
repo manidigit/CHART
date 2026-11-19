@@ -648,3 +648,7 @@ Workflow run `44496501529` برای commit `fbcb55082f20e50f82a57c3b6b9c3770f5fe
 ### 18.3. اصلاح دامنه واقعی Ledger و Walk-forward
 
 ممیزی تکمیلی نشان داد موتور `evaluateWalkForward()` در مسیر Native از طریق `buildForecastForTab()` اجرا می‌شود و خروجی OOS به Adapter مدل می‌رسد؛ بنابراین این موتور از نظر کد کاملاً غایب نیست. همچنین `ForecastLedger` در Forecast Studio وجود دارد، اما ذخیره‌سازی آن محلی (`localStorage`) و محدود به ۱۲۰ Snapshot/۲۴۰ رویداد Lifecycle است و Server Sync فعال نیست. آنچه هنوز برای New پذیرفته نشده، workflow یکپارچه UI/گزارش، persistence قابل اتکا و چنددستگاهی، تست lifecycle کامل و Historical Replay مستقل است. این اصلاح، برچسب‌های Pending در New را تغییر نمی‌دهد؛ آن برچسب‌ها وضعیت پذیرش قابلیت در New را نشان می‌دهند، نه نبود هرگونه کد در Legacy یا موتورهای مشترک.
+
+### 18.4. ریسک ورودی ارزیابی Ledger
+
+در ممیزی Ledger مشخص شد `evaluateMaturedForecasts()` صرفاً `close > 0` را برای پاک‌سازی کندل‌ها اعمال می‌کند و در مرز متد، بسته‌بودن کندل، یکتایی timestamp و ترتیب زمانی را enforce نمی‌کند. چون maturity نباید با کندل در حال تشکیل جلو بیفتد، این مورد با شناسه `FCST-LEDGER-02` در دفتر مشکلات ثبت شده است؛ رفع آن و آزمون forming-tail/duplicate/out-of-order پیش از پذیرش کامل Ledger الزامی است.
