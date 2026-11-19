@@ -2614,6 +2614,11 @@ document.addEventListener('click', async (e) => {
       savePreferences();
       renderApp();
     }
+  } else if (action === 'set-forecast-replay-windows') {
+    const requestedWindows = Number(el.getAttribute('data-windows') || 3);
+    state.chartPreferences.forecastReplayWindowCount = [3, 5, 10].includes(requestedWindows) ? requestedWindows : 3;
+    savePreferences();
+    renderApp();
   } else if (action === 'run-forecast-replay' && activeTab) {
     const isFa = i18n.getCurrentLanguage() === 'fa';
     state._forecastReplayResult = {
@@ -2624,7 +2629,7 @@ document.addEventListener('click', async (e) => {
       reason: isFa ? 'بازپخش در حال اجراست؛ داده آینده فقط برای امتیازدهی استفاده می‌شود.' : 'Replay is running; future candles are scoring-only.',
     };
     renderApp();
-    runHistoricalForecastReplay(activeTab, { maxWindows: 3 })
+    runHistoricalForecastReplay(activeTab, { maxWindows: Number(state.chartPreferences.forecastReplayWindowCount || 3) })
       .then((replay) => {
         showFloatingToast(replay.status === 'COMPLETED'
           ? (isFa ? 'بازپخش تاریخی با موفقیت اجرا شد.' : 'Historical replay completed.')
