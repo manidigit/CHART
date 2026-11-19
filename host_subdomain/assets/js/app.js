@@ -798,10 +798,24 @@ function renderForecastWorkspaceContent(activeTab) {
   const needsNativeEvaluation = usesNativeEvaluation || nativeTab !== 'overview';
   const nativeEvaluation = needsNativeEvaluation ? buildForecastForTab(activeTab, { horizonBars: horizon, selectedModelId: usesNativeEvaluation ? nativeModelId : (activeTab?.selectedForecastModelId || 'AUTO'), workerUrl: '' })?.result : null;
   if (nativeEvaluation) state._lastForecastResult = nativeEvaluation;
+  const structuralForecast = activeTab?.structuralForecast;
+  const structuralPreview = !usesNativeEvaluation && nativeTab === 'overview' && structuralForecast?.status === 'READY' && Array.isArray(structuralForecast.forecast)
+    ? {
+        points: structuralForecast.forecast.map((point) => ({ ...point, q50: Number(point.q50_median) })),
+        renderMode: activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART',
+        selectedChartModelId: activeTab?.structuralForecastModel || 'structural_wave_js',
+        representativePaths: (structuralForecast.model_paths || []).map((path) => ({
+          id: path.path_id || 'ANALOG',
+          label: path.label || 'Historical Analog',
+          closes: (path.points || []).map((point) => Number(point.price)),
+        })),
+      }
+    : null;
+  if (structuralPreview) state._lastForecastResult = structuralPreview;
   const nativePanel = nativeTab === 'overview'
     ? (usesNativeEvaluation
       ? renderOverviewPanel(nativeEvaluation, activeTab, Number(activeTab?.decimals || 2), isFa, state.forecastCoordView || 'independent')
-      : '<div class="ci-fc-card"><strong>' + (isFa ? 'نمای کلی مدل ساختاری' : 'Structural Model Overview') + '</strong><p style="font-size:12px;color:var(--text-muted);">' + (isFa ? 'برای مشاهده Fan، سناریوها، مسیرهای مقایسه‌ای و معیارهای مدل، یکی از مدل‌های Native را از بخش انتخاب مدل بالا انتخاب کنید. تنظیمات، Walk-Forward و Ledger در تب‌های دیگر همین صفحه در دسترس هستند.' : 'Select a Native model above to view the Fan chart, scenarios, model comparisons and metrics. Model configuration, Walk-Forward and Ledger remain available in the other tabs.') + '</p><div class="ltr-num" style="font-size:12px;">' + (isFa ? 'مدل انتخاب‌شده: ' : 'Selected model: ') + escapeHtml(activeTab?.structuralForecastModel || 'structural_wave_js') + ' · ' + escapeHtml(statusText) + '</div></div>')
+      : '<div class="ci-fc-card"><div class="row-between" style="gap:8px;flex-wrap:wrap;"><strong>' + (isFa ? 'نمای کلی مدل ساختاری' : 'Structural Model Overview') + '</strong><span class="ci-fc-status-badge">' + escapeHtml(statusText) + '</span></div>' + (structuralPreview ? '<canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas" style="margin-top:10px;"></canvas>' : '<p style="font-size:12px;color:var(--text-muted);">' + escapeHtml(activeTab?.structuralForecastError || (isFa ? 'برای نمایش مسیر، ابتدا تحلیل ساختاری را اجرا کنید.' : 'Run structural analysis to generate a preview path.')) + '</p>') + '<div class="ltr-num" style="font-size:12px;margin-top:8px;">' + (isFa ? 'مدل انتخاب‌شده: ' : 'Selected model: ') + escapeHtml(activeTab?.structuralForecastModel || 'structural_wave_js') + (structuralForecast?.engine?.params?.structure_bias ? ' · ' + escapeHtml(structuralForecast.engine.params.structure_bias) : '') + (structuralForecast?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(structuralForecast.engine.params.volatility_regime) : '') + '</div><p style="font-size:11px;color:var(--text-muted);">' + (isFa ? 'تنظیمات، Walk-Forward و Ledger در تب‌های دیگر همین صفحه در دسترس‌اند. برای Fan/Scenario آماری و مقایسه Native، یک مدل Native انتخاب کنید.' : 'Configuration, Walk-Forward and Ledger are available in the other tabs. Select a Native model for statistical Fan/Scenario and Native comparisons.') + '</p></div>')
     : nativeTab === 'models'
       ? renderModelsPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa, { includeRemoteWorker: false })
       : nativeTab === 'backtest'
