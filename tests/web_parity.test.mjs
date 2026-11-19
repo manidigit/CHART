@@ -1440,3 +1440,14 @@ test('FORECAST-NEW-MODEL-CONFIG-01: New Native workspace reuses model weights an
   assert.match(viewSource, /options\.includeRemoteWorker === false/);
   assert.match(appSource, /Native Model Configuration|تنظیمات مدل‌های Native/);
 });
+
+
+test('FORECAST-NEW-MODEL-CONFIG-02: model weight controls resolve the rendered data-model-id and invalidate stale forecasts', async () => {
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+  assert.match(viewSource, /data-action="set-forecast-model-weight" data-model-id=/);
+  assert.match(appSource, /getAttribute\('data-model-id'\) \|\| el\.getAttribute\('data-model'\)/);
+  assert.match(appSource, /function invalidateForecastAfterModelConfigChange\(tab, changedModelId = ''\)/);
+  assert.match(appSource, /invalidateForecastAfterModelConfigChange\(activeTab, modelId\)/);
+  assert.match(appSource, /tab\.showStructuralForecast = false;\s*clearTabStructuralForecast\(tab\)/);
+});
