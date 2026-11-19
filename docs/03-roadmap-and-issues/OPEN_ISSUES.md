@@ -1,6 +1,6 @@
 # CHART — فهرست مسائل باز، نواقص راستی‌آزمایی‌شده و وضعیت ممیزی (`OPEN_ISSUES`)
 
-> **نسخه:** `1.45.2` · **تاریخ ممیزی و تکمیل:** `2026-11-19`  
+> **نسخه:** `1.45.3` · **تاریخ ممیزی و تکمیل:** `2026-11-19`  
 > این فایل وضعیت واقعی مسائل باز (`INF-01` تا `SEC-01` و یافته‌های ممیزی `AUTH-01` / `INF-03` / `ENG-01b` / `PAR-01` / `ENG-03b` / `QA-01` / `UI-02` / `IND-01` و وضعیت آرشیوشده بخش پیش‌بینی) را روی **PHP + MariaDB (`host_subdomain`)**، **کلاینت وب**، **اپلیکیشن اندروید (Kotlin/Compose)** و **CI/CD (`build-apk.yml`)** ثبت می‌کند.
 
 ---
@@ -101,11 +101,14 @@
 | شناسه | اولویت | مسئله / ریسک | شواهد فعلی | تصمیم یا اقدام بعدی | وضعیت |
 |---|---|---|---|---|---|
 | `FCST-RT-01` | P0 | **نبود Runtime اجرایی Python روی هاست اشتراکی**؛ Chronos-2 و سایر Python Workerها به اجرای Python وابسته‌اند و QueueManager از PHP `exec()` استفاده می‌کند. | `Chronos2QueueManager.php` در صورت غیرفعال‌بودن `exec()` خطای صریح می‌دهد؛ محدودیت واقعی هاست گزارش شده است. CI فقط `py_compile` و نصب پکیج در Runner را ثابت می‌کند، نه اجرا روی cPanel. | در New غیرفعال بماند. بعداً گزینه‌های Runtime مستقل، امنیت، latency، هزینه و نگهداری مقایسه شوند؛ هیچ سرویس یا هزینه‌ای فعلاً ایجاد نشود. | `OPEN / BLOCKED_BY_RUNTIME` |
-| `FCST-DEPLOY-01` | P0 | **ناپایداری دسترسی Deployment Secrets در Runهای قبلی**؛ وضعیت هر انتشار باید از خروجی انتقال فایل تأیید شود. | Run `44514401273` روی commit `2a9560000211eccc24d13b265b7d39480550a003` با خروجی صریح `deployed_files: 123` و `seeded_tvdatafeed_candles: 42291` پایان یافت؛ Runهای قبلی در بعضی موارد Secrets را در دسترس نداشتند. | وضعیت Secrets و نتیجه واقعی remote upload در هر Run کنترل شود؛ برای همین Run انتشار تأیید شده است. | `RESOLVED_FOR_RUN_44514401273 / DEPLOY_CONFIRMED` |
+| `FCST-DEPLOY-01` | P0 | **ناپایداری دسترسی Deployment Secrets در Runهای قبلی**؛ وضعیت هر انتشار باید از خروجی انتقال فایل تأیید شود. | Runهای `44514401273`، `44515169660` و `44515867849` با خروجی صریح `ok:true`, `deployed_files:123` و `seeded_tvdatafeed_candles:42291` پایان یافتند؛ Runهای قدیمی‌تر گاهی Secrets را نداشتند. | نتیجه واقعی remote upload در هر Run کنترل شود؛ سه انتشار پیاپی اخیر تأیید شده‌اند. | `STABLE_RECENTLY / DEPLOY_CONFIRMED_3_RUNS` |
 | `FCST-PROD-01` | P1 | **نبود آزمون مرورگر تعاملی روی نسخه Production** بعد از آخرین Deploy. | remote upload در Run `44514401273` با ۱۲۳ فایل تأیید شد؛ تست‌های Node و Build موفق‌اند، اما ابزار مرورگر تعاملی در این محیط در دسترس نبود و URL عمومی نیز از ابزار وب قابل دریافت نبود. | پیش از خاموش‌سازی Legacy، روی مرورگر واقعی ورود، انتخاب مدل، اجرای پیش‌بینی، رندر، Ledger، Walk-Forward و rollback را smoke-test کنید. | `OPEN / BROWSER_E2E_NOT_VERIFIED` |
 | `FCST-API-01` | P1 | **تست Provider guard در حال حاضر ایستا است، نه آزمون HTTP واقعی.** | `CHRONOS2-PROVIDER-GUARD-01` ترتیب کد allow-list را بررسی می‌کند؛ endpoint در محیط cPanel اجرا نشده است. | بعداً تست Integration برای رد Provider غیر از `tvdatafeed` و مسیر مجاز TradingView اضافه شود؛ بدون نیاز به اجرای مدل سنگین. | `OPEN / STATIC_TEST_ONLY` |
 | `FCST-EVAL-01` | P1 | **انتقال UI و چرخه کامل ارزیابی هنوز کامل نیست؛ موتور Walk-forward و Ledger موجودند و اکنون در New Native قابل استفاده‌اند.** | پنل‌های موجود `renderBacktestPanel()` و `renderLedgerPanel()` بدون بازنویسی به Workspace جدید Native متصل شدند؛ ارزیابی OOS از همان `buildForecastForTab()`/`evaluateWalkForward()` استفاده می‌کند. Ledger همچنان `localStorage` با سقف ۱۲۰ Snapshot و ۲۴۰ Lifecycle event است و Server Sync ندارد؛ Historical Replay مستقل نیز هنوز عرضه نشده است. | پذیرش UI/عملکرد New با CI و بررسی Production؛ persistence چنددستگاهی و Replay جداگانه در فهرست کارهای باز باقی بمانند. | `PARTIAL / NEW_NATIVE_UI_CONNECTED — LOCAL_ONLY` |
 | `FCST-ENS-01` | P2 | **Calibrated Ensemble مسیر اجرایی در Structural JS ندارد.** | مسیر `ensemble` در `structuralForecastEngine.js` وجود ندارد؛ گزینه New غیرفعال شده است. | تا زمانی که وزن‌دهی، آموزش/کالیبراسیون، ارزیابی OOS و تست مقایسه وجود ندارد، غیرفعال بماند. | `OPEN / NOT_IMPLEMENTED` |
+| `FCST-MODEL-CFG-01` | P1 | **تنظیمات فعال‌سازی/وزن/پارامتر مدل‌های Native در New در دسترس نبود.** | پنل موجود `renderModelsPanel()` به New Native منتقل شد؛ کنترل Worker خارجی عمداً از New حذف است. باگ خواندن شناسه وزن (`data-model-id`) و باقی‌ماندن خروجی stale نیز اصلاح شد. تست `FORECAST-NEW-MODEL-CONFIG-01/02` در Run `44515867849` پاس شد. | حفظ رگرسیون؛ تغییر وزن/پارامتر مدل باید Forecast قبلی را invalidate کند. | `CLOSED / NEW_UI_AND_CI_VERIFIED` |
+| `FCST-COMPARE-01` | P2 | **مقایسه بصری چندمدلی در New هنوز workflow مستقل ندارد.** | New عمداً فقط یک مدل را روی چارت اصلی رسم می‌کند؛ Walk-Forward جدول معیارهای چندمدلی را ارائه می‌کند، اما overlay/side-by-side comparison صریح در New موجود نیست. | در فاز بعدی Compare صریح با انتخاب مدل‌ها، رنگ/legend مستقل و کنترل عدم تداخل Renderer طراحی شود؛ تا آن زمان رسم هم‌زمان خودکار فعال نشود. | `OPEN / EXPLICIT_COMPARE_NOT_MIGRATED` |
+| `FCST-MODEL-QA-01` | P1 | **پذیرش کیفیت پیش‌بینی مدل‌ها با CI ساختاری اثبات نمی‌شود.** | تست‌های CI قرارداد، مسیر اجرا و Adapter را بررسی می‌کنند؛ امتیاز واقعی OOS به نماد/تایم‌فریم/افق و حجم نمونه وابسته است و هنوز گزارش پذیرش عملیاتی سراسری ثبت نشده است. | برای هر مدل و ترکیب نماد/تایم‌فریم، Walk-Forward با نمونه کافی، baseline و معیارهای مصوب اجرا و نتیجه نسخه‌دار ثبت شود؛ هیچ ادعای دقت از روی CI نشود. | `OPEN / OOS_ACCEPTANCE_PENDING` |
 | `FCST-LEGACY-01` | P1 | **هم‌زیستی Legacy و New نیازمند کنترل overlay و مسیرهای مستقل است.** | Legacy حفظ شده؛ New انتخاب‌گر و Renderer جدا دارد؛ خاموش‌سازی Legacy هنوز مجاز نیست. | هر قابلیت پس از پذیرش New، با Feature Flag و آزمون rollback جداگانه از Legacy خارج شود. | `OPEN / PARALLEL_SYSTEMS` |
 | `FCST-DATA-01` | P1 | **Provider ذخیره‌شده در تب‌های قدیمی می‌توانست cache key غیرمجاز بسازد.** | Hydration و تعویض نماد با `isProviderEnabled()` محدود به `tvdatafeed` شده‌اند؛ تست `FORECAST-DATA-SOURCE-GUARD-01` در Run `44514401273` پاس شد. | حفظ تست رگرسیون و کنترل هر مسیر جدید ورود داده. | `CLOSED / FIXED_AND_CI_VERIFIED` |
 | `FCST-LEDGER-02` | P1 | **اعتبارسنجی ورودی ارزیابی Ledger در برابر کندل باز و ترتیب داده ناکافی بود.** | `evaluateMaturedForecasts()` کندل باز را حذف، timestamp تکراری را deduplicate و ورودی را صعودی مرتب می‌کند؛ تست `FORECAST-NEW-EVALUATION-01` در Run `44514401273` پاس شد. | حفظ تست رگرسیون؛ آزمون مرورگری/داده‌ای عملی در مرحله Production verification. | `CLOSED_IN_CODE / CI_VERIFIED` |
@@ -174,3 +177,15 @@
 - Android: Debug APK build و Unit/Robolectric tests موفق؛ Artifact ID `14524956491`.
 - هشدارهای غیرمسدودکننده: deprecation مربوط به Node.js 20 در Actions و غیر executable بودن `gradlew` که Action موقتاً اصلاح و ادامه داده است.
 - آزمون مرورگر Production هنوز انجام نشده است؛ این مورد در `FCST-PROD-01` باز می‌ماند.
+
+
+### ۵.۸. اتصال تنظیمات مدل‌ها به New و نتیجه CI/Deploy — Run `44515867849` (2026-11-19)
+
+- Commit کد: `4c803143a719891e9d8840fbd94141b38772cdf5`.
+- تست‌های Web parity: **۲۳/۲۳ پاس، صفر شکست**؛ تست‌های `FORECAST-NEW-MODEL-CONFIG-01` و `FORECAST-NEW-MODEL-CONFIG-02` اضافه و پاس شدند.
+- پنل تنظیمات موجود مدل‌ها به New Native منتقل شد: فعال/غیرفعال‌سازی، وزن و پارامترها؛ بخش URL مربوط به Python Worker در New عمداً نمایش داده نمی‌شود.
+- mismatch شناسه اسلایدر وزن اصلاح شد؛ اکنون `data-model-id` خوانده می‌شود.
+- پس از تغییر پیکربندی، Forecast قبلیِ متأثر invalidate می‌شود تا نتیجه‌ای با تنظیمات قدیمی روی چارت باقی نماند.
+- PHP lint و استخراج داده TradingView موفق؛ Deploy cPanel با پاسخ `ok:true`, `deployed_files:123`, `seeded_tvdatafeed_candles:42291` تأیید شد.
+- Artifact وب و APK ساخته شدند؛ Android build و Unit/Robolectric tests نیز موفق بودند.
+- موارد کیفیت OOS، مقایسه بصری، Browser E2E، Runtime Python، Replay، Ensemble و Ledger cloud sync همچنان باز هستند و نباید با موفقیت CI بسته تلقی شوند.
