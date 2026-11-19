@@ -1,6 +1,6 @@
 # CHART Forecast — Legacy to New Native Parity Matrix
 
-- **Version:** 1.0.0
+- **Version:** 1.1.0
 - **Date:** 2026-11-19
 - **Branch under validation:** `forecast-completion-native-only`
 - **Purpose:** Record one-to-one feature parity and explicitly distinguish migrated features from runtime-blocked features.
@@ -70,3 +70,32 @@ Still required before declaring the entire migration complete:
 6. Acceptance review of OOS results per symbol/timeframe; no model may be called successful solely because it renders a path.
 
 **Release rule:** Do not close a feature because its UI exists. A feature is migrated only when its execution, data contract, failure states, persistence and acceptance evidence are all present.
+
+
+## 5. Status refresh — 2026-11-19
+
+This section supersedes any older status statement in this matrix that describes Replay or Ensemble as not implemented. Both now have an execution path in New Native; their statistical/operational acceptance remains open.
+
+### 5.1. Clarifications
+
+- **Historical Replay is implemented in New Native:** UTC From/To range; 3/5/10 replay windows; training data is sliced strictly before each anchor; future candles are used only as actuals for scoring; metrics include MAE percentage, 80% interval coverage and terminal direction accuracy; selected-window chart overlay; browser Play/Pause; last 20 runs stored locally and shown in a comparison table.
+- **Replay is not fully accepted:** large-history performance, independent leakage fixtures, date-boundary edge cases and browser E2E remain unverified.
+- **Ensemble is selectable and has an execution path:** this does not establish calibration quality, robustness or OOS superiority. It must not be presented as statistically accepted until those tests pass.
+- **Compare is implemented across Forecast Studio preview and Main Chart:** model visibility is explicit and persisted in preferences. Browser E2E for model switching, symbol/timeframe changes, path alignment and stale-overlay cleanup remains open.
+- **TradingView is the only permitted market-data source:** New Native forces the no-Python-worker path. Provider guards and static tests are evidence of code policy, not proof of live Production behavior.
+- **No Cron is part of the workflow:** forecast/replay are initiated by the user; browser playback is local UI behavior, not server scheduling.
+- **The current 33/33 Node test result and syntax checks are branch CI evidence only.** They do not replace browser E2E, live cPanel verification or forecast-quality evaluation.
+
+### 5.2. Startup regression recorded after the branch validation
+
+A duplicate `const horizon` declaration was found in `renderForecastWorkspaceContent()` on the default `main` branch and caused the workspace module to fail during initialization. The duplicate declaration was removed in commit `a6349d7`; the app cache key was bumped to `1.47.30` in commit `4bbcaed`. A subsequent GitHub fetch confirmed one remaining declaration in the function. Successful startup on the hosted site has not yet been independently verified.
+
+### 5.3. Release status
+
+The parity matrix is a code-transfer inventory, not a release sign-off. No Legacy feature should be retired until:
+1. the corresponding New behavior has a reproducible test;
+2. the real browser workflow is verified;
+3. data source, timeframe and candle-close alignment are confirmed;
+4. failure/empty-data behavior is correct;
+5. the user-visible result is attributable to the selected model; and
+6. rollback remains available until the acceptance window closes.
