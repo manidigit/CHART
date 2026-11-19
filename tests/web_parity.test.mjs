@@ -1464,12 +1464,12 @@ test('FORECAST-NEW-EVALUATION-01: New Native workspace reuses Legacy Walk-Forwar
 test('FORECAST-NEW-MODEL-CONFIG-01: New Native workspace reuses model weights and parameter controls without exposing a Python worker URL', async () => {
   const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
   const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
-  assert.match(appSource, /renderModelsPanel\(nativeEvaluation,[\s\S]*includeRemoteWorker:\s*false/);
-  assert.match(viewSource, /export function renderModelsPanel\(fc, decimals, isFa, options = \{\}\)/);
+  assert.match(appSource, /renderModelsPanel\(nativeEvaluation, Number\(activeTab\?\.decimals \|\| 2\), isFa\)/);
+  assert.match(viewSource, /export function renderModelsPanel\(fc, decimals, isFa\)/);
   assert.match(viewSource, /data-action="toggle-forecast-model"/);
   assert.match(viewSource, /data-action="set-forecast-model-weight"/);
   assert.match(viewSource, /data-action="set-forecast-model-param"/);
-  assert.match(viewSource, /options\.includeRemoteWorker === false/);
+  assert.doesNotMatch(viewSource, /ForecastWorkerClient|REMOTE_DL_WORKER_SPEC|ci-forecast-worker-url/);
   assert.match(appSource, /Models & Configuration|مدل‌ها و تنظیمات/);
 });
 
@@ -1506,7 +1506,7 @@ test('FORECAST-NEW-STUDIO-01: New Native workspace restores Forecast Studio work
   assert.ok(view.includes('buildForecastForTab(activeTab, overrides = {})'));
   assert.ok(view.includes('overrides.horizonBars'));
   assert.ok(view.includes('overrides.selectedModelId'));
-  assert.ok(view.includes("overrides.workerUrl !== undefined"));
+  assert.ok(view.includes("const workerUrl = ''"));
   assert.ok(app.includes("workerUrl: ''"));
   assert.ok(view.includes("providerId: activeTab.provider || 'tvdatafeed'"));
   assert.ok(!view.includes("providerId: activeTab.provider || 'twelvedata'"));
