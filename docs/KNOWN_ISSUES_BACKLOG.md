@@ -1,7 +1,7 @@
 # گزارش و لیست مشکلات فنی شناسایی‌شده (Known Issues Backlog)
 
-**تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۱۷ نوامبر ۲۰۲۶  
-**وضعیت:** موارد ۱ تا ۴ حل‌شده و تست‌شده در کدهای اجرایی؛ مورد ۵ باز و در دست اقدام (Open / P0)
+**تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۱۹ نوامبر ۲۰۲۶ (`v1.47.40`)  
+**وضعیت:** تمامی موارد ۱ تا ۱۳ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`39/39` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
 
 ---
 
@@ -59,10 +59,10 @@
 
 ---
 
-## ۵. عدم به‌روزرسانی و فریز چارت هنگام تغییر نماد از واچ‌لیست و سوئیچ تایم‌فریم (`Watchlist Symbol Switch & Timeframe Change Chart Stall`) — ⏳ باز / در دست اقدام (Open / P0)
+## ۵. عدم به‌روزرسانی و فریز چارت هنگام تغییر نماد از واچ‌لیست و سوئیچ تایم‌فریم (`Watchlist Symbol Switch & Timeframe Change Chart Stall`) — ✅ حل و تست شد (`v1.47.39–v1.47.40`)
 
 - **اولویت:** بحرانی (Critical / P0)
-- **تاریخ گزارش:** ۱۷ نوامبر ۲۰۲۶
+- **تاریخ گزارش:** ۱۷ نوامبر ۲۰۲۶ | **تاریخ رفع قطعی:** ۱۹ نوامبر ۲۰۲۶ (`v1.47.39` و `v1.47.40` — جزئیات کامل در بند ۱۳ پایین)
 - **شواهد و گزارش:**
   - با کلیک روی نمادهای مختلف در واچ‌لیست (Watchlist)، چارت فعال به‌روزرسانی نشده و روی نماد قبلی ثابت می‌ماند.
   - با کلیک روی گزینه‌های تایم‌فریم در نوار ابزار بالای چارت (M15، H1، H4، D1)، نمودار واکنش نشان نداده و کندل‌های تایم‌فریم جدید ترسیم نمی‌شوند.
@@ -259,4 +259,16 @@
   - **`host_subdomain/assets/js/app.js`:** اصلاح خوانش `engine?.params?.structure_bias` در نوار OHLC، هیدراته‌کردن `activeTab.candles`، تنظیم هم‌زمان `COMPUTING` پیش از رندر، و جایگزینی `.catch(() => {})` با ثبت صریح وضعیت `ERROR` و رندر مجدد بوم.
   - **کش‌باستینگ `v=1.47.1` و تست رگرسیون (`tests/web_parity.test.mjs`):** ارتقای همه ماژول‌های ES، `index.html`، `package.json` و `status.php` به `v=1.47.1`؛ افزودن تست‌های رگرسیون `reconcileTabStructuralForecastOnRender`، رسم بوم و هاور کراس‌هیر `Structural JS` و کنترل عدم وجود `.catch(() => {})` روی `requestStructuralForecastForTab` (**۱۲/۱۲ پاس** در `node --test tests/web_parity.test.mjs`).
   - **پاک‌سازی فایل‌های موقت و بلااستفاده (`v1.47.1`):** حذف پوشه آزمایشی `feasibility_test/`، استاب بلااستفاده `host_subdomain/assets/js/views/navigationView.js` (همراه با حذف `import` آن از `app.js`)، اسکریپت `host_subdomain/scripts/generate_chronos2_chart_preview.py` و تصویر تکراری `host_subdomain/data/chronos2/chronos2_spotbrent_chart_verification.png` (با حفظ `/archive/` و فایل‌های غیرفعال `Chronos-2` طبق تصمیمات قبلی؛ **۱۲/۱۲ پاس** پس از پاک‌سازی).
+
+---
+
+## ۱۳. رفع قطعی قفل شدن واچ‌لیست، ناهماهنگی نماد/تایم‌فریم و لود نشدن کندل‌های سهم دوم (`ARCH-02` و `STORAGE-QUOTA-01` · `v1.47.39–v1.47.40`) — ✅ حل و تست شد
+
+- **اولویت:** بحرانی (Critical / P0)
+- **تاریخ کشف و اصلاح:** ۱۹ نوامبر ۲۰۲۶
+- **علت‌های ریشه‌ای واقعی که در تست زنده کشف و حل شدند:**
+  1. **دوپاره‌شدن `store.js` در کش مرورگر (`ARCH-02` — `v1.47.39`):** ناهماهنگی `?v=` میان ماژول‌های میانی و `store.js` باعث لود شدن دو نمونه جداگانه از `state` می‌شد. با یکسان‌سازی کامل کل گراف ۲۶ فایل JS + `index.html` روی یک نسخه واحد (`?v=1.47.40`)، افزودن محافظ سراسری `globalThis.__CI_STORE_SINGLETON_V1__`، پاک‌سازی `.tv-ohlc-overlay` در `redrawActiveCanvas()` و محافظ `preserveLocalTabSelection` در `downloadWorkspaceSync()` برطرف شد.
+  2. **خطای پر شدن سقف ۵ مگابایتی `localStorage` هنگام کلیک روی سهم دوم واچ‌لیست (`STORAGE-QUOTA-01` — `v1.47.40`):** ذخیره ۱۵۰۰ کندل در `localStorage` برای هر سری باعث پرتاب `QuotaExceededError` بدون `try/catch` در `saveOpenTabsToStorage()` هنگام افزوده شدن تب دوم می‌شد و اجرای `openOrFocusSymbolTab()` را پیش از `syncSymbolNow()` و `renderApp()` متوقف می‌کرد. با پیاده‌سازی `safeLocalStorageSet()` + `evictCandleCachesFromLocalStorage()`، کاهش سقف کش کندل `localStorage` به `250` کندل (با حفظ `5000` کندل کامل در RAM و MariaDB)، عبور تمامی `localStorage.setItem`ها از `safeLocalStorageSet()`، ارسال `needsFullBackfill` در کلیک واچ‌لیست و `try/catch` روی رویداد کلیک برطرف شد.
+- **راستی‌آزمایی:** `node --check` روی هر ۲۶ فایل JS و **۳۹/۳۹ پاس** در `tests/web_parity.test.mjs` (شامل `ARCH-02` و `STORAGE-QUOTA-01`).
+
 

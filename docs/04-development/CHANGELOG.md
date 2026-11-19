@@ -23,6 +23,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Verified `node --check` on all 26 JS modules and **39/39** passing tests in `tests/web_parity.test.mjs` (added `STORAGE-QUOTA-01` simulating saturated/locked `localStorage` + static zero-bare-`localStorage.setItem` audit).
   - Updated `docs/04-development/CHANGELOG.md` and `docs/03-roadmap-and-issues/OPEN_ISSUES.md`.
 
+### Documentation (`FCST-DOC-01`: Full Repository Documentation Reconciliation to `v1.47.40`)
+- Reconciled all primary entry-point documents (`README.md`, `docs/README.md`, `docs/04-development/AGENTS.md`, `docs/03-roadmap-and-issues/OPEN_ISSUES.md`, `docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md`, `docs/KNOWN_ISSUES_BACKLOG.md`, `docs/04-development/PROJECT_GUIDE.md`, and `docs/02-architecture/FORECAST_MIGRATION_PLAN_V1.md`) to eliminate stale `v1.45.1` / "Forecast archived & disabled" / "Legacy active" / "CHART-STALL-01 open" contradictions for incoming AI agents and developers.
+- Documented the explicit live-vs-shelved-vs-archived boundary: `host_subdomain/` runs the 100% browser-native Unified Forecast Studio (with `Causal Historical Analogs` and `Structural JS` confirmed by owner testing, Legacy UI permanently removed in `v1.47.38`), `Python` / `Chronos-2` remain shelved until a dedicated Python server is provisioned, and `/archive/` is strictly read-only historical reference.
+- Fixed a broken literal `\n` Markdown table row in `docs/README.md` and codified mandatory `ARCH-02` (unified `?v=` across all 26 JS modules) and `STORAGE-QUOTA-01` (`safeLocalStorageSet()`) invariants in `AGENTS.md`.
+
 ---
 
 ## [1.47.39] - 2026-11-19
