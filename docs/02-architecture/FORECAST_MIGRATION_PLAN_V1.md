@@ -777,3 +777,13 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 - Structural Preview: در New Overview، خروجی واقعی Structural (`forecast[]` با `q50_median`, `q10`, `q90`) به قرارداد نمایشی Canvas نگاشت می‌شود؛ مسیرهای Historical Analog فقط به‌صورت illustrative overlay هستند و به‌عنوان احتمال معرفی نمی‌شوند.
 
 - Structural Overview status binding از متغیر local دیرتر تعریف‌شده مستقل شد تا خطای Temporal Dead Zone رخ ندهد.
+
+
+## 25. آخرین شواهد انتشار پس از اصلاح شکاف‌های New — 2026-11-19
+
+- Commit نهایی کد و مستندات: `2de2d880d5a98ded5cdd060b17fc3d06a412c510`.
+- Workflow run `44530137222`: `success` در Web و Android.
+- ۲۴/۲۴ تست وب پاس، PHP lint موفق، TradingView candle extraction موفق.
+- cPanel upload با ۱۲۳ فایل و snapshot `snapshot_20261119_131045` تأیید شد؛ ۴۲٬۲۹۱ کندل TradingView seed شدند.
+- Android APK و Unit/Robolectric tests موفق؛ artifact IDs: Web `14533451142`، APK `14533691355`.
+- باقی‌مانده‌های پذیرش در `OPEN_ISSUES.md` ثبت‌اند؛ به‌خصوص Browser E2E، Runtime Python، Replay و Ensemble.

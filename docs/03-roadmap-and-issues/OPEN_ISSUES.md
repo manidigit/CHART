@@ -102,7 +102,7 @@
 |---|---|---|---|---|---|
 | `FCST-RT-01` | P0 | **نبود Runtime اجرایی Python روی هاست اشتراکی**؛ Chronos-2 و سایر Python Workerها به اجرای Python وابسته‌اند و QueueManager از PHP `exec()` استفاده می‌کند. | `Chronos2QueueManager.php` در صورت غیرفعال‌بودن `exec()` خطای صریح می‌دهد؛ محدودیت واقعی هاست گزارش شده است. CI فقط `py_compile` و نصب پکیج در Runner را ثابت می‌کند، نه اجرا روی cPanel. | در New غیرفعال بماند. بعداً گزینه‌های Runtime مستقل، امنیت، latency، هزینه و نگهداری مقایسه شوند؛ هیچ سرویس یا هزینه‌ای فعلاً ایجاد نشود. | `OPEN / BLOCKED_BY_RUNTIME` |
 | `FCST-DEPLOY-01` | P0 | **ناپایداری دسترسی Deployment Secrets در Runهای قبلی**؛ وضعیت هر انتشار باید از خروجی انتقال فایل تأیید شود. | Runهای `44514401273`، `44515169660`، `44515867849`، `44516442724` و `44516802833` با خروجی صریح `ok:true`, `deployed_files:123` و `seeded_tvdatafeed_candles:42291` پایان یافتند؛ Runهای قدیمی‌تر گاهی Secrets را نداشتند. | نتیجه واقعی remote upload در هر Run کنترل شود؛ پنج انتشار پیاپی اخیر تأیید شده‌اند. | `STABLE_RECENTLY / DEPLOY_CONFIRMED_5_RUNS` |
-| `FCST-PROD-01` | P1 | **نبود آزمون مرورگر تعاملی روی نسخه Production** بعد از آخرین Deploy. | remote upload در آخرین Run مستندشده `44516802833` با ۱۲۳ فایل تأیید شد؛ تست‌های Node و Build موفق‌اند، اما ابزار مرورگر تعاملی در این محیط در دسترس نبود و URL عمومی از این محیط قابل دریافت نبود. | پیش از خاموش‌سازی Legacy، روی مرورگر واقعی ورود، انتخاب مدل، اجرای پیش‌بینی، رندر، Ledger، Walk-Forward و rollback را smoke-test کنید. | `OPEN / BROWSER_E2E_NOT_VERIFIED` |
+| `FCST-PROD-01` | P1 | **نبود آزمون مرورگر تعاملی روی نسخه Production** بعد از آخرین Deploy. | remote upload در آخرین Run `44530137222` با ۱۲۳ فایل تأیید شد؛ تست‌های Node و Build موفق‌اند، اما ابزار مرورگر تعاملی در این محیط در دسترس نبود و URL عمومی از این محیط قابل دریافت نبود. | پیش از خاموش‌سازی Legacy، روی مرورگر واقعی ورود، انتخاب مدل، اجرای پیش‌بینی، رندر، Ledger، Walk-Forward و rollback را smoke-test کنید. | `OPEN / BROWSER_E2E_NOT_VERIFIED` |
 | `FCST-API-01` | P1 | **تست Provider guard در حال حاضر ایستا است، نه آزمون HTTP واقعی.** | `CHRONOS2-PROVIDER-GUARD-01` ترتیب کد allow-list را بررسی می‌کند؛ endpoint در محیط cPanel اجرا نشده است. | بعداً تست Integration برای رد Provider غیر از `tvdatafeed` و مسیر مجاز TradingView اضافه شود؛ بدون نیاز به اجرای مدل سنگین. | `OPEN / STATIC_TEST_ONLY` |
 | `FCST-EVAL-01` | P1 | **چرخه کامل ارزیابی و persistence هنوز کامل نیست؛ UIهای اصلی اکنون در New Native متصل شده‌اند.** | Overview/Scenario، Models، Walk-Forward/Calibration، Ledger، انتخاب مدل، Snapshot، Apply-to-chart، Render Mode و MTF controls در New Native با reuse پنل‌ها و Renderer موجود متصل شدند؛ `buildForecastForTab(overrides)` جداسازی تنظیمات horizon/model را انجام می‌دهد. Ledger همچنان `localStorage` با سقف ۱۲۰ Snapshot و ۲۴۰ Lifecycle event است و Server Sync ندارد؛ Historical Replay مستقل نیز هنوز عرضه نشده است. | پذیرش UI/عملکرد New با CI و بررسی Production؛ persistence چنددستگاهی و Replay جداگانه در فهرست کارهای باز باقی بمانند. | `PARTIAL / NEW_STUDIO_UI_CONNECTED — LOCAL_ONLY_REPLAY_PENDING` |
 | `FCST-ENS-01` | P2 | **Calibrated Ensemble مسیر اجرایی در Structural JS ندارد.** | مسیر `ensemble` در `structuralForecastEngine.js` وجود ندارد؛ گزینه New غیرفعال شده است. | تا زمانی که وزن‌دهی، آموزش/کالیبراسیون، ارزیابی OOS و تست مقایسه وجود ندارد، غیرفعال بماند. | `OPEN / NOT_IMPLEMENTED` |
@@ -215,3 +215,13 @@
 - New Overview اکنون برای Structural JS و Historical Analogs نیز Preview تصویری مسیر را از خروجی واقعی `structuralForecast.forecast` نمایش می‌دهد؛ `q50_median` فقط به نام فیلد مورد انتظار Renderer نگاشت شده و q10/q90 اصلی حفظ می‌شوند. مسیرهای Historical Analog به‌صورت illustrative overlay نمایش داده می‌شوند، نه احتمال کالیبره‌شده.
 
 - خطای احتمالی initialization در Structural Overview برطرف شد: وضعیت UI اکنون مستقیماً از `activeTab.structuralForecastStatus` خوانده می‌شود و به متغیر statusText با اعلان دیرتر وابسته نیست.
+
+
+### ۵.۱۲. پذیرش CI و انتشار نسخه New Studio UI — 2026-11-19
+
+- آخرین Commit: `2de2d880d5a98ded5cdd060b17fc3d06a412c510`.
+- Workflow run `44530137222`: نتیجه کلی `success`؛ هر دو Job وب و Android موفق.
+- Web parity: ۲۴/۲۴ پاس، صفر شکست؛ PHP lint موفق؛ استخراج داده TradingView موفق.
+- cPanel remote upload: `ok:true`, `deployed_files:123`, `seeded_tvdatafeed_candles:42291`؛ snapshot `snapshot_20261119_131045`.
+- Android Debug APK و Unit/Robolectric tests موفق؛ Artifact APK `14533691355` و Web package `14533451142`.
+- این شواهد اجرای CI و Deploy را ثابت می‌کنند؛ Browser E2E تعاملی Production هنوز باز است و باید پیش از خاموش‌سازی Legacy انجام شود.
