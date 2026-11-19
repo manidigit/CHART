@@ -8,6 +8,7 @@ import {
   canonicalJsonV1Legacy,
   sha256Hex,
 } from './forecastContract.js?v=2.0.0';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
 
 const LEDGER_STORAGE_KEY = 'ci_forecast_ledger_v1';
 const LIFECYCLE_STORAGE_KEY = 'ci_forecast_lifecycle_v1';
@@ -247,7 +248,21 @@ export class ForecastLedger {
    * and preserves AMBIGUOUS inside-bar target+invalidation hits.
    */
   evaluateMaturedForecasts(candles = [], symbolCode = '', timeframe = '') {
-    const clean = (candles || []).filter((c) => Number(c?.close) > 0);
+    const byOpenTime = new Map();
+    for (const candle of Array.isArray(candles) ? candles : []) {
+      const openMs = Number(candle?.open_time_utc_ms ?? candle?.openTimeUtcMs ?? 0);
+      const close = Number(candle?.close);
+      if (
+        !(openMs > 0) ||
+        !(close > 0) ||
+        candle?.is_closed === false ||
+        !PriceFormatter.isCandleClosed(openMs, timeframe || 'M15', Date.now(), symbolCode || 'XAUUSD')
+      ) continue;
+      byOpenTime.set(openMs, candle);
+    }
+    const clean = Array.from(byOpenTime.values()).sort(
+      (a, b) => Number(a.open_time_utc_ms ?? a.openTimeUtcMs) - Number(b.open_time_utc_ms ?? b.openTimeUtcMs)
+    );
     if (clean.length === 0) return [];
     const entries = this.loadEntries().filter(
       (e) =>
