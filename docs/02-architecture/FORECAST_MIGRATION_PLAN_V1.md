@@ -787,3 +787,11 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 - cPanel upload با ۱۲۳ فایل و snapshot `snapshot_20261119_131045` تأیید شد؛ ۴۲٬۲۹۱ کندل TradingView seed شدند.
 - Android APK و Unit/Robolectric tests موفق؛ artifact IDs: Web `14533451142`، APK `14533691355`.
 - باقی‌مانده‌های پذیرش در `OPEN_ISSUES.md` ثبت‌اند؛ به‌خصوص Browser E2E، Runtime Python، Replay و Ensemble.
+
+
+## 26. مستندات نهایی همگام با آخرین انتشار — 2026-11-19
+
+- Commit کد: `2de2d880d5a98ded5cdd060b17fc3d06a412c510`؛ commit اسناد: `832f2828becb0da4faccf09fdba2c0d180b830d9`.
+- Run `44531190348`: success؛ Web ۲۴/۲۴، Android build و tests موفق.
+- Deploy با ۱۲۳ فایل، snapshot `snapshot_20261119_131340` و ۴۲٬۲۹۱ کندل TradingView تأیید شد.
+- Artifactها: Web `14534022250`، APK `14533517048`.
