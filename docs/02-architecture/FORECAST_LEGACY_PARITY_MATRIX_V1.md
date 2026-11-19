@@ -2,7 +2,7 @@
 
 - **Version:** 1.1.0
 - **Date:** 2026-11-19
-- **Branch under validation:** `forecast-completion-native-only`
+- **Canonical branch:** `main` (consolidated commit `05933ac39ca440dc1338385b9cf3d6159e20c377`)
 - **Purpose:** Record one-to-one feature parity and explicitly distinguish migrated features from runtime-blocked features.
 - **Authority:** `FORECAST_PRODUCT_FOUNDATION_V1.md`, `FORECAST_SYSTEM_SPEC_V1.md`, `FORECAST_MIGRATION_PLAN_V1.md`.
 
