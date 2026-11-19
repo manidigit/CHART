@@ -1458,6 +1458,8 @@ test('FORECAST-NEW-STUDIO-01: New Native workspace restores Forecast Studio work
   const view = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
   assert.ok(app.includes('renderOverviewPanel(nativeEvaluation, activeTab'));
   assert.ok(app.includes("const nativeTabs = [['overview'"));
+  assert.ok(app.includes('const needsNativeEvaluation = usesNativeEvaluation || nativeTab !== \'overview\''));
+  assert.ok(app.includes("nativeEvaluationPanels = '<div class=\"ci-fc-card\""));
   assert.ok(app.includes("['models', isFa"));
   assert.ok(app.includes("['backtest', isFa"));
   assert.ok(app.includes("['ledger', isFa"));
