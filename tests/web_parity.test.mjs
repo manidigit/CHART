@@ -1677,4 +1677,22 @@ test('FORECAST-PHASE1-STUDIO-PARITY-03: New workspace renders full 12-panel Fore
   assert.match(store, /structuralForecastModel:\s*\/\^\(AUTO\|\[a-z0-9_\]\+\)\$\/\.test/);
 });
 
+test('FORECAST-PHASE2-LEGACY-DISABLE-01: Phase 2 disables migrated Legacy controls transparently while preserving rollback and shared New panels', async () => {
+  const { LEGACY_MIGRATED_UI_DISABLED } = await import('../host_subdomain/assets/js/views/forecastView.js');
+  assert.equal(LEGACY_MIGRATED_UI_DISABLED, true);
+  const view = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+  const header = await readFile(new URL('../host_subdomain/assets/js/views/headerView.js', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  assert.match(view, /data-legacy-migration-phase="2"/);
+  assert.match(view, /data-legacy-migrated-locked="true"/);
+  assert.match(view, /Open in New · Structural/);
+  assert.match(view, /Chronos-2 \(Python \/ PyTorch\)/);
+  assert.match(view, /External Python Worker Models/);
+  assert.match(header, /data-action="toggle-legacy-forecast-chart" disabled aria-disabled="true"/);
+  assert.match(app, /LEGACY_MIGRATED_UI_DISABLED.*forecastView\.js\?v=2\.0\.19/);
+  assert.match(app, /headerView\.js\?v=1\.47\.7/);
+  assert.match(app, /action === 'apply-forecast-to-chart' \|\| action === 'toggle-legacy-forecast-chart'[\s\S]{0,220}if \(LEGACY_MIGRATED_UI_DISABLED\)/);
+});
+
+
 

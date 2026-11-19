@@ -959,4 +959,21 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
    - ذخیره‌سازی پایدار `AUTO` در `store.js` اصلاح و کلید کش به `app.js?v=1.47.36` و `store.js?v=1.47.14` (در تمامی ۹ ماژول) ارتقا یافت.
 3. **راستی‌آزمایی محلی:** `node --check` روی تمامی ۱۱ ماژول JS تغییریافته و **۳۶/۳۶ تست `tests/web_parity.test.mjs`** (شامل تست جدید `FORECAST-PHASE1-STUDIO-PARITY-03`) بدون خطا پاس شدند. Legacy همچنان تا تأیید مرورگری کاربر برای ورود به گام ۲ فعال است.
 
+## 13. گام ۲: غیرفعال‌سازی شفاف کنترل‌های منتقل‌شده در Legacy بدون حذف کد (`v1.47.37`) — 2026-11-19
+
+با تأیید صریح کاربر برای ورود به **گام ۲** (پس از تکمیل گام ۱ و هم‌ترازی ۱۲-پنلی سیستم جدید):
+
+1. **پرچم مرکزی با امکان بازگشت فوری (`forecastView.js?v=2.0.19`):**
+   - ثابت `export const LEGACY_MIGRATED_UI_DISABLED = true` اضافه شد؛ هیچ فایل یا کد منطقی Legacy حذف نشد و پنل‌های اشتراکی (`renderOverviewPanel`، `renderModelsPanel`، `renderBacktestPanel`، `renderLedgerPanel`، `buildForecastForTab`) بدون تغییر در خدمت `New · Structural` باقی ماندند.
+2. **شفاف‌سازی کامل در نمای `Legacy · Forecast Studio` (`forecastView.js`, `app.js`):**
+   - بنر وضعیت گام ۲ (`data-legacy-migration-phase="2"`) بالای نمای Legacy نمایش داده می‌شود و با تفکیک دقیق، قابلیت‌های **منتقل‌شده به New** (`AUTO (OOS)`، ۱۰ مدل رجیستری، `Causal Historical Analogs`، `Ensemble V2`، افق، `Fan/Hybrid/Quantile Bars`، `MTF Coordination`، داشبورد ۱۲-پنلی و سناریوها، تنظیمات و وزن مدل‌ها، `Walk-Forward & Replay`، `SHA-256 Ledger` و رسم روی چارت اصلی) را از موارد **منتقل‌نشده / کنار گذاشته‌شده روی هاست اشتراکی** (`Chronos-2` و `External Python Worker Models`) جدا کرده و دکمه سریع `Open in New · Structural` را ارائه می‌دهد.
+   - تمام کنترل‌های منتقل‌شده در نمای Legacy (مدل، افق، Render Mode، MTF، `Record Local Snapshot`، `Show Selected Model on Chart` و ۴ ساب‌تب) با `disabled aria-disabled="true"` و برچسب/تولتیپ «منتقل شد به سیستم جدید» غیرفعال و بدنه Legacy فقط‌خواندنی (`data-legacy-migrated-locked="true"`) شدند.
+   - در سوییچر بالای صفحه نیز کنار دکمه Legacy وضعیت `بخش‌های منتقل‌شده غیرفعال / Migrated Disabled` نمایش داده می‌شود.
+3. **قفل مسیر رسم Legacy روی چارت اصلی (`headerView.js?v=1.47.7`, `app.js?v=1.47.37`):**
+   - دکمه `Legacy Forecast` در نوار بالای چارت غیرفعال (`disabled`) شد و handlerهای `set-forecast-model` (در حالت Legacy)، `set-forecast-horizon` (در حالت Legacy) و `apply-forecast-to-chart`/`toggle-legacy-forecast-chart` در صورت فعال بودن `LEGACY_MIGRATED_UI_DISABLED` بدون حذف کد زیرین، اجرای Legacy را متوقف و کاربر را به `New · Structural` هدایت می‌کنند.
+4. **راستی‌آزمایی و گام بعدی (گام ۳):**
+   - `node --check` روی فایل‌های تغییریافته و **۳۷/۳۷ تست `tests/web_parity.test.mjs`** (شامل تست جدید `FORECAST-PHASE2-LEGACY-DISABLE-01`) با موفقیت پاس شدند.
+   - **پاک‌سازی نهایی کدهای Legacy (گام ۳ / Gate M6)** همچنان تا زمان تست نهایی کاربری و تأیید صریح کاربر مسدود و دست‌نخورده باقی می‌ماند.
+
+
 

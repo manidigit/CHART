@@ -72,7 +72,7 @@ import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.47.6';
+} from './views/headerView.js?v=1.47.7';
 import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.1';
 import {
   renderRightSplitPanel,
@@ -80,7 +80,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.2';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
-import { renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=2.0.18';
+import { LEGACY_MIGRATED_UI_DISABLED, renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=2.0.19';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.4';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
@@ -924,7 +924,7 @@ function renderForecastWorkspaceContent(activeTab) {
   const switcher = `
     <div class="ci-fc-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
       <strong style="font-size:12px;">${isFa ? 'موتور فعال:' : 'Selected engine:'}</strong>
-      <button type="button" class="chip ${selected === 'legacy' ? 'active' : ''}" data-action="set-forecast-engine" data-engine="legacy">${isFa ? 'سیستم قدیمی · Forecast Studio' : 'Legacy · Forecast Studio'}</button>
+      <button type="button" class="chip ${selected === 'legacy' ? 'active' : ''}" data-action="set-forecast-engine" data-engine="legacy">${isFa ? 'سیستم قدیمی · Forecast Studio' : 'Legacy · Forecast Studio'}${LEGACY_MIGRATED_UI_DISABLED ? (isFa ? ' · بخش‌های منتقل‌شده غیرفعال' : ' · Migrated Disabled') : ''}</button>
       <button type="button" class="chip ${selected === 'structural' ? 'active' : ''}" data-action="set-forecast-engine" data-engine="structural">${isFa ? 'سیستم جدید · Structural' : 'New · Structural'}</button>
     </div>`;
   if (selected === 'legacy') return switcher + renderForecastStudioView(activeTab, i18n);
@@ -2857,6 +2857,10 @@ document.addEventListener('click', async (e) => {
     renderApp();
     redrawActiveCanvas();
   } else if (action === 'set-forecast-model' && activeTab) {
+    if (LEGACY_MIGRATED_UI_DISABLED && (state.chartPreferences.forecastEngineMode || state.forecastEngineMode) === 'legacy') {
+      showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'انتخاب مدل به سیستم جدید (New · Structural) منتقل شده و در Legacy غیرفعال است.' : 'Model selection has migrated to New · Structural and is disabled in Legacy.');
+      return;
+    }
     activeTab.selectedForecastModelId = String(el.getAttribute('data-model-id') || 'AUTO');
     state.chartPreferences.selectedForecastModelId = activeTab.selectedForecastModelId;
     savePreferences();
@@ -2967,6 +2971,10 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-forecast-horizon' && activeTab) {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
     if (state.activeWorkspaceView === 'forecast') {
+      if (LEGACY_MIGRATED_UI_DISABLED && (state.chartPreferences.forecastEngineMode || state.forecastEngineMode) === 'legacy') {
+        showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'تنظیم افق به سیستم جدید (New · Structural) منتقل شده و در Legacy غیرفعال است.' : 'Horizon selection has migrated to New · Structural and is disabled in Legacy.');
+        return;
+      }
       activeTab.forecastHorizonBars = hVal;
       state.chartPreferences.forecastHorizonBars = hVal;
       savePreferences();
@@ -3025,6 +3033,17 @@ document.addEventListener('click', async (e) => {
     state.forecastEngineMode = 'structural'; state.chartPreferences.forecastEngineMode = 'structural'; activeTab.scrollOffset = 0;
     savePreferences(); saveOpenTabsToStorage(); state.activeWorkspaceView = 'chart'; renderApp(); redrawActiveCanvas();
   } else if (action === 'apply-forecast-to-chart' || action === 'toggle-legacy-forecast-chart') {
+    if (LEGACY_MIGRATED_UI_DISABLED) {
+      if (activeTab) activeTab.showFutureProjection = false;
+      showFloatingToast(
+        i18n.getCurrentLanguage() === 'fa'
+          ? 'رسم پیش‌بینی روی چارت به سیستم جدید (New · Structural) منتقل شده و در Legacy غیرفعال است.'
+          : 'Chart forecast overlay has migrated to New · Structural and is disabled in Legacy.'
+      );
+      renderApp();
+      redrawActiveCanvas();
+      return;
+    }
     if (!activeTab || !Array.isArray(activeTab.legacyForecast?.points) || activeTab.legacyForecast.points.length === 0) {
       showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'ابتدا پیش‌بینی سیستم قدیمی را در Forecast Studio محاسبه کنید.' : 'Calculate the legacy forecast in Forecast Studio first.');
       return;

@@ -184,7 +184,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
             <span>${forecastNavLabel}</span>
           </button>
           ${!isForecastView && Array.isArray(activeTab?.legacyForecast?.points) && activeTab.legacyForecast.points.length > 0
-            ? `<button type="button" class="tv-tool-btn ${activeTab.showFutureProjection ? 'active' : ''}" data-action="toggle-legacy-forecast-chart" title="${isFa ? 'نمایش یا مخفی‌کردن پیش‌بینی سیستم قدیمی روی چارت' : 'Toggle legacy Forecast Studio overlay'}"><span>${isFa ? 'پیش‌بینی قدیمی' : 'Legacy Forecast'}</span></button>`
+            ? `<button type="button" class="tv-tool-btn" data-action="toggle-legacy-forecast-chart" disabled aria-disabled="true" style="opacity:0.5;cursor:not-allowed;" title="${isFa ? 'منتقل شد به سیستم جدید — از New · Structural استفاده کنید' : 'Migrated to New · Structural — disabled in Legacy'}"><span>${isFa ? 'پیش‌بینی قدیمی (منتقل شد)' : 'Legacy Forecast (Migrated)'}</span></button>`
             : ''}
           <button
             type="button"

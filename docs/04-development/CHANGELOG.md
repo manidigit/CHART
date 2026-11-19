@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.47.37] - 2026-11-19
+
+### Changed (Phase 2 Migration: Progressive Disabling of Migrated Controls in Legacy Without Deletion)
+- **Reversible Phase 2 Flag & Migration Status Banner (`forecastView.js?v=2.0.19`):**
+  - Exported `LEGACY_MIGRATED_UI_DISABLED = true` so migrated controls in `Legacy · Forecast Studio` are cleanly disabled with instant rollback preserved and zero code deletion.
+  - Added a transparent Phase 2 Migration Status Banner (`data-legacy-migration-phase="2"`) inside Legacy displaying migrated capabilities vs. shelved shared-hosting items (`Chronos-2`, `External Python Worker Models`) with a direct `Open in New · Structural` button.
+  - Marked all migrated Legacy studio buttons (model selector, horizon, render mode, MTF layer, `Record Local Snapshot`, `Show Selected Model on Chart`, and all 4 sub-tabs) `disabled aria-disabled="true"` with migrated tooltips and locked `.ci-fc-body` read-only (`data-legacy-migrated-locked="true"`), leaving shared panels used by `New · Structural` completely unaffected.
+- **Chart Header & Action Handler Guards (`headerView.js?v=1.47.7`, `app.js?v=1.47.37`, `index.html`):**
+  - Disabled the deprecated `Legacy Forecast` overlay toggle button in the main chart topbar and added `LEGACY_MIGRATED_UI_DISABLED` guards to Legacy-only action handlers (`set-forecast-model`, `set-forecast-horizon`, `apply-forecast-to-chart`, `toggle-legacy-forecast-chart`) plus a `Migrated Disabled` indicator in the engine switcher.
+- **Verification & Documentation:**
+  - Verified `node --check` on all modified JS modules and **37/37** passing tests in `tests/web_parity.test.mjs` (added `FORECAST-PHASE2-LEGACY-DISABLE-01`).
+  - Updated `FORECAST_MIGRATION_PLAN_V1.md`, `FORECAST_LEGACY_PARITY_MATRIX_V1.md`, and `OPEN_ISSUES.md`; full Legacy deletion remains gated on Phase 3 approval.
+
+---
+
 ## [1.47.36] - 2026-11-19
 
 ### Fixed & Improved (Full 12-Panel Forecast Studio Parity in New Workspace)

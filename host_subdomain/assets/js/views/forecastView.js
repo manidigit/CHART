@@ -19,6 +19,9 @@ import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastE
 import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.14';
 import { renderSymbolBadge } from './watchlistView.js?v=1.47.2';
 
+// Phase 2 Migration Flag: disables migrated controls in Legacy Forecast Studio without deleting code (instant rollback).
+export const LEGACY_MIGRATED_UI_DISABLED = true;
+
 const MODEL_OVERLAY_COLORS = {
   empirical_analogs: '#F59E0B',
   naive_persistence: '#94A3B8',
@@ -508,11 +511,16 @@ export function renderForecastStudioView(activeTab, i18n) {
       lastCandleClose: Number(last?.close || 0),
     };
   }
+  const legacyDisabled = LEGACY_MIGRATED_UI_DISABLED;
+  const legacyDisabledAttr = legacyDisabled ? 'disabled aria-disabled="true"' : '';
+  const legacyMigratedTitle = isFa
+    ? 'این قابلیت به سیستم جدید (New · Structural) منتقل شده و در سیستم قدیمی غیرفعال است.'
+    : 'Migrated to New · Structural — disabled in Legacy.';
   const horizons = [10, 15, 20, 30, 45, 60];
   const horizonButtons = horizons
     .map(
       (h) =>
-        `<button type="button" class="chip ltr-num ${horizonBars === h ? 'active' : ''}" data-action="set-forecast-horizon" data-horizon="${h}">+${h}</button>`
+        `<button type="button" class="chip ltr-num ${horizonBars === h ? 'active' : ''}" data-action="set-forecast-horizon" data-horizon="${h}" ${legacyDisabledAttr} ${legacyDisabled ? `title="${escapeHtml(legacyMigratedTitle)}"` : ''}>+${h}</button>`
     )
     .join('');
 
@@ -524,7 +532,7 @@ export function renderForecastStudioView(activeTab, i18n) {
   const modeButtons = modes
     .map(
       (m) =>
-        `<button type="button" class="chip ${renderMode === m.id ? 'active' : ''}" data-action="set-forecast-render-mode" data-mode="${m.id}">${m.label}</button>`
+        `<button type="button" class="chip ${renderMode === m.id ? 'active' : ''}" data-action="set-forecast-render-mode" data-mode="${m.id}" ${legacyDisabledAttr} ${legacyDisabled ? `title="${escapeHtml(legacyMigratedTitle)}"` : ''}>${m.label}</button>`
     )
     .join('');
 
@@ -569,7 +577,7 @@ export function renderForecastStudioView(activeTab, i18n) {
   ]
     .map(
       (t) =>
-        `<button type="button" class="ci-fc-subtab ${subTab === t.id ? 'active' : ''}" data-action="set-forecast-subtab" data-tab="${t.id}">${t.label}</button>`
+        `<button type="button" class="ci-fc-subtab ${subTab === t.id ? 'active' : ''}" data-action="set-forecast-subtab" data-tab="${t.id}" ${legacyDisabledAttr} ${legacyDisabled ? `title="${escapeHtml(legacyMigratedTitle)}"` : ''}>${t.label}${legacyDisabled ? (isFa ? ' · منتقل شد' : ' · Migrated') : ''}</button>`
     )
     .join('');
 
@@ -600,13 +608,54 @@ export function renderForecastStudioView(activeTab, i18n) {
   const modelButtons = modelChoices
     .map(
       (m) =>
-        `<button type="button" class="chip ${requestedModelId === m.id ? 'active' : ''}" data-action="set-forecast-model" data-model-id="${escapeHtml(m.id)}">${escapeHtml(m.label)}</button>`
+        `<button type="button" class="chip ${requestedModelId === m.id ? 'active' : ''}" data-action="set-forecast-model" data-model-id="${escapeHtml(m.id)}" ${legacyDisabledAttr} ${legacyDisabled ? `title="${escapeHtml(legacyMigratedTitle)}"` : ''}>${escapeHtml(m.label)}</button>`
     )
     .join('');
 
+  const legacyMigrationBanner = legacyDisabled
+    ? `
+      <div class="ci-fc-card ci-legacy-migration-banner" data-legacy-migration-phase="2" style="border:1px solid rgba(245,158,11,0.45);background:rgba(245,158,11,0.08);margin-bottom:12px;">
+        <div class="row-between" style="gap:10px;flex-wrap:wrap;margin-bottom:8px;">
+          <div>
+            <strong style="font-size:13px;color:var(--text-strong);">
+              ${isFa ? 'گام ۲ مهاجرت: بخش‌های منتقل‌شده به سیستم جدید در Legacy غیرفعال شده‌اند' : 'Phase 2 Migration: Migrated Controls Are Disabled in Legacy'}
+            </strong>
+            <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;">
+              ${isFa ? 'کد سیستم قدیمی هنوز حذف نشده است (امکان بازگشت محفوظ است). کنترل‌های زیر صرفاً برای مشاهده وضعیت انتقال نمایش داده می‌شوند.' : 'Legacy code is preserved for safe rollback. Migrated controls below are locked read-only so you can verify exact migration coverage.'}
+            </div>
+          </div>
+          <button type="button" class="btn btn-sm btn-primary" data-action="set-forecast-engine" data-engine="structural">
+            ${isFa ? 'باز کردن در سیستم جدید (New · Structural)' : 'Open in New · Structural'}
+          </button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:6px;font-size:11.5px;">
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <strong style="color:var(--bull);">${isFa ? '✓ منتقل‌شده به New (غیرفعال در Legacy):' : '✓ Migrated to New (Disabled here):'}</strong>
+            <span class="chip" aria-disabled="true">AUTO (OOS)</span>
+            <span class="chip" aria-disabled="true">10 Native Models</span>
+            <span class="chip" aria-disabled="true">Causal Historical Analogs</span>
+            <span class="chip" aria-disabled="true">Ensemble (V2)</span>
+            <span class="chip" aria-disabled="true">Horizon (+10..+60)</span>
+            <span class="chip" aria-disabled="true">Fan / Hybrid / Quantile Bars</span>
+            <span class="chip" aria-disabled="true">MTF Coordination</span>
+            <span class="chip" aria-disabled="true">12-Panel Studio &amp; Scenarios</span>
+            <span class="chip" aria-disabled="true">Model Weights &amp; Config</span>
+            <span class="chip" aria-disabled="true">Walk-Forward &amp; Replay</span>
+            <span class="chip" aria-disabled="true">SHA-256 Ledger &amp; Chart Overlay</span>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;">
+            <strong style="color:#F59E0B;">${isFa ? '⏸ منتقل‌نشده (کنار گذاشته‌شده روی هاست اشتراکی):' : '⏸ Not Migrated (Shelved on Shared Hosting):'}</strong>
+            <span class="chip" aria-disabled="true">Chronos-2 (Python / PyTorch)</span>
+            <span class="chip" aria-disabled="true">External Python Worker Models</span>
+          </div>
+        </div>
+      </div>`
+    : '';
+
   return `
-    <section class="ci-forecast-studio">
-      <div class="ci-fc-header">
+    <section class="ci-forecast-studio ${legacyDisabled ? 'is-legacy-migrated-disabled' : ''}">
+      ${legacyMigrationBanner}
+      <div class="ci-fc-header" ${legacyDisabled ? 'style="opacity:0.68;"' : ''}>
         <div class="ci-fc-title-row">
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             ${renderSymbolBadge(activeCode, 28)}
@@ -615,20 +664,21 @@ export function renderForecastStudioView(activeTab, i18n) {
             ${edgeBadge}
             ${oodBadge}
             ${fc && fc.regime ? `<span class="ci-fc-regime-badge ltr-num">${escapeHtml(fc.regime)}</span>` : ''}
+            ${legacyDisabled ? `<span class="ci-fc-status-badge ci-fc-badge-provisional">${isFa ? 'Legacy · غیرفعال (منتقل شد به New)' : 'LEGACY · DISABLED (MIGRATED)'}</span>` : ''}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
-            <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
-              ${isFa ? 'ثبت در دفتر محلی' : 'Record Local Snapshot'}
+            <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot" ${legacyDisabledAttr} ${legacyDisabled ? `title="${escapeHtml(legacyMigratedTitle)}"` : ''}>
+              ${isFa ? 'ثبت در دفتر محلی' : 'Record Local Snapshot'}${legacyDisabled ? (isFa ? ' (منتقل شد)' : ' (Migrated)') : ''}
             </button>
-            <button type="button" class="btn btn-sm ${activeTab?.showFutureProjection ? 'btn-primary' : ''}" data-action="apply-native-forecast-to-chart" ${!Array.isArray(fc?.points) || fc.points.length === 0 ? 'disabled' : ''}>
-              ${activeTab?.showStructuralForecast && activeTab?.structuralForecast?.engine?.engine_id === 'native_model_adapter' ? (isFa ? '✓ مدل جدید روی چارت فعال است' : '✓ Native Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
+            <button type="button" class="btn btn-sm ${activeTab?.showFutureProjection && !legacyDisabled ? 'btn-primary' : ''}" data-action="apply-native-forecast-to-chart" ${legacyDisabled || !Array.isArray(fc?.points) || fc.points.length === 0 ? 'disabled aria-disabled="true"' : ''} ${legacyDisabled ? `title="${escapeHtml(legacyMigratedTitle)}"` : ''}>
+              ${legacyDisabled ? (isFa ? 'منتقل شد به سیستم جدید' : 'Migrated to New') : activeTab?.showStructuralForecast && activeTab?.structuralForecast?.engine?.engine_id === 'native_model_adapter' ? (isFa ? '✓ مدل جدید روی چارت فعال است' : '✓ Native Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
             </button>
           </div>
         </div>
 
         <div class="ci-fc-controls-row">
           <div class="ci-fc-control-group ci-fc-control-group-full">
-            <span class="ci-fc-ctrl-label">${isFa ? 'مدل پیش‌بینی چارت:' : 'Chart Model:'}</span>
+            <span class="ci-fc-ctrl-label">${isFa ? 'مدل پیش‌بینی چارت:' : 'Chart Model:'}${legacyDisabled ? (isFa ? ' (منتقل شد به New)' : ' (Migrated to New)') : ''}</span>
             <div class="chip-group">${modelButtons}</div>
           </div>
           <div class="ci-fc-control-group">
@@ -642,8 +692,8 @@ export function renderForecastStudioView(activeTab, i18n) {
           <div class="ci-fc-control-group">
             <span class="ci-fc-ctrl-label">${isFa ? 'لایه MTF:' : 'MTF Layer:'}</span>
             <div class="chip-group">
-              <button type="button" class="chip ${coordView === 'independent' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="independent">${isFa ? 'مستقل (Independent)' : 'Independent'}</button>
-              <button type="button" class="chip ${coordView === 'coordinated' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="coordinated">${isFa ? 'هماهنگ (Coordinated)' : 'Coordinated'}</button>
+              <button type="button" class="chip ${coordView === 'independent' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="independent" ${legacyDisabledAttr} ${legacyDisabled ? `title="${escapeHtml(legacyMigratedTitle)}"` : ''}>${isFa ? 'مستقل (Independent)' : 'Independent'}</button>
+              <button type="button" class="chip ${coordView === 'coordinated' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="coordinated" ${legacyDisabledAttr} ${legacyDisabled ? `title="${escapeHtml(legacyMigratedTitle)}"` : ''}>${isFa ? 'هماهنگ (Coordinated)' : 'Coordinated'}</button>
             </div>
           </div>
         </div>
@@ -653,7 +703,7 @@ export function renderForecastStudioView(activeTab, i18n) {
         </div>
       </div>
 
-      <div class="ci-fc-body">
+      <div class="ci-fc-body" ${legacyDisabled ? 'style="opacity:0.55;pointer-events:none;user-select:none;" aria-disabled="true" data-legacy-migrated-locked="true"' : ''}>
         ${panelHtml}
       </div>
     </section>
