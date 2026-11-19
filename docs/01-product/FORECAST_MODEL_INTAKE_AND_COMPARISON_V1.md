@@ -387,19 +387,21 @@ TimesFM, OpenLTM, Large-Time-Series-Model, NeuralForecast implementations of N-B
 
 ---
 
-## 16. Phase 1 model decision and expansion gate — 2026-11-17
+## 16. Historical model decision and current expansion gate — revised 2026-11-19
 
 ### 16.1. Decision
 
-**Chronos-2 is the sole model selected for the CHART Forecast Phase 1 implementation and controlled evaluation path.** No second forecasting model is in the Phase 1 operational scope.
+**Historical decision (2026-11-17):** Chronos-2 was initially selected as the sole Phase 1 model. **Superseding decision (2026-11-19):** New Web now runs a Native JavaScript registry of 10 models plus Structural JS, causal Historical Analogs and calibrated Ensemble. Chronos-2/Python Worker are excluded from the shared-hosting New runtime until a secure external execution and result-return path is approved.
 
-This is a sequencing and scope decision based on the first source-level screening. It is not a finding that Chronos-2 is financially accurate, superior to all alternatives, production-approved, or capable of native complete OHLC candle generation.
+The original Chronos-2 decision was a sequencing decision based on source-level screening, not evidence of predictive accuracy or production readiness. The current Native model list is also not evidence of accuracy; each model must pass OOS and operational acceptance independently.
 
-The decision allows implementation and controlled experimentation to proceed without expanding the model surface prematurely.
+The current scope allows Native model comparison without forcing Python onto cPanel. Runtime separation does not waive the formal model-expansion and acceptance gates.
 
 ### 16.2. Candidate status
 
-- **Chronos-2:** sole Phase 1 model; proceed to implementation planning and controlled evaluation. Its native quantile output must be preserved. It remains subject to integration, output-contract, runtime, licensing-revision and acceptance checks.
+- **Chronos-2:** not integrated into New Web. The existing manual GitHub Actions workflow runs Python on a GitHub-hosted runner but is not dispatched from New; it remains blocked on a secure `actions:write` credential path, output provenance and UI lifecycle integration.
+- **Native registry:** 10 selectable JavaScript models; model selection, weights and parameter controls are available in New, with experimental approximations explicitly labelled.
+- **Structural JS / Historical Analogs / Ensemble:** selectable in New; all remain subject to symbol/timeframe-specific OOS acceptance.
 - **PatchTST:** deferred candidate; not enabled or included in Phase 1.
 - **THUML Time-Series-Library:** research reference only; not a Phase 1 model or canonical evaluation platform.
 - **Moirai 2.0:** research-only candidate; commercial deployment remains blocked pending explicit licensing clearance for the weights.
