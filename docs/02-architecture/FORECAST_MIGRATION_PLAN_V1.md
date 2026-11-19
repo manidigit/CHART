@@ -807,3 +807,12 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 - Side-by-Side مستقل و visibility چندمدلی روی Main Chart هنوز منتقل نشده و در OPEN_ISSUES.md باز می‌ماند.
 - Cache bust: app.js?v=1.47.27.
 - وضعیت: منتظر CI/Deploy.
+
+
+## 28. مقایسه تصویری کنارهم در New Forecast Preview — 2026-11-19
+
+- هر مسیر مقایسه‌ای موفق و انتخاب‌شده اکنون Canvas مستقل Side-by-Side در Overview دارد.
+- ورودی هر Canvas مستقیماً trajectory همان مدل (`points`) است؛ quantileها حفظ می‌شوند و هیچ OHLC مصنوعی ساخته نمی‌شود.
+- انتخاب overlayها مستقل و در Preferences ذخیره می‌شود.
+- محدودیت باقی‌مانده: Main Chart همچنان یک مدل منتخب دارد؛ multi-select visibility/legend آن هنوز پیاده‌سازی نشده است.
+- Cache bust: app.js?v=1.47.28.

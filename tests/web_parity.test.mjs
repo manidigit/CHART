@@ -1493,4 +1493,7 @@ test('FORECAST-NEW-COMPARE-01: New workspace exposes persistent independent comp
   assert.ok(app.includes("action === 'toggle-forecast-compare-model'"));
   assert.ok(app.includes('state.chartPreferences.forecastCompareModelIds = nextIds'));
   assert.ok(view.includes('forecast.visibleComparisonModelIds.includes(t.modelId)'));
+  assert.ok(view.includes('data-forecast-compare-model'));
+  assert.ok(view.includes('Side-by-side selected model paths'));
+  assert.ok(app.includes("querySelectorAll('canvas[data-forecast-compare-model]')"));
 });

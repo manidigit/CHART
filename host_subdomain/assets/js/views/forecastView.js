@@ -934,6 +934,35 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     `
     : '';
 
+  const visibleComparisonTrajectories = (fc.modelTrajectories || []).filter((trajectory) =>
+    trajectory.status === MODEL_EXECUTION_STATUS.SUCCESS &&
+    Array.isArray(trajectory.points) &&
+    trajectory.points.length > 0 &&
+    trajectory.modelId !== fc.selectedChartModelId &&
+    (!Array.isArray(fc.visibleComparisonModelIds) || fc.visibleComparisonModelIds.includes(trajectory.modelId))
+  );
+  const comparisonCanvasesHtml = visibleComparisonTrajectories.length
+    ? `
+      <div class="ci-fc-card" style="margin-bottom:12px;">
+        <div class="row-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+          <strong style="font-size:13px;">${isFa ? 'مقایسه تصویری کنارهم مدل‌های انتخاب‌شده' : 'Side-by-side selected model paths'}</strong>
+          <span class="ci-fc-family-tag ltr-num">${visibleComparisonTrajectories.length} ${isFa ? 'مسیر' : 'paths'}</span>
+        </div>
+        <div class="ci-fc-grid-2">
+          ${visibleComparisonTrajectories.map((trajectory) => `
+            <div class="ci-fc-mini-stat" style="min-width:0;padding:8px;">
+              <div class="row-between" style="gap:6px;margin-bottom:6px;">
+                <strong style="font-size:11px;">${escapeHtml(trajectory.modelName || trajectory.modelId)}</strong>
+                <span class="ci-fc-family-tag ltr-num">${trajectory.isApproximation ? 'APPROX' : escapeHtml(trajectory.executionRuntime || 'NATIVE_JS')}</span>
+              </div>
+              <canvas class="ci-fc-preview-canvas" data-forecast-compare-model="${escapeHtml(trajectory.modelId)}" style="height:170px;width:100%;"></canvas>
+            </div>
+          `).join('')}
+        </div>
+      </div>
+    `
+    : '';
+
   return `
     <div class="ci-fc-canvas-wrap ci-fc-card">
       <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
@@ -953,6 +982,7 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     ${winnerBannerHtml}
     ${conformalBannerHtml}
     ${comparisonChipsHtml}
+    ${comparisonCanvasesHtml}
     ${representativePathsHtml}
     ${edgeBannerHtml}
     ${uncertaintyCardHtml}

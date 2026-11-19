@@ -990,6 +990,20 @@ export function renderApp() {
         document.documentElement.getAttribute('data-theme') !== 'light',
         state.forecastCoordView || 'independent'
       );
+      const comparisonResult = state._lastForecastResult;
+      document.querySelectorAll('canvas[data-forecast-compare-model]').forEach((canvas) => {
+        const modelId = canvas.getAttribute('data-forecast-compare-model');
+        const trajectory = (comparisonResult?.modelTrajectories || []).find((item) => item.modelId === modelId && item.status === 'SUCCESS');
+        if (!trajectory) return;
+        renderForecastStudioFanCanvas(
+          canvas,
+          activeTab?.candles || [],
+          { points: trajectory.points, selectedChartModelId: trajectory.modelId, renderMode: comparisonResult?.renderMode || 'FAN_CHART', modelTrajectories: [] },
+          Number(activeTab?.decimals || 2),
+          document.documentElement.getAttribute('data-theme') !== 'light',
+          'independent'
+        );
+      });
     } else {
       bindPanelResizers();
       bindCanvasEvents(activeTab);
