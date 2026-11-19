@@ -1,4 +1,4 @@
-import { REMOTE_WORKER_STATUS } from './forecastContract.js?v=2.0.0';
+import { REMOTE_WORKER_STATUS } from './forecastContract.js?v=1.47.39';
 
 const workerResponseCache = new Map();
 

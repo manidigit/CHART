@@ -136,7 +136,74 @@ test('ARCH-01: every browser module shares one canonical store.js module URL', a
         assert.ok(match, `Missing shared store import in ${file}`);
         versions.push(match[1]);
     }
-    assert.deepEqual([...new Set(versions)], ['1.47.15'], 'All UI, chart, forecast and service modules must share one store singleton');
+    assert.deepEqual([...new Set(versions)], ['1.47.39'], 'All UI, chart, forecast and service modules must share one store singleton');
+});
+
+test('ARCH-02: unified ES module cache-busting, global store singleton guard, overlay cleanup & focus-pull tab guard', async () => {
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const jsRoot = path.resolve('host_subdomain/assets/js');
+    const allJsFiles = [];
+    const walk = (dir) => {
+        for (const entry of fs.readdirSync(dir, { withFileTypes: true })) {
+            const full = path.join(dir, entry.name);
+            if (entry.isDirectory()) walk(full);
+            else if (entry.isFile() && entry.name.endsWith('.js')) allJsFiles.push(full);
+        }
+    };
+    walk(jsRoot);
+
+    const indexHtml = fs.readFileSync(path.resolve('host_subdomain/index.html'), 'utf8');
+    const entryMatch = indexHtml.match(/src=["']\.\/assets\/js\/app\.js\?v=([0-9.]+)["']/);
+    assert.ok(entryMatch, 'index.html must load app.js with ?v= cache-buster');
+    const canonicalVersion = entryMatch[1];
+
+    const seenVersionsByTarget = new Map();
+    const versionRegex = /(?:from\s+|new\s+URL\s*\(\s*)['"]([^'"]+\.js(?:\?v=([0-9.]+))?)['"]/g;
+    for (const filePath of allJsFiles) {
+        const src = fs.readFileSync(filePath, 'utf8');
+        let m;
+        while ((m = versionRegex.exec(src)) !== null) {
+            const rawSpec = m[1];
+            const ver = m[2];
+            assert.ok(ver, `Missing ?v= cache-buster in ${path.relative(jsRoot, filePath)} -> ${rawSpec}`);
+            assert.equal(
+                ver,
+                canonicalVersion,
+                `Stale/split ?v=${ver} (expected ${canonicalVersion}) in ${path.relative(jsRoot, filePath)} -> ${rawSpec}`
+            );
+            const targetKey = path.resolve(path.dirname(filePath), rawSpec.split('?')[0]);
+            if (!seenVersionsByTarget.has(targetKey)) seenVersionsByTarget.set(targetKey, new Set());
+            seenVersionsByTarget.get(targetKey).add(ver);
+        }
+    }
+    for (const [target, vers] of seenVersionsByTarget.entries()) {
+        assert.equal(vers.size, 1, `Split ES module versions detected for ${target}: ${[...vers].join(', ')}`);
+    }
+
+    // Runtime dual-import test: even if two different ?v= URLs of store.js ever evaluate,
+    // globalThis.__CI_STORE_SINGLETON_V1__ guarantees ONE shared state, candleCache & focus-pull clock.
+    const storeUrlA = new URL('../host_subdomain/assets/js/core/store.js?v=test_singleton_a', import.meta.url).href;
+    const storeUrlB = new URL('../host_subdomain/assets/js/core/store.js?v=test_singleton_b', import.meta.url).href;
+    const storeA = await import(storeUrlA);
+    const storeB = await import(storeUrlB);
+    assert.strictEqual(storeA.state, storeB.state, 'Dual-loaded store.js modules must share exact same state reference');
+    assert.strictEqual(storeA.state.candleCache, storeB.state.candleCache, 'Dual-loaded store.js modules must share exact same candleCache');
+    storeA.suspendFocusPull(15000);
+    assert.equal(storeB.isFocusPullSuspended(), true, 'suspendFocusPull must propagate across dual-loaded store instances');
+
+    // Verify redrawActiveCanvas removes stale .tv-ohlc-overlay when activeTab has no candles
+    const appSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
+    assert.equal(appSrc.includes('oldOverlay.remove();'), true, 'redrawActiveCanvas must remove stale .tv-ohlc-overlay when empty');
+    assert.equal(appSrc.includes('box.prepend(nextOverlay);'), true, 'redrawActiveCanvas must insert .tv-ohlc-overlay when candles arrive');
+
+    // Verify downloadWorkspaceSync protects fresh local tab/timeframe selections during suspended focus pull
+    const apiSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/apiService.js'), 'utf8');
+    assert.equal(
+        apiSrc.includes('const preserveLocalTabSelection = isLocalNewer || isFocusPullSuspended();'),
+        true,
+        'downloadWorkspaceSync must respect isFocusPullSuspended() before overwriting open_tabs'
+    );
 });
 
 const memStore = new Map();
@@ -1005,14 +1072,14 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     const appJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
     const storeJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
     const apiServiceJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/apiService.js'), 'utf8');
-    assert.equal(indexHtmlSrc.includes('?v=1.47.1'), true);
+    assert.equal(indexHtmlSrc.includes('?v=1.47.39'), true);
     assert.equal(indexHtmlSrc.includes('?v=1.47.0'), false);
     assert.equal(indexHtmlSrc.includes('?v=1.46.1'), false);
     assert.equal(indexHtmlSrc.includes('?v=1.45.2'), false);
     assert.equal(appJsSrc.includes('?v=1.43.0'), false);
     assert.equal(appJsSrc.includes('?v=1.46.1'), false);
     assert.equal(appJsSrc.includes('?v=1.47.0'), false);
-    assert.equal(appJsSrc.includes('?v=1.47.1'), true);
+    assert.equal(appJsSrc.includes('?v=1.47.39'), true);
 
     // Verify Strictly On-Demand Architecture: No Cron dependency, No Queue files, No Auto-execution
     assert.equal(phpEndpointSrc.includes('enqueue_only'), false, 'Endpoint must not support enqueue_only');
@@ -1599,7 +1666,7 @@ test('FORECAST-NEW-COMPARE-02: selected Native model carries successful peer tra
 
 test('FORECAST-NEW-COMPARE-03: main chart renderer module cache is invalidated with comparison overlay release', async () => {
   const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
-  assert.match(app, /chartRenderer\.js\?v=1\.47\.23/);
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.39/);
 });
 
 test('FORECAST-PHASE1-PARITY-01: adapter preserves AUTO OOS metadata, render mode, and validated Coordinated MTF points', async () => {
@@ -1699,9 +1766,9 @@ test('FORECAST-PHASE3-LEGACY-CLEANUP-01: Phase 3 removes Legacy Studio UI, chart
   assert.doesNotMatch(header, /toggle-legacy-forecast-chart/);
   assert.doesNotMatch(renderer, /legacyForecastPoints|hasValidLegacyForecast|Legacy Forecast Studio/);
   assert.doesNotMatch(app, /renderForecastStudioView|LEGACY_MIGRATED_UI_DISABLED|toggle-legacy-forecast-chart|apply-forecast-to-chart|set-forecast-engine|data-engine="legacy"/);
-  assert.match(app, /forecastView\.js\?v=2\.0\.20/);
-  assert.match(app, /headerView\.js\?v=1\.47\.8/);
-  assert.match(app, /chartRenderer\.js\?v=1\.47\.23/);
+  assert.match(app, /forecastView\.js\?v=1\.47\.39/);
+  assert.match(app, /headerView\.js\?v=1\.47\.39/);
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.39/);
   assert.match(store, /forecastEngineMode:\s*'structural',\s*showFutureProjection:\s*false/);
 });
 

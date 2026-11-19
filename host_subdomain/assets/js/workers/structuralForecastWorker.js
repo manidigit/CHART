@@ -1,4 +1,4 @@
-import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.2';
+import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.39';
 
 self.onmessage = (event) => {
   const { requestId, params } = event.data || {};

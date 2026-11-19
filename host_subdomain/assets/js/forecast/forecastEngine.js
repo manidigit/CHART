@@ -21,27 +21,27 @@ import {
   roundToSignificant,
   sha256Hex,
   validateDataReadiness,
-} from './forecastContract.js?v=2.0.0';
-import { extractForecastFeatures } from './featureExtractor.js?v=2.0.0';
-import { defaultForecastRegistry, ForecastModelRegistry } from './modelRegistry.js?v=2.0.0';
+} from './forecastContract.js?v=1.47.39';
+import { extractForecastFeatures } from './featureExtractor.js?v=1.47.39';
+import { defaultForecastRegistry, ForecastModelRegistry } from './modelRegistry.js?v=1.47.39';
 import {
   applyConformalAdjustmentToQuantiles,
   buildZeroDriftLogNormalNaiveQuantiles,
   computeNaiveSigmaRw,
-} from './statisticalTests.js?v=2.0.0';
+} from './statisticalTests.js?v=1.47.39';
 import {
   buildDisjointNestedSplits,
   buildPriceTrajectoryFromPrediction,
   evaluateWalkForward,
   selectOosChartWinner,
-} from './walkForwardEvaluator.js?v=2.0.0';
+} from './walkForwardEvaluator.js?v=1.47.39';
 import {
   computeForecastStability,
   computeOodAndUncertainty,
   coordinateMultiTimeframe,
   detectKeyZonesAndEventTree,
   evaluateNoEdgeGate,
-} from './forecastV130Analyzer.js?v=2.0.0';
+} from './forecastV130Analyzer.js?v=1.47.39';
 
 export const CANONICAL_SMC_HORIZON = 60;
 const WALK_FORWARD_CACHE = new Map();

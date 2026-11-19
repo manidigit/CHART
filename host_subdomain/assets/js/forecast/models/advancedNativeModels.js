@@ -1,4 +1,4 @@
-import { MODEL_EXECUTION_STATUS, enforceMonotonicQuantiles } from '../forecastContract.js?v=2.0.0';
+import { MODEL_EXECUTION_STATUS, enforceMonotonicQuantiles } from '../forecastContract.js?v=1.47.39';
 
 export const CANONICAL_FORECAST_HORIZON = 60;
 

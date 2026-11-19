@@ -6,8 +6,8 @@ import {
   getLocalByokKeys,
   getInstrumentSpec,
   normalizeHexForWeb,
-} from '../core/store.js?v=1.47.15';
-import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.47.1';
+} from '../core/store.js?v=1.47.39';
+import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.47.39';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';

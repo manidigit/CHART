@@ -5,9 +5,9 @@ import {
   clampHorizonBars,
   computeHorizonRequirements,
   enforceMonotonicQuantiles,
-} from './forecastContract.js?v=2.0.0';
-import { extractForecastFeatures } from './featureExtractor.js?v=2.0.0';
-import { NaivePersistenceModel } from './models/baselineModels.js?v=2.0.0';
+} from './forecastContract.js?v=1.47.39';
+import { extractForecastFeatures } from './featureExtractor.js?v=1.47.39';
+import { NaivePersistenceModel } from './models/baselineModels.js?v=1.47.39';
 import {
   applyConformalAdjustmentToQuantiles,
   buildZeroDriftLogNormalNaiveQuantiles,
@@ -17,7 +17,7 @@ import {
   computeWis5Q,
   fitVolatilityNormalizedConformal,
   hlnModifiedDieboldMariano,
-} from './statisticalTests.js?v=2.0.0';
+} from './statisticalTests.js?v=1.47.39';
 
 function pinball(actual, qPred, tau) {
   const err = actual - qPred;

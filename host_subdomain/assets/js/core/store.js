@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.1';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.39';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.39';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -1243,7 +1243,19 @@ const isAutoAuthSaved =
   localStorage.getItem('ci_auto_authenticated') === 'true' &&
   Boolean(localStorage.getItem('ci_owner_username'));
 
-export const state = {
+const STORE_SINGLETON_KEY = '__CI_STORE_SINGLETON_V1__';
+const _storeSingleton =
+  globalThis[STORE_SINGLETON_KEY] ||
+  (globalThis[STORE_SINGLETON_KEY] = {
+    state: null,
+    autoSyncCallback: null,
+    autoSyncTimerId: null,
+    suspendFocusPullUntilMs: 0,
+    resolvedCandlesMemo: new Map(),
+    candleCacheRev: 1,
+  });
+
+const _initialStoreState = {
   isDarkTheme: localStorage.getItem(STORAGE_KEY_THEME) !== 'false',
   isAuthenticated: isAutoAuthSaved,
   isOwnerRegistered: Boolean(localStorage.getItem('ci_owner_username')),
@@ -1313,19 +1325,28 @@ export const state = {
   ),
 };
 
-let autoSyncCallback = null;
-let autoSyncTimerId = null;
+if (_storeSingleton.state) {
+  for (const [k, v] of Object.entries(_initialStoreState)) {
+    if (!(k in _storeSingleton.state)) _storeSingleton.state[k] = v;
+  }
+} else {
+  _storeSingleton.state = _initialStoreState;
+}
+
+export const state = _storeSingleton.state;
 
 export function registerAutoSyncCallback(cb) {
-  autoSyncCallback = cb;
+  _storeSingleton.autoSyncCallback = cb;
 }
 
 export function scheduleDebouncedCloudSync() {
-  if (typeof autoSyncCallback !== 'function') return;
-  if (autoSyncTimerId) clearTimeout(autoSyncTimerId);
-  autoSyncTimerId = setTimeout(() => {
-    autoSyncTimerId = null;
-    autoSyncCallback();
+  if (typeof _storeSingleton.autoSyncCallback !== 'function') return;
+  if (_storeSingleton.autoSyncTimerId) clearTimeout(_storeSingleton.autoSyncTimerId);
+  _storeSingleton.autoSyncTimerId = setTimeout(() => {
+    _storeSingleton.autoSyncTimerId = null;
+    if (typeof _storeSingleton.autoSyncCallback === 'function') {
+      _storeSingleton.autoSyncCallback();
+    }
   }, 800);
 }
 
@@ -1369,14 +1390,15 @@ export function savePreferences(skipCloudSync = false) {
   if (!skipCloudSync) scheduleDebouncedCloudSync();
 }
 
-let suspendFocusPullUntilMs = 0;
-
 export function suspendFocusPull(durationMs = 6000) {
-  suspendFocusPullUntilMs = Math.max(suspendFocusPullUntilMs, Date.now() + durationMs);
+  _storeSingleton.suspendFocusPullUntilMs = Math.max(
+    _storeSingleton.suspendFocusPullUntilMs || 0,
+    Date.now() + durationMs
+  );
 }
 
 export function isFocusPullSuspended() {
-  return Date.now() < suspendFocusPullUntilMs;
+  return Date.now() < (_storeSingleton.suspendFocusPullUntilMs || 0);
 }
 
 export function setIndicatorCustomColor(indKey, rawHex, skipCloudSync = false) {
@@ -1802,7 +1824,12 @@ export function saveOpenTabsToStorage(skipCloudSync = false) {
     activeDrawingWidthPx: Number(t.activeDrawingWidthPx || state.chartPreferences.defaultDrawingWidthPx || 2.0),
   }));
   localStorage.setItem(STORAGE_KEY_OPEN_TABS, JSON.stringify(clean));
-  if (!skipCloudSync) scheduleDebouncedCloudSync();
+  if (!skipCloudSync) {
+    suspendFocusPull(15000);
+    state.chartPreferences.preferencesUpdatedAtMs = Date.now();
+    savePreferences(true);
+    scheduleDebouncedCloudSync();
+  }
 }
 
 export const saveOpenTabs = saveOpenTabsToStorage;
@@ -1812,8 +1839,7 @@ function inferSymbolCodeFromCacheKey(key) {
   return parts[0] || '';
 }
 
-const _resolvedCandlesMemo = new Map();
-let _candleCacheRev = 1;
+const _resolvedCandlesMemo = _storeSingleton.resolvedCandlesMemo;
 
 function loadCandlesFromLocalStorage(key, timeframe, symbolCode = '') {
   try {
@@ -1844,7 +1870,7 @@ export function saveCandlesToCache(key, candles, maxLimit = 5000, symbolCode = '
     -Math.max(40, Math.min(5000, maxLimit))
   );
   state.candleCache[key] = normalized;
-  _candleCacheRev++;
+  _storeSingleton.candleCacheRev = (_storeSingleton.candleCacheRev || 1) + 1;
   _resolvedCandlesMemo.clear();
   try {
     localStorage.setItem(STORAGE_CANDLES_PREFIX + key, JSON.stringify(normalized.slice(-1500)));
@@ -1857,7 +1883,7 @@ export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {
   const rawTf = String(timeframe || 'M15').toUpperCase();
   const normTf = provider === 'eia_brent_spot' ? 'D1' : provider === 'stooq' && rawTf !== 'W1' ? 'D1' : rawTf;
   const exactKey = `${symbolCode}_${provider}_${normTf}`;
-  const memoKey = `${exactKey}@${_candleCacheRev}`;
+  const memoKey = `${exactKey}@${_storeSingleton.candleCacheRev || 1}`;
   const memoHit = _resolvedCandlesMemo.get(memoKey);
   if (memoHit) {
     return memoHit;

@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.47.39] - 2026-11-19
+
+### Fixed (Unified ES Module Cache-Busting, Global Store Singleton Guard, OHLC Overlay & Active-Tab Sync Protection)
+- **Root Cause Fix — Split-Singleton `store.js` Under Browser Cache (All 25 JS Modules + `index.html`):**
+  - Unified EVERY ES module import, worker URL, and script tag across the entire `host_subdomain/` graph (`index.html`, `app.js`, `core/store.js`, `services/*`, `components/*`, `views/*`, `workers/*`, `algorithms/*`, `forecast/*`) to a single canonical version (`?v=1.47.39`), eliminating stale browser-cached intermediate modules (`apiService.js?v=1.47.2`, `watchlistView.js?v=1.47.2` / `1.47.1`, `settingsView.js?v=1.47.2`, `loginView.js?v=1.47.2`, `structuralForecastService.js?v=1.47.6`) that previously loaded an older `store.js` instance separately from `app.js` / `headerView.js` / `chartRenderer.js`.
+- **Canonical Global Singleton Guard (`core/store.js?v=1.47.39`):**
+  - Backed `state`, `candleCache`, `_resolvedCandlesMemo`, `candleCacheRev`, `autoSyncCallback`, `autoSyncTimerId`, and `suspendFocusPullUntilMs` with `globalThis.__CI_STORE_SINGLETON_V1__` so split-singleton state desynchronization (empty chart canvas while watchlist shows live prices, or mismatched active symbol/timeframe) is structurally impossible even under partial CDN/browser cache.
+- **OHLC Overlay Sync & Active-Tab Focus-Pull Protection (`app.js?v=1.47.39`, `core/store.js?v=1.47.39`, `services/apiService.js?v=1.47.39`):**
+  - Fixed `redrawActiveCanvas()` in `app.js` to remove stale `.tv-ohlc-overlay` nodes when `activeTab` has no candles yet (`oldOverlay.remove()`) and insert the overlay (`box.prepend(nextOverlay)`) as soon as candles arrive.
+  - Updated `saveOpenTabsToStorage()` in `store.js` to call `suspendFocusPull(15000)` and bump `preferencesUpdatedAtMs` on user-driven symbol/tab/timeframe switches, and guarded `downloadWorkspaceSync()` in `apiService.js` with `preserveLocalTabSelection = isLocalNewer || isFocusPullSuspended()` so in-flight background sync never snaps a freshly clicked symbol or timeframe back to an older server snapshot.
+- **Verification & Documentation:**
+  - Verified `node --check` across all 25 modified JS modules and **38/38** passing tests in `tests/web_parity.test.mjs`, including new `ARCH-02` verifying whole-graph `?v=` uniformity, runtime dual-import `store.js` singleton identity, overlay cleanup, and focus-pull tab protection.
+  - Updated `docs/04-development/CHANGELOG.md` and `docs/03-roadmap-and-issues/OPEN_ISSUES.md`.
+
+---
+
 ## [1.47.38] - 2026-11-19
 
 ### Removed & Cleaned Up (Phase 3 Migration: Permanent Removal of Legacy Forecast Studio UI, Handlers & Chart Overlay)

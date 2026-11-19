@@ -347,6 +347,12 @@
 - **حفظ موتورهای مشترک و فایل‌های کنار گذاشته‌شده:** تمام پنل‌ها و موتورهای مشترک سیستم جدید (۱۲ پنل استودیو، ۱۰ مدل رجیستری، `AUTO`، `Causal Historical Analogs`، `Ensemble`، `Structural JS`، `Replay`، `Ledger`) دست‌نخورده و فعال‌اند؛ فایل‌های غیرفعال `Chronos-2 / Python` نیز دست‌نخورده حفظ شدند.
 - **راستی‌آزمایی محلی:** `node --check` روی تمامی ماژول‌های تغییریافته و **۳۷/۳۷ تست `tests/web_parity.test.mjs`** (شامل `FORECAST-PHASE3-LEGACY-CLEANUP-01`) با موفقیت پاس شدند.
 
+### ۶.۸. رفع باگ قفل شدن نماد/تایم‌فریم و لود نشدن کندل‌ها در مرورگر (`v1.47.39`) — 2026-11-19
 
-
-
+- **علت ریشه‌ای (`ARCH-02` / Split-Singleton State):** پس از ارتقای تدریجی `store.js`، نسخه `?v=` ماژول‌های میانی (`apiService.js?v=1.47.2`، `watchlistView.js?v=1.47.2 / 1.47.1`، `settingsView.js?v=1.47.2`، `loginView.js?v=1.47.2`، `structuralForecastService.js?v=1.47.6`) ثابت مانده بود و مرورگر آن‌ها را از کش با یک نمونه قدیمی و جداگانه از `store.js` اجرا می‌کرد؛ در نتیجه کندل‌ها و قیمت‌های زنده در `state` قدیمی نوشته می‌شدند و بوم چارت و هدر روی `state` جدید خالی می‌ماندند. همچنین `redrawActiveCanvas()` نوار `.tv-ohlc-overlay` قبلی را هنگام خالی بودن کندل‌ها حذف نمی‌کرد و `downloadWorkspaceSync()` در حین تعویض نماد/تایم‌فریم می‌توانست تب فعال کاربر را به وضعیت قدیمی‌تر سرور برگرداند.
+- **اصلاحات اعمال‌شده (`v1.47.39`):**
+  1. یکسان‌سازی کامل تمام آدرس‌های `?v=1.47.39` در کل گراف ES Moduleها و Workerها (`index.html` و تمام ۲۵ فایل JS در `host_subdomain/assets/js/`).
+  2. افزودن محافظ Singleton سراسری (`globalThis.__CI_STORE_SINGLETON_V1__`) در `core/store.js` برای `state`، `candleCache`، کش memo کندل‌ها، `autoSyncCallback` و `suspendFocusPullUntilMs`.
+  3. اصلاح `redrawActiveCanvas()` در `app.js` برای حذف `.tv-ohlc-overlay` قدیمی در حالت خالی و درج خودکار آن هنگام لود شدن کندل‌ها.
+  4. افزودن `suspendFocusPull(15000)` و به‌روزرسانی `preferencesUpdatedAtMs` در `saveOpenTabsToStorage()` و محافظ `preserveLocalTabSelection` در `downloadWorkspaceSync()` (`apiService.js`) جهت جلوگیری از بازنویسی تب و تایم‌فریم انتخابی کاربر توسط سینک پس‌زمینه.
+- **راستی‌آزمایی محلی:** `node --check` روی هر ۲۵ ماژول JS و **۳۸/۳۸ تست `tests/web_parity.test.mjs`** (شامل تست جدید `ARCH-02` برای یکتایی نسخه کل گراف ماژول‌ها و آزمون Runtime دوپاره نشدن `store.js`) با موفقیت پاس شدند.

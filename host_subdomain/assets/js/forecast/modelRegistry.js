@@ -1,17 +1,17 @@
-import { NaivePersistenceModel, HistoricalDriftModel } from './models/baselineModels.js?v=2.0.0';
+import { NaivePersistenceModel, HistoricalDriftModel } from './models/baselineModels.js?v=1.47.39';
 import {
   KalmanMomentumModel,
   GarchVolatilityModel,
   ArimaEtsModel,
   GaussianProcessModel,
-} from './models/statisticalModels.js?v=2.0.0';
+} from './models/statisticalModels.js?v=1.47.39';
 import {
   NativeArimaDiffModel,
   NativeProphetDecompModel,
   NativeSequenceRecurrentModel,
   NativeQuantileAttentionModel,
-} from './models/advancedNativeModels.js?v=2.0.0';
-import { MODEL_REGISTRY_VERSION, REMOTE_WORKER_STATUS } from './forecastContract.js?v=2.0.0';
+} from './models/advancedNativeModels.js?v=1.47.39';
+import { MODEL_REGISTRY_VERSION, REMOTE_WORKER_STATUS } from './forecastContract.js?v=1.47.39';
 
 export const REMOTE_DL_WORKER_SPEC = Object.freeze({
   id: 'remote_dl_worker',

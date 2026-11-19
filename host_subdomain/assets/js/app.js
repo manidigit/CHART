@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.47.1';
+import { I18nManager } from './core/i18n.js?v=1.47.39';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -38,7 +38,7 @@ import {
   clearTabStructuralForecast,
   invalidateTabStructuralForecastIfStale,
   reconcileTabStructuralForecastOnRender,
-} from './core/store.js?v=1.47.15';
+} from './core/store.js?v=1.47.39';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -60,30 +60,30 @@ import {
   uploadHistoricalImport,
   fetchImportBatches,
   clearChronos2TimerForTab,
-} from './services/apiService.js?v=1.47.2';
-import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.6';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.1';
-import { GapDetector } from './algorithms/gapDetector.js?v=1.47.1';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.1';
-import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.1';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.23';
-import { renderLoginScreen } from './views/loginView.js?v=1.47.2';
+} from './services/apiService.js?v=1.47.39';
+import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.39';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.39';
+import { GapDetector } from './algorithms/gapDetector.js?v=1.47.39';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.39';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.39';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.39';
+import { renderLoginScreen } from './views/loginView.js?v=1.47.39';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.47.8';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.1';
+} from './views/headerView.js?v=1.47.39';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.39';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.47.2';
-import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
-import { renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=2.0.20';
-import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.4';
-import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
-import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
+} from './views/watchlistView.js?v=1.47.39';
+import { renderSettingsModal } from './views/settingsView.js?v=1.47.39';
+import { renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=1.47.39';
+import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=1.47.39';
+import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.47.39';
+import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.47.39';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -1280,12 +1280,17 @@ function redrawActiveCanvas() {
     const box = canvas.closest('.chart-canvas-box');
     if (box) {
       const oldOverlay = box.querySelector('.tv-ohlc-overlay');
+      const temp = document.createElement('div');
+      temp.innerHTML = renderOhlcvOverlay(activeTab);
+      const nextOverlay = temp.firstElementChild;
       if (oldOverlay) {
-        const temp = document.createElement('div');
-        temp.innerHTML = renderOhlcvOverlay(activeTab);
-        if (temp.firstElementChild) {
-          oldOverlay.replaceWith(temp.firstElementChild);
+        if (nextOverlay) {
+          oldOverlay.replaceWith(nextOverlay);
+        } else {
+          oldOverlay.remove();
         }
+      } else if (nextOverlay) {
+        box.prepend(nextOverlay);
       }
     }
   }

@@ -22,9 +22,10 @@ import {
   clearTabChronosForecast,
   invalidateTabChronosIfStale,
   invalidateTabStructuralForecastIfStale,
-} from '../core/store.js?v=1.47.15';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.1';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.1';
+  isFocusPullSuspended,
+} from '../core/store.js?v=1.47.39';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.39';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.39';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
@@ -712,8 +713,9 @@ export async function downloadWorkspaceSync() {
         : ws.open_tabs && Array.isArray(ws.open_tabs.tabs)
           ? ws.open_tabs.tabs
           : [];
+      const preserveLocalTabSelection = isLocalNewer || isFocusPullSuspended();
       if (
-        !isLocalNewer &&
+        !preserveLocalTabSelection &&
         ws.open_tabs &&
         typeof ws.open_tabs === 'object' &&
         ws.open_tabs.lastOpenedSymbolCode
@@ -721,7 +723,7 @@ export async function downloadWorkspaceSync() {
         state.lastOpenedSymbolCode = String(ws.open_tabs.lastOpenedSymbolCode).trim().toUpperCase();
         localStorage.setItem('ci_last_opened_symbol', state.lastOpenedSymbolCode);
       }
-      if (incomingOpenTabs.length > 0 && (!isLocalNewer || !state.openTabs || state.openTabs.length === 0)) {
+      if (incomingOpenTabs.length > 0 && (!preserveLocalTabSelection || !state.openTabs || state.openTabs.length === 0)) {
         const existingBySym = new Map((state.openTabs || []).map((et) => [et.symbolCode, et]));
         state.openTabs = incomingOpenTabs.map((t, idx) => {
           const code = String(t.symbolCode || 'SPOTBRENT').toUpperCase();

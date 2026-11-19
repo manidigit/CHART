@@ -1,4 +1,4 @@
-import { FEATURE_PIPELINE_VERSION, extractCandleClose, extractCandleOpenMs } from './forecastContract.js?v=2.0.0';
+import { FEATURE_PIPELINE_VERSION, extractCandleClose, extractCandleOpenMs } from './forecastContract.js?v=1.47.39';
 
 export const MARKET_REGIME = Object.freeze({
   TRENDING_BULL: 'TRENDING_BULL',
