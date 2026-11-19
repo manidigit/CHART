@@ -2,7 +2,7 @@
 
 - **نسخه:** 1.0.0
 - **تاریخ ثبت:** 2026-11-18
-- **وضعیت:** مسیر انتخاب/اجرا/رسم تمام 10 مدل رجیستری Native وب پیاده‌سازی و منتشر شده؛ وضعیت OOS per-model نیز به Adapter متصل است. پذیرش کیفیت هر مدل داده‌محور است؛ Chronos-2 و Python Workerهای خارج از رجیستری هنوز مسیر جداگانه دارند. هیچ مسیر Legacy حذف یا خاموش نشده است.
+- **وضعیت:** مسیر انتخاب/اجرا/رسم ۱۰ مدل رجیستری Native وب، Structural JS و Historical Analogs پیاده‌سازی شده؛ Walk-Forward و Ledger محلی نیز به New Native متصل شده‌اند. CI و Deploy cPanel در Run `44514401273` موفق و Deploy با ۱۲۳ فایل تأیید شده است. پذیرش نهایی مرورگری و قابلیت‌های وابسته به Runtime مستقل همچنان باز هستند؛ Legacy حفظ شده است.
 - **مخزن/شاخه مبنا:** `manidigit/CHART` / `main`
 - **مرجع محصول:** `FORECAST_PRODUCT_FOUNDATION_V1.md` و `FORECAST_SYSTEM_SPEC_V1.md`
 - **هدف:** انتقال تدریجی قابلیت‌های سیستم قدیمی به معماری جدید، با امکان انتخاب مستقل قابلیت‌های منتقل‌شده و خاموش‌کردن کنترل‌شده نسخه قدیمی پس از پذیرش.
@@ -689,3 +689,32 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 ### 19.5. تست و وضعیت انتشار
 
 تست `FORECAST-NEW-EVALUATION-01` به `tests/web_parity.test.mjs` اضافه شده است. نتیجه CI، build artifact، cPanel deploy و browser verification باید جداگانه پس از اجرای Workflow ثبت شوند.
+
+
+## 20. بستن بسته مهاجرت قابل اجرا و Gateهای باقیمانده — 2026-11-19
+
+### 20.1. آنچه در سیستم جدید منتقل و در CI تأیید شد
+
+- انتخاب‌گر New شامل Structural JS، Historical Analogs و تمام ۱۰ مدل رجیستری Native است؛ مدل‌های تقریبی با برچسب Approximation مشخص می‌شوند.
+- مسیر اجرا و Adapter مدل‌های Native از مسیر Structural جداست؛ انتخاب مدل و رندر فقط مدل انتخاب‌شده را روی چارت اصلی فعال می‌کند.
+- کنترل منبع داده در Store، تب‌های قدیمی و مسیر API به TradingView محدود شده است؛ Providerهای دیگر نباید در Forecast فعال شوند.
+- پنل‌های Walk-Forward و Ledger موجود بدون بازنویسی الگوریتم به New Native متصل شده‌اند.
+- ورودی maturity دفترکل در برابر کندل باز، timestamp تکراری و ترتیب زمانی سخت‌سازی شده است.
+- CI روی commit `2a9560000211eccc24d13b265b7d39480550a003`: ۲۱/۲۱ Web parity، PHP lint، استخراج ۴۲٬۲۹۱ کندل TradingView، Android build و Unit/Robolectric موفق.
+- Deploy واقعی cPanel با پاسخ `deployed_files: 123` تأیید شد؛ Artifact وب ۱۲۲ فایل و APK نیز ساخته شدند.
+
+### 20.2. مرز «انتقال کد» با «پذیرش عملیاتی»
+
+موارد زیر عمداً به‌عنوان قابلیت تکمیل‌شده معرفی نمی‌شوند و در `OPEN_ISSUES.md §5` ثبت شده‌اند:
+
+1. **Chronos-2 و Python Workerها:** به Runtime مستقل نیاز دارند؛ روی هاست فعلی Python/exec قابل اتکا نیست. غیرفعال باقی می‌مانند؛ نه Cron اضافه می‌شود و نه اجرای جعلی با JS.
+2. **Historical Replay مستقل:** در کد موجود، workflow قابل انتقال و پذیرش‌شده‌ای برای Replay یافت نشد؛ ساخت آن یک قابلیت جدید است، نه انتقال ساده. تا طراحی و تست causal replay در New غیرفعال می‌ماند.
+3. **Calibrated Ensemble:** مسیر اجرایی و کالیبراسیون معتبر در Structural JS وجود ندارد؛ گزینه در UI غیرفعال باقی می‌ماند.
+4. **Ledger server/multidevice sync:** Ledger فعلی localStorage است و محدودیت ۱۲۰ Snapshot / ۲۴۰ رویداد دارد. مهاجرت ابری نیازمند تصمیم Schema، API، احراز هویت، conflict handling و migration امن Hash Chain است.
+5. **Snapshot provenance:** provider و model version مستقل باید در نسخه بعدی قرارداد ذخیره شوند؛ بدون شکستن Hash Chain داده‌های قبلی.
+6. **Production Browser E2E:** Deploy ثابت شده، اما تعامل واقعی UI روی مرورگر Production هنوز اثبات نشده است.
+7. **Legacy retirement:** تا عبور New از Browser E2E و پذیرش کیفیت خروجی، Legacy حذف یا خاموش نشود.
+
+### 20.3. تصمیم وضعیت
+
+بسته مهاجرت Native/Browser-based قابل اجرا تا سطح CI و Deploy تکمیل شده است؛ «کل مهاجرت محصول» هنوز به‌دلیل موارد بند 20.2 بسته نیست. این تفکیک مانع ادعای تکمیل کاذب می‌شود. مسائل باقیمانده در دفتر متمرکز ثبت شده‌اند و نباید با فعال‌کردن placeholderها از UI پنهان شوند.
