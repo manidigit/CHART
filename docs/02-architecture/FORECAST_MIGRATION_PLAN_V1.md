@@ -587,3 +587,43 @@ Disabled کردن یک قابلیت در New به معنی خاموش‌کردن
 در زمان ثبت این یادداشت، GitHub Actions برای commit `d5a6e388204352268a5e9adc733dd0e5d3cca0c7` یک اجرای push با شناسه `44488936275` ساخته و در وضعیت `pending` بوده است؛ هنوز نتیجه job، build یا deploy قابل اعلام نیست. تست محلی در این محیط اجرا نشده است.
 
 گام بعدی حوزه Forecast، انتقال قابلیت‌به‌قابلیت مسیرهای Legacy به New است: ابتدا قرارداد و مسیر اجرایی Chronos-2 و مدل‌های Python، سپس Ledger/ارزیابی و Backtest/Replay. تا زمان انتقال و تست end-to-end، این موارد در New غیرفعال می‌مانند و Legacy حذف نمی‌شود.
+
+
+## 17. ممیزی Runtime واقعی Chronos-2 و محدودیت هاست اشتراکی — 2026-11-19
+
+### 17.1. یافته اجرایی قطعی
+
+ممیزی مستقیم فایل‌های chronos2_forecast.php و Chronos2QueueManager.php نشان داد مسیر Legacy برای اجرای مدل، تابع PHP exec() را فراخوانی می‌کند و فایل scripts/chronos2_worker.py را به‌عنوان Worker اجرا می‌کند. خود QueueManager در صورت غیرفعال‌بودن exec() خطای صریح زیر را برمی‌گرداند:
+
+- PHP exec() function is disabled on this server host environment.
+
+بنابراین وجود Python worker، موفقیت py_compile در CI یا نصب وابستگی‌ها در GitHub Actions هیچ‌کدام اثبات نمی‌کنند که مدل روی هاست اشتراکی قابل اجراست. این مسیر روی محیط فعلی هاست قابل اتکا نیست و انتقال Chronos-2 به New با صرفاً ساخت Adapter جاوااسکریپت، مشکل Runtime را حل نمی‌کند.
+
+### 17.2. تصمیم معماری اصلاح‌شده
+
+- Chronos-2 در New تا زمان تأمین Runtime مستقل و قابل دسترس، NOT_MIGRATED / BLOCKED_BY_RUNTIME باقی می‌ماند و باید Disabled باشد.
+- اجرای Python روی هاست اشتراکی، فعال‌کردن مجدد exec()، Cron، یا تبدیل صوری خروجی مدل به Structural JS به‌عنوان راه‌حل پذیرفته نیست.
+- اگر در آینده Runtime مستقل فراهم شود، اجرای Chronos-2 باید on-demand از طریق API امن و احراز هویت‌شده انجام شود؛ نه Cron و نه polling بی‌وقفه. درخواست باید فقط کندل‌های بسته TradingView را بپذیرد و پاسخ باید quantileهای اصلی مدل، revision، timestamp مبنا، horizon و status را بدون جعل OHLC حفظ کند.
+- انتخاب سرویس/زیرساخت خارجی و هزینه عملیاتی آن هنوز تصمیم‌گیری نشده است؛ تا آن زمان هیچ وابستگی جدید یا سرویس پولی ایجاد نمی‌شود.
+- مدل‌های Python دیگر نیز همین محدودیت را دارند و نباید برای هاست اشتراکی به‌عنوان گزینه اجرایی New عرضه شوند.
+
+### 17.3. اصلاح مرز Provider در API
+
+در ممیزی chronos2_forecast.php مشخص شد پارامتر provider از GET/POST خوانده می‌شد و بدون allow-list مستقیماً به resolver کندل ارسال می‌شد. با توجه به تصمیم قطعی استفاده انحصاری از TradingView، API اکنون هر مقدار غیر از tvdatafeed را پیش از دسترسی به داده با ERR_PROVIDER_NOT_ALLOWED و HTTP 400 رد می‌کند. تست CHRONOS2-PROVIDER-GUARD-01 ترتیب این کنترل را نسبت به candle resolution بررسی می‌کند.
+
+### 17.4. وضعیت CI و انتشار commit قبلی
+
+برای commit 0369459908d2dfd2d977c978395d2619bb230566، GitHub Actions run 44488981036 در تاریخ 2026-11-19 با نتیجه موفق پایان یافت:
+
+- Web parity: 17 تست موفق، صفر شکست.
+- py_compile برای Chronos-2 worker موفق بود؛ این فقط بررسی syntax در runner لینوکس است، نه اجرای مدل روی هاست.
+- PHP lint برای chronos2_forecast.php، Chronos2QueueManager.php و اسکریپت cron موفق بود.
+- Android APK build و unit tests در job مربوطه موفق شدند.
+- بسته وب 122 فایل داشت و به‌عنوان Artifact با شناسه 14512336383 آپلود شد.
+- مرحله cPanel به دلیل در دسترس نبودن deployment secrets، remote upload را صریحاً skip کرد. بنابراین نتیجه Job موفق است، اما Deploy به هاست انجام نشده و Production browser test نیز انجام نشده است.
+
+این بخش، وضعیت pending ثبت‌شده در بند 16.4 را با نتیجه نهایی همان run جایگزین می‌کند.
+
+### 17.5. گام بعدی
+
+ابتدا guard انحصاری TradingView و تست آن تثبیت می‌شود. سپس ممیزی قرارداد پاسخ Chronos-2 و lifecycle در Legacy تکمیل خواهد شد؛ اما اتصال فعال به New تا زمان حل Runtime مستقل متوقف می‌ماند. در این فاصله، کار مهاجرت روی قابلیت‌های Native JavaScript و حوزه‌های غیر وابسته به Python ادامه می‌یابد و Legacy بدون تغییر در دسترس می‌ماند.
