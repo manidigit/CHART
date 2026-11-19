@@ -1262,6 +1262,7 @@ function renderHistoricalReplaySection(isFa, decimals) {
         </div>
         <div class="chip-group"><span class="ci-fc-ctrl-label">${isFa ? 'تعداد مبدأ:' : 'Windows:'}</span>${[3,5,10].map((count) => `<button type="button" class="chip ${windowCount === count ? 'active' : ''}" data-action="set-forecast-replay-windows" data-windows="${count}">${count}</button>`).join('')}</div>
         <button type="button" class="btn btn-sm btn-primary" data-action="run-forecast-replay" ${sameContext && replay.status === 'RUNNING' ? 'disabled' : ''}>${isFa ? 'اجرای بازپخش تاریخی' : 'Run Historical Replay'}</button>
+        <button type="button" class="btn btn-sm" data-action="toggle-forecast-replay-playback" ${sameContext && replay.windows?.length > 1 ? '' : 'disabled'}>${state._forecastReplayPlaying ? (isFa ? 'توقف پخش' : 'Pause Playback') : (isFa ? 'پخش خودکار' : 'Play Replay')}</button>
       </div>
       <div class="row-between" style="gap:8px;flex-wrap:wrap;margin:8px 0;">
         <label class="ci-fc-param-item ltr-num"><span>${isFa ? 'از تاریخ UTC' : 'From UTC'}</span><input type="date" id="ci-forecast-replay-from" value="${escapeHtml(replayFromDate)}" /></label>
