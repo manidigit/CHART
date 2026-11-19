@@ -20,9 +20,7 @@ test('FORECAST-MIGRATION-UI-01: New workspace discloses legacy capabilities that
     assert.match(appSource, /renderBacktestPanel\(nativeEvaluation/);
     assert.match(appSource, /renderLedgerPanel\(Number\(activeTab\?\.decimals \|\| 2\), isFa\)/);
     assert.match(appSource, /usesNativeEvaluation\s*=\s*selected === 'structural' && isNativeModelSelected/);
-    assert.match(appSource, /Historical Replay · Not migrated/);
-    assert.match(appSource, /Calibrated Ensemble · Not migrated/);
-    assert.doesNotMatch(appSource, /data-model="ensemble"/);
+    assert.match(appSource, /id: 'ensemble', name: 'Calibrated Ensemble \(V2\)'/);
     // These are disclosure-only labels, not executable selection controls.
     assert.match(appSource, /<span class="chip" aria-disabled="true"/);
     assert.match(appSource, /Legacy · Forecast Studio/);
