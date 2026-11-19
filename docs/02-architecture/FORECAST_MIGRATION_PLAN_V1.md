@@ -1,9 +1,9 @@
 # CHART — برنامه مهاجرت قابلیت‌ها و ممیزی مرحله اول مدل‌های پیش‌بینی
 
-- **نسخه:** 1.0.0
-- **تاریخ ثبت:** 2026-11-18
-- **وضعیت:** مسیر انتخاب/اجرا/رسم ۱۰ مدل رجیستری Native وب، Structural JS و Historical Analogs پیاده‌سازی شده؛ تنظیمات مدل‌ها، Walk-Forward و Ledger محلی نیز به New Native متصل شده‌اند. چهار Run پیاپی اخیر CI و Deploy cPanel را با ۱۲۳ فایل تأیید کرده‌اند. پذیرش نهایی مرورگری و قابلیت‌های وابسته به Runtime مستقل همچنان باز هستند؛ Legacy حفظ شده است.
-- **مخزن/شاخه مبنا:** `manidigit/CHART` / `main`
+- **نسخه:** 1.1.0
+- **تاریخ ثبت/بازنگری:** 2026-11-19
+- **وضعیت:** شاخه `forecast-completion-native-only` قابلیت‌های انتخاب/اجرای مدل‌های Native، Ensemble، Replay و مستندات parity را پیاده‌سازی کرده و CI آن ۳۲/۳۲ تست و Syntax checks را پاس کرده است. این شاخه هنوز PR #5 است و تغییرات آن روی cPanel منتشر نشده‌اند؛ Browser E2E، Production verification و Chronos-2 external runtime همچنان بازند. Legacy حفظ شده است.
+- **مخزن/شاخه کاری:** `manidigit/CHART` / `forecast-completion-native-only` (PR #5 به مقصد `main`)
 - **مرجع محصول:** `FORECAST_PRODUCT_FOUNDATION_V1.md` و `FORECAST_SYSTEM_SPEC_V1.md`
 - **هدف:** انتقال تدریجی قابلیت‌های سیستم قدیمی به معماری جدید، با امکان انتخاب مستقل قابلیت‌های منتقل‌شده و خاموش‌کردن کنترل‌شده نسخه قدیمی پس از پذیرش.
 
