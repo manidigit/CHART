@@ -760,3 +760,12 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 - Android Debug APK و Unit/Robolectric tests موفق شدند.
 - Artifact وب `14524589022` و APK `14526440962` ساخته شدند.
 - انتشار و مستندات همگام‌اند؛ تنها Browser E2E و قابلیت‌های فهرست‌شده در OPEN_ISSUES.md به‌عنوان Gateهای باقیمانده باز هستند.
+
+
+## 24. اصلاح انتقال ناقص UI در New — 2026-11-19
+
+در بازبینی مجدد، مشخص شد رابط New Native به‌اشتباه فقط انتخاب موتور و چند کنترل پایه را نمایش می‌داد. قابلیت‌های قابل استفاده موجود از Forecast Studio اکنون reuse شده‌اند: Overview/Scenario/Event Tree، Fan canvas، Models/Configuration، Walk-Forward/Calibration، Ledger/Lifecycle، انتخاب مسیر مدل، ثبت Snapshot، Apply-to-chart، Render Mode و MTF coordination.
+
+همچنین رفع شد که New Native برای ساخت Forecast از horizon و model مستقل خود استفاده کند؛ پیش از این `buildForecastForTab()` ناخواسته تنظیمات Legacy را می‌خواند. تنظیمات دو موتور اکنون از طریق overrides جدا شده‌اند. Cache-busting وب به `app.js?v=1.47.22` و Forecast View به `v=2.0.8` افزایش یافت.
+
+این تغییر هنوز به معنی تکمیل کل مهاجرت نیست: Chronos-2/Python Worker به Runtime مستقل وابسته است، Historical Replay و Calibrated Ensemble پیاده‌سازی اجرایی ندارند و Browser E2E باید انجام شود.
