@@ -1151,7 +1151,8 @@ export function runHistoricalForecastReplay(activeTab, options = {}) {
 
 function renderHistoricalReplaySection(isFa, decimals) {
   const replay = state._forecastReplayResult;
-  const sameContext = replay && replay.symbolCode === (getActiveTabSymbolForReplay() || replay.symbolCode);
+  const activeTab = state.openTabs?.find((item) => item.tabId === state.activeTabId) || state.openTabs?.[0];
+  const sameContext = replay && replay.symbolCode === activeTab?.symbolCode && replay.timeframe === activeTab?.timeframe;
   const rows = sameContext && Array.isArray(replay.windows) ? replay.windows.map((w, index) => `
     <tr>
       <td class="ltr-num">${index + 1}</td>
@@ -1182,11 +1183,6 @@ function renderHistoricalReplaySection(isFa, decimals) {
   `;
 }
 
-function getActiveTabSymbolForReplay() {
-  const tab = state.openTabs?.find((item) => item.tabId === state.activeTabId) || state.openTabs?.[0];
-  return tab ? tab.symbolCode : '';
-}
-
 export function renderBacktestPanel(fc, decimals, isFa) {
   const wf = fc?.walkForward;
   if (!wf || wf.evaluatedWindows === 0 || !wf.ensembleMetrics) {
@@ -1195,6 +1191,7 @@ export function renderBacktestPanel(fc, decimals, isFa) {
         <strong>${isFa ? 'ارزیابی Nested Walk-Forward نیاز به تاریخچه بیشتر دارد' : 'Nested Walk-Forward Backtest Unavailable'}</strong>
         <p style="color:var(--text-muted);font-size:12.5px;">${escapeHtml(wf?.acceptanceReason || 'Need >= N_op_min clean bars (155 for H=10, 1248+ for H=30 statistical gate) to execute disjoint 4-way purged walk-forward.')}</p>
       </div>
+      ${renderHistoricalReplaySection(isFa, decimals)}
     `;
   }
 
@@ -1331,6 +1328,7 @@ export function renderBacktestPanel(fc, decimals, isFa) {
     `
         : ''
     }
+    ${renderHistoricalReplaySection(isFa, decimals)}
   `;
 }
 
