@@ -209,3 +209,5 @@
 - Chronos-2/Python Worker به Runtime مستقل نیاز دارد؛ Historical Replay و Calibrated Ensemble هنوز مسیر اجرایی ندارند.
 
 - تکمیل ایزولاسیون New: حتی اگر Legacy قبلاً Worker URL ذخیره کرده باشد، New Native آن را با `workerUrl: ''` نادیده می‌گیرد؛ اجرای Python Worker از مسیر New فعال نمی‌شود. Cache-busting به `app.js?v=1.47.23` و `forecastView.js?v=2.0.9` افزایش یافت.
+
+- تب‌های Overview، Models، Walk-Forward و Ledger اکنون در New همیشه قابل مشاهده‌اند؛ در انتخاب Structural JS/Historical Analogs، Overview توضیح می‌دهد که Fan/Scenario مربوط به Native است، اما تب‌های مدل/ارزیابی/دفتر همچنان در دسترس‌اند. محاسبه Native فقط هنگام انتخاب مدل Native یا بازکردن تب‌های ارزیابی انجام می‌شود تا محاسبه غیرضروری در هر رندر ایجاد نشود.

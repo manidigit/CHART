@@ -771,3 +771,5 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 این تغییر هنوز به معنی تکمیل کل مهاجرت نیست: Chronos-2/Python Worker به Runtime مستقل وابسته است، Historical Replay و Calibrated Ensemble پیاده‌سازی اجرایی ندارند و Browser E2E باید انجام شود.
 
 - ایزولاسیون Worker: New Native `workerUrl` را صریحاً خالی می‌فرستد و تنظیمات ذخیره‌شده Legacy باعث اجرای ناخواسته Worker خارجی نمی‌شود.
+
+- تب‌های Forecast Studio در New به انتخاب Native محدود نیستند: Models/Walk-Forward/Ledger همواره قابل دسترسی‌اند؛ Overview برای Structural JS و Historical Analogs توضیح صریح می‌دهد که نمودار Fan/Scenario به خروجی Native وابسته است. ارزیابی Native به‌صورت lazy هنگام نیاز محاسبه می‌شود.
