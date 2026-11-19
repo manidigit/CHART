@@ -867,7 +867,7 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 ## 10. اعتبارسنجی شاخه مهاجرت — 2026-11-19
 
 - **GitHub Actions:** اجرای `Forecast Native Validation` روی شاخه `forecast-completion-native-only` با نتیجه موفق.
-- **Node tests:** 32/32 موفق، 0 شکست.
+- **Node tests:** 33/33 موفق، 0 شکست.
 - **Syntax:** `node --check` برای `app.js`، `forecastView.js`، `modelRegistry.js` و `forecastEngine.js` موفق.
 - یک خطای واقعی تعریف دوباره `horizon` در `app.js` توسط Syntax check کشف و اصلاح شد؛ اجرای بعدی سبز است.
 - این اعتبارسنجی، تست مرورگر تعاملی یا تأیید استقرار cPanel نیست. تا زمانی که پذیرش Chronos/runtime و ممیزی Legacy بسته نشده، این شاخه آماده اعلام پایان مهاجرت محصول نیست.
