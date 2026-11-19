@@ -37,6 +37,14 @@ $bodyData = ($rawBody !== false && $rawBody !== '') ? (json_decode($rawBody, tru
 
 $symbol = strtoupper(trim((string) ($bodyData['symbol'] ?? $_GET['symbol'] ?? 'SPOTBRENT')));
 $provider = strtolower(trim((string) ($bodyData['provider'] ?? $_GET['provider'] ?? 'tvdatafeed')));
+
+if ($provider !== 'tvdatafeed') {
+    ApiEnvelope::sendError(
+        'ERR_PROVIDER_NOT_ALLOWED',
+        'Chronos-2 accepts TradingView (tvdatafeed) data only.',
+        400
+    );
+}
 $timeframe = strtoupper(trim((string) ($bodyData['timeframe'] ?? $_GET['timeframe'] ?? 'H1')));
 $horizon = (int) ($bodyData['horizon'] ?? $_GET['horizon'] ?? Chronos2QueueManager::DEFAULT_HORIZON);
 $contextBars = (int) ($bodyData['context_bars'] ?? $_GET['context_bars'] ?? Chronos2QueueManager::DEFAULT_CONTEXT_BARS);
