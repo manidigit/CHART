@@ -12,6 +12,19 @@ register(
 );
 
 
+test('FORECAST-MIGRATION-UI-01: New workspace discloses legacy capabilities that are not migrated', async () => {
+    const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+    assert.match(appSource, /Legacy capabilities not yet migrated and verified in New/);
+    assert.match(appSource, /Chronos-2 · Not migrated/);
+    assert.match(appSource, /Python models · Not migrated/);
+    assert.match(appSource, /Ledger & evaluation · Pending/);
+    assert.match(appSource, /Backtest \/ Walk-forward · Pending/);
+    assert.match(appSource, /Historical Replay · Not migrated/);
+    // These are disclosure-only labels, not executable selection controls.
+    assert.match(appSource, /<span class="chip" aria-disabled="true"/);
+    assert.match(appSource, /Legacy · Forecast Studio/);
+});
+
 test('ARCH-01: every browser module shares one canonical store.js module URL', async () => {
     const files = [
         '../host_subdomain/assets/js/app.js',
