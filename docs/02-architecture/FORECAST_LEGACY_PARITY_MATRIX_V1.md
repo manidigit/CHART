@@ -99,3 +99,15 @@ The parity matrix is a code-transfer inventory, not a release sign-off. No Legac
 4. failure/empty-data behavior is correct;
 5. the user-visible result is attributable to the selected model; and
 6. rollback remains available until the acceptance window closes.
+
+
+## 6. Phase 1 Parity Completion Update — 2026-11-19
+
+Following explicit product direction to shelve Python/Chronos-2 on shared hosting for now and finish browser-native feature parity before progressively disabling Legacy controls (Phase 2):
+
+- **AUTO (OOS-evaluated) model selection:** Now available directly in the New model picker and routed through `applyNativeModelForecastToTab()` to the real OOS-selected model (`selectedChartModelId`) with `requested_model_id: 'AUTO'` preserved in `isStructuralForecastMatchingTab()`.
+- **Main chart render modes (`FAN_CHART`, `HYBRID`, `GHOST_CANDLES`):** Implemented in `chartRenderer.js` (`v1.47.22`) with `Q10–Q90` Y-axis scaling, outer `Q10–Q90` + inner `Q25–Q75` bands, and strict quantile envelope bars (no synthetic OHLC).
+- **MTF Coordinated layer & live chart sync:** Switching `Independent / Coordinated`, render mode, or comparison overlays now updates and redraws the main chart immediately; `adaptNativeModelTrajectory()` validates monotonic `coordinatedPoints` before adoption.
+- **Unified New header & controls:** Added symbol badge and `VALID/PROVISIONAL/NO_EDGE`, `Edge Gate`, `OOD`, and `Regime` badges to the New header and removed the duplicated horizon selector row.
+- **Verification & Legacy state:** `node --check` passed on all modified JS modules and `tests/web_parity.test.mjs` passed **35/35** (cache keys bumped to `app.js?v=1.47.35`, `store.js?v=1.47.13`, `chartRenderer.js?v=1.47.22`, `forecastContract.js?v=2.0.4`). Legacy controls remain intentionally active until user live-browser verification approves Phase 2 progressive disabling.
+

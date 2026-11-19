@@ -7,6 +7,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.47.35] - 2026-11-19
+
+### Added & Improved (Phase 1 New Forecast Parity: AUTO OOS, Main Chart Render Modes & Coordinated MTF)
+- **AUTO (OOS-Evaluated) Model Selection in New Forecast (`app.js`, `forecastContract.js`, `store.js`):**
+  - Added `AUTO (OOS Best)` directly to the New Forecast model selector and updated `applyNativeModelForecastToTab()` to resolve `built.result.selectedChartModelId` instead of falling back to `naive_persistence`, preserving `requested_model_id: 'AUTO'` across `isStructuralForecastMatchingTab()`.
+- **Full Main Chart Render Modes & Coordinated MTF (`chartRenderer.js`, `forecastContract.js`, `app.js`):**
+  - Extended Y-axis auto-scaling to include outer `Q10`/`Q90` quantiles so full uncertainty corridors never clip.
+  - Added `Quantile Fan` (`Q10–Q90` outer fan + `Q25–Q75` inner band + right-axis price tags), `Hybrid`, and `Quantile Bars` (derived strictly from `q25..q75` and `q50`, zero synthetic OHLC) directly to the New main chart forecast overlay.
+  - Wired `Independent` / `Coordinated` MTF points (`mtfCoordination.coordinatedPoints`) with monotonic quantile validation into `adaptNativeModelTrajectory()` and live main-chart redraws when toggling render mode, MTF coordination, or comparison checkboxes.
+- **Unified New Forecast Header & Controls (`app.js`, `index.html`):**
+  - Added symbol badge and `VALID/PROVISIONAL/NO_EDGE`, `Edge Gate`, `OOD`, and `Regime` status badges to the New Forecast header and removed the duplicate second horizon selector row.
+  - Bumped cache-bust versions to `app.js?v=1.47.35`, `chartRenderer.js?v=1.47.22`, `forecastContract.js?v=2.0.4`, and canonical `store.js?v=1.47.13` across all 9 importing modules.
+- **Verification & Documentation:**
+  - Passed `node --check` on all modified JS files and **35/35** tests in `tests/web_parity.test.mjs` (including new `FORECAST-PHASE1-PARITY-01` and `FORECAST-PHASE1-PARITY-02`).
+  - Updated `FORECAST_MIGRATION_PLAN_V1.md`, `FORECAST_LEGACY_PARITY_MATRIX_V1.md`, and `OPEN_ISSUES.md`; Legacy controls remain intentionally active until Phase 2 approval.
+
+---
+
 ## [1.47.1] - 2026-11-17
 
 ### Fixed (Native Browser Structural Forecast Lifecycle, Rendering & Crosshair Reliability)

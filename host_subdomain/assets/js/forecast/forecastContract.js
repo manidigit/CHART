@@ -475,13 +475,26 @@ export function adaptNativeModelTrajectory(trajectory, context = {}) {
   const points = Array.isArray(trajectory?.points) ? trajectory.points : [];
   const horizonBars = Math.round(Number(context.horizonBars));
   if (!modelId || trajectory?.status !== 'SUCCESS' || !Number.isInteger(horizonBars) || horizonBars < 1 || points.length !== horizonBars) return null;
-  const forecast = [];
-  for (let i = 0; i < points.length; i++) {
-    const p = points[i] || {};
-    const q10 = Number(p.q10), q25 = Number(p.q25), q50 = Number(p.q50), q75 = Number(p.q75), q90 = Number(p.q90);
-    if (![q10,q25,q50,q75,q90].every(Number.isFinite) || !(q10 > 0 && q10 <= q25 && q25 <= q50 && q50 <= q75 && q75 <= q90)) return null;
-    forecast.push({ step: i + 1, q10, q25, q50_median: q50, q75, q90, timestamp_utc_ms: Number(p.timestampUtcMs || p.timestamp_utc_ms || 0) || null });
-  }
+
+  const parseQuantileSeries = (rawPoints) => {
+    if (!Array.isArray(rawPoints) || rawPoints.length !== horizonBars) return null;
+    const out = [];
+    for (let i = 0; i < rawPoints.length; i++) {
+      const p = rawPoints[i] || {};
+      const q10 = Number(p.q10), q25 = Number(p.q25), q50 = Number(p.q50), q75 = Number(p.q75), q90 = Number(p.q90);
+      if (![q10, q25, q50, q75, q90].every(Number.isFinite) || !(q10 > 0 && q10 <= q25 && q25 <= q50 && q50 <= q75 && q75 <= q90)) return null;
+      out.push({ step: i + 1, q10, q25, q50_median: q50, q75, q90, timestamp_utc_ms: Number(p.timestampUtcMs || p.timestamp_utc_ms || 0) || null });
+    }
+    return out;
+  };
+
+  const baseForecast = parseQuantileSeries(points);
+  if (!baseForecast) return null;
+  const wantsCoordinated = String(context.coordMode || 'independent').toLowerCase() === 'coordinated';
+  const coordinatedForecast = wantsCoordinated ? parseQuantileSeries(context.coordinatedPoints) : null;
+  const usedCoordinated = Boolean(coordinatedForecast);
+  const forecast = usedCoordinated ? coordinatedForecast : baseForecast;
+
   const symbol = String(context.symbolCode || '').trim().toUpperCase();
   const provider = String(context.provider || 'tvdatafeed').trim().toLowerCase();
   const timeframe = String(context.timeframe || 'M15').trim().toUpperCase();
@@ -511,8 +524,60 @@ export function adaptNativeModelTrajectory(trajectory, context = {}) {
     coverage_80_pct: finiteOrNull(oosMetric?.coverage80Pct), dm_p_value: finiteOrNull(oosMetric?.dmPValue),
     bootstrap_p_value: finiteOrNull(oosMetric?.bootPValue), conformal_status: calibrationStatus,
   };
-  return { status: 'READY', forecast, engine: { engine_id: 'native_model_adapter', is_chronos2: false, params: { horizon_bars: horizonBars, model_id: modelId }, model_version: String(trajectory.modelVersion || '') },
+  const requestedModelId = String(context.requestedModelId || modelId).trim() || modelId;
+  const renderMode = normalizeRenderMode(context.renderMode || RENDER_MODES.FAN_CHART);
+  const coordMode = usedCoordinated ? 'coordinated' : 'independent';
+  const selectionMode = String(context.selectionMode || '');
+  const keyZones = Array.isArray(context.keyZones)
+    ? context.keyZones
+        .filter((z) => z && Number.isFinite(Number(z.price)) && Number(z.price) > 0)
+        .slice(0, 4)
+        .map((z) => ({
+          id: String(z.id || ''),
+          label: String(z.label || z.type || 'Zone'),
+          type: String(z.type || 'ZONE'),
+          price: Number(z.price),
+        }))
+    : [];
+  return {
+    status: 'READY',
+    forecast,
+    key_zones: keyZones,
+    engine: {
+      engine_id: 'native_model_adapter',
+      is_chronos2: false,
+      params: {
+        horizon_bars: horizonBars,
+        model_id: modelId,
+        requested_model_id: requestedModelId,
+        render_mode: renderMode,
+        coord_mode: coordMode,
+        selection_mode: selectionMode,
+      },
+      model_version: String(trajectory.modelVersion || ''),
+    },
     series: { symbol, provider, timeframe, origin_open_time_utc_ms: originOpenMs, last_closed_price: lastClosedPrice },
-    model: { id: modelId, name: String(trajectory.modelName || modelId), is_approximation: Boolean(trajectory.isApproximation), is_experimental_only: isExperimentalOnly, is_calibrated_interval: Boolean(trajectory.isCalibratedInterval), execution_runtime: String(trajectory.executionRuntime || ''), source_engine_status: String(context.forecastStatus || ''), oos },
-    provenance: { source: 'ForecastEngine.modelTrajectories', status: String(context.forecastStatus || ''), inputHash: String(context.inputHash || ''), illustrative_only: modelId === 'empirical_analogs' } };
+    model: {
+      id: modelId,
+      requested_id: requestedModelId,
+      name: String(trajectory.modelName || modelId),
+      is_approximation: Boolean(trajectory.isApproximation),
+      is_experimental_only: isExperimentalOnly,
+      is_calibrated_interval: Boolean(trajectory.isCalibratedInterval),
+      execution_runtime: String(trajectory.executionRuntime || ''),
+      source_engine_status: String(context.forecastStatus || ''),
+      selection_mode: selectionMode,
+      regime: String(context.regime || ''),
+      ood_status: String(context.oodStatus || ''),
+      edge_gate_state: String(context.edgeGateState || ''),
+      oos,
+    },
+    provenance: {
+      source: usedCoordinated ? 'ForecastEngine.mtfCoordination.coordinatedPoints' : 'ForecastEngine.modelTrajectories',
+      status: String(context.forecastStatus || ''),
+      inputHash: String(context.inputHash || ''),
+      coord_mode: coordMode,
+      illustrative_only: modelId === 'empirical_analogs',
+    },
+  };
 }

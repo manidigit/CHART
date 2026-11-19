@@ -2070,7 +2070,10 @@ export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.stru
   if (String(series.provider || '').trim().toLowerCase() !== tabProv) return false;
   if (String(series.timeframe || '').trim().toUpperCase() !== tabTf) return false;
   if (Number(params.horizon_bars || 0) !== tabHorizon) return false;
-  if (isNativeModelAdapter && String(params.model_id || '') !== String(tab.structuralForecastModel || 'naive_persistence')) return false;
+  const isAutoRequestedMatch =
+    String(tab.structuralForecastModel || '') === 'AUTO' &&
+    String(params.requested_model_id || '') === 'AUTO';
+  if (isNativeModelAdapter && !isAutoRequestedMatch && String(params.model_id || '') !== String(tab.structuralForecastModel || 'naive_persistence')) return false;
 
   const candles = Array.isArray(tab.candles) ? tab.candles : [];
   if (candles.length === 0) return false;

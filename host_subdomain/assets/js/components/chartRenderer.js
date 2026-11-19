@@ -8,7 +8,7 @@ import {
   hexToRgba,
   isChronosForecastMatchingTab,
   isStructuralForecastMatchingTab,
-} from '../core/store.js?v=1.47.12';
+} from '../core/store.js?v=1.47.13';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';
@@ -396,10 +396,13 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
+  const resolvedAdapterModelId = isNativeModelAdapter
+    ? String(tab.structuralForecast?.model?.id || tab.structuralForecast?.engine?.params?.model_id || selectedStructuralModel)
+    : selectedStructuralModel;
   const storedCompareIds = state.chartPreferences?.forecastCompareModelIds;
   const compareTrajectories = hasValidStructuralForecast && isNativeModelAdapter
     ? (tab.structuralForecast.comparisonTrajectories || [])
-        .filter((item) => item.modelId !== selectedStructuralModel && Array.isArray(item.points) &&
+        .filter((item) => item.modelId !== selectedStructuralModel && item.modelId !== resolvedAdapterModelId && Array.isArray(item.points) &&
           item.points.length === structuralPoints.length &&
           (!Array.isArray(storedCompareIds) || storedCompareIds.includes(item.modelId)))
         .sort((a, b) => a.modelId.localeCompare(b.modelId))
@@ -427,10 +430,13 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         if (q50 > rawMax) rawMax = q50;
       }
       if (includeBand) {
-        const q25 = Number(fp.q25);
-        const q75 = Number(fp.q75);
-        if (Number.isFinite(q25) && q25 > 0 && q25 < rawMin) rawMin = q25;
-        if (Number.isFinite(q75) && q75 > 0 && q75 > rawMax) rawMax = q75;
+        for (const qVal of [fp.q10, fp.q25, fp.q75, fp.q90]) {
+          const qn = Number(qVal);
+          if (Number.isFinite(qn) && qn > 0) {
+            if (qn < rawMin) rawMin = qn;
+            if (qn > rawMax) rawMax = qn;
+          }
+        }
       }
     }
   }
@@ -1246,10 +1252,26 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  // NATIVE BROWSER STRUCTURAL WAVE FORECAST OVERLAY (Zero PHP exec / Zero Python / Zero Cron)
+  // NATIVE BROWSER STRUCTURAL WAVE & NATIVE FORECAST OVERLAY (Zero PHP exec / Zero Python / Zero Cron)
   if (tab.showStructuralForecast) {
-    const fcColor = isHistoricalAnalogSelected ? '#F59E0B' : (indPal.structuralForecastPath || '#8B5CF6');
-    const fcBandCol = indPal.structuralForecastBand || fcColor;
+    const rawRenderMode = String(
+      tab.forecastRenderMode ||
+      state.chartPreferences?.forecastRenderMode ||
+      tab.structuralForecast?.engine?.params?.render_mode ||
+      'FAN_CHART'
+    ).toUpperCase();
+    const activeRenderMode = ['FAN_CHART', 'HYBRID', 'GHOST_CANDLES'].includes(rawRenderMode)
+      ? rawRenderMode
+      : 'FAN_CHART';
+    const isCoordinatedLayer =
+      isNativeModelAdapter &&
+      String(tab.structuralForecast?.engine?.params?.coord_mode || 'independent').toLowerCase() === 'coordinated';
+    const fcColor = isHistoricalAnalogSelected
+      ? '#F59E0B'
+      : isCoordinatedLayer
+        ? '#A855F7'
+        : (indPal.structuralForecastPath || '#8B5CF6');
+    const fcBandCol = isCoordinatedLayer ? '#A855F7' : (indPal.structuralForecastBand || fcColor);
 
     if (hasValidStructuralForecast && structuralPoints.length > 0) {
       const originOpenMs = Number(tab.structuralForecast.series?.origin_open_time_utc_ms || 0);
@@ -1299,15 +1321,22 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
             const q50 = Number(fp.q50_median);
             const q25 = Number(fp.q25);
             const q75 = Number(fp.q75);
+            const q10 = Number.isFinite(Number(fp.q10)) && Number(fp.q10) > 0 ? Number(fp.q10) : q25;
+            const q90 = Number.isFinite(Number(fp.q90)) && Number(fp.q90) > 0 ? Number(fp.q90) : q75;
             return {
               step: stepNum,
               x,
-              q50,
+              q10,
               q25,
+              q50,
               q75,
-              yQ50: priceToY(q50),
+              q90,
+              hasOuterFan: Number.isFinite(Number(fp.q10)) && Number.isFinite(Number(fp.q90)) && (q10 < q25 || q90 > q75),
+              yQ10: priceToY(q10),
               yQ25: priceToY(q25),
+              yQ50: priceToY(q50),
               yQ75: priceToY(q75),
+              yQ90: priceToY(q90),
             };
           })
           .filter((p) => Number.isFinite(p.q50) && p.x >= -slotW);
@@ -1316,6 +1345,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           const lastPt = pts[pts.length - 1];
           const params = tab.structuralForecast.engine?.params || {};
           const quality = tab.structuralForecast.data_quality || {};
+          const drawFanBands = showForecastBand && (activeRenderMode === 'FAN_CHART' || activeRenderMode === 'HYBRID' || !isNativeModelAdapter);
+          const drawQuantileBars = isNativeModelAdapter && !isHistoricalAnalogSelected && (activeRenderMode === 'GHOST_CANDLES' || activeRenderMode === 'HYBRID');
 
           ctx.save();
           // 1. Future Forecast Zone background & vertical anchor divider at last closed candle
@@ -1331,8 +1362,44 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           ctx.stroke();
           ctx.setLineDash([]);
 
-          // 2. Optional Empirical Uncertainty Band
-          if (showForecastBand) {
+          // 2. Optional Calibrated Outer Fan (Q10..Q90) & Inner Uncertainty Band (Q25..Q75)
+          if (drawFanBands) {
+            if (pts.some((p) => p.hasOuterFan)) {
+              ctx.fillStyle = isCoordinatedLayer
+                ? (isDark ? 'rgba(168, 85, 247, 0.12)' : 'rgba(147, 51, 234, 0.10)')
+                : hexToRgba(fcBandCol, isDark ? 0.10 : 0.08);
+              ctx.beginPath();
+              ctx.moveTo(originX, originY);
+              for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ90);
+              for (let i = pts.length - 1; i >= 0; i--) ctx.lineTo(pts[i].x, pts[i].yQ10);
+              ctx.closePath();
+              ctx.fill();
+
+              ctx.strokeStyle = hexToRgba(fcBandCol, 0.34);
+              ctx.lineWidth = 0.9;
+              ctx.setLineDash([2, 4]);
+              ctx.beginPath();
+              ctx.moveTo(originX, originY);
+              for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ90);
+              ctx.stroke();
+              ctx.beginPath();
+              ctx.moveTo(originX, originY);
+              for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ10);
+              ctx.stroke();
+              ctx.setLineDash([]);
+
+              queueRightLevelLabel(
+                lastPt.yQ90,
+                `Q90 ${PriceFormatter.formatPrice(lastPt.q90, tab.decimals)}`,
+                hexToRgba(fcBandCol, 0.72)
+              );
+              queueRightLevelLabel(
+                lastPt.yQ10,
+                `Q10 ${PriceFormatter.formatPrice(lastPt.q10, tab.decimals)}`,
+                hexToRgba(fcBandCol, 0.72)
+              );
+            }
+
             ctx.fillStyle = hexToRgba(fcBandCol, isDark ? 0.18 : 0.14);
             ctx.beginPath();
             ctx.moveTo(originX, originY);
@@ -1361,17 +1428,44 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
             queueRightLevelLabel(
               lastPt.yQ75,
-              `Upper ${PriceFormatter.formatPrice(lastPt.q75, tab.decimals)}`,
+              `Q75 ${PriceFormatter.formatPrice(lastPt.q75, tab.decimals)}`,
               hexToRgba(fcBandCol, 0.92)
             );
             queueRightLevelLabel(
               lastPt.yQ25,
-              `Lower ${PriceFormatter.formatPrice(lastPt.q25, tab.decimals)}`,
+              `Q25 ${PriceFormatter.formatPrice(lastPt.q25, tab.decimals)}`,
               hexToRgba(fcBandCol, 0.92)
             );
           }
 
-          // 3. Central Structured Wave Path (smooth segmented interpolation)
+          // 2b. Optional Quantile Envelope Bars (GHOST_CANDLES / HYBRID) derived strictly from q25..q75 and q50 (zero synthetic OHLC)
+          if (drawQuantileBars) {
+            const qBarW = Math.max(2, Math.min(bodyW, slotW * 0.62));
+            let prevMed = originClose;
+            ctx.save();
+            for (let i = 0; i < pts.length; i++) {
+              const p = pts[i];
+              const openP = prevMed;
+              const closeP = p.q50;
+              const highP = Math.max(openP, closeP, p.q75);
+              const lowP = Math.min(openP, closeP, p.q25);
+              prevMed = closeP;
+              const bull = closeP >= openP;
+              ctx.strokeStyle = bull ? 'rgba(38, 166, 154, 0.80)' : 'rgba(239, 83, 80, 0.80)';
+              ctx.lineWidth = 1.15;
+              ctx.beginPath();
+              ctx.moveTo(p.x, priceToY(highP));
+              ctx.lineTo(p.x, priceToY(lowP));
+              ctx.stroke();
+              const oY = priceToY(openP);
+              const cY = priceToY(closeP);
+              ctx.fillStyle = bull ? 'rgba(38, 166, 154, 0.56)' : 'rgba(239, 83, 80, 0.56)';
+              ctx.fillRect(p.x - qBarW / 2, Math.min(oY, cY), qBarW, Math.max(2, Math.abs(cY - oY)));
+            }
+            ctx.restore();
+          }
+
+          // 3. Central Structured Wave / Median Q50 Path
           ctx.strokeStyle = hexToRgba(fcColor, 0.25);
           ctx.lineWidth = 4.6;
           ctx.lineJoin = 'round';
@@ -1445,7 +1539,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
             ctx.restore();
           }
 
-          // Info badge inside forecast zone (explicitly identifies Native Structural Wave JS)
+          // Info badge inside forecast zone (explicitly identifies Active Native/Structural Engine & Layer)
           const biasShort =
             params.structure_bias === 'BULLISH_STRUCTURE'
               ? 'Bullish'
@@ -1460,8 +1554,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
                 : 'NormVol';
           const gradeTag = quality.confidence_grade || 'LOW';
           const analogCount = Number((tab.structuralForecast.model_diagnostics || {}).empirical_analogs?.matched_count || 0);
+          const modeTag = activeRenderMode === 'HYBRID' ? 'Hybrid' : activeRenderMode === 'GHOST_CANDLES' ? 'QBars' : 'Fan';
+          const coordTag = isCoordinatedLayer ? ' · MTF:Coord' : '';
+          const autoPrefix = tab.structuralForecast.model?.requested_id === 'AUTO' ? 'AUTO → ' : '';
           const badgeTxt = isNativeModelAdapter
-            ? `${tab.structuralForecast.model?.name || tab.structuralForecast.model?.id || 'Native Model'} (+${pts.length} · render only · OOS ${tab.structuralForecast.model?.oos?.status || 'NOT_EVALUATED'} · engine ${tab.structuralForecast.model?.source_engine_status || 'UNASSESSED'})`
+            ? `${autoPrefix}${tab.structuralForecast.model?.name || tab.structuralForecast.model?.id || 'Native Model'} (+${pts.length} · ${modeTag}${coordTag} · OOS ${tab.structuralForecast.model?.oos?.status || 'NOT_EVALUATED'} · engine ${tab.structuralForecast.model?.source_engine_status || 'UNASSESSED'})`
             : isHistoricalAnalogSelected
               ? `Historical Analogs (+${pts.length} · ${analogCount} matches · illustrative)`
               : `Structural JS (+${pts.length} · ${biasShort} · ${volShort} · ${gradeTag})`;

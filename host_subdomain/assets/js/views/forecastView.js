@@ -11,12 +11,12 @@ import {
   SELECTION_MODE,
   normalizeRenderMode,
   clampHorizonBars,
-} from '../forecast/forecastContract.js?v=2.0.3';
+} from '../forecast/forecastContract.js?v=2.0.4';
 import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=2.0.1';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=2.0.0';
 
-import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.12';
+import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.13';
 import { renderSymbolBadge } from './watchlistView.js?v=1.47.2';
 
 const MODEL_OVERLAY_COLORS = {

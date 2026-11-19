@@ -132,7 +132,7 @@ test('ARCH-01: every browser module shares one canonical store.js module URL', a
         assert.ok(match, `Missing shared store import in ${file}`);
         versions.push(match[1]);
     }
-    assert.deepEqual([...new Set(versions)], ['1.47.12'], 'All UI, chart, forecast and service modules must share one store singleton');
+    assert.deepEqual([...new Set(versions)], ['1.47.13'], 'All UI, chart, forecast and service modules must share one store singleton');
 });
 
 const memStore = new Map();
@@ -1598,5 +1598,67 @@ test('FORECAST-NEW-COMPARE-02: selected Native model carries successful peer tra
 
 test('FORECAST-NEW-COMPARE-03: main chart renderer module cache is invalidated with comparison overlay release', async () => {
   const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
-  assert.match(app, /chartRenderer\.js\?v=1\.47\.21/);
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.22/);
 });
+
+test('FORECAST-PHASE1-PARITY-01: adapter preserves AUTO OOS metadata, render mode, and validated Coordinated MTF points', async () => {
+  const { adaptNativeModelTrajectory } = await import('../host_subdomain/assets/js/forecast/forecastContract.js');
+  const trajectory = {
+    modelId: 'kalman_momentum',
+    modelName: 'Kalman Momentum',
+    modelVersion: '2.0.0',
+    executionRuntime: 'NATIVE_JS',
+    status: 'SUCCESS',
+    points: [
+      { q10: 96, q25: 98, q50: 100, q75: 102, q90: 104 },
+      { q10: 95, q25: 98, q50: 101, q75: 103, q90: 106 },
+    ],
+  };
+  const coordinatedPoints = [
+    { q10: 97, q25: 99, q50: 100.5, q75: 102.5, q90: 104.5 },
+    { q10: 96, q25: 99, q50: 101.5, q75: 103.5, q90: 106.5 },
+  ];
+  const adapted = adaptNativeModelTrajectory(trajectory, {
+    symbolCode: 'SPOTBRENT',
+    provider: 'tvdatafeed',
+    timeframe: 'H1',
+    horizonBars: 2,
+    originOpenTimeUtcMs: 1795000000000,
+    lastClosedPrice: 100,
+    forecastStatus: 'VALID',
+    inputHash: 'hash-phase1',
+    requestedModelId: 'AUTO',
+    renderMode: 'HYBRID',
+    coordMode: 'coordinated',
+    coordinatedPoints,
+    selectionMode: 'AUTO_OOS_BEST',
+    regime: 'TRENDING_UP',
+    oodStatus: 'IN_DISTRIBUTION',
+    edgeGateState: 'EDGE_SUPPORTED',
+  });
+  assert.ok(adapted);
+  assert.equal(adapted.engine.params.requested_model_id, 'AUTO');
+  assert.equal(adapted.engine.params.model_id, 'kalman_momentum');
+  assert.equal(adapted.engine.params.render_mode, 'HYBRID');
+  assert.equal(adapted.engine.params.coord_mode, 'coordinated');
+  assert.equal(adapted.forecast[0].q50_median, 100.5);
+  assert.equal(adapted.forecast[1].q90, 106.5);
+  assert.equal(adapted.model.requested_id, 'AUTO');
+  assert.equal(adapted.model.regime, 'TRENDING_UP');
+  assert.equal(adapted.provenance.source, 'ForecastEngine.mtfCoordination.coordinatedPoints');
+});
+
+test('FORECAST-PHASE1-PARITY-02: New UI exposes AUTO OOS, unified horizon, and wires Fan/Hybrid/Quantile Bars & MTF to main chart renderer', async () => {
+  const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const renderer = await readFile(new URL('../host_subdomain/assets/js/components/chartRenderer.js', import.meta.url), 'utf8');
+  const store = await readFile(new URL('../host_subdomain/assets/js/core/store.js', import.meta.url), 'utf8');
+  assert.match(app, /id: 'AUTO', name: isFa \? 'خودکار \(بهترین OOS\)' : 'Auto \(OOS Best\)'/);
+  assert.match(app, /const resolvedModelId = requestedModelId === 'AUTO'/);
+  assert.match(app, /const horizonOptions = isNativeModelSelected \? \[10, 15, 20, 30, 45, 60\] : \[15, 30, 45, 60, 90, 120\]/);
+  assert.match(store, /String\(params\.requested_model_id \|\| ''\) === 'AUTO'/);
+  assert.match(renderer, /const drawFanBands = showForecastBand/);
+  assert.match(renderer, /const drawQuantileBars = isNativeModelAdapter/);
+  assert.match(renderer, /Q90 \$\{PriceFormatter\.formatPrice/);
+  assert.match(renderer, /MTF:Coord/);
+});
+
