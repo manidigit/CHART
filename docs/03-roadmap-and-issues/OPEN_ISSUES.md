@@ -92,3 +92,30 @@
    - چندک‌های ۵گانه (`q10`, `q25`, `q50`, `q75`, `q90`) با WIS 5Q و Conformal نرمال‌شده با EWMA؛ تعریف خنثی و ۳ سناریو با L2 Multinomial Logit.
    - امبارگو یکپارچه $E = \max(5, \lceil 0.25 H \rceil)$، حجم مؤثر بارتلت ($N_{\text{eff}} \ge 25$)، تفکیک `DATA_NOT_READY` / `PROVISIONAL` / `INSUFFICIENT_EVIDENCE` / `NO_EDGE` / `VALID` و زنجیره SHA-256 با گردکردن ۱۲-رقمی (`inputHash`). موارد باقیمانده صرفاً مربوط به آستانه‌های `Promotion Gate` فاز ۵ (`Champion/Challenger Rollback`) و کلاستر دائمی Python Worker است.
 4. **پارامترهای استراتژی معاملاتی (پیش از فاز ۶ — [`TRADING_STRATEGY_SPEC.md`](../01-product/TRADING_STRATEGY_SPEC.md)):** قوانین تبدیل سناریو به ورود، تخصیص چندتارگته `TP1/TP2/TP3`، جابه‌جایی `Stop Loss` به `Break-Even`، سقف ریسک هم‌زمان، `Max Drawdown Halt` و مدل دقیق `Swap / Spread / Slippage`.
+
+
+## ۵. پیش‌بینی — موانع و نواقص باز (Forecast Migration Blockers — 2026-11-19)
+
+> این بخش دفتر متمرکز مشکلات Forecast است. موارد زیر عمداً در یک محل نگهداری می‌شوند تا بعداً به‌صورت یک بسته تصمیم‌گیری اولویت‌بندی شوند. ثبت در این فهرست به معنی شروع رفع یا تأیید راه‌حل نیست. وضعیت هر مورد فقط با شواهد کد، CI و آزمون محیط مقصد تغییر می‌کند. این بخش برای وضعیت فعلی New/Legacy بر توضیحات تاریخی آرشیو Forecast در بخش‌های قدیمی‌تر همین سند اولویت دارد.
+
+| شناسه | اولویت | مسئله / ریسک | شواهد فعلی | تصمیم یا اقدام بعدی | وضعیت |
+|---|---|---|---|---|---|
+| `FCST-RT-01` | P0 | **نبود Runtime اجرایی Python روی هاست اشتراکی**؛ Chronos-2 و سایر Python Workerها به اجرای Python وابسته‌اند و QueueManager از PHP `exec()` استفاده می‌کند. | `Chronos2QueueManager.php` در صورت غیرفعال‌بودن `exec()` خطای صریح می‌دهد؛ محدودیت واقعی هاست گزارش شده است. CI فقط `py_compile` و نصب پکیج در Runner را ثابت می‌کند، نه اجرا روی cPanel. | در New غیرفعال بماند. بعداً گزینه‌های Runtime مستقل، امنیت، latency، هزینه و نگهداری مقایسه شوند؛ هیچ سرویس یا هزینه‌ای فعلاً ایجاد نشود. | `OPEN / BLOCKED_BY_RUNTIME` |
+| `FCST-DEPLOY-01` | P0 | **عدم انتشار خودکار روی cPanel در برخی Runها**؛ موفقیت Job الزاماً به معنی Deploy نیست. | Run `44496501529` تست‌ها و بسته‌بندی را موفق کرد، اما log مرحله Deploy پیام `cPanel deployment secrets not available ... skipping remote upload` را ثبت کرد. | دسترسی/شرط GitHub Secrets و محیط اجرای Workflow بررسی شود؛ تا اثبات انتقال فایل به سرور، Deploy را موفق اعلام نکنیم. | `OPEN / DEPLOY_NOT_VERIFIED` |
+| `FCST-PROD-01` | P1 | **نبود آزمون مرورگر روی نسخه Production** بعد از آخرین تغییرات. | تست‌های Node و Build در GitHub Actions هستند؛ مدرک Browser E2E یا بررسی دستی روی دامنه زنده موجود نیست. | پس از رفع مانع Deploy، smoke test واقعی New/Legacy، انتخاب مدل، رندر و خطاها انجام شود. | `OPEN / NOT_TESTED` |
+| `FCST-API-01` | P1 | **تست Provider guard در حال حاضر ایستا است، نه آزمون HTTP واقعی.** | `CHRONOS2-PROVIDER-GUARD-01` ترتیب کد allow-list را بررسی می‌کند؛ endpoint در محیط cPanel اجرا نشده است. | بعداً تست Integration برای رد Provider غیر از `tvdatafeed` و مسیر مجاز TradingView اضافه شود؛ بدون نیاز به اجرای مدل سنگین. | `OPEN / STATIC_TEST_ONLY` |
+| `FCST-EVAL-01` | P1 | **Ledger، ارزیابی OOS، Backtest، Walk-forward و Replay هنوز مهاجرت end-to-end ندارند.** | در New وضعیت این قابلیت‌ها Pending/Not migrated است؛ وجود مستندات یا کد Legacy پذیرش New محسوب نمی‌شود. | ابتدا inventory قراردادها و lifecycle، سپس انتقال یک قابلیت در هر مرحله با تست persistence، provenance، leakage و UI. | `OPEN / NOT_MIGRATED` |
+| `FCST-ENS-01` | P2 | **Calibrated Ensemble مسیر اجرایی در Structural JS ندارد.** | مسیر `ensemble` در `structuralForecastEngine.js` وجود ندارد؛ گزینه New غیرفعال شده است. | تا زمانی که وزن‌دهی، آموزش/کالیبراسیون، ارزیابی OOS و تست مقایسه وجود ندارد، غیرفعال بماند. | `OPEN / NOT_IMPLEMENTED` |
+| `FCST-LEGACY-01` | P1 | **هم‌زیستی Legacy و New نیازمند کنترل overlay و مسیرهای مستقل است.** | Legacy حفظ شده؛ New انتخاب‌گر و Renderer جدا دارد؛ خاموش‌سازی Legacy هنوز مجاز نیست. | هر قابلیت پس از پذیرش New، با Feature Flag و آزمون rollback جداگانه از Legacy خارج شود. | `OPEN / PARALLEL_SYSTEMS` |
+| `FCST-DOC-01` | P2 | **تعارض تاریخی در مستندات Forecast پس از آرشیو قدیمی و پیاده‌سازی مجدد New.** | بعضی اسناد قدیمی Forecast را کاملاً Archived معرفی می‌کنند، در حالی که مسیر Native JS New دوباره پیاده‌سازی شده است. | سند Migration مرجع وضعیت جاری باشد؛ اسناد تاریخی با لینک به وضعیت جاری علامت‌گذاری شوند، نه بازنویسی بدون ممیزی. | `OPEN / DOC_RECONCILIATION` |
+
+### ۵.۱. شواهد CI آخرین اصلاح Chronos-2
+
+- Commit مبنا: `fbcb55082f20e50f82a57c3b6b9c3770f5fe1495`.
+- Workflow run: `44496501529` — نتیجه کلی `success`.
+- Web parity: **۱۸ تست موفق، صفر شکست**؛ تست `CHRONOS2-PROVIDER-GUARD-01` نیز اجرا و پاس شد.
+- PHP lint برای `chronos2_forecast.php` و `Chronos2QueueManager.php` موفق بود.
+- بسته وب ۱۲۲ فایل و Artifact ID `14516140010` ساخته شد.
+- **cPanel remote upload انجام نشد** چون Deployment Secrets در آن Run در دسترس نبودند؛ Browser test نیز انجام نشده است.
+- Build اندروید و Unit/Robolectric tests موفق بودند.
+
