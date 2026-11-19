@@ -2616,12 +2616,33 @@ document.addEventListener('click', async (e) => {
       renderApp();
     }
   } else if (action === 'run-forecast-replay' && activeTab) {
-    const replay = runHistoricalForecastReplay(activeTab, { maxWindows: 3 });
     const isFa = i18n.getCurrentLanguage() === 'fa';
-    showFloatingToast(replay.status === 'COMPLETED'
-      ? (isFa ? 'بازپخش تاریخی با موفقیت اجرا شد.' : 'Historical replay completed.')
-      : (isFa ? `بازپخش تاریخی: ${replay.status} — ${replay.reason}` : `Historical replay: ${replay.status} — ${replay.reason}`));
+    state._forecastReplayResult = {
+      status: 'RUNNING',
+      symbolCode: activeTab.symbolCode,
+      timeframe: activeTab.timeframe,
+      windows: [],
+      reason: isFa ? 'بازپخش در حال اجراست؛ داده آینده فقط برای امتیازدهی استفاده می‌شود.' : 'Replay is running; future candles are scoring-only.',
+    };
     renderApp();
+    runHistoricalForecastReplay(activeTab, { maxWindows: 3 })
+      .then((replay) => {
+        showFloatingToast(replay.status === 'COMPLETED'
+          ? (isFa ? 'بازپخش تاریخی با موفقیت اجرا شد.' : 'Historical replay completed.')
+          : (isFa ? `بازپخش تاریخی: ${replay.status} — ${replay.reason}` : `Historical replay: ${replay.status} — ${replay.reason}`));
+        renderApp();
+      })
+      .catch((error) => {
+        state._forecastReplayResult = {
+          status: 'FAILED',
+          symbolCode: activeTab.symbolCode,
+          timeframe: activeTab.timeframe,
+          windows: [],
+          reason: String(error?.message || error || 'Unknown replay error'),
+        };
+        showFloatingToast(isFa ? 'اجرای بازپخش تاریخی ناموفق بود.' : 'Historical replay failed.');
+        renderApp();
+      });
   } else if (action === 'set-forecast-subtab') {
     state.forecastStudioTab = String(el.getAttribute('data-tab') || 'overview');
     renderApp();
