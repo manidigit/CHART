@@ -496,3 +496,40 @@ Disabled کردن یک قابلیت در New به معنی خاموش‌کردن
 - مقایسه کاربر فقط پس از انتشار نسخه‌ای با Inventory قابل مشاهده و کامل درخواست شود.
 
 تا قبل از عبور از این gate، وضعیت کل مهاجرت **IN_PROGRESS** باقی می‌ماند و هیچ بخش ناقصی به‌عنوان «تمام‌شده» گزارش نمی‌شود.
+
+
+## 14. شروع ممیزی حوزه دوم: منابع داده و Providerها — 2026-11-19
+
+### 14.1. یافته قطعی از Web Store
+
+در `host_subdomain/assets/js/core/store.js`، کاتالوگ `PROVIDER_METHODS_CATALOG` هفت شناسه دارد:
+
+| Provider ID | وضعیت کاتالوگ | وضعیت پذیرش در `isProviderEnabled()` | مقصد New |
+|---|---:|---:|---|
+| `tvdatafeed` | enabled=true | فعال | باید به‌عنوان منبع فعلی New حفظ شود؛ هنوز قرارداد Provider مستقل در New اثبات نشده |
+| `biquote` | enabled=false | غیرفعال | منتقل‌نشده/غیرفعال |
+| `twelve_data` | enabled=false | غیرفعال | منتقل‌نشده/غیرفعال |
+| `dukascopy` | enabled=false | غیرفعال | منتقل‌نشده/غیرفعال |
+| `yahoo_finance` | enabled=false | غیرفعال | منتقل‌نشده/غیرفعال |
+| `eia_brent_spot` | enabled=false | غیرفعال | منتقل‌نشده/غیرفعال |
+| `local_csv` | enabled=false | غیرفعال | منتقل‌نشده/غیرفعال |
+
+تابع فعلی `isProviderEnabled(providerId)` فقط `tvdatafeed` را true می‌کند؛ صرف وجود سایر Providerها در Catalog به معنی قابلیت استفاده آن‌ها نیست. بنابراین New نباید شش Provider غیرفعال را به‌عنوان قابلیت عملیاتی نشان دهد.
+
+### 14.2. BYOK و Provider references
+
+`getLocalByokKeys()` و `saveLocalByokKeys()` در Store کلیدهای Twelve Data، Stooq، Alpha Vantage و Finnhub را نگهداری می‌کنند. این موضوع با Provider Catalog هفت‌تایی یکسان نیست؛ کلید ذخیره‌شده به معنی وجود Adapter فعال، مسیر fetch، مدیریت rate limit یا تست end-to-end نیست.
+
+در `apiService.js` مسیرهای فعلی fetch/sync و ارجاع به providerها وجود دارد؛ برای مهاجرت باید زنجیره کامل هر Provider از تنظیمات/کلید تا درخواست شبکه، نرمال‌سازی کندل، cache، aggregation، خطا و رندر استخراج شود. شمارش رشته‌های نام Provider یا ذخیره کلید API، شواهد مهاجرت محسوب نمی‌شود.
+
+### 14.3. تصمیم فنی حوزه دوم
+
+- `tvdatafeed` منبع فعال فعلی است و نباید در این مرحله بازنویسی شود.
+- مقصد New باید ابتدا یک قرارداد Provider مستقل و قابل تعویض داشته باشد، اما مصرف‌کننده فعلی New می‌تواند موقتاً از candle store مشترک استفاده کند؛ این حالت باید با برچسب `shared legacy data pipeline` ثبت شود، نه «Provider migrated».
+- هر Provider دیگر تا زمان انتقال کامل Adapter و عبور از تست‌های نماد، تایم‌فریم، UTC/open-time، OHLCV، gaps، duplicate merge، cache invalidation، rate-limit و خطا در New غیرفعال می‌ماند.
+- هیچ API key نباید از local storage به سرور یا log منتقل شود و BYOK باید per-provider و بدون cross-provider leakage باقی بماند.
+- انتقال Providerها هم‌زمان و دسته‌جمعی انجام نمی‌شود؛ ابتدا قرارداد و آزمون مشترک، سپس یک Provider کم‌ریسک و دارای دسترسی/مجوز روشن به‌عنوان پایلوت انتخاب می‌شود.
+
+### 14.4. وضعیت حوزه دوم
+
+`IN_PROGRESS` — Inventory اولیه کاتالوگ و گیت فعال‌بودن ثبت شد. هنوز ممیزی end-to-end هر مسیر fetch در `apiService.js`، API PHP، دیتابیس و Android تکمیل نشده؛ بنابراین هیچ Provider جدیدی به New منتقل‌شده اعلام نمی‌شود.
