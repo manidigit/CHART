@@ -44,6 +44,16 @@ test('FORECAST-MIGRATION-MODELS-01: the model picker is generated from the compl
     assert.doesNotMatch(viewSource, /ci-forecast-worker-url/);
 });
 
+test('FORECAST-REPLAY-01: historical replay separates pre-anchor training from future-only scoring', async () => {
+    const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+    const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+    assert.match(viewSource, /trainingCandles\s*=\s*candles\.slice\(0,\s*anchorIndex\s*\+\s*1\)/);
+    assert.match(viewSource, /actualCandles\s*=\s*candles\.slice\(anchorIndex\s*\+\s*1/);
+    assert.match(viewSource, /FUTURE_CANDLES_USED_ONLY_FOR_SCORING/);
+    assert.match(viewSource, /data-action="run-forecast-replay"/);
+    assert.match(appSource, /runHistoricalForecastReplay\(activeTab/);
+});
+
 test('FORECAST-RUNTIME-01: New Native forecast never invokes an external Python worker', async () => {
     const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
     const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
