@@ -80,7 +80,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.2';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.2';
-import { renderForecastStudioView, renderForecastStudioFanCanvas, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel } from './views/forecastView.js?v=2.0.7';
+import { renderForecastStudioView, renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel } from './views/forecastView.js?v=2.0.7';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=2.0.3';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=2.0.1';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
@@ -128,7 +128,10 @@ function invalidateForecastAfterModelConfigChange(tab, changedModelId = '') {
 
 function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
   if (!tab) return false;
-  const built = buildForecastForTab(tab);
+  const built = buildForecastForTab(tab, {
+    horizonBars: Math.max(10, Math.min(60, Number(tab.structuralForecastHorizonBars || 30))),
+    selectedModelId: modelId,
+  });
   const trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === modelId);
   const candles = Array.isArray(tab.candles) ? tab.candles : [];
   const lastClosed = [...candles].reverse().find((c) => {
@@ -2525,7 +2528,6 @@ document.addEventListener('click', async (e) => {
     savePreferences();
     renderApp();
     if (!['structural_wave_js', 'empirical_analogs'].includes(activeTab.structuralForecastModel || 'structural_wave_js')) {
-      activeTab.forecastHorizonBars = Math.max(10, Math.min(60, hVal));
       applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel);
       saveOpenTabsToStorage();
       renderApp();
@@ -2623,7 +2625,6 @@ document.addEventListener('click', async (e) => {
     redrawActiveCanvas();
     if (activeTab.showStructuralForecast) {
       if (!['structural_wave_js', 'empirical_analogs'].includes(activeTab.structuralForecastModel || 'structural_wave_js')) {
-        activeTab.forecastHorizonBars = Math.max(10, Math.min(60, Number(activeTab.structuralForecastHorizonBars || 30)));
         applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel);
         saveOpenTabsToStorage();
         renderApp();

@@ -46,7 +46,7 @@ export function resolveHigherTimeframe(tf = 'M15') {
   return '';
 }
 
-export function buildForecastForTab(activeTab) {
+export function buildForecastForTab(activeTab, overrides = {}) {
   if (!activeTab) return null;
   const candles =
     Array.isArray(activeTab.candles) && activeTab.candles.length > 0
@@ -57,8 +57,8 @@ export function buildForecastForTab(activeTab) {
   if (prefs.forecastPluginConfig) {
     defaultForecastRegistry.applyConfig(prefs.forecastPluginConfig);
   }
-  const horizonBars = clampHorizonBars(activeTab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
-  const renderMode = normalizeRenderMode(activeTab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.FAN_CHART);
+  const horizonBars = clampHorizonBars(overrides.horizonBars || activeTab.forecastHorizonBars || prefs.forecastHorizonBars || 30);
+  const renderMode = normalizeRenderMode(overrides.renderMode || activeTab.forecastRenderMode || prefs.forecastRenderMode || RENDER_MODES.FAN_CHART);
   const workerUrl = prefs.forecastWorkerUrl || '';
 
   const higherTf = resolveHigherTimeframe(activeTab.timeframe);
@@ -76,7 +76,7 @@ export function buildForecastForTab(activeTab) {
   const lastStored = state._prevForecastByKey[cacheKey] || null;
 
   const selectedScenarioId = activeTab.selectedScenarioId || prefs.selectedScenarioId || 'SCENARIO_A';
-  const selectedModelId = String(activeTab.selectedForecastModelId || prefs.selectedForecastModelId || 'AUTO');
+  const selectedModelId = String(overrides.selectedModelId || activeTab.selectedForecastModelId || prefs.selectedForecastModelId || 'AUTO');
   const lastBar = candles.length > 0 ? candles[candles.length - 1] : null;
   const firstBar = candles.length > 0 ? candles[0] : null;
   const lastHigherBar = higherCandles.length > 0 ? higherCandles[higherCandles.length - 1] : null;
@@ -665,7 +665,7 @@ export function renderForecastStudioView(activeTab, i18n) {
   `;
 }
 
-function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
+export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
   if (!fc || fc.status === FORECAST_STATUS.DATA_NOT_READY) {
     const reqBars = fc?.readiness?.nOpMin || 155;
     const reasons = (fc?.readiness?.issues || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('');
