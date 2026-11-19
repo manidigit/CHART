@@ -949,6 +949,10 @@ export function renderApp() {
     }
 
     const isForecastWorkspace = state.activeWorkspaceView === 'forecast';
+    const activeReplay = state._forecastReplayResult;
+    if (state._forecastReplayPlaying && (!isForecastWorkspace || activeReplay?.symbolCode !== activeTab?.symbolCode || activeReplay?.timeframe !== activeTab?.timeframe)) {
+      stopForecastReplayPlayback();
+    }
     if (typeof document !== 'undefined') {
       document.documentElement?.classList?.toggle('is-forecast-scroll', isForecastWorkspace);
       document.body?.classList?.toggle('is-forecast-scroll', isForecastWorkspace);
