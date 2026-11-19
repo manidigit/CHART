@@ -864,7 +864,6 @@ function renderForecastWorkspaceContent(activeTab) {
   if (selected === 'legacy') return switcher + renderForecastStudioView(activeTab, i18n);
   const status = activeTab?.structuralForecastStatus || 'IDLE';
   const enabled = Boolean(activeTab?.showStructuralForecast);
-  const horizon = Number(activeTab?.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30);
   const statusText = status === 'READY' ? (isFa ? 'آماده' : 'Ready')
     : status === 'COMPUTING' ? (isFa ? 'در حال محاسبه' : 'Computing')
     : status === 'INSUFFICIENT_EVIDENCE' ? (isFa ? 'شواهد ناکافی' : 'Insufficient evidence')
