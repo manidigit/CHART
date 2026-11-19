@@ -660,3 +660,32 @@ Workflow run `44496501529` برای commit `fbcb55082f20e50f82a57c3b6b9c3770f5fe
 ### 18.6. شواهد تکمیل CI برای تست Ledger
 
 Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` با نتیجه کلی موفق پایان یافت: ۱۹ تست Web parity (شامل `FORECAST-LEDGER-01`) پاس، PHP lint موفق، بسته وب ۱۲۲ فایلی با Artifact ID `14519788283` تولید و Build/Unit/Robolectric اندروید موفق شد. مرحله cPanel remote upload به علت نبودن Deployment Secrets skip شد؛ پس این Run انتشار روی Production را ثابت نمی‌کند. اصلاح بعدی Provider تب‌های قدیمی در commit `f0387f4c96bf4f2695ff4fdbe809e9506e5e7dcf` و تست مربوطه در Run `44508388118` قرار دارند و نتیجه آن جداگانه ثبت خواهد شد.
+
+
+## 19. انتقال مستقیم Walk-Forward و Ledger به Workspace جدید — 2026-11-19
+
+### 19.1. روش انتقال
+
+کد موجود بازنویسی نشد. دو پنل `renderBacktestPanel()` و `renderLedgerPanel()` از `forecastView.js` قابل استفاده مجدد شدند و در `renderForecastWorkspaceContent()` به Workspace جدید متصل شدند. این بخش فقط زمانی نمایش داده می‌شود که کاربر یک مدل Native را انتخاب کرده باشد؛ Structural JS و Historical Analogs ماهیت و مسیر ارزیابی متفاوت خود را حفظ می‌کنند.
+
+### 19.2. مسیر اجرا
+
+- Walk-Forward همان `buildForecastForTab()` و `evaluateWalkForward()` موجود را اجرا می‌کند؛ خروجی OOS، معیارها و دروازه پذیرش از همان محاسبه قبلی می‌آیند.
+- ثبت Snapshot در New از `state._lastForecastResult` و `defaultForecastLedger.appendFromForecast()` استفاده می‌کند.
+- ارزیابی سررسید از همان `evaluateMaturedForecasts()` استفاده می‌کند.
+- هیچ مسیر داده جدیدی ایجاد نشده و Provider همچنان فقط `tvdatafeed` است.
+
+### 19.3. سخت‌سازی ورودی Ledger
+
+`evaluateMaturedForecasts()` اکنون کندل‌های باز را با `PriceFormatter.isCandleClosed()` کنار می‌گذارد، timestampهای تکراری را حذف می‌کند و ورودی را پیش از محاسبه maturity مرتب می‌سازد. تست `FORECAST-NEW-EVALUATION-01` اتصال UI و guardهای ورودی را پوشش می‌دهد.
+
+### 19.4. محدودیت‌های باقیمانده
+
+- Ledger همچنان فقط در `localStorage` است و سقف ۱۲۰ Snapshot و ۲۴۰ Lifecycle event دارد؛ Sync سرور/چنددستگاهی در این انتقال انجام نشده است.
+- فیلد مستقل Provider و نسخه دقیق مدل در Snapshot provenance موجود نیست؛ `FCST-LEDGER-03` باز می‌ماند.
+- Historical Replay مستقل در این batch منتقل نشده است.
+- این تغییر به‌معنی Deploy روی cPanel نیست؛ انتشار Production تا دریافت شواهد remote upload و browser test تأیید نمی‌شود.
+
+### 19.5. تست و وضعیت انتشار
+
+تست `FORECAST-NEW-EVALUATION-01` به `tests/web_parity.test.mjs` اضافه شده است. نتیجه CI، build artifact، cPanel deploy و browser verification باید جداگانه پس از اجرای Workflow ثبت شوند.
