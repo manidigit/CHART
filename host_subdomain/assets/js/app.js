@@ -87,6 +87,15 @@ import { defaultForecastLedger } from './forecast/forecastLedger.js?v=2.0.1';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
+let forecastReplayPlaybackIntervalId = null;
+
+function stopForecastReplayPlayback() {
+  if (forecastReplayPlaybackIntervalId !== null) {
+    window.clearInterval(forecastReplayPlaybackIntervalId);
+    forecastReplayPlaybackIntervalId = null;
+  }
+  state._forecastReplayPlaying = false;
+}
 let canvasResizeObserver = null;
 let lastColorInputInteractMs = 0;
 
@@ -2585,7 +2594,9 @@ document.addEventListener('click', async (e) => {
     showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'دفتر محلی به‌روز است؛ همگام‌سازی سرور در این نسخه فعال نیست.' : 'Local ledger is current; server sync is not enabled in this web build.');
     renderApp();
   } else if (action === 'set-forecast-engine') {
-    state.forecastEngineMode = el.getAttribute('data-engine') === 'structural' ? 'structural' : 'legacy';
+    const selectedEngine = el.getAttribute('data-engine') === 'structural' ? 'structural' : 'legacy';
+    if (selectedEngine === 'legacy') stopForecastReplayPlayback();
+    state.forecastEngineMode = selectedEngine;
     state.chartPreferences.forecastEngineMode = state.forecastEngineMode;
     if (activeTab) {
       if (state.forecastEngineMode === 'structural') {
@@ -2635,6 +2646,26 @@ document.addEventListener('click', async (e) => {
       savePreferences();
       renderApp();
     }
+  } else if (action === 'toggle-forecast-replay-playback') {
+    const replay = state._forecastReplayResult;
+    if (state._forecastReplayPlaying) {
+      stopForecastReplayPlayback();
+      renderApp();
+    } else if (Array.isArray(replay?.windows) && replay.windows.length > 1) {
+      state._forecastReplayPlaying = true;
+      forecastReplayPlaybackIntervalId = window.setInterval(() => {
+        const currentReplay = state._forecastReplayResult;
+        if (!Array.isArray(currentReplay?.windows) || currentReplay.windows.length < 2) {
+          stopForecastReplayPlayback();
+          renderApp();
+          return;
+        }
+        const currentIndex = Number(state.chartPreferences.forecastReplaySelectedWindow || 0);
+        state.chartPreferences.forecastReplaySelectedWindow = (currentIndex + 1) % currentReplay.windows.length;
+        renderApp();
+      }, 1200);
+      renderApp();
+    }
   } else if (action === 'set-forecast-replay-window') {
     const selectedIndex = Math.max(0, Number(el.getAttribute('data-index') || 0));
     state.chartPreferences.forecastReplaySelectedWindow = selectedIndex;
@@ -2646,6 +2677,7 @@ document.addEventListener('click', async (e) => {
     savePreferences();
     renderApp();
   } else if (action === 'run-forecast-replay' && activeTab) {
+    stopForecastReplayPlayback();
     const isFa = i18n.getCurrentLanguage() === 'fa';
     state.chartPreferences.forecastReplayFromDate = String(document.getElementById('ci-forecast-replay-from')?.value || '').trim();
     state.chartPreferences.forecastReplayToDate = String(document.getElementById('ci-forecast-replay-to')?.value || '').trim();
