@@ -1035,7 +1035,7 @@ export function renderModelsPanel(fc, decimals, isFa) {
   `;
 }
 
-export function runHistoricalForecastReplay(activeTab, options = {}) {
+export async function runHistoricalForecastReplay(activeTab, options = {}) {
   if (!activeTab) return { status: 'DATA_NOT_READY', reason: 'No active chart tab', windows: [] };
   const sourceCandles = Array.isArray(activeTab.candles) && activeTab.candles.length
     ? activeTab.candles
@@ -1071,6 +1071,8 @@ export function runHistoricalForecastReplay(activeTab, options = {}) {
     const trainingCandles = candles.slice(0, anchorIndex + 1);
     const actualCandles = candles.slice(anchorIndex + 1, anchorIndex + 1 + horizonBars);
     if (actualCandles.length !== horizonBars) continue;
+    // Yield between windows so the chart remains responsive during manual replay.
+    await new Promise((resolve) => setTimeout(resolve, 0));
 
     const forecast = ForecastEngine.project(trainingCandles, {
       symbolCode: activeTab.symbolCode,
@@ -1176,7 +1178,7 @@ function renderHistoricalReplaySection(isFa, decimals) {
         <div><strong>${isFa ? 'بازپخش تاریخی بدون نشت داده' : 'Historical Replay · Leakage-Safe'}</strong>
           <div style="font-size:11px;color:var(--text-muted);">${isFa ? 'سه مبدأ گذشته؛ آموزش فقط با کندل‌های قبل از مبدأ و آینده فقط برای امتیازدهی.' : 'Three historical anchors; training uses only candles before each anchor. Future bars are scoring-only.'}</div>
         </div>
-        <button type="button" class="btn btn-sm btn-primary" data-action="run-forecast-replay">${isFa ? 'اجرای بازپخش تاریخی' : 'Run Historical Replay'}</button>
+        <button type="button" class="btn btn-sm btn-primary" data-action="run-forecast-replay" ${sameContext && replay.status === 'RUNNING' ? 'disabled' : ''}>${isFa ? 'اجرای بازپخش تاریخی' : 'Run Historical Replay'}</button>
       </div>
       ${sameContext ? `<span class="ci-fc-status-badge ${replay.status === 'COMPLETED' ? 'ci-fc-badge-valid' : 'ci-fc-badge-provisional'} ltr-num">${escapeHtml(replay.status)}</span><p style="font-size:11px;color:var(--text-muted);">${escapeHtml(replay.reason)}</p>${summary}<div style="overflow-x:auto;margin-top:8px;"><table class="ci-fc-table"><thead><tr><th>#</th><th>Anchor UTC</th><th>Status</th><th>Predicted</th><th>Actual</th><th>MAE %</th><th>80% Cov.</th></tr></thead><tbody>${rows}</tbody></table></div>` : `<p style="font-size:11px;color:var(--text-muted);">${isFa ? 'برای نماد و تایم‌فریم فعلی هنوز بازپخش اجرا نشده است.' : 'No replay has been run for the current symbol/timeframe.'}</p>`}
     </div>
