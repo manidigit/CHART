@@ -1451,3 +1451,22 @@ test('FORECAST-NEW-MODEL-CONFIG-02: model weight controls resolve the rendered d
   assert.match(appSource, /invalidateForecastAfterModelConfigChange\(activeTab, modelId\)/);
   assert.match(appSource, /tab\.showStructuralForecast = false;\s*clearTabStructuralForecast\(tab\)/);
 });
+
+
+test('FORECAST-NEW-STUDIO-01: New Native workspace restores Forecast Studio workflows', async () => {
+  const app = await read('host_subdomain/assets/js/app.js');
+  const view = await read('host_subdomain/assets/js/views/forecastView.js');
+  assert.match(app, /renderOverviewPanel\(nativeEvaluation, activeTab/);
+  assert.match(app, /data-action=\"set-forecast-subtab\" data-tab=\"overview\"/);
+  assert.match(app, /data-action=\"set-forecast-subtab\" data-tab=\"models\"/);
+  assert.match(app, /data-action=\"set-forecast-subtab\" data-tab=\"backtest\"/);
+  assert.match(app, /data-action=\"set-forecast-subtab\" data-tab=\"ledger\"/);
+  assert.match(app, /data-action=\"record-forecast-snapshot\"/);
+  assert.match(app, /data-action=\"apply-native-forecast-to-chart\"/);
+  assert.match(app, /data-action=\"set-forecast-render-mode\"/);
+  assert.match(app, /data-action=\"set-forecast-coord-mode\"/);
+  assert.match(view, /export function renderOverviewPanel/);
+  assert.match(view, /buildForecastForTab\(activeTab, overrides = \{\}\)/);
+  assert.match(view, /overrides\.horizonBars/);
+  assert.match(view, /overrides\.selectedModelId/);
+});

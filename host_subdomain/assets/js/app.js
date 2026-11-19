@@ -791,22 +791,31 @@ function renderForecastWorkspaceContent(activeTab) {
   const isNativeModelSelected = !['structural_wave_js', 'empirical_analogs'].includes(activeTab?.structuralForecastModel || 'structural_wave_js');
   const selected = (state.chartPreferences.forecastEngineMode || state.forecastEngineMode) === 'structural' ? 'structural' : 'legacy';
   const usesNativeEvaluation = selected === 'structural' && isNativeModelSelected;
-  const nativeEvaluation = usesNativeEvaluation ? buildForecastForTab(activeTab)?.result : null;
+  const horizon = Math.max(10, Math.min(60, Number(activeTab?.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30)));
+  const nativeModelId = String(activeTab?.structuralForecastModel || 'naive_persistence');
+  const nativeEvaluation = usesNativeEvaluation ? buildForecastForTab(activeTab, { horizonBars: horizon, selectedModelId: nativeModelId })?.result : null;
   if (nativeEvaluation) state._lastForecastResult = nativeEvaluation;
-  const nativeEvaluationPanels = usesNativeEvaluation
-    ? `<div class="ci-fc-card" style="margin-top:14px;">
-        <strong style="font-size:13px;">${isFa ? 'ارزیابی و دفتر پیش‌بینی مدل‌های Native' : 'Native Model Evaluation & Forecast Ledger'}</strong>
-        <p style="font-size:11px;color:var(--text-muted);margin:5px 0 10px;">${isFa ? 'همان موتور Walk-Forward و Ledger موجود در Forecast Studio؛ بدون بازنویسی.' : 'Reuses the existing Forecast Studio Walk-Forward engine and Ledger.'}</p>
-      </div>
-      <details class="ci-fc-card" style="margin:10px 0;">
-        <summary style="cursor:pointer;font-weight:700;font-size:13px;">${isFa ? 'تنظیمات مدل‌های Native' : 'Native Model Configuration'}</summary>
-        <p style="font-size:11px;color:var(--text-muted);margin:7px 0 10px;">${isFa ? 'فعال‌سازی، وزن و پارامترهای مدل‌ها؛ بدون تنظیم یا اتصال Worker خارجی.' : 'Enablement, weights and model parameters; no external worker configuration.'}</p>
-        ${renderModelsPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa, { includeRemoteWorker: false })}
-      </details>
-      ${renderBacktestPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa)}
-      ${renderLedgerPanel(Number(activeTab?.decimals || 2), isFa)}`
-    : '';
-  const switcher = `
+  const nativeTab = ['overview', 'models', 'backtest', 'ledger'].includes(state.forecastStudioTab) ? state.forecastStudioTab : 'overview';
+  const nativePanel = nativeTab === 'overview'
+    ? renderOverviewPanel(nativeEvaluation, activeTab, Number(activeTab?.decimals || 2), isFa, state.forecastCoordView || 'independent')
+    : nativeTab === 'models'
+      ? renderModelsPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa, { includeRemoteWorker: false })
+      : nativeTab === 'backtest'
+        ? renderBacktestPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa)
+        : renderLedgerPanel(Number(activeTab?.decimals || 2), isFa);
+  const nativeTabs = [['overview', isFa ? 'پیش‌بینی و سناریوها' : 'Projection & Scenarios'], ['models', isFa ? 'مدل‌ها و تنظیمات' : 'Models & Configuration'], ['backtest', isFa ? 'Walk-Forward و کالیبراسیون' : 'Walk-Forward & Calibration'], ['ledger', isFa ? 'دفتر پیش‌بینی و چرخه عمر' : 'Forecast Ledger & Lifecycle']];
+  const nativeTabNav = nativeTabs.map(([id, label]) => '<button type="button" class="ci-fc-subtab ' + (nativeTab === id ? 'active' : '') + '" data-action="set-forecast-subtab" data-tab="' + id + '">' + label + '</button>').join('');
+  const chartModels = (nativeEvaluation?.modelTrajectories || []).map((m) => '<button type="button" class="chip ' + (nativeModelId === m.modelId ? 'active' : '') + '" data-action="set-structural-forecast-model" data-model="' + escapeHtml(m.modelId) + '" ' + (m.status === 'SUCCESS' ? '' : 'disabled') + '>' + escapeHtml(m.modelName || m.modelId) + (m.isApproximation ? ' · APPROX' : '') + '</button>').join('');
+  const modes = [['FAN_CHART', isFa ? 'Fan' : 'Quantile Fan'], ['HYBRID', isFa ? 'ترکیبی' : 'Hybrid'], ['GHOST_CANDLES', isFa ? 'میله‌های کوانتایل' : 'Quantile Bars']];
+  const activeMode = activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART';
+  const nativeEvaluationPanels = usesNativeEvaluation ? '<div class="ci-fc-card" style="margin-top:12px;">' +
+    '<div class="row-between" style="gap:8px;flex-wrap:wrap;"><strong>' + (isFa ? 'کنترل و ارزیابی پیش‌بینی' : 'Forecast Controls & Evaluation') + '</strong>' +
+    '<div style="display:flex;gap:6px;flex-wrap:wrap;"><button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">' + (isFa ? 'ثبت Snapshot' : 'Record Snapshot') + '</button><button type="button" class="btn btn-sm btn-primary" data-action="apply-native-forecast-to-chart">' + (isFa ? 'اعمال مدل روی چارت' : 'Apply Model to Chart') + '</button></div></div>' +
+    '<div style="margin-top:10px;"><strong style="font-size:12px;">' + (isFa ? 'انتخاب مسیر مدل' : 'Select chart model') + '</strong><div class="chip-group" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px;">' + chartModels + '</div></div>' +
+    '<div class="row-between" style="gap:8px;flex-wrap:wrap;margin-top:12px;"><span>' + (isFa ? 'افق پیش‌بینی' : 'Forecast horizon') + '</span><div class="chip-group ltr-num">' + [10,15,20,30,45,60].map((h) => '<button type="button" class="chip ' + (horizon === h ? 'active' : '') + '" data-action="set-structural-forecast-horizon" data-horizon="' + h + '">+' + h + '</button>').join('') + '</div></div>' +
+    '<div class="row-between" style="gap:8px;flex-wrap:wrap;margin-top:10px;"><span>' + (isFa ? 'حالت نمایش' : 'Render mode') + '</span><div class="chip-group">' + modes.map(([id, label]) => '<button type="button" class="chip ' + (activeMode === id ? 'active' : '') + '" data-action="set-forecast-render-mode" data-mode="' + id + '">' + label + '</button>').join('') + '</div></div>' +
+    '<div class="row-between" style="gap:8px;flex-wrap:wrap;margin-top:10px;"><span>' + (isFa ? 'هماهنگی چندتایم‌فریمی' : 'Multi-timeframe coordination') + '</span><div class="chip-group"><button type="button" class="chip ' + ((state.forecastCoordView || 'independent') === 'independent' ? 'active' : '') + '" data-action="set-forecast-coord-mode" data-coord="independent">Independent</button><button type="button" class="chip ' + (state.forecastCoordView === 'coordinated' ? 'active' : '') + '" data-action="set-forecast-coord-mode" data-coord="coordinated">Coordinated</button></div></div>' +
+    '<div class="ci-fc-subtabs-bar" style="display:flex;gap:6px;flex-wrap:wrap;margin:14px 0 10px;">' + nativeTabNav + '</div><div class="ci-fc-body">' + nativePanel + '</div></div>' : '';  const switcher = `
     <div class="ci-fc-card" style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px;">
       <strong style="font-size:12px;">${isFa ? 'موتور فعال:' : 'Selected engine:'}</strong>
       <button type="button" class="chip ${selected === 'legacy' ? 'active' : ''}" data-action="set-forecast-engine" data-engine="legacy">${isFa ? 'سیستم قدیمی · Forecast Studio' : 'Legacy · Forecast Studio'}</button>
