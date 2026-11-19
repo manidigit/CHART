@@ -207,3 +207,5 @@
 - Commitهای `9f86505` و `e66cb2f` این مسیرها را با reuse توابع موجود به New متصل کردند.
 - تست رگرسیون `FORECAST-NEW-STUDIO-01` اضافه شد. نتیجه پذیرش منوط به CI و Browser E2E است.
 - Chronos-2/Python Worker به Runtime مستقل نیاز دارد؛ Historical Replay و Calibrated Ensemble هنوز مسیر اجرایی ندارند.
+
+- تکمیل ایزولاسیون New: حتی اگر Legacy قبلاً Worker URL ذخیره کرده باشد، New Native آن را با `workerUrl: ''` نادیده می‌گیرد؛ اجرای Python Worker از مسیر New فعال نمی‌شود. Cache-busting به `app.js?v=1.47.23` و `forecastView.js?v=2.0.9` افزایش یافت.

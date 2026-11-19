@@ -769,3 +769,5 @@ Run `44507978469` برای commit `f321f06caed58a0a3b6f8f93dc5bd1cac88c2c18` ب�
 همچنین رفع شد که New Native برای ساخت Forecast از horizon و model مستقل خود استفاده کند؛ پیش از این `buildForecastForTab()` ناخواسته تنظیمات Legacy را می‌خواند. تنظیمات دو موتور اکنون از طریق overrides جدا شده‌اند. Cache-busting وب به `app.js?v=1.47.22` و Forecast View به `v=2.0.8` افزایش یافت.
 
 این تغییر هنوز به معنی تکمیل کل مهاجرت نیست: Chronos-2/Python Worker به Runtime مستقل وابسته است، Historical Replay و Calibrated Ensemble پیاده‌سازی اجرایی ندارند و Browser E2E باید انجام شود.
+
+- ایزولاسیون Worker: New Native `workerUrl` را صریحاً خالی می‌فرستد و تنظیمات ذخیره‌شده Legacy باعث اجرای ناخواسته Worker خارجی نمی‌شود.
