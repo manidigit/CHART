@@ -28,6 +28,30 @@ test('FORECAST-MIGRATION-UI-01: New workspace discloses legacy capabilities that
     assert.match(appSource, /Legacy · Forecast Studio/);
 });
 
+test('FORECAST-MIGRATION-UI-02: New Native is the first-use default and the legacy engine remains opt-in', async () => {
+    const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+    assert.match(appSource, /forecastEngineMode\s*\|\|\s*'structural'/);
+    assert.match(appSource, /data-engine="legacy"/);
+    assert.match(appSource, /data-engine="structural"/);
+});
+
+test('FORECAST-MIGRATION-MODELS-01: the model picker is generated from the complete native registry', async () => {
+    const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+    assert.match(viewSource, /defaultForecastRegistry\.list\(\)\.map/);
+    assert.match(viewSource, /id: 'empirical_analogs'/);
+    assert.match(viewSource, /id: 'ensemble'/);
+    assert.doesNotMatch(viewSource, /ForecastWorkerClient/);
+    assert.doesNotMatch(viewSource, /ci-forecast-worker-url/);
+});
+
+test('FORECAST-RUNTIME-01: New Native forecast never invokes an external Python worker', async () => {
+    const viewSource = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+    const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+    assert.match(viewSource, /const workerUrl = ''/);
+    assert.doesNotMatch(viewSource, /ForecastWorkerClient\.infer/);
+    assert.doesNotMatch(appSource, /save-forecast-worker-url/);
+});
+
 test('ARCH-01: every browser module shares one canonical store.js module URL', async () => {
     const files = [
         '../host_subdomain/assets/js/app.js',
