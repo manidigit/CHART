@@ -1353,3 +1353,14 @@ test('FORECAST-MODEL-SELECTION-01: new Structural selector exposes registry mode
   assert.ok(appSource.includes('applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel)'), 'Selected registry model ID must reach the adapter unchanged');
   assert.ok(storeSource.includes("String(params.model_id || '') !== String(tab.structuralForecastModel || 'naive_persistence')"));
 });
+
+test('CHRONOS2-PROVIDER-GUARD-01: Chronos-2 API rejects every provider except TradingView before resolving candles', async () => {
+  const endpoint = await readFile(new URL('../host_subdomain/api/v1/chronos2_forecast.php', import.meta.url), 'utf8');
+  const providerAssignment = endpoint.indexOf("$provider = strtolower(trim((string) ($bodyData['provider'] ?? $_GET['provider'] ?? 'tvdatafeed')));");
+  const providerGuard = endpoint.indexOf("if ($provider !== 'tvdatafeed')");
+  const candleResolution = endpoint.indexOf('Chronos2QueueManager::resolveClosedCandles(');
+  assert.ok(providerAssignment >= 0, 'API must resolve the requested provider explicitly');
+  assert.ok(providerGuard > providerAssignment, 'Provider allow-list must run after reading request input');
+  assert.ok(providerGuard < candleResolution, 'Disallowed providers must be rejected before any candle lookup');
+  assert.ok(endpoint.includes("'ERR_PROVIDER_NOT_ALLOWED'"), 'API must return a stable explicit error code');
+});
