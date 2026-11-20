@@ -2250,3 +2250,224 @@ test('FORECAST-PKG2-WF-REPLAY-03: Walk-Forward benchmarks empirical_analogs & st
   assert.ok(replayAnalog.windows.every((w) => w.modelId === 'empirical_analogs'), 'Empirical Analogs Replay must score empirical_analogs directly');
 });
 
+test('FORECAST-PKG3-SMC-01: Structural JS integrates causal SMC liquidity magnets (VP POC/VAH/VAL + unmitigated FVGs) deterministically without fake volume or randomness', async () => {
+  const { computeStructuralForecast } = await import('../host_subdomain/assets/js/algorithms/structuralForecastEngine.js');
+  const src = await readFile(new URL('../host_subdomain/assets/js/algorithms/structuralForecastEngine.js', import.meta.url), 'utf8');
+  const execSrc = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.equal(/Math\.random|Math\.sin|Math\.cos/.test(execSrc), false, 'structuralForecastEngine.js must remain free of Math.random/sin/cos');
+  assert.equal(/volume\s*[:=]\s*100\b/.test(execSrc), false, 'structuralForecastEngine.js must never inject synthetic volume = 100');
+
+  // Build deterministic 180-bar series with clear volume concentration around 100 and a recent unmitigated bullish FVG
+  const baseMs = Date.UTC(2026, 2, 2, 0, 0, 0);
+  const candles = [];
+  const pattern = [97, 98.4, 100.0, 101.8, 103.5, 102.0, 100.2, 98.5, 97.2, 99.0, 100.4, 102.6, 104.2, 101.5, 99.6, 97.8];
+  for (let i = 0; i < 180; i++) {
+    let close = pattern[i % pattern.length];
+    let open = i > 0 ? candles[i - 1].close : close - 0.3;
+    let high = Math.max(open, close) + 0.55;
+    let low = Math.min(open, close) - 0.55;
+    // Create a clean unmitigated bullish displacement FVG at bar 174-176
+    if (i === 174) {
+      open = 100.0;
+      close = 100.4;
+      high = 100.6;
+      low = 99.8;
+    } else if (i === 175) {
+      open = 100.5;
+      close = 103.0;
+      high = 103.2;
+      low = 100.4;
+    } else if (i === 176) {
+      open = 103.0;
+      close = 103.6;
+      high = 103.9;
+      low = 102.2; // strictly > candle[174].high (100.6) -> unmitigated Bullish FVG
+    } else if (i >= 177) {
+      open = 103.5 + (i - 177) * 0.15;
+      close = open + 0.12;
+      high = close + 0.35;
+      low = open - 0.25; // stays above 102.2 so FVG remains unmitigated
+    }
+    candles.push({
+      open_time_utc_ms: baseMs + i * 3600000,
+      open,
+      high,
+      low,
+      close,
+      volume: Math.abs(close - 100) < 1.2 ? 2500 : 600,
+      is_closed: true,
+    });
+  }
+
+  const nowMs = candles[candles.length - 1].open_time_utc_ms + 86400000 * 7;
+  const r1 = computeStructuralForecast({ candles, symbolCode: 'SPOTBRENT', provider: 'tvdatafeed', timeframe: 'H1', horizonBars: 24, nowMs });
+  const r2 = computeStructuralForecast({ candles, symbolCode: 'SPOTBRENT', provider: 'tvdatafeed', timeframe: 'H1', horizonBars: 24, nowMs, skipAnalogs: true });
+
+  assert.equal(r1.status, 'READY');
+  assert.ok(Array.isArray(r1.smc_liquidity_zones) && r1.smc_liquidity_zones.length >= 2, 'Must emit real SMC liquidity zones');
+  assert.ok(r1.smc_liquidity_zones.some((z) => z.source === 'SMC_VP_POC'), 'Must extract Volume Profile POC zone');
+  assert.ok(r1.smc_liquidity_zones.some((z) => z.source === 'SMC_FVG'), 'Must extract unmitigated FVG liquidity zone');
+  assert.ok(Number.isFinite(r1.engine.params.smc_poc) && r1.engine.params.smc_poc > 0, 'Must expose smc_poc param');
+  assert.ok(r1.engine.params.active_fvg_count >= 1, 'Must count active unmitigated FVGs');
+  assert.equal(r1.model_diagnostics.smc_liquidity.status, 'READY');
+  assert.equal(r1.model_diagnostics.smc_liquidity.has_real_volume, true);
+  assert.deepEqual(r1.forecast, r2.forecast, 'SMC integration must remain deterministic and invariant under skipAnalogs');
+  assert.deepEqual(r1.smc_liquidity_zones, r2.smc_liquidity_zones);
+});
+
+test('FORECAST-PKG3-CACHE-02: buildForecastForTab uses bounded LRU cache and instant BASE_RESELECT on model/renderMode switches without re-running Walk-Forward', async () => {
+  const { buildForecastForTab } = await import('../host_subdomain/assets/js/views/forecastView.js');
+  const { state } = await import('../host_subdomain/assets/js/core/store.js');
+
+  state._forecastBaseCache = new Map();
+  state._forecastViewCache = new Map();
+
+  const makeSeries = (startPx) => {
+    const baseMs = Date.UTC(2026, 0, 1, 0, 0, 0);
+    const out = [];
+    let px = startPx;
+    for (let i = 0; i < 240; i++) {
+      const ret = Math.sin(i * 0.23) * 0.006 + Math.cos(i * 0.09) * 0.0025;
+      const open = px;
+      const close = Math.max(10, open * Math.exp(ret));
+      const span = Math.max(Math.abs(close - open), open * 0.004);
+      out.push({
+        open_time_utc_ms: baseMs + i * 3600000,
+        openTimeUtcMs: baseMs + i * 3600000,
+        open,
+        high: Math.max(open, close) + span * 0.4,
+        low: Math.min(open, close) - span * 0.4,
+        close,
+        volume: 1000,
+        is_closed: true,
+      });
+      px = close;
+    }
+    return out;
+  };
+
+  const tabA = { symbolCode: 'BTCUSD', provider: 'tvdatafeed', timeframe: 'H1', candles: makeSeries(62000), forecastHorizonBars: 12 };
+  const tabB = { symbolCode: 'ETHUSD', provider: 'tvdatafeed', timeframe: 'H1', candles: makeSeries(3200), forecastHorizonBars: 12 };
+
+  const first = buildForecastForTab(tabA, { selectedModelId: 'AUTO', renderMode: 'FAN_CHART', skipBootstrap: true });
+  assert.equal(first.cacheHit, 'MISS');
+
+  // Exact same request -> EXACT hit
+  const second = buildForecastForTab(tabA, { selectedModelId: 'AUTO', renderMode: 'FAN_CHART', skipBootstrap: true });
+  assert.equal(second.cacheHit, 'EXACT');
+
+  // Switch model to empirical_analogs -> instant BASE_RESELECT (no Walk-Forward recompute)
+  const switchedModel = buildForecastForTab(tabA, { selectedModelId: 'empirical_analogs', renderMode: 'FAN_CHART', skipBootstrap: true });
+  assert.equal(switchedModel.cacheHit, 'BASE_RESELECT');
+  assert.equal(switchedModel.result.selectedChartModelId, 'empirical_analogs');
+  assert.strictEqual(switchedModel.result.walkForward, first.result.walkForward, 'BASE_RESELECT must reuse walkForward reference without recomputing');
+
+  // Switch renderMode -> instant BASE_RESELECT
+  const switchedMode = buildForecastForTab(tabA, { selectedModelId: 'structural_wave_js', renderMode: 'HYBRID', skipBootstrap: true });
+  assert.equal(switchedMode.cacheHit, 'BASE_RESELECT');
+  assert.equal(switchedMode.result.selectedChartModelId, 'structural_wave_js');
+  assert.equal(switchedMode.result.renderMode, 'HYBRID');
+
+  // Switch to tabB, then back to tabA -> multi-entry LRU retains tabA with EXACT hit!
+  const bRes = buildForecastForTab(tabB, { selectedModelId: 'AUTO', renderMode: 'FAN_CHART', skipBootstrap: true });
+  assert.equal(bRes.cacheHit, 'MISS');
+  const backToA = buildForecastForTab(tabA, { selectedModelId: 'empirical_analogs', renderMode: 'FAN_CHART', skipBootstrap: true });
+  assert.equal(backToA.cacheHit, 'EXACT', 'Multi-entry LRU must keep previous symbol cached when switching tabs');
+  assert.ok(state._forecastBaseCache.size <= 16);
+});
+
+test('FORECAST-PKG3-HOVER-03: renderForecastStudioFanCanvas renders crosshair HUD for Studio & Replay hover and app.js binds bindForecastCanvasHover', async () => {
+  const { renderForecastStudioFanCanvas, bindForecastCanvasHover } = await import('../host_subdomain/assets/js/views/forecastView.js');
+  const appSrc = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+
+  assert.match(appSrc, /bindForecastCanvasHover\(\s*studioCanvas/);
+  assert.match(appSrc, /bindForecastCanvasHover\(\s*replayCanvas/);
+  assert.match(appSrc, /skipBootstrap:\s*!usesNativeEvaluation && nativeTab === 'overview'/);
+
+  const drawnTexts = [];
+  const listeners = {};
+  const mockCtx = {
+    setTransform() {},
+    fillRect() {},
+    strokeRect() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    closePath() {},
+    arc() {},
+    fill() {},
+    stroke() {},
+    save() {},
+    restore() {},
+    translate() {},
+    rotate() {},
+    setLineDash() {},
+    roundRect() {},
+    measureText: (txt) => ({ width: String(txt).length * 6.5 }),
+    fillText: (txt) => { drawnTexts.push(String(txt)); },
+  };
+  const mockCanvas = {
+    width: 0,
+    height: 0,
+    style: {},
+    getContext: () => mockCtx,
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 700, height: 300 }),
+    addEventListener: (evt, fn) => { listeners[evt] = fn; },
+  };
+
+  const baseMs = Date.UTC(2026, 2, 10, 0, 0, 0);
+  const candles = Array.from({ length: 24 }, (_, i) => ({
+    open_time_utc_ms: baseMs + i * 3600000,
+    open: 100 + i * 0.2,
+    high: 101 + i * 0.2,
+    low: 99 + i * 0.2,
+    close: 100.3 + i * 0.2,
+  }));
+  const points = Array.from({ length: 10 }, (_, idx) => ({
+    stepAhead: idx + 1,
+    openTimeUtcMs: baseMs + (24 + idx) * 3600000,
+    q10: 103 + idx * 0.1,
+    q25: 104 + idx * 0.15,
+    q50: 105 + idx * 0.2,
+    q75: 106 + idx * 0.25,
+    q90: 107 + idx * 0.3,
+  }));
+  const studioForecast = {
+    points,
+    smcPoc: 103.5,
+    selectedChartModelId: 'structural_wave_js',
+    renderMode: 'FAN_CHART',
+    turningPoints: [{ step: 3, rationale: 'SMC VP POC liquidity magnet' }],
+  };
+
+  // Hover on future step +3 (index = 24 + 2 = 26)
+  renderForecastStudioFanCanvas(mockCanvas, candles, studioForecast, 2, true, 'independent', 26);
+  assert.ok(drawnTexts.some((t) => t.includes('POC 103.50')), 'Canvas must draw SMC POC reference line');
+  assert.ok(drawnTexts.some((t) => t.includes('Step +3')), 'Studio hover HUD must render hovered step');
+  assert.ok(drawnTexts.some((t) => t.includes('Node: SMC VP POC')), 'Studio hover HUD must surface nearby turning-point rationale');
+
+  // Replay hover on future step +2 (index = 24 + 1 = 25)
+  drawnTexts.length = 0;
+  const replayForecast = {
+    points,
+    actualPoints: points.map((p) => ({ close: p.q50 - 0.1 })),
+    selectedChartModelId: 'structural_wave_js',
+    renderMode: 'FAN_CHART',
+  };
+  renderForecastStudioFanCanvas(mockCanvas, candles, replayForecast, 2, true, 'independent', 25);
+  assert.ok(drawnTexts.some((t) => t.includes('Replay Step +2')), 'Replay hover HUD must show step header');
+  assert.ok(drawnTexts.some((t) => t.includes('80% Band: IN')), 'Replay hover HUD must report 80% band inclusion');
+
+  // Bind hover handler idempotently and fire mousemove + mouseleave
+  bindForecastCanvasHover(mockCanvas, candles, studioForecast, 2, true, 'independent');
+  assert.equal(mockCanvas.__ciHoverBound, true);
+  assert.equal(typeof listeners.mousemove, 'function');
+  assert.equal(typeof listeners.mouseleave, 'function');
+  drawnTexts.length = 0;
+  listeners.mousemove({ clientX: 500 });
+  assert.ok(drawnTexts.some((t) => t.includes('Step +')), 'mousemove must trigger crosshair HUD redraw');
+  listeners.mouseleave();
+  assert.equal(mockCanvas.__ciHoverState.hoverSlotIdx, null);
+});
+
+

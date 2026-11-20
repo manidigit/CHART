@@ -15,6 +15,7 @@ import {
 import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.47.40';
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.40';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.40';
+import { selectOosChartWinner } from '../forecast/walkForwardEvaluator.js?v=1.47.40';
 import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
 
 import { state, escapeHtml, getCachedOrAggregatedCandles, safeLocalStorageSet } from '../core/store.js?v=1.47.40';
@@ -47,6 +48,27 @@ export function resolveHigherTimeframe(tf = 'M15') {
   return '';
 }
 
+const FORECAST_BASE_CACHE_LIMIT = 16;
+const FORECAST_VIEW_CACHE_LIMIT = 24;
+
+function lruCacheGet(map, key) {
+  if (!(map instanceof Map) || !map.has(key)) return null;
+  const val = map.get(key);
+  map.delete(key);
+  map.set(key, val);
+  return val;
+}
+
+function lruCacheSet(map, key, value, limit) {
+  if (!(map instanceof Map)) return;
+  if (map.has(key)) map.delete(key);
+  map.set(key, value);
+  while (map.size > limit) {
+    const oldest = map.keys().next().value;
+    map.delete(oldest);
+  }
+}
+
 export function buildForecastForTab(activeTab, overrides = {}) {
   if (!activeTab) return null;
   const candles =
@@ -74,16 +96,19 @@ export function buildForecastForTab(activeTab, overrides = {}) {
     : [];
 
   if (!state._prevForecastByKey) state._prevForecastByKey = {};
+  if (!(state._forecastBaseCache instanceof Map)) state._forecastBaseCache = new Map();
+  if (!(state._forecastViewCache instanceof Map)) state._forecastViewCache = new Map();
   const cacheKey = `${activeTab.symbolCode}_${activeTab.timeframe}_${horizonBars}`;
   const lastStored = state._prevForecastByKey[cacheKey] || null;
 
   const selectedScenarioId = activeTab.selectedScenarioId || prefs.selectedScenarioId || 'SCENARIO_A';
   const selectedModelId = String(overrides.selectedModelId || activeTab.selectedForecastModelId || prefs.selectedForecastModelId || 'AUTO');
+  const skipBootstrap = Boolean(overrides.skipBootstrap);
   const lastBar = candles.length > 0 ? candles[candles.length - 1] : null;
   const firstBar = candles.length > 0 ? candles[0] : null;
   const lastHigherBar = higherCandles.length > 0 ? higherCandles[higherCandles.length - 1] : null;
   const lastLowerBar = lowerCandles.length > 0 ? lowerCandles[lowerCandles.length - 1] : null;
-  const memoKey = [
+  const seriesCoreKey = [
     activeTab.symbolCode,
     activeTab.provider,
     activeTab.timeframe,
@@ -98,18 +123,76 @@ export function buildForecastForTab(activeTab, overrides = {}) {
     lowerCandles.length,
     lastLowerBar?.open_time_utc_ms || 0,
     horizonBars,
-    renderMode,
-    selectedScenarioId,
-    selectedModelId,
     workerUrl,
     JSON.stringify(prefs.forecastPluginConfig || null),
   ].join('|');
+  const bootTag = skipBootstrap ? 'NOBOOT' : 'BOOT';
+  const baseKey = `${seriesCoreKey}|${bootTag}`;
+  const bootBaseKey = `${seriesCoreKey}|BOOT`;
+  const viewKey = `${baseKey}|${renderMode}|${selectedScenarioId}|${selectedModelId}`;
+  const bootViewKey = `${bootBaseKey}|${renderMode}|${selectedScenarioId}|${selectedModelId}`;
 
   if (!state._workerForecastByKey) state._workerForecastByKey = {};
   if (!state._workerPendingKeys) state._workerPendingKeys = {};
 
-  if (state._forecastBuildMemo && state._forecastBuildMemo.key === memoKey) {
-    return state._forecastBuildMemo.value;
+  // 1) Exact view hit (if skipBootstrap is requested and full BOOT view is already cached, reuse it immediately)
+  const exactHit =
+    lruCacheGet(state._forecastViewCache, viewKey) ||
+    (skipBootstrap ? lruCacheGet(state._forecastViewCache, bootViewKey) : null);
+  if (exactHit) {
+    return { candles: exactHit.candles, result: exactHit.result, cacheHit: 'EXACT' };
+  }
+
+  // 2) Base forecast hit: re-select model/renderMode in <1ms without re-running Walk-Forward or model inference
+  const baseHit =
+    lruCacheGet(state._forecastBaseCache, baseKey) ||
+    (skipBootstrap ? lruCacheGet(state._forecastBaseCache, bootBaseKey) : null);
+  if (baseHit && baseHit.result && baseHit.result.status !== FORECAST_STATUS.DATA_NOT_READY) {
+    const baseRes = baseHit.result;
+    const trajs = Array.isArray(baseRes.modelTrajectories) ? baseRes.modelTrajectories : [];
+    const selection = selectOosChartWinner(baseRes.walkForward, trajs, selectedModelId);
+    const chosen =
+      trajs.find(
+        (t) =>
+          t.modelId === selection.selectedModelId &&
+          t.status === MODEL_EXECUTION_STATUS.SUCCESS &&
+          Array.isArray(t.points) &&
+          t.points.length === baseRes.horizonBars
+      ) ||
+      trajs.find((t) => t.modelId === 'naive_persistence' && Array.isArray(t.points) && t.points.length > 0);
+    const nextPoints = chosen ? chosen.points : baseRes.points;
+    const lastPt = nextPoints && nextPoints.length > 0 ? nextPoints[nextPoints.length - 1] : null;
+    const anchorClose = Number(baseRes.anchorClose || 0);
+    const nextSummary =
+      lastPt && anchorClose > 0
+        ? {
+            ...(baseRes.summary || {}),
+            terminalStep: lastPt.stepAhead,
+            terminalQ10: lastPt.q10,
+            terminalQ25: lastPt.q25,
+            terminalQ50: lastPt.q50,
+            terminalQ75: lastPt.q75,
+            terminalQ90: lastPt.q90,
+            medianPctChange: lastPt.pctChangeFromLast,
+            corridorWidthPct: ((lastPt.q90 - lastPt.q10) / anchorClose) * 100,
+          }
+        : baseRes.summary;
+    const reselectedResult = {
+      ...baseRes,
+      renderMode,
+      selectedChartModelId: selection.selectedModelId,
+      selectionMode: selection.selectionMode,
+      selectionReason: selection.reason,
+      points: nextPoints,
+      summary: nextSummary,
+    };
+    const builtReselected = {
+      candles: baseHit.candles,
+      result: reselectedResult,
+      cacheHit: 'BASE_RESELECT',
+    };
+    lruCacheSet(state._forecastViewCache, viewKey, builtReselected, FORECAST_VIEW_CACHE_LIMIT);
+    return builtReselected;
   }
 
   let result = ForecastEngine.project(candles, {
@@ -120,6 +203,7 @@ export function buildForecastForTab(activeTab, overrides = {}) {
     renderMode,
     selectedScenarioId,
     selectedModelId,
+    skipBootstrap,
     registry: defaultForecastRegistry,
     workerUrl,
     higherTimeframe: higherTf,
@@ -132,8 +216,6 @@ export function buildForecastForTab(activeTab, overrides = {}) {
         : null,
   });
 
-
-
   if (result && result.status !== FORECAST_STATUS.DATA_NOT_READY) {
     if (!lastStored || lastStored.inputHash !== result.inputHash) {
       state._prevForecastByKey[cacheKey] = result;
@@ -143,11 +225,10 @@ export function buildForecastForTab(activeTab, overrides = {}) {
   const built = {
     candles,
     result,
+    cacheHit: 'MISS',
   };
-  state._forecastBuildMemo = {
-    key: memoKey,
-    value: built,
-  };
+  lruCacheSet(state._forecastBaseCache, baseKey, built, FORECAST_BASE_CACHE_LIMIT);
+  lruCacheSet(state._forecastViewCache, viewKey, built, FORECAST_VIEW_CACHE_LIMIT);
   return built;
 }
 
@@ -157,7 +238,8 @@ export function renderForecastStudioFanCanvas(
   forecast = null,
   decimals = 2,
   isDark = true,
-  coordMode = 'independent'
+  coordMode = 'independent',
+  hoverSlotIdx = null
 ) {
   if (!canvas) return;
   const ctx = canvas.getContext('2d');
@@ -310,6 +392,29 @@ export function renderForecastStudioFanCanvas(
     ctx.fillStyle = isRes ? 'rgba(239, 83, 80, 0.08)' : 'rgba(38, 166, 154, 0.08)';
     ctx.fillRect(padL, Math.min(yTop, yBot), plotW, Math.max(2, Math.abs(yBot - yTop)));
   }
+
+  // Optional SMC Volume Profile POC reference line (causal liquidity magnet)
+  const smcPocVal = Number(forecast?.smcPoc);
+  if (Number.isFinite(smcPocVal) && smcPocVal >= minP && smcPocVal <= maxP) {
+    const pocY = yOf(smcPocVal);
+    ctx.save();
+    ctx.strokeStyle = isDark ? 'rgba(192, 132, 252, 0.55)' : 'rgba(126, 34, 206, 0.45)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(padL, pocY);
+    ctx.lineTo(w - padR, pocY);
+    ctx.stroke();
+    ctx.setLineDash([]);
+    ctx.font = '700 9px "JetBrains Mono", monospace';
+    ctx.fillStyle = isDark ? '#D8B4FE' : '#7E22CE';
+    ctx.textAlign = 'left';
+    ctx.fillText(`POC ${PriceFormatter.formatPrice(smcPocVal, decimals)}`, padL + 4, Math.max(padT + 10, pocY - 3));
+    ctx.restore();
+  }
+
+  // Store layout geometry for interactive hover crosshair mapping
+  canvas.__ciLayout = { w, h, padL, padR, padT, padB, plotW, plotH, slotW, histLen: hist.length, ptsLen: pts.length, totalSlots };
 
   // Historical candlesticks
   const bodyW = Math.max(2, Math.min(11, slotW * 0.64));
@@ -518,6 +623,219 @@ export function renderForecastStudioFanCanvas(
       isDark ? 'rgba(56, 189, 248, 0.14)' : 'rgba(2, 132, 199, 0.11)'
     );
   }
+
+  // Interactive Hover Crosshair + Floating HUD Tooltip (Studio & Replay)
+  if (hoverSlotIdx !== null && Number.isInteger(hoverSlotIdx) && hoverSlotIdx >= 0 && hoverSlotIdx < totalSlots) {
+    const hx = xOf(hoverSlotIdx);
+    const anchorClose = Number(hist[hist.length - 1]?.close || 0);
+    const actualReplayPoints = Array.isArray(forecast?.actualPoints) ? forecast.actualPoints : [];
+    const formatUtcShort = (ms) => {
+      const n = Number(ms || 0);
+      if (!Number.isFinite(n) || n <= 0) return '';
+      return new Date(n).toISOString().slice(5, 16).replace('T', ' ') + ' UTC';
+    };
+
+    ctx.save();
+    ctx.strokeStyle = isDark ? 'rgba(226, 232, 240, 0.45)' : 'rgba(15, 23, 42, 0.38)';
+    ctx.lineWidth = 1;
+    ctx.setLineDash([3, 3]);
+    ctx.beginPath();
+    ctx.moveTo(hx, padT);
+    ctx.lineTo(hx, padT + plotH);
+    ctx.stroke();
+    ctx.setLineDash([]);
+
+    const hudLines = [];
+    let focusY = padT + plotH * 0.35;
+
+    if (hoverSlotIdx < hist.length) {
+      const bar = hist[hoverSlotIdx];
+      const barClose = Number(bar.close);
+      focusY = yOf(barClose);
+      ctx.fillStyle = barClose >= Number(bar.open) ? bullCol : bearCol;
+      ctx.beginPath();
+      ctx.arc(hx, focusY, 3.6, 0, Math.PI * 2);
+      ctx.fill();
+      const tsStr = formatUtcShort(bar.open_time_utc_ms ?? bar.openTimeUtcMs);
+      hudLines.push(`Hist ${hoverSlotIdx - hist.length + 1}${tsStr ? ' · ' + tsStr : ''}`);
+      hudLines.push(`O ${PriceFormatter.formatPrice(Number(bar.open), decimals)}  H ${PriceFormatter.formatPrice(Number(bar.high), decimals)}`);
+      hudLines.push(`L ${PriceFormatter.formatPrice(Number(bar.low), decimals)}  C ${PriceFormatter.formatPrice(barClose, decimals)}`);
+    } else {
+      const stepIdx = hoverSlotIdx - hist.length;
+      const pt = pts[stepIdx];
+      if (pt) {
+        const q50Val = Number(pt.q50);
+        const q10Val = Number(pt.q10 ?? q50Val);
+        const q90Val = Number(pt.q90 ?? q50Val);
+        focusY = yOf(q50Val);
+        const activeDotCol = useCoord ? '#A855F7' : (MODEL_OVERLAY_COLORS[forecast?.selectedChartModelId] || '#F59E0B');
+
+        // Vertical corridor tick for hovered step
+        ctx.strokeStyle = activeDotCol;
+        ctx.lineWidth = 2;
+        ctx.beginPath();
+        ctx.moveTo(hx, yOf(q90Val));
+        ctx.lineTo(hx, yOf(q10Val));
+        ctx.stroke();
+
+        ctx.fillStyle = activeDotCol;
+        ctx.beginPath();
+        ctx.arc(hx, focusY, 4, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.strokeStyle = '#FFFFFF';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+
+        const tsStr = formatUtcShort(pt.openTimeUtcMs ?? pt.open_time_utc_ms);
+        const actPt = actualReplayPoints[stepIdx];
+        if (actPt !== undefined) {
+          const actClose = Number(actPt.close ?? actPt);
+          if (Number.isFinite(actClose)) {
+            const actY = yOf(actClose);
+            ctx.fillStyle = isDark ? '#E2E8F0' : '#0F172A';
+            ctx.beginPath();
+            ctx.arc(hx, actY, 3.8, 0, Math.PI * 2);
+            ctx.fill();
+            const errPct = actClose > 0 ? ((q50Val - actClose) / actClose) * 100 : 0;
+            const inBand = actClose >= q10Val && actClose <= q90Val;
+            hudLines.push(`Replay Step +${stepIdx + 1}${tsStr ? ' · ' + tsStr : ''}`);
+            hudLines.push(`Pred q50 ${PriceFormatter.formatPrice(q50Val, decimals)} · Act ${PriceFormatter.formatPrice(actClose, decimals)}`);
+            hudLines.push(`Err ${errPct >= 0 ? '+' : ''}${errPct.toFixed(2)}% · 80% Band: ${inBand ? 'IN ✓' : 'OUT ✗'}`);
+            hudLines.push(`q10–q90 ${PriceFormatter.formatPrice(q10Val, decimals)} — ${PriceFormatter.formatPrice(q90Val, decimals)}`);
+          }
+        } else {
+          const pct = anchorClose > 0 ? ((q50Val - anchorClose) / anchorClose) * 100 : 0;
+          hudLines.push(`Step +${stepIdx + 1}${tsStr ? ' · ' + tsStr : ''}`);
+          hudLines.push(`q50 ${PriceFormatter.formatPrice(q50Val, decimals)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)`);
+          hudLines.push(`q10–q90 ${PriceFormatter.formatPrice(q10Val, decimals)} — ${PriceFormatter.formatPrice(q90Val, decimals)}`);
+          const nearTp = Array.isArray(forecast?.turningPoints)
+            ? forecast.turningPoints.find((tp) => Math.abs(Number(tp?.step || 0) - (stepIdx + 1)) <= 1)
+            : null;
+          if (nearTp?.rationale) {
+            hudLines.push(`Node: ${String(nearTp.rationale).slice(0, 38)}`);
+          }
+        }
+      }
+    }
+
+    if (hudLines.length > 0) {
+      ctx.font = '600 10.5px "JetBrains Mono", monospace';
+      let maxTw = 0;
+      for (const line of hudLines) {
+        const tw = ctx.measureText(line).width;
+        if (tw > maxTw) maxTw = tw;
+      }
+      const padX = 9;
+      const padY = 7;
+      const lineH = 14;
+      const boxW = Math.min(plotW - 12, Math.ceil(maxTw + padX * 2));
+      const boxH = hudLines.length * lineH + padY * 2 - 2;
+      let boxX = hx + 10;
+      if (boxX + boxW > w - padR - 4) {
+        boxX = Math.max(padL + 4, hx - boxW - 10);
+      }
+      const boxY = Math.max(padT + 4, Math.min(padT + plotH - boxH - 4, focusY - boxH * 0.5));
+
+      ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.95)';
+      ctx.strokeStyle = isDark ? 'rgba(148, 163, 184, 0.35)' : 'rgba(15, 23, 42, 0.22)';
+      ctx.lineWidth = 1;
+      if (typeof ctx.roundRect === 'function') {
+        ctx.beginPath();
+        ctx.roundRect(boxX, boxY, boxW, boxH, 6);
+        ctx.fill();
+        ctx.stroke();
+      } else {
+        ctx.fillRect(boxX, boxY, boxW, boxH);
+        ctx.strokeRect(boxX, boxY, boxW, boxH);
+      }
+
+      ctx.textAlign = 'left';
+      hudLines.forEach((line, i) => {
+        ctx.fillStyle = i === 0 ? (isDark ? '#F8FAFC' : '#0F172A') : (isDark ? '#CBD5E1' : '#334155');
+        ctx.fillText(line, boxX + padX, boxY + padY + (i + 1) * lineH - 3);
+      });
+    }
+    ctx.restore();
+  }
+}
+
+export function bindForecastCanvasHover(
+  canvas,
+  candles = [],
+  forecast = null,
+  decimals = 2,
+  isDark = true,
+  coordMode = 'independent'
+) {
+  if (!canvas || typeof canvas.addEventListener !== 'function') return;
+  canvas.__ciHoverState = {
+    candles,
+    forecast,
+    decimals,
+    isDark,
+    coordMode,
+    hoverSlotIdx: null,
+    rafPending: false,
+  };
+  if (canvas.__ciHoverBound) return;
+  canvas.__ciHoverBound = true;
+  if (canvas.style) canvas.style.cursor = 'crosshair';
+
+  const scheduleDraw = (nextSlotIdx) => {
+    const st = canvas.__ciHoverState;
+    if (!st) return;
+    if (st.hoverSlotIdx === nextSlotIdx) return;
+    st.hoverSlotIdx = nextSlotIdx;
+    if (st.rafPending) return;
+    st.rafPending = true;
+    const run = () => {
+      const cur = canvas.__ciHoverState;
+      if (!cur) return;
+      cur.rafPending = false;
+      renderForecastStudioFanCanvas(
+        canvas,
+        cur.candles,
+        cur.forecast,
+        cur.decimals,
+        cur.isDark,
+        cur.coordMode,
+        cur.hoverSlotIdx
+      );
+    };
+    if (typeof window !== 'undefined' && typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(run);
+    } else {
+      run();
+    }
+  };
+
+  const resolveSlotFromClientX = (clientX) => {
+    const layout = canvas.__ciLayout;
+    if (!layout || !layout.totalSlots) return null;
+    const rect = canvas.getBoundingClientRect();
+    const localX = clientX - rect.left;
+    if (localX < layout.padL || localX > layout.padL + layout.plotW) return null;
+    const idx = Math.floor((localX - layout.padL) / Math.max(1e-6, layout.slotW));
+    return Math.max(0, Math.min(layout.totalSlots - 1, idx));
+  };
+
+  canvas.addEventListener('mousemove', (ev) => {
+    scheduleDraw(resolveSlotFromClientX(ev.clientX));
+  });
+  canvas.addEventListener('mouseleave', () => {
+    scheduleDraw(null);
+  });
+  canvas.addEventListener(
+    'touchmove',
+    (ev) => {
+      const touch = ev.touches && ev.touches[0];
+      if (touch) scheduleDraw(resolveSlotFromClientX(touch.clientX));
+    },
+    { passive: true }
+  );
+  canvas.addEventListener('touchend', () => {
+    scheduleDraw(null);
+  });
 }
 
 // Legacy renderForecastStudioView removed in Phase 3 (v1.47.38); New Forecast Studio in app.js consumes shared panels below directly.

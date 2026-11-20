@@ -1,7 +1,7 @@
 # گزارش و لیست مشکلات فنی شناسایی‌شده (Known Issues Backlog)
 
 **تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۲۰ نوامبر ۲۰۲۶ (`v1.47.40`)  
-**وضعیت:** تمامی موارد ۱ تا ۱۵ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`46/46` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
+**وضعیت:** تمامی موارد ۱ تا ۱۶ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`49/49` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
 
 ---
 
@@ -317,6 +317,26 @@
      - افزودن `structural_wave_js` به `modelTrajectories` و لیست overlayهای قابل مقایسه روی بوم Forecast Studio و نمایش تعداد S/R Zones و درصد هم‌گرایی آنالوگ در بنر Structural JS.
      - اصلاح `runHistoricalForecastReplay()` و هندلر `run-forecast-replay` در `app.js` برای اجرای مستقیم و امتیازدهی مدل انتخابی کاربر (`structural_wave_js` یا `empirical_analogs`) بدون بازگشت بی‌صدا به `naive_persistence` و افزودن ستون `Model` در جداول Replay.
 - **راستی‌آزمایی:** `node --check` روی هر ۶ ماژول ایجاد/اصلاح‌شده و **۴۶/۴۶ پاس** در `tests/web_parity.test.mjs` (افزودن تست‌های `FORECAST-PKG2-ANALOGS-01`، `FORECAST-PKG2-STRUCTURAL-02` و `FORECAST-PKG2-WF-REPLAY-03`).
+
+---
+
+## ۱۶. بهینه‌سازی سرعت با کش LRU، کراس‌هیر و HUD تعاملی بوم‌ها و احیای علمی آهنرباهای نقدینگی SMC (`FORECAST-PKG3` · `v1.47.40`) — ✅ حل و تست شد
+
+- **اولویت:** بالا (High / P1)
+- **تاریخ اجرا و تأیید:** ۲۰ نوامبر ۲۰۲۶
+- **خلاصه بهبودهای پیاده‌سازی‌شده در سیستم بومی مرورگری:**
+  1. **کش چندنمادی LRU و تعویض آنی مدل/حالت نمایش (`views/forecastView.js`، `app.js`):**
+     - جایگزینی کش تک‌ورودی `_forecastBuildMemo` با دو کش محدود LRU (`_forecastBaseCache` حداکثر ۱۶ سری و `_forecastViewCache` حداکثر ۲۴ نما) برای حفظ کش هنگام جابه‌جایی بین نمادها و تب‌ها (`cacheHit: 'EXACT'`).
+     - جداسازی محاسبه سنگین `ForecastEngine.project()` / `Walk-Forward` از بازانتخاب سریع مدل یا حالت نمایش (`selectedModelId`, `renderMode`, `selectedScenarioId`) با استفاده از `selectOosChartWinner()` در زیر ۱ میلی‌ثانیه (`cacheHit: 'BASE_RESELECT'`).
+     - ارسال `skipBootstrap: true` هنگام پیش‌نمایش `Structural JS` در تب `Overview` (و استفاده مجدد خودکار از کش کامل `BOOT` در صورت وجود)، در حالی که `Backtest`، `AUTO` و `Ensemble` همچنان با Bootstrap کامل ۱۰۰۰ تکراری اجرا می‌شوند.
+  2. **کراس‌هیر تعاملی و HUD شناور روی بوم‌های Studio و Replay (`views/forecastView.js`، `app.js`):**
+     - ارتقای `renderForecastStudioFanCanvas()` با خط مرجع نقطه‌چین `SMC POC` و کراس‌هیر عمودی + جعبه HUD شناور (تطبیق خودکار چپ/راست) برای نمایش OHLC کندل‌های تاریخی، گام آینده (`Step +h`، زمان UTC، `q50`، درصد تغییر، کریدور `q10–q90` و علت نقطه برگشت مجاور) و در حالت Replay نمایش زنده `Pred q50` در برابر `Actual Close`، درصد خطا و وضعیت قرارگیری در باند ۸۰٪ (`IN ✓ / OUT ✗`).
+     - افزودن `bindForecastCanvasHover()` (پشتیبانی از ماوس و تاچ، throttle شده با `requestAnimationFrame` و بدون ثبت تکراری listener) و اتصال آن به `#forecast-studio-canvas` و `#forecast-replay-canvas` در `app.js`.
+  3. **احیای علمی هسته مدل اولیه SMC بدون حجم جعلی و بدون موج سینوسی (`algorithms/structuralForecastEngine.js`، `app.js`):**
+     - افزودن `extractSmcLiquidityZones()` با تکیه بر اندیکاتورهای علّی و واقعی `TechnicalIndicators.computeVolumeProfile()` (`POC`, `VAH`, `VAL` بدون تزریق `volume = 100`) و `TechnicalIndicators.detectMarketStructureSmc()` (`FVG`های پرنشده اخیر، استخرهای نقدینگی `EQH`/`EQL` و شمارش `BOS`/`CHoCH`).
+     - ادغام نواحی نقدینگی SMC (`smc_liquidity_zones`) در `findMagnetZone()` با تقویت هم‌پوشانی (`confluence`) با S/R و جذب نرم ثانویه، انتشار فیلدهای تشخیصی `smc_poc`، `smc_vah`، `smc_val`، `active_fvg_count`، `smc_magnet_hits` و `model_diagnostics.smc_liquidity` و نمایش `POC` و تعداد `FVG` فعال در بنر Structural JS (با حفظ ۱۰۰٪ نبود `Math.random`/`sin`/`cos`، نبود OHLC جعلی و یکسانی کامل `forecast` در حالت `skipAnalogs`).
+- **راستی‌آزمایی:** `node --check` روی هر ۳ ماژول اصلاح‌شده و **۴۹/۴۹ پاس** در `tests/web_parity.test.mjs` (افزودن تست‌های `FORECAST-PKG3-SMC-01`، `FORECAST-PKG3-CACHE-02` و `FORECAST-PKG3-HOVER-03`).
+
 
 
 

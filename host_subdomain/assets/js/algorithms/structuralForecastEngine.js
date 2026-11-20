@@ -219,6 +219,149 @@ function extractStructuralZones(swings, atrNow, totalBars) {
 }
 
 /**
+ * Step 1c: Extract real, causal SMC Liquidity Zones (Volume Profile POC/VAH/VAL + unmitigated FVGs + EQH/EQL).
+ * Uses zero synthetic volume (relies on TechnicalIndicators.computeVolumeProfile real-or-unit weighting)
+ * and zero stochastic/trigonometric synthesis.
+ */
+function extractSmcLiquidityZones(closedCandles, atrNow, lastClose) {
+  const empty = {
+    zones: [],
+    pocPrice: null,
+    vahPrice: null,
+    valPrice: null,
+    hasRealVolume: false,
+    activeFvgCount: 0,
+    equalLevelsCount: 0,
+    bosChochCount: 0,
+    lastStructureType: '',
+  };
+  if (!Array.isArray(closedCandles) || closedCandles.length < 20 || !(atrNow > 0) || !(lastClose > 0)) {
+    return empty;
+  }
+
+  const slice = closedCandles.slice(-180);
+  const maxDist = atrNow * 3.5;
+  const zones = [];
+
+  // 1) Volume Profile POC / VAH / VAL (zero fake volume=100)
+  const vp = TechnicalIndicators.computeVolumeProfile(slice, 24, 0.7);
+  let pocPrice = null;
+  let vahPrice = null;
+  let valPrice = null;
+  let hasRealVolume = false;
+  if (vp && Number.isFinite(vp.pocPrice) && vp.pocPrice > 0) {
+    pocPrice = Number(vp.pocPrice);
+    vahPrice = Number.isFinite(vp.vahPrice) ? Number(vp.vahPrice) : null;
+    valPrice = Number.isFinite(vp.valPrice) ? Number(vp.valPrice) : null;
+    hasRealVolume = Boolean(vp.hasRealVolume);
+
+    if (Math.abs(pocPrice - lastClose) <= maxDist) {
+      zones.push({
+        level: Number(pocPrice.toFixed(6)),
+        polarity: 'FLIP',
+        source: 'SMC_VP_POC',
+        label: 'VP POC',
+        touches: 2,
+        strength: 1.45,
+      });
+    }
+    if (vahPrice !== null && Math.abs(vahPrice - lastClose) <= maxDist && Math.abs(vahPrice - pocPrice) >= atrNow * 0.25) {
+      zones.push({
+        level: Number(vahPrice.toFixed(6)),
+        polarity: 'RESISTANCE',
+        source: 'SMC_VP_VAH',
+        label: 'VP VAH',
+        touches: 1,
+        strength: 1.05,
+      });
+    }
+    if (valPrice !== null && Math.abs(valPrice - lastClose) <= maxDist && Math.abs(valPrice - pocPrice) >= atrNow * 0.25) {
+      zones.push({
+        level: Number(valPrice.toFixed(6)),
+        polarity: 'SUPPORT',
+        source: 'SMC_VP_VAL',
+        label: 'VP VAL',
+        touches: 1,
+        strength: 1.05,
+      });
+    }
+  }
+
+  // 2) Causal SMC Market Structure: unmitigated FVGs & Equal Highs/Lows liquidity pools
+  const smc = TechnicalIndicators.detectMarketStructureSmc(slice, 3) || {};
+  const rawFvgs = Array.isArray(smc.fvgs) ? smc.fvgs : [];
+  const activeFvgs = [];
+  for (let idx = rawFvgs.length - 1; idx >= 0; idx--) {
+    const fvg = rawFvgs[idx];
+    const top = Number(fvg?.top);
+    const bottom = Number(fvg?.bottom);
+    if (!Number.isFinite(top) || !Number.isFinite(bottom) || top <= bottom) continue;
+    const mid = (top + bottom) / 2;
+    if (Math.abs(mid - lastClose) > maxDist) continue;
+    // Verify strictly unmitigated after formation candle (startIndex + 2)
+    const checkFrom = Math.max(0, Number(fvg.startIndex || 0) + 3);
+    let mitigated = false;
+    for (let m = checkFrom; m < slice.length; m++) {
+      if (fvg.direction === 1 && Number(slice[m].low) <= bottom) {
+        mitigated = true;
+        break;
+      }
+      if (fvg.direction === -1 && Number(slice[m].high) >= top) {
+        mitigated = true;
+        break;
+      }
+    }
+    if (mitigated) continue;
+    activeFvgs.push({
+      level: Number(mid.toFixed(6)),
+      top: Number(top.toFixed(6)),
+      bottom: Number(bottom.toFixed(6)),
+      polarity: fvg.direction === 1 ? 'SUPPORT' : 'RESISTANCE',
+      source: 'SMC_FVG',
+      label: fvg.direction === 1 ? 'Bullish FVG' : 'Bearish FVG',
+      touches: 1,
+      strength: 1.18,
+    });
+    if (activeFvgs.length >= 4) break;
+  }
+  zones.push(...activeFvgs);
+
+  const rawEq = Array.isArray(smc.equalLevels) ? smc.equalLevels : [];
+  const eqZones = [];
+  for (let idx = rawEq.length - 1; idx >= 0; idx--) {
+    const eq = rawEq[idx];
+    const lvl = Number(eq?.price);
+    if (!Number.isFinite(lvl) || lvl <= 0 || Math.abs(lvl - lastClose) > maxDist) continue;
+    const isHigh = String(eq.type || '').toUpperCase() === 'EQH';
+    eqZones.push({
+      level: Number(lvl.toFixed(6)),
+      polarity: isHigh ? 'RESISTANCE' : 'SUPPORT',
+      source: 'SMC_EQ',
+      label: isHigh ? 'EQH Liquidity' : 'EQL Liquidity',
+      touches: 2,
+      strength: 1.25,
+    });
+    if (eqZones.length >= 3) break;
+  }
+  zones.push(...eqZones);
+
+  const structures = Array.isArray(smc.structures) ? smc.structures : [];
+  const lastStruct = structures.length > 0 ? structures[structures.length - 1] : null;
+
+  return {
+    zones: zones.sort((a, b) => b.strength - a.strength).slice(0, 10),
+    pocPrice,
+    vahPrice,
+    valPrice,
+    hasRealVolume,
+    activeFvgCount: activeFvgs.length,
+    equalLevelsCount: eqZones.length,
+    bosChochCount: structures.length,
+    lastStructureType: lastStruct ? `${lastStruct.direction === 1 ? 'BULL_' : 'BEAR_'}${lastStruct.type || 'BOS'}` : '',
+  };
+}
+
+/**
  * Step 4: Volatility & empirical asymmetric horizon return dispersion (non-parametric quantile scaling).
  */
 function analyzeVolatilityAndEmpiricalSpread(candles, atrSeries, horizonBars) {
@@ -417,10 +560,14 @@ export function computeStructuralForecast({
     },
     swings: extraQuality.swings || [],
     structural_zones: [],
+    smc_liquidity_zones: [],
     turning_points: [],
     forecast: [],
     model_paths: [],
-    model_diagnostics: { empirical_analogs: { status: 'NOT_RUN', matched_count: 0, reason: 'Structural evidence unavailable.' } },
+    model_diagnostics: {
+      empirical_analogs: { status: 'NOT_RUN', matched_count: 0, reason: 'Structural evidence unavailable.' },
+      smc_liquidity: { status: 'NOT_RUN', poc_price: null, active_fvg_count: 0, smc_magnet_hits: 0 },
+    },
     served_from_cache: false,
     error: limitations[0] || 'Insufficient structural evidence for forecast.',
   });
@@ -563,16 +710,19 @@ export function computeStructuralForecast({
     0.92
   );
 
-  // Extract real Structural S/R zones across all confirmed swings for non-mechanical turning-point attraction
+  // Extract real Structural S/R zones + causal SMC liquidity magnets (VP POC/VAH/VAL, unmitigated FVGs, EQH/EQL)
   const structuralZones = extractStructuralZones(swings, volInfo.atrNow, closedCandles.length);
+  const smcInfo = extractSmcLiquidityZones(closedCandles, volInfo.atrNow, lastClose);
   const recentHighBound = Math.max(...recentSwings.slice(-6).map((s) => s.price));
   const recentLowBound = Math.min(...recentSwings.slice(-6).map((s) => s.price));
 
   const findMagnetZone = (fromPrice, projectedPrice, dir) => {
     const minTravel = volInfo.atrNow * 0.35;
     const magnetRadius = volInfo.atrNow * 1.25;
+    const confluenceRadius = volInfo.atrNow * 0.45;
     let best = null;
     let bestScore = -Infinity;
+
     for (const z of structuralZones) {
       const signedDelta = (z.level - fromPrice) * dir;
       if (signedDelta < minTravel) continue;
@@ -584,10 +734,35 @@ export function computeStructuralForecast({
         (dir < 0 && (z.polarity === 'SUPPORT' || z.polarity === 'FLIP'))
           ? 0.35
           : 0.1;
-      const score = z.strength * 0.75 + proximity * 0.85 + polarityBonus;
+      const confluentSmc = smcInfo.zones.find((sz) => Math.abs(sz.level - z.level) <= confluenceRadius) || null;
+      const confluenceBonus = confluentSmc ? 0.30 : 0;
+      const score = z.strength * 0.75 + proximity * 0.85 + polarityBonus + confluenceBonus;
       if (score > bestScore) {
         bestScore = score;
-        best = z;
+        best = {
+          ...z,
+          source: 'SWING_SR',
+          label: confluentSmc ? `S/R + ${confluentSmc.label}` : 'Structural S/R',
+          confluentSmcLabel: confluentSmc ? confluentSmc.label : '',
+        };
+      }
+    }
+
+    for (const sz of smcInfo.zones) {
+      const signedDelta = (sz.level - fromPrice) * dir;
+      if (signedDelta < minTravel) continue;
+      const distToProj = Math.abs(sz.level - projectedPrice);
+      if (distToProj > magnetRadius) continue;
+      const proximity = 1 - distToProj / magnetRadius;
+      const polarityBonus =
+        (dir > 0 && (sz.polarity === 'RESISTANCE' || sz.polarity === 'FLIP')) ||
+        (dir < 0 && (sz.polarity === 'SUPPORT' || sz.polarity === 'FLIP'))
+          ? 0.28
+          : 0.08;
+      const score = sz.strength * 0.62 + proximity * 0.78 + polarityBonus;
+      if (score > bestScore) {
+        bestScore = score;
+        best = { ...sz, confluentSmcLabel: sz.label };
       }
     }
     return best;
@@ -672,11 +847,16 @@ export function computeStructuralForecast({
       targetPrice = 0.72 * targetPrice + 0.28 * e50;
     }
 
-    // Structural S/R zone magnet attraction (real historical swing clusters)
+    // Structural S/R & SMC liquidity zone magnet attraction (real historical swing clusters, POC, active FVGs)
     const magnetZone = findMagnetZone(cursorPrice, targetPrice, nextDir);
     let zoneMagnetApplied = false;
     if (magnetZone) {
-      const blend = magnetZone.touches >= 2 ? 0.68 : 0.45;
+      const blend =
+        magnetZone.source === 'SWING_SR'
+          ? (magnetZone.touches >= 2 ? 0.68 : 0.45)
+          : magnetZone.source === 'SMC_VP_POC'
+            ? 0.50
+            : 0.38;
       targetPrice = blend * magnetZone.level + (1 - blend) * targetPrice;
       zoneMagnetApplied = true;
     }
@@ -698,8 +878,15 @@ export function computeStructuralForecast({
     let role = 'REGIME_TARGET';
     let rationale = '';
     if (zoneMagnetApplied && magnetZone) {
-      role = nextDir > 0 ? 'STRUCTURAL_RESISTANCE_ZONE' : 'STRUCTURAL_SUPPORT_ZONE';
-      rationale = `Structural ${magnetZone.polarity.toLowerCase()} zone (${magnetZone.touches} swing touches)`;
+      if (magnetZone.source === 'SWING_SR') {
+        role = nextDir > 0 ? 'STRUCTURAL_RESISTANCE_ZONE' : 'STRUCTURAL_SUPPORT_ZONE';
+        rationale = magnetZone.confluentSmcLabel
+          ? `Structural ${magnetZone.polarity.toLowerCase()} + ${magnetZone.confluentSmcLabel} (${magnetZone.touches} touches)`
+          : `Structural ${magnetZone.polarity.toLowerCase()} zone (${magnetZone.touches} swing touches)`;
+      } else {
+        role = 'SMC_LIQUIDITY_MAGNET';
+        rationale = `SMC ${magnetZone.label} liquidity magnet`;
+      }
     } else if (biasDir === 0) {
       role = nextDir > 0 ? 'RANGE_RESISTANCE' : 'RANGE_SUPPORT';
       rationale = nextDir > 0 ? 'Upper range rotation zone' : 'Lower range rotation zone';
@@ -717,6 +904,8 @@ export function computeStructuralForecast({
       direction: nextDir,
       is_impulse: isImpulse,
       zone_magnet: zoneMagnetApplied,
+      zone_source: magnetZone ? magnetZone.source : null,
+      smc_magnet: Boolean(zoneMagnetApplied && (magnetZone.source !== 'SWING_SR' || magnetZone.confluentSmcLabel)),
       zone_touches: magnetZone ? magnetZone.touches : 0,
       role,
       rationale,
@@ -895,6 +1084,12 @@ export function computeStructuralForecast({
         band_asymmetry_down: Number(downBandMult.toFixed(3)),
         structural_zones_count: structuralZones.length,
         zone_magnet_hits: turningPoints.filter((tp) => tp.zone_magnet).length,
+        smc_poc: smcInfo.pocPrice !== null ? Number(smcInfo.pocPrice.toFixed(6)) : null,
+        smc_vah: smcInfo.vahPrice !== null ? Number(smcInfo.vahPrice.toFixed(6)) : null,
+        smc_val: smcInfo.valPrice !== null ? Number(smcInfo.valPrice.toFixed(6)) : null,
+        active_fvg_count: smcInfo.activeFvgCount,
+        smc_liquidity_zones_count: smcInfo.zones.length,
+        smc_magnet_hits: turningPoints.filter((tp) => tp.smc_magnet).length,
         analog_agreement_score: analogAgreementScore,
         structure_bias: structureBias,
         structure_clarity: Number(structureClarity.toFixed(3)),
@@ -930,6 +1125,7 @@ export function computeStructuralForecast({
       price: Number(s.price.toFixed(6)),
     })),
     structural_zones: structuralZones,
+    smc_liquidity_zones: smcInfo.zones,
     turning_points: turningPoints,
     forecast,
     model_paths: empiricalModelPaths,
@@ -947,6 +1143,18 @@ export function computeStructuralForecast({
         reason: String(empiricalAnalogResult.reason || ''),
         path_id: chosenAnalogPath?.id || '',
         illustrative_only: true,
+      },
+      smc_liquidity: {
+        status: smcInfo.zones.length > 0 ? 'READY' : 'EMPTY',
+        poc_price: smcInfo.pocPrice !== null ? Number(smcInfo.pocPrice.toFixed(6)) : null,
+        vah_price: smcInfo.vahPrice !== null ? Number(smcInfo.vahPrice.toFixed(6)) : null,
+        val_price: smcInfo.valPrice !== null ? Number(smcInfo.valPrice.toFixed(6)) : null,
+        has_real_volume: smcInfo.hasRealVolume,
+        active_fvg_count: smcInfo.activeFvgCount,
+        equal_levels_count: smcInfo.equalLevelsCount,
+        bos_choch_count: smcInfo.bosChochCount,
+        last_structure_type: smcInfo.lastStructureType,
+        smc_magnet_hits: turningPoints.filter((tp) => tp.smc_magnet).length,
       },
     },
     served_from_cache: false,

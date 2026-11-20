@@ -82,7 +82,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.40';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.40';
-import { renderForecastStudioFanCanvas, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=1.47.40';
+import { renderForecastStudioFanCanvas, bindForecastCanvasHover, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=1.47.40';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=1.47.40';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.47.40';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.47.40';
@@ -853,6 +853,7 @@ function renderForecastWorkspaceContent(activeTab) {
     ? buildForecastForTab(activeTab, {
         horizonBars: Math.max(10, Math.min(60, horizon)),
         selectedModelId: nativeModelId,
+        skipBootstrap: !usesNativeEvaluation && nativeTab === 'overview',
         workerUrl: '',
       })?.result
     : null;
@@ -910,6 +911,10 @@ function renderForecastWorkspaceContent(activeTab) {
           : [],
         renderMode: activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART',
         selectedChartModelId: 'structural_wave_js',
+        smcPoc: structuralForecastForPreview.engine?.params?.smc_poc ?? null,
+        smcZones: Array.isArray(structuralForecastForPreview.smc_liquidity_zones)
+          ? structuralForecastForPreview.smc_liquidity_zones
+          : [],
         keyZones: nativeEvaluation?.keyZones || [],
         representativePaths: (structuralForecastForPreview.model_paths || []).map((path) => ({
           id: path.path_id || 'ANALOG',
@@ -924,13 +929,15 @@ function renderForecastWorkspaceContent(activeTab) {
   const activeStructMeta = structuralForecastForPreview || structuralForecast;
   const structZonesCount = Number(activeStructMeta?.engine?.params?.structural_zones_count || 0);
   const structAgreeScore = activeStructMeta?.engine?.params?.analog_agreement_score;
+  const structPocVal = activeStructMeta?.engine?.params?.smc_poc;
+  const structFvgCount = Number(activeStructMeta?.engine?.params?.active_fvg_count || 0);
   const structuralBannerHtml = !usesNativeEvaluation && nativeTab === 'overview'
     ? `<div class="ci-fc-card" style="margin-bottom:12px;border-color:rgba(139,92,246,0.45);">
         <div class="row-between" style="gap:10px;flex-wrap:wrap;">
           <div>
             <strong style="font-size:13px;">${isFa ? 'موتور موج ساختاری (Structural JS)' : 'Structural Wave JS Engine'}</strong>
             <div class="ltr-num" style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
-              ${escapeHtml(activeStructMeta?.status || activeTab?.structuralForecastStatus || 'IDLE')}${activeStructMeta?.engine?.params?.structure_bias ? ' · ' + escapeHtml(activeStructMeta.engine.params.structure_bias) : ''}${activeStructMeta?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(activeStructMeta.engine.params.volatility_regime) : ''}${structZonesCount > 0 ? ' · ' + structZonesCount + ' S/R zones' : ''}${structAgreeScore != null ? ' · Analog Sync ' + Math.round(Number(structAgreeScore) * 100) + '%' : ''}${structuralPreview ? ' · ' + structuralPreview.points.length + ' bars ready' : ''}
+              ${escapeHtml(activeStructMeta?.status || activeTab?.structuralForecastStatus || 'IDLE')}${activeStructMeta?.engine?.params?.structure_bias ? ' · ' + escapeHtml(activeStructMeta.engine.params.structure_bias) : ''}${activeStructMeta?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(activeStructMeta.engine.params.volatility_regime) : ''}${structZonesCount > 0 ? ' · ' + structZonesCount + ' S/R zones' : ''}${Number.isFinite(Number(structPocVal)) && Number(structPocVal) > 0 ? ' · POC ' + PriceFormatter.formatPrice(Number(structPocVal), decimals) : ''}${structFvgCount > 0 ? ' · ' + structFvgCount + ' FVG' : ''}${structAgreeScore != null ? ' · Analog Sync ' + Math.round(Number(structAgreeScore) * 100) + '%' : ''}${structuralPreview ? ' · ' + structuralPreview.points.length + ' bars ready' : ''}
             </div>
             ${activeTab?.structuralForecastError ? `<div style="color:var(--bear);font-size:11.5px;margin-top:4px;">${escapeHtml(activeTab.structuralForecastError)}</div>` : ''}
           </div>
@@ -1155,31 +1162,55 @@ export function renderApp() {
 
     bindSettingsForms();
     if (isForecastWorkspace) {
+      const studioCanvas = document.getElementById('forecast-studio-canvas');
+      const studioCandles = activeTab?.candles || [];
+      const studioPayload = state._forecastCanvasPayload || state._lastForecastResult || null;
+      const studioDecimals = Number(activeTab?.decimals || 2);
+      const studioIsDark = document.documentElement.getAttribute('data-theme') !== 'light';
+      const studioCoord = state.forecastCoordView || 'independent';
       renderForecastStudioFanCanvas(
-        document.getElementById('forecast-studio-canvas'),
-        activeTab?.candles || [],
-        state._forecastCanvasPayload || state._lastForecastResult || null,
-        Number(activeTab?.decimals || 2),
-        document.documentElement.getAttribute('data-theme') !== 'light',
-        state.forecastCoordView || 'independent'
+        studioCanvas,
+        studioCandles,
+        studioPayload,
+        studioDecimals,
+        studioIsDark,
+        studioCoord
+      );
+      bindForecastCanvasHover(
+        studioCanvas,
+        studioCandles,
+        studioPayload,
+        studioDecimals,
+        studioIsDark,
+        studioCoord
       );
       const replayResult = state._forecastReplayResult;
       if (replayResult && replayResult.symbolCode === activeTab?.symbolCode && replayResult.timeframe === activeTab?.timeframe) {
         const replayIndex = Math.max(0, Math.min(Number(state.chartPreferences.forecastReplaySelectedWindow || 0), (replayResult.windows || []).length - 1));
         const replayWindow = replayResult.windows?.[replayIndex];
         if (replayWindow?.forecastPoints?.length && replayWindow?.historyCandles?.length) {
+          const replayCanvas = document.getElementById('forecast-replay-canvas');
+          const replayPayload = {
+            points: replayWindow.forecastPoints,
+            actualPoints: replayWindow.actualPoints || [],
+            selectedChartModelId: replayWindow.modelId || 'ensemble',
+            renderMode: 'FAN_CHART',
+            modelTrajectories: [],
+          };
           renderForecastStudioFanCanvas(
-            document.getElementById('forecast-replay-canvas'),
+            replayCanvas,
             replayWindow.historyCandles,
-            {
-              points: replayWindow.forecastPoints,
-              actualPoints: replayWindow.actualPoints || [],
-              selectedChartModelId: replayWindow.modelId || 'ensemble',
-              renderMode: 'FAN_CHART',
-              modelTrajectories: [],
-            },
-            Number(activeTab?.decimals || 2),
-            document.documentElement.getAttribute('data-theme') !== 'light',
+            replayPayload,
+            studioDecimals,
+            studioIsDark,
+            'independent'
+          );
+          bindForecastCanvasHover(
+            replayCanvas,
+            replayWindow.historyCandles,
+            replayPayload,
+            studioDecimals,
+            studioIsDark,
             'independent'
           );
         }

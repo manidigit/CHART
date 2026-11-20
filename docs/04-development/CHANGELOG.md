@@ -7,7 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.47.40] - 2026-11-19
+## [1.47.40] - 2026-11-20
+
+### Changed (`FORECAST-PKG3`: Zero-Lag LRU Caching, Interactive Studio/Replay Crosshair HUD & Causal SMC Liquidity Magnets)
+- **Zero-Lag Forecast Caching & Instant Model/Mode Switching (`views/forecastView.js?v=1.47.40`, `app.js?v=1.47.40`):**
+  - Replaced the single-slot `state._forecastBuildMemo` in `buildForecastForTab()` with bounded multi-entry LRU caches (`state._forecastBaseCache` max 16 entries, `state._forecastViewCache` max 24 entries) so switching between symbols/tabs retains prior calculations without full recomputation (`cacheHit: 'EXACT'`).
+  - Separated heavy `ForecastEngine.project()` / `Walk-Forward` execution from lightweight trajectory re-selection (`selectOosChartWinner()` + summary refresh, `cacheHit: 'BASE_RESELECT'`), eliminating UI lag when switching between `AUTO`, `Structural JS`, `Causal Historical Analogs`, `Ensemble`, `ARIMA`, `Prophet`, or `Fan / Hybrid / Quantile Bars`.
+  - Enabled `skipBootstrap: true` in `app.js` when previewing `Structural JS` on `Overview` (reusing any cached full `BOOT` forecast if already computed), while preserving full 1000-iteration bootstrap on `Backtest` / `AUTO` / `Ensemble`.
+- **Interactive Crosshair & Floating HUD on Studio & Replay Canvases (`views/forecastView.js?v=1.47.40`, `app.js?v=1.47.40`):**
+  - Upgraded `renderForecastStudioFanCanvas()` with an optional dashed SMC Volume Profile `POC` reference line and `hoverSlotIdx` vertical crosshair + floating auto-positioned HUD tooltip showing historical OHLC bars, future step `+h` + UTC timestamp + `q50` + `% change` + `q10–q90` corridor + nearby turning-point rationale, and in Replay mode live `Pred q50` vs `Actual Close`, `% error`, and `80% Band IN/OUT`.
+  - Added idempotent `requestAnimationFrame`-throttled `bindForecastCanvasHover()` (mouse & touch) and wired it onto `#forecast-studio-canvas` and `#forecast-replay-canvas` in `app.js`.
+- **Clean Scientific Revival of Earliest Model — Causal SMC Liquidity Magnets (`algorithms/structuralForecastEngine.js?v=1.47.40`, `app.js?v=1.47.40`):**
+  - Added `extractSmcLiquidityZones()` using real, causal `TechnicalIndicators.computeVolumeProfile()` (`POC`, `VAH`, `VAL` without synthetic `volume = 100`) and `TechnicalIndicators.detectMarketStructureSmc()` (unmitigated recent `FVG`s, `EQH`/`EQL` liquidity pools, `BOS`/`CHoCH` counts).
+  - Integrated `smc_liquidity_zones` into `findMagnetZone()` with S/R confluence boosting and gentle secondary magnet attraction, exposed `smc_poc`, `smc_vah`, `smc_val`, `active_fvg_count`, `smc_magnet_hits`, and `model_diagnostics.smc_liquidity`, and surfaced `POC` and active `FVG` count in the Structural Studio banner — strictly preserving zero `Math.random`/`Math.sin`/`Math.cos`, zero synthetic OHLC, and `skipAnalogs` trajectory invariance.
+- **Verification:**
+  - Verified `node --check` on all 3 modified JS modules and **49/49** passing tests in `tests/web_parity.test.mjs` (added `FORECAST-PKG3-SMC-01`, `FORECAST-PKG3-CACHE-02`, and `FORECAST-PKG3-HOVER-03`).
 
 ### Changed (`FORECAST-PKG2`: Deep Upgrade of `Causal Historical Analogs` & `Structural JS` + First-Class Walk-Forward, Compare & Replay Integration)
 - **Standalone Rev 2.2 `Causal Historical Analogs` Engine (`forecast/empiricalAnalogEngine.js?v=1.47.40`, re-exported from `forecast/forecastEngine.js?v=1.47.40`):**
