@@ -291,6 +291,23 @@ export function isCandleClosedForCalendar(openTimeUtcMs, timeframe = 'M15', nowU
   return getCandleCloseMsForCalendar(openTimeUtcMs, timeframe, calendarSpec) <= Number(nowUtcMs);
 }
 
+export function isTradingDayForCalendar(epochMs, calendarSpec = null) {
+  const spec = calendarSpec || CALENDAR_PROFILES.OTC_SPOT_XAU_TWELVEDATA;
+  if (spec.sessionMode === 'CONTINUOUS_24_7' || (!spec.dstAware && spec.ianaTimezone === 'UTC')) {
+    return true;
+  }
+  const d = new Date(Number(epochMs || 0));
+  // Daily candles keyed at 00:00 UTC represent that UTC calendar date; intraday candles use NY date.
+  const useUtcDate = d.getUTCHours() < 6;
+  const year = useUtcDate ? d.getUTCFullYear() : getNewYorkParts(epochMs).year;
+  const dow = useUtcDate ? d.getUTCDay() : getNewYorkParts(epochMs).dow;
+  if (dow === 0 || dow === 6) return false;
+  const month = useUtcDate ? d.getUTCMonth() + 1 : getNewYorkParts(epochMs).month;
+  const day = useUtcDate ? d.getUTCDate() : getNewYorkParts(epochMs).day;
+  const mmdd = `${String(month).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+  return !isCalendarHoliday({ year, mmdd }, spec);
+}
+
 export function advanceFutureTimestampsWithCalendar(
   lastOpenMs,
   timeframe = 'M15',
@@ -300,17 +317,44 @@ export function advanceFutureTimestampsWithCalendar(
   customCalendar = null
 ) {
   const spec = customCalendar || resolveCalendarSpec(symbolCode, providerId);
-  const stepMs = stepMillisecondsForTimeframe(timeframe);
+  const tf = String(timeframe || 'M15').trim().toUpperCase();
+  const stepMs = stepMillisecondsForTimeframe(tf);
   const start = Number.isFinite(lastOpenMs) && lastOpenMs > 0 ? lastOpenMs : Date.now();
   const timestamps = [];
   let cursor = start;
-  const maxIterations = horizon * 24 + 480;
+
+  if (spec.sessionMode === 'CONTINUOUS_24_7' || tf === 'W1') {
+    for (let i = 0; i < horizon; i++) {
+      cursor += stepMs;
+      timestamps.push(cursor);
+    }
+    return timestamps;
+  }
+
+  if (tf === 'D1') {
+    const maxDailyIter = horizon * 7 + 60;
+    let guard = 0;
+    while (timestamps.length < horizon && guard < maxDailyIter) {
+      guard++;
+      cursor += stepMs;
+      if (isTradingDayForCalendar(cursor, spec)) {
+        timestamps.push(cursor);
+      }
+    }
+    while (timestamps.length < horizon) {
+      cursor += stepMs;
+      timestamps.push(cursor);
+    }
+    return timestamps;
+  }
+
+  const maxIterations = horizon * 48 + 960;
   let guard = 0;
 
   while (timestamps.length < horizon && guard < maxIterations) {
     guard++;
     cursor += stepMs;
-    if (spec.sessionMode === 'CONTINUOUS_24_7' || isMarketOpenForCalendar(cursor, spec)) {
+    if (isMarketOpenForCalendar(cursor, spec)) {
       timestamps.push(cursor);
     }
   }

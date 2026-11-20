@@ -9,6 +9,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.47.40] - 2026-11-19
 
+### Fixed (`FORECAST-PKG1`: Browser-Native Forecast Infrastructure, Calendar, Math, Ledger & UI Bug Fixes)
+- **Session-Aware Future Timestamps Across Calendar, Contract & Structural JS (`forecast/calendarRegistry.js?v=1.47.40`, `forecast/forecastContract.js?v=1.47.40`, `algorithms/structuralForecastEngine.js?v=1.47.40`):**
+  - Added `isTradingDayForCalendar()` and fixed `advanceFutureTimestampsWithCalendar()` for `W1` (direct weekly step) and `D1` (trading-day advancement skipping Sat/Sun/US holidays using UTC dates for `00:00 UTC` candles so `NVDA` and winter `SPOTBRENT` never spin past the loop guard into future years), plus increased the intraday guard budget (`horizon * 48 + 960`) for `US_EQUITIES_RTH`.
+  - Fixed `adaptNativeModelTrajectory()` in `forecastContract.js` to resolve timestamps from `openTimeUtcMs || open_time_utc_ms || timestampUtcMs || timestamp_utc_ms` with `advanceFutureTimestampsWithCalendar()` fallback and emit **both** `open_time_utc_ms` and `timestamp_utc_ms` on every adapted point (preventing weekend/closed-session X-axis timestamps on `chartRenderer.js`).
+  - Delegated `structuralForecastEngine.js` future timestamp generation to `advanceFutureTimestampsWithCalendar()` (removing 24h overnight candles on US Equities while preserving zero `Math.random`/`sin`/`cos`).
+- **Math, KeyZones, MTF Drift & OOD Volatility Fixes (`forecast/featureExtractor.js?v=1.47.40`, `forecast/forecastV130Analyzer.js?v=1.47.40`):**
+  - Added full-window historical average TR/close baseline (`histAtrPct`) to `extractForecastFeatures()` and updated `computeOodAndUncertainty()` to compare `atrPct` against `histAtrPct` instead of close-to-close `uncondSigma`.
+  - Removed the artificial `12`-bar cap in `detectKeyZonesAndEventTree()`, set `horizonBars` to the real evaluated length (`evalLen`), and fixed the copy-paste bug in `KZ_LOWER_REACTION` by tracking independent lower-zone touch, penetration, reclaim, break, and ambiguous counts from `lEv`.
+  - Fixed `coordinateMultiTimeframe()` to scale `htfFeats.recentMeanReturn` by `tfRatio = stepMillisecondsForTimeframe(higherTimeframe) / stepMillisecondsForTimeframe(timeframe)` before applying per-bar drift pull.
+- **Forecast Ledger Quota Safety, Trim-Safe SHA-256 Chain & Per-Step Checkpoints (`forecast/forecastLedger.js?v=1.47.40`, `views/forecastView.js?v=1.47.40`):**
+  - Routed all writes in `forecastLedger.js` and Replay history in `forecastView.js` through `safeLocalStorageSet()` (zero bare `localStorage.setItem`; compact replay summaries without raw candle/point blobs).
+  - Preserved SHA-256 hash-chain verification past the 120-entry / 240-lifecycle-event trim via persisted anchor metadata (`entriesAnchorKey` / `lifecycleAnchorKey`).
+  - Stored `modelId`, `providerId`, and per-step `checkpointQuantiles` (`5`, `10`, `horizonBars`) on each snapshot, updated `evaluateMaturedForecasts()` to grade intermediate checkpoints against step-matched `[q10, q90]` bands (with legacy fallback), and displayed `e.modelId` badges in `renderLedgerPanel()`.
+- **Native Model Stabilization (`forecast/models/advancedNativeModels.js?v=1.47.40`):**
+  - Clamped `NativeArimaDiffModel` residuals when `dOrder === 0` against demeaned log-level std (`seriesStd * 4`) instead of return `uncondSigma * 4`.
+  - Computed `NativeProphetDecompModel` `resSigma` from 1-step innovation residuals capped at `uncondSigma * 1.8`, eliminating level-residual cone explosion.
+  - Updated `NativeSequenceRecurrentModel` MC-dropout rollout to step across `CANONICAL_FORECAST_HORIZON` (60 steps) for every sample, restoring 100% prefix invariance across horizons.
+- **Forecast Studio Preview, Horizon Switching & Replay Provider (`app.js?v=1.47.40`, `views/forecastView.js?v=1.47.40`):**
+  - Connected `Structural JS` preview to `#forecast-studio-canvas` (including `turningPoints` diamond markers, `representativePaths`, `overlayModels` scaling, and `structural_wave_js` color `#8B5CF6`), replaced O(n²) `pts.indexOf(p)` with index iteration, and guarded `fc.anchorClose > 0` in `renderOverviewPanel()`.
+  - Fixed `set-forecast-horizon` to preserve and re-run active native models (`applyNativeModelForecastToTab`) instead of overwriting them with `Structural JS`, and updated `runHistoricalForecastReplay()` to use `activeTab.provider || 'tvdatafeed'`.
+- **Verification:**
+  - Verified `node --check` on all 9 modified JS modules and **43/43** passing tests in `tests/web_parity.test.mjs` (added `FORECAST-PKG1-CALENDAR-01`, `FORECAST-PKG1-ANALYZER-02`, `FORECAST-PKG1-LEDGER-03`, and `FORECAST-PKG1-MODELS-04`).
+
 ### Fixed (`STORAGE-QUOTA-01`: Watchlist Symbol Switch Freeze Caused by `localStorage` `QuotaExceededError`)
 - **Root Cause Fix — Uncaught `QuotaExceededError` in `saveOpenTabsToStorage()` (`core/store.js?v=1.47.40`, `app.js?v=1.47.40`, `services/apiService.js?v=1.47.40`, `core/i18n.js?v=1.47.40`):**
   - Previously, `saveCandlesToCache()` mirrored up to `1,500` bars per `(symbol, provider, timeframe)` into `localStorage`, saturating the browser's 5 MB storage quota. Switching timeframes on the single initial tab (`SPOTBRENT`) kept `ci_open_tabs_v2` the same byte size and succeeded, but clicking ANY second symbol in the Watchlist expanded `ci_open_tabs_v2` and threw an uncaught `QuotaExceededError` inside `saveOpenTabsToStorage()`, aborting `openOrFocusSymbolTab()` before `syncSymbolNow()` and `renderApp()` could run (leaving the header/watchlist frozen on `SPOTBRENT 15m` while the 1s canvas timer rendered the newly pushed symbol underneath).

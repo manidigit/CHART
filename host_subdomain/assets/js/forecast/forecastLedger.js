@@ -9,16 +9,20 @@ import {
   sha256Hex,
 } from './forecastContract.js?v=1.47.40';
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
+import { safeLocalStorageSet } from '../core/store.js?v=1.47.40';
 
 const LEDGER_STORAGE_KEY = 'ci_forecast_ledger_v1';
 const LIFECYCLE_STORAGE_KEY = 'ci_forecast_lifecycle_v1';
 const GENESIS_HASH = '0000000000000000000000000000000000000000000000000000000000000000';
 const MAX_LOCAL_LEDGER_ENTRIES = 120;
+const MAX_LOCAL_LIFECYCLE_EVENTS = 240;
 
 export class ForecastLedger {
   constructor(storageKey = LEDGER_STORAGE_KEY, lifecycleKey = `${storageKey}_lifecycle`) {
     this.storageKey = storageKey;
     this.lifecycleKey = lifecycleKey === `${LEDGER_STORAGE_KEY}_lifecycle` ? LIFECYCLE_STORAGE_KEY : lifecycleKey;
+    this.entriesAnchorKey = `${this.storageKey}_anchor`;
+    this.lifecycleAnchorKey = `${this.lifecycleKey}_anchor`;
   }
 
   _hasStorage() {
@@ -41,12 +45,41 @@ export class ForecastLedger {
     }
   }
 
+  _loadAnchorPrevHash(anchorKey) {
+    if (!this._hasStorage()) return null;
+    try {
+      const raw = globalThis.localStorage.getItem(anchorKey);
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.prevHash === 'string' && parsed.prevHash.length === 64 && Number(parsed.firstSeq) > 1) {
+        return parsed;
+      }
+      return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  _saveAnchorPrevHash(anchorKey, firstSeq, prevHash) {
+    if (!this._hasStorage()) return;
+    if (Number(firstSeq) > 1 && typeof prevHash === 'string' && prevHash.length === 64) {
+      safeLocalStorageSet(anchorKey, JSON.stringify({ firstSeq: Number(firstSeq), prevHash }));
+    } else {
+      try {
+        globalThis.localStorage.removeItem(anchorKey);
+      } catch (_) {}
+    }
+  }
+
   saveEntries(entries) {
     if (!this._hasStorage()) return;
-    try {
-      const trimmed = entries.slice(-MAX_LOCAL_LEDGER_ENTRIES);
-      globalThis.localStorage.setItem(this.storageKey, JSON.stringify(trimmed));
-    } catch (_) {}
+    const trimmed = entries.slice(-MAX_LOCAL_LEDGER_ENTRIES);
+    if (entries.length > MAX_LOCAL_LEDGER_ENTRIES && trimmed.length > 0) {
+      this._saveAnchorPrevHash(this.entriesAnchorKey, trimmed[0].seq, trimmed[0].prevForecastHash);
+    } else if (trimmed.length === 0 || Number(trimmed[0].seq || 1) === 1) {
+      this._saveAnchorPrevHash(this.entriesAnchorKey, 1, null);
+    }
+    safeLocalStorageSet(this.storageKey, JSON.stringify(trimmed));
   }
 
   loadLifecycleEvents() {
@@ -63,16 +96,21 @@ export class ForecastLedger {
 
   saveLifecycleEvents(events) {
     if (!this._hasStorage()) return;
-    try {
-      const trimmed = events.slice(-240);
-      globalThis.localStorage.setItem(this.lifecycleKey, JSON.stringify(trimmed));
-    } catch (_) {}
+    const trimmed = events.slice(-MAX_LOCAL_LIFECYCLE_EVENTS);
+    if (events.length > MAX_LOCAL_LIFECYCLE_EVENTS && trimmed.length > 0) {
+      this._saveAnchorPrevHash(this.lifecycleAnchorKey, trimmed[0].seq, trimmed[0].prevEventHash);
+    } else if (trimmed.length === 0 || Number(trimmed[0].seq || 1) === 1) {
+      this._saveAnchorPrevHash(this.lifecycleAnchorKey, 1, null);
+    }
+    safeLocalStorageSet(this.lifecycleKey, JSON.stringify(trimmed));
   }
 
   clear() {
     if (this._hasStorage()) {
       globalThis.localStorage.removeItem(this.storageKey);
       globalThis.localStorage.removeItem(this.lifecycleKey);
+      globalThis.localStorage.removeItem(this.entriesAnchorKey);
+      globalThis.localStorage.removeItem(this.lifecycleAnchorKey);
     }
   }
 
@@ -144,10 +182,30 @@ export class ForecastLedger {
     const hashableBody = this._buildHashableBody(candidate);
     const forecastHash = this.computeEntryHash(prevForecastHash, hashableBody, isLegacy);
 
+    const checkpointQuantiles = {};
+    if (Array.isArray(forecastResult.points) && forecastResult.points.length > 0) {
+      const cpSteps = [5, 10, candidate.horizonBars].filter(
+        (s, idx, arr) => s >= 1 && s <= forecastResult.points.length && arr.indexOf(s) === idx
+      );
+      for (const step of cpSteps) {
+        const pt = forecastResult.points[step - 1];
+        if (pt && Number.isFinite(Number(pt.q10)) && Number.isFinite(Number(pt.q50)) && Number.isFinite(Number(pt.q90))) {
+          checkpointQuantiles[String(step)] = {
+            q10: Number(pt.q10),
+            q50: Number(pt.q50),
+            q90: Number(pt.q90),
+          };
+        }
+      }
+    }
+
     const entry = {
       ...hashableBody,
       prevForecastHash,
       forecastHash,
+      modelId: String(forecastResult.selectedChartModelId || forecastResult.model?.id || 'AUTO'),
+      providerId: String(forecastResult.providerId || forecastResult.series?.provider || 'tvdatafeed'),
+      checkpointQuantiles,
       noEdgeGateState: forecastResult.noEdgeGate?.gateState || 'NO_EDGE_DETECTED',
       oodStatus: forecastResult.uncertainty?.oodStatus || 'IN_DISTRIBUTION',
       scenarios: (forecastResult.scenarios || []).map((s) => ({
@@ -282,8 +340,11 @@ export class ForecastLedger {
 
         const slice = subBars.slice(0, step);
         const obsClose = Number(slice[slice.length - 1].close);
-        const upperBound = Math.max(entry.anchorClose, entry.terminalQ90);
-        const lowerBound = Math.min(entry.anchorClose, entry.terminalQ10);
+        const cpBand = entry.checkpointQuantiles && entry.checkpointQuantiles[String(step)];
+        const stepQ10 = cpBand && Number.isFinite(Number(cpBand.q10)) ? Number(cpBand.q10) : Number(entry.terminalQ10);
+        const stepQ90 = cpBand && Number.isFinite(Number(cpBand.q90)) ? Number(cpBand.q90) : Number(entry.terminalQ90);
+        const upperBound = Math.max(entry.anchorClose, stepQ90);
+        const lowerBound = Math.min(entry.anchorClose, stepQ10);
 
         let ambiguousHit = false;
         for (const bar of slice) {
@@ -294,11 +355,11 @@ export class ForecastLedger {
         }
 
         let outcome = EVALUATION_OUTCOME.FAILED;
-        let reason = `Observed close ${obsClose.toFixed(4)} outside 80% corridor`;
+        let reason = `Observed close ${obsClose.toFixed(4)} outside +${step}b 80% corridor [${stepQ10.toFixed(4)}, ${stepQ90.toFixed(4)}]`;
         if (ambiguousHit) {
           outcome = EVALUATION_OUTCOME.AMBIGUOUS;
           reason = 'Simultaneous upper/lower corridor touch inside single bar without sub-TF order';
-        } else if (obsClose >= entry.terminalQ10 && obsClose <= entry.terminalQ90) {
+        } else if (obsClose >= stepQ10 && obsClose <= stepQ90) {
           outcome = EVALUATION_OUTCOME.SUCCESS;
           reason = `Observed close inside [q10, q90] at +${step}b maturity`;
         }
@@ -324,9 +385,15 @@ export class ForecastLedger {
     if (events.length === 0) {
       return { valid: true, totalEvents: 0, brokenIndex: -1, error: null, reason: 'Empty lifecycle log' };
     }
+    const storedAnchor = !Array.isArray(customEvents) ? this._loadAnchorPrevHash(this.lifecycleAnchorKey) : null;
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
-      const expectedPrev = i === 0 ? GENESIS_HASH : events[i - 1].eventHash;
+      const expectedPrev =
+        i === 0
+          ? storedAnchor && Number(ev.seq) === storedAnchor.firstSeq
+            ? storedAnchor.prevHash
+            : GENESIS_HASH
+          : events[i - 1].eventHash;
       if (ev.prevEventHash !== expectedPrev) {
         const msg = `SHA-256 Hash Chain Integrity Mismatch: lifecycle break at index ${i}`;
         return { valid: false, totalEvents: events.length, brokenIndex: i, error: msg, reason: msg };
@@ -370,9 +437,15 @@ export class ForecastLedger {
       return { valid: true, totalEntries: 0, brokenIndex: -1, error: null, reason: 'Empty ledger (SHA-256 Hash Chain Integrity idle)' };
     }
 
+    const storedAnchor = !Array.isArray(customEntries) ? this._loadAnchorPrevHash(this.entriesAnchorKey) : null;
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
-      const expectedPrev = i === 0 ? GENESIS_HASH : entries[i - 1].forecastHash;
+      const expectedPrev =
+        i === 0
+          ? storedAnchor && Number(e.seq) === storedAnchor.firstSeq
+            ? storedAnchor.prevHash
+            : GENESIS_HASH
+          : entries[i - 1].forecastHash;
       if (e.prevForecastHash !== expectedPrev) {
         const msg = `SHA-256 Hash Chain Integrity Mismatch: chain link mismatch at index ${i}`;
         return {

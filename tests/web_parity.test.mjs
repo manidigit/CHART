@@ -1853,6 +1853,209 @@ test('FORECAST-PHASE3-LEGACY-CLEANUP-01: Phase 3 removes Legacy Studio UI, chart
   assert.match(store, /forecastEngineMode:\s*'structural',\s*showFutureProjection:\s*false/);
 });
 
+test('FORECAST-PKG1-CALENDAR-01: adapter preserves open_time_utc_ms and calendar handles US Equities RTH, D1, and W1 cleanly', async () => {
+  const { adaptNativeModelTrajectory } = await import('../host_subdomain/assets/js/forecast/forecastContract.js');
+  const { advanceFutureTimestampsWithCalendar, getNewYorkParts } = await import('../host_subdomain/assets/js/forecast/calendarRegistry.js');
+  const { advanceForecastTimestampMs } = await import('../host_subdomain/assets/js/algorithms/structuralForecastEngine.js');
 
+  // 1. Adapter preserves openTimeUtcMs on both open_time_utc_ms and timestamp_utc_ms
+  const ts1 = Date.UTC(2026, 4, 4, 14, 0, 0);
+  const ts2 = Date.UTC(2026, 4, 4, 15, 0, 0);
+  const adapted = adaptNativeModelTrajectory(
+    {
+      modelId: 'empirical_analogs',
+      modelName: 'Causal Historical Analogs',
+      status: 'SUCCESS',
+      points: [
+        { openTimeUtcMs: ts1, q10: 98, q25: 99, q50: 100, q75: 101, q90: 102 },
+        { openTimeUtcMs: ts2, q10: 97, q25: 99, q50: 100.5, q75: 102, q90: 103 },
+      ],
+    },
+    { symbolCode: 'SPOTBRENT', provider: 'tvdatafeed', timeframe: 'H1', horizonBars: 2, originOpenTimeUtcMs: ts1 - 3600000, lastClosedPrice: 100 }
+  );
+  assert.ok(adapted);
+  assert.equal(adapted.forecast[0].open_time_utc_ms, ts1);
+  assert.equal(adapted.forecast[0].timestamp_utc_ms, ts1);
+  assert.equal(adapted.forecast[1].open_time_utc_ms, ts2);
 
+  // 2. US Equities M15 respects 09:30-16:00 NY RTH (no overnight/weekend bars) in both calendarRegistry and Structural JS
+  const friNearCloseUtc = Date.UTC(2026, 4, 8, 19, 45, 0); // Fri 15:45 EDT
+  const eqNext = advanceForecastTimestampMs(friNearCloseUtc, 'M15', 'NVDA', 'tvdatafeed');
+  const nyNext = getNewYorkParts(eqNext);
+  assert.equal(nyNext.dow, 1, 'After Fri 15:45 EDT, next US Equity M15 bar must open on Monday');
+  assert.equal(nyNext.hour * 60 + nyNext.minute, 9 * 60 + 30, 'Monday US Equity open must be 09:30 EDT');
 
+  // 3. D1 on US Equities & SPOTBRENT advances by trading days without spinning past guard
+  const friMidnightUtc = Date.UTC(2026, 4, 8, 0, 0, 0); // Fri 00:00 UTC
+  const eqDaily = advanceFutureTimestampsWithCalendar(friMidnightUtc, 'D1', 5, 'NVDA', 'tvdatafeed');
+  assert.equal(eqDaily.length, 5);
+  assert.equal(new Date(eqDaily[0]).getUTCDay(), 1, 'Next D1 bar after Friday must be Monday');
+  assert.equal(eqDaily[4] - eqDaily[0], 4 * 86400000, 'Mon..Fri D1 bars must span 4 days');
+
+  const brentDailyWinter = advanceFutureTimestampsWithCalendar(Date.UTC(2026, 0, 9, 0, 0, 0), 'D1', 5, 'SPOTBRENT', 'tvdatafeed');
+  assert.equal(new Date(brentDailyWinter[0]).getUTCDay(), 1, 'Winter SPOTBRENT D1 at 00:00 UTC must skip weekend cleanly');
+  assert.equal(brentDailyWinter[4] - brentDailyWinter[0], 4 * 86400000);
+});
+
+test('FORECAST-PKG1-ANALYZER-02: KeyZones support stats are independent, MTF drift scales by TF ratio, and OOD uses histAtrPct', async () => {
+  const { computeOodAndUncertainty, detectKeyZonesAndEventTree, coordinateMultiTimeframe } = await import('../host_subdomain/assets/js/forecast/forecastV130Analyzer.js');
+  const { extractForecastFeatures } = await import('../host_subdomain/assets/js/forecast/featureExtractor.js');
+
+  // 1. OOD: normal market with steady wick range (atrPct == histAtrPct, even if > 1.5x close-to-close sigma) stays IN_DISTRIBUTION
+  const steadyWickCandles = Array.from({ length: 120 }, (_, i) => {
+    const close = 100 + Math.sin(i * 0.25) * 0.2;
+    return {
+      open_time_utc_ms: Date.UTC(2026, 3, 1, 0, 0, 0) + i * 900000,
+      open: close - 0.02,
+      high: close + 0.35,
+      low: close - 0.35,
+      close,
+      volume: 100,
+    };
+  });
+  const feats = extractForecastFeatures(steadyWickCandles, 120);
+  assert.ok(feats.histAtrPct > 0);
+  const ood = computeOodAndUncertainty(feats, 0.0001, 0.00001, 30);
+  assert.equal(ood.oodStatus, 'IN_DISTRIBUTION', `Steady-wick series should not false-trigger OOD (got ${ood.oodStatus}, dist=${ood.oodDistance})`);
+
+  // 2. KeyZones: KZ_LOWER_REACTION must use lower-zone counts (not upperPenCount/complement) and honor horizon > 12
+  const trendUpCandles = Array.from({ length: 180 }, (_, i) => {
+    const base = 100 + i * 0.12 + (i % 7 === 0 ? 0.6 : -0.05);
+    return {
+      open_time_utc_ms: Date.UTC(2026, 3, 1, 0, 0, 0) + i * 900000,
+      open: base - 0.05,
+      high: base + 0.35,
+      low: base - 0.15,
+      close: base,
+      volume: 100,
+    };
+  });
+  const upFeats = extractForecastFeatures(trendUpCandles, 180);
+  const lastC = upFeats.lastClose;
+  const pts30 = Array.from({ length: 30 }, (_, k) => ({
+    step: k + 1,
+    q10: lastC * (1 - 0.002 * (k + 1)),
+    q25: lastC * (1 - 0.001 * (k + 1)),
+    q50: lastC * (1 + 0.0008 * (k + 1)),
+    q75: lastC * (1 + 0.002 * (k + 1)),
+    q90: lastC * (1 + 0.003 * (k + 1)),
+  }));
+  const { keyZones } = detectKeyZonesAndEventTree(upFeats, pts30, 30);
+  assert.equal(keyZones.length, 2);
+  assert.equal(keyZones[0].horizonBars, 30, 'KeyZones must evaluate across full 30-bar horizon when history permits');
+  assert.equal(keyZones[1].horizonBars, 30);
+  assert.ok(keyZones[0].touchProbability > keyZones[1].touchProbability, 'On steady uptrend, resistance touch rate must exceed support touch rate');
+  assert.notEqual(
+    Number((keyZones[0].touchProbability + keyZones[1].touchProbability).toFixed(3)),
+    1.0,
+    'Support touchProbability must not be hardcoded as (1 - resistanceTouchProbability)'
+  );
+
+  // 3. MTF coordination scales HTF per-bar drift by HTF/LTF ratio (M15 vs H4 = 16x)
+  const htfUp = Array.from({ length: 40 }, (_, i) => {
+    const c = 100 * Math.exp(0.01 * i);
+    return { open_time_utc_ms: Date.UTC(2026, 3, 1) + i * 14400000, open: c * 0.995, high: c * 1.006, low: c * 0.992, close: c, volume: 100 };
+  });
+  const anchor = htfUp[htfUp.length - 1].close;
+  const ltfDownPts = Array.from({ length: 30 }, (_, k) => ({
+    step: k + 1,
+    q10: anchor * (1 - 0.004 * (k + 1)),
+    q25: anchor * (1 - 0.002 * (k + 1)),
+    q50: anchor * (1 - 0.0005 * (k + 1)),
+    q75: anchor * (1 + 0.001 * (k + 1)),
+    q90: anchor * (1 + 0.002 * (k + 1)),
+  }));
+  const coord = coordinateMultiTimeframe(ltfDownPts, [], anchor, 'M15', 'H4', htfUp);
+  assert.ok(Math.abs(coord.coordinatedMedianPct - coord.independentMedianPct) < 2.5, `M15 vs H4 MTF pull must be TF-ratio scaled (got ${coord.coordinatedMedianPct}% vs ${coord.independentMedianPct}%)`);
+});
+
+test('FORECAST-PKG1-LEDGER-03: ForecastLedger preserves SHA-256 chain past 120-entry trim, grades intermediate checkpoints by step quantiles, and avoids bare localStorage writes', async () => {
+  const { ForecastLedger } = await import('../host_subdomain/assets/js/forecast/forecastLedger.js');
+  const ledgerSrc = await readFile(new URL('../host_subdomain/assets/js/forecast/forecastLedger.js', import.meta.url), 'utf8');
+  const viewSrc = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+  assert.equal(/\blocalStorage\.setItem\s*\(/.test(ledgerSrc), false, 'forecastLedger.js must use safeLocalStorageSet');
+  assert.equal(/\blocalStorage\.setItem\s*\(/.test(viewSrc), false, 'forecastView.js must use safeLocalStorageSet');
+
+  const ledger = new ForecastLedger('test_pkg1_trim_ledger_v1');
+  ledger.clear();
+  for (let i = 0; i < 125; i++) {
+    ledger.appendFromForecast({
+      contractVersion: 'forecast-contract/v2',
+      engineVersion: '2.0.0',
+      symbolCode: 'SPOTBRENT',
+      providerId: 'tvdatafeed',
+      selectedChartModelId: 'empirical_analogs',
+      timeframe: 'H1',
+      horizonBars: 20,
+      anchorOpenTimeUtcMs: 1700000000000 + i * 3600000,
+      anchorClose: 100,
+      status: 'VALID',
+      regime: 'RANGING',
+      inputHash: `h-${i}`,
+      summary: { terminalQ50: 100, terminalQ10: 85, terminalQ90: 115 },
+      points: Array.from({ length: 20 }, (_, s) => ({
+        step: s + 1,
+        q10: 100 - (s + 1) * 0.5,
+        q50: 100,
+        q90: 100 + (s + 1) * 0.5,
+      })),
+      generatedAtUtcMs: 1700000000001 + i,
+      scenarios: [],
+    });
+  }
+  const loaded = ledger.loadEntries();
+  assert.equal(loaded.length, 120);
+  assert.equal(loaded[0].seq, 6);
+  assert.equal(loaded[loaded.length - 1].modelId, 'empirical_analogs');
+  assert.equal(ledger.verifyChain().valid, true, 'Ledger chain must remain valid after trimming beyond 120 entries');
+  assert.equal(ledger.verifyLifecycleChain().valid, true, 'Lifecycle chain must remain valid after trimming beyond 240 events');
+
+  // Checkpoint +5 has band [97.5, 102.5], whereas terminal H=20 has [85, 115]; observed close 106 at +5 must FAIL +5 checkpoint
+  const lastEntry = loaded[loaded.length - 1];
+  const matureCandles = Array.from({ length: 5 }, (_, k) => ({
+    open_time_utc_ms: lastEntry.anchorOpenTimeUtcMs + (k + 1) * 3600000,
+    open: 105,
+    high: 106.5,
+    low: 104.5,
+    close: 106,
+  }));
+  const evalEvents = ledger.evaluateMaturedForecasts(matureCandles, 'SPOTBRENT', 'H1');
+  const latestCp5 = evalEvents.find((ev) => ev.forecastHash === lastEntry.forecastHash && ev.horizonStep === 5);
+  assert.ok(latestCp5);
+  assert.equal(latestCp5.evaluationOutcome, 'FAILED', 'Checkpoint +5 must evaluate against +5 step quantiles [97.5, 102.5], not terminal [85, 115]');
+  ledger.clear();
+});
+
+test('FORECAST-PKG1-MODELS-04: GRU is prefix-invariant across horizons, Prophet sigma uses 1-step residuals, and Studio preview wires Structural JS', async () => {
+  const { NativeProphetDecompModel, NativeSequenceRecurrentModel } = await import('../host_subdomain/assets/js/forecast/models/advancedNativeModels.js');
+  const { extractForecastFeatures } = await import('../host_subdomain/assets/js/forecast/featureExtractor.js');
+  const appSrc = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+
+  const candles = Array.from({ length: 140 }, (_, i) => {
+    const close = 100 * Math.exp(0.0015 * i + Math.sin(i * 0.18) * 0.025);
+    return {
+      open_time_utc_ms: Date.UTC(2026, 3, 1, 0, 0, 0) + i * 900000,
+      open: close * 0.999,
+      high: close * 1.003,
+      low: close * 0.997,
+      close,
+      volume: 500,
+    };
+  });
+  const feats = extractForecastFeatures(candles, 140);
+
+  const gru15 = NativeSequenceRecurrentModel.predict(feats, 15);
+  const gru60 = NativeSequenceRecurrentModel.predict(feats, 60);
+  assert.equal(gru15.status, 'SUCCESS');
+  assert.equal(gru60.status, 'SUCCESS');
+  for (let h = 0; h < 15; h++) {
+    assert.equal(gru15.directQuantiles.q50[h], gru60.directQuantiles.q50[h], `GRU q50[${h}] must be prefix-invariant across horizons 15 vs 60`);
+  }
+
+  const prophet = NativeProphetDecompModel.predict(feats, 30);
+  assert.equal(prophet.status, 'SUCCESS');
+  assert.ok(prophet.sigmas[0] <= feats.uncondSigma * 2.0, `Prophet step sigma (${prophet.sigmas[0]}) must stay on return-volatility scale, not level-residual scale`);
+
+  assert.match(appSrc, /state\._forecastCanvasPayload = structuralPreview \|\| nativeEvaluation \|\| null/);
+  assert.match(appSrc, /action === 'set-forecast-horizon'[\s\S]{0,1200}applyNativeModelForecastToTab\(activeTab, activeTab\.structuralForecastModel\)/);
+});

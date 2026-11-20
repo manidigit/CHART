@@ -1,7 +1,7 @@
 # گزارش و لیست مشکلات فنی شناسایی‌شده (Known Issues Backlog)
 
 **تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۱۹ نوامبر ۲۰۲۶ (`v1.47.40`)  
-**وضعیت:** تمامی موارد ۱ تا ۱۳ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`39/39` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
+**وضعیت:** تمامی موارد ۱ تا ۱۴ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`43/43` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
 
 ---
 
@@ -270,5 +270,33 @@
   1. **دوپاره‌شدن `store.js` در کش مرورگر (`ARCH-02` — `v1.47.39`):** ناهماهنگی `?v=` میان ماژول‌های میانی و `store.js` باعث لود شدن دو نمونه جداگانه از `state` می‌شد. با یکسان‌سازی کامل کل گراف ۲۶ فایل JS + `index.html` روی یک نسخه واحد (`?v=1.47.40`)، افزودن محافظ سراسری `globalThis.__CI_STORE_SINGLETON_V1__`، پاک‌سازی `.tv-ohlc-overlay` در `redrawActiveCanvas()` و محافظ `preserveLocalTabSelection` در `downloadWorkspaceSync()` برطرف شد.
   2. **خطای پر شدن سقف ۵ مگابایتی `localStorage` هنگام کلیک روی سهم دوم واچ‌لیست (`STORAGE-QUOTA-01` — `v1.47.40`):** ذخیره ۱۵۰۰ کندل در `localStorage` برای هر سری باعث پرتاب `QuotaExceededError` بدون `try/catch` در `saveOpenTabsToStorage()` هنگام افزوده شدن تب دوم می‌شد و اجرای `openOrFocusSymbolTab()` را پیش از `syncSymbolNow()` و `renderApp()` متوقف می‌کرد. با پیاده‌سازی `safeLocalStorageSet()` + `evictCandleCachesFromLocalStorage()`، کاهش سقف کش کندل `localStorage` به `250` کندل (با حفظ `5000` کندل کامل در RAM و MariaDB)، عبور تمامی `localStorage.setItem`ها از `safeLocalStorageSet()`، ارسال `needsFullBackfill` در کلیک واچ‌لیست و `try/catch` روی رویداد کلیک برطرف شد.
 - **راستی‌آزمایی:** `node --check` روی هر ۲۶ فایل JS و **۳۹/۳۹ پاس** در `tests/web_parity.test.mjs` (شامل `ARCH-02` و `STORAGE-QUOTA-01`).
+
+---
+
+## ۱۴. رفع بسته ۱ باگ‌های زیرساختی، تقویمی، ریاضی، دفتر کل و پیش‌نمایش بخش پیش‌بینی (`FORECAST-PKG1` · `v1.47.40`) — ✅ حل و تست شد
+
+- **اولویت:** بالا (High / P1)
+- **تاریخ کشف و اصلاح:** ۱۹ نوامبر ۲۰۲۶
+- **خلاصه باگ‌های شناسایی‌شده و اصلاحات اعمال‌شده در سیستم بومی مرورگری:**
+  1. **تقویم سشن و Timestamp آینده (`forecast/calendarRegistry.js`، `forecast/forecastContract.js`، `algorithms/structuralForecastEngine.js`):**
+     - افزودن `isTradingDayForCalendar()` و اصلاح `advanceFutureTimestampsWithCalendar()` برای `W1` (گام هفتگی مستقیم) و `D1` (پیشروی روزهای معاملاتی با حذف شنبه/یکشنبه و تعطیلات آمریکا برای کندل‌های `00:00 UTC` تا `NVDA` و `SPOTBRENT` زمستانی در حلقه گیر نکنند) و افزایش سقف گارد درون‌روزی `US_EQUITIES_RTH` به `horizon * 48 + 960`.
+     - اصلاح `adaptNativeModelTrajectory()` برای خواندن تمام نام‌گذاری‌های timestamp و تولید هم‌زمان `open_time_utc_ms` و `timestamp_utc_ms` با fallback تقویمی، و واگذاری تولید timestamp آینده در `structuralForecastEngine.js` به `advanceFutureTimestampsWithCalendar()` (حذف کندل‌های شبانه سهام آمریکا با حفظ کامل نبود `Math.random`/`sin`/`cos`).
+  2. **اصلاحات ریاضی، KeyZones، MTF و OOD (`forecast/featureExtractor.js`، `forecast/forecastV130Analyzer.js`):**
+     - محاسبه خط مبنای `histAtrPct` در `extractForecastFeatures()` و مقایسه `atrPct` با `histAtrPct` در `computeOodAndUncertainty()` به جای `uncondSigma` (نوسان close-to-close).
+     - حذف سقف مصنوعی `12` کندل در `detectKeyZonesAndEventTree()` و ثبت مقدار واقعی `horizonBars: evalLen`؛ رفع باگ کپی-پیست `KZ_LOWER_REACTION` با شمارنده‌های مستقل ناحیه پایین (`lowerTouchCount`, `lowerPenCount`, `lowerReclaimCount`, `lowerBreakCount`, `ambiguousLowerCount`).
+     - مقیاس‌دهی `htfFeats.recentMeanReturn` بر حسب نسبت گام زمانی `tfRatio` در `coordinateMultiTimeframe()`.
+  3. **دفتر کل پیش‌بینی و تاریخچه Replay (`forecast/forecastLedger.js`، `views/forecastView.js`):**
+     - جایگزینی تمامی `localStorage.setItem`ها با `safeLocalStorageSet()` و فشرده‌سازی خلاصه اجرای Replay (بدون ذخیره آرایه‌های حجیم کندل و نقاط).
+     - حفظ اعتبار زنجیره SHA-256 پس از هرس شدن رکوردهای قدیمی (`120` Snapshot / `240` Lifecycle) با ذخیره متادیتای لنگر (`entriesAnchorKey` / `lifecycleAnchorKey`).
+     - ثبت `modelId`، `providerId` و کوانتایل‌های گام‌به‌گام `checkpointQuantiles` (`5`, `10`, `horizonBars`) برای ارزیابی دقیق checkpointهای میانی در `evaluateMaturedForecasts()` و نمایش برچسب مدل در `renderLedgerPanel()`.
+  4. **پایدارسازی مدل‌های بومی (`forecast/models/advancedNativeModels.js`):**
+     - محدودسازی باقیمانده‌های `NativeArimaDiffModel` در حالت `dOrder === 0` بر پایه `seriesStd * 4` به‌جای `uncondSigma * 4`.
+     - محاسبه `resSigma` در `NativeProphetDecompModel` از باقیمانده نوآوری تک‌قدمه با سقف `uncondSigma * 1.8` برای جلوگیری از انفجار مخروط عدم قطعیت.
+     - اجرای حلقه MC-dropout در `NativeSequenceRecurrentModel` روی تمام `CANONICAL_FORECAST_HORIZON` (۶۰ گام) برای بازگرداندن ۱۰۰٪ `prefix invariance` میان افق‌های مختلف.
+  5. **پیش‌نمایش `Structural JS`، تغییر افق (`Horizon`) و پرووایدر Replay (`app.js`، `views/forecastView.js`):**
+     - اتصال پیش‌نمایش `Structural JS` به `#forecast-studio-canvas` با رنگ `#8B5CF6`، رسم نقاط برگشت الماس‌شکل (`turningPoints`)، مقیاس‌دهی با `representativePaths`/`overlayModels`، حذف `pts.indexOf(p)` با پیچیدگی $O(n^2)$ و محافظ `fc.anchorClose > 0`.
+     - حفظ و بازمحاسبه مدل بومی فعال هنگام تغییر افق در `set-forecast-horizon` (جلوگیری از بازنویسی خودکار با `Structural JS`) و استفاده از `activeTab.provider || 'tvdatafeed'` در `runHistoricalForecastReplay()`.
+- **راستی‌آزمایی:** `node --check` روی هر ۹ فایل JS اصلاح‌شده و **۴۳/۴۳ پاس** در `tests/web_parity.test.mjs` (افزودن تست‌های `FORECAST-PKG1-CALENDAR-01`، `FORECAST-PKG1-ANALYZER-02`، `FORECAST-PKG1-LEDGER-03` و `FORECAST-PKG1-MODELS-04`).
+
 
 

@@ -93,6 +93,18 @@ export function extractForecastFeatures(candles = [], maxLookback = 2500) {
   let lowerWickSum = 0;
   const lastClose = closes[n - 1];
 
+  let histTrPctSum = 0;
+  let histTrCount = 0;
+  for (let i = 1; i < n; i++) {
+    const cur = slice[i];
+    const prevC = slice[i - 1].close;
+    const tr = Math.max(cur.high - cur.low, Math.abs(cur.high - prevC), Math.abs(cur.low - prevC));
+    if (prevC > 0 && Number.isFinite(tr)) {
+      histTrPctSum += tr / prevC;
+      histTrCount++;
+    }
+  }
+
   for (let i = n - atrPeriod; i < n; i++) {
     const cur = slice[i];
     const prevC = slice[i - 1].close;
@@ -106,6 +118,10 @@ export function extractForecastFeatures(candles = [], maxLookback = 2500) {
 
   const atr14 = Math.max(trSum / Math.max(1, atrPeriod), lastClose * 1e-5);
   const atrPct = atr14 / lastClose;
+  const histAtrPct = Math.max(
+    1e-5,
+    histTrCount > 0 ? histTrPctSum / histTrCount : atrPct
+  );
 
   let gains = 0;
   let losses = 0;
@@ -150,6 +166,7 @@ export function extractForecastFeatures(candles = [], maxLookback = 2500) {
     realizedVolRatio,
     atr14,
     atrPct,
+    histAtrPct,
     rsi14,
     driftZ,
     regime,

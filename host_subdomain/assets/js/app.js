@@ -63,6 +63,7 @@ import {
   clearChronos2TimerForTab,
 } from './services/apiService.js?v=1.47.40';
 import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.40';
+import { computeStructuralForecast } from './algorithms/structuralForecastEngine.js?v=1.47.40';
 import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.40';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.40';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.40';
@@ -863,25 +864,70 @@ function renderForecastWorkspaceContent(activeTab) {
     state._lastForecastResult = nativeEvaluation;
   }
   const structuralForecast = activeTab?.structuralForecast;
-  const structuralPreview = !usesNativeEvaluation && nativeTab === 'overview' && structuralForecast?.status === 'READY' && Array.isArray(structuralForecast.forecast)
+  let structuralForecastForPreview =
+    structuralForecast?.status === 'READY' &&
+    structuralForecast?.engine?.engine_id === 'structural_wave_js' &&
+    isStructuralForecastMatchingTab(activeTab, structuralForecast)
+      ? structuralForecast
+      : null;
+  if (!usesNativeEvaluation && nativeTab === 'overview' && !structuralForecastForPreview && activeTab) {
+    const previewCandles =
+      Array.isArray(activeTab.candles) && activeTab.candles.length > 0
+        ? activeTab.candles
+        : getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, activeTab.timeframe);
+    const lastPrevBar = previewCandles.length > 0 ? previewCandles[previewCandles.length - 1] : null;
+    const structMemoKey = [
+      activeCode,
+      activeTab.provider || 'tvdatafeed',
+      activeTab.timeframe || 'M15',
+      horizon,
+      previewCandles.length,
+      lastPrevBar?.open_time_utc_ms || 0,
+      lastPrevBar?.close || 0,
+    ].join('|');
+    if (state._structuralPreviewMemo && state._structuralPreviewMemo.key === structMemoKey) {
+      structuralForecastForPreview = state._structuralPreviewMemo.value;
+    } else if (previewCandles.length >= 40) {
+      const computed = computeStructuralForecast({
+        candles: previewCandles,
+        symbolCode: activeCode,
+        provider: activeTab.provider || 'tvdatafeed',
+        timeframe: activeTab.timeframe || 'M15',
+        horizonBars: horizon,
+      });
+      state._structuralPreviewMemo = { key: structMemoKey, value: computed };
+      if (computed?.status === 'READY') structuralForecastForPreview = computed;
+    }
+  }
+  const structuralPreview = !usesNativeEvaluation && nativeTab === 'overview' && structuralForecastForPreview?.status === 'READY' && Array.isArray(structuralForecastForPreview.forecast)
     ? {
-        points: structuralForecast.forecast.map((point) => ({ ...point, q50: Number(point.q50_median) })),
+        points: structuralForecastForPreview.forecast.map((point) => ({
+          ...point,
+          q50: Number(point.q50_median),
+        })),
+        turningPoints: Array.isArray(structuralForecastForPreview.turning_points)
+          ? structuralForecastForPreview.turning_points
+          : [],
         renderMode: activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART',
-        selectedChartModelId: activeTab?.structuralForecastModel || 'structural_wave_js',
-        representativePaths: (structuralForecast.model_paths || []).map((path) => ({
+        selectedChartModelId: 'structural_wave_js',
+        keyZones: nativeEvaluation?.keyZones || [],
+        representativePaths: (structuralForecastForPreview.model_paths || []).map((path) => ({
           id: path.path_id || 'ANALOG',
           label: path.label || 'Historical Analog',
           closes: (path.points || []).map((point) => Number(point.price)),
         })),
+        modelTrajectories: [],
       }
     : null;
+  state._forecastCanvasPayload = structuralPreview || nativeEvaluation || null;
+  const activeStructMeta = structuralForecastForPreview || structuralForecast;
   const structuralBannerHtml = !usesNativeEvaluation && nativeTab === 'overview'
     ? `<div class="ci-fc-card" style="margin-bottom:12px;border-color:rgba(139,92,246,0.45);">
         <div class="row-between" style="gap:10px;flex-wrap:wrap;">
           <div>
             <strong style="font-size:13px;">${isFa ? 'موتور موج ساختاری (Structural JS)' : 'Structural Wave JS Engine'}</strong>
             <div class="ltr-num" style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
-              ${escapeHtml(activeTab?.structuralForecastStatus || 'IDLE')}${structuralForecast?.engine?.params?.structure_bias ? ' · ' + escapeHtml(structuralForecast.engine.params.structure_bias) : ''}${structuralForecast?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(structuralForecast.engine.params.volatility_regime) : ''}${structuralPreview ? ' · ' + structuralPreview.points.length + ' bars ready' : ''}
+              ${escapeHtml(activeStructMeta?.status || activeTab?.structuralForecastStatus || 'IDLE')}${activeStructMeta?.engine?.params?.structure_bias ? ' · ' + escapeHtml(activeStructMeta.engine.params.structure_bias) : ''}${activeStructMeta?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(activeStructMeta.engine.params.volatility_regime) : ''}${structuralPreview ? ' · ' + structuralPreview.points.length + ' bars ready' : ''}
             </div>
             ${activeTab?.structuralForecastError ? `<div style="color:var(--bear);font-size:11.5px;margin-top:4px;">${escapeHtml(activeTab.structuralForecastError)}</div>` : ''}
           </div>
@@ -1109,7 +1155,7 @@ export function renderApp() {
       renderForecastStudioFanCanvas(
         document.getElementById('forecast-studio-canvas'),
         activeTab?.candles || [],
-        state._lastForecastResult || null,
+        state._forecastCanvasPayload || state._lastForecastResult || null,
         Number(activeTab?.decimals || 2),
         document.documentElement.getAttribute('data-theme') !== 'light',
         state.forecastCoordView || 'independent'
@@ -2939,8 +2985,14 @@ document.addEventListener('click', async (e) => {
     redrawActiveCanvas();
   } else if (action === 'set-forecast-horizon' && activeTab) {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
-    activeTab.structuralForecastHorizonBars = hVal;
-    state.chartPreferences.structuralForecastHorizonBars = hVal;
+    const isNativeModel = (activeTab.structuralForecastModel || 'structural_wave_js') !== 'structural_wave_js';
+    const effectiveH = isNativeModel ? Math.max(10, Math.min(60, hVal)) : hVal;
+    activeTab.structuralForecastHorizonBars = effectiveH;
+    state.chartPreferences.structuralForecastHorizonBars = effectiveH;
+    if (effectiveH >= 10 && effectiveH <= 60) {
+      activeTab.forecastHorizonBars = effectiveH;
+      state.chartPreferences.forecastHorizonBars = effectiveH;
+    }
     activeTab.showStructuralForecast = true;
     activeTab.scrollOffset = 0;
     clearTabStructuralForecast(activeTab);
@@ -2955,16 +3007,23 @@ document.addEventListener('click', async (e) => {
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
     redrawActiveCanvas();
-    requestStructuralForecastForTab(activeTab, () => {
+    if (isNativeModel) {
+      applyNativeModelForecastToTab(activeTab, activeTab.structuralForecastModel);
+      saveOpenTabsToStorage();
       renderApp();
       redrawActiveCanvas();
-    }).catch((err) => {
-      activeTab.structuralForecast = null;
-      activeTab.structuralForecastStatus = 'ERROR';
-      activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
-      renderApp();
-      redrawActiveCanvas();
-    });
+    } else {
+      requestStructuralForecastForTab(activeTab, () => {
+        renderApp();
+        redrawActiveCanvas();
+      }).catch((err) => {
+        activeTab.structuralForecast = null;
+        activeTab.structuralForecastStatus = 'ERROR';
+        activeTab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
+        renderApp();
+        redrawActiveCanvas();
+      });
+    }
   } else if (
     (action === 'toggle-chronos-forecast' || action === 'toggle-chronos-band' || action === 'set-chronos-horizon') &&
     activeTab

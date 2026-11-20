@@ -203,6 +203,12 @@ export const NativeArimaDiffModel = {
       const thetaL1 = theta.reduce((s, v) => s + Math.abs(v), 0);
       if (phiL1 >= 0.96 || thetaL1 >= 0.90) continue;
 
+      let seriesStd = features.uncondSigma;
+      if (dOrder === 0) {
+        const sVar = series.reduce((acc, v) => acc + v * v, 0) / Math.max(1, series.length - 1);
+        seriesStd = Math.max(features.uncondSigma, Math.sqrt(Math.max(1e-12, sVar)));
+      }
+      const residClamp = seriesStd * 4;
       let rss = 0;
       const resid = new Array(n).fill(0);
       for (let t = start2; t < n; t++) {
@@ -210,7 +216,7 @@ export const NativeArimaDiffModel = {
         for (let i = 1; i <= p; i++) pred += phi[i - 1] * series[t - i];
         for (let j = 1; j <= q; j++) pred += theta[j - 1] * resid[t - j];
         const e = series[t] - pred;
-        resid[t] = Math.max(-features.uncondSigma * 4, Math.min(features.uncondSigma * 4, e));
+        resid[t] = Math.max(-residClamp, Math.min(residClamp, e));
         rss += resid[t] * resid[t];
       }
       const sigma2 = Math.max(1e-12, rss / Math.max(1, validRows - k2));
@@ -408,13 +414,22 @@ export const NativeProphetDecompModel = {
       return s;
     };
 
-    let rss = 0;
-    let lastFit = evalFit(tLast);
-    for (let i = 0; i < n; i++) {
-      const err = logY[i] - evalFit(times[i]);
-      rss += err * err;
+    let stepRss = 0;
+    let prevFit = evalFit(times[0]);
+    for (let i = 1; i < n; i++) {
+      const curFit = evalFit(times[i]);
+      const actualStep = logY[i] - logY[i - 1];
+      const fittedStep = curFit - prevFit;
+      const stepErr = actualStep - fittedStep;
+      stepRss += stepErr * stepErr;
+      prevFit = curFit;
     }
-    const resSigma = Math.max(features.ewmaSigma * 0.65, Math.sqrt(rss / Math.max(1, n - 4)));
+    const lastFit = prevFit;
+    const rawStepSigma = Math.sqrt(stepRss / Math.max(1, n - 2));
+    const resSigma = Math.max(
+      features.ewmaSigma * 0.65,
+      Math.min(features.uncondSigma * 1.8, rawStepSigma)
+    );
 
     // Use provided canonical future timestamps if available, else step forward by avgStepMs
     const futureTs = Array.isArray(features.futureTimestamps) && features.futureTimestamps.length >= horizon
@@ -588,18 +603,20 @@ export const NativeSequenceRecurrentModel = {
     const stepBuckets = Array.from({ length: horizon }, () => []);
     const mcRng = createSeededRng(1007);
     const stepCap = features.uncondSigma * 0.85;
-    const windowBuf = new Float64Array(seqLen + horizon);
+    const windowBuf = new Float64Array(seqLen + totalSteps);
 
     for (let m = 0; m < mcSamples; m++) {
       for (let i = 0; i < seqLen; i++) windowBuf[i] = zSeries[zSeries.length - seqLen + i];
       let cumRet = 0;
-      for (let h = 0; h < horizon; h++) {
+      for (let h = 0; h < totalSteps; h++) {
         for (let i = 0; i < hiddenSize; i++) maskBuf[i] = mcRng() < dropRate ? 0 : scaleKeep;
         const { yHat } = forwardWindow(windowBuf, h, seqLen, maskBuf);
         const clampedZ = Math.max(-2.5, Math.min(2.5, yHat));
         const stepRet = Math.max(-stepCap, Math.min(stepCap, mu + clampedZ * sd));
         cumRet += stepRet;
-        stepBuckets[h].push({ stepRet, cumRet });
+        if (h < horizon) {
+          stepBuckets[h].push({ stepRet, cumRet });
+        }
         windowBuf[seqLen + h] = clampedZ;
       }
     }

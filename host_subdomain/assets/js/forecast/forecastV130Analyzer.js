@@ -8,6 +8,7 @@ import {
   enforceMonotonicQuantiles,
 } from './forecastContract.js?v=1.47.40';
 import { extractForecastFeatures } from './featureExtractor.js?v=1.47.40';
+import { stepMillisecondsForTimeframe } from './calendarRegistry.js?v=1.47.40';
 import {
   clamp,
   fitAndEvaluateScenarioLogit,
@@ -37,7 +38,13 @@ export function computeOodAndUncertainty(
   const tailZ = Math.abs(lastRet - (features.meanReturn || 0)) / uncondSig;
   const volRatioDelta = Math.abs((features.realizedVolRatio || 1) - 1) * 2.1;
   const driftZAbs = Math.abs(features.driftZ || 0);
-  const atrShock = Math.max(0, ((features.atrPct || 0.002) / uncondSig) - 1.5);
+  const atrBaseline = Math.max(
+    1e-6,
+    Number.isFinite(Number(features.histAtrPct)) && Number(features.histAtrPct) > 0
+      ? Number(features.histAtrPct)
+      : uncondSig * 1.45
+  );
+  const atrShock = Math.max(0, ((features.atrPct || atrBaseline) / atrBaseline) - 1.5);
 
   const oodDistance = Math.sqrt(
     (tailZ * tailZ + volRatioDelta * volRatioDelta + driftZAbs * driftZAbs * 0.55 + atrShock * atrShock) / 2.55
@@ -412,17 +419,22 @@ export function detectKeyZonesAndEventTree(features, points, horizonBars, split 
   const lowerLow = Math.max(lastClose * 0.02, lowerCenter - zoneHalf);
   const lowerHigh = lowerCenter + zoneHalf;
 
-  const evalLen = Math.min(horizonBars, 12);
+  const evalLen = Math.min(horizonBars, Math.max(6, Math.floor(Math.max(1, candles.length - 16) / 2)));
   const histStep = Math.max(1, Math.floor(Math.max(1, candles.length - evalLen - 16) / 14));
 
   let totalPaths = 0;
   let reachUpperBeforeInv = 0;
   let reachLowerBeforeInv = 0;
   let ambiguousUpperCount = 0;
+  let ambiguousLowerCount = 0;
   let upperTouchCount = 0;
   let upperPenCount = 0;
   let upperReclaimCount = 0;
   let upperBreakCount = 0;
+  let lowerTouchCount = 0;
+  let lowerPenCount = 0;
+  let lowerReclaimCount = 0;
+  let lowerBreakCount = 0;
   let upperCensoredTimeSum = 0;
   let lowerCensoredTimeSum = 0;
 
@@ -462,6 +474,11 @@ export function detectKeyZonesAndEventTree(features, points, horizonBars, split 
       if (uEv.reclaimed) upperReclaimCount++;
       if (uEv.confirmedBreakout) upperBreakCount++;
       if (uEv.ambiguousBar) ambiguousUpperCount++;
+      if (lEv.touched) lowerTouchCount++;
+      if (lEv.penetrated) lowerPenCount++;
+      if (lEv.reclaimed) lowerReclaimCount++;
+      if (lEv.confirmedBreakout) lowerBreakCount++;
+      if (lEv.ambiguousBar) ambiguousLowerCount++;
       if (uEv.reachedTarget) {
         reachUpperBeforeInv++;
         upperCensoredTimeSum += uEv.firstReachBar;
@@ -531,7 +548,8 @@ export function detectKeyZonesAndEventTree(features, points, horizonBars, split 
   const bullBias = normalCdf(driftNorm);
   const reachUpRate = totalPaths > 0 ? reachUpperBeforeInv / totalPaths : 0;
   const reachDnRate = totalPaths > 0 ? reachLowerBeforeInv / totalPaths : 0;
-  const ambigRate = totalPaths > 0 ? ambiguousUpperCount / totalPaths : 0;
+  const ambigUpperRate = totalPaths > 0 ? ambiguousUpperCount / totalPaths : 0;
+  const ambigLowerRate = totalPaths > 0 ? ambiguousLowerCount / totalPaths : 0;
 
   const keyZones = [
     {
@@ -547,11 +565,11 @@ export function detectKeyZonesAndEventTree(features, points, horizonBars, split 
       penetrationProbability: Number((totalPaths > 0 ? upperPenCount / totalPaths : 0).toFixed(3)),
       reclaimProbability: Number((totalPaths > 0 ? upperReclaimCount / totalPaths : 0).toFixed(3)),
       confirmedBreakoutProbability: Number(pBull.toFixed(3)),
-      reachBeforeInvalidationProb: Number(clamp(reachUpRate, 0, 1 - ambigRate).toFixed(3)),
-      invalidationBeforeReachProb: Number(clamp(reachDnRate, 0, 1 - ambigRate).toFixed(3)),
-      expectedBarsToReachCensored: Number((totalPaths > 0 ? upperCensoredTimeSum / totalPaths : horizonBars * 0.5).toFixed(1)),
+      reachBeforeInvalidationProb: Number(clamp(reachUpRate, 0, 1 - ambigUpperRate).toFixed(3)),
+      invalidationBeforeReachProb: Number(clamp(reachDnRate, 0, 1 - ambigUpperRate).toFixed(3)),
+      expectedBarsToReachCensored: Number((totalPaths > 0 ? upperCensoredTimeSum / totalPaths : evalLen * 0.5).toFixed(1)),
       invalidationPrice: lowerCenter,
-      horizonBars,
+      horizonBars: evalLen,
     },
     {
       zoneId: 'KZ_LOWER_REACTION',
@@ -562,15 +580,15 @@ export function detectKeyZonesAndEventTree(features, points, horizonBars, split 
       detectedAtMs: features.lastOpenMs,
       source: 'SWING_STRUCTURE_ATR',
       strength: Number(clamp(0.55 + (swingLow < lastClose ? 0.22 : 0.08), 0.3, 0.95).toFixed(2)),
-      touchProbability: Number((totalPaths > 0 ? (totalPaths - upperTouchCount) / totalPaths : clamp((1 - bullBias) * 0.5, 0, 1)).toFixed(3)),
-      penetrationProbability: Number((totalPaths > 0 ? upperPenCount / totalPaths : 0).toFixed(3)),
-      reclaimProbability: Number((totalPaths > 0 ? upperReclaimCount / totalPaths : 0).toFixed(3)),
+      touchProbability: Number((totalPaths > 0 ? lowerTouchCount / totalPaths : 0).toFixed(3)),
+      penetrationProbability: Number((totalPaths > 0 ? lowerPenCount / totalPaths : 0).toFixed(3)),
+      reclaimProbability: Number((totalPaths > 0 ? lowerReclaimCount / totalPaths : 0).toFixed(3)),
       confirmedBreakoutProbability: Number(pBear.toFixed(3)),
-      reachBeforeInvalidationProb: Number(clamp(reachDnRate, 0, 1 - ambigRate).toFixed(3)),
-      invalidationBeforeReachProb: Number(clamp(reachUpRate, 0, 1 - ambigRate).toFixed(3)),
-      expectedBarsToReachCensored: Number((totalPaths > 0 ? lowerCensoredTimeSum / totalPaths : horizonBars * 0.5).toFixed(1)),
+      reachBeforeInvalidationProb: Number(clamp(reachDnRate, 0, 1 - ambigLowerRate).toFixed(3)),
+      invalidationBeforeReachProb: Number(clamp(reachUpRate, 0, 1 - ambigLowerRate).toFixed(3)),
+      expectedBarsToReachCensored: Number((totalPaths > 0 ? lowerCensoredTimeSum / totalPaths : evalLen * 0.5).toFixed(1)),
       invalidationPrice: upperCenter,
-      horizonBars,
+      horizonBars: evalLen,
     },
   ];
 
@@ -643,6 +661,11 @@ export function coordinateMultiTimeframe(
   let uncAdj = 1.0;
   let driftPull = 0.0;
 
+  const ltfStepMs = Math.max(1, stepMillisecondsForTimeframe(timeframe || 'M15'));
+  const htfStepMs = Math.max(ltfStepMs, stepMillisecondsForTimeframe(higherTimeframe || timeframe || 'H1'));
+  const tfRatio = Math.max(1, htfStepMs / ltfStepMs);
+  const perLtfBarHtfMeanReturn = (htfFeats.recentMeanReturn || 0) / tfRatio;
+
   if (!ohlcConsistent) {
     alignmentState = MTF_ALIGNMENT_STATE.STRUCTURAL_CONFLICT;
     uncAdj = 1.18;
@@ -653,7 +676,7 @@ export function coordinateMultiTimeframe(
       ? MTF_ALIGNMENT_STATE.STRUCTURAL_CONFLICT
       : MTF_ALIGNMENT_STATE.NATURAL_HORIZON_DIVERGENCE;
     uncAdj = strongHtf ? 1.16 : 1.07;
-    driftPull = strongHtf ? htfFeats.recentMeanReturn * 0.28 : htfFeats.recentMeanReturn * 0.12;
+    driftPull = strongHtf ? perLtfBarHtfMeanReturn * 0.28 : perLtfBarHtfMeanReturn * 0.12;
     conflictReasons.push(
       `${timeframe} trajectory (${indSign > 0 ? '+' : '-'}) diverges from ${higherTimeframe} drift (z=${htfFeats.driftZ.toFixed(2)})`
     );

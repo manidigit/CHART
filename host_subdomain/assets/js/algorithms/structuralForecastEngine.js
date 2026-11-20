@@ -2,6 +2,7 @@ import { PriceFormatter } from './priceFormatter.js?v=1.47.40';
 import { TechnicalIndicators } from './technicalIndicators.js?v=1.47.40';
 import { GapDetector } from './gapDetector.js?v=1.47.40';
 import { EmpiricalAnalogEngine } from '../forecast/forecastEngine.js?v=1.47.40';
+import { advanceFutureTimestampsWithCalendar } from '../forecast/calendarRegistry.js?v=1.47.40';
 
 /**
  * Native Browser Structural Wave Forecast Engine (JS)
@@ -64,38 +65,12 @@ export function computeClosedCandlesDigest(closedCandles = []) {
   return `${tail.length}_${h1.toString(16).padStart(8, '0')}${h2.toString(16).padStart(8, '0')}`;
 }
 
-export function advanceForecastTimestampMs(prevOpenMs, timeframe, symbolCode = 'XAUUSD') {
+export function advanceForecastTimestampMs(prevOpenMs, timeframe, symbolCode = 'XAUUSD', providerId = '') {
+  const next = advanceFutureTimestampsWithCalendar(prevOpenMs, timeframe || 'M15', 1, symbolCode, providerId);
+  if (Array.isArray(next) && Number.isFinite(next[0]) && next[0] > Number(prevOpenMs || 0)) {
+    return next[0];
+  }
   const stepMs = PriceFormatter.stepMilliseconds(timeframe || 'M15');
-  const tf = String(timeframe || 'M15').toUpperCase();
-  const cal = PriceFormatter.getSessionCalendar(symbolCode);
-  let candidate = Number(prevOpenMs) + stepMs;
-
-  if (cal === 'CRYPTO_24_7' || tf === 'W1') {
-    return candidate;
-  }
-
-  for (let guard = 0; guard < 240; guard++) {
-    const d = new Date(candidate);
-    const dow = d.getUTCDay();
-    if (cal === 'OTC_FX_METALS') {
-      if (tf === 'D1') {
-        if (dow !== 0 && dow !== 6) return candidate;
-      } else {
-        const parts = PriceFormatter.getDateParts(candidate, 'UTC');
-        // OTC weekend market closure approx Friday 22:00 UTC to Sunday 22:00 UTC
-        const minuteOfDay = parts.hr * 60 + parts.mn;
-        const isClosed =
-          dow === 6 ||
-          (dow === 5 && minuteOfDay >= 22 * 60) ||
-          (dow === 0 && minuteOfDay < 22 * 60);
-        if (!isClosed) return candidate;
-      }
-    } else {
-      // Equities / regular sessions skip Sat/Sun
-      if (dow !== 0 && dow !== 6) return candidate;
-    }
-    candidate += stepMs;
-  }
   return Number(prevOpenMs) + stepMs;
 }
 
@@ -589,11 +564,11 @@ export function computeStructuralForecast({
 
   // Step 6 & 7: Build bar-by-bar central path & calibrated uncertainty bands + timestamps
   const forecast = [];
-  let prevOpenMs = originOpenMs;
+  const projectedTimestamps = advanceFutureTimestampsWithCalendar(originOpenMs, cleanTf, horizon, cleanSym, cleanProv);
   const ambiguityPenalty = 1 + (1 - structureClarity) * 0.45 + (volInfo.regime === 'EXPANDING' ? 0.22 : 0);
 
   for (let step = 1; step <= horizon; step++) {
-    prevOpenMs = advanceForecastTimestampMs(prevOpenMs, cleanTf, cleanSym);
+    const prevOpenMs = projectedTimestamps[step - 1] || advanceForecastTimestampMs(originOpenMs, cleanTf, cleanSym, cleanProv);
     const seg = turningPoints.find((tp) => step >= tp.start_step && step <= tp.step) || turningPoints[turningPoints.length - 1];
     const spanSteps = Math.max(1, seg.step - seg.start_step);
     const localT = clamp((step - seg.start_step) / spanSteps, 0, 1);

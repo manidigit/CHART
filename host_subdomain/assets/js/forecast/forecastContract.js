@@ -476,6 +476,20 @@ export function adaptNativeModelTrajectory(trajectory, context = {}) {
   const horizonBars = Math.round(Number(context.horizonBars));
   if (!modelId || trajectory?.status !== 'SUCCESS' || !Number.isInteger(horizonBars) || horizonBars < 1 || points.length !== horizonBars) return null;
 
+  const symbol = String(context.symbolCode || '').trim().toUpperCase();
+  const provider = String(context.provider || 'tvdatafeed').trim().toLowerCase();
+  const timeframe = String(context.timeframe || 'M15').trim().toUpperCase();
+  const originOpenMs = Number(context.originOpenTimeUtcMs), lastClosedPrice = Number(context.lastClosedPrice);
+  if (!symbol || !provider || !timeframe || !(originOpenMs > 0) || !(lastClosedPrice > 0) || !Number.isFinite(lastClosedPrice)) return null;
+
+  let fallbackTimestamps = null;
+  const getFallbackTimestamp = (idx) => {
+    if (!fallbackTimestamps) {
+      fallbackTimestamps = advanceFutureTimestampsWithCalendar(originOpenMs, timeframe, horizonBars, symbol, provider);
+    }
+    return Number(fallbackTimestamps[idx] || 0) || null;
+  };
+
   const parseQuantileSeries = (rawPoints) => {
     if (!Array.isArray(rawPoints) || rawPoints.length !== horizonBars) return null;
     const out = [];
@@ -483,7 +497,19 @@ export function adaptNativeModelTrajectory(trajectory, context = {}) {
       const p = rawPoints[i] || {};
       const q10 = Number(p.q10), q25 = Number(p.q25), q50 = Number(p.q50), q75 = Number(p.q75), q90 = Number(p.q90);
       if (![q10, q25, q50, q75, q90].every(Number.isFinite) || !(q10 > 0 && q10 <= q25 && q25 <= q50 && q50 <= q75 && q75 <= q90)) return null;
-      out.push({ step: i + 1, q10, q25, q50_median: q50, q75, q90, timestamp_utc_ms: Number(p.timestampUtcMs || p.timestamp_utc_ms || 0) || null });
+      const resolvedMs =
+        Number(p.openTimeUtcMs || p.open_time_utc_ms || p.timestampUtcMs || p.timestamp_utc_ms || 0) ||
+        getFallbackTimestamp(i);
+      out.push({
+        step: i + 1,
+        q10,
+        q25,
+        q50_median: q50,
+        q75,
+        q90,
+        open_time_utc_ms: resolvedMs,
+        timestamp_utc_ms: resolvedMs,
+      });
     }
     return out;
   };
@@ -494,12 +520,6 @@ export function adaptNativeModelTrajectory(trajectory, context = {}) {
   const coordinatedForecast = wantsCoordinated ? parseQuantileSeries(context.coordinatedPoints) : null;
   const usedCoordinated = Boolean(coordinatedForecast);
   const forecast = usedCoordinated ? coordinatedForecast : baseForecast;
-
-  const symbol = String(context.symbolCode || '').trim().toUpperCase();
-  const provider = String(context.provider || 'tvdatafeed').trim().toLowerCase();
-  const timeframe = String(context.timeframe || 'M15').trim().toUpperCase();
-  const originOpenMs = Number(context.originOpenTimeUtcMs), lastClosedPrice = Number(context.lastClosedPrice);
-  if (!symbol || !provider || !timeframe || !(originOpenMs > 0) || !(lastClosedPrice > 0) || !Number.isFinite(lastClosedPrice)) return null;
   const walkForward = context.walkForward && typeof context.walkForward === 'object' ? context.walkForward : {};
   const isExperimentalOnly = Boolean(trajectory.isApproximation || trajectory.experimentalOnly || context.experimentalOnly);
   const oosMetric = modelId === 'naive_persistence' ? walkForward.naiveMetrics

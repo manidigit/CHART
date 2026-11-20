@@ -16,9 +16,10 @@ import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.47.40'
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.40';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.40';
 
-import { state, escapeHtml, getCachedOrAggregatedCandles } from '../core/store.js?v=1.47.40';
+import { state, escapeHtml, getCachedOrAggregatedCandles, safeLocalStorageSet } from '../core/store.js?v=1.47.40';
 
 const MODEL_OVERLAY_COLORS = {
+  structural_wave_js: '#8B5CF6',
   empirical_analogs: '#F59E0B',
   naive_persistence: '#94A3B8',
   native_arima_diff: '#38BDF8',
@@ -196,6 +197,17 @@ export function renderForecastStudioFanCanvas(
     return;
   }
 
+  const trajsForCanvas = Array.isArray(forecast?.modelTrajectories) ? forecast.modelTrajectories : [];
+  const overlayModels = trajsForCanvas.filter(
+    (t) =>
+      t.status === MODEL_EXECUTION_STATUS.SUCCESS &&
+      Array.isArray(t.points) &&
+      t.points.length >= pts.length &&
+      t.modelId !== forecast.selectedChartModelId &&
+      (!Array.isArray(forecast.visibleComparisonModelIds) || forecast.visibleComparisonModelIds.includes(t.modelId)) &&
+      ['empirical_analogs', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_arima_statsmodels', 'py_prophet', 'py_lstm_mc', 'py_lstm_torch', 'py_tft', 'py_tft_torch'].includes(t.modelId)
+  );
+
   let minP = Infinity;
   let maxP = -Infinity;
   for (const c of hist) {
@@ -203,10 +215,29 @@ export function renderForecastStudioFanCanvas(
     maxP = Math.max(maxP, Number(c.high));
   }
   for (const p of pts) {
-    const lo = Number(p.q10 ?? p.low);
-    const hi = Number(p.q90 ?? p.high);
+    const lo = Number(p.q10 ?? p.low ?? p.q50);
+    const hi = Number(p.q90 ?? p.high ?? p.q50);
     if (Number.isFinite(lo)) minP = Math.min(minP, lo);
     if (Number.isFinite(hi)) maxP = Math.max(maxP, hi);
+  }
+  for (const rep of Array.isArray(forecast?.representativePaths) ? forecast.representativePaths : []) {
+    if (!Array.isArray(rep?.closes)) continue;
+    for (const cv of rep.closes.slice(0, pts.length)) {
+      const n = Number(cv);
+      if (Number.isFinite(n) && n > 0) {
+        minP = Math.min(minP, n);
+        maxP = Math.max(maxP, n);
+      }
+    }
+  }
+  for (const tr of overlayModels) {
+    for (let idx = 0; idx < pts.length; idx++) {
+      const n = Number(tr.points[idx]?.q50);
+      if (Number.isFinite(n) && n > 0) {
+        minP = Math.min(minP, n);
+        maxP = Math.max(maxP, n);
+      }
+    }
   }
   for (const actual of Array.isArray(forecast?.actualPoints) ? forecast.actualPoints : []) {
     const close = Number(actual.close ?? actual);
@@ -332,8 +363,7 @@ export function renderForecastStudioFanCanvas(
     // Optional quantile envelope bars derived strictly from q25..q75 and q50 (no synthetic wicks/waves)
     if (mode === RENDER_MODES.GHOST_CANDLES || mode === RENDER_MODES.HYBRID) {
       let prevMed = Number(hist[hist.length - 1].close);
-      pts.forEach((p) => {
-        const idx = pts.indexOf(p);
+      pts.forEach((p, idx) => {
         const x = xOf(hist.length + idx);
         const openP = Number.isFinite(Number(p.open)) ? Number(p.open) : prevMed;
         const closeP = Number.isFinite(Number(p.close)) ? Number(p.close) : Number(p.q50);
@@ -378,16 +408,6 @@ export function renderForecastStudioFanCanvas(
     }
 
     // Overlay q50 comparison trajectories from all competing successful models
-    const trajs = Array.isArray(forecast?.modelTrajectories) ? forecast.modelTrajectories : [];
-    const overlayModels = trajs.filter(
-      (t) =>
-        t.status === MODEL_EXECUTION_STATUS.SUCCESS &&
-        Array.isArray(t.points) &&
-        t.points.length >= pts.length &&
-        t.modelId !== forecast.selectedChartModelId &&
-        (!Array.isArray(forecast.visibleComparisonModelIds) || forecast.visibleComparisonModelIds.includes(t.modelId)) &&
-        ['empirical_analogs', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_arima_statsmodels', 'py_prophet', 'py_lstm_mc', 'py_lstm_torch', 'py_tft', 'py_tft_torch'].includes(t.modelId)
-    );
     overlayModels.forEach((tr) => {
       const col = MODEL_OVERLAY_COLORS[tr.modelId] || '#64748B';
       ctx.save();
@@ -406,7 +426,8 @@ export function renderForecastStudioFanCanvas(
     });
 
     // Active Median q50 line
-    ctx.strokeStyle = useCoord ? '#A855F7' : (MODEL_OVERLAY_COLORS[forecast?.selectedChartModelId] || '#F59E0B');
+    const activeLineCol = useCoord ? '#A855F7' : (MODEL_OVERLAY_COLORS[forecast?.selectedChartModelId] || '#F59E0B');
+    ctx.strokeStyle = activeLineCol;
     ctx.lineWidth = 2.2;
     ctx.setLineDash([5, 3]);
     ctx.beginPath();
@@ -414,6 +435,25 @@ export function renderForecastStudioFanCanvas(
     pts.forEach((p, idx) => ctx.lineTo(xOf(hist.length + idx), yOf(p.q50)));
     ctx.stroke();
     ctx.setLineDash([]);
+
+    // Structural JS probable turning points (diamond nodes) when present
+    if (Array.isArray(forecast?.turningPoints) && forecast.turningPoints.length > 0) {
+      for (const tp of forecast.turningPoints) {
+        const stepIdx = Number(tp?.step || 0) - 1;
+        if (stepIdx < 0 || stepIdx >= pts.length) continue;
+        const tx = xOf(hist.length + stepIdx);
+        const ty = yOf(Number(pts[stepIdx].q50));
+        ctx.save();
+        ctx.translate(tx, ty);
+        ctx.rotate(Math.PI / 4);
+        ctx.fillStyle = '#FFFFFF';
+        ctx.strokeStyle = activeLineCol;
+        ctx.lineWidth = 1.6;
+        ctx.fillRect(-3, -3, 6, 6);
+        ctx.strokeRect(-3, -3, 6, 6);
+        ctx.restore();
+      }
+    }
 
     // Optional historical replay actual path; scoring data is displayed separately from the forecast q50.
     const actualReplayPoints = Array.isArray(forecast?.actualPoints) ? forecast.actualPoints : [];
@@ -605,9 +645,8 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
         <div class="ci-fc-grid-3">
           ${repPaths
             .map((rp) => {
-              const firstClose = rp.closes?.[0] ?? fc.anchorClose;
               const lastCloseRp = rp.closes?.[rp.closes.length - 1] ?? fc.anchorClose;
-              const diffPct = firstClose > 0 ? ((lastCloseRp - fc.anchorClose) / fc.anchorClose) * 100 : 0;
+              const diffPct = fc.anchorClose > 0 ? ((lastCloseRp - fc.anchorClose) / fc.anchorClose) * 100 : 0;
               return `
                 <div class="ci-fc-mini-stat ltr-num">
                   <div style="font-size:11px;font-weight:700;color:var(--text-strong);">${escapeHtml(rp.id)}</div>
@@ -950,7 +989,7 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
 
     const forecast = ForecastEngine.project(trainingCandles, {
       symbolCode: activeTab.symbolCode,
-      providerId: 'tvdatafeed',
+      providerId: activeTab.provider || 'tvdatafeed',
       timeframe: activeTab.timeframe,
       horizonBars,
       renderMode: normalizeRenderMode(activeTab.forecastRenderMode || state.chartPreferences.forecastRenderMode || RENDER_MODES.FAN_CHART),
@@ -1036,8 +1075,20 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
       const storageKey = 'ci_forecast_replay_history_v1';
       const stored = JSON.parse(globalThis.localStorage?.getItem(storageKey) || '[]');
       const history = Array.isArray(stored) ? stored : [];
-      history.push(result);
-      globalThis.localStorage?.setItem(storageKey, JSON.stringify(history.slice(-20)));
+      const compactRecord = {
+        status: result.status,
+        symbolCode: result.symbolCode,
+        timeframe: result.timeframe,
+        horizonBars: result.horizonBars,
+        selectedModelId: result.selectedModelId,
+        fromDate: result.fromDate,
+        toDate: result.toDate,
+        maxWindows: result.maxWindows,
+        summary: result.summary,
+        generatedAtUtcMs: result.generatedAtUtcMs,
+      };
+      history.push(compactRecord);
+      safeLocalStorageSet(storageKey, JSON.stringify(history.slice(-20)));
     } catch (_) {}
   }
   return result;
@@ -1260,7 +1311,7 @@ export function renderLedgerPanel(decimals, isFa) {
             (e) => `
           <tr>
             <td class="ltr-num">#${e.seq}</td>
-            <td class="ltr-num"><strong>${escapeHtml(e.symbolCode)}</strong> · ${escapeHtml(e.timeframe)} (+${e.horizonBars})</td>
+            <td class="ltr-num"><strong>${escapeHtml(e.symbolCode)}</strong> · ${escapeHtml(e.timeframe)} (+${e.horizonBars})${e.modelId ? ` <span class="ci-fc-family-tag">${escapeHtml(e.modelId)}</span>` : ''}</td>
             <td class="ltr-num">${escapeHtml(e.forecastStatus)}</td>
             <td class="ltr-num">${escapeHtml(e.noEdgeGateState || 'PROVISIONAL')}</td>
             <td class="ltr-num">${PriceFormatter.formatPrice(e.terminalMedian, decimals)}</td>
