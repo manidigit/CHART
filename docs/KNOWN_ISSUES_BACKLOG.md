@@ -1,7 +1,7 @@
 # گزارش و لیست مشکلات فنی شناسایی‌شده (Known Issues Backlog)
 
-**تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۱۹ نوامبر ۲۰۲۶ (`v1.47.40`)  
-**وضعیت:** تمامی موارد ۱ تا ۱۴ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`43/43` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
+**تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۲۰ نوامبر ۲۰۲۶ (`v1.47.40`)  
+**وضعیت:** تمامی موارد ۱ تا ۱۵ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`46/46` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
 
 ---
 
@@ -297,6 +297,27 @@
      - اتصال پیش‌نمایش `Structural JS` به `#forecast-studio-canvas` با رنگ `#8B5CF6`، رسم نقاط برگشت الماس‌شکل (`turningPoints`)، مقیاس‌دهی با `representativePaths`/`overlayModels`، حذف `pts.indexOf(p)` با پیچیدگی $O(n^2)$ و محافظ `fc.anchorClose > 0`.
      - حفظ و بازمحاسبه مدل بومی فعال هنگام تغییر افق در `set-forecast-horizon` (جلوگیری از بازنویسی خودکار با `Structural JS`) و استفاده از `activeTab.provider || 'tvdatafeed'` در `runHistoricalForecastReplay()`.
 - **راستی‌آزمایی:** `node --check` روی هر ۹ فایل JS اصلاح‌شده و **۴۳/۴۳ پاس** در `tests/web_parity.test.mjs` (افزودن تست‌های `FORECAST-PKG1-CALENDAR-01`، `FORECAST-PKG1-ANALYZER-02`، `FORECAST-PKG1-LEDGER-03` و `FORECAST-PKG1-MODELS-04`).
+
+---
+
+## ۱۵. ارتقای عمیق `Causal Historical Analogs` و `Structural JS` + ورود به `Walk-Forward`، `Compare` و `Historical Replay` (`FORECAST-PKG2` · `v1.47.40`) — ✅ حل و تست شد
+
+- **اولویت:** بالا (High / P1)
+- **تاریخ اجرا و تأیید:** ۲۰ نوامبر ۲۰۲۶
+- **خلاصه نواقص قبلی و ارتقاهای پیاده‌سازی‌شده:**
+  1. **ارتقای `Causal Historical Analogs` (`forecast/empiricalAnalogEngine.js` با بازصدور در `forecast/forecastEngine.js`):**
+     - جداسازی موتور به ماژول مستقل با پیش‌محاسبه $O(T)$ برای `ATR14`، `ATR60` و `ATR%` (حذف وابستگی چرخه‌ای).
+     - ارتقای شباهت به تطبیق چندویژگی (مسیر بسته نرمال‌شده، نسبت بدنه، دامنه کندل، شباهت رژیم نوسان `|log(currVol/pastVol)|`، شیب روند و نسبت کندل‌های صعودی) با وزن‌دهی زمانی و حفظ کامل قانون علیت `j_max = T - 2L - H - G_embargo`.
+     - افزودن `Non-Maximum Suppression` (`de-clustering` با فاصله حداقلی `minSep = max(3, floor(L/3))`)، مقیاس‌دهی بازده آینده به نوسان جاری (`volScale`)، کوانتایل‌های وزن‌دار کرنلی (`q10..q90`) و انتخاب **Medoid واقعی کل مسیر** برای `ANALOG_CENTER`/`UPPER`/`LOWER`.
+  2. **ارتقای غیرمکانیکی `Structural JS` (`algorithms/structuralForecastEngine.js`):**
+     - خوشه‌بندی Swingهای تأییدشده به نواحی واقعی حمایت/مقاومت (`structural_zones`) و جذب نرم نقاط برگشت (`zone_magnet`) به نواحی مجاور؛ جایگزینی الگوی تکرارشونده مکانیکی با مدولاسیون چارکی تجربی (`Q25`/`median`/`Q75`) و بازگشت نرم به `EMA50` (با حفظ کامل نبود `Math.random`/`sin`/`cos` و OHLC ساختگی).
+     - ساخت باندهای عدم قطعیت **نامتقارن تجربی** (`band_asymmetry_up` / `band_asymmetry_down`) و گزارش شاخص هم‌گرایی با آنالوگ‌ها (`analog_agreement_score` و `corridor_overlap_pct`).
+  3. **ورود رسمی به `Walk-Forward`، `Compare` و `Historical Replay` (`walkForwardEvaluator.js`، `forecastEngine.js`، `forecastView.js`، `app.js`):**
+     - ارزیابی علّی و بدون نشت هر دو مدل `empirical_analogs` و `structural_wave_js` در کل پنجره‌های بیرونی `Walk-Forward` (نمایش در جدول `Backtest` و امکان انتخاب در `AUTO OOS`).
+     - افزودن `structural_wave_js` به `modelTrajectories` و لیست overlayهای قابل مقایسه روی بوم Forecast Studio و نمایش تعداد S/R Zones و درصد هم‌گرایی آنالوگ در بنر Structural JS.
+     - اصلاح `runHistoricalForecastReplay()` و هندلر `run-forecast-replay` در `app.js` برای اجرای مستقیم و امتیازدهی مدل انتخابی کاربر (`structural_wave_js` یا `empirical_analogs`) بدون بازگشت بی‌صدا به `naive_persistence` و افزودن ستون `Model` در جداول Replay.
+- **راستی‌آزمایی:** `node --check` روی هر ۶ ماژول ایجاد/اصلاح‌شده و **۴۶/۴۶ پاس** در `tests/web_parity.test.mjs` (افزودن تست‌های `FORECAST-PKG2-ANALOGS-01`، `FORECAST-PKG2-STRUCTURAL-02` و `FORECAST-PKG2-WF-REPLAY-03`).
+
 
 
 

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.47.40] - 2026-11-19
 
+### Changed (`FORECAST-PKG2`: Deep Upgrade of `Causal Historical Analogs` & `Structural JS` + First-Class Walk-Forward, Compare & Replay Integration)
+- **Standalone Rev 2.2 `Causal Historical Analogs` Engine (`forecast/empiricalAnalogEngine.js?v=1.47.40`, re-exported from `forecast/forecastEngine.js?v=1.47.40`):**
+  - Extracted `EmpiricalAnalogEngine` into its own acyclic module (`?v=1.47.40`) with O(T) precomputed rolling ATR14/ATR60/ATR% arrays.
+  - Upgraded matching to multi-feature similarity (normalized close path, candle body ratio, bar range expansion, volatility-regime ratio `|log(currVol/pastVol)|`, trend slope, and up-bar fraction) with recency weighting while strictly preserving causal `j_max = T - 2L - H - G_embargo`.
+  - Added Non-Maximum Suppression (`de-clustering`, `minSep = max(3, floor(L/3))`) so overlapping shifted copies of a single historical episode cannot dominate `topK`.
+  - Added volatility-scaled future log-returns (`clamp(currentAtrPct / pastAtrPct, 0.55, 1.85)`), distance-kernel weighted quantiles (`q10..q90`), and true path-wise weighted medoid selection for `ANALOG_CENTER` / `ANALOG_UPPER` / `ANALOG_LOWER`.
+- **Non-Mechanical `Structural JS` v2 (`algorithms/structuralForecastEngine.js?v=1.47.40`):**
+  - Added `extractStructuralZones()` to cluster confirmed swings into real Structural S/R zones (`touches`, `polarity`, `strength`) and apply soft magnet attraction (`zone_magnet`) to projected turning points.
+  - Replaced rigid metronome leg repetition with deterministic empirical quartile modulation (`Q25`/`median`/`Q75` durations & retracements + soft EMA50 mean-reversion when overextended), preserving zero `Math.random`/`Math.sin`/`Math.cos` and zero synthetic OHLC.
+  - Upgraded uncertainty bands to empirical asymmetric upside/downside dispersion (`band_asymmetry_up` / `band_asymmetry_down`), added `analog_agreement_score` & `corridor_overlap_pct` diagnostics, and added `skipAnalogs` fast mode for Walk-Forward windows.
+- **First-Class Walk-Forward, Compare Overlay & Historical Replay Integration (`forecast/walkForwardEvaluator.js?v=1.47.40`, `forecast/forecastEngine.js?v=1.47.40`, `views/forecastView.js?v=1.47.40`, `app.js?v=1.47.40`):**
+  - Benchmarked both `empirical_analogs` and `structural_wave_js` causally on every outer Walk-Forward window (`rMAE`, `WIS`, `80% Coverage`, `HLN-DM`, `Bootstrap`), making both visible in the Backtest table and eligible for `AUTO OOS` selection.
+  - Emitted `structural_wave_js` inside `ForecastEngine.project().modelTrajectories`, added `structural_wave_js` to Studio canvas Compare overlays (allowing side-by-side overlay with `Causal Historical Analogs`), and displayed S/R Zone count & Analog Sync % in the Structural Studio banner.
+  - Fixed Historical Replay (`runHistoricalForecastReplay` + `app.js` click handler) to pass and directly score the user's active model (`structural_wave_js` or `empirical_analogs`) without silently falling back to `naive_persistence`, and added a `Model` column to Replay window and Saved Run tables.
+- **Verification:**
+  - Verified `node --check` on all 6 created/modified JS modules and **46/46** passing tests in `tests/web_parity.test.mjs` (added `FORECAST-PKG2-ANALOGS-01`, `FORECAST-PKG2-STRUCTURAL-02`, and `FORECAST-PKG2-WF-REPLAY-03`).
+
 ### Fixed (`FORECAST-PKG1`: Browser-Native Forecast Infrastructure, Calendar, Math, Ledger & UI Bug Fixes)
 - **Session-Aware Future Timestamps Across Calendar, Contract & Structural JS (`forecast/calendarRegistry.js?v=1.47.40`, `forecast/forecastContract.js?v=1.47.40`, `algorithms/structuralForecastEngine.js?v=1.47.40`):**
   - Added `isTradingDayForCalendar()` and fixed `advanceFutureTimestampsWithCalendar()` for `W1` (direct weekly step) and `D1` (trading-day advancement skipping Sat/Sun/US holidays using UTC dates for `00:00 UTC` candles so `NVDA` and winter `SPOTBRENT` never spin past the loop guard into future years), plus increased the intraday guard budget (`horizon * 48 + 960`) for `US_EQUITIES_RTH`.

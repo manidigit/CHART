@@ -42,6 +42,10 @@ import {
   detectKeyZonesAndEventTree,
   evaluateNoEdgeGate,
 } from './forecastV130Analyzer.js?v=1.47.40';
+import { EmpiricalAnalogEngine, SMCPredictionEngine } from './empiricalAnalogEngine.js?v=1.47.40';
+import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
+
+export { EmpiricalAnalogEngine, SMCPredictionEngine };
 
 export const CANONICAL_SMC_HORIZON = 60;
 const WALK_FORWARD_CACHE = new Map();
@@ -54,222 +58,6 @@ export function resolveLowerTimeframeInfo(timeframe = 'M15') {
   if (tf === 'D1') return { timeframe: 'H4', ratio: 6 };
   return null;
 }
-
-/**
- * Rev 2.1 Strictly Causal Empirical Analog Engine.
- * Zero synthetic wave templates, zero fabricated volumes, zero artificial rejection wicks.
- * Strictly respects j_max = T - L_curr - L_analog - H - G_embargo so no analog future overlaps current window or embargo gap.
- */
-export class EmpiricalAnalogEngine {
-  constructor(windowSize = 24, horizon = 20, timeframe = 'M15') {
-    this.windowSize = Math.max(12, Math.min(48, Number(windowSize || 24)));
-    this.horizon = clampHorizonBars(horizon);
-    this.timeframe = String(timeframe || 'M15').trim().toUpperCase();
-    this.topKAnalogs = 25;
-  }
-
-  calculateATR(candles, period = 14) {
-    if (!Array.isArray(candles) || candles.length < 2) return 0;
-    const p = Math.min(period, candles.length - 1);
-    let trSum = 0;
-    for (let i = candles.length - p; i < candles.length; i++) {
-      const curr = candles[i];
-      const prevClose = Number(candles[i - 1].close);
-      const hi = Number(curr.high);
-      const lo = Number(curr.low);
-      trSum += Math.max(hi - lo, Math.abs(hi - prevClose), Math.abs(lo - prevClose));
-    }
-    const lastClose = Number(candles[candles.length - 1].close || 1);
-    return Math.max(trSum / Math.max(1, p), lastClose * 1e-4);
-  }
-
-  extractNormalizedShape(window, atr) {
-    const baseClose = Math.max(1e-8, Number(window[0]?.close || 1));
-    const safeAtr = Math.max(1e-8, atr);
-    const vec = [];
-    for (let i = 0; i < window.length; i++) {
-      const c = window[i];
-      const retNorm = (Number(c.close) - baseClose) / safeAtr;
-      vec.push(retNorm);
-      const range = Math.max(1e-8, Number(c.high) - Number(c.low));
-      vec.push((Number(c.close) - Number(c.open)) / range);
-    }
-    return vec;
-  }
-
-  /**
-   * Strictly Causal Analog Search:
-   *   j_max = T - L_curr - L_analog - H - G_embargo
-   * Returns honest INSUFFICIENT_EVIDENCE when history < j_max threshold or empirical matches < 6.
-   */
-  findCausalAnalogs(candles, horizonBars, currentAtr) {
-    const T = Array.isArray(candles) ? candles.length : 0;
-    const H = Math.max(10, Math.round(horizonBars || this.horizon));
-    const effL = Math.min(this.windowSize, Math.max(12, Math.floor(T * 0.15)));
-    const embargo = Math.max(5, Math.ceil(0.25 * H));
-    const jMax = T - effL - effL - H - embargo;
-
-    if (jMax < 15) {
-      return {
-        status: 'INSUFFICIENT_EVIDENCE',
-        reason: `Insufficient non-overlapping history for causal analog search (jMax=${jMax} < 15 at H=${H}, embargo=${embargo})`,
-        analogs: [],
-        jMax,
-        embargoGap: embargo,
-        windowLength: effL,
-      };
-    }
-
-    const currentWindow = candles.slice(T - effL);
-    const currentVec = this.extractNormalizedShape(currentWindow, currentAtr);
-    const matches = [];
-    const stride = jMax > 300 ? Math.max(1, Math.floor(jMax / 250)) : 1;
-
-    for (let j = 14; j <= jMax; j += stride) {
-      const candidateWin = candles.slice(j, j + effL);
-      const pastAtr = this.calculateATR(candles.slice(Math.max(0, j - 14), j + effL), 14);
-      const candVec = this.extractNormalizedShape(candidateWin, pastAtr);
-      let distSq = 0;
-      for (let k = 0; k < currentVec.length; k++) {
-        const w = k >= currentVec.length * 0.6 ? 1.5 : 1.0;
-        const d = currentVec[k] - (candVec[k] || 0);
-        distSq += w * d * d;
-      }
-      const distance = Math.sqrt(distSq / Math.max(1, currentVec.length));
-      const futureStart = j + effL;
-      const futureEnd = futureStart + H;
-      // Double-check strict causality: candidate future ends BEFORE current window starts minus embargo
-      if (futureEnd <= T - effL - embargo) {
-        const originClose = Math.max(1e-8, Number(candidateWin[candidateWin.length - 1].close));
-        const futureLogReturns = [];
-        for (let h = 0; h < H; h++) {
-          const fc = Math.max(1e-8, Number(candles[futureStart + h].close));
-          futureLogReturns.push(Math.log(fc / originClose));
-        }
-        matches.push({
-          originIndex: j + effL - 1,
-          futureEndIndex: futureEnd - 1,
-          distance,
-          pastAtr,
-          futureLogReturns,
-        });
-      }
-    }
-
-    matches.sort((a, b) => a.distance - b.distance);
-    const topAnalogs = matches.slice(0, this.topKAnalogs);
-    if (topAnalogs.length < 6) {
-      return {
-        status: 'INSUFFICIENT_EVIDENCE',
-        reason: `Only ${topAnalogs.length} causal historical analogs found (minimum 6 required, no synthetic profiles permitted)`,
-        analogs: topAnalogs,
-        jMax,
-        embargoGap: embargo,
-        windowLength: effL,
-      };
-    }
-
-    return {
-      status: 'READY',
-      reason: `Matched ${topAnalogs.length} strictly causal non-overlapping analogs (jMax=${jMax}, embargo=${embargo})`,
-      analogs: topAnalogs,
-      jMax,
-      embargoGap: embargo,
-      windowLength: effL,
-    };
-  }
-
-  /**
-   * Produces empirical percentile quantile trajectory + illustrative representative closes from matched real analogs.
-   */
-  projectEmpirical(candles, features, horizonBars, futureTimestamps = []) {
-    const H = clampHorizonBars(horizonBars);
-    const lastClose = features.lastClose;
-    const search = this.findCausalAnalogs(candles, H, features.atr14);
-
-    if (search.status !== 'READY') {
-      return {
-        status: MODEL_EXECUTION_STATUS.SKIPPED_LOW_DATA,
-        reason: search.reason,
-        jMax: search.jMax,
-        embargoGap: search.embargoGap,
-        matchedCount: search.analogs.length,
-        points: [],
-        representativePaths: [],
-      };
-    }
-
-    const analogs = search.analogs;
-    const points = new Array(H);
-    const qAt = (sorted, p) => {
-      const idx = Math.max(0, Math.min(sorted.length - 1, p * (sorted.length - 1)));
-      const lo = Math.floor(idx);
-      const hi = Math.ceil(idx);
-      const frac = idx - lo;
-      return sorted[lo] * (1 - frac) + sorted[hi] * frac;
-    };
-
-    for (let h = 0; h < H; h++) {
-      const prices = analogs
-        .map((a) => lastClose * Math.exp(a.futureLogReturns[h] || 0))
-        .sort((a, b) => a - b);
-      const mq = enforceMonotonicQuantiles(
-        {
-          q10: qAt(prices, 0.10),
-          q25: qAt(prices, 0.25),
-          q50: qAt(prices, 0.50),
-          q75: qAt(prices, 0.75),
-          q90: qAt(prices, 0.90),
-        },
-        lastClose * 0.01
-      );
-      points[h] = {
-        stepAhead: h + 1,
-        openTimeUtcMs: futureTimestamps[h] || 0,
-        ...mq,
-        upperBand: mq.q90,
-        lowerBand: mq.q10,
-        pctChangeFromLast: ((mq.q50 - lastClose) / lastClose) * 100,
-      };
-    }
-
-    // Extract 3 empirical medoid representative close curves strictly tagged illustrative (zero synthetic OHLC wicks/volume)
-    const bullAn = analogs.filter((a) => a.futureLogReturns[H - 1] > 0);
-    const bearAn = analogs.filter((a) => a.futureLogReturns[H - 1] < 0);
-    const neutralAn = analogs.slice().sort((a, b) => Math.abs(a.futureLogReturns[H - 1]) - Math.abs(b.futureLogReturns[H - 1]));
-
-    const buildRep = (id, label, arr) => {
-      if (!arr.length) return null;
-      const medoid = arr[Math.floor(arr.length / 2)];
-      return {
-        id,
-        label,
-        isIllustrativeOnly: true,
-        originIndex: medoid.originIndex,
-        distance: Number(medoid.distance.toFixed(4)),
-        closes: medoid.futureLogReturns.map((r) => roundToSignificant(lastClose * Math.exp(r), 10)),
-      };
-    };
-
-    const representativePaths = [
-      buildRep('ANALOG_UPPER', 'Empirical Upper Analog Medoid (Illustrative Only)', bullAn),
-      buildRep('ANALOG_CENTER', 'Empirical Central Analog Medoid (Illustrative Only)', neutralAn),
-      buildRep('ANALOG_LOWER', 'Empirical Lower Analog Medoid (Illustrative Only)', bearAn),
-    ].filter(Boolean);
-
-    return {
-      status: MODEL_EXECUTION_STATUS.SUCCESS,
-      reason: search.reason,
-      jMax: search.jMax,
-      embargoGap: search.embargoGap,
-      matchedCount: analogs.length,
-      points,
-      representativePaths,
-    };
-  }
-}
-
-export const SMCPredictionEngine = EmpiricalAnalogEngine;
 
 function buildForecastPointsFromQuantileTrajectory(trajSteps, canonicalTimestamps, features, horizonBars, conformalCalibration = null) {
   const out = new Array(horizonBars);
@@ -477,6 +265,9 @@ export class ForecastEngine {
           excludeExperimental,
           skipBootstrap: options.skipBootstrap,
           bootstrapB: options.bootstrapB || 1000,
+          symbolCode,
+          providerId,
+          timeframe,
         });
         if (WALK_FORWARD_CACHE.size > 48) {
           WALK_FORWARD_CACHE.delete(WALK_FORWARD_CACHE.keys().next().value);
@@ -690,7 +481,7 @@ export class ForecastEngine {
       points: ensPoints,
     });
 
-    // Strictly causal empirical analogs (optional diagnostic trajectory — NEVER generates fake profiles)
+    // Strictly causal empirical analogs (upgraded Rev 2.2 — declustered, vol-scaled, kernel-weighted)
     const analogEngine = new EmpiricalAnalogEngine(24, horizonBars, timeframe);
     const analogRes = analogEngine.projectEmpirical(cleanCandles, features, horizonBars, canonicalTimestamps);
     const representativePaths = analogRes.representativePaths || [];
@@ -699,7 +490,7 @@ export class ForecastEngine {
         modelId: 'empirical_analogs',
         modelName: 'Causal Historical Analogs',
         family: 'PATTERN_EMPIRICAL',
-        modelVersion: '2.0.0',
+        modelVersion: '2.2.0',
         executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
         isApproximation: false,
         isCalibratedInterval: conformalCalibration?.calibrationStatus === 'CALIBRATED_NORMALIZED',
@@ -709,13 +500,21 @@ export class ForecastEngine {
         trainingEndUtcMs: trainEndMs,
         trainingSampleCount: features.barCount,
         points: buildForecastPointsFromQuantileTrajectory(analogRes.points, canonicalTimestamps, features, horizonBars, conformalCalibration),
+        meta: {
+          matchedCount: analogRes.matchedCount,
+          declusteredCount: analogRes.declusteredCount,
+          minSeparationBars: analogRes.minSeparationBars,
+          effectiveSampleWeight: analogRes.effectiveSampleWeight,
+          avgVolScale: analogRes.avgVolScale,
+          medianDistance: analogRes.medianDistance,
+        },
       });
     } else {
       modelTrajectories.push({
         modelId: 'empirical_analogs',
         modelName: 'Causal Historical Analogs',
         family: 'PATTERN_EMPIRICAL',
-        modelVersion: '2.0.0',
+        modelVersion: '2.2.0',
         executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
         isApproximation: false,
         isCalibratedInterval: false,
@@ -724,6 +523,77 @@ export class ForecastEngine {
         trainingStartUtcMs: trainStartMs,
         trainingEndUtcMs: trainEndMs,
         trainingSampleCount: features.barCount,
+        points: [],
+      });
+    }
+
+    // First-class Structural Wave JS trajectory (enables Walk-Forward parity, Compare overlays, and Replay)
+    let structRes = null;
+    try {
+      structRes = computeStructuralForecast({
+        candles: cleanCandles.slice(-360).map((c) => ({
+          open_time_utc_ms: Number(c.openTimeUtcMs ?? c.open_time_utc_ms ?? 0),
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+          is_closed: true,
+        })),
+        symbolCode,
+        provider: providerId,
+        timeframe,
+        horizonBars,
+        nowMs: Math.max(generatedAtUtcMs, features.lastOpenMs + 86400000 * 14),
+        skipAnalogs: true,
+      });
+    } catch (_) {
+      structRes = null;
+    }
+    if (structRes?.status === 'READY' && Array.isArray(structRes.forecast) && structRes.forecast.length >= horizonBars) {
+      const structRawTraj = structRes.forecast.slice(0, horizonBars).map((pt) => ({
+        q10: Number(pt.q10),
+        q25: Number(pt.q25),
+        q50: Number(pt.q50_median),
+        q75: Number(pt.q75),
+        q90: Number(pt.q90),
+      }));
+      modelTrajectories.push({
+        modelId: 'structural_wave_js',
+        modelName: 'Structural Wave (JS)',
+        family: 'STRUCTURAL_WAVE',
+        modelVersion: '2.2.0',
+        executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
+        isApproximation: false,
+        isCalibratedInterval: conformalCalibration?.calibrationStatus === 'CALIBRATED_NORMALIZED',
+        status: MODEL_EXECUTION_STATUS.SUCCESS,
+        reason: '',
+        trainingStartUtcMs: trainStartMs,
+        trainingEndUtcMs: trainEndMs,
+        trainingSampleCount: Math.min(cleanCandles.length, 360),
+        points: buildForecastPointsFromQuantileTrajectory(structRawTraj, canonicalTimestamps, features, horizonBars, conformalCalibration),
+        meta: {
+          structureBias: structRes.engine?.params?.structure_bias || '',
+          volatilityRegime: structRes.engine?.params?.volatility_regime || '',
+          structuralZonesCount: Number(structRes.engine?.params?.structural_zones_count || 0),
+          zoneMagnetHits: Number(structRes.engine?.params?.zone_magnet_hits || 0),
+          turningPoints: structRes.turning_points || [],
+        },
+      });
+    } else {
+      modelTrajectories.push({
+        modelId: 'structural_wave_js',
+        modelName: 'Structural Wave (JS)',
+        family: 'STRUCTURAL_WAVE',
+        modelVersion: '2.2.0',
+        executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
+        isApproximation: false,
+        isCalibratedInterval: false,
+        status: MODEL_EXECUTION_STATUS.SKIPPED_LOW_DATA,
+        reason: structRes?.error || 'Insufficient structural swings for Structural JS trajectory.',
+        trainingStartUtcMs: trainStartMs,
+        trainingEndUtcMs: trainEndMs,
+        trainingSampleCount: Math.min(cleanCandles.length, 360),
         points: [],
       });
     }
@@ -839,6 +709,11 @@ export class ForecastEngine {
         jMax: analogRes.jMax,
         embargoGap: analogRes.embargoGap,
         matchedCount: analogRes.matchedCount,
+        declusteredCount: analogRes.declusteredCount || 0,
+        minSeparationBars: analogRes.minSeparationBars || 0,
+        effectiveSampleWeight: analogRes.effectiveSampleWeight || 0,
+        avgVolScale: analogRes.avgVolScale || 1,
+        medianDistance: analogRes.medianDistance || 0,
       },
       modelContributions,
       modelTrajectories,

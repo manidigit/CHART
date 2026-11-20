@@ -1,7 +1,7 @@
 import { PriceFormatter } from './priceFormatter.js?v=1.47.40';
 import { TechnicalIndicators } from './technicalIndicators.js?v=1.47.40';
 import { GapDetector } from './gapDetector.js?v=1.47.40';
-import { EmpiricalAnalogEngine } from '../forecast/forecastEngine.js?v=1.47.40';
+import { EmpiricalAnalogEngine } from '../forecast/empiricalAnalogEngine.js?v=1.47.40';
 import { advanceFutureTimestampsWithCalendar } from '../forecast/calendarRegistry.js?v=1.47.40';
 
 /**
@@ -158,7 +158,68 @@ function extractAlternatingSwings(candles, atrSeries, swingLen = 3, minProminenc
 }
 
 /**
- * Step 4: Volatility & empirical horizon return dispersion (non-parametric quantile scaling).
+ * Step 1b: Cluster confirmed historical swings into real Structural Support/Resistance zones.
+ */
+function extractStructuralZones(swings, atrNow, totalBars) {
+  if (!Array.isArray(swings) || swings.length === 0 || !(atrNow > 0)) return [];
+  const mergeTol = Math.max(1e-8, atrNow * 0.75);
+  const clusters = [];
+
+  for (const sw of swings) {
+    const recencyWeight = 0.55 + 0.45 * clamp(sw.index / Math.max(1, totalBars - 1), 0, 1);
+    let bestCluster = null;
+    let bestDist = Infinity;
+    for (const cl of clusters) {
+      const dist = Math.abs(sw.price - cl.level);
+      if (dist <= mergeTol && dist < bestDist) {
+        bestDist = dist;
+        bestCluster = cl;
+      }
+    }
+    if (bestCluster) {
+      const nextWeight = bestCluster.weightSum + recencyWeight;
+      bestCluster.level = (bestCluster.level * bestCluster.weightSum + sw.price * recencyWeight) / nextWeight;
+      bestCluster.weightSum = nextWeight;
+      bestCluster.touches += 1;
+      bestCluster.highTouches += sw.type === 'HIGH' ? 1 : 0;
+      bestCluster.lowTouches += sw.type === 'LOW' ? 1 : 0;
+      bestCluster.lastIndex = Math.max(bestCluster.lastIndex, sw.index);
+    } else {
+      clusters.push({
+        level: sw.price,
+        weightSum: recencyWeight,
+        touches: 1,
+        highTouches: sw.type === 'HIGH' ? 1 : 0,
+        lowTouches: sw.type === 'LOW' ? 1 : 0,
+        lastIndex: sw.index,
+      });
+    }
+  }
+
+  return clusters
+    .map((cl) => {
+      const polarity =
+        cl.highTouches > 0 && cl.lowTouches > 0
+          ? 'FLIP'
+          : cl.highTouches > 0
+            ? 'RESISTANCE'
+            : 'SUPPORT';
+      const recency = clamp(cl.lastIndex / Math.max(1, totalBars - 1), 0, 1);
+      const strength = Number((Math.min(4, cl.touches) * 0.65 + recency * 0.35).toFixed(3));
+      return {
+        level: Number(cl.level.toFixed(6)),
+        touches: cl.touches,
+        polarity,
+        last_index: cl.lastIndex,
+        strength,
+      };
+    })
+    .sort((a, b) => b.strength - a.strength || b.last_index - a.last_index)
+    .slice(0, 10);
+}
+
+/**
+ * Step 4: Volatility & empirical asymmetric horizon return dispersion (non-parametric quantile scaling).
  */
 function analyzeVolatilityAndEmpiricalSpread(candles, atrSeries, horizonBars) {
   const n = candles.length;
@@ -195,16 +256,30 @@ function analyzeVolatilityAndEmpiricalSpread(candles, atrSeries, horizonBars) {
   if (volRatio > 1.28) regime = 'EXPANDING';
   else if (volRatio < 0.78) regime = 'COMPRESSING';
 
-  // Empirical multi-horizon absolute price change quantiles from historical closed bars
+  // Empirical multi-horizon absolute AND signed upside/downside price change quantiles from historical closed bars
   const probeHorizons = [1, 3, 6, 12, 20, 30, 45, 60].filter((h) => h < n - 8);
   const perSqrtStepSpread = [];
+  const perSqrtUpSpread = [];
+  const perSqrtDownSpread = [];
   for (const h of probeHorizons) {
     const absChanges = [];
+    const upChanges = [];
+    const downChanges = [];
     for (let i = 0; i < n - h; i++) {
-      absChanges.push(Math.abs(Number(candles[i + h].close) - Number(candles[i].close)));
+      const diff = Number(candles[i + h].close) - Number(candles[i].close);
+      absChanges.push(Math.abs(diff));
+      if (diff > 0) upChanges.push(diff);
+      else if (diff < 0) downChanges.push(-diff);
     }
+    const sqrtH = Math.sqrt(h);
     if (absChanges.length >= 12) {
-      perSqrtStepSpread.push(quantile(absChanges, 0.68) / Math.sqrt(h));
+      perSqrtStepSpread.push(quantile(absChanges, 0.68) / sqrtH);
+    }
+    if (upChanges.length >= 6) {
+      perSqrtUpSpread.push(quantile(upChanges, 0.68) / sqrtH);
+    }
+    if (downChanges.length >= 6) {
+      perSqrtDownSpread.push(quantile(downChanges, 0.68) / sqrtH);
     }
   }
 
@@ -215,6 +290,12 @@ function analyzeVolatilityAndEmpiricalSpread(candles, atrSeries, horizonBars) {
       ? Math.max(fallbackSigma * 0.65, median(perSqrtStepSpread) * clamp(volRatio, 0.72, 1.55))
       : fallbackSigma * clamp(volRatio, 0.72, 1.55);
 
+  const upMed = perSqrtUpSpread.length > 0 ? median(perSqrtUpSpread) : baseStepSigma;
+  const downMed = perSqrtDownSpread.length > 0 ? median(perSqrtDownSpread) : baseStepSigma;
+  const rawAsym = downMed > 1e-9 ? upMed / downMed : 1.0;
+  const upAsymFactor = clamp(Math.sqrt(rawAsym), 0.78, 1.28);
+  const downAsymFactor = clamp(1 / Math.sqrt(Math.max(0.25, rawAsym)), 0.78, 1.28);
+
   return {
     atrNow,
     atrBaseline,
@@ -223,6 +304,8 @@ function analyzeVolatilityAndEmpiricalSpread(candles, atrSeries, horizonBars) {
     volRatio: Number(volRatio.toFixed(4)),
     regime,
     baseStepSigma: Math.max(1e-8, baseStepSigma),
+    upAsymFactor: Number(upAsymFactor.toFixed(4)),
+    downAsymFactor: Number(downAsymFactor.toFixed(4)),
     horizonScaledMaxMove: Math.max(atrNow * 1.5, baseStepSigma * Math.sqrt(horizonBars) * 2.2),
   };
 }
@@ -246,6 +329,7 @@ export function computeStructuralForecast({
   timeframe = 'M15',
   horizonBars = 30,
   nowMs = Date.now(),
+  skipAnalogs = false,
 } = {}) {
   const cleanSym = String(symbolCode || 'SPOTBRENT').trim().toUpperCase();
   const cleanProv = String(provider || 'tvdatafeed').trim().toLowerCase();
@@ -332,6 +416,7 @@ export function computeStructuralForecast({
       limitations,
     },
     swings: extraQuality.swings || [],
+    structural_zones: [],
     turning_points: [],
     forecast: [],
     model_paths: [],
@@ -451,13 +536,26 @@ export function computeStructuralForecast({
     }
   }
 
+  const impAmps = impulseLegs.length > 0 ? impulseLegs.map((l) => l.absMove) : legs.map((l) => l.absMove);
+  const impDurs = impulseLegs.length > 0 ? impulseLegs.map((l) => l.durationBars) : legs.map((l) => l.durationBars);
+  const corrDurs = corrLegs.length > 0 ? corrLegs.map((l) => l.durationBars) : [Math.max(3, rawImpDur * 0.7)];
+
   const impulseAmpMedian = clamp(rawImpAmp, volInfo.atrNow * 0.8, volInfo.horizonScaledMaxMove);
+  const impulseAmpQ25 = clamp(quantile(impAmps, 0.25) || impulseAmpMedian * 0.78, volInfo.atrNow * 0.55, impulseAmpMedian);
+  const impulseAmpQ75 = clamp(quantile(impAmps, 0.75) || impulseAmpMedian * 1.25, impulseAmpMedian, volInfo.horizonScaledMaxMove);
   const impulseDurMedian = clamp(Math.round(rawImpDur), 4, Math.max(6, Math.round(horizon * 0.75)));
+  const impulseDurQ25 = clamp(Math.round(quantile(impDurs, 0.25) || impulseDurMedian * 0.75), 3, impulseDurMedian);
+  const impulseDurQ75 = clamp(Math.round(quantile(impDurs, 0.75) || impulseDurMedian * 1.25), impulseDurMedian, Math.max(7, Math.round(horizon * 0.85)));
   const corrRetraceMedian =
     biasDir === 0
       ? clamp(retraceRatios.length > 0 ? median(retraceRatios) : 0.85, 0.65, 1.05)
       : clamp(retraceRatios.length > 0 ? median(retraceRatios) : 0.45, 0.26, 0.78);
+  const corrRetraceQ75 =
+    biasDir === 0
+      ? clamp(retraceRatios.length > 0 ? quantile(retraceRatios, 0.75) : 0.95, corrRetraceMedian, 1.12)
+      : clamp(retraceRatios.length > 0 ? quantile(retraceRatios, 0.75) : 0.62, corrRetraceMedian, 0.86);
   const corrDurMedian = clamp(Math.round(rawCorrDur), 3, Math.max(5, Math.round(horizon * 0.6)));
+  const corrDurQ75 = clamp(Math.round(quantile(corrDurs, 0.75) || corrDurMedian * 1.25), corrDurMedian, Math.max(6, Math.round(horizon * 0.72)));
 
   const structureClarity = clamp(
     0.45 * Math.min(1, recentSwings.length / 8) + 0.35 * Math.min(1, netEfficiency / 0.45) + 0.20 * (gapCount === 0 ? 1 : 0.65),
@@ -465,11 +563,37 @@ export function computeStructuralForecast({
     0.92
   );
 
-  // Recent support / resistance bounds from trailing swings
+  // Extract real Structural S/R zones across all confirmed swings for non-mechanical turning-point attraction
+  const structuralZones = extractStructuralZones(swings, volInfo.atrNow, closedCandles.length);
   const recentHighBound = Math.max(...recentSwings.slice(-6).map((s) => s.price));
   const recentLowBound = Math.min(...recentSwings.slice(-6).map((s) => s.price));
 
-  // Step 5: Inspect active ongoing leg since last confirmed swing & build probable turning points
+  const findMagnetZone = (fromPrice, projectedPrice, dir) => {
+    const minTravel = volInfo.atrNow * 0.35;
+    const magnetRadius = volInfo.atrNow * 1.25;
+    let best = null;
+    let bestScore = -Infinity;
+    for (const z of structuralZones) {
+      const signedDelta = (z.level - fromPrice) * dir;
+      if (signedDelta < minTravel) continue;
+      const distToProj = Math.abs(z.level - projectedPrice);
+      if (distToProj > magnetRadius) continue;
+      const proximity = 1 - distToProj / magnetRadius;
+      const polarityBonus =
+        (dir > 0 && (z.polarity === 'RESISTANCE' || z.polarity === 'FLIP')) ||
+        (dir < 0 && (z.polarity === 'SUPPORT' || z.polarity === 'FLIP'))
+          ? 0.35
+          : 0.1;
+      const score = z.strength * 0.75 + proximity * 0.85 + polarityBonus;
+      if (score > bestScore) {
+        bestScore = score;
+        best = z;
+      }
+    }
+    return best;
+  };
+
+  // Step 5: Inspect active ongoing leg since last confirmed swing & build probable non-mechanical turning points
   const lastSwing = recentSwings[recentSwings.length - 1];
   const lastIndex = closedCandles.length - 1;
   const elapsedSinceSwing = Math.max(1, lastIndex - lastSwing.index);
@@ -485,6 +609,9 @@ export function computeStructuralForecast({
   const expectedActiveDur =
     biasDir === 0 || activeLegDir === biasDir ? impulseDurMedian : corrDurMedian;
   const activeProgressRatio = expectedActiveTargetAmp > 0 ? currentLegProgressAmt / expectedActiveTargetAmp : 0.5;
+  const lastCompletedLeg = legs[legs.length - 1];
+  const wasLastLegExtended = lastCompletedLeg ? lastCompletedLeg.absMove >= impulseAmpQ75 * 0.95 : false;
+  const emaStretchAtr = Math.abs(lastClose - e50) / Math.max(1e-9, volInfo.atrNow);
 
   const turningPoints = [];
   let cursorStep = 0;
@@ -492,15 +619,28 @@ export function computeStructuralForecast({
   let nextDir = activeLegDir;
 
   // If the current leg from lastSwing is already >= 82% complete or has lasted longer than typical duration,
-  // allow brief residual overshoot only if aligned cleanly, otherwise pivot into the counter-leg (reversal zone)
+  // pivot into the counter-leg (reversal zone)
   if (activeProgressRatio >= 0.82 || elapsedSinceSwing >= Math.round(expectedActiveDur * 1.1)) {
     nextDir = -activeLegDir;
   }
 
   let waveCycle = 0;
+  let prevLegAmp = Math.max(volInfo.atrNow * 0.5, currentLegProgressAmt || impulseAmpMedian);
   while (cursorStep < horizon && waveCycle < 10) {
     const isImpulse = biasDir === 0 ? true : nextDir === biasDir;
-    const rawStepDur = isImpulse ? impulseDurMedian : corrDurMedian;
+    // Non-mechanical quartile modulation: alternate between empirical Q25/median/Q75 regimes based on extension & mean-reversion
+    let rawStepDur;
+    if (isImpulse) {
+      rawStepDur = waveCycle === 0
+        ? impulseDurMedian
+        : waveCycle % 3 === 1
+          ? Math.round(0.55 * impulseDurMedian + 0.45 * impulseDurQ75)
+          : Math.round(0.65 * impulseDurMedian + 0.35 * impulseDurQ25);
+    } else {
+      rawStepDur = wasLastLegExtended && waveCycle <= 1
+        ? corrDurQ75
+        : Math.round(0.70 * corrDurMedian + 0.30 * corrDurQ75);
+    }
     let legDur = Math.max(3, Math.round(rawStepDur));
 
     // For first leg, adjust remaining duration if continuing current active leg
@@ -508,17 +648,40 @@ export function computeStructuralForecast({
       legDur = Math.max(3, Math.round(expectedActiveDur * clamp(1 - activeProgressRatio * 0.7, 0.3, 0.9)));
     }
 
-    const damping = Math.pow(0.84, Math.floor(waveCycle / 2));
-    let legAmp = isImpulse
-      ? impulseAmpMedian * damping
-      : impulseAmpMedian * corrRetraceMedian * damping;
+    const damping = Math.pow(0.86, Math.floor(waveCycle / 2));
+    const retraceToUse =
+      (wasLastLegExtended || emaStretchAtr > 2.2) && waveCycle <= 1
+        ? 0.55 * corrRetraceMedian + 0.45 * corrRetraceQ75
+        : corrRetraceMedian;
+
+    let legAmp;
+    if (isImpulse) {
+      const baseImp = waveCycle === 0 ? impulseAmpMedian : waveCycle === 1 ? (0.65 * impulseAmpMedian + 0.35 * impulseAmpQ25) : impulseAmpMedian;
+      legAmp = baseImp * damping;
+    } else {
+      legAmp = Math.max(volInfo.atrNow * 0.45, prevLegAmp * retraceToUse * damping);
+    }
 
     if (waveCycle === 0 && nextDir === activeLegDir) {
       legAmp = Math.max(volInfo.atrNow * 0.45, expectedActiveTargetAmp * clamp(1 - activeProgressRatio * 0.75, 0.25, 0.85));
     }
 
-    // Clamp range-bound oscillation within widened historical support/resistance corridor when biasDir === 0
+    // Soft mean-reversion pull toward EMA50 when overextended away from structural equilibrium
     let targetPrice = cursorPrice + nextDir * legAmp;
+    if (biasDir !== 0 && !isImpulse && Math.sign(e50 - cursorPrice) === nextDir && emaStretchAtr > 1.8 && waveCycle <= 1) {
+      targetPrice = 0.72 * targetPrice + 0.28 * e50;
+    }
+
+    // Structural S/R zone magnet attraction (real historical swing clusters)
+    const magnetZone = findMagnetZone(cursorPrice, targetPrice, nextDir);
+    let zoneMagnetApplied = false;
+    if (magnetZone) {
+      const blend = magnetZone.touches >= 2 ? 0.68 : 0.45;
+      targetPrice = blend * magnetZone.level + (1 - blend) * targetPrice;
+      zoneMagnetApplied = true;
+    }
+
+    // Clamp range-bound oscillation within structural S/R corridor when biasDir === 0
     if (biasDir === 0) {
       const rangeSpan = Math.max(volInfo.atrNow * 2, recentHighBound - recentLowBound);
       const midRange = (recentHighBound + recentLowBound) / 2;
@@ -534,7 +697,10 @@ export function computeStructuralForecast({
 
     let role = 'REGIME_TARGET';
     let rationale = '';
-    if (biasDir === 0) {
+    if (zoneMagnetApplied && magnetZone) {
+      role = nextDir > 0 ? 'STRUCTURAL_RESISTANCE_ZONE' : 'STRUCTURAL_SUPPORT_ZONE';
+      rationale = `Structural ${magnetZone.polarity.toLowerCase()} zone (${magnetZone.touches} swing touches)`;
+    } else if (biasDir === 0) {
       role = nextDir > 0 ? 'RANGE_RESISTANCE' : 'RANGE_SUPPORT';
       rationale = nextDir > 0 ? 'Upper range rotation zone' : 'Lower range rotation zone';
     } else if (isImpulse) {
@@ -542,7 +708,7 @@ export function computeStructuralForecast({
       rationale = nextDir > 0 ? 'Bullish impulse leg target' : 'Bearish impulse leg target';
     } else {
       role = nextDir > 0 ? 'CORRECTION_BOUNCE' : 'CORRECTION_TROUGH';
-      rationale = `${Math.round(corrRetraceMedian * 100)}% structural pullback zone`;
+      rationale = `${Math.round(retraceToUse * 100)}% structural pullback zone`;
     }
 
     turningPoints.push({
@@ -550,22 +716,30 @@ export function computeStructuralForecast({
       price: Number(actualTargetPrice.toFixed(6)),
       direction: nextDir,
       is_impulse: isImpulse,
+      zone_magnet: zoneMagnetApplied,
+      zone_touches: magnetZone ? magnetZone.touches : 0,
       role,
       rationale,
       start_step: cursorStep,
       start_price: cursorPrice,
     });
 
+    prevLegAmp = Math.max(volInfo.atrNow * 0.4, Math.abs(actualTargetPrice - cursorPrice));
     cursorStep = nextStep;
     cursorPrice = actualTargetPrice;
     nextDir = -nextDir;
     waveCycle++;
   }
 
-  // Step 6 & 7: Build bar-by-bar central path & calibrated uncertainty bands + timestamps
+  // Step 6 & 7: Build bar-by-bar central path & calibrated ASYMMETRIC empirical uncertainty bands + timestamps
   const forecast = [];
   const projectedTimestamps = advanceFutureTimestampsWithCalendar(originOpenMs, cleanTf, horizon, cleanSym, cleanProv);
   const ambiguityPenalty = 1 + (1 - structureClarity) * 0.45 + (volInfo.regime === 'EXPANDING' ? 0.22 : 0);
+  // Modest bias-aware tail skew combined with empirical historical up/down return dispersion
+  const biasUpMult = biasDir > 0 ? 1.06 : biasDir < 0 ? 0.94 : 1.0;
+  const biasDownMult = biasDir < 0 ? 1.06 : biasDir > 0 ? 0.94 : 1.0;
+  const upBandMult = clamp(volInfo.upAsymFactor * biasUpMult, 0.74, 1.35);
+  const downBandMult = clamp(volInfo.downAsymFactor * biasDownMult, 0.74, 1.35);
 
   for (let step = 1; step <= horizon; step++) {
     const prevOpenMs = projectedTimestamps[step - 1] || advanceForecastTimestampMs(originOpenMs, cleanTf, cleanSym, cleanProv);
@@ -577,15 +751,18 @@ export function computeStructuralForecast({
     const eased = smoothSegmentInterpolate(localT, asymExp);
     const central = Math.max(1e-6, seg.start_price + (seg.price - seg.start_price) * eased);
 
-    // Horizon uncertainty half-width calibrated from empirical residual dispersion + regime + clarity
-    const innerHalf = volInfo.baseStepSigma * Math.sqrt(step) * 0.72 * ambiguityPenalty;
-    const outerHalf = innerHalf * 1.82;
+    // Horizon uncertainty half-widths calibrated from empirical asymmetric dispersion + regime + clarity
+    const baseInner = volInfo.baseStepSigma * Math.sqrt(step) * 0.72 * ambiguityPenalty;
+    const innerUp = baseInner * upBandMult;
+    const innerDown = baseInner * downBandMult;
+    const outerUp = innerUp * 1.82;
+    const outerDown = innerDown * 1.82;
 
     const q50 = Number(central.toFixed(6));
-    const q25 = Number(Math.max(1e-6, central - innerHalf).toFixed(6));
-    const q75 = Number((central + innerHalf).toFixed(6));
-    const q10 = Number(Math.max(1e-6, central - outerHalf).toFixed(6));
-    const q90 = Number((central + outerHalf).toFixed(6));
+    const q25 = Number(Math.max(1e-6, Math.min(q50, central - innerDown)).toFixed(6));
+    const q75 = Number(Math.max(q50, central + innerUp).toFixed(6));
+    const q10 = Number(Math.max(1e-6, Math.min(q25, central - outerDown)).toFixed(6));
+    const q90 = Number(Math.max(q75, central + outerUp).toFixed(6));
 
     forecast.push({
       step,
@@ -621,16 +798,21 @@ export function computeStructuralForecast({
   }
   limitations.push('Structural projection reflects historical wave & volatility behavior, not certainty.');
 
-  // First legacy-model integration: Causal Historical Analogs.
+  // First legacy-model integration: Causal Historical Analogs (skipped in fast Walk-Forward structural evaluation).
   // This produces a real historical analog close-path, rebased to the current close.
   // It is intentionally an illustrative path, not a calibrated probability or synthetic OHLC.
   let empiricalAnalogResult = {
-    status: 'INSUFFICIENT_EVIDENCE',
-    reason: horizon < 10 ? 'Causal Historical Analogs requires a minimum 10-bar horizon.' : 'Historical analog search was not completed.',
+    status: skipAnalogs ? 'SKIPPED_FAST_MODE' : 'INSUFFICIENT_EVIDENCE',
+    reason: skipAnalogs
+      ? 'Skipped redundant analog pass during fast structural walk-forward.'
+      : horizon < 10
+        ? 'Causal Historical Analogs requires a minimum 10-bar horizon.'
+        : 'Historical analog search was not completed.',
     matchedCount: 0,
     representativePaths: [],
+    points: [],
   };
-  if (horizon >= 10) {
+  if (!skipAnalogs && horizon >= 10) {
     const analogEngine = new EmpiricalAnalogEngine(24, horizon, cleanTf);
     empiricalAnalogResult = analogEngine.projectEmpirical(
       closedCandles,
@@ -659,6 +841,38 @@ export function computeStructuralForecast({
       }]
     : [];
 
+  // Quantify structural-vs-analog convergence so users see when both models agree or diverge
+  let analogAgreementScore = null;
+  let analogCorridorOverlapPct = null;
+  let analogDirectionAligned = null;
+  if (
+    empiricalAnalogResult.status === 'SUCCESS' &&
+    Array.isArray(empiricalAnalogResult.points) &&
+    empiricalAnalogResult.points.length >= horizon
+  ) {
+    let inInner = 0;
+    let inOuter = 0;
+    let maeNormSum = 0;
+    const normScale = Math.max(1e-6, volInfo.atrNow * Math.sqrt(Math.max(1, horizon * 0.5)));
+    for (let i = 0; i < horizon; i++) {
+      const sP = forecast[i].q50_median;
+      const aPt = empiricalAnalogResult.points[i];
+      if (sP >= aPt.q25 && sP <= aPt.q75) inInner++;
+      if (sP >= aPt.q10 && sP <= aPt.q90) inOuter++;
+      maeNormSum += Math.abs(sP - aPt.q50) / normScale;
+    }
+    const innerFrac = inInner / horizon;
+    const outerFrac = inOuter / horizon;
+    const sTermDir = forecast[horizon - 1].q50_median >= lastClose ? 1 : -1;
+    const aTermDir = empiricalAnalogResult.points[horizon - 1].q50 >= lastClose ? 1 : -1;
+    analogDirectionAligned = sTermDir === aTermDir;
+    const proximityScore = Math.exp(-maeNormSum / horizon);
+    analogCorridorOverlapPct = Number((outerFrac * 100).toFixed(1));
+    analogAgreementScore = Number(
+      clamp(0.45 * outerFrac + 0.25 * innerFrac + 0.15 * proximityScore + (analogDirectionAligned ? 0.15 : 0), 0, 1).toFixed(3)
+    );
+  }
+
   const confidenceGrade = structureClarity >= 0.56 && closedCandles.length >= 90 && gapCount <= 1 ? 'MODERATE' : 'LOW';
 
   return {
@@ -677,6 +891,11 @@ export function computeStructuralForecast({
         atr_current: Number(volInfo.atrNow.toFixed(6)),
         volatility_ratio: volInfo.volRatio,
         volatility_regime: volInfo.regime,
+        band_asymmetry_up: Number(upBandMult.toFixed(3)),
+        band_asymmetry_down: Number(downBandMult.toFixed(3)),
+        structural_zones_count: structuralZones.length,
+        zone_magnet_hits: turningPoints.filter((tp) => tp.zone_magnet).length,
+        analog_agreement_score: analogAgreementScore,
         structure_bias: structureBias,
         structure_clarity: Number(structureClarity.toFixed(3)),
         impulse_amp_median: Number(impulseAmpMedian.toFixed(6)),
@@ -710,6 +929,7 @@ export function computeStructuralForecast({
       open_time_utc_ms: s.open_time_utc_ms,
       price: Number(s.price.toFixed(6)),
     })),
+    structural_zones: structuralZones,
     turning_points: turningPoints,
     forecast,
     model_paths: empiricalModelPaths,
@@ -717,6 +937,13 @@ export function computeStructuralForecast({
       empirical_analogs: {
         status: empiricalAnalogResult.status || 'INSUFFICIENT_EVIDENCE',
         matched_count: Number(empiricalAnalogResult.matchedCount || 0),
+        declustered_count: Number(empiricalAnalogResult.declusteredCount || 0),
+        min_separation_bars: Number(empiricalAnalogResult.minSeparationBars || 0),
+        effective_sample_weight: Number(empiricalAnalogResult.effectiveSampleWeight || 0),
+        avg_vol_scale: Number(empiricalAnalogResult.avgVolScale || 1),
+        agreement_score: analogAgreementScore,
+        corridor_overlap_pct: analogCorridorOverlapPct,
+        direction_aligned: analogDirectionAligned,
         reason: String(empiricalAnalogResult.reason || ''),
         path_id: chosenAnalogPath?.id || '',
         illustrative_only: true,

@@ -2059,3 +2059,194 @@ test('FORECAST-PKG1-MODELS-04: GRU is prefix-invariant across horizons, Prophet 
   assert.match(appSrc, /state\._forecastCanvasPayload = structuralPreview \|\| nativeEvaluation \|\| null/);
   assert.match(appSrc, /action === 'set-forecast-horizon'[\s\S]{0,1200}applyNativeModelForecastToTab\(activeTab, activeTab\.structuralForecastModel\)/);
 });
+
+test('FORECAST-PKG2-ANALOGS-01: EmpiricalAnalogEngine enforces NMS de-clustering, volatility scaling, kernel-weighted quantiles, and strict causality', async () => {
+  const { EmpiricalAnalogEngine } = await import('../host_subdomain/assets/js/forecast/empiricalAnalogEngine.js');
+
+  // Build 420 bars: calm regime in first 360 bars, then 2.2x higher volatility in last 60 bars
+  const candles = [];
+  let price = 100;
+  const baseMs = Date.UTC(2026, 0, 5, 0, 0, 0);
+  for (let i = 0; i < 420; i++) {
+    const isHighVol = i >= 360;
+    const amp = isHighVol ? 0.011 : 0.0045;
+    const wave = Math.sin(i * 0.27) * amp + Math.cos(i * 0.11) * (amp * 0.45);
+    const open = price;
+    const close = Math.max(10, open * Math.exp(wave));
+    const spread = Math.max(Math.abs(close - open), open * amp * 0.85);
+    candles.push({
+      open_time_utc_ms: baseMs + i * 900000,
+      openTimeUtcMs: baseMs + i * 900000,
+      open,
+      high: Math.max(open, close) + spread * 0.4,
+      low: Math.min(open, close) - spread * 0.4,
+      close,
+      volume: 1000,
+    });
+    price = close;
+  }
+
+  const H = 15;
+  const engine = new EmpiricalAnalogEngine(24, H, 'M15');
+  const currentAtr = engine.calculateATR(candles, 14);
+  const search = engine.findCausalAnalogs(candles, H, currentAtr);
+  assert.equal(search.status, 'READY');
+  assert.ok(search.analogs.length >= 6);
+  assert.ok(search.minSeparationBars >= 3, `Expected NMS minSeparationBars >= 3, got ${search.minSeparationBars}`);
+  assert.ok(search.avgVolScale > 1.25, `Expected volatility scale > 1.25 when current regime is higher-vol, got ${search.avgVolScale}`);
+
+  // Verify strict causality AND pairwise NMS spacing
+  for (let i = 0; i < search.analogs.length; i++) {
+    const a = search.analogs[i];
+    assert.ok(a.futureEndIndex < candles.length - search.windowLength - search.embargoGap, 'Analog future must respect strict embargo');
+    assert.ok(a.weight > 0 && Number.isFinite(a.weight));
+    for (let j = i + 1; j < search.analogs.length; j++) {
+      assert.ok(
+        Math.abs(a.originIndex - search.analogs[j].originIndex) >= search.minSeparationBars,
+        `De-clustered analogs must be separated by at least ${search.minSeparationBars} bars`
+      );
+    }
+  }
+
+  const proj = engine.projectEmpirical(candles, { lastClose: candles[candles.length - 1].close, atr14: currentAtr }, H);
+  assert.equal(proj.status, 'SUCCESS');
+  assert.equal(proj.points.length, H);
+  for (const pt of proj.points) {
+    assert.ok(pt.q10 <= pt.q25 && pt.q25 <= pt.q50 && pt.q50 <= pt.q75 && pt.q75 <= pt.q90, 'Kernel-weighted quantiles must be monotonic');
+  }
+  const centerMedoid = proj.representativePaths.find((p) => p.id === 'ANALOG_CENTER');
+  assert.ok(centerMedoid && centerMedoid.closes.length === H && centerMedoid.volScale > 1.0);
+});
+
+test('FORECAST-PKG2-STRUCTURAL-02: Structural JS extracts S/R zones, asymmetric empirical bands, analog agreement diagnostics, and stays deterministic without sin/random', async () => {
+  const { computeStructuralForecast } = await import('../host_subdomain/assets/js/algorithms/structuralForecastEngine.js');
+  const src = await readFile(new URL('../host_subdomain/assets/js/algorithms/structuralForecastEngine.js', import.meta.url), 'utf8');
+  const execSrc = src.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.equal(/Math\.random|Math\.sin|Math\.cos/.test(execSrc), false, 'structuralForecastEngine.js must remain free of Math.random/sin/cos');
+
+  // Construct deterministic skewed swing series with repeated resistance around ~108 and support around ~96
+  const baseMs = Date.UTC(2026, 1, 2, 0, 0, 0);
+  const candles = [];
+  const pattern = [96, 97.5, 99.8, 102.5, 105.6, 108.0, 106.2, 103.4, 100.1, 97.2, 96.1, 98.4, 101.6, 105.0, 108.1, 107.0, 104.1, 100.5, 97.0, 96.2];
+  for (let i = 0; i < 220; i++) {
+    const close = pattern[i % pattern.length] + (i >= 180 ? (i - 180) * 0.04 : 0);
+    const prev = i > 0 ? candles[i - 1].close : close - 0.5;
+    const hi = Math.max(prev, close) + 0.65;
+    const lo = Math.min(prev, close) - 0.55;
+    candles.push({
+      open_time_utc_ms: baseMs + i * 3600000,
+      open: prev,
+      high: hi,
+      low: lo,
+      close,
+      volume: 800,
+      is_closed: true,
+    });
+  }
+
+  const nowMs = candles[candles.length - 1].open_time_utc_ms + 86400000 * 7;
+  const res = computeStructuralForecast({
+    candles,
+    symbolCode: 'SPOTBRENT',
+    provider: 'tvdatafeed',
+    timeframe: 'H1',
+    horizonBars: 24,
+    nowMs,
+  });
+
+  assert.equal(res.status, 'READY');
+  assert.ok(Array.isArray(res.structural_zones) && res.structural_zones.length >= 2, 'Must extract real clustered S/R zones');
+  assert.ok(Number.isFinite(res.engine.params.band_asymmetry_up) && Number.isFinite(res.engine.params.band_asymmetry_down));
+  assert.ok(
+    res.model_diagnostics.empirical_analogs.agreement_score >= 0 &&
+      res.model_diagnostics.empirical_analogs.agreement_score <= 1,
+    'Must emit normalized analog_agreement_score in [0, 1]'
+  );
+  for (const pt of res.forecast) {
+    assert.ok(pt.q10 <= pt.q25 && pt.q25 <= pt.q50_median && pt.q50_median <= pt.q75 && pt.q75 <= pt.q90);
+  }
+
+  const fastRes = computeStructuralForecast({
+    candles,
+    symbolCode: 'SPOTBRENT',
+    provider: 'tvdatafeed',
+    timeframe: 'H1',
+    horizonBars: 24,
+    nowMs,
+    skipAnalogs: true,
+  });
+  assert.equal(fastRes.status, 'READY');
+  assert.equal(fastRes.model_diagnostics.empirical_analogs.status, 'SKIPPED_FAST_MODE');
+  assert.deepEqual(fastRes.forecast, res.forecast, 'skipAnalogs must not alter the deterministic Structural JS trajectory');
+});
+
+test('FORECAST-PKG2-WF-REPLAY-03: Walk-Forward benchmarks empirical_analogs & structural_wave_js, Compare includes structural_wave_js, and Replay scores selected model directly', async () => {
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+  const { runHistoricalForecastReplay } = await import('../host_subdomain/assets/js/views/forecastView.js');
+  const viewSrc = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+  const appSrc = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+
+  assert.match(viewSrc, /'structural_wave_js',\s*'empirical_analogs'/);
+  assert.match(appSrc, /runHistoricalForecastReplay\(activeTab,\s*\{\s*selectedModelId:/);
+
+  // Build 320 bars of BTCUSD H1 so disjoint nested Walk-Forward runs with real outer windows
+  const baseMs = Date.UTC(2026, 0, 1, 0, 0, 0);
+  const candles = [];
+  let px = 60000;
+  for (let i = 0; i < 320; i++) {
+    const ret = Math.sin(i * 0.21) * 0.0065 + Math.cos(i * 0.07) * 0.003 + 0.0002;
+    const open = px;
+    const close = Math.max(1000, open * Math.exp(ret));
+    const span = Math.max(Math.abs(close - open), open * 0.004);
+    candles.push({
+      open_time_utc_ms: baseMs + i * 3600000,
+      openTimeUtcMs: baseMs + i * 3600000,
+      open,
+      high: Math.max(open, close) + span * 0.45,
+      low: Math.min(open, close) - span * 0.45,
+      close,
+      volume: 1200,
+      is_closed: true,
+    });
+    px = close;
+  }
+
+  const proj = ForecastEngine.project(candles, {
+    symbolCode: 'BTCUSD',
+    providerId: 'tvdatafeed',
+    timeframe: 'H1',
+    horizonBars: 10,
+    skipBootstrap: true,
+    bypassWalkForwardCache: true,
+  });
+
+  const trajIds = proj.modelTrajectories.map((t) => t.modelId);
+  assert.ok(trajIds.includes('empirical_analogs'), 'ForecastEngine must emit empirical_analogs trajectory');
+  assert.ok(trajIds.includes('structural_wave_js'), 'ForecastEngine must emit structural_wave_js trajectory');
+
+  const wfBench = proj.walkForward?.modelBenchmarks || [];
+  const analogBench = wfBench.find((b) => b.modelId === 'empirical_analogs');
+  const structBench = wfBench.find((b) => b.modelId === 'structural_wave_js');
+  assert.ok(analogBench && analogBench.evaluatedWindows > 0 && Number.isFinite(analogBench.wis), 'Walk-Forward must benchmark empirical_analogs');
+  assert.ok(structBench && structBench.evaluatedWindows > 0 && Number.isFinite(structBench.wis), 'Walk-Forward must benchmark structural_wave_js');
+
+  // Replay directly on structural_wave_js and empirical_analogs without silent fallback to naive_persistence
+  const tab = {
+    symbolCode: 'BTCUSD',
+    provider: 'tvdatafeed',
+    timeframe: 'H1',
+    candles,
+    forecastHorizonBars: 10,
+    structuralForecastModel: 'structural_wave_js',
+  };
+  const replayStruct = await runHistoricalForecastReplay(tab, { maxWindows: 3, horizonBars: 10, selectedModelId: 'structural_wave_js' });
+  assert.equal(replayStruct.status, 'COMPLETED');
+  assert.equal(replayStruct.selectedModelId, 'structural_wave_js');
+  assert.ok(replayStruct.windows.every((w) => w.modelId === 'structural_wave_js'), 'Structural JS Replay must score structural_wave_js, not naive_persistence');
+
+  const replayAnalog = await runHistoricalForecastReplay(tab, { maxWindows: 3, horizonBars: 10, selectedModelId: 'empirical_analogs' });
+  assert.equal(replayAnalog.status, 'COMPLETED');
+  assert.equal(replayAnalog.selectedModelId, 'empirical_analogs');
+  assert.ok(replayAnalog.windows.every((w) => w.modelId === 'empirical_analogs'), 'Empirical Analogs Replay must score empirical_analogs directly');
+});
+

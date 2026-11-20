@@ -15,6 +15,7 @@ import {
 import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.47.40';
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.40';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.40';
+import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
 
 import { state, escapeHtml, getCachedOrAggregatedCandles, safeLocalStorageSet } from '../core/store.js?v=1.47.40';
 
@@ -205,7 +206,7 @@ export function renderForecastStudioFanCanvas(
       t.points.length >= pts.length &&
       t.modelId !== forecast.selectedChartModelId &&
       (!Array.isArray(forecast.visibleComparisonModelIds) || forecast.visibleComparisonModelIds.includes(t.modelId)) &&
-      ['empirical_analogs', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_arima_statsmodels', 'py_prophet', 'py_lstm_mc', 'py_lstm_torch', 'py_tft', 'py_tft_torch'].includes(t.modelId)
+      ['structural_wave_js', 'empirical_analogs', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_arima_statsmodels', 'py_prophet', 'py_lstm_mc', 'py_lstm_torch', 'py_tft', 'py_tft_torch'].includes(t.modelId)
   );
 
   let minP = Infinity;
@@ -932,7 +933,15 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
     Number(c.close) > 0
   ).slice().sort((a, b) => Number(a.open_time_utc_ms || a.openTimeUtcMs || 0) - Number(b.open_time_utc_ms || b.openTimeUtcMs || 0));
   const horizonBars = clampHorizonBars(options.horizonBars || activeTab.forecastHorizonBars || state.chartPreferences.forecastHorizonBars || 30);
-  const selectedModelId = String(options.selectedModelId || activeTab.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
+  const selectedModelId = String(
+    options.selectedModelId ||
+      activeTab.structuralForecastModel ||
+      activeTab.selectedForecastModelId ||
+      state.chartPreferences.selectedForecastModelId ||
+      'AUTO'
+  );
+  const isStructuralReplay = selectedModelId === 'structural_wave_js';
+  const minTrainingAnchor = isStructuralReplay ? 80 : 154;
   const maxWindows = Math.max(2, Math.min(10, Math.round(Number(options.maxWindows || state.chartPreferences.forecastReplayWindowCount || 3))));
   const fromDate = String(options.fromDate ?? state.chartPreferences.forecastReplayFromDate ?? '').trim();
   const toDate = String(options.toDate ?? state.chartPreferences.forecastReplayToDate ?? '').trim();
@@ -941,12 +950,12 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
   const windows = [];
   const invalidRange = (fromDate && !Number.isFinite(fromMs)) || (toDate && !Number.isFinite(toMs)) || (fromMs != null && toMs != null && fromMs > toMs);
   if (invalidRange) {
-    const result = { status: 'INVALID_DATE_RANGE', reason: 'Replay date range is invalid. Use UTC dates with From <= To.', symbolCode: activeTab.symbolCode, timeframe: activeTab.timeframe, horizonBars, fromDate, toDate, windows: [] };
+    const result = { status: 'INVALID_DATE_RANGE', reason: 'Replay date range is invalid. Use UTC dates with From <= To.', symbolCode: activeTab.symbolCode, timeframe: activeTab.timeframe, horizonBars, selectedModelId, fromDate, toDate, windows: [] };
     state._forecastReplayResult = result;
     return result;
   }
 
-  let firstAnchor = 154;
+  let firstAnchor = minTrainingAnchor;
   if (fromMs != null) {
     const firstInRange = candles.findIndex((c) => Number(c.open_time_utc_ms || c.openTimeUtcMs || 0) >= fromMs);
     if (firstInRange < 0) firstAnchor = candles.length;
@@ -961,13 +970,14 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
     }
     lastAnchor = Math.min(lastAnchor, lastInRange - horizonBars);
   }
-  if (firstAnchor > lastAnchor || firstAnchor < 154) {
+  if (firstAnchor > lastAnchor || firstAnchor < minTrainingAnchor) {
     const result = {
       status: 'INSUFFICIENT_HISTORY',
-      reason: `The selected range needs 155 training candles and ${horizonBars} future candles after each anchor; available: ${candles.length}.`,
+      reason: `The selected range needs ${minTrainingAnchor + 1} training candles and ${horizonBars} future candles after each anchor; available: ${candles.length}.`,
       symbolCode: activeTab.symbolCode,
       timeframe: activeTab.timeframe,
       horizonBars,
+      selectedModelId,
       fromDate,
       toDate,
       windows: [],
@@ -980,6 +990,7 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
   ).filter((value, index, all) => all.indexOf(value) === index);
 
   defaultForecastRegistry.applyConfig(state.chartPreferences.forecastPluginConfig);
+  const needsWalkForwardPerAnchor = selectedModelId === 'AUTO' || selectedModelId === 'ensemble';
   for (const anchorIndex of anchorIndexes) {
     const trainingCandles = candles.slice(0, anchorIndex + 1);
     const actualCandles = candles.slice(anchorIndex + 1, anchorIndex + 1 + horizonBars);
@@ -987,22 +998,61 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
     // Yield between windows so the chart remains responsive during manual replay.
     await new Promise((resolve) => setTimeout(resolve, 0));
 
-    const forecast = ForecastEngine.project(trainingCandles, {
-      symbolCode: activeTab.symbolCode,
-      providerId: activeTab.provider || 'tvdatafeed',
-      timeframe: activeTab.timeframe,
-      horizonBars,
-      renderMode: normalizeRenderMode(activeTab.forecastRenderMode || state.chartPreferences.forecastRenderMode || RENDER_MODES.FAN_CHART),
-      selectedScenarioId: activeTab.selectedScenarioId || state.chartPreferences.selectedScenarioId || 'SCENARIO_A',
-      selectedModelId,
-      registry: defaultForecastRegistry,
-      workerUrl: '',
-    });
+    const anchorTimeUtcMs = Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || trainingCandles[trainingCandles.length - 1]?.openTimeUtcMs || 0);
+    let forecast = null;
+    if (isStructuralReplay) {
+      const sRes = computeStructuralForecast({
+        candles: trainingCandles,
+        symbolCode: activeTab.symbolCode,
+        provider: activeTab.provider || 'tvdatafeed',
+        timeframe: activeTab.timeframe,
+        horizonBars,
+        nowMs: Math.max(Date.now(), anchorTimeUtcMs + 86400000 * 14),
+        skipAnalogs: true,
+      });
+      if (sRes?.status === 'READY' && Array.isArray(sRes.forecast) && sRes.forecast.length === horizonBars) {
+        forecast = {
+          status: 'READY',
+          selectedChartModelId: 'structural_wave_js',
+          inputHash: sRes.series?.context_close_sha256 || '',
+          points: sRes.forecast.map((pt) => ({
+            stepAhead: pt.step,
+            openTimeUtcMs: pt.open_time_utc_ms,
+            q10: Number(pt.q10),
+            q25: Number(pt.q25),
+            q50: Number(pt.q50_median),
+            q75: Number(pt.q75),
+            q90: Number(pt.q90),
+          })),
+        };
+      } else {
+        forecast = {
+          status: sRes?.status || 'FAILED',
+          selectionReason: sRes?.error || 'Structural JS did not produce a complete path',
+          points: [],
+        };
+      }
+    } else {
+      forecast = ForecastEngine.project(trainingCandles, {
+        symbolCode: activeTab.symbolCode,
+        providerId: activeTab.provider || 'tvdatafeed',
+        timeframe: activeTab.timeframe,
+        horizonBars,
+        renderMode: normalizeRenderMode(activeTab.forecastRenderMode || state.chartPreferences.forecastRenderMode || RENDER_MODES.FAN_CHART),
+        selectedScenarioId: activeTab.selectedScenarioId || state.chartPreferences.selectedScenarioId || 'SCENARIO_A',
+        selectedModelId,
+        registry: defaultForecastRegistry,
+        workerUrl: '',
+        skipWalkForward: !needsWalkForwardPerAnchor,
+      });
+    }
+
     if (!forecast || forecast.status === FORECAST_STATUS.DATA_NOT_READY || !Array.isArray(forecast.points) || forecast.points.length !== horizonBars) {
       windows.push({
         status: forecast?.status || 'FAILED',
+        modelId: forecast?.selectedChartModelId || selectedModelId,
         reason: forecast?.readiness?.issues?.join('; ') || forecast?.selectionReason || 'Forecast did not produce a complete path',
-        anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || trainingCandles[trainingCandles.length - 1]?.openTimeUtcMs || 0),
+        anchorTimeUtcMs,
       });
       continue;
     }
@@ -1026,7 +1076,7 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
     windows.push({
       status: forecast.status,
       modelId: forecast.selectedChartModelId || selectedModelId,
-      anchorTimeUtcMs: Number(trainingCandles[trainingCandles.length - 1]?.open_time_utc_ms || trainingCandles[trainingCandles.length - 1]?.openTimeUtcMs || 0),
+      anchorTimeUtcMs,
       actualTerminal,
       predictedTerminal,
       mae,
@@ -1112,6 +1162,7 @@ function renderHistoricalReplaySection(isFa, decimals) {
   const rows = sameContext && Array.isArray(replay.windows) ? replay.windows.map((w, index) => `
     <tr>
       <td class="ltr-num"><button type="button" class="chip ${selectedReplayIndex === index ? 'active' : ''}" data-action="set-forecast-replay-window" data-index="${index}">${index + 1}</button></td>
+      <td class="ltr-num">${escapeHtml(w.modelId || replay.selectedModelId || '—')}</td>
       <td class="ltr-num">${w.anchorTimeUtcMs ? new Date(w.anchorTimeUtcMs).toISOString().replace('T', ' ').slice(0, 16) : '—'}</td>
       <td class="ltr-num">${escapeHtml(w.status || '—')}</td>
       <td class="ltr-num">${Number.isFinite(w.predictedTerminal) ? PriceFormatter.formatPrice(w.predictedTerminal, decimals) : '—'}</td>
@@ -1121,6 +1172,7 @@ function renderHistoricalReplaySection(isFa, decimals) {
     </tr>`).join('') : '';
   const summary = sameContext && replay.summary ? `
     <div class="ci-fc-ladder-grid ltr-num">
+      <div class="ci-fc-mini-stat"><span>Model</span><strong>${escapeHtml(replay.selectedModelId || 'AUTO')}</strong></div>
       <div class="ci-fc-mini-stat"><span>Mean MAE</span><strong>${replay.summary.meanMaePct.toFixed(3)}%</strong></div>
       <div class="ci-fc-mini-stat"><span>80% Coverage</span><strong>${replay.summary.meanCoverage80Pct.toFixed(1)}%</strong></div>
       <div class="ci-fc-mini-stat"><span>Direction Accuracy</span><strong>${replay.summary.directionAccuracyPct.toFixed(1)}%</strong></div>
@@ -1140,8 +1192,8 @@ function renderHistoricalReplaySection(isFa, decimals) {
         <label class="ci-fc-param-item ltr-num"><span>${isFa ? 'از تاریخ UTC' : 'From UTC'}</span><input type="date" id="ci-forecast-replay-from" value="${escapeHtml(replayFromDate)}" /></label>
         <label class="ci-fc-param-item ltr-num"><span>${isFa ? 'تا تاریخ UTC' : 'To UTC'}</span><input type="date" id="ci-forecast-replay-to" value="${escapeHtml(replayToDate)}" /></label>
       </div>
-      ${sameContext ? `<span class="ci-fc-status-badge ${replay.status === 'COMPLETED' ? 'ci-fc-badge-valid' : 'ci-fc-badge-provisional'} ltr-num">${escapeHtml(replay.status)}</span><p style="font-size:11px;color:var(--text-muted);">${escapeHtml(replay.reason)}</p>${summary}<div style="overflow-x:auto;margin-top:8px;"><table class="ci-fc-table"><thead><tr><th>#</th><th>Anchor UTC</th><th>Status</th><th>Predicted</th><th>Actual</th><th>MAE %</th><th>80% Cov.</th></tr></thead><tbody>${rows}</tbody></table></div>${selectedReplayWindow?.forecastPoints?.length ? `<div class="row-between" style="margin-top:10px;gap:8px;flex-wrap:wrap;"><strong>${isFa ? 'مسیر پیش‌بینی در برابر مسیر واقعی' : 'Forecast vs Actual · Selected Replay Window'}</strong><span class="ltr-num">${selectedReplayIndex + 1}/${replay.windows.length}</span></div><canvas id="forecast-replay-canvas" class="ci-fc-preview-canvas" style="margin-top:8px;min-height:220px;"></canvas><div style="font-size:10px;color:var(--text-muted);">${isFa ? 'خط بنفش/نارنجی: میانه پیش‌بینی · خط خاکستری نقطه‌چین: قیمت واقعی بعد از مبدأ' : 'Dashed forecast median vs dotted realized closes after the historical anchor.'}</div>` : ''}` : `<p style="font-size:11px;color:var(--text-muted);">${isFa ? 'برای نماد و تایم‌فریم فعلی هنوز بازپخش اجرا نشده است.' : 'No replay has been run for the current symbol/timeframe.'}</p>`}
-      ${replayHistory.length ? `<div style="overflow-x:auto;margin-top:12px;"><strong style="font-size:11.5px;">${isFa ? 'مقایسه اجراهای ذخیره‌شده' : 'Saved Replay Run Comparison'}</strong><table class="ci-fc-table"><thead><tr><th>${isFa ? 'زمان UTC' : 'Run UTC'}</th><th>${isFa ? 'بازه' : 'Range'}</th><th>${isFa ? 'وضعیت' : 'Status'}</th><th>MAE %</th><th>80% Cov.</th><th>Dir. Acc.</th></tr></thead><tbody>${replayHistory.map((item) => `<tr><td class="ltr-num">${new Date(item.generatedAtUtcMs).toISOString().slice(0, 16).replace('T', ' ')}</td><td class="ltr-num">${escapeHtml(item.fromDate || '—')} → ${escapeHtml(item.toDate || '—')}</td><td class="ltr-num">${escapeHtml(item.status)}</td><td class="ltr-num">${item.summary ? item.summary.meanMaePct.toFixed(3) + '%' : '—'}</td><td class="ltr-num">${item.summary ? item.summary.meanCoverage80Pct.toFixed(1) + '%' : '—'}</td><td class="ltr-num">${item.summary ? item.summary.directionAccuracyPct.toFixed(1) + '%' : '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}
+      ${sameContext ? `<span class="ci-fc-status-badge ${replay.status === 'COMPLETED' ? 'ci-fc-badge-valid' : 'ci-fc-badge-provisional'} ltr-num">${escapeHtml(replay.status)}</span><p style="font-size:11px;color:var(--text-muted);">${escapeHtml(replay.reason)}</p>${summary}<div style="overflow-x:auto;margin-top:8px;"><table class="ci-fc-table"><thead><tr><th>#</th><th>Model</th><th>Anchor UTC</th><th>Status</th><th>Predicted</th><th>Actual</th><th>MAE %</th><th>80% Cov.</th></tr></thead><tbody>${rows}</tbody></table></div>${selectedReplayWindow?.forecastPoints?.length ? `<div class="row-between" style="margin-top:10px;gap:8px;flex-wrap:wrap;"><strong>${isFa ? 'مسیر پیش‌بینی در برابر مسیر واقعی' : 'Forecast vs Actual · Selected Replay Window'}</strong><span class="ltr-num">${selectedReplayIndex + 1}/${replay.windows.length}</span></div><canvas id="forecast-replay-canvas" class="ci-fc-preview-canvas" style="margin-top:8px;min-height:220px;"></canvas><div style="font-size:10px;color:var(--text-muted);">${isFa ? 'خط بنفش/نارنجی: میانه پیش‌بینی · خط خاکستری نقطه‌چین: قیمت واقعی بعد از مبدأ' : 'Dashed forecast median vs dotted realized closes after the historical anchor.'}</div>` : ''}` : `<p style="font-size:11px;color:var(--text-muted);">${isFa ? 'برای نماد و تایم‌فریم فعلی هنوز بازپخش اجرا نشده است.' : 'No replay has been run for the current symbol/timeframe.'}</p>`}
+      ${replayHistory.length ? `<div style="overflow-x:auto;margin-top:12px;"><strong style="font-size:11.5px;">${isFa ? 'مقایسه اجراهای ذخیره‌شده' : 'Saved Replay Run Comparison'}</strong><table class="ci-fc-table"><thead><tr><th>${isFa ? 'زمان UTC' : 'Run UTC'}</th><th>Model</th><th>${isFa ? 'بازه' : 'Range'}</th><th>${isFa ? 'وضعیت' : 'Status'}</th><th>MAE %</th><th>80% Cov.</th><th>Dir. Acc.</th></tr></thead><tbody>${replayHistory.map((item) => `<tr><td class="ltr-num">${new Date(item.generatedAtUtcMs).toISOString().slice(0, 16).replace('T', ' ')}</td><td class="ltr-num">${escapeHtml(item.selectedModelId || 'AUTO')}</td><td class="ltr-num">${escapeHtml(item.fromDate || '—')} → ${escapeHtml(item.toDate || '—')}</td><td class="ltr-num">${escapeHtml(item.status)}</td><td class="ltr-num">${item.summary ? item.summary.meanMaePct.toFixed(3) + '%' : '—'}</td><td class="ltr-num">${item.summary ? item.summary.meanCoverage80Pct.toFixed(1) + '%' : '—'}</td><td class="ltr-num">${item.summary ? item.summary.directionAccuracyPct.toFixed(1) + '%' : '—'}</td></tr>`).join('')}</tbody></table></div>` : ''}
     </div>
   `;
 }

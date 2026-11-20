@@ -916,18 +916,21 @@ function renderForecastWorkspaceContent(activeTab) {
           label: path.label || 'Historical Analog',
           closes: (path.points || []).map((point) => Number(point.price)),
         })),
-        modelTrajectories: [],
+        modelTrajectories: nativeEvaluation?.modelTrajectories || [],
+        visibleComparisonModelIds: visibleCompareIds,
       }
     : null;
   state._forecastCanvasPayload = structuralPreview || nativeEvaluation || null;
   const activeStructMeta = structuralForecastForPreview || structuralForecast;
+  const structZonesCount = Number(activeStructMeta?.engine?.params?.structural_zones_count || 0);
+  const structAgreeScore = activeStructMeta?.engine?.params?.analog_agreement_score;
   const structuralBannerHtml = !usesNativeEvaluation && nativeTab === 'overview'
     ? `<div class="ci-fc-card" style="margin-bottom:12px;border-color:rgba(139,92,246,0.45);">
         <div class="row-between" style="gap:10px;flex-wrap:wrap;">
           <div>
             <strong style="font-size:13px;">${isFa ? 'موتور موج ساختاری (Structural JS)' : 'Structural Wave JS Engine'}</strong>
             <div class="ltr-num" style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
-              ${escapeHtml(activeStructMeta?.status || activeTab?.structuralForecastStatus || 'IDLE')}${activeStructMeta?.engine?.params?.structure_bias ? ' · ' + escapeHtml(activeStructMeta.engine.params.structure_bias) : ''}${activeStructMeta?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(activeStructMeta.engine.params.volatility_regime) : ''}${structuralPreview ? ' · ' + structuralPreview.points.length + ' bars ready' : ''}
+              ${escapeHtml(activeStructMeta?.status || activeTab?.structuralForecastStatus || 'IDLE')}${activeStructMeta?.engine?.params?.structure_bias ? ' · ' + escapeHtml(activeStructMeta.engine.params.structure_bias) : ''}${activeStructMeta?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(activeStructMeta.engine.params.volatility_regime) : ''}${structZonesCount > 0 ? ' · ' + structZonesCount + ' S/R zones' : ''}${structAgreeScore != null ? ' · Analog Sync ' + Math.round(Number(structAgreeScore) * 100) + '%' : ''}${structuralPreview ? ' · ' + structuralPreview.points.length + ' bars ready' : ''}
             </div>
             ${activeTab?.structuralForecastError ? `<div style="color:var(--bear);font-size:11.5px;margin-top:4px;">${escapeHtml(activeTab.structuralForecastError)}</div>` : ''}
           </div>
@@ -2840,6 +2843,7 @@ document.addEventListener('click', async (e) => {
     };
     renderApp();
     runHistoricalForecastReplay(activeTab, {
+      selectedModelId: activeTab.structuralForecastModel || activeTab.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO',
       maxWindows: Number(state.chartPreferences.forecastReplayWindowCount || 3),
       fromDate: state.chartPreferences.forecastReplayFromDate,
       toDate: state.chartPreferences.forecastReplayToDate,

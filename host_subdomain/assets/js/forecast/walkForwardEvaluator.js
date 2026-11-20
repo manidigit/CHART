@@ -18,6 +18,8 @@ import {
   fitVolatilityNormalizedConformal,
   hlnModifiedDieboldMariano,
 } from './statisticalTests.js?v=1.47.40';
+import { EmpiricalAnalogEngine } from './empiricalAnalogEngine.js?v=1.47.40';
+import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
 
 function pinball(actual, qPred, tau) {
   const err = actual - qPred;
@@ -172,6 +174,65 @@ function buildNaiveLogNormalTraj(anchorClose, trainLogReturns, horizon) {
     traj[h] = buildZeroDriftLogNormalNaiveQuantiles(anchorClose, sigmaRw, h + 1);
   }
   return { traj, sigmaRw };
+}
+
+const AUXILIARY_BENCHMARK_MODELS = [
+  { id: 'empirical_analogs', name: 'Causal Historical Analogs', family: 'PATTERN_EMPIRICAL' },
+  { id: 'structural_wave_js', name: 'Structural Wave (JS)', family: 'STRUCTURAL_WAVE' },
+];
+
+function predictAuxiliaryWindowTrajectory(modelId, slice, feats, horizon, ctx = {}) {
+  try {
+    if (modelId === 'empirical_analogs') {
+      const analogSlice = slice.length > 900 ? slice.slice(-900) : slice;
+      const engine = new EmpiricalAnalogEngine(24, horizon, ctx.timeframe || 'M15');
+      const res = engine.projectEmpirical(analogSlice, feats, horizon);
+      if (res.status !== MODEL_EXECUTION_STATUS.SUCCESS || !Array.isArray(res.points) || res.points.length < horizon) {
+        return { ok: false, traj: null };
+      }
+      const traj = res.points.slice(0, horizon).map((p) =>
+        enforceMonotonicQuantiles(
+          { q10: p.q10, q25: p.q25, q50: p.q50, q75: p.q75, q90: p.q90 },
+          feats.lastClose * 0.01
+        )
+      );
+      return { ok: traj.every((p) => Number.isFinite(p.q50) && p.q50 > 0), traj };
+    }
+    if (modelId === 'structural_wave_js') {
+      const structSlice = slice.length > 360 ? slice.slice(-360) : slice;
+      const lastOpenMs = Number(structSlice[structSlice.length - 1]?.openTimeUtcMs || 0);
+      const res = computeStructuralForecast({
+        candles: structSlice.map((c) => ({
+          open_time_utc_ms: c.openTimeUtcMs,
+          open: c.open,
+          high: c.high,
+          low: c.low,
+          close: c.close,
+          volume: c.volume,
+          is_closed: true,
+        })),
+        symbolCode: ctx.symbolCode || 'XAUUSD',
+        provider: ctx.providerId || 'tvdatafeed',
+        timeframe: ctx.timeframe || 'M15',
+        horizonBars: horizon,
+        nowMs: Math.max(Date.now(), lastOpenMs + 86400000 * 14),
+        skipAnalogs: true,
+      });
+      if (res.status !== 'READY' || !Array.isArray(res.forecast) || res.forecast.length < horizon) {
+        return { ok: false, traj: null };
+      }
+      const traj = res.forecast.slice(0, horizon).map((p) =>
+        enforceMonotonicQuantiles(
+          { q10: p.q10, q25: p.q25, q50: p.q50_median, q75: p.q75, q90: p.q90 },
+          feats.lastClose * 0.01
+        )
+      );
+      return { ok: traj.every((p) => Number.isFinite(p.q50) && p.q50 > 0), traj };
+    }
+  } catch (_) {
+    return { ok: false, traj: null };
+  }
+  return { ok: false, traj: null };
 }
 
 function scoreWindow(clean, originIdx, traj, horizon) {
@@ -426,6 +487,17 @@ export function evaluateWalkForward(candles, registry, options = {}) {
   for (const { plugin } of valModels) {
     getAcc(plugin.id, plugin.name, plugin.family, Boolean(plugin.experimentalOnly || plugin.isApproximation));
   }
+  const includeAux = options.includeAuxiliaryModels !== false;
+  const auxCtx = {
+    symbolCode: options.symbolCode || 'XAUUSD',
+    providerId: options.providerId || 'tvdatafeed',
+    timeframe: options.timeframe || 'M15',
+  };
+  if (includeAux) {
+    for (const aux of AUXILIARY_BENCHMARK_MODELS) {
+      getAcc(aux.id, aux.name, aux.family, false);
+    }
+  }
 
   for (const origin of split.outerOrigins) {
     const slice = clean.slice(0, origin + 1);
@@ -485,6 +557,29 @@ export function evaluateWalkForward(candles, registry, options = {}) {
       acc.windows++;
       acc.wisSeries.push(w.wisMean);
       acc.errSeries.push(clean[origin + horizon].close - calTraj[horizon - 1].q50);
+    }
+
+    if (includeAux) {
+      for (const aux of AUXILIARY_BENCHMARK_MODELS) {
+        const auxRes = predictAuxiliaryWindowTrajectory(aux.id, slice, feats, horizon, auxCtx);
+        if (!auxRes.ok || !auxRes.traj) continue;
+        const calTraj = auxRes.traj.map((q, h) =>
+          applyConformalAdjustmentToQuantiles(q, feats.lastClose, feats.ewmaSigma, h + 1, conformalCalibration, feats.lastClose * 0.01)
+        );
+        const w = scoreWindow(clean, origin, calTraj, horizon);
+        const acc = getAcc(aux.id, aux.name, aux.family, false);
+        acc.maeSum += w.maeMean;
+        acc.mseSum += w.mseMean;
+        acc.wisSum += w.wisMean;
+        acc.pinballSum += w.pinballMean;
+        acc.in80Sum += w.in80Frac;
+        acc.in50Sum += w.in50Frac;
+        acc.widthPctSum += w.widthPctMean;
+        if (w.dirOk) acc.dirCount++;
+        acc.windows++;
+        acc.wisSeries.push(w.wisMean);
+        acc.errSeries.push(clean[origin + horizon].close - calTraj[horizon - 1].q50);
+      }
     }
   }
 
