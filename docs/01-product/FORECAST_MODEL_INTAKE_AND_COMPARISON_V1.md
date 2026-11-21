@@ -4,7 +4,7 @@
 - **Version:** 1.0.5
 - **Date:** 2026-11-19
 - **Status:** Reusable intake protocol. Current New Web runtime has 10 Native JavaScript registry models, Structural JS, causal Historical Analogs and Ensemble. Chronos-2/Python Worker are excluded from the shared-hosting New runtime until a supported execution environment is approved.
-- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0, FORECAST_SYSTEM_SPEC_V1.md v1.0.5 and FORECAST_MIGRATION_PLAN_V1.md
+- **Authority:** FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0, FORECAST_SYSTEM_SPEC_V1.md v1.0.5 and OPEN_ISSUES.md
 - **Purpose:** Evaluate candidate GitHub repositories and other model implementations consistently before deciding whether to research, prototype, test or integrate them.
 
 ---

@@ -263,7 +263,7 @@ Chart Intelligence در درجه اول یک **دستیار تحلیل و ترس
 
 ## ۱۰.۷ پروژه‌ها و مخازن مرجع GitHub برای بررسی فنی و پیاده‌سازی
 
-> **سند مشخصات تفصیلی:** جزئیات کامل معماری، فرمول‌ها، بازسازی قیمت و متدولوژی در سند اختصاصی [**`FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md`**](./FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md) تدوین و تصویب شده است.
+> **اسناد مرجع بخش پیش‌بینی:** الزامات محصول و رفتار سیستم پیش‌بینی در اسناد [`FORECAST_PRODUCT_FOUNDATION_V1.md`](./FORECAST_PRODUCT_FOUNDATION_V1.md) و [`FORECAST_SYSTEM_SPEC_V1.md`](./FORECAST_SYSTEM_SPEC_V1.md) نگهداری می‌شوند.
 
 مخازن متن‌باز برجسته برای ارزیابی معماری و الگوبرداری فنی در پایپ‌لاین CHART:
 
@@ -425,7 +425,7 @@ Chart Intelligence در درجه اول یک **دستیار تحلیل و ترس
 تمامی موارد باز فنی و پرسش‌های طراحی پیش از فازهای ۳ تا ۶ به‌صورت دسته‌بندی‌شده و اولویت‌بندی‌شده در اسناد زیر نگهداری می‌شوند:
 - **مسائل باز کد و زیرساخت (`INF`, `ENG`, `UI`, `SEC`) + پرسش‌های باز §17.4:** [`OPEN_ISSUES.md`](../03-roadmap-and-issues/OPEN_ISSUES.md)
 - **وضعیت واقعی کد و بک‌لاگ دقیق فازهای ۲ تا ۶:** [`ROADMAP_BACKLOG.md`](../03-roadmap-and-issues/ROADMAP_BACKLOG.md)
-- **مشخصات تخصصی موتور پیش‌بینی و ترسیم آینده:** [`FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md`](./FUTURE_PRICE_PROJECTION_ENGINE_SPEC.md)
+- **اسناد مرجع محصول و سیستم پیش‌بینی:** [`FORECAST_PRODUCT_FOUNDATION_V1.md`](./FORECAST_PRODUCT_FOUNDATION_V1.md) · [`FORECAST_SYSTEM_SPEC_V1.md`](./FORECAST_SYSTEM_SPEC_V1.md)
 - **مشخصات سرور و محدودیت‌های cPanel:** [`INFRASTRUCTURE_INVENTORY.md`](../02-architecture/INFRASTRUCTURE_INVENTORY.md)
 - **مستندات استراتژی فاز ۶:** [`TRADING_STRATEGY_SPEC.md`](./TRADING_STRATEGY_SPEC.md)
 

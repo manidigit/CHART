@@ -62,6 +62,11 @@ import {
   uploadHistoricalImport,
   fetchImportBatches,
   clearChronos2TimerForTab,
+  fetchAdminUsers,
+  createAdminUser,
+  updateAdminUser,
+  revokeAdminUserSessions,
+  deleteAdminUser,
 } from './services/apiService.js?v=1.47.41';
 import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.41';
 import { computeStructuralForecast } from './algorithms/structuralForecastEngine.js?v=1.47.41';
@@ -69,6 +74,7 @@ import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.41';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.41';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.41';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.41';
+import { DEFAULT_STRATEGY_CONFIG } from './algorithms/strategySimulator.js?v=1.47.41';
 import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.41';
 import { renderLoginScreen } from './views/loginView.js?v=1.47.41';
 import {
@@ -76,6 +82,8 @@ import {
   renderBottomChartBar,
   renderIndicatorsModal,
 } from './views/headerView.js?v=1.47.41';
+import { renderObjectTreeModal } from './views/objectTreeView.js?v=1.47.41';
+import { renderStrategyLabModal } from './views/strategyLabView.js?v=1.47.41';
 import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.41';
 import {
   renderRightSplitPanel,
@@ -639,6 +647,7 @@ function renderOhlcvOverlay(activeTab) {
   const pivShortMap = { STANDARD: 'STD', FIBONACCI: 'FIB', CAMARILLA: 'CAM', WOODIE: 'WOD' };
   const pivShort = pivShortMap[String(activeTab.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase()] || 'STD';
   pushPill(activeTab.showPivotPoints, pal.pivotP, `Pivots (${pivShort})`, 'toggle-pivot-points');
+  pushPill(activeTab.showSrZones, '#10B981', 'S/R Zones', 'toggle-sr-zones');
   pushPill(activeTab.showVolumeProfile, pal.vrvpPoc, 'VP (POC)', 'toggle-volume-profile');
   pushPill(activeTab.showSupertrend, pal.supertrend, 'Supertrend', 'toggle-supertrend');
   pushPill(activeTab.showPsar, pal.psar, 'PSAR', 'toggle-psar');
@@ -646,6 +655,7 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showOverlayMacd, pal.overlayMacd, 'MACD Overlay', 'toggle-overlay-macd');
   pushPill(activeTab.showSmcStructure, pal.smcStructure, 'SMC (BOS)', 'toggle-smc-structure');
   pushPill(activeTab.showFvg, pal.fvg, 'FVG', 'toggle-fvg');
+  pushPill(activeTab.showCandlePatterns, '#F59E0B', 'Patterns', 'toggle-candle-patterns');
   pushPill(activeTab.showKillzones, pal.killzones, 'Killzones', 'toggle-killzones');
   pushPill(activeTab.showRsi14, pal.rsi14, 'RSI 14', 'toggle-rsi14');
   pushPill(activeTab.showMacd, pal.macd, 'MACD', 'toggle-macd');
@@ -1256,6 +1266,8 @@ export function renderApp() {
           `}
         ${renderSettingsModal(i18n)}
         ${isForecastWorkspace ? '' : renderIndicatorsModal(activeTab, i18n)}
+        ${isForecastWorkspace ? '' : renderObjectTreeModal(activeTab, i18n)}
+        ${isForecastWorkspace ? '' : renderStrategyLabModal(activeTab, i18n)}
         ${renderSymbolOverviewModal(i18n)}
         ${renderAddSymbolModal()}
         ${isForecastWorkspace ? '' : renderMobileBottomSheet(activeTab, state.mobileSheet, i18n)}
@@ -1845,7 +1857,7 @@ function bindCanvasEvents(activeTab) {
             canvas._chartLayout.priceToY,
             tol
           );
-          if (hit && hit.id === activeTab.selectedDrawingId) {
+          if (hit && hit.id === activeTab.selectedDrawingId && !hit.locked) {
             touchDraggingDrawing = {
               id: hit.id,
               orig: { ...hit },
@@ -2115,6 +2127,25 @@ function bindSettingsForms() {
         ? 'settings_password_updated_toast'
         : (res && res.errorKey) || 'error_unauthorized';
       showFloatingToast(i18n.t(state.statusBannerKey));
+      renderApp();
+    });
+  }
+
+  const adminCreateUserForm = document.getElementById('admin-create-user-form');
+  if (adminCreateUserForm) {
+    adminCreateUserForm.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const fd = new FormData(adminCreateUserForm);
+      const username = String(fd.get('username') || '').trim();
+      const email = String(fd.get('email') || '').trim();
+      const password = String(fd.get('password') || '');
+      const role = String(fd.get('role') || 'viewer');
+      const res = await createAdminUser({ username, email, password, role });
+      if (res && res.ok) {
+        showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'کاربر جدید با موفقیت ایجاد شد.' : 'User account created.');
+      } else {
+        showFloatingToast((res && res.error) || 'Failed to create user');
+      }
       renderApp();
     });
   }
@@ -2432,6 +2463,7 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'open-modal') {
     const modalName = el.getAttribute('data-modal');
     state.activeModal = state.activeModal === modalName ? null : modalName;
+    state.mobileSheet = null;
     state.activeColorPickerKey = null;
     state.statusBannerKey = '';
     renderApp();
@@ -2453,6 +2485,8 @@ document.addEventListener('click', async (e) => {
     renderApp();
     if (state.settingsTab === 'sync') {
       Promise.all([fetchSystemStatus(), fetchImportBatches()]).then(() => renderApp()).catch(() => {});
+    } else if (state.settingsTab === 'account' && (state.userRole === 'owner' || state.userRole === 'admin')) {
+      fetchAdminUsers().then(() => renderApp()).catch(() => {});
     }
   } else if (action === 'refresh-import-batches') {
     await fetchImportBatches();
@@ -2885,6 +2919,14 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'toggle-pivot-points' && activeTab) {
     activeTab.showPivotPoints = !activeTab.showPivotPoints;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-sr-zones' && activeTab) {
+    activeTab.showSrZones = !activeTab.showSrZones;
+    syncIndicatorsAcrossTabsAndPrefs(activeTab);
+    renderApp();
+  } else if (action === 'toggle-candle-patterns' && activeTab) {
+    activeTab.showCandlePatterns = !activeTab.showCandlePatterns;
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
   } else if (action === 'set-pivot-type' && activeTab) {
@@ -3354,6 +3396,99 @@ document.addEventListener('click', async (e) => {
       saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
       renderApp();
     }
+  } else if (action === 'object-tree-select-drawing' && activeTab) {
+    const drawingId = el.getAttribute('data-drawing-id');
+    const target = (activeTab.drawings || []).find((d) => d.id === drawingId);
+    if (target) {
+      activeTab.selectedDrawingId = activeTab.selectedDrawingId === drawingId ? null : drawingId;
+      if (activeTab.selectedDrawingId && target.visible !== false) {
+        state.activeModal = null;
+      }
+      renderApp();
+    }
+  } else if (action === 'object-tree-toggle-visible' && activeTab) {
+    const drawingId = el.getAttribute('data-drawing-id');
+    let nowHidden = false;
+    activeTab.drawings = (activeTab.drawings || []).map((d) => {
+      if (d.id !== drawingId) return d;
+      const nextVisible = d.visible === false;
+      nowHidden = !nextVisible;
+      return { ...d, visible: nextVisible };
+    });
+    if (nowHidden && activeTab.selectedDrawingId === drawingId) {
+      activeTab.selectedDrawingId = null;
+    }
+    saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    renderApp();
+  } else if (action === 'object-tree-toggle-locked' && activeTab) {
+    const drawingId = el.getAttribute('data-drawing-id');
+    activeTab.drawings = (activeTab.drawings || []).map((d) =>
+      d.id === drawingId ? { ...d, locked: !d.locked } : d
+    );
+    saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    renderApp();
+  } else if (action === 'object-tree-delete-drawing' && activeTab) {
+    const drawingId = el.getAttribute('data-drawing-id');
+    activeTab.drawings = (activeTab.drawings || []).filter((d) => d.id !== drawingId);
+    if (activeTab.selectedDrawingId === drawingId) {
+      activeTab.selectedDrawingId = null;
+    }
+    saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    renderApp();
+  } else if (action === 'object-tree-toggle-all-visible' && activeTab) {
+    const nextVisible = el.getAttribute('data-visible') === 'true';
+    activeTab.drawings = (activeTab.drawings || []).map((d) => ({ ...d, visible: nextVisible }));
+    if (!nextVisible) {
+      activeTab.selectedDrawingId = null;
+    }
+    saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    renderApp();
+  } else if (action === 'object-tree-clear-unlocked' && activeTab) {
+    const remaining = (activeTab.drawings || []).filter((d) => Boolean(d.locked));
+    activeTab.drawings = remaining;
+    if (activeTab.selectedDrawingId && !remaining.some((d) => d.id === activeTab.selectedDrawingId)) {
+      activeTab.selectedDrawingId = null;
+    }
+    activeTab.pendingTrendPoint = null;
+    activeTab.pendingAnchors = [];
+    saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
+    renderApp();
+  } else if (action === 'strategy-sim-set-field') {
+    const field = el.getAttribute('data-field');
+    const val = el.getAttribute('data-value');
+    if (field && val !== null) {
+      state.strategySimConfig = { ...(state.strategySimConfig || DEFAULT_STRATEGY_CONFIG), [field]: val };
+      renderApp();
+    }
+  } else if (action === 'strategy-sim-reset') {
+    state.strategySimConfig = { ...DEFAULT_STRATEGY_CONFIG };
+    renderApp();
+  } else if (action === 'admin-refresh-users') {
+    renderApp();
+    await fetchAdminUsers();
+    renderApp();
+  } else if (action === 'admin-toggle-user-active') {
+    const userId = Number(el.getAttribute('data-user-id') || 0);
+    const nextActive = el.getAttribute('data-next-active') === '1';
+    if (userId > 0) {
+      const res = await updateAdminUser({ userId, isActive: nextActive });
+      showFloatingToast(res && res.ok ? (i18n.getCurrentLanguage() === 'fa' ? 'وضعیت کاربر بروزرسانی شد.' : 'User status updated.') : (res && res.error) || 'Error');
+      renderApp();
+    }
+  } else if (action === 'admin-revoke-user-sessions') {
+    const userId = Number(el.getAttribute('data-user-id') || 0);
+    if (userId > 0) {
+      const res = await revokeAdminUserSessions(userId);
+      showFloatingToast(res && res.ok ? (i18n.getCurrentLanguage() === 'fa' ? 'نشست‌های کاربر ابطال شد.' : 'User sessions revoked.') : (res && res.error) || 'Error');
+      renderApp();
+    }
+  } else if (action === 'admin-delete-user') {
+    const userId = Number(el.getAttribute('data-user-id') || 0);
+    if (userId > 0) {
+      const res = await deleteAdminUser(userId);
+      showFloatingToast(res && res.ok ? (i18n.getCurrentLanguage() === 'fa' ? 'کاربر حذف شد.' : 'User deleted.') : (res && res.error) || 'Error');
+      renderApp();
+    }
   } else if (action === 'set-draw-color' && activeTab) {
     const col = el.getAttribute('data-color') || '#2962FF';
     activeTab.activeDrawingColorHex = col;
@@ -3697,6 +3832,36 @@ document.addEventListener('change', async (e) => {
     }
     return;
   }
+  if (action === 'strategy-sim-select-preset') {
+    state.strategySimConfig = {
+      ...(state.strategySimConfig || DEFAULT_STRATEGY_CONFIG),
+      presetId: String(el.value || DEFAULT_STRATEGY_CONFIG.presetId),
+    };
+    renderApp();
+    return;
+  }
+  if (action === 'strategy-sim-input') {
+    const field = el.getAttribute('data-field');
+    const numVal = Number(el.value);
+    if (field && Number.isFinite(numVal)) {
+      state.strategySimConfig = {
+        ...(state.strategySimConfig || DEFAULT_STRATEGY_CONFIG),
+        [field]: numVal,
+      };
+      renderApp();
+    }
+    return;
+  }
+  if (action === 'admin-update-user-role') {
+    const userId = Number(el.getAttribute('data-user-id') || 0);
+    const nextRole = String(el.value || 'viewer');
+    if (userId > 0) {
+      const res = await updateAdminUser({ userId, role: nextRole });
+      showFloatingToast(res && res.ok ? (i18n.getCurrentLanguage() === 'fa' ? 'نقش کاربر تغییر کرد.' : 'User role updated.') : (res && res.error) || 'Error');
+      renderApp();
+    }
+    return;
+  }
   if (action === 'toggle-remember-creds') {
     state.rememberCredentials = Boolean(el.checked);
     safeLocalStorageSet('ci_remember_creds', state.rememberCredentials ? 'true' : 'false');
@@ -3984,6 +4149,7 @@ async function handleChartSnapshot() {
         const pivTag = String(activeTab.pivotType || 'STANDARD').toUpperCase().slice(0, 3);
         activePills.push({ label: `Pivots (${pivTag})`, color: pal.pivotP });
       }
+      if (activeTab.showSrZones) activePills.push({ label: 'S/R Zones', color: '#10B981' });
       if (activeTab.showVolumeProfile) activePills.push({ label: 'VP (POC)', color: pal.vrvpPoc });
       if (activeTab.showSupertrend) activePills.push({ label: 'Supertrend', color: pal.supertrend });
       if (activeTab.showPsar) activePills.push({ label: 'PSAR', color: pal.psar });
@@ -3991,6 +4157,7 @@ async function handleChartSnapshot() {
       if (activeTab.showOverlayMacd) activePills.push({ label: 'MACD Ovr', color: pal.overlayMacd });
       if (activeTab.showSmcStructure) activePills.push({ label: 'SMC (BOS)', color: pal.smcStructure });
       if (activeTab.showFvg) activePills.push({ label: 'FVG', color: pal.fvg });
+      if (activeTab.showCandlePatterns) activePills.push({ label: 'Patterns', color: '#F59E0B' });
       if (activeTab.showKillzones) activePills.push({ label: 'Killzones', color: pal.killzones });
       if (activeTab.showRsi14) activePills.push({ label: 'RSI', color: pal.rsi14 });
       if (activeTab.showMacd) activePills.push({ label: 'MACD', color: pal.macd });
@@ -4157,7 +4324,7 @@ let lastFocusWorkspacePullMs = 0;
 
 async function pullWorkspaceOnFocusIfNeeded() {
   if (!state.isAuthenticated || state.isWorkspaceSyncing) return;
-  if (state.activeModal === 'indicators' || isFocusPullSuspended()) return;
+  if (state.activeModal === 'indicators' || state.activeModal === 'object-tree' || state.activeModal === 'strategy-lab' || isFocusPullSuspended()) return;
   const nowMs = Date.now();
   if (nowMs - lastFocusWorkspacePullMs < 4000) return;
   lastFocusWorkspacePullMs = nowMs;

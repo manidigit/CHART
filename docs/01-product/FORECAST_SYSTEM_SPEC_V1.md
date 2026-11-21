@@ -21,8 +21,7 @@ The hierarchy is:
 2. FORECAST_SYSTEM_SPEC_V1.md — authoritative system behavior and lifecycle requirements.
 3. FORECAST_ACCEPTANCE_TEST_PLAN_V1.md — model-independent verification scenarios and release gates.
 4. FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md — process for reviewing and admitting candidate models.
-5. FORECAST_CURRENT_STATE_AUDIT_V1.md — evidence about the existing implementation; not a design authority.
-6. Historical technical documents and existing code — research/evidence only unless explicitly adopted by a later decision.
+5. `OPEN_ISSUES.md` and actual repository code — live implementation truth and open acceptance gates.
 
 If two documents conflict, the higher-level authority governs. A conflict must be recorded and resolved; implementation must not silently choose whichever statement is easiest to code.
 
@@ -533,7 +532,7 @@ The following gates must be met in order:
 - Product Foundation and this System Specification are internally consistent.
 - Core terms and boundaries are unambiguous.
 - The existing chart remains the display surface.
-- Current New Web model scope and runtime limits are governed by the versioned header and FORECAST_MIGRATION_PLAN_V1.md; the 2026-11-17 Chronos-2-only decision is historical and superseded.
+- Current New Web model scope and runtime limits are governed by the versioned header and `OPEN_ISSUES.md`; the 2026-11-17 Chronos-2-only decision is historical and superseded.
 
 ### Gate B — Execution and identity
 - One request can create independently identifiable model runs.
@@ -642,13 +641,11 @@ A failure to produce meaningful swings, corrections or reversals must be reporte
 
 
 
-## 15. Gemini implementation handoff
+## 24. Implementation guardrails
 
-The implementation-facing execution instructions are maintained in [FORECAST_GEMINI_IMPLEMENTATION_HANDOFF_V1.md](./FORECAST_GEMINI_IMPLEMENTATION_HANDOFF_V1.md) v1.0.0. Gemini and other implementation agents must read that handoff together with this specification, the Product Foundation, the Chronos-2 input/output contract, the Acceptance Test Plan, the Model Intake document and the current-state audit before proposing code changes.
+Implementation agents must read this specification together with `FORECAST_PRODUCT_FOUNDATION_V1.md`, `FORECAST_ACCEPTANCE_TEST_PLAN_V1.md`, `FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md`, and `OPEN_ISSUES.md` (plus `FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md` if working on the shelved Chronos-2 track) before proposing code changes.
 
-The handoff does not override product/system requirements. It translates them into a bounded Phase 1 work sequence, explicit non-goals, required provenance, stop conditions and delivery evidence. Unresolved runtime values remain TBD until measured. No implementation agent may fabricate OHLC, add decorative oscillations, stitch marginal quantiles into scenarios, replace the existing chart/data source or claim predictive quality without walk-forward evidence.
-
-The handoff is not evidence that any implementation has been completed. Code changes require explicit project-owner authorization and must be reviewed against the acceptance gates.
+No implementation agent may fabricate OHLC, add decorative oscillations, stitch marginal quantiles into scenarios, replace the existing chart/data source, or claim predictive quality without walk-forward evidence. Code changes require explicit project-owner authorization and must be reviewed against the acceptance gates.
 
 ### 15.1. Version history
 

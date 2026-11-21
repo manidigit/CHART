@@ -72,7 +72,7 @@
   - `api/v1/core/`: `ApiEnvelope.php`, `Database.php`
   - `api/v1/algorithms/`: `CandleValidator.php`, `TimeframeAggregator.php`, `UtcTimeAnchor.php`
   - `api/v1/providers/`: `ProviderCatalog.php`, `TvDatafeedAdapter.php`, `BiquoteAdapter.php`, `TwelveDataAdapter.php`, `DukascopyAdapter.php`, `YahooFinanceAdapter.php`, `StooqAdapter.php`, `EiaBenchmarkAdapter.php`
-  - `scripts/`: `sync_tvdatafeed.py`, `cron_sync_tvdatafeed.php`
+  - `scripts/`: `cron_sync_tvdatafeed.php` (همگام‌سازی مستقیم Pure-PHP WebSocket به MariaDB بدون تولید فایل دیسکی)
 
 ---
 
@@ -124,7 +124,7 @@
 
 | شناسه روش (`provider_id`) | وضعیت فعلی UI | نام روش و کلاس‌های پیاده‌سازی | مکانیزم فنی و فرمول استخراج | پوشش نمادها (`exchange:ticker`) | تایم‌فریم‌ها |
 |---|---|---|---|---|---|
-| **`tvdatafeed`** | **فعال (`Active`)** | **TradingView Wick & WebSocket Engine** (`TvDatafeedAdapter`) | خوانش آرشیو پایه شدودار (`host_subdomain/data/tvdatafeed/`) + استخراج سوکت TradingView (`sync_tvdatafeed.py`) و تراز `D1` به نیمه‌شب روز معاملاتی بعد | تمام **۷۹ نماد کاتالوگ** (`PEPPERSTONE:SPOTBRENT`, `OANDA:XAUUSD`, `OANDA:XAGUSD`, `OANDA:EURUSD`, `TVC:USOIL`, `BITSTAMP:BTCUSD`, `BITSTAMP:ETHUSD`, `OANDA:SPX500USD`, `NASDAQ:NDX`, و ۷۰ سهام آمریکا و بین‌المللی از `NASDAQ`/`NYSE`/`AMEX`/`OTC`/`KRX:000660`/`TADAWUL:2222`) | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
+| **`tvdatafeed`** | **فعال (`Active`)** | **TradingView Wick & WebSocket Engine** (`TvDatafeedAdapter`) | اتصال مستقیم Pure-PHP WebSocket (`tls://data.tradingview.com:443`) + ذخیره‌سازی افزایشی صرفاً در MariaDB (بدون فایل‌های استاتیک CSV/JSON روی هاست) و تراز `D1` به نیمه‌شب روز معاملاتی بعد | تمام **۷۹ نماد کاتالوگ** (`PEPPERSTONE:SPOTBRENT`, `OANDA:XAUUSD`, `OANDA:XAGUSD`, `OANDA:EURUSD`, `TVC:USOIL`, `BITSTAMP:BTCUSD`, `BITSTAMP:ETHUSD`, `OANDA:SPX500USD`, `NASDAQ:NDX`, و ۷۰ سهام آمریکا و بین‌المللی از `NASDAQ`/`NYSE`/`AMEX`/`OTC`/`KRX:000660`/`TADAWUL:2222`) | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
 | **`biquote`** | غیرفعال (`Disabled`) | **biquote Multi-Asset Feed** (`BiquoteAdapter`) | فید رایگان چنددارایی بدون نیاز به کلید API با پشتیبانی از `DELTA_SYNC` | `BTCUSD`, `ETHUSD`, `XAGUSD`, `XAUUSD`, `SPOTBRENT` (`UKOIL`), `USOIL`, `EURUSD` | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
 | **`twelve_data`** | غیرفعال (`Disabled`) | **Twelve Data REST API** (`TwelveDataAdapter`) | فراخوانی `https://api.twelvedata.com/time_series` با کلید سرور یا کلید شخصی (`X-Provider-Api-Key`) و `outputsize` محدود به کندل‌های جدید | تمام ۷۹ نماد کاتالوگ | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |
 | **`dukascopy`** | غیرفعال (`Disabled`) | **Dukascopy Swiss Bank Historical Feed** (`DukascopyAdapter`) | استخراج کندل‌های بین‌بانکی سوئیس با فیلتر تیک‌های مصنوعی آخر هفته (`volume = 0` و دامنه میکرونی) | `SPOTBRENT` (`BRENT.CMD/USD`), `XAUUSD` (`XAU/USD`), `XAGUSD` (`XAG/USD`), `EURUSD` (`EUR/USD`) | `M15`, `M30`, `H1`, `H4`, `D1`, `W1` |

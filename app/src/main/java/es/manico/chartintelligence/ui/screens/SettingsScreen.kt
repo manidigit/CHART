@@ -140,6 +140,16 @@ fun SettingsScreen(
     onImportDocumentUri: (android.net.Uri, String, String, String, String) -> Unit = { _, _, _, _, _ -> },
     onSubmitManualOhlc: (String, String, String, String, String, Double, Double, Double, Double, Double) -> Unit = { _, _, _, _, _, _, _, _, _, _ -> },
     onRefreshImportBatches: () -> Unit = {},
+    currentUserRole: String = "owner",
+    adminUsers: List<es.manico.chartintelligence.data.repository.AdminUserDto> = emptyList(),
+    isAdminUsersLoading: Boolean = false,
+    adminUsersError: String? = null,
+    onRefreshAdminUsers: () -> Unit = {},
+    onCreateAdminUser: (String, String, String, String) -> Unit = { _, _, _, _ -> },
+    onUpdateAdminUserRole: (Long, String) -> Unit = { _, _ -> },
+    onToggleAdminUserActive: (Long, Boolean) -> Unit = { _, _ -> },
+    onRevokeAdminUserSessions: (Long) -> Unit = {},
+    onDeleteAdminUser: (Long) -> Unit = {},
     modifier: Modifier = Modifier
 ) {
     BackHandler(onBack = onBackToWatchlist)
@@ -390,6 +400,20 @@ fun SettingsScreen(
                         }
                     }
                 }
+
+                es.manico.chartintelligence.ui.components.AdminUsersSectionCard(
+                    currentUsername = ownerUsername,
+                    currentUserRole = currentUserRole,
+                    users = adminUsers,
+                    isLoading = isAdminUsersLoading,
+                    errorMessage = adminUsersError,
+                    onRefreshUsers = onRefreshAdminUsers,
+                    onCreateUser = onCreateAdminUser,
+                    onToggleUserActive = onToggleAdminUserActive,
+                    onUpdateUserRole = onUpdateAdminUserRole,
+                    onRevokeUserSessions = onRevokeAdminUserSessions,
+                    onDeleteUser = onDeleteAdminUser
+                )
 
                 es.manico.chartintelligence.ui.components.EncryptedBackupCard(
                     language = currentLanguage,

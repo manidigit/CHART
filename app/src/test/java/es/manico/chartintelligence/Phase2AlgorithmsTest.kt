@@ -10,14 +10,20 @@ import es.manico.chartintelligence.algorithms.DrawingGeometryAlgorithm
 import es.manico.chartintelligence.algorithms.GapDetectorAlgorithm
 import es.manico.chartintelligence.algorithms.KillzoneSession
 import es.manico.chartintelligence.algorithms.Phase2IndicatorsAlgorithm
+import es.manico.chartintelligence.algorithms.StrategySimulatorAlgorithm
+import es.manico.chartintelligence.algorithms.TechnicalAnalysisCore
 import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartDrawing
+import es.manico.chartintelligence.data.model.ChartPreferences
+import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.DrawingAnchor
 import es.manico.chartintelligence.data.model.DrawingTool
+import es.manico.chartintelligence.data.model.ProviderId
 import es.manico.chartintelligence.data.repository.WorkspaceRepository
 import es.manico.chartintelligence.ui.state.coordinators.SymbolCatalogCoordinator
 import org.json.JSONObject
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
@@ -742,4 +748,485 @@ class Phase2AlgorithmsTest {
         assertNotNull(manual)
         assertEquals(Instant.parse("2026-07-15T14:15:00Z").toEpochMilli(), manual!!.openTimeUtcMillis)
     }
+
+    @Test
+    fun taCore_phaseAB_goldenFixtureParityAndRendererDecoupling() {
+        val candidatePaths = listOf(
+            File("../tests/fixtures/ta_core_golden_fixture.json"),
+            File("tests/fixtures/ta_core_golden_fixture.json")
+        )
+        val fixtureFile = candidatePaths.firstOrNull { it.isFile }
+        assertNotNull("Shared golden fixture must exist", fixtureFile)
+        val root = JSONObject(fixtureFile!!.readText())
+        val tol = root.optDouble("tolerance", 1e-6)
+        val cases = root.getJSONObject("cases")
+
+        fun parseCandles(arr: org.json.JSONArray): List<CandleBar> {
+            val list = ArrayList<CandleBar>(arr.length())
+            for (i in 0 until arr.length()) {
+                val obj = arr.getJSONObject(i)
+                val openMs = obj.getLong("open_time_utc_ms")
+                list.add(
+                    CandleBar(
+                        openTimeUtcMillis = openMs,
+                        openTimeUtcIso = Instant.ofEpochMilli(openMs).toString(),
+                        open = BigDecimal.valueOf(obj.getDouble("open")),
+                        high = BigDecimal.valueOf(obj.getDouble("high")),
+                        low = BigDecimal.valueOf(obj.getDouble("low")),
+                        close = BigDecimal.valueOf(obj.getDouble("close")),
+                        volume = BigDecimal.valueOf(obj.optDouble("volume", 0.0)),
+                        isClosed = obj.optBoolean("is_closed", true)
+                    )
+                )
+            }
+            return list
+        }
+
+        for (caseName in listOf("normal_trend_osc", "large_price_btc", "flat_price_zero_vol")) {
+            val cObj = cases.getJSONObject(caseName)
+            val candles = parseCandles(cObj.getJSONArray("candles"))
+            val snap = TechnicalAnalysisCore.computeCoreIndicators(
+                rawCandles = candles,
+                timeframe = cObj.getString("timeframe"),
+                symbolCode = cObj.getString("symbolCode"),
+                bollingerPeriod = cObj.getInt("bollingerPeriod"),
+                bollingerStdDev = cObj.getDouble("bollingerStdDev")
+            )
+            assertEquals(TechnicalAnalysisCore.SCHEMA_VERSION, snap.schemaVersion)
+            assertEquals(candles.size, snap.quality.validCount)
+            assertEquals(0, snap.quality.droppedInvalidCount)
+
+            // Warm-up invariants strictly null (no synthetic zeros)
+            for (i in 0 until 19) {
+                assertNull("$caseName sma20[$i]", snap.sma20[i])
+                assertNull("$caseName ema20[$i]", snap.ema20[i])
+                assertNull("$caseName bollinger[$i]", snap.bollinger[i])
+            }
+            for (i in 0 until 13) assertNull("$caseName atr14[$i]", snap.atr14[i])
+            for (i in 0 until 14) assertNull("$caseName rsi14[$i]", snap.rsi14[i])
+
+            val exp = cObj.getJSONObject("expectedLast")
+            val idx = exp.getInt("lastIndex")
+            assertEquals("$caseName sma20", exp.getDouble("sma20"), snap.sma20[idx]!!, tol)
+            assertEquals("$caseName ema20", exp.getDouble("ema20"), snap.ema20[idx]!!, tol)
+
+            val expBb = exp.getJSONObject("bollinger")
+            val actBb = snap.bollinger[idx]!!
+            assertEquals("$caseName bb.middle", expBb.getDouble("middle"), actBb.middle, tol)
+            assertEquals("$caseName bb.upper", expBb.getDouble("upper"), actBb.upper, tol)
+            assertEquals("$caseName bb.lower", expBb.getDouble("lower"), actBb.lower, tol)
+
+            assertEquals("$caseName atr14", exp.getDouble("atr14"), snap.atr14[idx]!!, tol)
+            assertEquals("$caseName rsi14", exp.getDouble("rsi14"), snap.rsi14[idx]!!, tol)
+
+            val expMacd = exp.getJSONObject("macd")
+            val actMacd = snap.macd[idx]!!
+            assertEquals("$caseName macd", expMacd.getDouble("macd"), actMacd.macd, tol)
+            if (expMacd.isNull("signal")) {
+                assertNull("$caseName macd.signal", actMacd.signal)
+                assertNull("$caseName macd.histogram", actMacd.histogram)
+            } else {
+                assertEquals("$caseName macd.signal", expMacd.getDouble("signal"), actMacd.signal!!, tol)
+                assertEquals("$caseName macd.histogram", expMacd.getDouble("histogram"), actMacd.histogram!!, tol)
+            }
+
+            assertEquals("$caseName vwap", exp.getDouble("vwap"), snap.vwap[idx]!!, tol)
+            val expSt = exp.getJSONObject("supertrend")
+            val actSt = snap.supertrend[idx]!!
+            assertEquals("$caseName supertrend.value", expSt.getDouble("value"), actSt.value, tol)
+            assertEquals("$caseName supertrend.direction", expSt.getInt("direction"), actSt.direction)
+        }
+
+        // Short warm-up case: strictly null
+        val shortCandles = parseCandles(cases.getJSONObject("short_warmup").getJSONArray("candles"))
+        val shortSnap = TechnicalAnalysisCore.computeCoreIndicators(shortCandles, "M15", "SPOTBRENT")
+        assertTrue(shortSnap.sma20.all { it == null })
+        assertTrue(shortSnap.ema20.all { it == null })
+        assertTrue(shortSnap.bollinger.all { it == null })
+        assertTrue(shortSnap.atr14.all { it == null })
+        assertTrue(shortSnap.rsi14.all { it == null })
+        assertTrue(shortSnap.macd.all { it == null })
+
+        // Dirty input Phase A normalization
+        val dirtyCandles = parseCandles(cases.getJSONObject("dirty_unsorted_dups").getJSONArray("candles"))
+        val dirtyRes = TechnicalAnalysisCore.normalizeCandles(dirtyCandles, "M15", "SPOTBRENT", excludeOpenBars = true)
+        assertTrue(dirtyRes.quality.wasUnsorted)
+        assertEquals(1, dirtyRes.quality.deduplicatedCount)
+        assertEquals(1, dirtyRes.quality.droppedInvalidCount)
+        assertEquals(1, dirtyRes.quality.droppedOpenCount)
+        assertEquals(3, dirtyRes.quality.validCount)
+        assertTrue(dirtyRes.candles[0].openTimeUtcMillis < dirtyRes.candles[1].openTimeUtcMillis)
+        assertTrue(dirtyRes.candles[1].openTimeUtcMillis < dirtyRes.candles[2].openTimeUtcMillis)
+
+        // Phase B Renderer Decoupling: TechnicalAnalysisCore.computeChartBundle works independently of Compose
+        val normalCandles = parseCandles(cases.getJSONObject("normal_trend_osc").getJSONArray("candles"))
+        val tab = ChartTabState(
+            tabId = "test_tab",
+            chartId = "chart_spotbrent_main",
+            symbolCode = "SPOTBRENT",
+            decimals = 3,
+            provider = ProviderId.TVDATAFEED,
+            timeframe = "M15",
+            candles = normalCandles,
+            showSma20 = true,
+            showBollinger = true,
+            showAtr14 = true,
+            showRsi14 = true,
+            showMacd = true,
+            showVwap = true,
+            showSupertrend = true
+        )
+        val bundle = TechnicalAnalysisCore.computeChartBundle(tab, ChartPreferences())
+        assertEquals(normalCandles.size, bundle.fullSma20.size)
+        assertEquals(normalCandles.size, bundle.fullBollinger.size)
+        assertEquals(normalCandles.size, bundle.fullAtr14.size)
+        assertEquals(normalCandles.size, bundle.fullRsi14.size)
+        assertEquals(normalCandles.size, bundle.fullMacd.size)
+        assertEquals(normalCandles.size, bundle.fullVwap.size)
+        assertEquals(normalCandles.size, bundle.fullSupertrend.size)
+        assertEquals(10, bundle.sliceWindow(bundle.fullBollinger, 50, 60).size)
+        assertTrue(bundle.fullSma200.isEmpty()) // disabled indicator not needlessly computed
+    }
+
+    @Test
+    fun taCore_phaseCF_swingsSrZonesPatternsAndCanonicalParity() {
+        val candidates = listOf(
+            java.io.File("tests/fixtures/ta_core_cf_golden_fixture.json"),
+            java.io.File("../tests/fixtures/ta_core_cf_golden_fixture.json")
+        )
+        val cfFile = candidates.firstOrNull { it.exists() }
+            ?: throw AssertionError("ta_core_cf_golden_fixture.json not found from ${java.io.File(".").absolutePath}")
+        val spotFile = listOf(
+            java.io.File("tests/fixtures/spotbrent_m15_sample.json"),
+            java.io.File("../tests/fixtures/spotbrent_m15_sample.json")
+        ).firstOrNull { it.exists() }
+            ?: throw AssertionError("spotbrent_m15_sample.json not found")
+
+        val cfRoot = org.json.JSONObject(cfFile.readText())
+        val cases = cfRoot.getJSONObject("cases")
+
+        fun parseCandles(arr: org.json.JSONArray): List<CandleBar> {
+            val out = ArrayList<CandleBar>(arr.length())
+            for (i in 0 until arr.length()) {
+                val o = arr.getJSONObject(i)
+                val ts = o.getLong("open_time_utc_ms")
+                out.add(
+                    CandleBar(
+                        openTimeUtcMillis = ts,
+                        openTimeUtcIso = o.optString("open_time_utc_iso", java.time.Instant.ofEpochMilli(ts).toString()),
+                        open = BigDecimal.valueOf(o.getDouble("open")),
+                        high = BigDecimal.valueOf(o.getDouble("high")),
+                        low = BigDecimal.valueOf(o.getDouble("low")),
+                        close = BigDecimal.valueOf(o.getDouble("close")),
+                        volume = BigDecimal.valueOf(o.optDouble("volume", 0.0)),
+                        isClosed = o.optBoolean("is_closed", true)
+                    )
+                )
+            }
+            return out
+        }
+
+        // 1. Uptrend + Break & Retest + Active Support + Strict Causality (Zero Lookahead)
+        val upObj = cases.getJSONObject("uptrend_sr_break_retest")
+        val upCandles = parseCandles(upObj.getJSONArray("candles"))
+        val upLen = upObj.getInt("swingLen")
+        val upCanonical = TechnicalAnalysisCore.buildCanonicalAnalysis(
+            rawCandles = upCandles,
+            timeframe = upObj.getString("timeframe"),
+            symbolCode = upObj.getString("symbolCode"),
+            swingLen = upLen
+        )
+        assertEquals("ta-core/1.1", upCanonical.schemaVersion)
+        assertEquals("UPTREND", upCanonical.structures.trend)
+        assertTrue(upCanonical.structures.swings.size >= 4)
+        for (sw in upCanonical.structures.swings) {
+            assertEquals(sw.index + upLen, sw.confirmIndex)
+        }
+
+        val cutoff = 20
+        val prefixSwings = TechnicalAnalysisCore.detectSwingsAndTrend(upCandles.subList(0, cutoff), upLen).swings
+        val fullBeforeCutoff = upCanonical.structures.swings.filter { it.confirmIndex < cutoff }
+        assertEquals(fullBeforeCutoff, prefixSwings)
+
+        assertTrue(upCanonical.structures.zones.size >= 2)
+        for (z in upCanonical.structures.zones) {
+            assertTrue("Zone must have >=2 touches", z.touchCount >= 2)
+            assertEquals(z.touchCount, z.touchIndices.size)
+            assertTrue(z.lowPrice < z.highPrice)
+        }
+        val retestedRes = upCanonical.structures.zones.firstOrNull { it.role == "RESISTANCE" && it.status == "RETESTED" }
+        assertNotNull("Expected RETESTED resistance zone", retestedRes)
+        assertNotNull(retestedRes!!.breakIndex)
+        assertNotNull(retestedRes.retestIndex)
+        assertTrue(retestedRes.retestIndex!! > retestedRes.breakIndex!!)
+        assertNotNull(retestedRes.invalidationReason)
+        assertNotNull(
+            "Expected ACTIVE support zone",
+            upCanonical.structures.zones.firstOrNull { it.role == "SUPPORT" && it.status == "ACTIVE" }
+        )
+
+        // 2. Downtrend + Support Breakdown
+        val dnObj = cases.getJSONObject("downtrend_breakdown")
+        val dnCandles = parseCandles(dnObj.getJSONArray("candles"))
+        val dnCanonical = TechnicalAnalysisCore.buildCanonicalAnalysis(
+            rawCandles = dnCandles,
+            timeframe = dnObj.getString("timeframe"),
+            symbolCode = dnObj.getString("symbolCode"),
+            swingLen = dnObj.getInt("swingLen")
+        )
+        assertEquals("DOWNTREND", dnCanonical.structures.trend)
+        val brokenSup = dnCanonical.structures.zones.firstOrNull { it.role == "SUPPORT" && it.status == "BROKEN" }
+        assertNotNull("Expected BROKEN support zone", brokenSup)
+        assertNotNull(brokenSup!!.breakIndex)
+        assertTrue(brokenSup.invalidationReason!!.contains("below support"))
+
+        // 3. Range + All 7 Deterministic Candlestick Patterns
+        val patObj = cases.getJSONObject("patterns_and_range")
+        val patCandles = parseCandles(patObj.getJSONArray("candles"))
+        val patCanonical = TechnicalAnalysisCore.buildCanonicalAnalysis(
+            rawCandles = patCandles,
+            timeframe = patObj.getString("timeframe"),
+            symbolCode = patObj.getString("symbolCode"),
+            swingLen = patObj.getInt("swingLen")
+        )
+        assertEquals("RANGE", patCanonical.structures.trend)
+        val foundTypes = patCanonical.patterns.map { it.type }.toSet()
+        for (expectedType in listOf(
+            "DOJI",
+            "HAMMER",
+            "SHOOTING_STAR",
+            "BULLISH_PIN_BAR",
+            "BEARISH_PIN_BAR",
+            "BULLISH_ENGULFING",
+            "BEARISH_ENGULFING"
+        )) {
+            assertTrue("Missing candlestick pattern: $expectedType", foundTypes.contains(expectedType))
+        }
+        for (p in patCanonical.patterns) {
+            assertEquals(patCandles[p.anchorIndex].openTimeUtcMillis, p.anchorTimeUtcMs)
+            assertTrue(p.evidence.rangeAtrRatio >= 0.25)
+            assertTrue(p.candleIndices.contains(p.anchorIndex))
+        }
+
+        // 4. Real 260-bar SPOTBRENT M15 + ChartAnalysisBundle toggle decoupling
+        val spotCandles = parseCandles(org.json.JSONObject(spotFile.readText()).getJSONArray("candles"))
+        val spotCanonical = TechnicalAnalysisCore.buildCanonicalAnalysis(
+            rawCandles = spotCandles,
+            timeframe = "M15",
+            symbolCode = "SPOTBRENT",
+            swingLen = 3
+        )
+        assertEquals("ta-core/1.1", spotCanonical.schemaVersion)
+        assertEquals(260, spotCanonical.quality.validCount)
+        assertTrue(spotCanonical.structures.trend in setOf("UPTREND", "DOWNTREND", "RANGE"))
+        assertTrue(spotCanonical.structures.swings.size >= 20)
+        assertTrue(spotCanonical.structures.zones.size >= 2)
+        assertTrue(spotCanonical.structures.zones.all { it.touchCount >= 2 })
+        assertTrue(spotCanonical.patterns.size >= 5)
+
+        val tabOn = ChartTabState(
+            tabId = "spot_cf_test",
+            chartId = "SPOTBRENT_M15",
+            symbolCode = "SPOTBRENT",
+            decimals = 3,
+            provider = ProviderId.TVDATAFEED,
+            timeframe = "M15",
+            candles = spotCandles,
+            showSrZones = true,
+            showCandlePatterns = true
+        )
+        val bundleOn = TechnicalAnalysisCore.computeChartBundle(tabOn, ChartPreferences())
+        assertEquals(spotCanonical.structures.zones.size, bundleOn.srZones.size)
+        assertEquals(spotCanonical.patterns.size, bundleOn.candlePatterns.size)
+
+        val bundleOff = TechnicalAnalysisCore.computeChartBundle(
+            tabOn.copy(showSrZones = false, showCandlePatterns = false),
+            ChartPreferences()
+        )
+        assertTrue(bundleOff.srZones.isEmpty())
+        assertTrue(bundleOff.candlePatterns.isEmpty())
+    }
+
+    @Test
+    fun ui02_objectTree_drawingVisibilityLockingAndGuardBehavior() {
+        val visibleLine = ChartDrawing.HorizontalLine(
+            id = "hl_vis",
+            price = BigDecimal("80.00")
+        )
+        assertTrue("Default drawing must be visible", visibleLine.visible)
+        assertFalse("Default drawing must be unlocked", visibleLine.locked)
+
+        val hiddenLine = visibleLine.withVisibility(false) as ChartDrawing.HorizontalLine
+        assertFalse(hiddenLine.visible)
+        assertEquals(visibleLine.id, hiddenLine.id)
+
+        val lockedLine = visibleLine.withLocked(true) as ChartDrawing.HorizontalLine
+        assertTrue(lockedLine.locked)
+        assertTrue(lockedLine.visible)
+
+        // 1. Hit-testing must skip hidden drawings and hit visible ones underneath
+        val timeToX: (Long) -> Float = { 100f }
+        val priceToY: (Double) -> Float = { p -> (200.0 - (p - 70.0) * 10.0).toFloat() }
+        val hitHiddenOnly = DrawingGeometryAlgorithm.hitTestDrawing(
+            drawings = listOf(hiddenLine),
+            tapX = 100f,
+            tapY = 100f,
+            timeToX = timeToX,
+            priceToY = priceToY,
+            hitTolerancePx = 20f
+        )
+        assertNull("Hidden drawing must not be selectable via canvas hit-test", hitHiddenOnly)
+
+        val hitVisibleUnderHidden = DrawingGeometryAlgorithm.hitTestDrawing(
+            drawings = listOf(visibleLine, hiddenLine.copy(id = "hl_hidden_top")),
+            tapX = 100f,
+            tapY = 100f,
+            timeToX = timeToX,
+            priceToY = priceToY,
+            hitTolerancePx = 20f
+        )
+        assertNotNull(hitVisibleUnderHidden)
+        assertEquals("hl_vis", hitVisibleUnderHidden!!.id)
+
+        // 2. Locked drawings must remain immutable under translateDrawing; unlocked drawings move normally
+        val lockedAfterDrag = DrawingGeometryAlgorithm.translateDrawing(
+            drawing = lockedLine,
+            deltaTimeMillis = 3_600_000L,
+            deltaPrice = BigDecimal("5.00")
+        ) as ChartDrawing.HorizontalLine
+        assertEquals(80.0, lockedAfterDrag.price.toDouble(), 1e-6)
+
+        val unlockedAfterDrag = DrawingGeometryAlgorithm.translateDrawing(
+            drawing = visibleLine,
+            deltaTimeMillis = 3_600_000L,
+            deltaPrice = BigDecimal("2.50")
+        ) as ChartDrawing.HorizontalLine
+        assertEquals(82.5, unlockedAfterDrag.price.toDouble(), 1e-6)
+
+        // 3. MultiAnchor withVisibility / withLocked preserves toolType, anchors, and variant
+        val pitchfork = ChartDrawing.MultiAnchor(
+            id = "pf_1",
+            toolType = DrawingTool.PITCHFORK,
+            anchors = listOf(
+                DrawingAnchor(1_700_000_000_000L, BigDecimal("70.0")),
+                DrawingAnchor(1_700_003_600_000L, BigDecimal("75.0")),
+                DrawingAnchor(1_700_007_200_000L, BigDecimal("72.0"))
+            ),
+            variant = "schiff"
+        )
+        val pfLockedHidden = pitchfork.withLocked(true).withVisibility(false) as ChartDrawing.MultiAnchor
+        assertTrue(pfLockedHidden.locked)
+        assertFalse(pfLockedHidden.visible)
+        assertEquals("schiff", pfLockedHidden.variant)
+        assertEquals(3, pfLockedHidden.anchors.size)
+
+        // 4. Clear-unlocked filter preserves only locked drawings
+        val mixed = listOf(visibleLine, lockedLine.copy(id = "hl_locked"), pfLockedHidden)
+        val afterClearUnlocked = mixed.filter { it.locked }
+        assertEquals(2, afterClearUnlocked.size)
+        assertTrue(afterClearUnlocked.all { it.locked })
+    }
+
+    @Test
+    fun phase6_strategySimulator_causalExecutionSlBeforeTpAndCostSensitivity() {
+        // 1. Build 90 synthetic bars with downtrend -> strong uptrend -> pullback -> continuation
+        val startMs = 1_700_000_000_000L
+        val candles = (0 until 90).map { i ->
+            val base = when {
+                i < 42 -> 100.0 - i * 0.25
+                i < 60 -> 89.5 + (i - 41) * 1.15
+                i < 68 -> 110.2 - (i - 59) * 0.85
+                else -> 103.4 + (i - 67) * 0.90
+            }
+            val open = base
+            val close = base + if (i in 42..59 || i >= 68) 0.55 else -0.35
+            val high = maxOf(open, close) + 0.45
+            val low = minOf(open, close) - 0.45
+            CandleBar(
+                openTimeUtcMillis = startMs + i * 900_000L,
+                openTimeUtcIso = "",
+                open = BigDecimal.valueOf(open),
+                high = BigDecimal.valueOf(high),
+                low = BigDecimal.valueOf(low),
+                close = BigDecimal.valueOf(close),
+                volume = BigDecimal.valueOf(120.0),
+                isClosed = true
+            )
+        }
+
+        // Verify all 4 presets execute cleanly with valid EUR 1,000 defaults & 3 cost sensitivity scenarios
+        for (preset in StrategySimulatorAlgorithm.StrategyPreset.entries) {
+            val res = StrategySimulatorAlgorithm.runSimulation(
+                rawCandles = candles,
+                symbolCode = "SPOTBRENT",
+                timeframe = "M15",
+                chartId = "SPOTBRENT_tvdatafeed_M15",
+                config = StrategySimulatorAlgorithm.StrategyConfig(
+                    preset = preset,
+                    initialEquity = 1000.0,
+                    riskPerTradePct = 1.0
+                ),
+                includeSensitivity = true
+            )
+            assertEquals("READY", res.status)
+            assertEquals(StrategySimulatorAlgorithm.SCHEMA_VERSION, res.schemaVersion)
+            assertEquals("SL_BEFORE_TP", res.config.intrabarPolicy)
+            assertEquals(90, res.equityCurve.size)
+            assertEquals(3, res.costSensitivity.size)
+            assertTrue(res.metrics.finalEquity.isFinite())
+            assertTrue(res.metrics.sharpeRatio.isFinite())
+            assertTrue(res.metrics.sortinoRatio.isFinite())
+            assertTrue(res.metrics.maxDrawdownPct >= 0.0)
+            if (res.metrics.totalTrades > 0) {
+                assertTrue(res.costSensitivity[2].totalFeesEur >= res.costSensitivity[0].totalFeesEur)
+            }
+        }
+
+        // 2. Conservative SL-before-TP intrabar tie-breaker verification
+        val probe = StrategySimulatorAlgorithm.runSimulation(
+            rawCandles = candles,
+            config = StrategySimulatorAlgorithm.StrategyConfig(
+                preset = StrategySimulatorAlgorithm.StrategyPreset.SUPERTREND_MOMENTUM,
+                direction = StrategySimulatorAlgorithm.TradeDirection.LONG_ONLY,
+                spreadBps = 0.0,
+                commissionBps = 0.0,
+                slippageBps = 0.0,
+                swapPerBarBps = 0.0
+            ),
+            includeSensitivity = false
+        )
+        assertTrue("Expected at least 1 LONG trade on synthetic Supertrend flip", probe.trades.isNotEmpty())
+        val entryIdx = probe.trades.first().entryIndex
+        val dualHitCandles = candles.mapIndexed { idx, bar ->
+            if (idx == entryIdx) {
+                bar.copy(
+                    high = bar.open.add(BigDecimal("50.0")),
+                    low = bar.open.subtract(BigDecimal("50.0")).max(BigDecimal("1.0"))
+                )
+            } else bar
+        }
+        val dualHit = StrategySimulatorAlgorithm.runSimulation(
+            rawCandles = dualHitCandles,
+            config = StrategySimulatorAlgorithm.StrategyConfig(
+                preset = StrategySimulatorAlgorithm.StrategyPreset.SUPERTREND_MOMENTUM,
+                direction = StrategySimulatorAlgorithm.TradeDirection.LONG_ONLY,
+                spreadBps = 0.0,
+                commissionBps = 0.0,
+                slippageBps = 0.0,
+                swapPerBarBps = 0.0
+            ),
+            includeSensitivity = false
+        )
+        assertEquals(
+            "Conservative SL-before-TP rule must resolve dual-hit bar as SL_HIT",
+            "SL_HIT",
+            dualHit.trades.first().exitReason
+        )
+
+        // 3. Insufficient data guard (< 30 bars)
+        val tiny = StrategySimulatorAlgorithm.runSimulation(candles.take(15))
+        assertEquals("INSUFFICIENT_DATA", tiny.status)
+        assertEquals(0, tiny.metrics.totalTrades)
+    }
 }
+

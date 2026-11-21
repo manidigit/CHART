@@ -84,34 +84,7 @@ if (!$ownerRegistered) {
     }
 }
 
-// Fallback to static JSON file candle counts if DB is empty or not yet seeded
-if ($totalCandles === 0) {
-    $tvDir = dirname(__DIR__, 2) . '/data/tvdatafeed';
-    if (is_dir($tvDir)) {
-        $files = glob($tvDir . '/*.json');
-        if (is_array($files)) {
-            foreach ($files as $f) {
-                $base = basename($f, '.json');
-                $parts = explode('_', $base);
-                $sym = $parts[0] ?? 'UNKNOWN';
-                $tf = $parts[1] ?? 'M15';
-                $data = json_decode((string) file_get_contents($f), true);
-                $cnt = is_array($data) && isset($data['candles']) ? count($data['candles']) : 0;
-                if ($cnt > 0) {
-                    $totalCandles += $cnt;
-                    $candleStats[] = [
-                        'chart_id' => 'chart_' . strtolower($sym) . '_main',
-                        'timeframe' => $tf,
-                        'provider_id' => 'tvdatafeed_cache',
-                        'count' => $cnt,
-                        'min_utc_ms' => (int) ($data['candles'][0]['open_time_utc_ms'] ?? 0),
-                        'max_utc_ms' => (int) ($data['candles'][$cnt - 1]['open_time_utc_ms'] ?? 0),
-                    ];
-                }
-            }
-        }
-    }
-}
+// MariaDB is the single source of truth for candle counts (no disk JSON cache fallback).
 
 $phpRuntime = [
     'php_version' => PHP_VERSION,

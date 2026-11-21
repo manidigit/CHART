@@ -18,7 +18,7 @@ Detailed engineering and operational material: docs/04-development/PROJECT_GUIDE
   <a href="https://chart.manico.es"><img src="https://img.shields.io/badge/Web-chart.manico.es-172b3a?style=for-the-badge&logo=googlechrome&logoColor=white" alt="Web application"></a>
   <a href="https://github.com/manidigit/CHART/actions/workflows/build-apk.yml"><img src="https://img.shields.io/badge/Android-APK%20workflow-3DDC84?style=for-the-badge&logo=android&logoColor=white" alt="Android APK workflow"></a>
   <a href="https://github.com/manidigit/CHART"><img src="https://img.shields.io/badge/Platform-Web%20%7C%20Android-4C6FFF?style=for-the-badge" alt="Web and Android"></a>
-  <a href="docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Release-v1.47.40-8B6CEF?style=for-the-badge" alt="Release version 1.47.40"></a>
+  <a href="docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md"><img src="https://img.shields.io/badge/Release-v1.47.41-8B6CEF?style=for-the-badge" alt="Release version 1.47.41"></a>
 </p>
 
 <p align="center">
@@ -38,21 +38,20 @@ Detailed engineering and operational material: docs/04-development/PROJECT_GUIDE
 
 The engineering direction prioritizes explicit market-series identity, UTC candle boundaries, holiday-aware data integrity, pure independently testable algorithms, and a strict out-of-sample forecast validation pipeline (`forecast-contract/v1` / spec `v1.3.0`).
 
-> **Live Project Status (Verified `v1.47.40` — 2026-11-19 · Single Source of Truth for AI/Devs):**
-> - **Active Production Runtime (`host_subdomain/` → `https://chart.manico.es`):** Phases 1–3 Core + the **Unified Browser-Native JavaScript Forecast Studio** (12 panels: `AUTO (OOS Best)`, `Causal Historical Analogs`, `Structural JS`, 10 native registry models, `Calibrated Ensemble`, `Quantile Fan / Hybrid / Quantile Bars`, `Coordinated MTF`, `Compare Overlays`, `Historical Replay`, and local SHA-256 `Ledger`) are **LIVE and enabled** on Web. The old Legacy Forecast Studio UI was **permanently removed** in `v1.47.38`.
-> - **Owner-Validated Top Browser Models:** `Causal Historical Analogs` and `Structural JS` are the owner-confirmed primary browser-native trajectories currently preferred in testing; full OOS statistical acceptance remains open (`FCST-MODEL-QA-01`).
-> - **Shelved / Inactive (`Python` & `Chronos-2`):** Shared cPanel hosting blocks `PHP exec()` and Python/PyTorch execution. Files such as `host_subdomain/api/v1/chronos2_forecast.php`, `host_subdomain/scripts/chronos2_worker.py`, and `archive/python_worker/` are **NOT executed by the live Web UI** and are intentionally deferred until a dedicated Python server is provisioned.
-> - **Historical Archive (`/archive/`):** Read-only historical snapshot from the `v1.45.1` redesign reset. Nothing inside `/archive/` is executed by the live site (note: there is NO `python_worker/` directory in the repository root).
+> **Live Project Status (Verified `v1.47.41` — 2026-11-21 · Single Source of Truth for AI/Devs):**
+> - **Active Production Runtime (`host_subdomain/` → `https://chart.manico.es`):** Phases 1–3 Core + the **Unified Browser-Native JavaScript Forecast Studio** (12 panels: `AUTO (OOS Best)`, `Causal Historical Analogs`, `Structural JS`, `SMC Prediction Engine` (`smc_prediction_js`), 10 native registry models, `Calibrated Ensemble`, `Quantile Fan / Hybrid / Quantile Bars`, `Coordinated MTF`, `Compare Overlays`, `Historical Replay`, and local SHA-256 `Ledger`) are **LIVE and enabled** on Web. The old Legacy Forecast Studio UI was **permanently removed** in `v1.47.38`.
+> - **Owner-Validated Top Browser Models:** `Causal Historical Analogs`, `Structural JS`, and `SMC Prediction Engine` are the primary browser-native trajectories currently under active consistency & OOS evaluation (`FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`, `FCST-MODEL-QA-01`).
+> - **Shelved / Inactive (`Python` & `Chronos-2`):** Shared cPanel hosting blocks `PHP exec()` and Python/PyTorch execution. Files such as `host_subdomain/api/v1/chronos2_forecast.php`, `host_subdomain/scripts/chronos2_worker.py`, and `.github/workflows/chronos2-manual-forecast.yml` are **NOT executed by the live Web UI** and are preserved (`Shelved`) until a dedicated Python server is provisioned.
 > - **Android Client (`app/`):** Ships Phases 1–3 core (`79` symbols, `15/15` indicators, `18` drawing tools, `GapDetector`, historical import, encrypted backup); Android Forecast UI remains disabled pending cross-platform parity after Web/Python stabilization.
 > - See [`AGENTS.md`](docs/04-development/AGENTS.md), [`OPEN_ISSUES.md`](docs/03-roadmap-and-issues/OPEN_ISSUES.md), and [`CHANGELOG.md`](docs/04-development/CHANGELOG.md).
 
 ## Product
 
-### Shipped foundation (Web `v1.47.40` & Android Core)
+### Shipped foundation (Web `v1.47.41` & Android Core)
 
 - **Cross-Platform Parity (TradingView Pro Standard):** Responsive desktop/mobile web workspace (`host_subdomain`) and native Android Jetpack Compose app sharing the TradingView palettes (`#131722` dark / `#FFFFFF` light), circular vector asset badges for all 79 symbols, and `JetBrains Mono` LTR tabular digits.
 - **Unified Top-Bar Workspace (Zero Right-Rail Clutter):** Primary workspace sections—**`Chart`**, **`Forecast` (LIVE unified browser-native studio on Web; disabled on Android)**, **`Performance`**, **`Watchlist`**, and **`Settings`**—live in the top header bar alongside the **Indicators** button, **`CSV`** export button, **Snapshot** camera button, and a minimal **blinking green/red Market Status dot** (`Live` / `Market Closed`).
-- **79-Symbol Catalog, Non-Blocking Timeframe Switching & Storage Quota Safety:** 22 default watchlist symbols + 57 global equities available in Settings (`tvdatafeed` active only), with per-symbol `AbortController` request cancellation, unified `?v=1.47.40` ES-module graph + `globalThis.__CI_STORE_SINGLETON_V1__` guard (`ARCH-02`), and quota-safe `safeLocalStorageSet()` with automatic candle-cache eviction (`STORAGE-QUOTA-01`) preserving up to 5,000 candles in RAM & MariaDB.
+- **79-Symbol Catalog, Non-Blocking Timeframe Switching & Storage Quota Safety:** 22 default watchlist symbols + 57 global equities available in Settings (`tvdatafeed` active only), with per-symbol `AbortController` request cancellation, unified `?v=1.47.41` ES-module graph + `globalThis.__CI_STORE_SINGLETON_V1__` guard (`ARCH-02`), and quota-safe `safeLocalStorageSet()` with automatic candle-cache eviction (`STORAGE-QUOTA-01`) preserving up to 5,000 candles in RAM & MariaDB.
 - **Multi-Tab Chart & Complete Phase 2 Studies (`15/15` Indicators + `18` Drawing Tools):**
   - Parallel chart tabs (`${SYMBOL}_${TF}`), 6 timeframes (`15m`, `30m`, `1h`, `4h`, `1D`, `1W`), Heckbert nice-number price scaling (`[Auto] [Log]`), `UTC / Local` time axis, and 11 quick date ranges (`1D..All`).
   - **6 Base + 12 Multi-Anchor Drawing Families:** `HLINE`, `VLINE`, `TREND`, `FIB`, `LONG_POS`, `SHORT_POS`, `AVWAP`, `FRVP`, `Linear Regression Channel`, `Gann Fan`, `Gann Box`, 4-variant `Pitchfork` (`Original / Schiff / Mod Schiff / Inside`), `Fib Time Zone`, `Cyclic Lines`, `Fib Speed Resistance Fan`, `ABCD`, `XABCD`, and `Head & Shoulders` with `Magnet Mode`.
@@ -60,9 +59,9 @@ The engineering direction prioritizes explicit market-series identity, UTC candl
 - **Phase 3 Data Quality, Holiday-Aware Gap Detection & Encrypted Backup:**
   - Session- and holiday-aware `GapDetector` (`GapDetector.php`, `gapDetector.js`, `GapDetectorAlgorithm.kt`) separating real feed outages from weekends, daily futures settlement breaks (`21:00–23:59 UTC`), early US holiday closes, and single-day exchange holidays.
   - Historical data import (`CSV/TSV`, binary `BIFF8 OLE2` `EIA RBRTEd.xls`, `JSON`, manual `OHLC` with strict `ERR_IMAGE_UPLOAD_FORBIDDEN`) and `PBKDF2 + AES-256-GCM` encrypted workspace backup/restore.
-- **Phase 4 Unified Browser-Native Forecast Studio (Web `v1.47.35–v1.47.40`):**
+- **Phase 4 Unified Browser-Native Forecast Studio (Web `v1.47.35–v1.47.41`):**
   - Runs 100% in-browser on closed TradingView candles (`is_closed !== false`) strictly on explicit user click—requiring zero Python/PyTorch or PHP `exec()` on shared hosting.
-  - Includes **`Causal Historical Analogs`**, **`Structural JS`** (`structural_wave_js` via Web Worker), **10 native JS registry models**, **`AUTO (OOS Best)`**, **`Calibrated Ensemble`**, 3 zero-synthetic-OHLC chart render modes (`Quantile Fan`, `Hybrid`, `Quantile Bars`), `Coordinated MTF`, multi-model `Compare Overlays`, `Historical Replay`, and local SHA-256 `ForecastLedger`.
+  - Includes **`Causal Historical Analogs`**, **`Structural JS`** (`structural_wave_js` via Web Worker), **`SMC Prediction Engine`** (`smc_prediction_js`), **10 native JS registry models**, **`AUTO (OOS Best)`**, **`Calibrated Ensemble`**, 3 zero-synthetic-OHLC chart render modes (`Quantile Fan`, `Hybrid`, `Quantile Bars`), `Coordinated MTF`, multi-model `Compare Overlays`, `Historical Replay`, and local SHA-256 `ForecastLedger`.
   - Legacy Forecast Studio UI was permanently removed in `v1.47.38`; Python Worker & `Chronos-2` remain shelved/inactive until a dedicated Python server is provisioned.
 - **Bilingual (`fa` / `en`) & BYOK:** Persian (RTL default) and English (LTR), salted SHA-256 owner login with `Remember Me` and 6-digit email OTP recovery, DB-First Delta Sync up to 5,000 candles, and isolated personal API keys (`BYOK` via `X-Provider-Api-Key`).
 
@@ -72,10 +71,10 @@ The roadmap follows a strict **Build → Install → Practical Test → Owner Ap
 
 | Phase | Focus | Current State | Details |
 |---:|---|---|---|
-| 1 | Product foundation, multi-tab charts, 79-symbol catalog & Web state/storage stability | **Shipped & Hardened (`v1.35–v1.47.40`)** | [ROADMAP_BACKLOG.md](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) |
+| 1 | Product foundation, multi-tab charts, 79-symbol catalog & Web state/storage stability | **Shipped & Hardened (`v1.35–v1.47.41`)** | [ROADMAP_BACKLOG.md](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) |
 | 2 | All 15 core indicators (incl. 4-variant Pivots), 18 drawing tools (`Harmonic/Gann/Pitchfork/Cycle/AVWAP/FRVP`), `Symbol Intel` & `Seasonals` | **Shipped in code (`v1.39–v1.41`)** | [ROADMAP_BACKLOG.md](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) |
 | 3 | Holiday-aware Smart Gap detection, EIA/CSV/BIFF8 imports, `CSV` export & `AES-256-GCM` Backup/Restore | **Shipped in code (`v1.41–v1.44`)** | [ROADMAP_BACKLOG.md](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) |
-| 4 | Unified Forecast Studio (Browser-Native JS live on Web; Python/Chronos-2 deferred to dedicated server) | **Web Browser-Native Live (`v1.47.40`) · Python/Chronos-2 Deferred · OOS Acceptance Open** | [FORECAST_PRODUCT_FOUNDATION_V1.md](docs/01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) |
+| 4 | Unified Forecast Studio (Browser-Native JS live on Web; Python/Chronos-2 deferred to dedicated server) | **Web Browser-Native Live (`v1.47.41`) · Python/Chronos-2 Shelved · Consistency & OOS Acceptance Open** | [FORECAST_PRODUCT_FOUNDATION_V1.md](docs/01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) |
 | 5 | Live Feedback Loop, `Purged + Embargoed Walk-Forward` governance & `Champion/Challenger` promotion gate | **Planned** | [CHART_INTELLIGENCE_MASTER_SPEC.md](docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) |
 | 6 | Offline Strategy Simulator & Multi-user admin | **Planned** | [TRADING_STRATEGY_SPEC.md](docs/01-product/TRADING_STRATEGY_SPEC.md) |
 
@@ -143,28 +142,32 @@ All markdown documentation (except this `README.md`) is organized under `docs/`:
 ```text
 .
 ├── app/                                      # Native Android app (Kotlin, Compose, GapDetector, REST + local cache)
-├── host_subdomain/                           # LIVE WEB PRODUCTION ROOT (https://chart.manico.es · v1.47.40)
-│   ├── api/v1/                               # PHP REST API (auth, candles_sync, workspace_sync, gap_report, provider adapters; chronos2_forecast.php INACTIVE)
-│   ├── scripts/                              # tvdatafeed sync scripts (chronos2_worker.py INACTIVE / deferred to dedicated server)
-│   ├── assets/js/                            # 26 Native ES6 modules (?v=1.47.40): core/, services/, components/, views/, algorithms/, forecast/, workers/
+├── host_subdomain/                           # LIVE WEB PRODUCTION ROOT (https://chart.manico.es · v1.47.41)
+│   ├── api/v1/                               # PHP REST API (auth, candles_sync, workspace_sync, gap_report, provider adapters; chronos2_forecast.php SHELVED)
+│   ├── scripts/                              # tvdatafeed sync scripts (chronos2_worker.py SHELVED / deferred to dedicated server)
+│   ├── assets/js/                            # 27 Native ES6 modules (?v=1.47.41): core/, services/, components/, views/, algorithms/, forecast/, workers/
 │   ├── data/tvdatafeed/                      # Seeded SPOTBRENT candles (M15, H1, H4, D1)
 │   ├── i18n/                                 # Web dictionaries (fa.json, en.json)
 │   └── migrations/                           # Idempotent MariaDB migrations (001_phase1..005_catalog)
-├── archive/                                  # READ-ONLY HISTORICAL ARCHIVE (NOT executed by live site; contains legacy Android/Web/PHP & python_worker/)
 ├── docs/
 │   ├── README.md                             # Documentation Hub & Live State Snapshot
-│   ├── KNOWN_ISSUES_BACKLOG.md               # Tracked & resolved technical issues log
 │   ├── assets/chart-hero.svg                 # Repository hero banner
 │   ├── 01-product/
-│   │   ├── FORECAST_PRODUCT_FOUNDATION_V1.md # Independent Forecast Product Foundation
 │   │   ├── CHART_INTELLIGENCE_MASTER_SPEC.md # Primary source of truth (product, contracts, formulas, phases)
-│   │   ├── CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md # Historical Forecast technical research reference
+│   │   ├── FORECAST_PRODUCT_FOUNDATION_V1.md # Independent Forecast Product Foundation
+│   │   ├── FORECAST_SYSTEM_SPEC_V1.md        # Model-independent Forecast system specification
+│   │   ├── FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md # Evidence-based model intake & screening protocol
+│   │   ├── FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md # Chronos-2 contract (Shelved)
 │   │   ├── GROK_OPENMARKET_RESEARCH_NOTES.md # Provider & ML architecture research notes
 │   │   └── TRADING_STRATEGY_SPEC.md          # Phase 6 offline strategy simulation spec
 │   ├── 02-architecture/
 │   │   ├── ARCHITECTURE.md                   # Central Core, DB-First Delta Sync, providers & 79-symbol catalog
-│   │   ├── FORECAST_MIGRATION_PLAN_V1.md     # Forecast migration governance & Phase 1–3 history
+│   │   ├── TECHNICAL_ANALYSIS_CORE_IMPLEMENTATION_PLAN_V1.md # Deterministic analysis core plan
 │   │   ├── DESIGN_WORKSPACE_SPEC.md          # TradingView Pro workspace layout, topbar navigation & tokens
+│   │   ├── FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md # Draft MTF & horizon consistency analysis
+│   │   ├── FORECAST_ACCEPTANCE_TEST_PLAN_V1.md # Model-independent Forecast acceptance test scenarios
+│   │   ├── FORECASTING_ALGORITHM_REFERENCE.md # Curated ML/statistical algorithm review
+│   │   ├── CHRONOS2_MANUAL_GITHUB_ACTIONS_RUNBOOK_V1.md # Manual Chronos-2 runner (Shelved)
 │   │   ├── INFRASTRUCTURE_INVENTORY.md       # Verified cPanel / MariaDB host inventory & limits
 │   │   └── SECURITY.md                       # Security policy, zero-secrets & BYOK isolation
 │   ├── 03-roadmap-and-issues/
@@ -172,12 +175,14 @@ All markdown documentation (except this `README.md`) is organized under `docs/`:
 │   │   └── ROADMAP_BACKLOG.md                # Truthful Shipped Core vs Phase 4–6 backlog
 │   └── 04-development/
 │       ├── PROJECT_GUIDE.md                  # Code-vs-Spec audit table, secrets registry & CI/CD guide
-│       ├── AGENTS.md                         # AI & developer invariants, live-vs-archive map & UI directives
+│       ├── AGENTS.md                         # AI & developer invariants, live map & UI directives
 │       ├── CONTRIBUTING.md                   # Build, test & PR workflow
-│       └── CHANGELOG.md                      # Chronological release history (up to v1.47.40)
-├── tests/                                    # Node.js web parity, ARCH-02 & STORAGE-QUOTA-01 suite (39/39 passing)
+│       └── CHANGELOG.md                      # Chronological release history (up to v1.47.41)
+├── tests/                                    # Node.js web parity & Forecast regression suite (51/51 passing)
 ├── .github/workflows/
-│   └── build-apk.yml                         # Android APK build + Web/DB cPanel deployment workflow
+│   ├── build-apk.yml                         # Android APK build + Web/DB cPanel deployment workflow
+│   ├── forecast-validation.yml               # Forecast native parity & syntax validation
+│   └── chronos2-manual-forecast.yml          # Manual Chronos-2 runner workflow (Shelved)
 ├── package.json                              # Root ES module & test script definitions
 └── README.md                                 # Project landing page
 ```
@@ -197,8 +202,8 @@ gradle :app:testDebugUnitTest
 ## Documentation
 
 Start at [`docs/README.md`](docs/README.md) for the full reading order by role, or jump directly to:
-- **Truthful Current Status & Active Work:** [`KNOWN_ISSUES_BACKLOG.md`](docs/KNOWN_ISSUES_BACKLOG.md) · [`OPEN_ISSUES.md`](docs/03-roadmap-and-issues/OPEN_ISSUES.md) · [`ROADMAP_BACKLOG.md`](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md)
-- **Specs & Architecture:** [`CHART_INTELLIGENCE_MASTER_SPEC.md`](docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) · [`CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md`](docs/01-product/CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md) · [`ARCHITECTURE.md`](docs/02-architecture/ARCHITECTURE.md) · [`DESIGN_WORKSPACE_SPEC.md`](docs/02-architecture/DESIGN_WORKSPACE_SPEC.md)
+- **Truthful Current Status & Active Work:** [`OPEN_ISSUES.md`](docs/03-roadmap-and-issues/OPEN_ISSUES.md) · [`ROADMAP_BACKLOG.md`](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) · [`FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`](docs/02-architecture/FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md)
+- **Specs & Architecture:** [`CHART_INTELLIGENCE_MASTER_SPEC.md`](docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) · [`FORECAST_PRODUCT_FOUNDATION_V1.md`](docs/01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) · [`ARCHITECTURE.md`](docs/02-architecture/ARCHITECTURE.md) · [`DESIGN_WORKSPACE_SPEC.md`](docs/02-architecture/DESIGN_WORKSPACE_SPEC.md)
 - **Developer & Ops:** [`PROJECT_GUIDE.md`](docs/04-development/PROJECT_GUIDE.md) · [`CHANGELOG.md`](docs/04-development/CHANGELOG.md) · [`AGENTS.md`](docs/04-development/AGENTS.md) · [`INFRASTRUCTURE_INVENTORY.md`](docs/02-architecture/INFRASTRUCTURE_INVENTORY.md) · [`SECURITY.md`](docs/02-architecture/SECURITY.md)
 
 ## Project principles

@@ -2,7 +2,7 @@
 
 > راهنمای عملیاتی و فنی توسعه، تطبیق وضعیت واقعی کد با مشخصات، پیکربندی محرمانه و پایپ‌لاین CI/CD. مرجع تصمیمات محصول همچنان [`CHART_INTELLIGENCE_MASTER_SPEC.md`](../01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) است.
 
-**آخرین بازبینی:** `2026-11-19` · **نسخه کد و مستندات:** `1.47.40` · **وب‌اپلیکیشن:** https://chart.manico.es
+**آخرین بازبینی:** `2026-11-21` · **نسخه کد و مستندات:** `1.47.41` · **وب‌اپلیکیشن:** https://chart.manico.es
 
 ---
 
@@ -11,15 +11,16 @@
 | دسته | سند کلیدی | کاربرد |
 |---|---|---|
 | **۰۱ — محصول و تحقیق** | [`CHART_INTELLIGENCE_MASTER_SPEC.md`](../01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) | مرجع اصلی محصول، قراردادهای داده/پیش‌بینی، قوانین مهندسی و فرمول‌های TA-Lib |
-| | [`CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md`](../01-product/CHART_FUTURE_PREDICTION_SPEC_v1.3.0.md) | مشخصات فنی پیش‌بینی آینده نمودار، ارزیابی احتمالاتی، سناریوها و ممیزی |
+| | [`FORECAST_PRODUCT_FOUNDATION_V1.md`](../01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) و [`FORECAST_SYSTEM_SPEC_V1.md`](../01-product/FORECAST_SYSTEM_SPEC_V1.md) | سند بنیادین محصول و مشخصات سیستم پیش‌بینی (مسیر قیمت، سازگاری چندتایم‌فریمی، چرخه عمر و ارزیابی) |
 | | [`GROK_OPENMARKET_RESEARCH_NOTES.md`](../01-product/GROK_OPENMARKET_RESEARCH_NOTES.md) | پژوهش منابع رایگان/تیک (`biquote`, `Stooq`) و مدل‌های ML |
 | | [`TRADING_STRATEGY_SPEC.md`](../01-product/TRADING_STRATEGY_SPEC.md) | مشخصات ماژول شبیه‌ساز استراتژی (فاز ۶) |
-| **۰۲ — معماری و زیرساخت** | [`ARCHITECTURE.md`](../02-architecture/ARCHITECTURE.md) | معماری ۳ لایه، موتور `DB-First Delta Sync`، کاتالوگ ۷ منبع / ۲۲ نماد و قرارداد JSON |
+| **۰۲ — معماری و زیرساخت** | [`ARCHITECTURE.md`](../02-architecture/ARCHITECTURE.md) | معماری ۳ لایه، موتور `DB-First Delta Sync`، کاتالوگ منابع / ۷۹ نماد و قرارداد JSON |
+| | [`TECHNICAL_ANALYSIS_CORE_IMPLEMENTATION_PLAN_V1.md`](../02-architecture/TECHNICAL_ANALYSIS_CORE_IMPLEMENTATION_PLAN_V1.md) و [`FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`](../02-architecture/FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md) | برنامه هسته تحلیل قطعی و سند تحلیلی سازگاری چندتایم‌فریمی/افق پیش‌بینی |
 | | [`DESIGN_WORKSPACE_SPEC.md`](../02-architecture/DESIGN_WORKSPACE_SPEC.md) | چیدمان ۵ لایه، Z-index بوم، اولویت تعاملات لمسی و توکن‌های بصری |
 | | [`INFRASTRUCTURE_INVENTORY.md`](../02-architecture/INFRASTRUCTURE_INVENTORY.md) | وضعیت cPanel، MariaDB `10.6.28`، محدودیت‌ها و چک‌لیست هاست |
 | | [`SECURITY.md`](../02-architecture/SECURITY.md) | ایزوله‌سازی اسرار، BYOK و سیاست گزارش آسیب‌پذیری |
-| **۰۳ — نقشه راه و مسائل** | [`OPEN_ISSUES.md`](../03-roadmap-and-issues/OPEN_ISSUES.md) | مسائل باز واقعی، باگ‌های جزئی باقی‌مانده و پرسش‌های تاییدنشده |
-| | [`ROADMAP_BACKLOG.md`](../03-roadmap-and-issues/ROADMAP_BACKLOG.md) | مرز قابلیت‌های تحویل‌شده vs بک‌لاگ فاز ۲ و فازهای ۳ تا ۶ |
+| **۰۳ — نقشه راه و مسائل** | [`OPEN_ISSUES.md`](../03-roadmap-and-issues/OPEN_ISSUES.md) | مسائل باز واقعی، باگ‌های باقی‌مانده و پرسش‌های تاییدنشده |
+| | [`ROADMAP_BACKLOG.md`](../03-roadmap-and-issues/ROADMAP_BACKLOG.md) | مرز قابلیت‌های تحویل‌شده vs بک‌لاگ فازهای ۴ تا ۶ |
 | **۰۴ — توسعه و استقرار** | [`AGENTS.md`](./AGENTS.md) و [`CONTRIBUTING.md`](./CONTRIBUTING.md) و [`CHANGELOG.md`](./CHANGELOG.md) | قوانین هوش مصنوعی، دستورالعمل بیلد/تست و تاریخچه تغییرات |
 
 ---
@@ -81,4 +82,4 @@
 
 فایل `.github/workflows/build-apk.yml` (اجرا با `push` به `main` یا `workflow_dispatch`) دارای دو Job اصلی است:
 1. **`Build Android APK`:** بازسازی keystore ثابت (`CANONICAL_B64` مطابق اثر انگشت `SHA1: 38:C6:57:E4:12:4A:90:85:94:BA:0C:B3:C2:A3:A9:F8:F5:3B:E1:6B` تا آپدیت درجا بدون حذف نسخه قبلی نصب شود)، تزریق `.env` برای Secrets Plugin و بیلد `app-debug.apk`.
-2. **`Package and Deploy Subdomain Web Files`:** اجرای `sync_tvdatafeed.py` برای `SPOTBRENT` و `XAUUSD`، تولید `config/env.local.php` از Secrets روی سرور، آپلود بسته `host_subdomain/` به cPanel و اجرای غیرمخرب `migrations/001_phase1_init.sql` و سید اولیه کندل‌ها در MariaDB.
+2. **`Package and Deploy Subdomain Web Files`:** تولید `config/env.local.php` از Secrets روی سرور، آپلود بسته سبک‌شده `host_subdomain/` به cPanel (بدون فایل‌های استاتیک `data/tvdatafeed/` و بدون `sync_tvdatafeed.py`)، پاکسازی فایل‌های قدیمی `data/tvdatafeed/` روی هاست و اجرای غیرمخرب مایگریشن‌های MariaDB (`001_phase1_init.sql`، `002_phase2_3_tables.sql`).

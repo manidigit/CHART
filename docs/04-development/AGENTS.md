@@ -4,17 +4,16 @@
 
 ---
 
-## ۰. منبع حقیقت وضعیت زنده سیستم برای هوش مصنوعی‌ها (`AI Source of Truth — v1.47.40`)
+## ۰. منبع حقیقت وضعیت زنده سیستم برای هوش مصنوعی‌ها (`AI Source of Truth — v1.47.41`)
 
-پیش از تحلیل مخزن یا نوشتن هر کد/ممیزی، این مرزهای قطعی را رعایت کنید تا میان کد زنده، کد متوقف‌شده و آرشیو سردرگمی رخ ندهد:
+پیش از تحلیل مخزن یا نوشتن هر کد/ممیزی، این مرزهای قطعی را رعایت کنید تا میان کد زنده و کد متوقف‌شده سردرگمی رخ ندهد:
 
-| لایه / مسیر | وضعیت فعلی (`v1.47.40`) | توضیح قطعی |
+| لایه / مسیر | وضعیت فعلی (`v1.47.41`) | توضیح قطعی |
 |---|---|---|
 | **`host_subdomain/`** (`https://chart.manico.es`) | **زنده و در حال اجرا (`LIVE`)** | کل وب‌اپلیکیشن و **Unified Browser-Native Forecast Studio** (۱۲ پنل، `AUTO (OOS Best)`، **`Structural JS`**، **`SMC Prediction Engine` (`smc_prediction_js`)**، **`Causal Historical Analogs`**، ۱۰ مدل Native رجیستری، `Calibrated Ensemble`، ۳ حالت رندر بدون OHLC جعلی، `Coordinated MTF`، `Compare Overlays`، `Historical Replay`، `ForecastLedger` محلی SHA-256). |
-| **مدل‌های منتخب مرورگری فعلی** | **تأییدشده توسط مالک در تست عملی** | سه مسیر مستقل و علّی: **`Structural JS`** (`algorithms/structuralForecastEngine.js`)، **`SMC Prediction Engine`** (`forecast/smcPredictionEngine.js` — بازطراحی علمی و بدون `sin/cos` یا OHLC جعلی بر پایه `BOS/CHoCH`، `FVG`های باز، `EQH/EQL` و `Volume Profile POC/VAH/VAL`) و **`Causal Historical Analogs`** (`forecast/empiricalAnalogEngine.js`). نسخه منسوخ `v1.44.0` (ماشین حالت `sin/cos` و کندل‌های شبح) همچنان حذف‌شده باقی می‌ماند. |
+| **مدل‌های منتخب مرورگری فعلی** | **تأییدشده توسط مالک در تست عملی** | سه مسیر مستقل و علّی: **`Structural JS`** (`algorithms/structuralForecastEngine.js`)، **`SMC Prediction Engine`** (`forecast/smcPredictionEngine.js` — بازطراحی علمی و بدون `sin/cos` یا OHLC جعلی بر پایه `BOS/CHoCH`، `FVG`های باز، `EQH/EQL` و `Volume Profile POC/VAH/VAL`) و **`Causal Historical Analogs`** (`forecast/empiricalAnalogEngine.js`). تحلیل سازگاری چندتایم‌فریمی در [`FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`](../02-architecture/FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md) در دست بررسی است. |
 | **رابط قدیمی (`Legacy Forecast Studio`)** | **حذف دائمی در `v1.47.38`** | سوییچر `Legacy / New`، `renderForecastStudioView()` و `legacyForecastPoints` به‌طور کامل پاک شده‌اند؛ هیچ سیستم دوتایی در UI وجود ندارد. |
-| **`host_subdomain/api/v1/chronos2_forecast.php` و `host_subdomain/scripts/chronos2_worker.py`** | **متوقف / غیرفعال (`SHELVED`)** | هاست اشتراکی cPanel اجرای `PHP exec()` و Python را مسدود کرده است. این فایل‌ها در UI وب صدا زده نمی‌شوند و صرفاً برای زمان تهیه **سرور مستقل Python** در روزهای آینده حفظ شده‌اند. |
-| **`/archive/`** (شامل `archive/python_worker/`) | **آرشیو فقط‌خواندنی (`ARCHIVED`)** | هیچ فایلی در `/archive/` توسط سایت زنده اجرا نمی‌شود. پوشه `python_worker/` در ریشه مخزن **وجود ندارد** و نباید آن را کد زنده تولیدی فرض کرد. |
+| **`host_subdomain/api/v1/chronos2_forecast.php` و `host_subdomain/scripts/chronos2_worker.py`** | **متوقف / غیرفعال (`SHELVED`)** | هاست اشتراکی cPanel اجرای `PHP exec()` و Python را مسدود کرده است. این فایل‌ها در UI وب صدا زده نمی‌شوند و صرفاً برای زمان تهیه **سرور مستقل Python** در آینده حفظ شده‌اند. |
 | **`app/` (اندروید)** | **هسته فاز ۱–۳ زنده (`Forecast` غیرفعال)** | تب Forecast اندروید تا پایان پایدارسازی وب و تصمیم سرور Python غیرفعال باقی می‌ماند. |
 
 ---
@@ -69,7 +68,7 @@
 4. **No Mock Fallbacks:** داده یا پیش‌بینی ساختگی تولید نکنید؛ نبود داده یا محدودیت منبع باید شفاف در UI نمایش داده شود (`Market Closed`, `Cached`, `Sync Error`, `API Key Required`).
 5. **Zero Hardcoding & Dual-Platform Core Parity:** تغییرات الگوریتمی، مدل داده و تنظیمات باید به‌صورت متقارن در هسته PHP، وب (`host_subdomain/assets/js/`) و اندروید (`app/src/main/java/`) پیاده‌سازی شوند.
 6. **Separation of Prediction & Trading:** موتور پیش‌بینی (فاز ۴/۵) هیچ فیلد معامله‌گری (`Buy/Sell`, `Entry`, `SL`, `TP`) صادر نمی‌کند؛ این موارد منحصراً در ماژول مستقل فاز ۶ ([`TRADING_STRATEGY_SPEC.md`](../01-product/TRADING_STRATEGY_SPEC.md)) هستند.
-7. **Unified ES Module Cache-Busting (`ARCH-02`):** در هر تغییر جاوااسکریپت وب، تمام آدرس‌های `?v=` در هر ۲۶ فایل `host_subdomain/assets/js/` و `host_subdomain/index.html` باید به **یک نسخه واحد و یکسان** (فعلاً `1.47.40`) ارتقا یابند و `store.js` همواره از `globalThis.__CI_STORE_SINGLETON_V1__` محافظت شود تا مشکل Split-Singleton در کش مرورگر هرگز بازنگردد.
+7. **Unified ES Module Cache-Busting (`ARCH-02`):** در هر تغییر جاوااسکریپت وب، تمام آدرس‌های `?v=` در هر ۲۷ فایل `host_subdomain/assets/js/` و `host_subdomain/index.html` باید به **یک نسخه واحد و یکسان** (فعلاً `1.47.41`) ارتقا یابند و `store.js` همواره از `globalThis.__CI_STORE_SINGLETON_V1__` محافظت شود تا مشکل Split-Singleton در کش مرورگر هرگز بازنگردد.
 8. **Quota-Safe Storage (`STORAGE-QUOTA-01`):** هیچ فراخوانی مستقیم `localStorage.setItem(...)` در `store.js`، `app.js` و `apiService.js` مجاز نیست؛ تمامی نوشتن‌ها باید از `safeLocalStorageSet()` عبور کنند و کش کندل `localStorage` حداکثر `250` کندل باشد (در حالی که ۵۰۰۰ کندل کامل در RAM و MariaDB حفظ می‌شود).
 
 ---
@@ -78,14 +77,13 @@
 
 | مسیر | مسئولیت |
 |---|---|
-| `docs/01-product/` | `FORECAST_PRODUCT_FOUNDATION_V1.md`, `CHART_INTELLIGENCE_MASTER_SPEC.md`, `GROK_OPENMARKET_RESEARCH_NOTES.md`, `TRADING_STRATEGY_SPEC.md` |
-| `docs/02-architecture/` | `ARCHITECTURE.md`, `FORECAST_MIGRATION_PLAN_V1.md`, `DESIGN_WORKSPACE_SPEC.md`, `INFRASTRUCTURE_INVENTORY.md`, `SECURITY.md` |
+| `docs/01-product/` | `CHART_INTELLIGENCE_MASTER_SPEC.md`, `FORECAST_PRODUCT_FOUNDATION_V1.md`, `FORECAST_SYSTEM_SPEC_V1.md`, `FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md`, `FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md`, `GROK_OPENMARKET_RESEARCH_NOTES.md`, `TRADING_STRATEGY_SPEC.md` |
+| `docs/02-architecture/` | `ARCHITECTURE.md`, `TECHNICAL_ANALYSIS_CORE_IMPLEMENTATION_PLAN_V1.md`, `DESIGN_WORKSPACE_SPEC.md`, `FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`, `FORECAST_ACCEPTANCE_TEST_PLAN_V1.md`, `FORECASTING_ALGORITHM_REFERENCE.md`, `CHRONOS2_MANUAL_GITHUB_ACTIONS_RUNBOOK_V1.md`, `INFRASTRUCTURE_INVENTORY.md`, `SECURITY.md` |
 | `docs/03-roadmap-and-issues/` | `OPEN_ISSUES.md`, `ROADMAP_BACKLOG.md` |
 | `docs/04-development/` | `PROJECT_GUIDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `CHANGELOG.md` |
 | `app/src/main/java/es/manico/chartintelligence/` | اپلیکیشن نیتیو اندروید (Kotlin / Jetpack Compose + Coordinators + Pure Algorithms + Providers) |
-| `host_subdomain/assets/js/` | فرانت‌اند وب زنده با ۲۶ ماژول Native ES6 (`?v=1.47.40`) شامل `forecast/` و `algorithms/structuralForecastEngine.js` |
-| `host_subdomain/api/v1/` | بک‌اند PHP REST API و آداپتورهای داده + MariaDB (`chronos2_forecast.php` غیرفعال/متوقف) |
-| `archive/` | آرشیو تاریخی فقط‌خواندنی (شامل `archive/python_worker/`) — غیرفعال در تولید |
+| `host_subdomain/assets/js/` | فرانت‌اند وب زنده با ۲۷ ماژول Native ES6 (`?v=1.47.41`) شامل `forecast/` و `algorithms/structuralForecastEngine.js` |
+| `host_subdomain/api/v1/` | بک‌اند PHP REST API و آداپتورهای داده + MariaDB (`chronos2_forecast.php` متوقف/`Shelved`) |
 | `.github/workflows/build-apk.yml` | پایپ‌لاین بیلد APK و بسته‌بندی/استقرار وب |
 
 ---
@@ -93,7 +91,7 @@
 ## ۴. دستورات استاندارد بررسی و بیلد
 
 قبل از پایان هر نوبت کدنویسی، راستی‌آزمایی واقعی انجام دهید و خروجی واقعی را گزارش کنید:
-- **تست پاریتی و رگرسیون وب (شامل `ARCH-02` و `STORAGE-QUOTA-01`):** `npm test` (یا `node --test tests/web_parity.test.mjs` — فعلاً ۳۹/۳۹ پاس)
+- **تست پاریتی و رگرسیون وب (شامل `ARCH-02` و `STORAGE-QUOTA-01`):** `npm test` (یا `node --test tests/web_parity.test.mjs` — فعلاً ۵۱/۵۱ پاس)
 - **بررسی سینتکس ES6 وب:** `node --check` روی فایل‌های تغییریافته در `host_subdomain/assets/js/`
 - **بیلد اندروید:** ابزار `compile_applet` (یا `gradle assembleDebug`)
 - **تست واحد اندروید:** `gradle :app:testDebugUnitTest`

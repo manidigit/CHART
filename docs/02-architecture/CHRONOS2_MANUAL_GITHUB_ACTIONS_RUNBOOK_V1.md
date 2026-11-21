@@ -9,8 +9,8 @@ Status: Implemented on a review branch; first live FTP/model run still required.
 - Forecast generation starts only from Actions → Chronos-2 Manual Forecast → Run workflow.
 - No Cron, schedule, push trigger, website-triggered execution, or tab-change execution exists.
 - Inputs are CHART symbol code, CHART timeframe code, and horizon (15/30/45/60).
-- The workflow runs the existing host_subdomain/scripts/sync_tvdatafeed.py in a temporary runner directory. It does not commit or deploy temporary market data.
-- The published site reference is downloaded from the configured FTP document root and compared with fresh input before inference.
+- The workflow runs `scripts/sync_tvdatafeed.py` (moved out of `host_subdomain/scripts/`) in a temporary runner directory (`$RUNNER_TEMP`). It does not commit or deploy temporary market data to the host.
+- Note (v1.47.41 MariaDB-only cleanup): Static `data/tvdatafeed/*.json` files were removed from the host. If this shelved workflow is ever reactivated, step `Download published site reference candles over FTP` should be updated to fetch reference candles from the live MariaDB API instead of `data/tvdatafeed/`.
 - The pinned host_subdomain/scripts/chronos2_worker.py produces native Chronos-2 quantiles.
 - Only a validated READY JSON is uploaded to data/chronos2/cache/; every valid run is also retained under data/chronos2/history/.
 - Upload uses a temporary remote filename followed by FTP rename. Each valid run is retained in history; the active cache file is replaced.

@@ -11,14 +11,12 @@ use ChartIntelligence\Algorithms\UtcTimeAnchor;
  * Provider Adapter for TradingView `tvdatafeed` (`PEPPERSTONE:SPOTBRENT`, `OANDA:XAUUSD`, etc.).
  *
  * Ensures that pressing Sync when the market is open always updates all closed candles
- * from the last stored candle right up to `$nowMs` across M15, H1, and H4 (while keeping
- * D1 strictly for closed daily sessions):
- *  1. Reads historical candles from `data/tvdatafeed/{SYMBOL}_{TF}.json` / `.csv`.
- *  2. Detects if the latest stored candle is behind the latest closed UTC bucket (`nowMs - stepMs`).
- *  3. Connects directly via pure-PHP WebSocket (`tls://data.tradingview.com:443`) to fetch
- *     all newly closed bars since the last stored candle (with Python CLI and Yahoo Finance
- *     gap-fill fallbacks if outbound WebSocket is restricted on the host).
- *  4. Merges idempotently and persists the updated JSON back to `data/tvdatafeed/`.
+ * from the last stored candle in MariaDB right up to `$nowMs` across M15, M30, H1, H4,
+ * D1, and W1:
+ *  1. Computes the incremental delta needed from `$sinceOpenMs` (latest candle in MariaDB).
+ *  2. Connects directly via pure-PHP WebSocket (`tls://data.tradingview.com:443`) to fetch
+ *     all newly closed bars without creating or reading static CSV/JSON files on disk.
+ *  3. Returns sanitized closed candles for direct persistence into MariaDB (`candles` table).
  */
 final class TvDatafeedAdapter
 {
@@ -67,44 +65,13 @@ final class TvDatafeedAdapter
             default => $cleanSymbol,
         };
 
-        $baseDir = dirname(__DIR__, 3);
-        $dataDir = $baseDir . '/data/tvdatafeed';
-        $scriptPath = $baseDir . '/scripts/sync_tvdatafeed.py';
-
-        // 1. If $sinceOpenMs > 0 (MariaDB already holds historical candles), we only need incremental delta bars
-        $existing = [];
-        if ($sinceOpenMs <= 0) {
-            $existing = self::readFromNormalizedJson($dataDir, $cleanSymbol, $normTf, 5000, $nowMs);
-            if (empty($existing)) {
-                $existing = self::readFromCsvFile($dataDir, $cleanSymbol, $normTf, 5000, $nowMs);
-            }
-        } else {
-            // Check if local normalized JSON has any bars newer than $sinceOpenMs
-            $jsonTail = self::readFromNormalizedJson($dataDir, $cleanSymbol, $normTf, 300, $nowMs);
-            foreach ($jsonTail as $bar) {
-                if ((int) ($bar['open_time_utc_ms'] ?? 0) > $sinceOpenMs) {
-                    $existing[] = $bar;
-                }
-            }
-        }
-
         $stepMs = UtcTimeAnchor::stepMilliseconds($normTf);
-        $lastStoredOpenMs = $sinceOpenMs > 0
-            ? $sinceOpenMs
-            : (!empty($existing) ? (int) $existing[count($existing) - 1]['open_time_utc_ms'] : 0);
-
-        $minBarsForFullHistory = match ($normTf) {
-            'M15' => 300,
-            'M30', 'H1' => 240,
-            'H4' => 180,
-            'D1' => 250,
-            'W1' => 140,
-            default => 240,
-        };
-        $hasShallowHistory = $sinceOpenMs <= 0 && count($existing) < $minBarsForFullHistory;
+        $lastStoredOpenMs = $sinceOpenMs > 0 ? $sinceOpenMs : 0;
+        $hasShallowHistory = $sinceOpenMs <= 0;
         $expectedLastClosedOpenMs = self::computeExpectedLastClosedOpenMs($normTf, $nowMs, $cleanSymbol);
         $needsIncrementalSync = $lastStoredOpenMs < $expectedLastClosedOpenMs;
 
+        $existing = [];
         if ($needsIncrementalSync || ($hasShallowHistory && $tryLiveCli)) {
             $gapBars = ($lastStoredOpenMs > 0 && !$hasShallowHistory)
                 ? (int) ceil(max(0, $nowMs - $lastStoredOpenMs) / max(1, $stepMs)) + 16
@@ -113,7 +80,7 @@ final class TvDatafeedAdapter
                 ? max(16, min(1500, $gapBars))
                 : max(500, min(1500, $gapBars));
 
-            // Primary: Pure PHP TradingView WebSocket Client (works on shared hosts without exec)
+            // Primary: Pure PHP TradingView WebSocket Client (MariaDB-only, no static disk files)
             $liveCandles = self::fetchLiveFromTradingViewWs($tvSymbol, $exchange, $normTf, $barsToFetch, $nowMs);
 
             // Secondary: On H4, only fetch & aggregate H1 if primary H4 bars are empty or still behind $expectedLastClosedOpenMs
@@ -128,44 +95,12 @@ final class TvDatafeedAdapter
                 }
             }
 
-            // Tertiary: Python CLI fallback if socket was blocked and exec() is enabled
-            if (empty($liveCandles) && is_file($scriptPath) && function_exists('exec')) {
-                $cmd = sprintf(
-                    'python3 %s --symbol %s --exchange %s --bars %d --output-dir %s 2>/dev/null',
-                    escapeshellarg($scriptPath),
-                    escapeshellarg($cleanSymbol),
-                    escapeshellarg($exchange),
-                    $barsToFetch,
-                    escapeshellarg($dataDir)
-                );
-                @exec($cmd);
-                $reloaded = self::readFromNormalizedJson($dataDir, $cleanSymbol, $normTf, 5000, $nowMs);
-                if (!empty($reloaded)) {
-                    $existing = self::mergeCandlesByOpenMs($existing, $reloaded, $normTf, $nowMs);
-                }
-            }
-
             // Strict Provider Isolation: Never substitute Yahoo Finance bars into tvdatafeed series.
             if (!empty($liveCandles)) {
                 self::$lastError = '';
                 $existing = self::mergeCandlesByOpenMs($existing, $liveCandles, $normTf, $nowMs);
-                if ($sinceOpenMs <= 0) {
-                    self::persistNormalizedJson($dataDir, $cleanSymbol, $exchange, $normTf, $existing, $nowMs);
-                }
             } elseif (self::$lastError === '') {
                 self::$lastError = 'tvdatafeed WebSocket returned no new bars';
-            }
-        }
-
-        // If higher timeframe (M30/H1/H4) is requested and M15 has newer closed bars, merge aggregated M15 from tvdatafeed
-        if (in_array($normTf, ['M30', 'H1', 'H4'], true)) {
-            $m15 = self::readFromNormalizedJson($dataDir, $cleanSymbol, 'M15', 1500, $nowMs);
-            if (!empty($m15)) {
-                $cleanM15 = CandleValidator::filterSyntheticWeekendAndCombCandles($m15, $cleanSymbol, 'M15');
-                $aggregated = TimeframeAggregator::aggregateCandles($cleanM15, $normTf, $nowMs, $cleanSymbol);
-                if (!empty($aggregated)) {
-                    $existing = self::mergeCandlesByOpenMs($existing, $aggregated, $normTf, $nowMs);
-                }
             }
         }
 
@@ -528,157 +463,5 @@ final class TvDatafeedAdapter
         }
         ksort($map);
         return array_slice(array_values($map), -5000);
-    }
-
-    private static function persistNormalizedJson(
-        string $dataDir,
-        string $symbol,
-        string $exchange,
-        string $timeframe,
-        array $candles,
-        int $nowMs
-    ): void {
-        if (!is_dir($dataDir)) {
-            @mkdir($dataDir, 0775, true);
-        }
-        $jsonFile = $dataDir . '/' . $symbol . '_' . $timeframe . '.json';
-        $payload = json_encode([
-            'symbol' => $symbol,
-            'exchange' => $exchange,
-            'provider' => 'tvdatafeed',
-            'timeframe' => $timeframe,
-            'synced_at_utc_ms' => $nowMs,
-            'count' => count($candles),
-            'candles' => array_values($candles),
-        ], JSON_UNESCAPED_SLASHES);
-        if ($payload !== false) {
-            @file_put_contents($jsonFile, $payload, LOCK_EX);
-        }
-    }
-
-    private static function readFromNormalizedJson(string $dataDir, string $symbol, string $timeframe, int $limit, int $nowMs): array
-    {
-        $jsonFile = $dataDir . '/' . $symbol . '_' . $timeframe . '.json';
-        if (!is_file($jsonFile)) {
-            return [];
-        }
-        $raw = @file_get_contents($jsonFile);
-        if ($raw === false || $raw === '') {
-            return [];
-        }
-        $decoded = json_decode($raw, true);
-        if (!is_array($decoded) || empty($decoded['candles']) || !is_array($decoded['candles'])) {
-            return [];
-        }
-
-        $result = [];
-        $isCrypto = UtcTimeAnchor::getSessionCalendar($symbol) === UtcTimeAnchor::CALENDAR_CRYPTO_24_7;
-        foreach ($decoded['candles'] as $item) {
-            $openMs = (int) ($item['open_time_utc_ms'] ?? 0);
-            if ($openMs <= 0 || !UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
-                continue;
-            }
-            if ($timeframe === 'D1' && !$isCrypto) {
-                $dow = (int) gmdate('w', (int) floor($openMs / 1000));
-                if ($dow === 0 || $dow === 6) {
-                    continue;
-                }
-            }
-            $c = CandleValidator::sanitizeCandle(
-                $openMs,
-                $timeframe,
-                $item['open'] ?? 0,
-                $item['high'] ?? 0,
-                $item['low'] ?? 0,
-                $item['close'] ?? 0,
-                $item['volume'] ?? 0
-            );
-            if ($c !== null) {
-                $result[$c['open_time_utc_ms']] = $c;
-            }
-        }
-        ksort($result);
-        return array_slice(array_values($result), -$limit);
-    }
-
-    private static function readFromCsvFile(string $dataDir, string $symbol, string $timeframe, int $limit, int $nowMs): array
-    {
-        $suffixMap = [
-            'M15' => '15m',
-            'H1' => '1h',
-            'H4' => '4h',
-            'D1' => '1d',
-        ];
-        $suffix = $suffixMap[$timeframe] ?? '15m';
-        $csvFile = $dataDir . '/' . $symbol . '_' . $suffix . '.csv';
-        if (!is_file($csvFile)) {
-            return [];
-        }
-        $fh = @fopen($csvFile, 'r');
-        if ($fh === false) {
-            return [];
-        }
-
-        $header = fgetcsv($fh);
-        if (!is_array($header)) {
-            fclose($fh);
-            return [];
-        }
-        $colMap = [];
-        foreach ($header as $idx => $colName) {
-            $colMap[strtolower(trim((string) $colName))] = $idx;
-        }
-
-        $dtIdx = $colMap['datetime'] ?? 0;
-        $oIdx = $colMap['open'] ?? 2;
-        $hIdx = $colMap['high'] ?? 3;
-        $lIdx = $colMap['low'] ?? 4;
-        $cIdx = $colMap['close'] ?? 5;
-        $vIdx = $colMap['volume'] ?? 6;
-        $stepMs = UtcTimeAnchor::stepMilliseconds($timeframe);
-
-        $result = [];
-        while (($row = fgetcsv($fh)) !== false) {
-            if (count($row) <= $cIdx) {
-                continue;
-            }
-            $dtStr = trim((string) ($row[$dtIdx] ?? ''));
-            if ($dtStr === '') {
-                continue;
-            }
-            $tsSec = strtotime($dtStr . ' UTC');
-            if ($tsSec === false || $tsSec <= 0) {
-                continue;
-            }
-            $rawMs = $tsSec * 1000;
-            if ($timeframe === 'D1') {
-                $hourUtc = (int) gmdate('G', $tsSec);
-                $adjustedMs = $hourUtc >= 21 ? $rawMs + (4 * 3600000) : $rawMs;
-                $openMs = UtcTimeAnchor::snapToOpenUtcMs($adjustedMs, 'D1');
-                if ($rawMs + $stepMs > $nowMs || $openMs + $stepMs > $nowMs) {
-                    continue;
-                }
-            } else {
-                $openMs = UtcTimeAnchor::snapToOpenUtcMs($rawMs, $timeframe);
-                if ($rawMs + $stepMs > $nowMs || !UtcTimeAnchor::isCandleClosed($openMs, $timeframe, $nowMs)) {
-                    continue;
-                }
-            }
-            $c = CandleValidator::sanitizeCandle(
-                $openMs,
-                $timeframe,
-                $row[$oIdx] ?? 0,
-                $row[$hIdx] ?? 0,
-                $row[$lIdx] ?? 0,
-                $row[$cIdx] ?? 0,
-                $row[$vIdx] ?? 0
-            );
-            if ($c !== null) {
-                $result[$c['open_time_utc_ms']] = $c;
-            }
-        }
-        fclose($fh);
-        ksort($result);
-        return array_slice(array_values($result), -$limit);
     }
 }

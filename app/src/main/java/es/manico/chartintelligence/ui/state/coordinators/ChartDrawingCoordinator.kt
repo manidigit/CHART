@@ -301,6 +301,8 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
         deltaPrice: BigDecimal
     ): ChartTabState {
         val targetId = tab.selectedDrawingId ?: return tab
+        val target = tab.drawings.firstOrNull { it.id == targetId } ?: return tab
+        if (target.locked || !target.visible) return tab
         val updatedDrawings = tab.drawings.map { drawing ->
             if (drawing.id == targetId) {
                 DrawingGeometryAlgorithm.translateDrawing(drawing, deltaTimeMillis, deltaPrice)
@@ -314,11 +316,65 @@ class ChartDrawingCoordinator(private val repository: WorkspaceRepository) {
 
     fun deleteSelectedDrawing(tab: ChartTabState): ChartTabState {
         val targetId = tab.selectedDrawingId ?: return tab
-        val updatedDrawings = tab.drawings.filterNot { it.id == targetId }
+        return deleteDrawingById(tab, targetId)
+    }
+
+    fun deleteDrawingById(tab: ChartTabState, drawingId: String): ChartTabState {
+        val updatedDrawings = tab.drawings.filterNot { it.id == drawingId }
+        if (updatedDrawings.size == tab.drawings.size) return tab
         repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
         return tab.copy(
             drawings = updatedDrawings,
-            selectedDrawingId = null
+            selectedDrawingId = if (tab.selectedDrawingId == drawingId) null else tab.selectedDrawingId
+        )
+    }
+
+    fun toggleDrawingVisibility(tab: ChartTabState, drawingId: String): ChartTabState {
+        var nowHidden = false
+        val updatedDrawings = tab.drawings.map { drawing ->
+            if (drawing.id == drawingId) {
+                val nextVisible = !drawing.visible
+                nowHidden = !nextVisible
+                drawing.withVisibility(nextVisible)
+            } else {
+                drawing
+            }
+        }
+        repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
+        return tab.copy(
+            drawings = updatedDrawings,
+            selectedDrawingId = if (nowHidden && tab.selectedDrawingId == drawingId) null else tab.selectedDrawingId
+        )
+    }
+
+    fun toggleDrawingLock(tab: ChartTabState, drawingId: String): ChartTabState {
+        val updatedDrawings = tab.drawings.map { drawing ->
+            if (drawing.id == drawingId) drawing.withLocked(!drawing.locked) else drawing
+        }
+        repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
+        return tab.copy(drawings = updatedDrawings)
+    }
+
+    fun setAllDrawingsVisibility(tab: ChartTabState, visible: Boolean): ChartTabState {
+        if (tab.drawings.isEmpty()) return tab
+        val updatedDrawings = tab.drawings.map { it.withVisibility(visible) }
+        repository.saveDrawingsForChart(tab.chartId, updatedDrawings)
+        return tab.copy(
+            drawings = updatedDrawings,
+            selectedDrawingId = if (!visible) null else tab.selectedDrawingId
+        )
+    }
+
+    fun clearUnlockedDrawings(tab: ChartTabState): ChartTabState {
+        val remaining = tab.drawings.filter { it.locked }
+        if (remaining.size == tab.drawings.size) return tab
+        repository.saveDrawingsForChart(tab.chartId, remaining)
+        val nextSelected = tab.selectedDrawingId?.takeIf { selId -> remaining.any { it.id == selId } }
+        return tab.copy(
+            drawings = remaining,
+            selectedDrawingId = nextSelected,
+            pendingTrendPoint = null,
+            pendingAnchors = emptyList()
         )
     }
 

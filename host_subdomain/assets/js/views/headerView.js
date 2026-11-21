@@ -56,7 +56,9 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showSmcStructure ? 1 : 0) +
       (activeTab.showFvg ? 1 : 0) +
       (activeTab.showVolumeProfile ? 1 : 0) +
-      (activeTab.showPivotPoints ? 1 : 0)
+      (activeTab.showPivotPoints ? 1 : 0) +
+      (activeTab.showSrZones ? 1 : 0) +
+      (activeTab.showCandlePatterns ? 1 : 0)
     : 1;
 
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -335,6 +337,16 @@ export function renderTopHeaderBar(activeTab, i18n) {
           title="${indicatorsLabel}"
         >
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>
+        </button>
+
+        <button
+          type="button"
+          class="tv-tool-btn tv-mobile-only-btn ${state.activeModal === 'object-tree' ? 'active' : ''}"
+          data-action="open-modal"
+          data-modal="object-tree"
+          title="${isFa ? 'درخت اشیاء (Object Tree)' : 'Object Tree'}"
+        >
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
         </button>
         `
         }
@@ -743,6 +755,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
               </div>
             </div>
           </div>
+          ${renderToggleRow('srZones', '#10B981', isFa ? 'نواحی حمایت و مقاومت (S/R Zones — ≥۲ برخورد)' : 'Support & Resistance Zones (≥2 Touches)', isFa ? 'خوشه‌بندی سوئینگ‌های علّی با ردشدگی شدو و وضعیت فعال/شکست/ریتست' : 'Causal swing clusters with wick rejections & Active/Broken/Retested status', activeTab.showSrZones, 'toggle-sr-zones', 'S/R')}
           ${renderToggleRow('volumeProfile', pal.vrvpPoc, 'Volume Profile (VRVP — POC / VAH / VAL)', isFa ? 'پروفایل حجم محدوده با هیستوگرام فیروزه‌ای و خط POC' : 'Visible Range Volume Profile histogram with Point of Control & 70% Value Area', activeTab.showVolumeProfile, 'toggle-volume-profile', '▋POC')}
           `
               : ''
@@ -811,6 +824,7 @@ export function renderIndicatorsModal(activeTab, i18n) {
               { key: 'fvgBear', color: pal.fvgBear, label: isFa ? 'FVG نزولی (Bearish)' : 'Bearish FVG' },
             ])}
           </div>
+          ${renderToggleRow('candlePatterns', '#F59E0B', isFa ? 'الگوهای کندلی قطعی (Candlestick Patterns)' : 'Candlestick Patterns (Price Action)', isFa ? 'تشخیص قطعی Hammer، Shooting Star، Engulfing، Pin Bar و Doji روی کندل واقعی' : 'Deterministic Hammer, Shooting Star, Engulfing, Pin Bar & Doji markers anchored to real candles', activeTab.showCandlePatterns, 'toggle-candle-patterns', '▲▼')}
           ${renderToggleRow('killzones', pal.killzones, isFa ? 'Trading Killzones (Asia / London / NY)' : 'Session Killzones (Asia / London / NY Overlap)', isFa ? 'نوارهای زمانی سشن‌های آسیا، لندن، نیویورک و همپوشانی (UTC)' : 'UTC session background bands (Asia 00-09, London 07-16, NY 13-22)', activeTab.showKillzones, 'toggle-killzones', '▒▒')}
           `
               : ''

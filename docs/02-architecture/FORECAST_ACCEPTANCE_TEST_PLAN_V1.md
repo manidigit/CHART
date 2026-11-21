@@ -245,11 +245,9 @@ Chronos-2 source/API compatibility is not a model acceptance result. Passing X-0
 A failure in path structure must trigger the diagnostic sequence in the Model Intake document before any second model is proposed. No synthetic oscillation, fabricated OHLC or arbitrary quantile stitching may be used to turn a failed test into a pass.
 
 
-## 11. Gemini implementation handoff mapping
+## 11. Delivery evidence mapping (Historical Chronos-2 Phase 1 gates)
 
-The implementation sequence and required delivery evidence are specified in [FORECAST_GEMINI_IMPLEMENTATION_HANDOFF_V1.md](../01-product/FORECAST_GEMINI_IMPLEMENTATION_HANDOFF_V1.md) v1.0.0.
-
-The mapping is:
+The historical Chronos-2 Phase 1 delivery evidence mapping (for future reference if the shelved Python/Chronos-2 track is resumed):
 - Handoff E0 → input integrity, timestamp/origin and leakage tests.
 - Handoff E1 → Chronos-2 adapter, native quantile and baseline tests.
 - Handoff E2 → P-01 through P-04 and X-12 path-structure tests.

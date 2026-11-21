@@ -56,6 +56,8 @@ data class ChartTabState(
     val showFvg: Boolean = false,
     val showVolumeProfile: Boolean = false,
     val showPivotPoints: Boolean = false,
+    val showSrZones: Boolean = false,
+    val showCandlePatterns: Boolean = false,
     val pivotType: String = "STANDARD",
     val showFutureProjection: Boolean = false,
     val forecastRenderMode: String = "FAN_CHART",

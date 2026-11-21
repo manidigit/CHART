@@ -1,3 +1,5 @@
+import { state } from '../core/store.js?v=1.47.41';
+
 const PHASE2_TOOL_DEFS = [
   { id: 'avwap', shortLabel: 'AVWAP', anchors: 1 },
   { id: 'regression_channel', shortLabel: 'Reg Ch.', anchors: 2 },
@@ -22,6 +24,7 @@ const PITCHFORK_VARIANTS = [
 
 export function renderLeftToolRail(activeTab, i18n, activeRailPopup = null) {
   if (!activeTab) return '';
+  const isFa = typeof i18n.getCurrentLanguage === 'function' && i18n.getCurrentLanguage() === 'fa';
   const tool = activeTab.activeTool || activeTab.activeDrawingTool || 'cursor';
   const curColor = activeTab.activeDrawingColorHex || activeTab.activeDrawingColor || '#2962FF';
   const curWidth = Number(activeTab.activeDrawingWidthPx || activeTab.activeDrawingWidth || 2.0);
@@ -214,6 +217,32 @@ export function renderLeftToolRail(activeTab, i18n, activeRailPopup = null) {
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/><line x1="8" y1="11" x2="14" y2="11"/></svg>
       </button>
 
+      <button
+        type="button"
+        class="btn btn-icon ${state.activeModal === 'object-tree' ? 'active' : ''}"
+        data-action="open-modal"
+        data-modal="object-tree"
+        title="${isFa ? 'درخت اشیاء (Object Tree)' : 'Object Tree'}"
+        style="position: relative;"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="12 2 2 7 12 12 22 7 12 2"/><polyline points="2 17 12 22 22 17"/><polyline points="2 12 12 17 22 12"/></svg>
+        ${
+          activeTab.drawings && activeTab.drawings.length > 0
+            ? `<span class="ltr-num" style="position: absolute; top: -3px; right: -3px; min-width: 14px; height: 14px; padding: 0 3px; border-radius: 999px; background: var(--primary); color: #fff; font-size: 9px; font-weight: 800; line-height: 14px; text-align: center;">${activeTab.drawings.length > 9 ? '9+' : activeTab.drawings.length}</span>`
+            : ''
+        }
+      </button>
+
+      <button
+        type="button"
+        class="btn btn-icon ${state.activeModal === 'strategy-lab' ? 'active' : ''}"
+        data-action="open-modal"
+        data-modal="strategy-lab"
+        title="${isFa ? 'شبیه‌ساز آفلاین استراتژی (فاز ۶)' : 'Offline Strategy Simulator (Phase 6)'}"
+      >
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      </button>
+
       ${
         activeTab.selectedDrawingId
           ? `<button class="btn btn-icon" style="color: var(--bear); border-color: var(--bear);" data-action="delete-drawing" title="${i18n.t('draw_delete_selected')}">
@@ -306,6 +335,8 @@ export function renderMobileBottomSheet(activeTab, mobileSheet, i18n) {
           <div style="display: flex; gap: 8px; flex-wrap: wrap;">
             <button type="button" class="btn" style="flex: 1;" data-action="zoom-in">+ ${i18n.t('chart_zoom_in')}</button>
             <button type="button" class="btn" style="flex: 1;" data-action="zoom-out">- ${i18n.t('chart_zoom_out')}</button>
+            <button type="button" class="btn" data-action="open-modal" data-modal="object-tree">${isFa ? 'درخت اشیاء' : 'Object Tree'}${activeTab.drawings && activeTab.drawings.length > 0 ? ` (${activeTab.drawings.length})` : ''}</button>
+            <button type="button" class="btn" data-action="open-modal" data-modal="strategy-lab">${isFa ? 'شبیه‌ساز استراتژی' : 'Strategy Lab'}</button>
             ${
               activeTab.selectedDrawingId
                 ? `<button type="button" class="btn" style="color: var(--bear); border-color: var(--bear);" data-action="delete-drawing">${i18n.t('draw_delete_selected')}</button>`
@@ -340,8 +371,10 @@ export function renderMobileBottomSheet(activeTab, mobileSheet, i18n) {
       { key: 'showMtfEma', action: 'toggle-mtf-ema', label: 'MTF EMA' },
       { key: 'showKillzones', action: 'toggle-killzones', label: 'Killzones' },
       { key: 'showVolumeProfile', action: 'toggle-volume-profile', label: 'Vol Profile' },
+      { key: 'showSrZones', action: 'toggle-sr-zones', label: 'S/R Zones' },
       { key: 'showSmcStructure', action: 'toggle-smc-structure', label: 'SMC (BOS)' },
       { key: 'showFvg', action: 'toggle-fvg', label: 'FVG' },
+      { key: 'showCandlePatterns', action: 'toggle-candle-patterns', label: 'Patterns' },
       { key: 'showRsi14', action: 'toggle-rsi14', label: 'RSI 14' },
       { key: 'showMacd', action: 'toggle-macd', label: 'MACD' },
       { key: 'showAtr14', action: 'toggle-atr14', label: 'ATR 14' },

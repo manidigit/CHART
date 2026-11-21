@@ -1,5 +1,6 @@
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
 import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.47.41';
+import { TechnicalAnalysisCore } from '../algorithms/technicalAnalysisCore.js?v=1.47.41';
 import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.47.41';
 import {
   state,
@@ -165,6 +166,10 @@ function getOrComputeIndicatorCache(tab, candles, bbPeriod, bbStdDev) {
       cache.smc || (cache.smc = TechnicalIndicators.detectMarketStructureSmc(candles, 3)),
     getPivotPoints: () =>
       cache.pivots || (cache.pivots = TechnicalIndicators.computePivotPoints(candles, tf, symCode, pivType)),
+    getSrZones: () =>
+      cache.srZones || (cache.srZones = TechnicalAnalysisCore.detectSupportResistanceZones(candles)),
+    getCandlePatterns: () =>
+      cache.candlePatterns || (cache.candlePatterns = TechnicalAnalysisCore.detectCandlestickPatterns(candles)),
     getVolumeProfile: (visible, startIdx, endIdx) => {
       const spec = getInstrumentSpec(symCode, prov);
       const vKey = `${startIdx}_${endIdx}_${spec.volumeType}`;
@@ -1217,6 +1222,129 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         ctx.stroke();
 
         queueRightLevelLabel(py, `${lv.key} ${PriceFormatter.formatPrice(lv.val, tab.decimals)}`, lv.col);
+      }
+      ctx.restore();
+    }
+  }
+
+  // TA-Core Phase C: Evidence-Backed Support & Resistance Zones (>= 2 touches)
+  if (tab.showSrZones && candles.length >= 10) {
+    const srZones = indCache.getSrZones();
+    if (Array.isArray(srZones) && srZones.length > 0) {
+      ctx.save();
+      for (const zone of srZones) {
+        const visStart = Math.max(0, zone.startIndex - startIdx);
+        if (visStart >= visible.length) continue;
+        const x1 = Math.max(0, idxToX(visStart) - slotW * 0.25);
+        const x2 = chartW;
+        const yHigh = priceToY(zone.highPrice);
+        const yLow = priceToY(zone.lowPrice);
+        const topY = Math.min(yHigh, yLow);
+        const boxH = Math.max(3, Math.abs(yLow - yHigh));
+        if (topY + boxH < topPad || topY > topPad + chartH) continue;
+
+        const isSupport = zone.role === 'SUPPORT';
+        const baseColor = isSupport ? '#10B981' : '#EF5350';
+        const isBroken = zone.status === 'BROKEN';
+        const isRetested = zone.status === 'RETESTED';
+        const fillAlpha = isBroken ? 0.06 : isRetested ? 0.11 : 0.14;
+        const strokeAlpha = isBroken ? 0.36 : isRetested ? 0.64 : 0.58;
+
+        ctx.fillStyle = hexToRgba(baseColor, fillAlpha);
+        ctx.fillRect(x1, topY, Math.max(8, x2 - x1), boxH);
+
+        ctx.strokeStyle = hexToRgba(baseColor, strokeAlpha);
+        ctx.lineWidth = isBroken ? 1 : 1.25;
+        ctx.setLineDash(isBroken || isRetested ? [5, 3] : []);
+        ctx.beginPath();
+        ctx.moveTo(x1, topY);
+        ctx.lineTo(x2, topY);
+        ctx.moveTo(x1, topY + boxH);
+        ctx.lineTo(x2, topY + boxH);
+        ctx.stroke();
+
+        const yMid = priceToY(zone.centerPrice);
+        ctx.strokeStyle = hexToRgba(baseColor, strokeAlpha * 0.55);
+        ctx.lineWidth = 0.9;
+        ctx.setLineDash([3, 3]);
+        ctx.beginPath();
+        ctx.moveTo(x1, yMid);
+        ctx.lineTo(x2, yMid);
+        ctx.stroke();
+
+        if (yMid >= topPad + 6 && yMid <= topPad + chartH - 6) {
+          const prefix = isBroken
+            ? isSupport ? 'BRK-S' : 'BRK-R'
+            : isRetested
+              ? isSupport ? 'SUP*' : 'RES*'
+              : isSupport ? 'SUP' : 'RES';
+          queueRightLevelLabel(yMid, `${prefix} ×${zone.touchCount}`, baseColor);
+        }
+      }
+      ctx.restore();
+    }
+  }
+
+  // TA-Core Phase D: Deterministic Candlestick Pattern Markers anchored strictly to real candles
+  if (tab.showCandlePatterns && candles.length >= 2) {
+    const patterns = indCache.getCandlePatterns();
+    if (Array.isArray(patterns) && patterns.length > 0) {
+      ctx.save();
+      const markerR = Math.max(4, Math.min(7.5, slotW * 0.34));
+      const placedPatternBoxes = [];
+      ctx.font = 'bold 8.5px "JetBrains Mono", monospace';
+      for (const pat of patterns) {
+        if (pat.anchorIndex < startIdx || pat.anchorIndex >= endIdx) continue;
+        const localIdx = pat.anchorIndex - startIdx;
+        const cx = idxToX(localIdx);
+        const col = pat.direction > 0 ? '#10B981' : pat.direction < 0 ? '#EF5350' : '#F59E0B';
+        let labelY = 0;
+
+        ctx.fillStyle = col;
+        ctx.strokeStyle = isDark ? 'rgba(255,255,255,0.55)' : 'rgba(15,23,42,0.45)';
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        if (pat.direction > 0) {
+          const baseY = Math.max(topPad + markerR * 2, Math.min(topPad + chartH - markerR * 1.6, priceToY(pat.priceLow) + markerR * 1.5));
+          ctx.moveTo(cx, baseY - markerR);
+          ctx.lineTo(cx - markerR, baseY + markerR * 0.85);
+          ctx.lineTo(cx + markerR, baseY + markerR * 0.85);
+          labelY = baseY + markerR + 10;
+        } else if (pat.direction < 0) {
+          const baseY = Math.max(topPad + markerR * 1.6, Math.min(topPad + chartH - markerR * 2, priceToY(pat.priceHigh) - markerR * 1.5));
+          ctx.moveTo(cx, baseY + markerR);
+          ctx.lineTo(cx - markerR, baseY - markerR * 0.85);
+          ctx.lineTo(cx + markerR, baseY - markerR * 0.85);
+          labelY = baseY - markerR - 3;
+        } else {
+          const baseY = Math.max(topPad + markerR * 1.6, Math.min(topPad + chartH - markerR * 2, priceToY(pat.priceHigh) - markerR * 1.5));
+          ctx.moveTo(cx, baseY - markerR);
+          ctx.lineTo(cx + markerR, baseY);
+          ctx.lineTo(cx, baseY + markerR);
+          ctx.lineTo(cx - markerR, baseY);
+          labelY = baseY - markerR - 3;
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+
+        if (slotW >= 6 && pat.shortLabel) {
+          const tw = ctx.measureText(pat.shortLabel).width;
+          const bx = cx - tw * 0.5 - 2;
+          const by = labelY - 9;
+          const bw = tw + 4;
+          const bh = 11;
+          const overlaps = placedPatternBoxes.some(
+            (p) => !(bx + bw + 2 < p.x || p.x + p.w + 2 < bx || by + bh + 2 < p.y || p.y + p.h + 2 < by)
+          );
+          if (!overlaps && by >= topPad && by + bh <= topPad + chartH) {
+            placedPatternBoxes.push({ x: bx, y: by, w: bw, h: bh });
+            ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.82)' : 'rgba(255, 255, 255, 0.88)';
+            ctx.fillRect(bx, by, bw, bh);
+            ctx.fillStyle = col;
+            ctx.fillText(pat.shortLabel, bx + 2, by + 8.5);
+          }
+        }
       }
       ctx.restore();
     }
@@ -2349,6 +2477,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   ctx.clip();
 
   drawings.forEach((d) => {
+    if (!d || d.visible === false) return;
     const isSel = tab.selectedDrawingId === d.id;
     const isHLine = d.type === 'hline' || d.type === 'horizontal_line';
     const isVLine = d.type === 'vline' || d.type === 'vertical_line';

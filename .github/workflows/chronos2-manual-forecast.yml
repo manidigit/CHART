@@ -52,7 +52,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          python -m py_compile scripts/chronos2_workflow_runner.py scripts/chronos2_ftp_transfer.py host_subdomain/scripts/chronos2_worker.py host_subdomain/scripts/sync_tvdatafeed.py
+          python -m py_compile scripts/chronos2_workflow_runner.py scripts/chronos2_ftp_transfer.py host_subdomain/scripts/chronos2_worker.py scripts/sync_tvdatafeed.py
           node --input-type=module --check < host_subdomain/assets/js/services/apiService.js
 
       - name: Validate inputs and map CHART timeframe to TradingView interval
@@ -132,7 +132,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p "$RUNNER_TEMP/chronos2/input/fresh"
-          python host_subdomain/scripts/sync_tvdatafeed.py \
+          python scripts/sync_tvdatafeed.py \
             --symbol "$SYMBOL" --exchange "$EXCHANGE" --bars 5000 \
             --output-dir "$RUNNER_TEMP/chronos2/input/fresh"
           test -s "$RUNNER_TEMP/chronos2/input/fresh/${SYMBOL}_${TIMEFRAME}.json"

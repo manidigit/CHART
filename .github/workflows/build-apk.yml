@@ -149,20 +149,6 @@ jobs:
             php -l host_subdomain/scripts/cron_process_chronos2_queue.php
           fi
 
-      - name: Extract PEPPERSTONE:SPOTBRENT and OANDA:XAUUSD Candles via tvdatafeed (5,000 Bars)
-        run: |
-          pip install --upgrade --no-cache-dir git+https://github.com/rongardF/tvdatafeed.git pandas || true
-          python3 host_subdomain/scripts/sync_tvdatafeed.py \
-            --symbol SPOTBRENT \
-            --exchange PEPPERSTONE \
-            --bars 5000 \
-            --output-dir host_subdomain/data/tvdatafeed || true
-          python3 host_subdomain/scripts/sync_tvdatafeed.py \
-            --symbol XAUUSD \
-            --exchange OANDA \
-            --bars 5000 \
-            --output-dir host_subdomain/data/tvdatafeed || true
-
       - name: Upload Subdomain Web Package Artifact (Public-Safe)
         uses: actions/upload-artifact@v4
         with:
@@ -268,7 +254,23 @@ jobs:
                   }}
               }}
 
-              $seededCandles = 0;
+              // Remove deprecated static candle CSV/JSON directory on host (MariaDB is the sole candle store)
+              $removedLegacyTvFiles = 0;
+              $legacyTvDir = __DIR__ . '/data/tvdatafeed';
+              if (is_dir($legacyTvDir)) {{
+                  foreach (scandir($legacyTvDir) ?: [] as $entry) {{
+                      if ($entry === '.' || $entry === '..') continue;
+                      $legacyPath = $legacyTvDir . '/' . $entry;
+                      if (is_file($legacyPath) && @unlink($legacyPath)) {{
+                          $removedLegacyTvFiles++;
+                      }}
+                  }}
+                  @rmdir($legacyTvDir);
+              }}
+              if (is_file(__DIR__ . '/scripts/sync_tvdatafeed.py')) {{
+                  @unlink(__DIR__ . '/scripts/sync_tvdatafeed.py');
+              }}
+
               try {{
                   require_once __DIR__ . '/api/v1/core/Database.php';
                   $pdo = \\ChartIntelligence\\Core\\Database::getPdo();
@@ -286,53 +288,12 @@ jobs:
                           }}
                       }}
                       @$pdo->exec("DELETE FROM candles WHERE timeframe NOT IN ('D1', 'W1') AND chart_id NOT IN ('chart_btcusd_spot', 'chart_ethusd_spot') AND volume = 0 AND (high_price - low_price) < (open_price * 0.00018) AND (FLOOR(open_time_utc / 1000) MOD 604800) BETWEEN 165600 AND 338399");
-                      $sql = "INSERT INTO candles
-                          (chart_id, provider_id, timeframe, open_time_utc,
-                           open_price, high_price, low_price, close_price, volume, is_closed)
-                          VALUES (:cid, 'tvdatafeed', :tf, :open_ms, :o, :h, :l, :c, :v, 1)
-                          ON DUPLICATE KEY UPDATE
-                          open_price = VALUES(open_price),
-                          high_price = VALUES(high_price),
-                          low_price  = VALUES(low_price),
-                          close_price = VALUES(close_price),
-                          volume     = VALUES(volume)";
-                      $stmt = $pdo->prepare($sql);
-                      $symbolMap = [
-                          'SPOTBRENT' => 'chart_spotbrent_main',
-                          'XAUUSD'    => 'chart_xauusd_main',
-                      ];
-                      foreach ($symbolMap as $sym => $cid) {{
-                          foreach (['M15', 'H1', 'H4', 'D1', 'W1'] as $tf) {{
-                              $jsonPath = __DIR__ . '/data/tvdatafeed/' . $sym . '_' . $tf . '.json';
-                              if (is_file($jsonPath)) {{
-                                  $decoded = json_decode((string) file_get_contents($jsonPath), true);
-                                  $rows = $decoded['candles'] ?? [];
-                                  if (is_array($rows) && count($rows) > 0) {{
-                                      $pdo->beginTransaction();
-                                      foreach ($rows as $bar) {{
-                                          $stmt->execute([
-                                              ':cid'     => $cid,
-                                              ':tf'      => $tf,
-                                              ':open_ms' => (int) ($bar['open_time_utc_ms'] ?? 0),
-                                              ':o'       => (string) ($bar['open'] ?? '0'),
-                                              ':h'       => (string) ($bar['high'] ?? '0'),
-                                              ':l'       => (string) ($bar['low'] ?? '0'),
-                                              ':c'       => (string) ($bar['close'] ?? '0'),
-                                              ':v'       => (string) ($bar['volume'] ?? '0'),
-                                          ]);
-                                          $seededCandles++;
-                                      }}
-                                      $pdo->commit();
-                                  }}
-                              }}
-                          }}
-                      }}
                   }}
               }} catch (\\Throwable $e) {{
-                  // Database seeding error caught, web deployment stays intact
+                  // Database migration error caught, web deployment stays intact
               }}
               header('Content-Type: application/json');
-              echo json_encode(['ok' => true, 'snapshot' => $snapshotName, 'deployed_files' => count($files), 'seeded_tvdatafeed_candles' => $seededCandles]);
+              echo json_encode(['ok' => true, 'snapshot' => $snapshotName, 'deployed_files' => count($files), 'removed_legacy_tvdatafeed_files' => $removedLegacyTvFiles]);
           }} catch (\\Throwable $fatal) {{
               http_response_code(500);
               header('Content-Type: application/json');

@@ -349,6 +349,7 @@ export const DrawingGeometry = {
     if (!Array.isArray(drawings)) return null;
     for (let i = drawings.length - 1; i >= 0; i--) {
       const d = drawings[i];
+      if (!d || d.visible === false) continue;
       let dist = Infinity;
       if (d.type === 'horizontal_line' || d.type === 'hline') {
         dist = Math.abs(py - priceToY(d.price !== undefined ? d.price : d.price1));
@@ -447,6 +448,7 @@ export const DrawingGeometry = {
   },
 
   translateDrawing(drawing, deltaTimeMs, deltaPrice) {
+    if (!drawing || drawing.locked) return drawing;
     if (drawing.type === 'horizontal_line' || drawing.type === 'hline') {
       const nextP = Math.max(0.00000001, Number(drawing.price !== undefined ? drawing.price : drawing.price1) + deltaPrice);
       return {

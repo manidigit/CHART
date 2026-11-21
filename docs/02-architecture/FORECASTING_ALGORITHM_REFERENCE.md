@@ -5,7 +5,7 @@
 **Target project:** CHART  
 **Upstream repository:** https://github.com/SWARNIM-TIWARI/time-series-forecasting-dashboard  
 **Upstream branch reviewed:** `main`  
-**Local reference snapshot:** [`time-series-forecasting-dashboard/`](../../time-series-forecasting-dashboard/)
+**Local reference snapshot:** Removed during repository cleanup (see upstream repository URL above)
 
 ---
 

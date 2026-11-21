@@ -261,10 +261,12 @@ class WorkspaceRepository(context: Context) {
                         val data = root.optJSONObject("data")
                         val srvUser = data?.optString("owner_username", "").orEmpty().trim()
                         val srvEmail = data?.optString("owner_email", "").orEmpty().trim()
-                        if (srvUser.isNotEmpty() || srvEmail.isNotEmpty()) {
+                        val srvRole = data?.optString("user_role", "").orEmpty().trim().lowercase()
+                        if (srvUser.isNotEmpty() || srvEmail.isNotEmpty() || srvRole.isNotEmpty()) {
                             val editor = prefs.edit()
                             if (srvUser.isNotEmpty()) editor.putString(AppConfig.KEY_OWNER_USERNAME, srvUser)
                             if (srvEmail.isNotEmpty()) editor.putString(AppConfig.KEY_OWNER_EMAIL, srvEmail)
+                            if (srvRole.isNotEmpty()) editor.putString(AppConfig.KEY_USER_ROLE, srvRole)
                             editor.apply()
                         }
                         true
@@ -395,14 +397,16 @@ class WorkspaceRepository(context: Context) {
                             val data = root.optJSONObject("data")
                             val srvUser = data?.optString("owner_username", "").orEmpty().ifBlank { username.trim() }
                             val srvEmail = data?.optString("owner_email", "").orEmpty()
+                            val srvRole = data?.optString("user_role", "owner").orEmpty().lowercase().ifBlank { "owner" }
                             val token = data?.optString("session_token", "").orEmpty()
                             if (token.isNotBlank()) saveSessionToken(token)
+                            saveUserRole(srvRole)
                             registerOwnerAccount(srvUser, password, srvEmail.ifEmpty { getOwnerEmail() })
                             true
                         } else {
                             false
                         }
-                    } else if (resp.code == 401 || resp.code == 429) {
+                    } else if (resp.code == 401 || resp.code == 403 || resp.code == 429) {
                         false
                     } else {
                         null
@@ -617,6 +621,8 @@ class WorkspaceRepository(context: Context) {
                 showFvg = obj.optBoolean("showFvg", false),
                 showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
                 showPivotPoints = obj.optBoolean("showPivotPoints", false),
+                showSrZones = obj.optBoolean("showSrZones", false),
+                showCandlePatterns = obj.optBoolean("showCandlePatterns", false),
                 pivotType = obj.optString("pivotType", "STANDARD").uppercase(),
                 showFutureProjection = obj.optBoolean("showFutureProjection", false),
                 pitchforkVariant = obj.optString("pitchforkVariant", "original"),
@@ -753,6 +759,8 @@ class WorkspaceRepository(context: Context) {
         obj.put("showFvg", prefsObj.showFvg)
         obj.put("showVolumeProfile", prefsObj.showVolumeProfile)
         obj.put("showPivotPoints", prefsObj.showPivotPoints)
+        obj.put("showSrZones", prefsObj.showSrZones)
+        obj.put("showCandlePatterns", prefsObj.showCandlePatterns)
         obj.put("pivotType", prefsObj.pivotType)
         obj.put("showFutureProjection", prefsObj.showFutureProjection)
         obj.put("pitchforkVariant", prefsObj.pitchforkVariant)
@@ -1341,7 +1349,7 @@ class WorkspaceRepository(context: Context) {
         }
     }
 
-    private fun parseDrawingsArray(arr: JSONArray): List<ChartDrawing> {
+    internal fun parseDrawingsArray(arr: JSONArray): List<ChartDrawing> {
         val list = ArrayList<ChartDrawing>(arr.length())
         for (i in 0 until arr.length()) {
             val obj = arr.optJSONObject(i) ?: continue
@@ -1352,6 +1360,8 @@ class WorkspaceRepository(context: Context) {
                 "strokeWidthDp",
                 obj.optDouble("width", 2.2)
             ).toFloat().coerceIn(1.0f, 6.0f)
+            val visible = obj.optBoolean("visible", true)
+            val locked = obj.optBoolean("locked", false)
 
             val rawType = obj.optString("type").lowercase()
             when (rawType) {
@@ -1361,7 +1371,9 @@ class WorkspaceRepository(context: Context) {
                             id = id,
                             price = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("price", "0"))),
                             colorHex = colorHex,
-                            strokeWidthDp = strokeWidthDp
+                            strokeWidthDp = strokeWidthDp,
+                            visible = visible,
+                            locked = locked
                         )
                     )
                 }
@@ -1371,7 +1383,9 @@ class WorkspaceRepository(context: Context) {
                             id = id,
                             timeUtcMillis = obj.optLong("timeUtcMillis", obj.optLong("time", 0L)),
                             colorHex = colorHex,
-                            strokeWidthDp = strokeWidthDp
+                            strokeWidthDp = strokeWidthDp,
+                            visible = visible,
+                            locked = locked
                         )
                     )
                 }
@@ -1388,7 +1402,9 @@ class WorkspaceRepository(context: Context) {
                                 BigDecimal(obj.optString("endPrice", obj.optString("p2", "0")))
                             ),
                             colorHex = colorHex,
-                            strokeWidthDp = strokeWidthDp
+                            strokeWidthDp = strokeWidthDp,
+                            visible = visible,
+                            locked = locked
                         )
                     )
                 }
@@ -1405,7 +1421,9 @@ class WorkspaceRepository(context: Context) {
                                 BigDecimal(obj.optString("endPrice", obj.optString("p2", "0")))
                             ),
                             colorHex = colorHex,
-                            strokeWidthDp = strokeWidthDp
+                            strokeWidthDp = strokeWidthDp,
+                            visible = visible,
+                            locked = locked
                         )
                     )
                 }
@@ -1419,7 +1437,9 @@ class WorkspaceRepository(context: Context) {
                             targetPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("targetPrice", "0"))),
                             stopPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("stopPrice", "0"))),
                             colorHex = colorHex,
-                            strokeWidthDp = strokeWidthDp
+                            strokeWidthDp = strokeWidthDp,
+                            visible = visible,
+                            locked = locked
                         )
                     )
                 }
@@ -1433,7 +1453,9 @@ class WorkspaceRepository(context: Context) {
                             targetPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("targetPrice", "0"))),
                             stopPrice = CandleValidatorAlgorithm.normalizeDecimal(BigDecimal(obj.optString("stopPrice", "0"))),
                             colorHex = colorHex,
-                            strokeWidthDp = strokeWidthDp
+                            strokeWidthDp = strokeWidthDp,
+                            visible = visible,
+                            locked = locked
                         )
                     )
                 }
@@ -1463,7 +1485,9 @@ class WorkspaceRepository(context: Context) {
                                     anchors = parsedAnchors,
                                     variant = obj.optString("variant", "original"),
                                     colorHex = colorHex,
-                                    strokeWidthDp = strokeWidthDp
+                                    strokeWidthDp = strokeWidthDp,
+                                    visible = visible,
+                                    locked = locked
                                 )
                             )
                         }
@@ -1474,7 +1498,7 @@ class WorkspaceRepository(context: Context) {
         return list
     }
 
-    private fun serializeDrawingsArray(drawings: List<ChartDrawing>): JSONArray {
+    internal fun serializeDrawingsArray(drawings: List<ChartDrawing>): JSONArray {
         val arr = JSONArray()
         for (d in drawings) {
             val obj = JSONObject()
@@ -1483,6 +1507,8 @@ class WorkspaceRepository(context: Context) {
                 obj.put("colorHex", d.colorHex)
             }
             obj.put("strokeWidthDp", d.strokeWidthDp.toDouble())
+            obj.put("visible", d.visible)
+            obj.put("locked", d.locked)
             when (d) {
                 is ChartDrawing.HorizontalLine -> {
                     obj.put("type", "horizontal_line")
@@ -2187,6 +2213,8 @@ class WorkspaceRepository(context: Context) {
                         showFvg = obj.optBoolean("showFvg", false),
                         showVolumeProfile = obj.optBoolean("showVolumeProfile", false),
                         showPivotPoints = obj.optBoolean("showPivotPoints", false),
+                        showSrZones = obj.optBoolean("showSrZones", false),
+                        showCandlePatterns = obj.optBoolean("showCandlePatterns", false),
                         pivotType = obj.optString("pivotType", "STANDARD").uppercase(),
                         showFutureProjection = false,
                         forecastRenderMode = obj.optString("forecastRenderMode", curPrefs.forecastRenderMode).ifBlank { "FAN_CHART" },
@@ -2257,6 +2285,8 @@ class WorkspaceRepository(context: Context) {
                 .put("showFvg", t.showFvg)
                 .put("showVolumeProfile", t.showVolumeProfile)
                 .put("showPivotPoints", t.showPivotPoints)
+                .put("showSrZones", t.showSrZones)
+                .put("showCandlePatterns", t.showCandlePatterns)
                 .put("pivotType", t.pivotType)
                 .put("showFutureProjection", t.showFutureProjection)
                 .put("forecastRenderMode", t.forecastRenderMode)
@@ -2396,6 +2426,8 @@ class WorkspaceRepository(context: Context) {
             .put("showFvg", refTab?.showFvg ?: preferences.showFvg)
             .put("showVolumeProfile", refTab?.showVolumeProfile ?: preferences.showVolumeProfile)
             .put("showPivotPoints", refTab?.showPivotPoints ?: preferences.showPivotPoints)
+            .put("showSrZones", refTab?.showSrZones ?: preferences.showSrZones)
+            .put("showCandlePatterns", refTab?.showCandlePatterns ?: preferences.showCandlePatterns)
             .put("pivotType", refTab?.pivotType ?: preferences.pivotType)
             .put("showFutureProjection", refTab?.showFutureProjection ?: preferences.showFutureProjection)
             .put("pitchforkVariant", refTab?.pitchforkVariant ?: preferences.pitchforkVariant)
@@ -2450,6 +2482,8 @@ class WorkspaceRepository(context: Context) {
                 .put("showFvg", t.showFvg)
                 .put("showVolumeProfile", t.showVolumeProfile)
                 .put("showPivotPoints", t.showPivotPoints)
+                .put("showSrZones", t.showSrZones)
+                .put("showCandlePatterns", t.showCandlePatterns)
                 .put("pivotType", t.pivotType)
                 .put("showFutureProjection", t.showFutureProjection)
                 .put("forecastRenderMode", t.forecastRenderMode)
@@ -2697,6 +2731,8 @@ class WorkspaceRepository(context: Context) {
                     showFvg = resolveIndBool("showFvg", cur.showFvg),
                     showVolumeProfile = resolveIndBool("showVolumeProfile", cur.showVolumeProfile),
                     showPivotPoints = resolveIndBool("showPivotPoints", cur.showPivotPoints),
+                    showSrZones = resolveIndBool("showSrZones", cur.showSrZones),
+                    showCandlePatterns = resolveIndBool("showCandlePatterns", cur.showCandlePatterns),
                     pivotType = prefsJson.optString(
                         "pivotType",
                         refCloudTabObj?.optString("pivotType", cur.pivotType) ?: cur.pivotType
@@ -2806,6 +2842,8 @@ class WorkspaceRepository(context: Context) {
                             showFvg = obj.optBoolean("showFvg", curPrefs.showFvg),
                             showVolumeProfile = obj.optBoolean("showVolumeProfile", curPrefs.showVolumeProfile),
                             showPivotPoints = obj.optBoolean("showPivotPoints", curPrefs.showPivotPoints),
+                            showSrZones = obj.optBoolean("showSrZones", curPrefs.showSrZones),
+                            showCandlePatterns = obj.optBoolean("showCandlePatterns", curPrefs.showCandlePatterns),
                             pivotType = obj.optString("pivotType", curPrefs.pivotType).uppercase(),
                             showFutureProjection = false,
                             forecastRenderMode = obj.optString("forecastRenderMode", curPrefs.forecastRenderMode).ifBlank { "FAN_CHART" },
@@ -2869,6 +2907,8 @@ class WorkspaceRepository(context: Context) {
                             showFvg = curPrefs.showFvg,
                             showVolumeProfile = curPrefs.showVolumeProfile,
                             showPivotPoints = curPrefs.showPivotPoints,
+                            showSrZones = curPrefs.showSrZones,
+                            showCandlePatterns = curPrefs.showCandlePatterns,
                             pivotType = curPrefs.pivotType,
                             showFutureProjection = curPrefs.showFutureProjection,
                             pitchforkVariant = curPrefs.pitchforkVariant
@@ -3117,5 +3157,116 @@ class WorkspaceRepository(context: Context) {
             }
         }.getOrDefault(emptyList())
     }
+
+    fun getUserRole(): String =
+        prefs.getString(AppConfig.KEY_USER_ROLE, "owner").orEmpty().lowercase().ifBlank { "owner" }
+
+    fun saveUserRole(role: String) {
+        val clean = role.trim().lowercase().ifBlank { "owner" }
+        prefs.edit().putString(AppConfig.KEY_USER_ROLE, clean).apply()
+    }
+
+    private suspend fun callAdminUsersApi(action: String, body: JSONObject? = null): AdminUsersResult =
+        withContext(Dispatchers.IO) {
+            val token = getSessionToken()
+            if (token.isBlank()) {
+                return@withContext AdminUsersResult(ok = false, errorMessage = "UNAUTHORIZED")
+            }
+            runCatching {
+                val url = "${AppConfig.API_BASE_URL}admin_users.php?action=$action"
+                val reqBuilder = Request.Builder()
+                    .url(url)
+                    .header("Authorization", "Bearer $token")
+                if (body == null && action == "list") {
+                    reqBuilder.get()
+                } else {
+                    val payload = body ?: JSONObject()
+                    payload.put("session_token", token)
+                    reqBuilder.post(payload.toString().toRequestBody(jsonMediaType))
+                }
+                httpClient.newCall(reqBuilder.build()).execute().use { resp ->
+                    val raw = resp.body?.string().orEmpty()
+                    val root = runCatching { JSONObject(raw) }.getOrNull()
+                    if (resp.isSuccessful && root?.optBoolean("ok", false) == true) {
+                        val data = root.optJSONObject("data")
+                        val callerRole = data?.optString("caller_role", "").orEmpty().lowercase()
+                        if (callerRole.isNotBlank()) saveUserRole(callerRole)
+                        val arr = data?.optJSONArray("users")
+                        val users = buildList {
+                            if (arr != null) {
+                                for (i in 0 until arr.length()) {
+                                    val u = arr.optJSONObject(i) ?: continue
+                                    add(
+                                        AdminUserDto(
+                                            id = u.optLong("id", 0L),
+                                            username = u.optString("username", ""),
+                                            email = u.optString("email", ""),
+                                            role = u.optString("role", "viewer").lowercase(),
+                                            isActive = u.optBoolean("is_active", true),
+                                            activeSessions = u.optInt("active_sessions", 0),
+                                            createdAtUtc = u.optString("created_at_utc", "")
+                                        )
+                                    )
+                                }
+                            }
+                        }
+                        AdminUsersResult(
+                            ok = true,
+                            callerRole = callerRole.ifBlank { getUserRole() },
+                            users = users
+                        )
+                    } else {
+                        val err = root?.optString("error_code", "")?.ifBlank { root.optString("message_key", "") }
+                            ?: "HTTP_${resp.code}"
+                        AdminUsersResult(ok = false, errorMessage = err)
+                    }
+                }
+            }.getOrElse { e ->
+                AdminUsersResult(ok = false, errorMessage = e.message ?: "NETWORK_ERROR")
+            }
+        }
+
+    suspend fun fetchAdminUsers(): AdminUsersResult = callAdminUsersApi("list", null)
+
+    suspend fun createAdminUser(username: String, email: String, password: String, role: String): AdminUsersResult =
+        callAdminUsersApi(
+            "create",
+            JSONObject()
+                .put("username", username.trim())
+                .put("email", email.trim().lowercase())
+                .put("password", password)
+                .put("role", role.trim().lowercase())
+        )
+
+    suspend fun updateAdminUser(userId: Long, role: String? = null, isActive: Boolean? = null): AdminUsersResult {
+        val payload = JSONObject().put("user_id", userId)
+        if (role != null) payload.put("role", role.trim().lowercase())
+        if (isActive != null) payload.put("is_active", isActive)
+        return callAdminUsersApi("update", payload)
+    }
+
+    suspend fun revokeAdminUserSessions(userId: Long): AdminUsersResult =
+        callAdminUsersApi("revoke_sessions", JSONObject().put("user_id", userId))
+
+    suspend fun deleteAdminUser(userId: Long): AdminUsersResult =
+        callAdminUsersApi("delete", JSONObject().put("user_id", userId))
 }
+
+data class AdminUserDto(
+    val id: Long,
+    val username: String,
+    val email: String,
+    val role: String,
+    val isActive: Boolean,
+    val activeSessions: Int,
+    val createdAtUtc: String = ""
+)
+
+data class AdminUsersResult(
+    val ok: Boolean,
+    val callerRole: String = "owner",
+    val users: List<AdminUserDto> = emptyList(),
+    val errorMessage: String? = null
+)
+
 

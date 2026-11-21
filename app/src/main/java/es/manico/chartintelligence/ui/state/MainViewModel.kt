@@ -65,6 +65,10 @@ data class Phase1UiState(
     val isAuthenticated: Boolean = false,
     val ownerUsername: String = "",
     val ownerEmail: String = "",
+    val userRole: String = "owner",
+    val adminUsers: List<es.manico.chartintelligence.data.repository.AdminUserDto> = emptyList(),
+    val isAdminUsersLoading: Boolean = false,
+    val adminUsersError: String? = null,
     val rememberCredentials: Boolean = true,
     val authMode: AuthScreenMode = AuthScreenMode.LOGIN,
     @param:StringRes val authErrorResId: Int? = null,
@@ -116,6 +120,7 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             isAuthenticated = repository.isSessionAuthenticated(),
             ownerUsername = repository.getOwnerUsername(),
             ownerEmail = repository.getOwnerEmail(),
+            userRole = repository.getUserRole(),
             rememberCredentials = repository.loadRememberCredentials(),
             symbols = symbolCoordinator.loadInitialCatalog(),
             chartPreferences = preferenceCoordinator.loadInitialPreferences(),
@@ -156,7 +161,13 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
             }
             val status = repository.fetchSystemStatus()
             val batches = repository.fetchImportBatches()
-            _uiState.update { it.copy(systemStatus = status, importBatches = batches) }
+            _uiState.update {
+                it.copy(
+                    userRole = repository.getUserRole(),
+                    systemStatus = status,
+                    importBatches = batches
+                )
+            }
             if (_uiState.value.isAuthenticated) {
                 pullAndApplyCloudWorkspaceOnStartup()
             }
@@ -871,6 +882,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         showFvg = curActive?.showFvg ?: curPrefs.showFvg,
                         showVolumeProfile = curActive?.showVolumeProfile ?: curPrefs.showVolumeProfile,
                         showPivotPoints = curActive?.showPivotPoints ?: curPrefs.showPivotPoints,
+                        showSrZones = curActive?.showSrZones ?: curPrefs.showSrZones,
+                        showCandlePatterns = curActive?.showCandlePatterns ?: curPrefs.showCandlePatterns,
                         pivotType = curActive?.pivotType ?: curPrefs.pivotType,
                         showFutureProjection = false,
                         pitchforkVariant = curActive?.pitchforkVariant ?: curPrefs.pitchforkVariant
@@ -941,6 +954,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                 showFvg = curActive?.showFvg ?: curPrefs.showFvg,
                 showVolumeProfile = curActive?.showVolumeProfile ?: curPrefs.showVolumeProfile,
                 showPivotPoints = curActive?.showPivotPoints ?: curPrefs.showPivotPoints,
+                showSrZones = curActive?.showSrZones ?: curPrefs.showSrZones,
+                showCandlePatterns = curActive?.showCandlePatterns ?: curPrefs.showCandlePatterns,
                 pivotType = curActive?.pivotType ?: curPrefs.pivotType,
                 showFutureProjection = false,
                 pitchforkVariant = curActive?.pitchforkVariant ?: curPrefs.pitchforkVariant,
@@ -1433,6 +1448,71 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         scheduleDebouncedCloudSync()
     }
 
+    fun deleteDrawingByIdOnActiveTab(drawingId: String) {
+        val active = _uiState.value.activeTab ?: return
+        val updatedTab = drawingCoordinator.deleteDrawingById(active, drawingId)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) updatedTab else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleDrawingVisibilityOnActiveTab(drawingId: String) {
+        val active = _uiState.value.activeTab ?: return
+        val updatedTab = drawingCoordinator.toggleDrawingVisibility(active, drawingId)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) updatedTab else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun toggleDrawingLockOnActiveTab(drawingId: String) {
+        val active = _uiState.value.activeTab ?: return
+        val updatedTab = drawingCoordinator.toggleDrawingLock(active, drawingId)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) updatedTab else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun setAllDrawingsVisibilityOnActiveTab(visible: Boolean) {
+        val active = _uiState.value.activeTab ?: return
+        val updatedTab = drawingCoordinator.setAllDrawingsVisibility(active, visible)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) updatedTab else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
+    fun clearUnlockedDrawingsOnActiveTab() {
+        val active = _uiState.value.activeTab ?: return
+        val updatedTab = drawingCoordinator.clearUnlockedDrawings(active)
+        _uiState.update { state ->
+            state.copy(
+                openTabs = state.openTabs.map { tab ->
+                    if (tab.tabId == active.tabId) updatedTab else tab
+                }
+            )
+        }
+        scheduleDebouncedCloudSync()
+    }
+
     fun clearAllDrawingsOnActiveTab() {
         val active = _uiState.value.activeTab ?: return
         val updatedTab = drawingCoordinator.clearAllDrawings(active)
@@ -1912,6 +1992,22 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
         updateIndicatorsInTabsAndPrefs(
             tabTransform = { it.copy(showPivotPoints = nextVal) },
             prefTransform = { it.copy(showPivotPoints = nextVal) }
+        )
+    }
+
+    fun toggleSrZonesOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showSrZones ?: _uiState.value.chartPreferences.showSrZones)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showSrZones = nextVal) },
+            prefTransform = { it.copy(showSrZones = nextVal) }
+        )
+    }
+
+    fun toggleCandlePatternsOnActiveTab() {
+        val nextVal = !(_uiState.value.activeTab?.showCandlePatterns ?: _uiState.value.chartPreferences.showCandlePatterns)
+        updateIndicatorsInTabsAndPrefs(
+            tabTransform = { it.copy(showCandlePatterns = nextVal) },
+            prefTransform = { it.copy(showCandlePatterns = nextVal) }
         )
     }
 
@@ -2441,6 +2537,8 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                             showFvg = refreshedPrefs.showFvg,
                             showVolumeProfile = refreshedPrefs.showVolumeProfile,
                             showPivotPoints = refreshedPrefs.showPivotPoints,
+                            showSrZones = refreshedPrefs.showSrZones,
+                            showCandlePatterns = refreshedPrefs.showCandlePatterns,
                             pivotType = refreshedPrefs.pivotType,
                             showFutureProjection = false,
                             pitchforkVariant = refreshedPrefs.pitchforkVariant,
@@ -2786,6 +2884,92 @@ class MainViewModel(application: Application) : AndroidViewModel(application) {
                         importStatusMessage = "Manual OHLC failed: ${res.errorMessage ?: "INVALID_MANUAL_OHLC"}"
                     )
                 }
+            }
+        }
+    }
+
+    fun refreshAdminUsers() {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAdminUsersLoading = true, adminUsersError = null) }
+            val res = repository.fetchAdminUsers()
+            _uiState.update {
+                it.copy(
+                    isAdminUsersLoading = false,
+                    userRole = if (res.ok) res.callerRole else it.userRole,
+                    adminUsers = if (res.ok) res.users else it.adminUsers,
+                    adminUsersError = if (res.ok) null else res.errorMessage
+                )
+            }
+        }
+    }
+
+    fun createAdminUser(username: String, email: String, password: String, role: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAdminUsersLoading = true, adminUsersError = null) }
+            val res = repository.createAdminUser(username, email, password, role)
+            _uiState.update {
+                it.copy(
+                    isAdminUsersLoading = false,
+                    userRole = if (res.ok) res.callerRole else it.userRole,
+                    adminUsers = if (res.ok) res.users else it.adminUsers,
+                    adminUsersError = if (res.ok) null else res.errorMessage
+                )
+            }
+        }
+    }
+
+    fun updateAdminUserRole(userId: Long, nextRole: String) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAdminUsersLoading = true, adminUsersError = null) }
+            val res = repository.updateAdminUser(userId = userId, role = nextRole)
+            _uiState.update {
+                it.copy(
+                    isAdminUsersLoading = false,
+                    adminUsers = if (res.ok) res.users else it.adminUsers,
+                    adminUsersError = if (res.ok) null else res.errorMessage
+                )
+            }
+        }
+    }
+
+    fun toggleAdminUserActive(userId: Long, nextActive: Boolean) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAdminUsersLoading = true, adminUsersError = null) }
+            val res = repository.updateAdminUser(userId = userId, isActive = nextActive)
+            _uiState.update {
+                it.copy(
+                    isAdminUsersLoading = false,
+                    adminUsers = if (res.ok) res.users else it.adminUsers,
+                    adminUsersError = if (res.ok) null else res.errorMessage
+                )
+            }
+        }
+    }
+
+    fun revokeAdminUserSessions(userId: Long) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAdminUsersLoading = true, adminUsersError = null) }
+            val res = repository.revokeAdminUserSessions(userId)
+            _uiState.update {
+                it.copy(
+                    isAdminUsersLoading = false,
+                    adminUsers = if (res.ok) res.users else it.adminUsers,
+                    adminUsersError = if (res.ok) null else res.errorMessage
+                )
+            }
+        }
+    }
+
+    fun deleteAdminUser(userId: Long) {
+        viewModelScope.launch {
+            _uiState.update { it.copy(isAdminUsersLoading = true, adminUsersError = null) }
+            val res = repository.deleteAdminUser(userId)
+            _uiState.update {
+                it.copy(
+                    isAdminUsersLoading = false,
+                    adminUsers = if (res.ok) res.users else it.adminUsers,
+                    adminUsersError = if (res.ok) null else res.errorMessage
+                )
             }
         }
     }

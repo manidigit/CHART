@@ -2,82 +2,116 @@
 declare(strict_types=1);
 
 /**
- * CLI / Cron Job Script: Extracts PEPPERSTONE:SPOTBRENT candles via Python `tvdatafeed`
- * (`sync_tvdatafeed.py`) and upserts up to 5,000 closed bars per timeframe (M15, H1, H4, D1)
- * directly into the cPanel MariaDB `candles` table.
+ * CLI / Cron Job Script: Pure-PHP TradingView WebSocket → MariaDB incremental sync.
+ *
+ * Fetches newly closed bars directly from TradingView via `TvDatafeedAdapter`
+ * (without writing any CSV/JSON files on disk) and upserts them directly into
+ * the MariaDB `candles` table using the canonical schema columns.
  *
  * Usage (cPanel Cron or SSH):
  *   php /home/manicoes/chart.manico.es/scripts/cron_sync_tvdatafeed.php
  */
 
+require_once __DIR__ . '/../api/v1/algorithms/UtcTimeAnchor.php';
+require_once __DIR__ . '/../api/v1/algorithms/CandleValidator.php';
+require_once __DIR__ . '/../api/v1/algorithms/TimeframeAggregator.php';
 require_once __DIR__ . '/../api/v1/core/Database.php';
 require_once __DIR__ . '/../api/v1/providers/TvDatafeedAdapter.php';
 
 use ChartIntelligence\Core\Database;
 use ChartIntelligence\Providers\TvDatafeedAdapter;
 
-$scriptPath = __DIR__ . '/sync_tvdatafeed.py';
-$outputDir  = __DIR__ . '/../data/tvdatafeed';
-
-if (is_file($scriptPath) && function_exists('exec')) {
-    foreach (['python3', '/usr/bin/python3', '/usr/local/bin/python3', 'python'] as $bin) {
-        $cmd = sprintf(
-            '%s %s --symbol SPOTBRENT --exchange PEPPERSTONE --bars 5000 --output-dir %s 2>&1',
-            escapeshellcmd($bin),
-            escapeshellarg($scriptPath),
-            escapeshellarg($outputDir)
-        );
-        $out = [];
-        $code = 1;
-        @exec($cmd, $out, $code);
-        if ($code === 0) {
-            break;
-        }
-    }
+$pdo = Database::getPdo();
+if ($pdo === null) {
+    fwrite(STDERR, json_encode([
+        'ok' => false,
+        'error' => 'MariaDB connection unavailable',
+    ], JSON_UNESCAPED_SLASHES) . PHP_EOL);
+    exit(1);
 }
 
-$pdo = Database::getPdo();
+$nowMs = (int) round(microtime(true) * 1000);
+$targets = [
+    ['symbol' => 'SPOTBRENT', 'chart_id' => 'chart_spotbrent_main'],
+    ['symbol' => 'XAUUSD', 'chart_id' => 'chart_xauusd_main'],
+];
+$timeframes = ['M15', 'H1', 'H4', 'D1', 'W1'];
+
+$maxStmt = $pdo->prepare(
+    "SELECT MAX(open_time_utc) AS last_open_ms
+     FROM candles
+     WHERE chart_id = :cid AND provider_id = 'tvdatafeed' AND timeframe = :tf"
+);
+
+$upsertStmt = $pdo->prepare(
+    "INSERT INTO candles
+        (chart_id, provider_id, timeframe, open_time_utc,
+         open_price, high_price, low_price, close_price, volume, is_closed)
+     VALUES (:cid, 'tvdatafeed', :tf, :open_ms, :o, :h, :l, :c, :v, 1)
+     ON DUPLICATE KEY UPDATE
+        open_price  = VALUES(open_price),
+        high_price  = VALUES(high_price),
+        low_price   = VALUES(low_price),
+        close_price = VALUES(close_price),
+        volume      = VALUES(volume),
+        is_closed   = 1"
+);
+
 $summary = [];
 
-foreach (['M15', 'H1', 'H4', 'D1'] as $tf) {
-    $candles = TvDatafeedAdapter::fetchClosedCandles('SPOTBRENT', $tf, 5000);
-    $summary[$tf] = count($candles);
+foreach ($targets as $target) {
+    $symbol = $target['symbol'];
+    $chartId = $target['chart_id'];
+    $summary[$symbol] = [];
 
-    if ($pdo !== null && count($candles) > 0) {
-        $sql = "INSERT INTO candles
-            (chart_id, provider_id, timeframe, open_time_utc_ms, open_time_utc_iso,
-             open_price, high_price, low_price, close_price, volume)
-            VALUES (:cid, 'tvdatafeed', :tf, :ms, :iso, :o, :h, :l, :c, :v)
-            ON DUPLICATE KEY UPDATE
-            open_price = VALUES(open_price),
-            high_price = VALUES(high_price),
-            low_price  = VALUES(low_price),
-            close_price = VALUES(close_price),
-            volume     = VALUES(volume)";
-        $stmt = $pdo->prepare($sql);
-        $pdo->beginTransaction();
-        foreach ($candles as $bar) {
-            $stmt->execute([
-                ':cid' => 'chart_spotbrent_main',
-                ':tf'  => $tf,
-                ':ms'  => $bar['open_time_utc_ms'],
-                ':iso' => $bar['open_time_utc_iso'],
-                ':o'   => $bar['open'],
-                ':h'   => $bar['high'],
-                ':l'   => $bar['low'],
-                ':c'   => $bar['close'],
-                ':v'   => $bar['volume'],
-            ]);
+    foreach ($timeframes as $tf) {
+        $maxStmt->execute([':cid' => $chartId, ':tf' => $tf]);
+        $row = $maxStmt->fetch(\PDO::FETCH_ASSOC);
+        $sinceOpenMs = isset($row['last_open_ms']) && $row['last_open_ms'] !== null
+            ? (int) $row['last_open_ms']
+            : 0;
+
+        $candles = TvDatafeedAdapter::fetchClosedCandles($symbol, $tf, 1500, $nowMs, false, $sinceOpenMs);
+        $upserted = 0;
+
+        if (count($candles) > 0) {
+            $pdo->beginTransaction();
+            try {
+                foreach ($candles as $bar) {
+                    $upsertStmt->execute([
+                        ':cid'     => $chartId,
+                        ':tf'      => $tf,
+                        ':open_ms' => (int) ($bar['open_time_utc_ms'] ?? 0),
+                        ':o'       => (string) ($bar['open'] ?? '0'),
+                        ':h'       => (string) ($bar['high'] ?? '0'),
+                        ':l'       => (string) ($bar['low'] ?? '0'),
+                        ':c'       => (string) ($bar['close'] ?? '0'),
+                        ':v'       => (string) ($bar['volume'] ?? '0'),
+                    ]);
+                    $upserted++;
+                }
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                if ($pdo->inTransaction()) {
+                    $pdo->rollBack();
+                }
+                $summary[$symbol][$tf] = ['upserted' => 0, 'error' => $e->getMessage()];
+                continue;
+            }
         }
-        $pdo->commit();
+
+        $summary[$symbol][$tf] = [
+            'since_open_ms' => $sinceOpenMs,
+            'upserted'      => $upserted,
+            'last_error'    => TvDatafeedAdapter::$lastError !== '' ? TvDatafeedAdapter::$lastError : null,
+        ];
     }
 }
 
 echo json_encode([
-    'ok' => true,
-    'symbol' => 'SPOTBRENT',
-    'exchange' => 'PEPPERSTONE',
-    'provider' => 'tvdatafeed',
-    'stored_in_db' => $pdo !== null,
-    'counts' => $summary,
+    'ok'            => true,
+    'provider'      => 'tvdatafeed',
+    'mode'          => 'DIRECT_WEBSOCKET_TO_MARIADB',
+    'synced_at_ms'  => $nowMs,
+    'results'       => $summary,
 ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES) . PHP_EOL;

@@ -25,6 +25,8 @@ if ($pdo !== null) {
         $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS email VARCHAR(120) NULL AFTER username");
         $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_code_hash VARCHAR(255) NULL AFTER password_hash");
         $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS reset_expires_at_utc DATETIME NULL AFTER reset_code_hash");
+        $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS role ENUM('owner', 'admin', 'viewer') NOT NULL DEFAULT 'owner'");
+        $pdo->exec("ALTER TABLE users ADD COLUMN IF NOT EXISTS is_active TINYINT(1) NOT NULL DEFAULT 1");
         $pdo->exec("CREATE TABLE IF NOT EXISTS user_sessions (
             id INT AUTO_INCREMENT PRIMARY KEY,
             token VARCHAR(64) NOT NULL UNIQUE,
@@ -185,9 +187,27 @@ function verifySessionToken(?PDO $pdo, string $sessionsFile, string $token): ?ar
             $stmt->execute([':t' => $token, ':now' => $nowUtc]);
             $row = $stmt->fetch();
             if ($row && !empty($row['username'])) {
+                $uname = (string) $row['username'];
+                $role = 'owner';
+                $email = (string) ($row['email'] ?? '');
+                try {
+                    $uStmt = $pdo->prepare("SELECT email, role, is_active FROM users WHERE LOWER(username) = LOWER(:u) LIMIT 1");
+                    $uStmt->execute([':u' => $uname]);
+                    $uRow = $uStmt->fetch();
+                    if ($uRow) {
+                        if ((int) ($uRow['is_active'] ?? 1) !== 1) {
+                            return null;
+                        }
+                        $role = (string) ($uRow['role'] ?? 'owner');
+                        if (!empty($uRow['email'])) {
+                            $email = (string) $uRow['email'];
+                        }
+                    }
+                } catch (\Throwable) {}
                 return [
-                    'username' => (string) $row['username'],
-                    'email' => (string) ($row['email'] ?? ''),
+                    'username' => $uname,
+                    'email' => $email,
+                    'role' => $role,
                 ];
             }
         } catch (\Throwable) {}
@@ -201,6 +221,7 @@ function verifySessionToken(?PDO $pdo, string $sessionsFile, string $token): ?ar
                 return [
                     'username' => (string) ($s['username'] ?? ''),
                     'email' => (string) ($s['email'] ?? ''),
+                    'role' => (string) ($s['role'] ?? 'owner'),
                 ];
             }
         }
@@ -222,6 +243,31 @@ function revokeSessionToken(?PDO $pdo, string $sessionsFile, string $token): voi
         if (is_array($data) && isset($data[$token])) {
             unset($data[$token]);
             @file_put_contents($sessionsFile, json_encode($data, JSON_UNESCAPED_UNICODE), LOCK_EX);
+        }
+    }
+}
+
+function revokeUserSessions(?PDO $pdo, string $sessionsFile, string $username): void
+{
+    if ($username === '') {
+        return;
+    }
+    if ($pdo !== null) {
+        try {
+            $stmt = $pdo->prepare("DELETE FROM user_sessions WHERE LOWER(username) = LOWER(:u)");
+            $stmt->execute([':u' => $username]);
+        } catch (\Throwable) {}
+    }
+    if (is_file($sessionsFile)) {
+        $data = json_decode((string) @file_get_contents($sessionsFile), true);
+        if (is_array($data)) {
+            $filtered = [];
+            foreach ($data as $t => $s) {
+                if (strcasecmp((string) ($s['username'] ?? ''), $username) !== 0) {
+                    $filtered[$t] = $s;
+                }
+            }
+            @file_put_contents($sessionsFile, json_encode($filtered, JSON_UNESCAPED_UNICODE), LOCK_EX);
         }
     }
 }
@@ -501,6 +547,7 @@ if ($action === 'register_owner') {
         'is_owner_registered' => true,
         'owner_username' => $username,
         'owner_email' => $email,
+        'user_role' => 'owner',
     ]);
 }
 
@@ -514,6 +561,7 @@ if ($action === 'validate_session') {
             'session_token' => $token,
             'owner_username' => $session['username'],
             'owner_email' => $session['email'],
+            'user_role' => (string) ($session['role'] ?? 'owner'),
         ]);
     }
     ApiEnvelope::sendError('INVALID_SESSION', 'error_invalid_credentials', 401);
@@ -535,22 +583,27 @@ if ($action === 'login') {
 
     if ($pdo !== null) {
         $stmt = $pdo->prepare(
-            "SELECT username, email, password_hash FROM users
+            "SELECT username, email, password_hash, role, is_active FROM users
              WHERE LOWER(username) = LOWER(:u) OR (email IS NOT NULL AND LOWER(email) = LOWER(:e))
              LIMIT 1"
         );
         $stmt->execute([':u' => $identifier, ':e' => $identifier]);
         $row = $stmt->fetch();
         if ($row && password_verify($password, (string) $row['password_hash'])) {
+            if ((int) ($row['is_active'] ?? 1) !== 1) {
+                ApiEnvelope::sendError('ACCOUNT_DISABLED', 'error_account_disabled', 403);
+            }
             clearRateLimitBucket($rateLimitFile, 'login');
             $u = (string) $row['username'];
             $e = (string) ($row['email'] ?? '');
+            $role = (string) ($row['role'] ?? 'owner');
             $token = createSessionToken($pdo, $sessionsFile, $u, $e);
             ApiEnvelope::sendSuccess([
                 'authenticated' => true,
                 'session_token' => $token,
                 'owner_username' => $u,
                 'owner_email' => $e,
+                'user_role' => $role,
             ]);
         }
     }
@@ -571,6 +624,7 @@ if ($action === 'login') {
             'session_token' => $token,
             'owner_username' => $u,
             'owner_email' => $e,
+            'user_role' => 'owner',
         ]);
     }
 
@@ -664,24 +718,34 @@ if ($action === 'update_profile') {
     if ($email === '' || !filter_var($email, FILTER_VALIDATE_EMAIL)) {
         ApiEnvelope::sendError('INVALID_EMAIL', 'error_invalid_email');
     }
+    $sessionUsername = (string) ($session['username'] ?? '');
+    $sessionRole = (string) ($session['role'] ?? 'owner');
     if ($pdo !== null) {
-        $stmt = $pdo->prepare("UPDATE users SET email = :e WHERE role = 'owner'");
-        $stmt->execute([':e' => $email]);
+        if ($sessionUsername !== '') {
+            $stmt = $pdo->prepare("UPDATE users SET email = :e WHERE LOWER(username) = LOWER(:u)");
+            $stmt->execute([':e' => $email, ':u' => $sessionUsername]);
+        } else {
+            $stmt = $pdo->prepare("UPDATE users SET email = :e WHERE role = 'owner'");
+            $stmt->execute([':e' => $email]);
+        }
     }
-    $fb = loadFallbackOwner($fallbackFile);
-    if ($fb !== null) {
-        saveFallbackOwner(
-            $fallbackFile,
-            (string) $fb['username'],
-            (string) $fb['password_hash'],
-            $email,
-            $fb['reset_code_hash'] ?? null,
-            $fb['reset_expires_at_utc'] ?? null
-        );
+    if ($sessionRole === 'owner') {
+        $fb = loadFallbackOwner($fallbackFile);
+        if ($fb !== null) {
+            saveFallbackOwner(
+                $fallbackFile,
+                (string) $fb['username'],
+                (string) $fb['password_hash'],
+                $email,
+                $fb['reset_code_hash'] ?? null,
+                $fb['reset_expires_at_utc'] ?? null
+            );
+        }
     }
     ApiEnvelope::sendSuccess([
         'email_updated' => true,
         'owner_email' => $email,
+        'user_role' => $sessionRole,
     ], 'status_email_updated');
 }
 
@@ -697,12 +761,16 @@ if ($action === 'change_password') {
     $hashAlgo = defined('PASSWORD_ARGON2ID') ? PASSWORD_ARGON2ID : PASSWORD_BCRYPT;
     $hash = password_hash($newPassword, $hashAlgo);
 
-    $ownerUsername = $session['username'] ?? '';
-    $ownerEmail = $session['email'] ?? '';
+    $ownerUsername = (string) ($session['username'] ?? '');
+    $ownerEmail = (string) ($session['email'] ?? '');
+    $sessionRole = (string) ($session['role'] ?? 'owner');
     if ($pdo !== null) {
-        $stmt = $pdo->prepare("UPDATE users SET password_hash = :h WHERE role = 'owner'");
-        $stmt->execute([':h' => $hash]);
-        if ($ownerUsername === '') {
+        if ($ownerUsername !== '') {
+            $stmt = $pdo->prepare("UPDATE users SET password_hash = :h WHERE LOWER(username) = LOWER(:u)");
+            $stmt->execute([':h' => $hash, ':u' => $ownerUsername]);
+        } else {
+            $stmt = $pdo->prepare("UPDATE users SET password_hash = :h WHERE role = 'owner'");
+            $stmt->execute([':h' => $hash]);
             $uStmt = $pdo->query("SELECT username, email FROM users WHERE role = 'owner' LIMIT 1");
             $uRow = $uStmt ? $uStmt->fetch() : false;
             if ($uRow) {
@@ -711,24 +779,31 @@ if ($action === 'change_password') {
             }
         }
     }
-    $fb = loadFallbackOwner($fallbackFile);
-    if ($fb !== null) {
-        if ($ownerUsername === '') {
-            $ownerUsername = (string) $fb['username'];
-            $ownerEmail = (string) ($fb['email'] ?? '');
+    if ($sessionRole === 'owner') {
+        $fb = loadFallbackOwner($fallbackFile);
+        if ($fb !== null) {
+            if ($ownerUsername === '') {
+                $ownerUsername = (string) $fb['username'];
+                $ownerEmail = (string) ($fb['email'] ?? '');
+            }
+            saveFallbackOwner(
+                $fallbackFile,
+                (string) $fb['username'],
+                $hash,
+                (string) ($fb['email'] ?? '')
+            );
         }
-        saveFallbackOwner(
-            $fallbackFile,
-            (string) $fb['username'],
-            $hash,
-            (string) ($fb['email'] ?? '')
-        );
     }
-    revokeAllSessions($pdo, $sessionsFile);
+    if ($ownerUsername !== '') {
+        revokeUserSessions($pdo, $sessionsFile, $ownerUsername);
+    } else {
+        revokeAllSessions($pdo, $sessionsFile);
+    }
     $freshToken = $ownerUsername !== '' ? createSessionToken($pdo, $sessionsFile, $ownerUsername, $ownerEmail) : '';
     ApiEnvelope::sendSuccess([
         'password_updated' => true,
         'session_token' => $freshToken,
+        'user_role' => $sessionRole,
     ], 'settings_password_updated');
 }
 

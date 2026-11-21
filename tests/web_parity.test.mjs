@@ -1225,7 +1225,7 @@ test('STRUCTURAL-FORECAST-JS: Native Browser Structural Wave Forecast runs purel
     } = await import('../host_subdomain/assets/js/core/store.js');
 
     // 1) Real SPOTBRENT M15 closed candle fixture test
-    const rawSpot = JSON.parse(fs.readFileSync(path.resolve('host_subdomain/data/tvdatafeed/SPOTBRENT_M15.json'), 'utf8'));
+    const rawSpot = JSON.parse(fs.readFileSync(path.resolve('tests/fixtures/spotbrent_m15_sample.json'), 'utf8'));
     const realSlice = rawSpot.candles.slice(-260).map((c) => ({
         open_time_utc_ms: Number(c.open_time_utc_ms),
         open: Number(c.open),
@@ -2617,5 +2617,449 @@ test('BUGFIX-V14741-UI-SYNC-TF-SMC: topbar pinning, full MariaDB hydration past 
   assert.match(app, /action === 'set-date-range'[\s\S]{0,2000}recomputeActiveTabForecast\(activeTab/, 'set-date-range must auto-recompute active forecast when timeframe changes');
 });
 
+test('TA-CORE-AB-01: TechnicalAnalysisCore Phase A normalization, warm-up nulls, and two-pass Bollinger match shared golden fixture', async () => {
+  const { TechnicalAnalysisCore } = await import('../host_subdomain/assets/js/algorithms/technicalAnalysisCore.js');
+  const fixture = JSON.parse(await readFile(new URL('./fixtures/ta_core_golden_fixture.json', import.meta.url), 'utf8'));
+  const tol = fixture.tolerance || 1e-6;
 
+  const assertNear = (actual, expected, label) => {
+    if (expected === null || expected === undefined) {
+      assert.equal(actual, null, `${label} must be strictly null during warm-up`);
+      return;
+    }
+    assert.equal(typeof actual, 'number', `${label} must be finite number`);
+    assert.ok(Math.abs(actual - expected) <= tol, `${label} expected ${expected}, got ${actual}`);
+  };
+
+  for (const key of ['normal_trend_osc', 'large_price_btc', 'flat_price_zero_vol']) {
+    const c = fixture.cases[key];
+    const res = TechnicalAnalysisCore.computeCoreIndicators(c.candles, {
+      timeframe: c.timeframe,
+      symbolCode: c.symbolCode,
+      bollingerPeriod: c.bollingerPeriod,
+      bollingerStdDev: c.bollingerStdDev,
+    });
+    assert.equal(res.schemaVersion, 'ta-core/1.1');
+    assert.equal(res.quality.validCount, c.candles.length);
+    assert.equal(res.quality.droppedInvalidCount, 0);
+
+    // Warm-up invariants: indices < period - 1 must remain strictly null (never 0)
+    for (let i = 0; i < 19; i++) {
+      assert.equal(res.indicators.sma20[i], null, `${key} sma20[${i}] warm-up must be null`);
+      assert.equal(res.indicators.ema20[i], null, `${key} ema20[${i}] warm-up must be null`);
+      assert.equal(res.indicators.bollinger[i], null, `${key} bollinger[${i}] warm-up must be null`);
+    }
+    for (let i = 0; i < 13; i++) {
+      assert.equal(res.indicators.atr14[i], null, `${key} atr14[${i}] warm-up must be null`);
+    }
+    for (let i = 0; i < 14; i++) {
+      assert.equal(res.indicators.rsi14[i], null, `${key} rsi14[${i}] warm-up must be null`);
+    }
+
+    const idx = c.expectedLast.lastIndex;
+    assertNear(res.indicators.sma20[idx], c.expectedLast.sma20, `${key}.sma20`);
+    assertNear(res.indicators.ema20[idx], c.expectedLast.ema20, `${key}.ema20`);
+    assertNear(res.indicators.bollinger[idx].middle, c.expectedLast.bollinger.middle, `${key}.bb.middle`);
+    assertNear(res.indicators.bollinger[idx].upper, c.expectedLast.bollinger.upper, `${key}.bb.upper`);
+    assertNear(res.indicators.bollinger[idx].lower, c.expectedLast.bollinger.lower, `${key}.bb.lower`);
+    assertNear(res.indicators.atr14[idx], c.expectedLast.atr14, `${key}.atr14`);
+    assertNear(res.indicators.rsi14[idx], c.expectedLast.rsi14, `${key}.rsi14`);
+    assertNear(res.indicators.macd[idx].macd, c.expectedLast.macd.macd, `${key}.macd.line`);
+    assertNear(res.indicators.macd[idx].signal, c.expectedLast.macd.signal, `${key}.macd.signal`);
+    assertNear(res.indicators.macd[idx].histogram, c.expectedLast.macd.histogram, `${key}.macd.hist`);
+    assertNear(res.indicators.vwap[idx], c.expectedLast.vwap, `${key}.vwap`);
+    assertNear(res.indicators.supertrend[idx].value, c.expectedLast.supertrend.value, `${key}.supertrend.val`);
+    assert.equal(res.indicators.supertrend[idx].direction, c.expectedLast.supertrend.direction, `${key}.supertrend.dir`);
+  }
+
+  // Short-series warm-up case: all windowed indicators strictly null
+  const shortRes = TechnicalAnalysisCore.computeCoreIndicators(fixture.cases.short_warmup.candles, {
+    timeframe: 'M15',
+    symbolCode: 'SPOTBRENT',
+  });
+  assert.ok(shortRes.indicators.sma20.every((v) => v === null));
+  assert.ok(shortRes.indicators.ema20.every((v) => v === null));
+  assert.ok(shortRes.indicators.bollinger.every((v) => v === null));
+  assert.ok(shortRes.indicators.atr14.every((v) => v === null));
+  assert.ok(shortRes.indicators.rsi14.every((v) => v === null));
+  assert.ok(shortRes.indicators.macd.every((v) => v === null));
+
+  // Dirty input Phase A normalization
+  const dirtyRes = TechnicalAnalysisCore.normalizeCandles(fixture.cases.dirty_unsorted_dups.candles, {
+    timeframe: 'M15',
+    symbolCode: 'SPOTBRENT',
+    excludeOpenBars: true,
+  });
+  assert.equal(dirtyRes.quality.wasUnsorted, true);
+  assert.equal(dirtyRes.quality.deduplicatedCount, 1);
+  assert.equal(dirtyRes.quality.droppedInvalidCount, 1);
+  assert.equal(dirtyRes.quality.droppedOpenCount, 1);
+  assert.equal(dirtyRes.quality.validCount, 3);
+  assert.ok(dirtyRes.candles[0].open_time_utc_ms < dirtyRes.candles[1].open_time_utc_ms);
+  assert.ok(dirtyRes.candles[1].open_time_utc_ms < dirtyRes.candles[2].open_time_utc_ms);
+});
+
+test('TA-CORE-CF-01: Phase C-F causal Swings/Trend, evidence-backed S/R Zones (>=2 touches), 7 Candlestick Patterns, and Canonical Analysis Contract (ta-core/1.1)', async () => {
+  const { TechnicalAnalysisCore, TA_CORE_SCHEMA_VERSION } = await import('../host_subdomain/assets/js/algorithms/technicalAnalysisCore.js');
+  const cfFixture = JSON.parse(await readFile(new URL('./fixtures/ta_core_cf_golden_fixture.json', import.meta.url), 'utf8'));
+  const spotBrentRaw = JSON.parse(await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8'));
+
+  assert.equal(TA_CORE_SCHEMA_VERSION, 'ta-core/1.1');
+
+  // 1. Uptrend + Resistance Break & Retest + Active Support + Strict Causality (Zero Lookahead)
+  const upCase = cfFixture.cases.uptrend_sr_break_retest;
+  const upCanonical = TechnicalAnalysisCore.buildCanonicalAnalysis(upCase.candles, {
+    timeframe: upCase.timeframe,
+    symbolCode: upCase.symbolCode,
+    swingLen: upCase.swingLen,
+  });
+  assert.equal(upCanonical.schemaVersion, 'ta-core/1.1');
+  assert.equal(upCanonical.structures.trend, 'UPTREND');
+  assert.ok(upCanonical.structures.swings.length >= 4, 'Must detect confirmed swing highs and lows');
+  for (const sw of upCanonical.structures.swings) {
+    assert.equal(sw.confirmIndex, sw.index + upCase.swingLen, 'Every swing must carry causal confirmIndex === index + swingLen');
+  }
+
+  // Strict causal prefix-truncation check: truncating future bars cannot alter already-confirmed swings
+  const cutoff = 20;
+  const prefixSwings = TechnicalAnalysisCore.detectSwingsAndTrend(upCase.candles.slice(0, cutoff), upCase.swingLen).swings;
+  const fullBeforeCutoff = upCanonical.structures.swings.filter((s) => s.confirmIndex < cutoff);
+  assert.deepEqual(prefixSwings, fullBeforeCutoff, 'Confirmed swings must be 100% invariant to future bars (zero lookahead)');
+
+  // S/R zones: every zone MUST have >= 2 confirmed swing touches; resistance must be RETESTED, support ACTIVE
+  assert.ok(upCanonical.structures.zones.length >= 2, 'Must detect both resistance and support clusters');
+  for (const z of upCanonical.structures.zones) {
+    assert.ok(z.touchCount >= 2, `S/R zone ${z.zoneId} must have >= 2 touches (got ${z.touchCount})`);
+    assert.equal(z.touchIndices.length, z.touchCount);
+    assert.ok(z.lowPrice < z.highPrice, 'Zone must span a valid price band');
+  }
+  const retestedRes = upCanonical.structures.zones.find((z) => z.role === 'RESISTANCE' && z.status === 'RETESTED');
+  assert.ok(retestedRes, 'Expected a broken-and-retested resistance zone in uptrend_sr_break_retest');
+  assert.ok(retestedRes.breakIndex !== null && retestedRes.retestIndex !== null && retestedRes.retestIndex > retestedRes.breakIndex);
+  assert.ok(typeof retestedRes.invalidationReason === 'string' && retestedRes.invalidationReason.length > 0);
+  const activeSup = upCanonical.structures.zones.find((z) => z.role === 'SUPPORT' && z.status === 'ACTIVE');
+  assert.ok(activeSup, 'Expected an active support zone in uptrend_sr_break_retest');
+
+  // 2. Downtrend + Decisive Support Breakdown (BROKEN with invalidationReason)
+  const dnCase = cfFixture.cases.downtrend_breakdown;
+  const dnCanonical = TechnicalAnalysisCore.buildCanonicalAnalysis(dnCase.candles, {
+    timeframe: dnCase.timeframe,
+    symbolCode: dnCase.symbolCode,
+    swingLen: dnCase.swingLen,
+  });
+  assert.equal(dnCanonical.structures.trend, 'DOWNTREND');
+  const brokenSup = dnCanonical.structures.zones.find((z) => z.role === 'SUPPORT' && z.status === 'BROKEN');
+  assert.ok(brokenSup, 'Expected a broken support zone in downtrend_breakdown');
+  assert.ok(brokenSup.breakIndex !== null && brokenSup.invalidationReason.includes('below support'));
+
+  // 3. Range + All 7 Deterministic Candlestick Patterns anchored to real candles
+  const patCase = cfFixture.cases.patterns_and_range;
+  const patCanonical = TechnicalAnalysisCore.buildCanonicalAnalysis(patCase.candles, {
+    timeframe: patCase.timeframe,
+    symbolCode: patCase.symbolCode,
+    swingLen: patCase.swingLen,
+  });
+  assert.equal(patCanonical.structures.trend, 'RANGE');
+  const foundTypes = new Set(patCanonical.patterns.map((p) => p.type));
+  for (const expectedType of [
+    'DOJI',
+    'HAMMER',
+    'SHOOTING_STAR',
+    'BULLISH_PIN_BAR',
+    'BEARISH_PIN_BAR',
+    'BULLISH_ENGULFING',
+    'BEARISH_ENGULFING',
+  ]) {
+    assert.ok(foundTypes.has(expectedType), `Missing expected candlestick pattern: ${expectedType}`);
+  }
+  for (const p of patCanonical.patterns) {
+    assert.ok(p.anchorIndex >= 0 && p.anchorIndex < patCase.candles.length);
+    assert.equal(p.anchorTimeUtcMs, patCase.candles[p.anchorIndex].open_time_utc_ms);
+    assert.ok(p.evidence.rangeAtrRatio >= 0.25);
+    assert.ok(p.candleIndices.includes(p.anchorIndex));
+  }
+
+  // 4. Real 260-bar SPOTBRENT M15 Canonical Analysis invariants
+  const spotCanonical = TechnicalAnalysisCore.buildCanonicalAnalysis(spotBrentRaw.candles, {
+    timeframe: 'M15',
+    symbolCode: 'SPOTBRENT',
+    swingLen: 3,
+  });
+  assert.equal(spotCanonical.schemaVersion, 'ta-core/1.1');
+  assert.equal(spotCanonical.quality.validCount, 260);
+  assert.ok(['UPTREND', 'DOWNTREND', 'RANGE'].includes(spotCanonical.structures.trend));
+  assert.ok(spotCanonical.structures.swings.length >= 20);
+  assert.ok(spotCanonical.structures.zones.length >= 2);
+  assert.ok(spotCanonical.structures.zones.every((z) => z.touchCount >= 2));
+  assert.ok(spotCanonical.patterns.length >= 5);
+
+  // 5. Web UI & Renderer wiring check (showSrZones & showCandlePatterns)
+  const rendererSrc = await readFile(new URL('../host_subdomain/assets/js/components/chartRenderer.js', import.meta.url), 'utf8');
+  const headerSrc = await readFile(new URL('../host_subdomain/assets/js/views/headerView.js', import.meta.url), 'utf8');
+  const appSrc = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  assert.match(rendererSrc, /TechnicalAnalysisCore\.detectSupportResistanceZones/);
+  assert.match(rendererSrc, /TechnicalAnalysisCore\.detectCandlestickPatterns/);
+  assert.match(headerSrc, /toggle-sr-zones/);
+  assert.match(headerSrc, /toggle-candle-patterns/);
+  assert.match(appSrc, /action === 'toggle-sr-zones'/);
+  assert.match(appSrc, /action === 'toggle-candle-patterns'/);
+});
+
+test('UI-02-OBJECT-TREE-01: Object Tree visibility/lock normalization, hidden hit-test skip, locked drag guard, modal rendering, and app action wiring', async () => {
+  const { DrawingGeometry } = await import('../host_subdomain/assets/js/algorithms/drawingGeometry.js');
+  const { normalizeDrawingObject, state } = await import('../host_subdomain/assets/js/core/store.js');
+  const { renderObjectTreeModal, buildActiveIndicatorLayers } = await import('../host_subdomain/assets/js/views/objectTreeView.js');
+  const rendererSrc = await readFile(new URL('../host_subdomain/assets/js/components/chartRenderer.js', import.meta.url), 'utf8');
+  const appSrc = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+
+  // 1. Backward-compatible defaults in normalizeDrawingObject
+  const legacyHLine = normalizeDrawingObject({ id: 'hl_legacy', type: 'hline', price: 82.5 });
+  assert.equal(legacyHLine.visible, true, 'Legacy drawing without visible key must default to true');
+  assert.equal(legacyHLine.locked, false, 'Legacy drawing without locked key must default to false');
+
+  const hiddenLocked = normalizeDrawingObject({
+    id: 'hl_hl',
+    type: 'horizontal_line',
+    price: 85.0,
+    visible: false,
+    locked: true,
+  });
+  assert.equal(hiddenLocked.visible, false);
+  assert.equal(hiddenLocked.locked, true);
+
+  // 2. Hit-testing skips hidden drawings and hits visible ones
+  const visibleLine = normalizeDrawingObject({ id: 'hl_vis', type: 'horizontal_line', price: 80.0, visible: true, locked: false });
+  const hiddenLine = normalizeDrawingObject({ id: 'hl_hid', type: 'horizontal_line', price: 80.0, visible: false, locked: false });
+  const timeToX = () => 100;
+  const priceToY = (p) => 200 - (p - 70) * 10; // price 80 -> y=100
+
+  const hitOnlyHidden = DrawingGeometry.hitTestDrawing([hiddenLine], 100, 100, timeToX, priceToY, 20);
+  assert.equal(hitOnlyHidden, null, 'Hidden drawing must never be hit-tested');
+
+  const hitVisibleUnderHidden = DrawingGeometry.hitTestDrawing([visibleLine, hiddenLine], 100, 100, timeToX, priceToY, 20);
+  assert.ok(hitVisibleUnderHidden && hitVisibleUnderHidden.id === 'hl_vis', 'Visible drawing underneath hidden drawing must be hit');
+
+  // 3. Locked drawings cannot be translated
+  const lockedLine = normalizeDrawingObject({ id: 'hl_lock', type: 'horizontal_line', price: 90.0, visible: true, locked: true });
+  const lockedAttempt = DrawingGeometry.translateDrawing(lockedLine, 3600000, 5.0);
+  assert.equal(lockedAttempt.price, 90.0, 'Locked drawing must not move on translateDrawing');
+  const unlockedAttempt = DrawingGeometry.translateDrawing(visibleLine, 3600000, 2.5);
+  assert.equal(unlockedAttempt.price, 82.5, 'Unlocked drawing must translate normally');
+
+  // 4. Object Tree modal HTML renders both Drawings (with badges/buttons) and Active Indicators (including S/R & Patterns)
+  const prevModal = state.activeModal;
+  state.activeModal = 'object-tree';
+  const mockI18n = { getCurrentLanguage: () => 'en', t: (k) => k };
+  const sampleTab = {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    decimals: 3,
+    selectedDrawingId: 'hl_lock',
+    drawings: [visibleLine, hiddenLine, lockedLine],
+    showVolume: true,
+    showSma20: true,
+    showSrZones: true,
+    showCandlePatterns: true,
+  };
+  const layers = buildActiveIndicatorLayers(sampleTab, false);
+  assert.ok(layers.some((l) => l.id === 'sma20'));
+  assert.ok(layers.some((l) => l.id === 'srZones'));
+  assert.ok(layers.some((l) => l.id === 'candlePatterns'));
+  assert.ok(layers.some((l) => l.id === 'volume'));
+
+  const modalHtml = renderObjectTreeModal(sampleTab, mockI18n);
+  state.activeModal = prevModal;
+  assert.match(modalHtml, /Object Tree/);
+  assert.match(modalHtml, /object-tree-toggle-visible/);
+  assert.match(modalHtml, /object-tree-toggle-locked/);
+  assert.match(modalHtml, /object-tree-delete-drawing/);
+  assert.match(modalHtml, /object-tree-toggle-all-visible/);
+  assert.match(modalHtml, /object-tree-clear-unlocked/);
+  assert.match(modalHtml, /Hidden/);
+  assert.match(modalHtml, /Locked/);
+  assert.match(modalHtml, /S\/R Zones/);
+  assert.match(modalHtml, /Candlestick Patterns/);
+
+  // 5. Renderer skips hidden drawings & app.js wires all Object Tree actions + locked drag guard
+  assert.match(rendererSrc, /if\s*\(!d\s*\|\|\s*d\.visible === false\)\s*return;/);
+  assert.match(appSrc, /hit\.id === activeTab\.selectedDrawingId && !hit\.locked/);
+  assert.match(appSrc, /action === 'object-tree-toggle-visible'/);
+  assert.match(appSrc, /action === 'object-tree-toggle-locked'/);
+  assert.match(appSrc, /action === 'object-tree-delete-drawing'/);
+  assert.match(appSrc, /action === 'object-tree-toggle-all-visible'/);
+  assert.match(appSrc, /action === 'object-tree-clear-unlocked'/);
+});
+
+test('PHASE6-STRATEGY-SIM-01: Offline Strategy Simulator causal execution, SL-before-TP tie-breaker, cost sensitivity (1x/1.5x/2x), and Strategy Lab UI', async () => {
+  const { StrategySimulator, STRATEGY_SIM_SCHEMA_VERSION, STRATEGY_PRESETS } = await import(
+    '../host_subdomain/assets/js/algorithms/strategySimulator.js'
+  );
+  const { renderStrategyLabModal } = await import('../host_subdomain/assets/js/views/strategyLabView.js');
+  const { state, saveCandlesToCache } = await import('../host_subdomain/assets/js/core/store.js');
+  const spotBrentRaw = JSON.parse(
+    await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8')
+  );
+  const spotBrentCandles = Array.isArray(spotBrentRaw) ? spotBrentRaw : spotBrentRaw.candles;
+
+  assert.equal(STRATEGY_SIM_SCHEMA_VERSION, 'strategy-sim/1.0');
+  assert.equal(STRATEGY_PRESETS.length, 4);
+
+  // 1. Run all 4 TA-Core presets on real 260-bar SPOTBRENT fixture with default EUR 1,000 / 1% risk
+  for (const preset of STRATEGY_PRESETS) {
+    const res = StrategySimulator.runSimulation(spotBrentCandles, {
+      symbolCode: 'SPOTBRENT',
+      timeframe: 'M15',
+      chartId: 'SPOTBRENT_tvdatafeed_M15',
+      presetId: preset.id,
+      initialEquity: 1000.0,
+      riskPerTradePct: 1.0,
+    });
+    assert.equal(res.status, 'READY', `${preset.id} must produce READY status`);
+    assert.equal(res.config.initialEquity, 1000.0);
+    assert.equal(res.config.intrabarPolicy, 'SL_BEFORE_TP');
+    assert.equal(res.equityCurve.length, res.candleCount);
+    assert.equal(res.costSensitivity.length, 3, `${preset.id} must compute 1x/1.5x/2x sensitivity`);
+    assert.ok(Number.isFinite(res.metrics.finalEquity), `${preset.id} finalEquity must be finite`);
+    assert.ok(Number.isFinite(res.metrics.sharpeRatio), `${preset.id} sharpeRatio must be finite`);
+    assert.ok(Number.isFinite(res.metrics.sortinoRatio), `${preset.id} sortinoRatio must be finite`);
+    assert.ok(res.metrics.maxDrawdownPct >= 0, `${preset.id} drawdown must be >= 0`);
+    // Cost sensitivity monotonicity: 2x fees >= 1x fees when trades exist
+    if (res.metrics.totalTrades > 0) {
+      assert.ok(
+        res.costSensitivity[2].totalFeesEur >= res.costSensitivity[0].totalFeesEur,
+        `${preset.id} 2.0x friction must produce >= 1.0x total fees`
+      );
+      for (const t of res.trades) {
+        assert.ok(t.exitIndex >= t.entryIndex, 'Trade exit index must be >= entry index');
+        assert.ok(t.costsEur >= 0, 'Explicit costs must be non-negative');
+      }
+    }
+  }
+
+  // 2. Conservative SL-before-TP tie-breaker: construct valid OHLC candles with a clear Supertrend flip
+  const synth = [];
+  const startMs = 1700000000000;
+  for (let i = 0; i < 90; i++) {
+    const base =
+      i < 42
+        ? 100.0 - i * 0.25
+        : i < 60
+          ? 89.5 + (i - 41) * 1.15
+          : i < 68
+            ? 110.2 - (i - 59) * 0.85
+            : 103.4 + (i - 67) * 0.9;
+    const open = base;
+    const close = base + (i >= 42 && i <= 59 || i >= 68 ? 0.55 : -0.35);
+    const high = Math.max(open, close) + 0.45;
+    const low = Math.min(open, close) - 0.45;
+    synth.push({
+      open_time_utc_ms: startMs + i * 900_000,
+      open,
+      high,
+      low,
+      close,
+      volume: 120,
+      is_closed: true,
+    });
+  }
+  const probeRun = StrategySimulator.runSimulation(synth, {
+    presetId: 'SUPERTREND_MOMENTUM',
+    direction: 'LONG_ONLY',
+    spreadBps: 0,
+    commissionBps: 0,
+    slippageBps: 0,
+    swapPerBarBps: 0,
+    includeSensitivity: false,
+  });
+  assert.ok(probeRun.trades.length >= 1, 'Synthetic Supertrend flip must trigger at least 1 LONG trade');
+  const firstEntryIdx = probeRun.trades[0].entryIndex;
+  // Mutate the entry bar so BOTH stopLoss and takeProfit are breached inside the same bar
+  const dualHitCandles = synth.map((c, idx) =>
+    idx === firstEntryIdx
+      ? { ...c, high: c.open + 50.0, low: Math.max(1.0, c.open - 50.0) }
+      : c
+  );
+  const dualHitRun = StrategySimulator.runSimulation(dualHitCandles, {
+    presetId: 'SUPERTREND_MOMENTUM',
+    direction: 'LONG_ONLY',
+    spreadBps: 0,
+    commissionBps: 0,
+    slippageBps: 0,
+    swapPerBarBps: 0,
+    includeSensitivity: false,
+  });
+  assert.equal(
+    dualHitRun.trades[0].exitReason,
+    'SL_HIT',
+    'When both SL and TP are hit on the same candle, SL_BEFORE_TP policy MUST trigger SL_HIT'
+  );
+
+  // 3. Insufficient data guard (< 30 bars)
+  const tiny = StrategySimulator.runSimulation(spotBrentCandles.slice(0, 15));
+  assert.equal(tiny.status, 'INSUFFICIENT_DATA');
+  assert.equal(tiny.metrics.totalTrades, 0);
+
+  // 4. Web Strategy Lab modal HTML renders offline disclaimer, KPIs, Equity Curve SVG, and Sensitivity table
+  const prevModal = state.activeModal;
+  const prevCache = state.candleCache['SPOTBRENT_tvdatafeed_M15'];
+  state.activeModal = 'strategy-lab';
+  saveCandlesToCache('SPOTBRENT_tvdatafeed_M15', spotBrentCandles, 5000, 'SPOTBRENT');
+  const html = renderStrategyLabModal(
+    { symbolCode: 'SPOTBRENT', provider: 'tvdatafeed', timeframe: 'M15' },
+    { getCurrentLanguage: () => 'en', t: (k) => k }
+  );
+  state.activeModal = prevModal;
+  if (prevCache === undefined) delete state.candleCache['SPOTBRENT_tvdatafeed_M15'];
+  else saveCandlesToCache('SPOTBRENT_tvdatafeed_M15', prevCache, 5000, 'SPOTBRENT');
+
+  assert.match(html, /Offline Research Simulation Only/);
+  assert.match(html, /Equity Curve/);
+  assert.match(html, /Cost Sensitivity Analysis/);
+  assert.match(html, /strategy-sim-select-preset/);
+});
+
+test('ADMIN-USERS-RBAC-01: Multi-User Admin PHP RBAC safeguards and Web Admin UI role gating & XSS escaping', async () => {
+  const adminPhp = await readFile(new URL('../host_subdomain/api/v1/admin_users.php', import.meta.url), 'utf8');
+  const authPhp = await readFile(new URL('../host_subdomain/api/v1/auth.php', import.meta.url), 'utf8');
+  const { renderAdminUsersCard } = await import('../host_subdomain/assets/js/views/adminUsersView.js');
+  const { state } = await import('../host_subdomain/assets/js/core/store.js');
+
+  // 1. Backend RBAC & safety invariants in admin_users.php & auth.php
+  assert.match(adminPhp, /in_array\(\$role,\s*\['owner',\s*'admin'\],\s*true\)/);
+  assert.match(adminPhp, /CANNOT_MODIFY_OWNER/);
+  assert.match(adminPhp, /CANNOT_MODIFY_SELF/);
+  assert.match(adminPhp, /FORBIDDEN_ROLE_ASSIGNMENT/);
+  assert.match(adminPhp, /PASSWORD_ARGON2ID/);
+  assert.match(adminPhp, /recordAdminAuditLog/);
+  assert.doesNotMatch(adminPhp, /'password_hash'\s*=>/, 'admin_users roster must NEVER serialize password_hash');
+  assert.match(authPhp, /ACCOUNT_DISABLED/);
+  assert.match(authPhp, /'user_role'\s*=>/);
+
+  // 2. Web Admin UI hides completely for viewer role, renders safely for owner/admin with HTML escaping
+  const prevRole = state.userRole;
+  const prevAdmin = state.adminUsers;
+  const mockI18n = { getCurrentLanguage: () => 'en', t: (k) => k };
+
+  state.userRole = 'viewer';
+  assert.equal(renderAdminUsersCard(mockI18n), '', 'Viewer role must not see Multi-User Admin card');
+
+  state.userRole = 'owner';
+  state.adminUsers = {
+    loading: false,
+    loaded: true,
+    error: '',
+    users: [
+      { id: 1, username: 'mani', email: 'owner@manico.es', role: 'owner', is_active: true, active_sessions: 1 },
+      { id: 2, username: 'alice<script>', email: 'a@b.com', role: 'viewer', is_active: true, active_sessions: 0 },
+    ],
+  };
+  const ownerHtml = renderAdminUsersCard(mockI18n);
+  state.userRole = prevRole;
+  state.adminUsers = prevAdmin;
+
+  assert.match(ownerHtml, /admin-create-user-form/);
+  assert.match(ownerHtml, /admin-toggle-user-active/);
+  assert.match(ownerHtml, /alice&lt;script&gt;/, 'Username must be HTML-escaped in Admin UI');
+  assert.doesNotMatch(ownerHtml, /alice<script>/, 'Raw script tag must never appear in Admin UI');
+});
 

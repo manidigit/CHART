@@ -10,6 +10,7 @@ object AppConfig {
     const val KEY_DARK_THEME: String = "pref_dark_theme"
     const val KEY_OWNER_USERNAME: String = "pref_owner_username"
     const val KEY_OWNER_EMAIL: String = "pref_owner_email"
+    const val KEY_USER_ROLE: String = "pref_user_role"
     const val KEY_OWNER_PASSWORD_HASH: String = "pref_owner_password_hash"
     const val KEY_OWNER_PASSWORD_SALT: String = "pref_owner_password_salt"
     const val KEY_OWNER_RESET_CODE_HASH: String = "pref_owner_reset_code_hash"

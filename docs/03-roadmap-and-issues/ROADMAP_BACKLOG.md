@@ -1,7 +1,7 @@
 # CHART — وضعیت واقعی قابلیت‌ها و نقشه راه توسعه (`ROADMAP_BACKLOG`)
 
-> **نسخه:** `1.47.40` · **تاریخ ممیزی واقعی در کد:** `2026-11-19`  
-> این سند تفاوت بین **قابلیت‌های پیاده‌سازی‌شده و تأییدشده در کد فعلی (`v1.47.40`)** را از **بک‌لاگ باقی‌مانده (ارتقای کیفیت آماری و OOS مدل‌های مرورگری، اتصال آینده سرور مستقل Python/Chronos-2، فازهای ۵ و ۶ و آزمون‌های عملیاتی cPanel زنده)** به‌طور دقیق و صادقانه جدا می‌کند.
+> **نسخه:** `1.47.41` · **تاریخ ممیزی واقعی در کد:** `2026-11-21`  
+> این سند تفاوت بین **قابلیت‌های پیاده‌سازی‌شده و تأییدشده در کد فعلی (`v1.47.41`)** (شامل هسته تحلیل تکنیکال `ta-core/1.1`، درخت اشیاء `UI-02`، شبیه‌ساز آفلاین استراتژی `strategy-sim/1.0` و پنل مدیریت چندکاربره `Admin RBAC` در وب و اندروید) را از **بک‌لاگ باقی‌مانده (رفع ناسازگاری چندتایم‌فریمی و ثبات افق موتور پیش‌بینی، ارزیابی آماری OOS مدل‌های مرورگری، اتصال آینده سرور مستقل Python/Chronos-2، فاز ۵ حاکمیت مدل و آزمون‌های عملیاتی cPanel زنده)** به‌طور دقیق و صادقانه جدا می‌کند.
 
 ---
 
@@ -11,7 +11,7 @@
 
 - **احراز هویت، نشست و همگام‌سازی یکپارچه:**
   - `[x]` ورود شخصی (`auth.php`) با هش امن SHA-256 همراه با Salt، گزینه `Remember Me`، ایمیل بازیابی و بازیابی رمز با کد ۶ رقمی OTP.
-  - `[x]` همگام‌سازی دوطرفه محیط کاری (`workspace_sync.php`) شامل `open_tabs`، ترسیمات، نمادهای سفارشی و تنظیمات ۵ تب (`Sync`, `Chart`, `Notifications`, `Theme`, `Account`) — *باگ‌های بحرانی پاریتی، عدم ذخیره ابری تغییرات اندیکاتور/ساعت، و پرش نسبت ارتفاع حجم در `SYNC-01` پیگیری می‌شود*.
+  - `[x]` همگام‌سازی دوطرفه محیط کاری (`workspace_sync.php`) شامل `open_tabs`، ترسیمات، نمادهای سفارشی و تنظیمات ۵ تب (`Sync`, `Chart`, `Notifications`, `Theme`, `Account`) — *بسته و تأییدشده در `SYNC-01` (`v1.40.0`)*.
 
   - `[x]` جداسازی کامل کلیدهای شخصی `BYOK` (`Twelve Data`, `Stooq`, `Alpha Vantage`, `Finnhub`) با ارسال هدر `X-Provider-Api-Key` (هرگز در فضای ابری یا فایل بکاپ ذخیره نمی‌شوند).
 - **موتور داده، سشن، تشخیص Gap و خروجی (`DB-First Delta Sync`):**
@@ -20,10 +20,11 @@
   - `[x]` Quote زنده فقط-خواندنی (`quote.php` — `ENG-02`) جدا از ذخیره کندل‌های بسته‌شده (`is_closed = 1`).
   - `[x]` موتور تشخیص هوشمند Gap آگاه از سشن، تسویه روزانه (`21:00–23:59 UTC`) و تعطیلات رسمی بورس‌ها (`GapDetector` + `gap_report.php` + جدول `data_quality_reports` — `ENG-03`، ارتقایافته در `v1.44.0` با حذف کامل گپ‌های کاذب روی `SPOTBRENT`).
   - `[x]` خروجی استاندارد **CSV (RFC 4180)** در نوار بالای وب (`Blob`) و اندروید (`SAF` بدون نیاز به مجوز Storage؛ دکمه اضافی `JSON` طبق درخواست محصول از UI حذف شد).
-- **میزکار چارت و تعامل TradingView Pro (Web `v1.47.40` & Android Core):**
-  - `[x]` یکپارچه‌سازی منوی ناوبری (`Chart`, `Forecast [فعال در وب / غیرفعال در اندروید]`, `Performance`, `Watchlist`, `Settings`) در نوار بالای وب (حذف کامل نوار عمودی سمت راست و دکمه‌های تکراری خروج/تم/زبان)، چراغ چشمک‌زن وضعیت بازار (`Live` سبز / `Closed` قرمز بدون متن شلوغ)، نوار تب‌های چندگانه چارت، محور قیمت رند Heckbert با `[Auto] [Log]`، محور زمان هوشمند `UTC / Local`، ۱۱ بازه سریع (`1D..All`)، و تغییر ارتفاع لمسی پنل‌ها.
-  - `[x]` پایدارسازی کامل تعویض سهم از واچ‌لیست و تعویض تایم‌فریم در وب (`ARCH-02` یکسان‌سازی کامل `?v=1.47.40` + محافظ `globalThis.__CI_STORE_SINGLETON_V1__` در `v1.47.39` و `STORAGE-QUOTA-01` با `safeLocalStorageSet()` و سقف `250` کندل در `localStorage` در `v1.47.40`).
+- **میزکار چارت و تعامل TradingView Pro (Web `v1.47.41` & Android Core):**
+  - `[x]` یکپارچه‌سازی منوی ناوبری (`Chart`, `Forecast [فعال در وب / غیرفعال در اندروید]`, `Performance`, `Watchlist`, `Settings`) در نوار بالای وب (حذف کامل نوار عمودی سمت راست و دکمه‌های تکراری خروج/تم/زبان + پین کردن `.tv-topbar-right` در `v1.47.41`)، چراغ چشمک‌زن وضعیت بازار (`Live` سبز / `Closed` قرمز بدون متن شلوغ)، نوار تب‌های چندگانه چارت، محور قیمت رند Heckbert با `[Auto] [Log]`، محور زمان هوشمند `UTC / Local`، ۱۱ بازه سریع (`1D..All`)، و تغییر ارتفاع لمسی پنل‌ها.
+  - `[x]` پایدارسازی کامل تعویض سهم از واچ‌لیست و تعویض تایم‌فریم در وب (`ARCH-02` یکسان‌سازی کامل `?v=1.47.41` در ۲۷ ماژول JS + محافظ `globalThis.__CI_STORE_SINGLETON_V1__`، `STORAGE-QUOTA-01` با `safeLocalStorageSet()` و ردیابی `serverHydratedCandleKeys` در `v1.47.41`).
   - `[x]` ابزارهای پایه (`HLINE`, `VLINE`, `TREND`, `FIB`, `LONG_POS`, `SHORT_POS`) با `Magnet Mode`، انتخاب، جابه‌جایی، رنگ و ضخامت `1px..4px`.
+  - `[x]` **درخت اشیاء پیشرفته (`Object Tree` — `UI-02`) روی وب و اندروید:** پنل/شیت یکپارچه برای مدیریت ترسیم‌های چارت و اندیکاتورهای فعال (از جمله `S/R Zones` و `Candlestick Patterns`) با قابلیت انتخاب، مخفی/نمایش (`visible`)، قفل/بازکردن (`locked` با جلوگیری از جابه‌جایی ناخواسته روی بوم)، حذف تکی، مخفی/نمایش همگانی، «پاک‌کردن بازها» و همگام‌سازی ابری کامل.
 
 ---
 
@@ -49,14 +50,14 @@
 | `3a` | **MACD (`12, 26, 9` — پنل مجزا)** | `[x]` **کامل** | خطوط مکدی، سیگنال و هیستوگرام مومنتوم در **پنل جداگانه پایین چارت** (`showMacd`) |
 | `3b` | **MACD Classic (`Overlay` — روی بوم اصلی)** | `[x]` **کامل** | همان مکدی (`12, 26, 9`) **مستقیماً روی ۳۰٪ پایینی خود چارت قیمت** بدون ایجاد پنل جداگانه (`showOverlayMacd`) |
 | `4` | **Bollinger Bands** | `[x]` **کامل** | `Bollinger Bands (20, 2σ)` با تنظیم قابل‌سفارشی‌سازی `Period` و `StdDev` |
-| `5` | **Volume / Volume Profile** | `[x]` **پیاده‌سازی‌شده (`ENG-03b`)** | `Volume Histogram` + `Session Volume Profile (VRVP)` + ابزار `FRVP` (`POC/VAH/VAL`) — *همسان‌سازی توزیع بین‌سطلی در `ENG-03b` پیگیری می‌شود* |
+| `5` | **Volume / Volume Profile** | `[x]` **کامل (`ENG-03b`)** | `Volume Histogram` + `Session Volume Profile (VRVP)` + ابزار `FRVP` (`POC/VAH/VAL`) — *توزیع همپوشانی بین‌سطلی بین وب و اندروید یکسان‌سازی و تأیید شده است* |
 
 #### سطح دوم — خیلی کاربردی و محبوب (حرفه‌ای / روزانه)
 | رتبه | اندیکاتور | وضعیت در کد (Web + Android) | پوشش فعلی و یادداشت فنی |
 |---|---|---|---|
 | `6` | **Stochastic Oscillator** | `[x]` **کامل** | `Stochastic (14, 3, 3)` (`%K / %D` با سطوح `20 / 80`) |
 | `7` | **ATR** | `[x]` **کامل** | `Wilder ATR (14)` برای اندازه‌گیری نوسان و تنظیم حد ضرر |
-| `8` | **VWAP** | `[x]` **پیاده‌سازی‌شده (`ENG-03b`)** | `Session VWAP` (ریست بر پایه سشن + Rolling 20 روی `D1/W1`) و `Anchored VWAP (AVWAP)` — *یکسانی وزن `vol=0` در `ENG-03b`* |
+| `8` | **VWAP** | `[x]` **کامل (`ENG-03b`)** | `Session VWAP` (ریست بر پایه سشن + Rolling 20 روی `D1/W1`) و `Anchored VWAP (AVWAP)` — *وزن‌دهی `vol=0` بین وب و اندروید یکسان‌سازی و تأیید شده است* |
 | `9` | **Supertrend** | `[x]` **کامل** | `Supertrend (10, 3.0)` مبتنی بر `ATR` با نوار روند صعودی/نزولی |
 | `10` | **Ichimoku Cloud** | `[x]` **کامل** | `Tenkan (9)`, `Kijun (26)`, `Senkou A/B (+26)` و `Chikou (-26)` + ابر کومو |
 
@@ -69,7 +70,7 @@
 | `14` | **Pivot Points** | `[x]` **کامل در `v1.41.0` (`IND-01`)** | هر ۴ واریانت **Standard / Fibonacci / Camarilla / Woodie** شامل سطوح **`R3/R4` و `S3/S4`** به‌صورت Overlay تعاملی روی بوم وب و اندروید، با انتخاب واریانت در Indicators و همگام‌سازی کامل Workspace. |
 | `15` | **OBV (On Balance Volume)** | `[x]` **کامل** | `OBV` تجمعی در پنل اسیلاتورها |
 
-- **اندیکاتورهای تکمیلی دیگر که هم‌اکنون در کد فعال هستند:** `Keltner Channels (20, 10, 2×ATR)`، `Donchian Channels (20)`، `CCI (20)`، `Williams %R (14)`، `ROC (12)`، `Chaikin Money Flow (CMF 20)` و ساختار بازار `SMC (BOS / CHoCH / EQH / EQL / FVG)`.
+- **اندیکاتورها و لایه‌های تحلیلی تکمیلی دیگر که هم‌اکنون در کد فعال هستند:** `Keltner Channels (20, 10, 2×ATR)`، `Donchian Channels (20)`، `CCI (20)`، `Williams %R (14)`، `ROC (12)`، `Chaikin Money Flow (CMF 20)`، ساختار بازار `SMC (BOS / CHoCH / EQH / EQL / FVG)` و هسته قطعی **`TechnicalAnalysisCore` (`ta-core/1.1`)** شامل **نواحی حمایت و مقاومت مبتنی بر شواهد (`S/R Zones` با `≥ 2` برخورد و وضعیت `ACTIVE/BROKEN/RETESTED`)** و **تشخیص خودکار ۷ الگوی کندلی قطعی (`Doji`, `Hammer`, `Shooting Star`, `Bullish/Bearish Pin Bar`, `Bullish/Bearish Engulfing`)** روی وب و اندروید (`showSrZones`, `showCandlePatterns`).
 
 ### ۲.۳. سشن‌ها، فیدهای زنده کلان و تحلیل بنیادی (`Live External Feeds & Seasonals`)
 - `[x]` **کیل‌زون‌های معاملاتی روی بوم (`Killzones`):** `Asia (00–09 UTC)`, `London (07–16 UTC)`, `New York (13–22 UTC)`, و `London/NY Overlap (13–16 UTC)`.
@@ -91,16 +92,16 @@
 2. `[x]` **ورود فایل‌های تاریخی (`Historical Import` & `LocalCsvAdapter` — `v1.41.0`):** `LocalCsvAdapter.php` + `api/v1/import_candles.php` + جداول نسب و ممیزی `data_import_batches`، `data_corrections`، `backup_records`، `audit_logs` در `002_phase2_3_tables.sql` + کلاینت وب (`candleImport.js`, `settingsView.js`) و اندروید (`CandleImportAlgorithm.kt`, `Phase3ImportCard.kt` با `SAF` بدون نیاز به مجوز Storage)؛ پشتیبانی کامل از `EIA RBRTEd.xls` (باینری `BIFF8 OLE2`، `SpreadsheetML XML`، `HTML`، `TSV`)، `DataHub brent-daily.csv` (اجبار خودکار به `D1` بدون جعل اینترادی)، `CSV` استاندارد، `JSON`، ورود دستی `OHLC` و اعمال سخت‌گیرانه **سیاست ممنوعیت ذخیره تصویر (`ERR_IMAGE_UPLOAD_FORBIDDEN`)**. *(استقرار/اجرای زنده روی `chart.manico.es` پس از دیپلوی بعدی تأیید می‌شود.)*
 3. `[x]` **Backup & Restore رمزنگاری‌شده در سطح برنامه (`PBKDF2 + AES-256-GCM`):** در `v1.39.0` در PHP/Web/Android پیاده‌سازی شد (`INF-01`؛ تست نهایی بازیابی روی cPanel زنده باقی مانده است).
 
-### فاز ۴ — موتور پیش‌بینی قیمت (نسخه مرورگری وب فعال در `v1.47.40` · سرور Python موکول به تهیه سرور مستقل)
+### فاز ۴ — موتور پیش‌بینی قیمت (نسخه مرورگری وب فعال در `v1.47.41` · سرور Python موکول به تهیه سرور مستقل)
 
-> **وضعیت فعلی در `v1.47.40`:** وب (`host_subdomain/`) اکنون با **Unified Browser-Native Forecast Studio** (۱۲ پنل کامل، `AUTO (OOS Best)`، **`Causal Historical Analogs`**، **`Structural JS`**، ۱۰ مدل Native رجیستری، `Calibrated Ensemble`، ۳ حالت رندر بدون OHLC جعلی، `Coordinated MTF`، `Compare Overlays`، `Historical Replay` و `ForecastLedger` محلی SHA-256) فعال است و رابط قدیمی Legacy در `v1.47.38` به‌طور دائمی پاک‌سازی شده است. در تست‌های مالک، **`Causal Historical Analogs`** و **`Structural JS`** بهترین رفتار را داشته‌اند. کدهای Python/Chronos-2 (`host_subdomain/api/v1/chronos2_forecast.php`, `host_subdomain/scripts/chronos2_worker.py`, `archive/python_worker/`) روی هاست اشتراکی غیرفعال (`Shelved`) هستند و با تهیه سرور مستقل Python در روزهای آینده بازبینی و متصل خواهند شد. پوشه `/archive/` صرفاً آرشیو تاریخی غیرفعال است و تب `Forecast` اندروید تا پایان پایدارسازی غیرفعال باقی می‌ماند.
+> **وضعیت فعلی در `v1.47.41`:** وب (`host_subdomain/`) اکنون با **Unified Browser-Native Forecast Studio** (۱۲ پنل کامل، `AUTO (OOS Best)`، **`Causal Historical Analogs`**، **`Structural JS`**، **`SMC Prediction Engine` (`smc_prediction_js`)**، ۱۰ مدل Native رجیستری، `Calibrated Ensemble`، ۳ حالت رندر بدون OHLC جعلی، `Coordinated MTF`، `Compare Overlays`، `Historical Replay`، کش LRU، کراس‌هیر تعاملی و `ForecastLedger` محلی SHA-256) فعال است و رابط قدیمی Legacy در `v1.47.38` به‌طور دائمی پاک‌سازی شده است. فایل‌های `Chronos-2` (`host_subdomain/api/v1/chronos2_forecast.php`, `host_subdomain/scripts/chronos2_worker.py`, `.github/workflows/chronos2-manual-forecast.yml`) روی هاست اشتراکی به‌صورت `Shelved` حفظ شده‌اند تا پس از تهیه سرور مستقل Python بازبینی و متصل شوند. تب `Forecast` اندروید تا پایان پایدارسازی غیرفعال باقی می‌ماند.
 
-- [x] **Unified Browser-Native Forecast Studio روی وب (`v1.47.35–v1.47.40`):**
-  - `[x]` اجرای ۱۰۰٪ در مرورگر روی کندل‌های بسته‌شده `tvdatafeed` بدون نیاز به `PHP exec()` یا Python، حذف دائمی Legacy UI و پوشش تست پاریتی ۳۹/۳۹.
-- [ ] **بهبود کیفیت آماری مدل‌های مرورگری و ارزیابی OOS (`FCST-MODEL-QA-01`):**
-  - `[ ]` تقویت شرط رژیم/نوسان در `Causal Historical Analogs` و کاهش رفتار مکانیکی در `Structural JS` + ثبت گزارش Walk-Forward OOS به‌ازای نماد/تایم‌فریم.
-- [ ] **ورود فاز سرور مستقل Python (روزهای آینده — `FCST-RT-01`):**
-  - `[ ]` استقرار سرویس مستقل Python/FastAPI برای `Chronos-2` (با نمونه‌برداری مسیر به جای اتصال نقطه‌ای `q50`) و بازبینی/اصلاح مدل‌های پایتونی بدون تولید OHLC ساختگی.
+- [x] **Unified Browser-Native Forecast Studio روی وب (`v1.47.35–v1.47.41`):**
+  - `[x]` اجرای ۱۰۰٪ در مرورگر روی کندل‌های بسته‌شده `tvdatafeed` بدون نیاز به `PHP exec()` یا Python، حذف دائمی Legacy UI، پیاده‌سازی `FORECAST-PKG1..3` + `SMCPredictionEngine` علّی و پوشش تست پاریتی **۵۱/۵۱**.
+- [ ] **سازگاری چندتایم‌فریمی، ثبات افق و ارزیابی OOS (`FCST-MODEL-QA-01`):**
+  - `[ ]` بررسی و رفع تناقض بین تایم‌فریم‌ها (`H1×60` در برابر `H4×15`) و ثبات افق (`Prefix-Invariance`) طبق سند در دست بحث [`FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`](../02-architecture/FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md) + ثبت گزارش Walk-Forward OOS به‌ازای نماد/تایم‌فریم.
+- [ ] **ورود فاز سرور مستقل Python (آینده — `FCST-RT-01`):**
+  - `[ ]` استقرار سرویس مستقل Python/FastAPI برای `Chronos-2` (با نمونه‌برداری مسیر به جای اتصال نقطه‌ای `q50`) و بازبینی مدل‌های پایتونی بدون تولید OHLC ساختگی.
   - `[ ]` هم‌ترازی و فعال‌سازی مجدد تب `Forecast` در اپلیکیشن اندروید پس از تثبیت معماری نهایی.
 
 
@@ -109,7 +110,7 @@
 - [ ] **ارزیابی تاریخی (`Purged + Embargoed Walk-Forward`):** تقسیم زمانی بدون نشت آینده، Purge کردن افق‌های هم‌پوشان و اعمال دوره Embargo مطابق تقویم معاملاتی.
 - [ ] **مدیریت `Champion / Challenger & Rollback` با `Promotion Gate`:** ارتقای مدل آزمایشی به پروداکشن صرفاً در صورت برتری معنادار آماری بر مدل جاری و خط مبنا، همراه با سقف بودجه تغییر (`Change Budget`) و قابلیت برگشت آنی (`Rollback`).
 
-### فاز ۶ — شبیه‌ساز مستقل استراتژی و پنل چندکاربره
-- [ ] **شبیه‌ساز استراتژی معاملاتی ([`TRADING_STRATEGY_SPEC.md`](../01-product/TRADING_STRATEGY_SPEC.md))** — آفلاین (`EUR 1,000`, `1%` ریسک، `Spread/Commission/Slippage/Swap`) بدون اتصال کارگزاری واقعی.
-- [ ] **مدیریت چندکاربره (`Multi-User Admin UI`)**
+### فاز ۶ — شبیه‌ساز مستقل استراتژی و پنل چندکاربره (`SHIPPED IN CODE — v1.47.41`)
+- `[x]` **شبیه‌ساز آفلاین استراتژی معاملاتی ([`TRADING_STRATEGY_SPEC.md`](../01-product/TRADING_STRATEGY_SPEC.md) — `strategy-sim/1.0` در وب و اندروید):** مستقل برای هر `chart_id` با سرمایه پایه `EUR 1,000`، ریسک `1%`، ۴ پریست قطعی مبتنی بر `TechnicalAnalysisCore` (مستقل از موتور Forecast)، اجرای علّی روی بازشدن کندل بعد، قاعده محافظه‌کارانه `SL_BEFORE_TP`، هزینه‌های صریح (`Spread/Commission/Slippage/Swap`) + تحلیل حساسیت `1.0x/1.5x/2.0x`، نمودار `Equity Curve` و دفتر کل معاملات بدون اتصال کارگزاری واقعی (`PHASE6-STRATEGY-SIM-01`).
+- `[x]` **مدیریت چندکاربره (`Multi-User Admin UI` با RBAC سمت سرور در PHP + وب + اندروید):** اندپوینت `api/v1/admin_users.php` و ارتقای `auth.php` (نقش‌های `owner`/`admin`/`viewer`، مسدودسازی `is_active = 0`، ایجاد کاربر، تغییر نقش، فعال/غیرفعال‌سازی، ابطال نشست‌ها، حذف کاربر با محافظت از `owner`/خود و لاگ ممیزی) + رابط دوزبانه در تب `Account` تنظیمات وب و اندروید (`ADMIN-USERS-RBAC-01`).
 

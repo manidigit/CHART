@@ -4,6 +4,7 @@ import { TimeframeAggregator } from './timeframeAggregator.js?v=1.47.41';
 export const TechnicalIndicators = {
   computeSma(candles = [], period = 20) {
     if (!Array.isArray(candles) || candles.length === 0) return [];
+    if (period <= 1) return candles.map((c) => Number(c.close || 0));
     const out = new Array(candles.length).fill(null);
     let sum = 0;
     for (let i = 0; i < candles.length; i++) {
@@ -20,6 +21,7 @@ export const TechnicalIndicators = {
 
   computeEma(candles = [], period = 50) {
     if (!Array.isArray(candles) || candles.length === 0) return [];
+    if (period <= 1) return candles.map((c) => Number(c.close || 0));
     const out = new Array(candles.length).fill(null);
     const k = 2 / (period + 1);
     let ema = null;
@@ -33,7 +35,7 @@ export const TechnicalIndicators = {
           out[i] = ema;
         }
       } else if (ema !== null) {
-        ema = c * k + ema * (1 - k);
+        ema = (c - ema) * k + ema;
         out[i] = ema;
       }
     }
@@ -41,30 +43,27 @@ export const TechnicalIndicators = {
   },
 
   computeBollingerBands(candles = [], period = 20, stdMult = 2.0) {
-    if (!Array.isArray(candles) || candles.length === 0 || period < 1) return [];
+    if (!Array.isArray(candles) || candles.length === 0) return [];
     const n = candles.length;
     const out = new Array(n).fill(null);
-    let sum = 0;
-    let sqSum = 0;
-    for (let i = 0; i < n; i++) {
-      const c = Number(candles[i].close || 0);
-      sum += c;
-      sqSum += c * c;
-      if (i >= period) {
-        const oldC = Number(candles[i - period].close || 0);
-        sum -= oldC;
-        sqSum -= oldC * oldC;
+    if (period <= 1) return out;
+    for (let i = period - 1; i < n; i++) {
+      let sum = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        sum += Number(candles[j].close || 0);
       }
-      if (i >= period - 1) {
-        const mean = sum / period;
-        const variance = Math.max(0, sqSum / period - mean * mean);
-        const std = Math.sqrt(variance);
-        out[i] = {
-          middle: mean,
-          upper: mean + stdMult * std,
-          lower: mean - stdMult * std,
-        };
+      const mean = sum / period;
+      let sqDiffSum = 0;
+      for (let j = i - period + 1; j <= i; j++) {
+        const diff = Number(candles[j].close || 0) - mean;
+        sqDiffSum += diff * diff;
       }
+      const std = Math.sqrt(sqDiffSum / period);
+      out[i] = {
+        middle: mean,
+        upper: mean + stdMult * std,
+        lower: mean - stdMult * std,
+      };
     }
     return out;
   },

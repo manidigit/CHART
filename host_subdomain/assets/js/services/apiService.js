@@ -134,6 +134,10 @@ export async function syncServerAuthStatus() {
         state.isOwnerRegistered = true;
         state.ownerUsername = json.data.owner_username || state.ownerUsername;
         state.ownerEmail = json.data.owner_email || state.ownerEmail;
+        if (json.data.user_role) {
+          state.userRole = String(json.data.user_role).toLowerCase();
+          safeLocalStorageSet('ci_user_role', state.userRole);
+        }
         safeLocalStorageSet('ci_auto_authenticated', 'true');
         return;
       }
@@ -204,7 +208,9 @@ export async function loginOrRegisterOwner(username, email, password) {
       state.isAuthenticated = true;
       state.ownerUsername = (json.data && json.data.owner_username) || username;
       state.ownerEmail = (json.data && json.data.owner_email) || email || state.ownerEmail;
+      state.userRole = String((json.data && json.data.user_role) || 'owner').toLowerCase();
       safeLocalStorageSet('ci_owner_username', state.ownerUsername);
+      safeLocalStorageSet('ci_user_role', state.userRole);
       if (state.ownerEmail) safeLocalStorageSet('ci_owner_email', state.ownerEmail);
 
       const token = json.data && json.data.session_token;
@@ -301,6 +307,78 @@ export async function updateOwnerPasswordOnServer(newPassword) {
   } catch {
     return { ok: false, errorKey: 'chart_state_error' };
   }
+}
+
+async function callAdminUsersEndpoint(action, body = null) {
+  const token = localStorage.getItem('ci_session_token') || '';
+  const isGet = action === 'list' && body === null;
+  try {
+    const res = await fetch(`./api/v1/admin_users.php?action=${encodeURIComponent(action)}`, {
+      method: isGet ? 'GET' : 'POST',
+      headers: {
+        ...(isGet ? {} : { 'Content-Type': 'application/json' }),
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      ...(isGet ? {} : { body: JSON.stringify({ ...(body || {}), session_token: token }) }),
+    });
+    const json = await res.json();
+    if (json && json.ok && json.data) {
+      if (json.data.caller_role) {
+        state.userRole = String(json.data.caller_role).toLowerCase();
+        safeLocalStorageSet('ci_user_role', state.userRole);
+      }
+      if (Array.isArray(json.data.users)) {
+        state.adminUsers = {
+          loading: false,
+          loaded: true,
+          error: '',
+          users: json.data.users,
+        };
+      }
+      return { ok: true, data: json.data, messageKey: json.message_key || '' };
+    }
+    const errMsg = (json && (json.error_code || json.message_key)) || `HTTP ${res.status}`;
+    state.adminUsers = {
+      ...(state.adminUsers || {}),
+      loading: false,
+      loaded: true,
+      error: String(errMsg),
+    };
+    return { ok: false, error: String(errMsg) };
+  } catch (err) {
+    const errMsg = String((err && err.message) || 'Network error');
+    state.adminUsers = {
+      ...(state.adminUsers || {}),
+      loading: false,
+      loaded: true,
+      error: errMsg,
+    };
+    return { ok: false, error: errMsg };
+  }
+}
+
+export async function fetchAdminUsers() {
+  state.adminUsers = { ...(state.adminUsers || {}), loading: true, error: '' };
+  return callAdminUsersEndpoint('list', null);
+}
+
+export async function createAdminUser({ username, email, password, role }) {
+  return callAdminUsersEndpoint('create', { username, email, password, role });
+}
+
+export async function updateAdminUser({ userId, role, isActive }) {
+  const payload = { user_id: Number(userId) };
+  if (role !== undefined) payload.role = role;
+  if (isActive !== undefined) payload.is_active = Boolean(isActive);
+  return callAdminUsersEndpoint('update', payload);
+}
+
+export async function revokeAdminUserSessions(userId) {
+  return callAdminUsersEndpoint('revoke_sessions', { user_id: Number(userId) });
+}
+
+export async function deleteAdminUser(userId) {
+  return callAdminUsersEndpoint('delete', { user_id: Number(userId) });
 }
 
 export async function requestPasswordResetCode(email) {
@@ -509,6 +587,8 @@ export async function uploadWorkspaceSync() {
           showFvg: Boolean(t.showFvg),
           showVolumeProfile: Boolean(t.showVolumeProfile),
           showPivotPoints: Boolean(t.showPivotPoints),
+          showSrZones: Boolean(t.showSrZones),
+          showCandlePatterns: Boolean(t.showCandlePatterns),
           pivotType: String(t.pivotType || p.pivotType || 'STANDARD').toUpperCase(),
           showFutureProjection: false,
           showForecastBand: t.showForecastBand !== false,
@@ -802,6 +882,8 @@ export async function downloadWorkspaceSync() {
             showFvg: resolveFlag('showFvg'),
             showVolumeProfile: resolveFlag('showVolumeProfile'),
             showPivotPoints: resolveFlag('showPivotPoints'),
+            showSrZones: resolveFlag('showSrZones'),
+            showCandlePatterns: resolveFlag('showCandlePatterns'),
             pivotType: String(t.pivotType || state.chartPreferences.pivotType || 'STANDARD').toUpperCase(),
             showFutureProjection: false,
             showForecastBand:
@@ -1279,25 +1361,7 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
     return { candles, syncMeta, syncOk: false, errorMessage: 'Aborted', aborted: true };
   }
 
-  if (candles.length === 0 && provider === 'tvdatafeed') {
-    try {
-      const staticRes = await fetchWithTimeout(
-        `./data/tvdatafeed/${encodeURIComponent(symbolCode)}_${encodeURIComponent(normTf)}.json?_t=${nowMs}`,
-        { cache: 'no-store' },
-        4000,
-        abortSignal
-      );
-      const staticJson = await staticRes.json();
-      if (staticJson && Array.isArray(staticJson.candles) && staticJson.candles.length > 0) {
-        candles = mergeCandlesIdempotent([], staticJson.candles, normTf, nowMs, symbolCode).slice(-safeLimit);
-        if (!syncOk && candles.length > 0 && !errorMessage) {
-          syncMeta.sync_mode = 'STATIC_SEED';
-        }
-      }
-    } catch {
-      // Ignore static fallback error
-    }
-  }
+  // MariaDB is the sole server-side candle source; no static ./data/tvdatafeed/ files are hosted.
 
   if (abortSignal && abortSignal.aborted) {
     return { candles, syncMeta, syncOk: false, errorMessage: 'Aborted', aborted: true };

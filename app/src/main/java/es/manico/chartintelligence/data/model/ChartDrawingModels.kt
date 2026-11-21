@@ -72,19 +72,45 @@ sealed class ChartDrawing {
     abstract val id: String
     abstract val colorHex: String?
     abstract val strokeWidthDp: Float
+    abstract val visible: Boolean
+    abstract val locked: Boolean
+
+    fun withVisibility(isVisible: Boolean): ChartDrawing = when (this) {
+        is HorizontalLine -> copy(visible = isVisible)
+        is VerticalLine -> copy(visible = isVisible)
+        is TrendLine -> copy(visible = isVisible)
+        is FibRetracement -> copy(visible = isVisible)
+        is LongPosition -> copy(visible = isVisible)
+        is ShortPosition -> copy(visible = isVisible)
+        is MultiAnchor -> copy(visible = isVisible)
+    }
+
+    fun withLocked(isLocked: Boolean): ChartDrawing = when (this) {
+        is HorizontalLine -> copy(locked = isLocked)
+        is VerticalLine -> copy(locked = isLocked)
+        is TrendLine -> copy(locked = isLocked)
+        is FibRetracement -> copy(locked = isLocked)
+        is LongPosition -> copy(locked = isLocked)
+        is ShortPosition -> copy(locked = isLocked)
+        is MultiAnchor -> copy(locked = isLocked)
+    }
 
     data class HorizontalLine(
         override val id: String,
         val price: BigDecimal,
         override val colorHex: String? = null,
-        override val strokeWidthDp: Float = 2.2f
+        override val strokeWidthDp: Float = 2.2f,
+        override val visible: Boolean = true,
+        override val locked: Boolean = false
     ) : ChartDrawing()
 
     data class VerticalLine(
         override val id: String,
         val timeUtcMillis: Long,
         override val colorHex: String? = null,
-        override val strokeWidthDp: Float = 2.2f
+        override val strokeWidthDp: Float = 2.2f,
+        override val visible: Boolean = true,
+        override val locked: Boolean = false
     ) : ChartDrawing()
 
     data class TrendLine(
@@ -94,7 +120,9 @@ sealed class ChartDrawing {
         val endTimeUtcMillis: Long,
         val endPrice: BigDecimal,
         override val colorHex: String? = null,
-        override val strokeWidthDp: Float = 2.2f
+        override val strokeWidthDp: Float = 2.2f,
+        override val visible: Boolean = true,
+        override val locked: Boolean = false
     ) : ChartDrawing()
 
     data class FibRetracement(
@@ -104,7 +132,9 @@ sealed class ChartDrawing {
         val endTimeUtcMillis: Long,
         val endPrice: BigDecimal,
         override val colorHex: String? = null,
-        override val strokeWidthDp: Float = 1.8f
+        override val strokeWidthDp: Float = 1.8f,
+        override val visible: Boolean = true,
+        override val locked: Boolean = false
     ) : ChartDrawing() {
         fun computeLevels(): List<FibLevelSpec> {
             val p1 = startPrice.toDouble()
@@ -139,7 +169,9 @@ sealed class ChartDrawing {
         val targetPrice: BigDecimal,
         val stopPrice: BigDecimal,
         override val colorHex: String? = null,
-        override val strokeWidthDp: Float = 1.8f
+        override val strokeWidthDp: Float = 1.8f,
+        override val visible: Boolean = true,
+        override val locked: Boolean = false
     ) : ChartDrawing() {
         val riskRewardRatio: Double
             get() {
@@ -167,7 +199,9 @@ sealed class ChartDrawing {
         val targetPrice: BigDecimal,
         val stopPrice: BigDecimal,
         override val colorHex: String? = null,
-        override val strokeWidthDp: Float = 1.8f
+        override val strokeWidthDp: Float = 1.8f,
+        override val visible: Boolean = true,
+        override val locked: Boolean = false
     ) : ChartDrawing() {
         val riskRewardRatio: Double
             get() {
@@ -198,7 +232,9 @@ sealed class ChartDrawing {
         val anchors: List<DrawingAnchor>,
         val variant: String = "original",
         override val colorHex: String? = null,
-        override val strokeWidthDp: Float = 2.0f
+        override val strokeWidthDp: Float = 2.0f,
+        override val visible: Boolean = true,
+        override val locked: Boolean = false
     ) : ChartDrawing()
 }
 

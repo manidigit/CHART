@@ -1,8 +1,8 @@
 # CHART — برنامه اجرایی تثبیت هسته تحلیل و ترسیم نمودار
 
-**نسخه:** 1.0  
-**تاریخ:** 2026-11-18  
-**وضعیت:** DECIDED — مبنای اجرای توسعه  
+**نسخه:** 1.2  
+**تاریخ:** 2026-11-21  
+**وضعیت:** VERIFIED — تمامی فازهای A تا F (`ta-core/1.1`) در وب و اندروید پیاده‌سازی، هم‌تراز و با تست مرجع مشترک تأیید شدند  
 **دامنه:** هسته مشترک تحلیل و ترسیم؛ مستقل از مدل‌های هوش مصنوعی
 
 ## 1. تصمیم اجرایی
@@ -60,47 +60,37 @@ Canonical Analysis Result (versioned schema)
 
 ## 4. فازهای اجرایی و ترتیب تحویل
 
-### فاز A — تثبیت داده و قرارداد کندل
-- یکسان‌سازی ترتیب زمانی صعودی، یکتایی timestamp، OHLC معتبر، مدیریت gap و کندل ناقص.
-- تفکیک کندل بسته‌شده از کندل در حال تشکیل.
-- حفظ precision قیمت و عدم تبدیل غیرضروری داده مالی به Float.
-- قرارداد مشترک نماد، منبع، تایم‌فریم، منطقه زمانی و session calendar.
-- خروجی: مجموعه تست مرجع کندل و گزارش خطاهای داده.
+### فاز A — تثبیت داده و قرارداد کندل (`VERIFIED — 2026-11-21`)
+- `[x]` یکسان‌سازی ترتیب زمانی صعودی، یکتایی timestamp، OHLC معتبر، مدیریت gap و کندل ناقص در `TechnicalAnalysisCore.normalizeCandles` (وب و اندروید).
+- `[x]` تفکیک کندل بسته‌شده از کندل در حال تشکیل (`excludeOpenBars`) بدون تغییر دقت `BigDecimal` و بدون ساخت کندل مصنوعی.
+- `[x]` گزارش شفاف کیفیت داده (`CandleQualityReport`: `validCount`، `droppedInvalidCount`، `deduplicatedCount`، `droppedOpenCount`، `wasUnsorted`، `gapCount`، `integrityRatio`).
+- `[x]` قرارداد مشترک نماد، منبع، تایم‌فریم، منطقه زمانی و session calendar همراه با تست مرجع (`tests/fixtures/ta_core_golden_fixture.json`).
 
-### فاز B — موتور محاسبات قطعی
-- انتقال محاسبات از Canvas/Renderer به لایه مستقل Analysis.
-- تعیین فرمول مرجع، پارامتر، warm-up و رفتار ورودی نامعتبر برای هر اندیکاتور.
-- اولویت: SMA، EMA، Bollinger Bands، ATR، RSI، MACD، VWAP.
-- سپس: Supertrend، ADX/DMI، Ichimoku، Keltner، Donchian، PSAR و اسیلاتورها.
-- خروجی هر محاسبه باید با timestamp کندل متناظر هم‌تراز باشد؛ مقادیر warm-up باید null بمانند، نه صفر یا مقدار ساختگی.
+### فاز B — موتور محاسبات قطعی (`VERIFIED — 2026-11-21`)
+- `[x]` انتقال محاسبات ۲۶ اندیکاتور/لایه از داخل `CandlestickCanvas.kt` به لایه مستقل `TechnicalAnalysisCore.computeChartBundle` (اندروید) و همتای وب (`host_subdomain/assets/js/algorithms/technicalAnalysisCore.js`).
+- `[x]` اصلاح فرمول واریانس `computeBollingerBands` در وب به روش پایدار دوگذره (`Σ(c - mean)² / n`) هم‌تراز با اندروید برای جلوگیری از خطای اعشاری در قیمت‌های بالا (`BTCUSD`).
+- `[x]` هم‌ترازی عددی ۱۰۰٪ (خطا `< 1e-6`) برای SMA، EMA، Bollinger Bands، ATR، RSI، MACD، VWAP و Supertrend روی Fixture مشترک (`TA-CORE-AB-01` در وب و `taCore_phaseAB_goldenFixtureParityAndRendererDecoupling` در اندروید) با حفظ کامل مقدار `null` در بازه warm-up.
 
-### فاز C — ساختار قیمت و سطوح
-- Swing High/Low با تعریف pivot و تأخیر تأیید روشن؛ بدون استفاده از داده آینده در زمان صدور سیگنال.
-- روند با توالی سقف/کف‌ها و قواعد صریح، نه صرفاً رنگ یا حدس مدل.
-- حمایت/مقاومت به‌صورت Zone با قیمت پایین/بالا، زمان/کندل‌های شواهد، تعداد برخورد، فاصله و وضعیت اعتبار.
-- تفکیک شکست معتبر، نفوذ موقت و retest؛ جلوگیری از تولید سطح‌های بی‌پشتوانه.
-- خروجی باید دلیل ایجاد و دلیل ابطال هر ساختار را ثبت کند.
+### فاز C — ساختار قیمت و سطوح (`VERIFIED — 2026-11-21`)
+- `[x]` Swing High/Low علّی (`detectSwingsAndTrend` با `confirmIndex = index + swingLen`)؛ بدون استفاده از داده آینده (تضمین‌شده با تست prefix truncation در وب و اندروید).
+- `[x]` طبقه‌بندی قطعی روند (`UPTREND`، `DOWNTREND`، `RANGE`، `INSUFFICIENT_DATA`) صرفاً بر پایه توالی سقف/کف‌های تأییدشده (`HH/HL`, `LH/LL`) همراه با `trendReason` شفاف.
+- `[x]` نواحی حمایت و مقاومت مبتنی بر شواهد (`detectSupportResistanceZones`) با قفل سخت حداقل ۲ برخورد تأییدشده (`touchCount >= 2`)، ذخیره `lowPrice`/`highPrice`/`centerPrice`، شناسه و زمان کندل‌های شواهد، شمارش `wickRejectionCount` و `distancePct`.
+- `[x]` تفکیک وضعیت چرخه عمر ناحیه (`ACTIVE` / `BROKEN` / `RETESTED`) با ثبت `breakIndex`، `breakTimeUtcMs`، `retestIndex` و `invalidationReason`؛ جلوگیری کامل از ساخت سطوح تک‌برخوردی بی‌پشتوانه.
 
-### فاز D — تشخیص الگوها
-- شروع با الگوهای کندلی پرکاربرد و تعریف‌پذیر: Doji، Hammer، Shooting Star، Engulfing، Pin Bar و الگوهای چندکندلی منتخب.
-- هر تشخیص شامل pattern_id، نوع، جهت، کندل‌های تشکیل‌دهنده، زمان، محدوده قیمت، پارامترها و شواهد باشد.
-- الگوها بر اساس قواعد قطعی و قابل تست تشخیص داده شوند؛ مدل می‌تواند تفسیر کند اما حق جعل pattern geometry ندارد.
-- الگوهای نموداری چندنقطه‌ای مانند مثلث، کانال و سر و شانه پس از تثبیت swing engine اضافه شوند.
+### فاز D — تشخیص الگوها (`VERIFIED — 2026-11-21`)
+- `[x]` موتور قطعی تشخیص ۷ الگوی کندلی پرکاربرد (`detectCandlestickPatterns`): `DOJI`، `HAMMER`، `SHOOTING_STAR`، `BULLISH_PIN_BAR`، `BEARISH_PIN_BAR`، `BULLISH_ENGULFING` و `BEARISH_ENGULFING`.
+- `[x]` ثبت کامل metadata و شواهد عددی برای هر الگو: `patternId`، `type`، `shortLabel`، `direction`، `anchorIndex`، `anchorTimeUtcMs`، `candleIndices`، `candleTimesUtcMs`، `priceLow`/`priceHigh`/`markerPrice` و `evidence` (`bodyRatio`, `upperWickRatio`, `lowerWickRatio`, `rangeAtrRatio`).
+- `[x]` فیلتر نوسان بر پایه ATR محلی (`rangeAtrRatio >= 0.25`) برای جلوگیری از تشخیص کاذب روی کندل‌های مرده/نویزی؛ مستقل از مدل‌های AI.
 
-### فاز E — قرارداد هندسه و ترسیم
-- مدل مستقل از پیکسل: همه نقاط با زمان و قیمت ذخیره شوند؛ Renderer آن‌ها را به مختصات صفحه تبدیل کند.
-- کندل واقعی باید با OHLC ترسیم شود؛ پیش‌بینی یا الگو نباید جایگزین داده تاریخی کندل شود.
-- خطوط اندیکاتور با timestampهای هم‌تراز رسم شوند؛ nullهای warm-up نباید به صفر یا خط مستقیم مصنوعی تبدیل شوند.
-- Zoneها به شکل ناحیه دارای مرز بالا/پایین نمایش داده شوند، نه خطوط دلخواه.
-- الگوها با anchorهای واقعی کندل ترسیم شوند؛ عدم وجود anchor معتبر یعنی عدم ترسیم.
-- تغییر zoom، pan، scale، log scale و timeframe نباید اتصال هندسه به داده را خراب کند.
+### فاز E — قرارداد هندسه و ترسیم (`VERIFIED — 2026-11-21`)
+- `[x]` مدل ۱۰۰٪ مستقل از پیکسل در خروجی `TechnicalAnalysisCore`: تمام نواحی S/R و الگوهای کندلی بر حسب اندیس، `openTimeUtcMs` و قیمت واقعی ذخیره می‌شوند و Renderer بومی وب (`chartRenderer.js`) و اندروید (`CandlestickCanvas.kt`) آن‌ها را در زمان رسم (با احترام کامل به `zoom`، `pan` و `log scale`) به مختصات صفحه نگاشت می‌کنند.
+- `[x]` افزودن سوییچ‌های اختیاری و همگام‌سازی‌شده در هر دو کلاینت (`showSrZones` و `showCandlePatterns`) در `ChartTabState`/`ChartPreferences`/`WorkspaceRepository`/`MainViewModel`/`ChartViewScreen` (اندروید) و `store.js`/`apiService.js`/`headerView.js`/`toolRailView.js`/`app.js`/`chartRenderer.js` (وب).
+- `[x]` رسم نواحی S/R به‌صورت باکس نیمه‌شفاف با خط میانی، خط‌چین برای نواحی `RETESTED`/`BROKEN` و برچسب راست‌چین ضدتداخل (`SUP ×N`, `RES ×N`, `SUP*`, `BRK-S`)؛ رسم الگوهای کندلی با نشانگرهای متصل به `low`/`high` واقعی (`▲`/`▼`/`◆`) و نشانگر کوتاه (`HAM`/`STR`/`ENG`/`PIN`/`DOJ`).
 
-### فاز F — تطبیق وب/اندروید و پذیرش
-- اجرای fixtureهای یکسان در هر دو کلاینت و مقایسه خروجی عددی.
-- تست رندر با snapshot یا آزمون هندسی برای سناریوهای ثابت.
-- تست داده‌های کم، gap، قیمت ثابت، جهش، حجم صفر، timestamp تکراری و کندل ناقص.
-- هر باگ بصری با fixture قابل بازتولید ثبت شود.
-- پس از قبولی، یک مدل هوش مصنوعی به‌عنوان مصرف‌کننده خروجی canonical متصل شود.
+### فاز F — تطبیق وب/اندروید و پذیرش (`VERIFIED — 2026-11-21`)
+- `[x]` قرارداد خروجی Canonical نسخه‌دار `ta-core/1.1` (`buildCanonicalAnalysis`) شامل `quality`، `timestamps`، `indicators`، `structures` و `patterns` با تطبیق ساختاری و عددی بین وب و اندروید.
+- `[x]` آزمون مرجع مشترک فازهای A–F روی دو Fixture استاندارد (`tests/fixtures/ta_core_golden_fixture.json` و `tests/fixtures/ta_core_cf_golden_fixture.json`) به همراه کندل‌های واقعی ۲۶۰تایی `tests/fixtures/spotbrent_m15_sample.json` در هر دو مجموعه تست (`TA-CORE-AB-01` + `TA-CORE-CF-01` در وب و `taCore_phaseAB_*` + `taCore_phaseCF_*` در اندروید).
+- `[x]` پوشش کامل سناریوهای داده کم، قیمت ثابت، حجم صفر، داده نامرتب/تکراری/باز، روند صعودی/نزولی/رنج، شکست و ریتست S/R و هر ۷ الگوی کندلی.
 
 ## 5. قرارداد خروجی canonical
 
@@ -134,6 +124,6 @@ Canonical Analysis Result (versioned schema)
 - مدل‌های AI، Forecast و Chronos خارج از مسیر بحرانی این فاز هستند.
 - هر قابلیت فقط پس از تست کد و تطبیق خروجی با مرجع، `VERIFIED` اعلام می‌شود.
 
-## 8. نقطه شروع توسعه
+## 8. وضعیت اجرایی و گام بعدی
 
-اولین کار کدنویسی پس از این سند: ساخت/تکمیل تست‌های مرجع برای `computeBollingerBands`، SMA، EMA و ATR و سپس انتقال محاسباتی که در `CandlestickCanvas` انجام می‌شود به لایه مستقل. بعد از سبز شدن این تست‌ها، به Swing/Support-Resistance و الگوهای کندلی می‌رویم.
+تمامی فازهای **A تا F** (`ta-core/1.1`) در تاریخ `2026-11-21` در هر دو پلتفرم وب و اندروید پیاده‌سازی، به لایه‌های ترسیم (`chartRenderer.js` و `CandlestickCanvas.kt`) و همگام‌سازی Workspace متصل و با تست‌های مرجع مشترک (`tests/fixtures/ta_core_golden_fixture.json`، `tests/fixtures/ta_core_cf_golden_fixture.json` و `tests/fixtures/spotbrent_m15_sample.json`) تأیید شدند (`VERIFIED`). این سند به‌عنوان هسته قطعی تثبیت‌شده (`ta-core/1.1`) بسته می‌شود و آماده تغذیه لایه‌های بعدی (از جمله Object Tree و اتصال اختیاری مدل‌های تحلیلی آینده) است.

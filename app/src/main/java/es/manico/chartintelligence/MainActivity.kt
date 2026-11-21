@@ -300,6 +300,8 @@ fun ChartIntelligenceApp(
                             onToggleFvg = mainViewModel::toggleFvgOnActiveTab,
                             onToggleVolumeProfile = mainViewModel::toggleVolumeProfileOnActiveTab,
                             onTogglePivotPoints = mainViewModel::togglePivotPointsOnActiveTab,
+                            onToggleSrZones = mainViewModel::toggleSrZonesOnActiveTab,
+                            onToggleCandlePatterns = mainViewModel::toggleCandlePatternsOnActiveTab,
                             onSelectPivotType = mainViewModel::setPivotTypeOnActiveTab,
                             onToggleEma200 = mainViewModel::toggleEma200OnActiveTab,
                             onTogglePsar = mainViewModel::togglePsarOnActiveTab,
@@ -337,6 +339,11 @@ fun ChartIntelligenceApp(
                             onSelectDrawing = mainViewModel::selectDrawingOnActiveTab,
                             onTranslateSelectedDrawing = mainViewModel::translateSelectedDrawing,
                             onDeleteSelectedDrawing = mainViewModel::deleteSelectedDrawingOnActiveTab,
+                            onDeleteDrawingById = mainViewModel::deleteDrawingByIdOnActiveTab,
+                            onToggleDrawingVisibility = mainViewModel::toggleDrawingVisibilityOnActiveTab,
+                            onToggleDrawingLock = mainViewModel::toggleDrawingLockOnActiveTab,
+                            onSetAllDrawingsVisibility = mainViewModel::setAllDrawingsVisibilityOnActiveTab,
+                            onClearUnlockedDrawings = mainViewModel::clearUnlockedDrawingsOnActiveTab,
                             onClearAllDrawings = mainViewModel::clearAllDrawingsOnActiveTab
                         )
 
@@ -410,7 +417,17 @@ fun ChartIntelligenceApp(
                             onRestoreBackupFromUri = mainViewModel::restoreEncryptedBackupFromUri,
                             onImportDocumentUri = mainViewModel::importHistoricalDocumentFromUri,
                             onSubmitManualOhlc = mainViewModel::submitManualOhlcEntry,
-                            onRefreshImportBatches = mainViewModel::refreshImportBatches
+                            onRefreshImportBatches = mainViewModel::refreshImportBatches,
+                            currentUserRole = state.userRole,
+                            adminUsers = state.adminUsers,
+                            isAdminUsersLoading = state.isAdminUsersLoading,
+                            adminUsersError = state.adminUsersError,
+                            onRefreshAdminUsers = mainViewModel::refreshAdminUsers,
+                            onCreateAdminUser = mainViewModel::createAdminUser,
+                            onUpdateAdminUserRole = mainViewModel::updateAdminUserRole,
+                            onToggleAdminUserActive = mainViewModel::toggleAdminUserActive,
+                            onRevokeAdminUserSessions = mainViewModel::revokeAdminUserSessions,
+                            onDeleteAdminUser = mainViewModel::deleteAdminUser
                         )
                     }
                 }

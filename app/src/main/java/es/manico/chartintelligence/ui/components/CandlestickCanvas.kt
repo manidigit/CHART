@@ -61,6 +61,7 @@ import es.manico.chartintelligence.algorithms.CandleValidatorAlgorithm
 import es.manico.chartintelligence.algorithms.DrawingGeometryAlgorithm
 import es.manico.chartintelligence.algorithms.Phase2IndicatorsAlgorithm
 import es.manico.chartintelligence.algorithms.PriceFormatterAlgorithm
+import es.manico.chartintelligence.algorithms.TechnicalAnalysisCore
 import es.manico.chartintelligence.algorithms.UtcTimeAnchorAlgorithm
 import es.manico.chartintelligence.data.model.CandleBar
 import es.manico.chartintelligence.data.model.ChartDrawing
@@ -139,113 +140,99 @@ fun CandlestickCanvas(
         UtcTimeAnchorAlgorithm.timeframeStepMillis(tab.timeframe)
     }
 
-    // Compute full-series overlays & oscillators once per candle list and slice O(1) to visible window
-    val fullCloses = remember(candles) { candles.map { it.close.toDouble() } }
-    val fullSma20 = remember(fullCloses, tab.showSma20) {
-        if (!tab.showSma20 || fullCloses.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeSmaValues(fullCloses, 20)
-    }
-    val visibleSma20 = remember(fullSma20, startIndex, endIndexExclusive) {
-        if (fullSma20.isEmpty()) emptyList()
-        else fullSma20.subList(startIndex, endIndexExclusive.coerceAtMost(fullSma20.size))
-    }
-
-    val fullSma50 = remember(fullCloses, tab.showSma50) {
-        if (!tab.showSma50 || fullCloses.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeSmaValues(fullCloses, 50)
-    }
-    val visibleSma50 = remember(fullSma50, startIndex, endIndexExclusive) {
-        if (fullSma50.isEmpty()) emptyList()
-        else fullSma50.subList(startIndex, endIndexExclusive.coerceAtMost(fullSma50.size))
-    }
-
-    val fullSma200 = remember(fullCloses, tab.showSma200) {
-        if (!tab.showSma200 || fullCloses.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeSmaValues(fullCloses, 200)
-    }
-    val visibleSma200 = remember(fullSma200, startIndex, endIndexExclusive) {
-        if (fullSma200.isEmpty()) emptyList()
-        else fullSma200.subList(startIndex, endIndexExclusive.coerceAtMost(fullSma200.size))
-    }
-
-    val fullEma20 = remember(fullCloses, tab.showEma20) {
-        if (!tab.showEma20 || fullCloses.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeEmaValues(fullCloses, 20)
-    }
-    val visibleEma20 = remember(fullEma20, startIndex, endIndexExclusive) {
-        if (fullEma20.isEmpty()) emptyList()
-        else fullEma20.subList(startIndex, endIndexExclusive.coerceAtMost(fullEma20.size))
-    }
-
-    val fullEma50 = remember(fullCloses, tab.showEma50) {
-        if (!tab.showEma50 || fullCloses.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeEmaValues(fullCloses, 50)
-    }
-    val visibleEma50 = remember(fullEma50, startIndex, endIndexExclusive) {
-        if (fullEma50.isEmpty()) emptyList()
-        else fullEma50.subList(startIndex, endIndexExclusive.coerceAtMost(fullEma50.size))
-    }
-
+    // Delegate all indicator computations to pure TechnicalAnalysisCore (Phase B Renderer Decoupling)
     val bbPeriod = preferences.bollingerPeriod.coerceIn(5, 200)
     val bbStdDev = preferences.bollingerStdDev.coerceIn(0.5f, 5.0f).toDouble()
-    val fullBollinger = remember(fullCloses, tab.showBollinger, bbPeriod, bbStdDev) {
-        if (!tab.showBollinger || fullCloses.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeBollingerBands(fullCloses, bbPeriod, bbStdDev)
+    val analysisBundle = remember(
+        candles,
+        tab.timeframe,
+        tab.symbolCode,
+        tab.showSma20,
+        tab.showSma50,
+        tab.showSma200,
+        tab.showEma20,
+        tab.showEma50,
+        tab.showEma200,
+        tab.showBollinger,
+        bbPeriod,
+        bbStdDev,
+        tab.showSupertrend,
+        tab.showVwap,
+        tab.showRsi14,
+        tab.showMacd,
+        tab.showOverlayMacd,
+        tab.showAtr14,
+        tab.showSmcStructure,
+        tab.showFvg,
+        tab.showPsar,
+        tab.showIchimoku,
+        tab.showKeltner,
+        tab.showDonchian,
+        tab.showMtfEma,
+        tab.showAdx14,
+        tab.showStoch14,
+        tab.showCci20,
+        tab.showWillR14,
+        tab.showObv,
+        tab.showCmf20,
+        tab.showRoc12,
+        tab.showPivotPoints,
+        tab.showSrZones,
+        tab.showCandlePatterns,
+        tab.pivotType
+    ) {
+        TechnicalAnalysisCore.computeChartBundle(tab, preferences)
     }
+
+    val fullSma20 = analysisBundle.fullSma20
+    val visibleSma20 = remember(fullSma20, startIndex, endIndexExclusive) {
+        analysisBundle.sliceWindow(fullSma20, startIndex, endIndexExclusive)
+    }
+    val fullSma50 = analysisBundle.fullSma50
+    val visibleSma50 = remember(fullSma50, startIndex, endIndexExclusive) {
+        analysisBundle.sliceWindow(fullSma50, startIndex, endIndexExclusive)
+    }
+    val fullSma200 = analysisBundle.fullSma200
+    val visibleSma200 = remember(fullSma200, startIndex, endIndexExclusive) {
+        analysisBundle.sliceWindow(fullSma200, startIndex, endIndexExclusive)
+    }
+    val fullEma20 = analysisBundle.fullEma20
+    val visibleEma20 = remember(fullEma20, startIndex, endIndexExclusive) {
+        analysisBundle.sliceWindow(fullEma20, startIndex, endIndexExclusive)
+    }
+    val fullEma50 = analysisBundle.fullEma50
+    val visibleEma50 = remember(fullEma50, startIndex, endIndexExclusive) {
+        analysisBundle.sliceWindow(fullEma50, startIndex, endIndexExclusive)
+    }
+    val fullEma200 = analysisBundle.fullEma200
+    val visibleEma200 = remember(fullEma200, startIndex, endIndexExclusive) {
+        analysisBundle.sliceWindow(fullEma200, startIndex, endIndexExclusive)
+    }
+    val fullBollinger = analysisBundle.fullBollinger
     val visibleBollinger = remember(fullBollinger, startIndex, endIndexExclusive) {
-        if (fullBollinger.isEmpty()) emptyList()
-        else fullBollinger.subList(startIndex, endIndexExclusive.coerceAtMost(fullBollinger.size))
+        analysisBundle.sliceWindow(fullBollinger, startIndex, endIndexExclusive)
     }
-
-    val fullSupertrend = remember(candles, tab.showSupertrend) {
-        if (!tab.showSupertrend || candles.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeSupertrendValues(candles, 10, 3.0)
-    }
+    val fullSupertrend = analysisBundle.fullSupertrend
     val visibleSupertrend = remember(fullSupertrend, startIndex, endIndexExclusive) {
-        if (fullSupertrend.isEmpty()) emptyList()
-        else fullSupertrend.subList(startIndex, endIndexExclusive.coerceAtMost(fullSupertrend.size))
+        analysisBundle.sliceWindow(fullSupertrend, startIndex, endIndexExclusive)
     }
-
-    val fullVwap = remember(candles, tab.showVwap, tab.timeframe, tab.symbolCode) {
-        if (!tab.showVwap || candles.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeVwapValues(candles, tab.timeframe, tab.symbolCode)
-    }
+    val fullVwap = analysisBundle.fullVwap
     val visibleVwap = remember(fullVwap, startIndex, endIndexExclusive) {
-        if (fullVwap.isEmpty()) emptyList()
-        else fullVwap.subList(startIndex, endIndexExclusive.coerceAtMost(fullVwap.size))
+        analysisBundle.sliceWindow(fullVwap, startIndex, endIndexExclusive)
     }
-
-    val fullRsi14 = remember(fullCloses, tab.showRsi14) {
-        if (!tab.showRsi14 || fullCloses.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeRsiValues(fullCloses, 14)
-    }
+    val fullRsi14 = analysisBundle.fullRsi14
     val visibleRsi14 = remember(fullRsi14, startIndex, endIndexExclusive) {
-        if (fullRsi14.isEmpty()) emptyList()
-        else fullRsi14.subList(startIndex, endIndexExclusive.coerceAtMost(fullRsi14.size))
+        analysisBundle.sliceWindow(fullRsi14, startIndex, endIndexExclusive)
     }
-
-    val fullMacd = remember(fullCloses, tab.showMacd, tab.showOverlayMacd) {
-        if ((!tab.showMacd && !tab.showOverlayMacd) || fullCloses.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeMacdValues(fullCloses, 12, 26, 9)
-    }
+    val fullMacd = analysisBundle.fullMacd
     val visibleMacd = remember(fullMacd, startIndex, endIndexExclusive) {
-        if (fullMacd.isEmpty()) emptyList()
-        else fullMacd.subList(startIndex, endIndexExclusive.coerceAtMost(fullMacd.size))
+        analysisBundle.sliceWindow(fullMacd, startIndex, endIndexExclusive)
     }
-
-    val fullAtr14 = remember(candles, tab.showAtr14) {
-        if (!tab.showAtr14 || candles.isEmpty()) emptyList()
-        else PriceFormatterAlgorithm.computeAtrValues(candles, 14)
-    }
+    val fullAtr14 = analysisBundle.fullAtr14
     val visibleAtr14 = remember(fullAtr14, startIndex, endIndexExclusive) {
-        if (fullAtr14.isEmpty()) emptyList()
-        else fullAtr14.subList(startIndex, endIndexExclusive.coerceAtMost(fullAtr14.size))
+        analysisBundle.sliceWindow(fullAtr14, startIndex, endIndexExclusive)
     }
-
-    val fullSmcResult = remember(candles, tab.showSmcStructure, tab.showFvg) {
-        if ((!tab.showSmcStructure && !tab.showFvg) || candles.isEmpty()) null
-        else PriceFormatterAlgorithm.detectSmcMarketStructures(candles, 3)
-    }
+    val fullSmcResult = analysisBundle.fullSmcResult
 
     val instrumentVolumeType = remember(tab.symbolCode, tab.provider) {
         UtcTimeAnchorAlgorithm.getInstrumentSpec(tab.symbolCode, tab.provider).volumeType
@@ -255,123 +242,52 @@ fun CandlestickCanvas(
         else PriceFormatterAlgorithm.computeVolumeProfile(visibleSlice, 24, 0.70, instrumentVolumeType)
     }
 
-    val fullEma200 = remember(fullCloses, tab.showEma200) {
-        if (!tab.showEma200 || fullCloses.size < 200) emptyList()
-        else PriceFormatterAlgorithm.computeEmaValues(fullCloses, 200)
-    }
-    val visibleEma200 = remember(fullEma200, startIndex, endIndexExclusive) {
-        if (fullEma200.isEmpty()) emptyList()
-        else fullEma200.subList(startIndex, endIndexExclusive.coerceAtMost(fullEma200.size))
-    }
-
-    val fullPsar = remember(candles, tab.showPsar) {
-        if (!tab.showPsar || candles.size < 2) emptyList()
-        else Phase2IndicatorsAlgorithm.computeParabolicSar(candles, 0.02, 0.20)
-    }
+    val fullPsar = analysisBundle.fullPsar
     val visiblePsar = remember(fullPsar, startIndex, endIndexExclusive) {
-        if (fullPsar.isEmpty()) emptyList()
-        else fullPsar.subList(startIndex, endIndexExclusive.coerceAtMost(fullPsar.size))
+        analysisBundle.sliceWindow(fullPsar, startIndex, endIndexExclusive)
     }
-
-    val fullIchimoku = remember(candles, tab.showIchimoku) {
-        if (!tab.showIchimoku || candles.isEmpty()) null
-        else Phase2IndicatorsAlgorithm.computeIchimoku(candles, 9, 26, 52, 26)
-    }
-
-    val fullKeltner = remember(candles, tab.showKeltner) {
-        if (!tab.showKeltner || candles.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeKeltnerChannels(candles, 20, 10, 2.0)
-    }
+    val fullIchimoku = analysisBundle.fullIchimoku
+    val fullKeltner = analysisBundle.fullKeltner
     val visibleKeltner = remember(fullKeltner, startIndex, endIndexExclusive) {
-        if (fullKeltner.isEmpty()) emptyList()
-        else fullKeltner.subList(startIndex, endIndexExclusive.coerceAtMost(fullKeltner.size))
+        analysisBundle.sliceWindow(fullKeltner, startIndex, endIndexExclusive)
     }
-
-    val fullDonchian = remember(candles, tab.showDonchian) {
-        if (!tab.showDonchian || candles.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeDonchianChannels(candles, 20)
-    }
+    val fullDonchian = analysisBundle.fullDonchian
     val visibleDonchian = remember(fullDonchian, startIndex, endIndexExclusive) {
-        if (fullDonchian.isEmpty()) emptyList()
-        else fullDonchian.subList(startIndex, endIndexExclusive.coerceAtMost(fullDonchian.size))
+        analysisBundle.sliceWindow(fullDonchian, startIndex, endIndexExclusive)
     }
-
-    val fullMtfEma = remember(candles, tab.showMtfEma, tab.timeframe, tab.symbolCode) {
-        if (!tab.showMtfEma || candles.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeMtfEma(candles, tab.timeframe, 20, tab.symbolCode)
-    }
+    val fullMtfEma = analysisBundle.fullMtfEma
     val visibleMtfEma = remember(fullMtfEma, startIndex, endIndexExclusive) {
-        if (fullMtfEma.isEmpty()) emptyList()
-        else fullMtfEma.subList(startIndex, endIndexExclusive.coerceAtMost(fullMtfEma.size))
+        analysisBundle.sliceWindow(fullMtfEma, startIndex, endIndexExclusive)
     }
-
-    val fullAdx14 = remember(candles, tab.showAdx14) {
-        if (!tab.showAdx14 || candles.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeAdxDmi(candles, 14)
-    }
+    val fullAdx14 = analysisBundle.fullAdx14
     val visibleAdx14 = remember(fullAdx14, startIndex, endIndexExclusive) {
-        if (fullAdx14.isEmpty()) emptyList()
-        else fullAdx14.subList(startIndex, endIndexExclusive.coerceAtMost(fullAdx14.size))
+        analysisBundle.sliceWindow(fullAdx14, startIndex, endIndexExclusive)
     }
-
-    val fullStoch14 = remember(candles, tab.showStoch14) {
-        if (!tab.showStoch14 || candles.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeStochastic(candles, 14, 3, 3)
-    }
+    val fullStoch14 = analysisBundle.fullStoch14
     val visibleStoch14 = remember(fullStoch14, startIndex, endIndexExclusive) {
-        if (fullStoch14.isEmpty()) emptyList()
-        else fullStoch14.subList(startIndex, endIndexExclusive.coerceAtMost(fullStoch14.size))
+        analysisBundle.sliceWindow(fullStoch14, startIndex, endIndexExclusive)
     }
-
-    val fullCci20 = remember(candles, tab.showCci20) {
-        if (!tab.showCci20 || candles.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeCci(candles, 20)
-    }
+    val fullCci20 = analysisBundle.fullCci20
     val visibleCci20 = remember(fullCci20, startIndex, endIndexExclusive) {
-        if (fullCci20.isEmpty()) emptyList()
-        else fullCci20.subList(startIndex, endIndexExclusive.coerceAtMost(fullCci20.size))
+        analysisBundle.sliceWindow(fullCci20, startIndex, endIndexExclusive)
     }
-
-    val fullWillR14 = remember(candles, tab.showWillR14) {
-        if (!tab.showWillR14 || candles.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeWilliamsR(candles, 14)
-    }
+    val fullWillR14 = analysisBundle.fullWillR14
     val visibleWillR14 = remember(fullWillR14, startIndex, endIndexExclusive) {
-        if (fullWillR14.isEmpty()) emptyList()
-        else fullWillR14.subList(startIndex, endIndexExclusive.coerceAtMost(fullWillR14.size))
+        analysisBundle.sliceWindow(fullWillR14, startIndex, endIndexExclusive)
     }
-
-    val fullObv = remember(candles, tab.showObv) {
-        if (!tab.showObv || candles.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeObv(candles)
-    }
+    val fullObv = analysisBundle.fullObv
     val visibleObv = remember(fullObv, startIndex, endIndexExclusive) {
-        if (fullObv.isEmpty()) emptyList()
-        else fullObv.subList(startIndex, endIndexExclusive.coerceAtMost(fullObv.size))
+        analysisBundle.sliceWindow(fullObv, startIndex, endIndexExclusive)
     }
-
-    val fullCmf20 = remember(candles, tab.showCmf20) {
-        if (!tab.showCmf20 || candles.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeCmf(candles, 20)
-    }
+    val fullCmf20 = analysisBundle.fullCmf20
     val visibleCmf20 = remember(fullCmf20, startIndex, endIndexExclusive) {
-        if (fullCmf20.isEmpty()) emptyList()
-        else fullCmf20.subList(startIndex, endIndexExclusive.coerceAtMost(fullCmf20.size))
+        analysisBundle.sliceWindow(fullCmf20, startIndex, endIndexExclusive)
     }
-
-    val fullRoc12 = remember(fullCloses, tab.showRoc12) {
-        if (!tab.showRoc12 || fullCloses.isEmpty()) emptyList()
-        else Phase2IndicatorsAlgorithm.computeRoc(fullCloses, 12)
-    }
+    val fullRoc12 = analysisBundle.fullRoc12
     val visibleRoc12 = remember(fullRoc12, startIndex, endIndexExclusive) {
-        if (fullRoc12.isEmpty()) emptyList()
-        else fullRoc12.subList(startIndex, endIndexExclusive.coerceAtMost(fullRoc12.size))
+        analysisBundle.sliceWindow(fullRoc12, startIndex, endIndexExclusive)
     }
-
-    val pivotPoints = remember(candles, tab.timeframe, tab.symbolCode, tab.showPivotPoints, tab.pivotType) {
-        if (!tab.showPivotPoints || candles.size < 2) null
-        else Phase2IndicatorsAlgorithm.computePivotPoints(candles, tab.timeframe, tab.symbolCode, tab.pivotType)
-    }
+    val pivotPoints = analysisBundle.pivotPoints
 
     val inspectedIdx = tab.selectedCandleIndex ?: (endIndexExclusive - 1)
     val inspectedCandle = remember(tab.selectedCandleIndex, visibleSlice) {
@@ -692,7 +608,9 @@ fun CandlestickCanvas(
 
                                 val slotW = (w / slice.size.toFloat()).coerceAtLeast(0.5f)
 
-                                if (curTab.activeDrawingTool == DrawingTool.CURSOR && curTab.selectedDrawingId != null && abs(zoom - 1f) <= 0.015f) {
+                                val selectedDrawing = curTab.drawings.firstOrNull { it.id == curTab.selectedDrawingId }
+                                val canTranslateSelected = selectedDrawing != null && selectedDrawing.visible && !selectedDrawing.locked
+                                if (curTab.activeDrawingTool == DrawingTool.CURSOR && canTranslateSelected && abs(zoom - 1f) <= 0.015f) {
                                     val deltaSlots = (pan.x / slotW).roundToLong()
                                     val deltaTimeMillis = deltaSlots * currentStepMillis
                                     val pricePerPx = currentPaddedSpan / pricePaneH.toDouble()
@@ -870,6 +788,64 @@ fun CandlestickCanvas(
                                     topLeft = Offset(x1, boxTop),
                                     size = Size(boxW, boxH),
                                     style = Stroke(width = 1.0f)
+                                )
+                            }
+                        }
+
+                        // 4.0c TA-Core Phase C: Evidence-Backed Support & Resistance Zones (>=2 touches)
+                        if (tab.showSrZones && analysisBundle.srZones.isNotEmpty()) {
+                            for (zone in analysisBundle.srZones) {
+                                val localStart = (zone.startIndex - startIndex).coerceAtLeast(0)
+                                if (localStart >= visibleSlice.size) continue
+                                val x1 = (localStart + 0.25f) * slotW
+                                val x2 = canvasW
+                                val yHigh = priceToY(zone.highPrice)
+                                val yLow = priceToY(zone.lowPrice)
+                                val boxTop = min(yHigh, yLow)
+                                val boxH = max(3f, abs(yLow - yHigh))
+                                val boxW = max(8f, x2 - x1)
+                                if (boxTop + boxH < 0f || boxTop > pricePaneH) continue
+                                val isSupport = zone.role == "SUPPORT"
+                                val zoneColor = if (isSupport) Color(0xFF10B981) else Color(0xFFEF5350)
+                                val isBroken = zone.status == "BROKEN"
+                                val isRetested = zone.status == "RETESTED"
+                                val fillAlpha = when {
+                                    isBroken -> 0.06f
+                                    isRetested -> 0.11f
+                                    else -> 0.14f
+                                }
+                                val strokeAlpha = when {
+                                    isBroken -> 0.36f
+                                    isRetested -> 0.64f
+                                    else -> 0.58f
+                                }
+                                val strokeEffect = if (isBroken || isRetested) dashEffect else null
+                                drawRect(
+                                    color = zoneColor.copy(alpha = fillAlpha),
+                                    topLeft = Offset(x1, boxTop),
+                                    size = Size(boxW, boxH)
+                                )
+                                drawLine(
+                                    color = zoneColor.copy(alpha = strokeAlpha),
+                                    start = Offset(x1, boxTop),
+                                    end = Offset(x2, boxTop),
+                                    strokeWidth = if (isBroken) 1.0f else 1.25f,
+                                    pathEffect = strokeEffect
+                                )
+                                drawLine(
+                                    color = zoneColor.copy(alpha = strokeAlpha),
+                                    start = Offset(x1, boxTop + boxH),
+                                    end = Offset(x2, boxTop + boxH),
+                                    strokeWidth = if (isBroken) 1.0f else 1.25f,
+                                    pathEffect = strokeEffect
+                                )
+                                val yMid = priceToY(zone.centerPrice)
+                                drawLine(
+                                    color = zoneColor.copy(alpha = strokeAlpha * 0.55f),
+                                    start = Offset(x1, yMid),
+                                    end = Offset(x2, yMid),
+                                    strokeWidth = 0.85f,
+                                    pathEffect = dashEffect
                                 )
                             }
                         }
@@ -1236,6 +1212,50 @@ fun CandlestickCanvas(
                             }
                         }
 
+                        // 5f. TA-Core Phase D: Deterministic Candlestick Pattern Markers anchored to real candle high/low
+                        if (tab.showCandlePatterns && analysisBundle.candlePatterns.isNotEmpty()) {
+                            val markerR = (slotW * 0.34f).coerceIn(4.0f, 7.5f)
+                            for (pat in analysisBundle.candlePatterns) {
+                                if (pat.anchorIndex < startIndex || pat.anchorIndex >= endIndexExclusive) continue
+                                val localIdx = pat.anchorIndex - startIndex
+                                val cx = (localIdx + 0.5f) * slotW
+                                val markerPath = obtainPath()
+                                when {
+                                    pat.direction > 0 -> {
+                                        val baseY = (priceToY(pat.priceLow) + markerR * 1.4f)
+                                            .coerceIn(markerR * 2f, pricePaneH - markerR * 1.6f)
+                                        markerPath.moveTo(cx, baseY - markerR)
+                                        markerPath.lineTo(cx - markerR, baseY + markerR * 0.85f)
+                                        markerPath.lineTo(cx + markerR, baseY + markerR * 0.85f)
+                                        markerPath.close()
+                                        drawPath(path = markerPath, color = Color(0xFF10B981))
+                                        drawPath(path = markerPath, color = Color.White.copy(alpha = 0.55f), style = Stroke(width = 0.9f))
+                                    }
+                                    pat.direction < 0 -> {
+                                        val baseY = (priceToY(pat.priceHigh) - markerR * 1.4f)
+                                            .coerceIn(markerR * 1.6f, pricePaneH - markerR * 2f)
+                                        markerPath.moveTo(cx, baseY + markerR)
+                                        markerPath.lineTo(cx - markerR, baseY - markerR * 0.85f)
+                                        markerPath.lineTo(cx + markerR, baseY - markerR * 0.85f)
+                                        markerPath.close()
+                                        drawPath(path = markerPath, color = Color(0xFFEF5350))
+                                        drawPath(path = markerPath, color = Color.White.copy(alpha = 0.55f), style = Stroke(width = 0.9f))
+                                    }
+                                    else -> {
+                                        val baseY = (priceToY(pat.priceHigh) - markerR * 1.4f)
+                                            .coerceIn(markerR * 1.6f, pricePaneH - markerR * 2f)
+                                        markerPath.moveTo(cx, baseY - markerR)
+                                        markerPath.lineTo(cx + markerR, baseY)
+                                        markerPath.lineTo(cx, baseY + markerR)
+                                        markerPath.lineTo(cx - markerR, baseY)
+                                        markerPath.close()
+                                        drawPath(path = markerPath, color = Color(0xFFF59E0B))
+                                        drawPath(path = markerPath, color = Color.White.copy(alpha = 0.55f), style = Stroke(width = 0.9f))
+                                    }
+                                }
+                            }
+                        }
+
                         // 6a. Previous Session Close Horizontal Dashed Line across Main Price Pane
                         val prevCloseRef = tab.sessionPrevClose ?: candles.getOrNull(candles.size - 2)?.close
                         if (preferences.showPrevCloseLine && prevCloseRef != null) {
@@ -1276,8 +1296,9 @@ fun CandlestickCanvas(
                             )
                         }
 
-                        // 7. Market-Coordinate-Anchored Drawings (with custom colorHex & strokeWidthDp)
+                        // 7. Market-Coordinate-Anchored Drawings (with custom colorHex, strokeWidthDp, visible & locked)
                         for (drawing in tab.drawings) {
+                            if (!drawing.visible) continue
                             val isSelected = drawing.id == tab.selectedDrawingId
                             val baseWidthPx = with(density) { drawing.strokeWidthDp.dp.toPx() }
                             val strokeW = if (isSelected) baseWidthPx + 1.4f else baseWidthPx
@@ -1886,9 +1907,9 @@ fun CandlestickCanvas(
                                     fontWeight = FontWeight.Bold,
                                     color = preferences.sma200Color
                                 )
-                            } else if (fullCloses.size < 200) {
+                            } else if (candles.size < 200) {
                                 Text(
-                                    text = stringResource(R.string.chart_sma200_insufficient, fullCloses.size),
+                                    text = stringResource(R.string.chart_sma200_insufficient, candles.size),
                                     style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
                                     fontFamily = JetBrainsMonoFontFamily,
@@ -2176,6 +2197,31 @@ fun CandlestickCanvas(
                                 fontFamily = JetBrainsMonoFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 color = preferences.fvgColor
+                            )
+                        }
+                        if (tab.showSrZones) {
+                            val activeZones = analysisBundle.srZones.count { it.status != "BROKEN" }
+                            Text(
+                                text = "S/R ($activeZones/${analysisBundle.srZones.size})",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFF10B981)
+                            )
+                        }
+                        if (tab.showCandlePatterns) {
+                            val visiblePats = analysisBundle.candlePatterns.filter {
+                                it.anchorIndex in startIndex until endIndexExclusive
+                            }
+                            val latestPat = visiblePats.lastOrNull()
+                            Text(
+                                text = if (latestPat != null) "PAT (${visiblePats.size}) · ${latestPat.shortLabel}" else "PAT (0)",
+                                style = MaterialTheme.typography.labelSmall,
+                                fontSize = 10.sp,
+                                fontFamily = JetBrainsMonoFontFamily,
+                                fontWeight = FontWeight.Bold,
+                                color = Color(0xFFF59E0B)
                             )
                         }
                         if ((tab.gapSummary?.gapCount ?: 0) > 0) {
@@ -2534,6 +2580,27 @@ fun CandlestickCanvas(
                                         text = "$tag ${PriceFormatterAlgorithm.formatPrice(BigDecimal.valueOf(priceVal), tab.decimals)}",
                                         rawRatio = r,
                                         color = col
+                                    )
+                                )
+                            }
+                        }
+                    }
+                    if (tab.showSrZones && analysisBundle.srZones.isNotEmpty()) {
+                        for (zone in analysisBundle.srZones) {
+                            val r = mapPriceToNormRatio(zone.centerPrice)
+                            if (r in 0.02f..0.98f) {
+                                val prefix = when {
+                                    zone.status == "BROKEN" -> if (zone.role == "SUPPORT") "BRK-S" else "BRK-R"
+                                    zone.status == "RETESTED" -> if (zone.role == "SUPPORT") "SUP*" else "RES*"
+                                    zone.role == "SUPPORT" -> "SUP"
+                                    else -> "RES"
+                                }
+                                rawBadges.add(
+                                    DockedLevelBadge(
+                                        id = "sr_${zone.zoneId}",
+                                        text = "$prefix ×${zone.touchCount}",
+                                        rawRatio = r,
+                                        color = if (zone.role == "SUPPORT") Color(0xFF10B981) else Color(0xFFEF5350)
                                     )
                                 )
                             }

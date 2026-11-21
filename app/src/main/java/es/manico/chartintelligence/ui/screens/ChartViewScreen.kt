@@ -38,6 +38,7 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.FitScreen
 import androidx.compose.material.icons.outlined.Functions
 import androidx.compose.material.icons.outlined.HorizontalRule
+import androidx.compose.material.icons.outlined.Layers
 import androidx.compose.material.icons.outlined.MoreHoriz
 import androidx.compose.material.icons.outlined.PhotoCamera
 import androidx.compose.material.icons.outlined.Schedule
@@ -100,9 +101,11 @@ import es.manico.chartintelligence.data.model.ChartTabState
 import es.manico.chartintelligence.data.model.ChartType
 import es.manico.chartintelligence.data.model.DrawingTool
 import es.manico.chartintelligence.data.model.SymbolConfig
+import es.manico.chartintelligence.ui.components.ActiveIndicatorLayer
 import es.manico.chartintelligence.ui.components.AssetSymbolBadge
 import es.manico.chartintelligence.ui.components.CandlestickCanvas
 import es.manico.chartintelligence.ui.components.DrawingToolbar
+import es.manico.chartintelligence.ui.components.ObjectTreeSheetContent
 import es.manico.chartintelligence.ui.theme.JetBrainsMonoFontFamily
 import es.manico.chartintelligence.ui.theme.LocalFinancialPalette
 import kotlinx.coroutines.Dispatchers
@@ -119,6 +122,8 @@ private enum class ChartControlSheet {
     SYMBOL_PICKER,
     TIMEFRAME_PICKER,
     INDICATORS,
+    OBJECT_TREE,
+    STRATEGY_LAB,
     MORE_OPTIONS
 }
 
@@ -172,6 +177,8 @@ fun ChartViewScreen(
     onToggleFvg: () -> Unit = {},
     onToggleVolumeProfile: () -> Unit = {},
     onTogglePivotPoints: () -> Unit = {},
+    onToggleSrZones: () -> Unit = {},
+    onToggleCandlePatterns: () -> Unit = {},
     onSelectPivotType: (String) -> Unit = {},
     onToggleEma200: () -> Unit = {},
     onTogglePsar: () -> Unit = {},
@@ -209,6 +216,11 @@ fun ChartViewScreen(
     onSelectDrawing: (String?) -> Unit,
     onTranslateSelectedDrawing: (Long, BigDecimal) -> Unit,
     onDeleteSelectedDrawing: () -> Unit,
+    onDeleteDrawingById: (String) -> Unit = {},
+    onToggleDrawingVisibility: (String) -> Unit = {},
+    onToggleDrawingLock: (String) -> Unit = {},
+    onSetAllDrawingsVisibility: (Boolean) -> Unit = {},
+    onClearUnlockedDrawings: () -> Unit = {},
     onClearAllDrawings: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -712,7 +724,7 @@ fun ChartViewScreen(
                         activeTab.showCci20 || activeTab.showWillR14 || activeTab.showObv ||
                         activeTab.showCmf20 || activeTab.showRoc12 ||
                         activeTab.showSmcStructure || activeTab.showFvg || activeTab.showVolumeProfile ||
-                        activeTab.showPivotPoints
+                        activeTab.showPivotPoints || activeTab.showSrZones || activeTab.showCandlePatterns
                     val hasActiveIndicator = hasOverlayIndicator || activeTab.showVolume
                     Box(
                         modifier = Modifier
@@ -735,6 +747,76 @@ fun ChartViewScreen(
                             imageVector = Icons.Outlined.Functions,
                             contentDescription = stringResource(R.string.chart_control_indicators),
                             tint = if (hasActiveIndicator) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+
+                    // 4b. Object Tree Button (Layers) -> Opens UI-02 Object Tree BottomSheet
+                    val drawingsCount = activeTab.drawings.size
+                    val hasObjectTreeItems = drawingsCount > 0 || hasOverlayIndicator
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .background(
+                                if (drawingsCount > 0) MaterialTheme.colorScheme.primary.copy(alpha = 0.18f)
+                                else MaterialTheme.colorScheme.surfaceContainerHigh
+                            )
+                            .border(
+                                1.dp,
+                                if (drawingsCount > 0) MaterialTheme.colorScheme.primary else palette.cardBorder,
+                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                            )
+                            .bentoInteractive { activeSheet = ChartControlSheet.OBJECT_TREE }
+                            .testTag("chart_bottom_object_tree_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.Layers,
+                            contentDescription = stringResource(R.string.object_tree_title),
+                            tint = if (hasObjectTreeItems) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        if (drawingsCount > 0) {
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(2.dp)
+                                    .clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primary)
+                                    .padding(horizontal = 3.5.dp, vertical = 0.5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = if (drawingsCount > 9) "9+" else drawingsCount.toString(),
+                                    style = MaterialTheme.typography.labelSmall.copy(fontSize = 8.sp, lineHeight = 9.sp),
+                                    fontFamily = JetBrainsMonoFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onPrimary
+                                )
+                            }
+                        }
+                    }
+
+                    // 4c. Phase 6 Offline Strategy Simulator Button -> Opens StrategyLabSheetContent
+                    Box(
+                        modifier = Modifier
+                            .size(38.dp)
+                            .clip(androidx.compose.foundation.shape.RoundedCornerShape(10.dp))
+                            .background(MaterialTheme.colorScheme.surfaceContainerHigh)
+                            .border(
+                                1.dp,
+                                palette.cardBorder,
+                                androidx.compose.foundation.shape.RoundedCornerShape(10.dp)
+                            )
+                            .bentoInteractive { activeSheet = ChartControlSheet.STRATEGY_LAB }
+                            .testTag("chart_bottom_strategy_lab_button"),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.ShowChart,
+                            contentDescription = stringResource(R.string.strategy_lab_title),
+                            tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -1098,6 +1180,7 @@ fun ChartViewScreen(
                                             specs = listOf(
                                                 StudyRowSpec("vwap", "Session VWAP", "Volume Weighted Average Price", preferences.vwapColor, activeTab.showVwap, onToggleVwap, "chart_vwap_toggle_button", "╌╌"),
                                                 StudyRowSpec("pivotPoints", "Pivot Points (Standard / Fib / Camarilla / Woodie)", "Multi-variant P, R1..R4, S1..S4", preferences.pivotPColor, activeTab.showPivotPoints, onTogglePivotPoints, "chart_pivot_points_toggle_button", "P/R/S"),
+                                                StudyRowSpec("srZones", "Support & Resistance Zones (≥2 Touches)", "Causal swing clusters with wick rejections & break/retest status", Color(0xFF10B981), activeTab.showSrZones, onToggleSrZones, "chart_sr_zones_toggle_button", "S/R"),
                                                 StudyRowSpec("volumeProfile", "Session Volume Profile (VRVP)", "POC, VAH & VAL (70% Value Area)", preferences.vrvpPocColor, activeTab.showVolumeProfile, onToggleVolumeProfile, "chart_vp_toggle_button", "▋POC")
                                             )
                                         ),
@@ -1172,6 +1255,7 @@ fun ChartViewScreen(
                                                         SubComponentColorSpec("fvgBear", "Bearish FVG", preferences.fvgBearColor, "FVG-")
                                                     )
                                                 ),
+                                                StudyRowSpec("candlePatterns", "Candlestick Patterns (Price Action)", "Deterministic Hammer, Shooting Star, Engulfing, Pin Bar & Doji", Color(0xFFF59E0B), activeTab.showCandlePatterns, onToggleCandlePatterns, "chart_candle_patterns_toggle_button", "▲▼"),
                                                 StudyRowSpec("killzones", "Session Killzones (UTC)", "Asia / London / NY & Overlap Highlights", preferences.killzonesColor, activeTab.showKillzones, onToggleKillzones, "chart_killzones_toggle_button", "🕒")
                                             )
                                         )
@@ -2397,6 +2481,69 @@ fun ChartViewScreen(
                                         }
                                     }
                                 }
+                            }
+
+                            ChartControlSheet.OBJECT_TREE -> {
+                                val catOverlay = stringResource(R.string.object_tree_cat_overlay)
+                                val catOsc = stringResource(R.string.object_tree_cat_oscillator)
+                                val catStruct = stringResource(R.string.object_tree_cat_structure)
+                                val catVol = stringResource(R.string.object_tree_cat_volume)
+                                val activeLayers = buildList {
+                                    if (activeTab.showSma20) add(ActiveIndicatorLayer("sma20", "SMA 20", catOverlay, Color(0xFFF59E0B), onToggleSma20))
+                                    if (activeTab.showSma50) add(ActiveIndicatorLayer("sma50", "SMA 50", catOverlay, Color(0xFFF97316), onToggleSma50))
+                                    if (activeTab.showSma200) add(ActiveIndicatorLayer("sma200", "SMA 200", catOverlay, Color(0xFFEF4444), onToggleSma200))
+                                    if (activeTab.showEma20) add(ActiveIndicatorLayer("ema20", "EMA 20", catOverlay, Color(0xFF38BDF8), onToggleEma20))
+                                    if (activeTab.showEma50) add(ActiveIndicatorLayer("ema50", "EMA 50", catOverlay, Color(0xFF2962FF), onToggleEma50))
+                                    if (activeTab.showEma200) add(ActiveIndicatorLayer("ema200", "EMA 200", catOverlay, Color(0xFF6366F1), onToggleEma200))
+                                    if (activeTab.showBollinger) add(ActiveIndicatorLayer("bollinger", "Bollinger (${preferences.bollingerPeriod}, ${preferences.bollingerStdDev})", catOverlay, Color(0xFF8B5CF6), onToggleBollinger))
+                                    if (activeTab.showSupertrend) add(ActiveIndicatorLayer("supertrend", "Supertrend", catOverlay, Color(0xFF10B981), onToggleSupertrend))
+                                    if (activeTab.showVwap) add(ActiveIndicatorLayer("vwap", "VWAP", catOverlay, Color(0xFFEC4899), onToggleVwap))
+                                    if (activeTab.showPsar) add(ActiveIndicatorLayer("psar", "Parabolic SAR", catOverlay, Color(0xFFEAB308), onTogglePsar))
+                                    if (activeTab.showIchimoku) add(ActiveIndicatorLayer("ichimoku", "Ichimoku Cloud", catOverlay, Color(0xFF14B8A6), onToggleIchimoku))
+                                    if (activeTab.showKeltner) add(ActiveIndicatorLayer("keltner", "Keltner Channel", catOverlay, Color(0xFF0EA5E9), onToggleKeltner))
+                                    if (activeTab.showDonchian) add(ActiveIndicatorLayer("donchian", "Donchian Channel", catOverlay, Color(0xFFA855F7), onToggleDonchian))
+                                    if (activeTab.showMtfEma) add(ActiveIndicatorLayer("mtf_ema", "MTF EMA", catOverlay, Color(0xFFF43F5E), onToggleMtfEma))
+                                    if (activeTab.showKillzones) add(ActiveIndicatorLayer("killzones", "Session Killzones", catStruct, Color(0xFF64748B), onToggleKillzones))
+                                    if (activeTab.showSmcStructure) add(ActiveIndicatorLayer("smc", "SMC BOS / CHoCH / OB", catStruct, Color(0xFF22C55E), onToggleSmcStructure))
+                                    if (activeTab.showFvg) add(ActiveIndicatorLayer("fvg", "Fair Value Gaps (FVG)", catStruct, Color(0xFF06B6D4), onToggleFvg))
+                                    if (activeTab.showVolumeProfile) add(ActiveIndicatorLayer("vp", "Volume Profile (VP)", catStruct, Color(0xFFF59E0B), onToggleVolumeProfile))
+                                    if (activeTab.showPivotPoints) add(ActiveIndicatorLayer("pivots", "Pivot Points (${activeTab.pivotType})", catStruct, Color(0xFF8B5CF6), onTogglePivotPoints))
+                                    if (activeTab.showSrZones) add(ActiveIndicatorLayer("sr_zones", stringResource(R.string.chart_indicator_sr_zones), catStruct, Color(0xFF10B981), onToggleSrZones))
+                                    if (activeTab.showCandlePatterns) add(ActiveIndicatorLayer("candle_patterns", stringResource(R.string.chart_indicator_candle_patterns), catStruct, Color(0xFFF97316), onToggleCandlePatterns))
+                                    if (activeTab.showOverlayMacd) add(ActiveIndicatorLayer("overlay_macd", "Overlay MACD", catOverlay, Color(0xFF3B82F6), onToggleOverlayMacd))
+                                    if (activeTab.showVolume) add(ActiveIndicatorLayer("volume", "Volume", catVol, Color(0xFF64748B), onToggleVolume))
+                                    if (activeTab.showRsi14) add(ActiveIndicatorLayer("rsi14", "RSI 14", catOsc, Color(0xFFA855F7), onToggleRsi14))
+                                    if (activeTab.showMacd) add(ActiveIndicatorLayer("macd", "MACD (12, 26, 9)", catOsc, Color(0xFF3B82F6), onToggleMacd))
+                                    if (activeTab.showAtr14) add(ActiveIndicatorLayer("atr14", "ATR 14", catOsc, Color(0xFFF97316), onToggleAtr14))
+                                    if (activeTab.showAdx14) add(ActiveIndicatorLayer("adx14", "ADX 14", catOsc, Color(0xFFEC4899), onToggleAdx14))
+                                    if (activeTab.showStoch14) add(ActiveIndicatorLayer("stoch14", "Stochastic 14", catOsc, Color(0xFF14B8A6), onToggleStoch14))
+                                    if (activeTab.showCci20) add(ActiveIndicatorLayer("cci20", "CCI 20", catOsc, Color(0xFFEAB308), onToggleCci20))
+                                    if (activeTab.showWillR14) add(ActiveIndicatorLayer("willr14", "Williams %R 14", catOsc, Color(0xFFEF4444), onToggleWillR14))
+                                    if (activeTab.showObv) add(ActiveIndicatorLayer("obv", "OBV", catVol, Color(0xFF06B6D4), onToggleObv))
+                                    if (activeTab.showCmf20) add(ActiveIndicatorLayer("cmf20", "CMF 20", catVol, Color(0xFF22C55E), onToggleCmf20))
+                                    if (activeTab.showRoc12) add(ActiveIndicatorLayer("roc12", "ROC 12", catOsc, Color(0xFF6366F1), onToggleRoc12))
+                                }
+                                ObjectTreeSheetContent(
+                                    tab = activeTab,
+                                    activeIndicators = activeLayers,
+                                    onSelectDrawing = onSelectDrawing,
+                                    onToggleDrawingVisibility = onToggleDrawingVisibility,
+                                    onToggleDrawingLock = onToggleDrawingLock,
+                                    onDeleteDrawing = onDeleteDrawingById,
+                                    onSetAllDrawingsVisibility = onSetAllDrawingsVisibility,
+                                    onClearUnlockedDrawings = onClearUnlockedDrawings,
+                                    onDismiss = { activeSheet = ChartControlSheet.NONE }
+                                )
+                            }
+
+                            ChartControlSheet.STRATEGY_LAB -> {
+                                es.manico.chartintelligence.ui.components.StrategyLabSheetContent(
+                                    symbolCode = activeTab.symbolCode,
+                                    timeframe = activeTab.timeframe,
+                                    chartId = activeTab.chartId,
+                                    candles = activeTab.candles,
+                                    onDismiss = { activeSheet = ChartControlSheet.NONE }
+                                )
                             }
 
                             ChartControlSheet.NONE -> Unit

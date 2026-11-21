@@ -8,6 +8,7 @@ import {
   normalizeHexForWeb,
 } from '../core/store.js?v=1.47.41';
 import { renderSymbolBadge, getSymbolCategoryKey, getShortCategoryLabel } from './watchlistView.js?v=1.47.41';
+import { renderAdminUsersCard } from './adminUsersView.js?v=1.47.41';
 
 export function renderLanguageThemeBar(i18n) {
   const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -989,6 +990,8 @@ export function renderSettingsModal(i18n) {
           </div>
         </form>
       </div>
+
+      ${renderAdminUsersCard(i18n)}
 
       ${encryptedBackupCard}
 

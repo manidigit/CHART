@@ -249,6 +249,7 @@ object DrawingGeometryAlgorithm {
         hitTolerancePx: Float = 24f
     ): ChartDrawing? {
         for (drawing in drawings.asReversed()) {
+            if (!drawing.visible) continue
             val distance = when (drawing) {
                 is ChartDrawing.HorizontalLine -> {
                     val y = priceToY(drawing.price.toDouble())
@@ -383,6 +384,7 @@ object DrawingGeometryAlgorithm {
         deltaTimeMillis: Long,
         deltaPrice: BigDecimal
     ): ChartDrawing {
+        if (drawing.locked) return drawing
         return when (drawing) {
             is ChartDrawing.HorizontalLine -> {
                 val nextPrice = CandleValidatorAlgorithm.normalizeDecimal(
