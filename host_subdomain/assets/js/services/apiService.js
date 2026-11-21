@@ -24,9 +24,11 @@ import {
   invalidateTabStructuralForecastIfStale,
   isFocusPullSuspended,
   safeLocalStorageSet,
-} from '../core/store.js?v=1.47.40';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.40';
+  markCandleKeyHydratedFromServer,
+  isCandleKeyHydratedFromServer,
+} from '../core/store.js?v=1.47.41';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.41';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
@@ -1194,8 +1196,11 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
       ? exactCached
       : getCachedOrAggregatedCandles(symbolCode, provider, normTf);
   const minBarsForDelta = 30;
+  const isServerHydrated =
+    isCandleKeyHydratedFromServer(cacheKey) ||
+    (Array.isArray(exactCached) && exactCached.length > 250);
   const lastLocalOpenMs =
-    !forceBackfill && existingCached && existingCached.length >= minBarsForDelta
+    !forceBackfill && isServerHydrated && existingCached && existingCached.length >= minBarsForDelta
       ? Number(existingCached[existingCached.length - 1].open_time_utc_ms || 0)
       : 0;
   const stepMs = PriceFormatter.stepMilliseconds(normTf);
@@ -1250,6 +1255,9 @@ async function fetchFromBackend(symbolCode, provider, timeframe, limit = 2500, f
       }
       if (Array.isArray(json.data.candles) && json.data.candles.length > 0) {
         candles = mergeCandlesIdempotent(candles, json.data.candles, normTf, nowMs, symbolCode);
+      }
+      if (!sinceParam) {
+        markCandleKeyHydratedFromServer(cacheKey);
       }
       if (syncMeta.provider_status === 'API_KEY_REQUIRED' || syncMeta.provider_status === 'DEGRADED') {
         syncOk = false;

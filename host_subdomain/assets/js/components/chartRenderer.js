@@ -1,6 +1,6 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
-import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.47.40';
-import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.47.40';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
+import { TechnicalIndicators } from '../algorithms/technicalIndicators.js?v=1.47.41';
+import { DrawingGeometry } from '../algorithms/drawingGeometry.js?v=1.47.41';
 import {
   state,
   getInstrumentSpec,
@@ -8,7 +8,7 @@ import {
   hexToRgba,
   isChronosForecastMatchingTab,
   isStructuralForecastMatchingTab,
-} from '../core/store.js?v=1.47.40';
+} from '../core/store.js?v=1.47.41';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
   if (!lastOpenEpochSec) return '';

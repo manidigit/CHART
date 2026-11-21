@@ -1,4 +1,4 @@
-import { PriceFormatter } from './priceFormatter.js?v=1.47.40';
+import { PriceFormatter } from './priceFormatter.js?v=1.47.41';
 
 /**
  * ENG-03 · Web Client Gap Detector Engine matching GapDetector.php & GapDetectorAlgorithm.kt.

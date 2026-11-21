@@ -2,13 +2,13 @@ import {
   state,
   isStructuralForecastMatchingTab,
   clearTabStructuralForecast,
-} from '../core/store.js?v=1.47.40';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
+} from '../core/store.js?v=1.47.41';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
 import {
   computeStructuralForecast,
   computeClosedCandlesDigest,
   STRUCTURAL_FORECAST_ENGINE_ID,
-} from '../algorithms/structuralForecastEngine.js?v=1.47.40';
+} from '../algorithms/structuralForecastEngine.js?v=1.47.41';
 
 const _structuralForecastMemoryCache = new Map();
 let _workerInstance = null;
@@ -49,7 +49,7 @@ function runInBrowserWorkerOrInline(params) {
     try {
       if (!_workerInstance) {
         _workerInstance = new Worker(
-          new URL('../workers/structuralForecastWorker.js?v=1.47.40', import.meta.url),
+          new URL('../workers/structuralForecastWorker.js?v=1.47.41', import.meta.url),
           { type: 'module' }
         );
       }

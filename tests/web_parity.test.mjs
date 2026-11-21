@@ -136,7 +136,7 @@ test('ARCH-01: every browser module shares one canonical store.js module URL', a
         assert.ok(match, `Missing shared store import in ${file}`);
         versions.push(match[1]);
     }
-    assert.deepEqual([...new Set(versions)], ['1.47.40'], 'All UI, chart, forecast and service modules must share one store singleton');
+    assert.deepEqual([...new Set(versions)], ['1.47.41'], 'All UI, chart, forecast and service modules must share one store singleton');
 });
 
 test('ARCH-02: unified ES module cache-busting, global store singleton guard, overlay cleanup & focus-pull tab guard', async () => {
@@ -1153,14 +1153,14 @@ test('CHRONOS2-INTEGRATION: pinned amazon/chronos-2 revision, 21-quantile Close-
     const appJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/app.js'), 'utf8');
     const storeJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/core/store.js'), 'utf8');
     const apiServiceJsSrc = fs.readFileSync(path.resolve('host_subdomain/assets/js/services/apiService.js'), 'utf8');
-    assert.equal(indexHtmlSrc.includes('?v=1.47.40'), true);
+    assert.equal(indexHtmlSrc.includes('?v=1.47.41'), true);
     assert.equal(indexHtmlSrc.includes('?v=1.47.0'), false);
     assert.equal(indexHtmlSrc.includes('?v=1.46.1'), false);
     assert.equal(indexHtmlSrc.includes('?v=1.45.2'), false);
     assert.equal(appJsSrc.includes('?v=1.43.0'), false);
     assert.equal(appJsSrc.includes('?v=1.46.1'), false);
     assert.equal(appJsSrc.includes('?v=1.47.0'), false);
-    assert.equal(appJsSrc.includes('?v=1.47.40'), true);
+    assert.equal(appJsSrc.includes('?v=1.47.41'), true);
 
     // Verify Strictly On-Demand Architecture: No Cron dependency, No Queue files, No Auto-execution
     assert.equal(phpEndpointSrc.includes('enqueue_only'), false, 'Endpoint must not support enqueue_only');
@@ -1747,7 +1747,7 @@ test('FORECAST-NEW-COMPARE-02: selected Native model carries successful peer tra
 
 test('FORECAST-NEW-COMPARE-03: main chart renderer module cache is invalidated with comparison overlay release', async () => {
   const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
-  assert.match(app, /chartRenderer\.js\?v=1\.47\.40/);
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.41/);
 });
 
 test('FORECAST-PHASE1-PARITY-01: adapter preserves AUTO OOS metadata, render mode, and validated Coordinated MTF points', async () => {
@@ -1847,9 +1847,9 @@ test('FORECAST-PHASE3-LEGACY-CLEANUP-01: Phase 3 removes Legacy Studio UI, chart
   assert.doesNotMatch(header, /toggle-legacy-forecast-chart/);
   assert.doesNotMatch(renderer, /legacyForecastPoints|hasValidLegacyForecast|Legacy Forecast Studio/);
   assert.doesNotMatch(app, /renderForecastStudioView|LEGACY_MIGRATED_UI_DISABLED|toggle-legacy-forecast-chart|apply-forecast-to-chart|set-forecast-engine|data-engine="legacy"/);
-  assert.match(app, /forecastView\.js\?v=1\.47\.40/);
-  assert.match(app, /headerView\.js\?v=1\.47\.40/);
-  assert.match(app, /chartRenderer\.js\?v=1\.47\.40/);
+  assert.match(app, /forecastView\.js\?v=1\.47\.41/);
+  assert.match(app, /headerView\.js\?v=1\.47\.41/);
+  assert.match(app, /chartRenderer\.js\?v=1\.47\.41/);
   assert.match(store, /forecastEngineMode:\s*'structural',\s*showFutureProjection:\s*false/);
 });
 
@@ -2056,7 +2056,7 @@ test('FORECAST-PKG1-MODELS-04: GRU is prefix-invariant across horizons, Prophet 
   assert.equal(prophet.status, 'SUCCESS');
   assert.ok(prophet.sigmas[0] <= feats.uncondSigma * 2.0, `Prophet step sigma (${prophet.sigmas[0]}) must stay on return-volatility scale, not level-residual scale`);
 
-  assert.match(appSrc, /state\._forecastCanvasPayload = structuralPreview \|\| nativeEvaluation \|\| null/);
+  assert.match(appSrc, /state\._forecastCanvasPayload = structuralPreview \|\| smcDirectPreview \|\| nativeEvaluation \|\| null/);
   assert.match(appSrc, /action === 'set-forecast-horizon'[\s\S]{0,1200}applyNativeModelForecastToTab\(activeTab, activeTab\.structuralForecastModel\)/);
 });
 
@@ -2581,6 +2581,40 @@ test('FORECAST-SMC-ENGINE-01: independent causal SMCPredictionEngine (smc_predic
   assert.equal(replay.status, 'COMPLETED');
   assert.equal(replay.selectedModelId, 'smc_prediction_js');
   assert.ok(replay.windows.every((w) => w.modelId === 'smc_prediction_js'), 'SMC Replay must score smc_prediction_js directly');
+});
+
+test('BUGFIX-V14741-UI-SYNC-TF-SMC: topbar pinning, full MariaDB hydration past 250-bar mirror, smc_prediction_js allowlist/preview, and timeframe-switch forecast auto-recompute', async () => {
+  const css = await readFile(new URL('../host_subdomain/assets/css/theme.css', import.meta.url), 'utf8');
+  const html = await readFile(new URL('../host_subdomain/index.html', import.meta.url), 'utf8');
+  const app = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const api = await readFile(new URL('../host_subdomain/assets/js/services/apiService.js', import.meta.url), 'utf8');
+  const storeMod = await import('../host_subdomain/assets/js/core/store.js');
+
+  // 1. Topbar right-edge overflow prevention & CSS cache-busting
+  assert.match(css, /\.tv-topbar\s*\{[\s\S]*?overflow:\s*hidden;/, 'Topbar container must keep overflow:hidden so right actions stay pinned');
+  assert.match(css, /\.tv-topbar-left\s*\{[\s\S]*?flex:\s*1\s+1\s+auto;[\s\S]*?min-width:\s*0;[\s\S]*?overflow-x:\s*auto;/, 'Topbar left must flex/scroll internally');
+  assert.match(css, /\.tv-topbar-right\s*\{[\s\S]*?flex-shrink:\s*0;/, 'Topbar right controls must never shrink off-screen');
+  assert.match(html, /theme\.css\?v=1\.47\.41/, 'index.html must cache-bust theme.css to v1.47.41');
+
+  // 2. Full MariaDB history hydration past the 250-bar localStorage mirror cap (STORAGE-QUOTA-01 preserved)
+  assert.equal(typeof storeMod.markCandleKeyHydratedFromServer, 'function');
+  assert.equal(typeof storeMod.isCandleKeyHydratedFromServer, 'function');
+  const probeKey = 'XAUUSD_tvdatafeed_M15_PROBE';
+  assert.equal(storeMod.isCandleKeyHydratedFromServer(probeKey), false);
+  storeMod.markCandleKeyHydratedFromServer(probeKey);
+  assert.equal(storeMod.isCandleKeyHydratedFromServer(probeKey), true);
+  assert.match(api, /isServerHydrated\s*=\s*[\s\S]*isCandleKeyHydratedFromServer\(cacheKey\)/, 'fetchFromBackend must require server hydration before enabling since_ms delta-only fetch');
+  assert.match(api, /if\s*\(!sinceParam\)\s*\{\s*markCandleKeyHydratedFromServer\(cacheKey\);\s*\}/, 'Full server fetch must mark cacheKey as hydrated');
+  assert.match(app, /directPreviewCanvasCardHtml/, 'Forecast Studio must render live Structural/SMC preview canvas alongside DATA_NOT_READY notice');
+
+  // 3. SMCPredictionEngine prominence, click allowlist, and direct preview/plot fallback
+  assert.match(app, /allowedCustomModels\s*=\s*\[[^\]]*'smc_prediction_js'/, 'set-structural-forecast-model must allow selecting smc_prediction_js');
+  assert.match(app, /resolvedModelId === 'smc_prediction_js'[\s\S]{0,250}computeSmcPrediction/, 'applyNativeModelForecastToTab must support direct SMC fallback when <318 bars');
+
+  // 4. Timeframe switch preserves active forecast settings and auto-recomputes on new timeframe
+  assert.match(app, /action === 'set-timeframe'[\s\S]{0,600}const wasForecastActive = Boolean\(activeTab\.showStructuralForecast\)/, 'set-timeframe must capture active forecast state before clearing stale points');
+  assert.match(app, /action === 'set-timeframe'[\s\S]{0,1600}recomputeActiveTabForecast\(activeTab/, 'set-timeframe must auto-recompute active forecast on new timeframe');
+  assert.match(app, /action === 'set-date-range'[\s\S]{0,2000}recomputeActiveTabForecast\(activeTab/, 'set-date-range must auto-recompute active forecast when timeframe changes');
 });
 
 

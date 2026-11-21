@@ -1,7 +1,7 @@
 # گزارش و لیست مشکلات فنی شناسایی‌شده (Known Issues Backlog)
 
-**تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۲۰ نوامبر ۲۰۲۶ (`v1.47.40`)  
-**وضعیت:** تمامی موارد ۱ تا ۱۷ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`50/50` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
+**تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۲۱ نوامبر ۲۰۲۶ (`v1.47.41`)  
+**وضعیت:** تمامی موارد ۱ تا ۱۸ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`51/51` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
 
 ---
 
@@ -349,8 +349,15 @@
   - **یکپارچه‌سازی کامل در کل اکوسیستم Forecast Studio:** افزودن دکمه مستقل **`موتور نقدینگی SMC` (`SMC Prediction Engine`)** در `app.js`، بنچمارک علّی در `walkForwardEvaluator.js` (قابل انتخاب در `AUTO OOS`)، نمایش در `Compare Overlays` با رنگ `#06B6D4` + نقاط عطف الماسی + خط مرجع `POC` و هاور HUD، پشتیبانی در کش `BASE_RESELECT` و اجرای مستقیم بدون بازگشت به `naive_persistence` در `Historical Replay`.
 - **راستی‌آزمایی:** `node --check` روی هر ۵ ماژول ایجاد/اصلاح‌شده و **۵۰/۵۰ پاس** در `tests/web_parity.test.mjs` (افزودن تست `FORECAST-SMC-ENGINE-01`).
 
+---
 
+## ۱۸. رفع چهار باگ محیط زنده: سرریز نوار بالا، خطای `DATA_NOT_READY (found 250)`، کش‌شکن و انتخاب `SMCPredictionEngine` و حفظ پیش‌بینی در تعویض تایم‌فریم (`BUGFIX-V14741-UI-SYNC-TF-SMC` · `v1.47.41`) — ✅ حل و تست شد
 
-
-
-
+- **اولویت:** بحرانی / بالا (P0 / P1)
+- **تاریخ گزارش و رفع قطعی:** ۲۱ نوامبر ۲۰۲۶
+- **۴ باگ گزارش‌شده و اصلاحات اعمال‌شده:**
+  1. **بیرون‌زدگی دکمه‌های سمت راست نوار منوی بالا در صفحه چارت (`assets/css/theme.css?v=1.47.41`):** `.tv-topbar` به `overflow: hidden` تغییر یافت، `.tv-topbar-left` به‌صورت منعطف (`flex: 1 1 auto; min-width: 0; overflow-x: auto`) و `.tv-open-tabs-strip` با عرض انعطاف‌پذیر (`flex: 0 1 280px; min-width: 112px; max-width: 340px`) تنظیم شد و `.tv-topbar-right` همیشه در سمت راست ثابت (`flex-shrink: 0`) پین شد تا دکمه‌های وضعیت، `CSV`، اسنپ‌شات، رفرش و تمام‌صفحه هرگز از کادر بیرون نزنند.
+  2. **خطای کاذب `DATA_NOT_READY (found 250)` و پنهان شدن بوم پیش‌نمایش (`core/store.js`, `services/apiService.js`, `app.js`):** با حفظ سقف ۲۵۰ کندل در `localStorage` (`STORAGE-QUOTA-01`)، ردیابی هیدراتاسیون سرور در RAM (`markCandleKeyHydratedFromServer` / `isCandleKeyHydratedFromServer`) اضافه شد تا `fetchFromBackend` قبل از دریافت تاریخچه کامل MariaDB وارد حالت دلتای `since_ms` نشود؛ همچنین هنگام ورود به `Forecast Studio` در صورت ناقص بودن حافظه، همگام‌سازی کامل به‌صورت خودکار آغاز شده و بوم پیش‌نمایش `#forecast-studio-canvas` برای `Structural JS` و `SMC Prediction Engine` در کنار پیام `DATA_NOT_READY` نمایش داده می‌شود.
+  3. **عدم نمایش و عدم انتخاب `SMCPredictionEngine` (`app.js`, `index.html`, کل ماژول‌های JS):** شناسه `'smc_prediction_js'` به allowlist هندلر `set-structural-forecast-model` اضافه شد، دکمه **`SMC Prediction Engine` (`موتور نقدینگی SMC`)** به ردیف اول کنار `Structural JS` و `Auto (OOS Best)` منتقل گردید، fallback مستقیم `computeSmcPrediction()` برای داده‌های کمتر از ۳۱۸ کندل اضافه شد و نسخه کش‌شکن در `index.html` (شامل `theme.css` و `app.js`) و تمام ۲۷ ماژول JS به‌صورت یکپارچه به **`?v=1.47.41`** ارتقا یافت.
+  4. **ریست شدن پیش‌بینی فعال هنگام تعویض تایم‌فریم (`15m` → `1h`) (`app.js`):** با افزودن `recomputeActiveTabForecast()` و اصلاح `set-timeframe` و `set-date-range`، هنگام تغییر تایم‌فریم پیش‌بینی کهنه تایم‌فریم قبلی پاک می‌شود اما وضعیت فعال و تمام تنظیمات (مدل، افق، حالت نمایش و باند) حفظ شده و پس از آماده شدن کندل‌های تایم‌فریم جدید (و پایان `isSyncing`) به‌صورت خودکار روی تایم‌فریم جدید محاسبه و رسم می‌گردد.
+- **راستی‌آزمایی:** `node --check` روی فایل‌های JS اصلاح‌شده و **۵۱/۵۱ پاس** در `tests/web_parity.test.mjs` (تست `BUGFIX-V14741-UI-SYNC-TF-SMC` + تطابق نسخه یکپارچه `ARCH-01`/`ARCH-02` روی `1.47.41`).

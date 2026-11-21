@@ -5,9 +5,9 @@ import {
   clampHorizonBars,
   computeHorizonRequirements,
   enforceMonotonicQuantiles,
-} from './forecastContract.js?v=1.47.40';
-import { extractForecastFeatures } from './featureExtractor.js?v=1.47.40';
-import { NaivePersistenceModel } from './models/baselineModels.js?v=1.47.40';
+} from './forecastContract.js?v=1.47.41';
+import { extractForecastFeatures } from './featureExtractor.js?v=1.47.41';
+import { NaivePersistenceModel } from './models/baselineModels.js?v=1.47.41';
 import {
   applyConformalAdjustmentToQuantiles,
   buildZeroDriftLogNormalNaiveQuantiles,
@@ -17,10 +17,10 @@ import {
   computeWis5Q,
   fitVolatilityNormalizedConformal,
   hlnModifiedDieboldMariano,
-} from './statisticalTests.js?v=1.47.40';
-import { EmpiricalAnalogEngine } from './empiricalAnalogEngine.js?v=1.47.40';
-import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
-import { computeSmcPrediction } from './smcPredictionEngine.js?v=1.47.40';
+} from './statisticalTests.js?v=1.47.41';
+import { EmpiricalAnalogEngine } from './empiricalAnalogEngine.js?v=1.47.41';
+import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.41';
+import { computeSmcPrediction } from './smcPredictionEngine.js?v=1.47.41';
 
 function pinball(actual, qPred, tau) {
   const err = actual - qPred;

@@ -1,5 +1,5 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
-import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.40';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
+import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.41';
 
 const STORAGE_KEY_THEME = 'ci_theme_dark';
 const STORAGE_KEY_PREFS = 'ci_chart_prefs_v4';
@@ -1333,6 +1333,7 @@ const _storeSingleton =
     autoSyncTimerId: null,
     suspendFocusPullUntilMs: 0,
     resolvedCandlesMemo: new Map(),
+    serverHydratedCandleKeys: new Set(),
     candleCacheRev: 1,
   });
 
@@ -1958,6 +1959,22 @@ export function saveCandlesToCache(key, candles, maxLimit = 5000, symbolCode = '
     JSON.stringify(normalized.slice(-LOCAL_CANDLE_CACHE_MAX_BARS)),
     { isCandleCache: true }
   );
+}
+
+export function markCandleKeyHydratedFromServer(key) {
+  if (!key) return;
+  if (!_storeSingleton.serverHydratedCandleKeys) {
+    _storeSingleton.serverHydratedCandleKeys = new Set();
+  }
+  _storeSingleton.serverHydratedCandleKeys.add(String(key));
+}
+
+export function isCandleKeyHydratedFromServer(key) {
+  if (!key) return false;
+  if (!_storeSingleton.serverHydratedCandleKeys) {
+    _storeSingleton.serverHydratedCandleKeys = new Set();
+  }
+  return _storeSingleton.serverHydratedCandleKeys.has(String(key));
 }
 
 export function getCachedOrAggregatedCandles(symbolCode, provider, timeframe) {

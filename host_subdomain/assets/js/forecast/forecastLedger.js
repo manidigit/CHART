@@ -7,9 +7,9 @@ import {
   canonicalJson,
   canonicalJsonV1Legacy,
   sha256Hex,
-} from './forecastContract.js?v=1.47.40';
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
-import { safeLocalStorageSet } from '../core/store.js?v=1.47.40';
+} from './forecastContract.js?v=1.47.41';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
+import { safeLocalStorageSet } from '../core/store.js?v=1.47.41';
 
 const LEDGER_STORAGE_KEY = 'ci_forecast_ledger_v1';
 const LIFECYCLE_STORAGE_KEY = 'ci_forecast_lifecycle_v1';

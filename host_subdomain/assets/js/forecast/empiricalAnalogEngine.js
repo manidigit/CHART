@@ -3,7 +3,7 @@ import {
   clampHorizonBars,
   enforceMonotonicQuantiles,
   roundToSignificant,
-} from './forecastContract.js?v=1.47.40';
+} from './forecastContract.js?v=1.47.41';
 
 function clamp(v, lo, hi) {
   return Math.max(lo, Math.min(hi, v));

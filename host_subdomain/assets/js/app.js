@@ -1,4 +1,4 @@
-import { I18nManager } from './core/i18n.js?v=1.47.40';
+import { I18nManager } from './core/i18n.js?v=1.47.41';
 import {
   state,
   PROVIDER_METHODS_CATALOG,
@@ -39,7 +39,8 @@ import {
   clearTabStructuralForecast,
   invalidateTabStructuralForecastIfStale,
   reconcileTabStructuralForecastOnRender,
-} from './core/store.js?v=1.47.40';
+  isCandleKeyHydratedFromServer,
+} from './core/store.js?v=1.47.41';
 import {
   syncServerAuthStatus,
   fetchSystemStatus,
@@ -61,31 +62,32 @@ import {
   uploadHistoricalImport,
   fetchImportBatches,
   clearChronos2TimerForTab,
-} from './services/apiService.js?v=1.47.40';
-import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.40';
-import { computeStructuralForecast } from './algorithms/structuralForecastEngine.js?v=1.47.40';
-import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.40';
-import { GapDetector } from './algorithms/gapDetector.js?v=1.47.40';
-import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.40';
-import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.40';
-import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.40';
-import { renderLoginScreen } from './views/loginView.js?v=1.47.40';
+} from './services/apiService.js?v=1.47.41';
+import { requestStructuralForecastForTab } from './services/structuralForecastService.js?v=1.47.41';
+import { computeStructuralForecast } from './algorithms/structuralForecastEngine.js?v=1.47.41';
+import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.41';
+import { GapDetector } from './algorithms/gapDetector.js?v=1.47.41';
+import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.41';
+import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.41';
+import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.41';
+import { renderLoginScreen } from './views/loginView.js?v=1.47.41';
 import {
   renderTopHeaderBar,
   renderBottomChartBar,
   renderIndicatorsModal,
-} from './views/headerView.js?v=1.47.40';
-import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.40';
+} from './views/headerView.js?v=1.47.41';
+import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.41';
 import {
   renderRightSplitPanel,
   renderSymbolOverviewModal,
   renderSymbolBadge,
-} from './views/watchlistView.js?v=1.47.40';
-import { renderSettingsModal } from './views/settingsView.js?v=1.47.40';
-import { renderForecastStudioFanCanvas, bindForecastCanvasHover, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=1.47.40';
-import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=1.47.40';
-import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.47.40';
-import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.47.40';
+} from './views/watchlistView.js?v=1.47.41';
+import { renderSettingsModal } from './views/settingsView.js?v=1.47.41';
+import { renderForecastStudioFanCanvas, bindForecastCanvasHover, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=1.47.41';
+import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=1.47.41';
+import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.47.41';
+import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.47.41';
+import { computeSmcPrediction } from './forecast/smcPredictionEngine.js?v=1.47.41';
 
 const i18n = new I18nManager();
 let countdownIntervalId = null;
@@ -131,13 +133,15 @@ function invalidateForecastAfterModelConfigChange(tab, changedModelId = '') {
   saveOpenTabsToStorage();
 }
 
-function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
+function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence', opts = {}) {
   if (!tab) return false;
+  const preserveActiveOnInsufficient = Boolean(opts?.preserveActiveOnInsufficient);
   const requestedModelId = String(modelId || 'AUTO');
   const coordMode = state.forecastCoordView === 'coordinated' ? 'coordinated' : 'independent';
   const renderMode = String(tab.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART');
+  const clampedHorizon = Math.max(10, Math.min(60, Number(tab.structuralForecastHorizonBars || tab.forecastHorizonBars || 30)));
   const built = buildForecastForTab(tab, {
-    horizonBars: Math.max(10, Math.min(60, Number(tab.structuralForecastHorizonBars || tab.forecastHorizonBars || 30))),
+    horizonBars: clampedHorizon,
     selectedModelId: requestedModelId,
     renderMode,
     workerUrl: '',
@@ -145,8 +149,23 @@ function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
   const resolvedModelId = requestedModelId === 'AUTO'
     ? String(built?.result?.selectedChartModelId || 'naive_persistence')
     : requestedModelId;
-  const trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === resolvedModelId);
   const candles = Array.isArray(tab.candles) ? tab.candles : [];
+  let trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === resolvedModelId);
+  let directSmcResult = null;
+  if (!trajectory && resolvedModelId === 'smc_prediction_js' && candles.length >= 40) {
+    directSmcResult = computeSmcPrediction(candles, null, clampedHorizon, {
+      timeframe: tab.timeframe || 'M15',
+    });
+    if (directSmcResult?.status === 'SUCCESS' && Array.isArray(directSmcResult.points) && directSmcResult.points.length > 0) {
+      trajectory = {
+        modelId: 'smc_prediction_js',
+        modelName: directSmcResult.modelName || 'SMC Prediction Engine',
+        status: 'SUCCESS',
+        points: directSmcResult.points,
+        turningPoints: directSmcResult.turningPoints || [],
+      };
+    }
+  }
   const lastClosed = [...candles].reverse().find((c) => {
     const ms = Number(c?.open_time_utc_ms || 0);
     return ms > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(ms, tab.timeframe || 'M15', Date.now(), tab.symbolCode || 'XAUUSD');
@@ -155,10 +174,10 @@ function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
     symbolCode: tab.symbolCode,
     provider: tab.provider,
     timeframe: tab.timeframe,
-    horizonBars: built?.result?.horizonBars,
+    horizonBars: built?.result?.horizonBars || clampedHorizon,
     originOpenTimeUtcMs: lastClosed?.open_time_utc_ms,
     lastClosedPrice: lastClosed?.close,
-    forecastStatus: built?.result?.status,
+    forecastStatus: directSmcResult ? 'PROVISIONAL' : built?.result?.status,
     inputHash: built?.result?.inputHash,
     walkForward: built?.result?.walkForward,
     experimentalOnly: Boolean(defaultForecastRegistry.getPlugin(resolvedModelId)?.experimentalOnly),
@@ -166,11 +185,11 @@ function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
     renderMode,
     coordMode,
     coordinatedPoints: built?.result?.mtfCoordination?.coordinatedPoints,
-    selectionMode: built?.result?.selectionMode,
-    regime: built?.result?.regime,
+    selectionMode: directSmcResult ? 'DIRECT_SMC' : built?.result?.selectionMode,
+    regime: directSmcResult?.meta?.structureBias || built?.result?.regime,
     oodStatus: built?.result?.uncertainty?.oodStatus,
     edgeGateState: built?.result?.noEdgeGate?.gateState,
-    keyZones: built?.result?.keyZones,
+    keyZones: directSmcResult?.smcZones || built?.result?.keyZones,
   });
   if (adapted && Array.isArray(built?.result?.modelTrajectories)) {
     adapted.comparisonTrajectories = built.result.modelTrajectories
@@ -187,13 +206,21 @@ function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
   }
   if (!adapted) {
     tab.structuralForecast = null;
-    tab.showStructuralForecast = false;
-    tab.structuralForecastStatus = 'INSUFFICIENT_EVIDENCE';
-    tab.structuralForecastError = `${resolvedModelId} has no complete trajectory for the current closed-candle series.`;
+    if (preserveActiveOnInsufficient) {
+      tab.showStructuralForecast = true;
+      tab.structuralForecastStatus = opts?.stillSyncing ? 'COMPUTING' : 'INSUFFICIENT_EVIDENCE';
+      tab.structuralForecastError = opts?.stillSyncing
+        ? ''
+        : `${resolvedModelId} has no complete trajectory for the current closed-candle series.`;
+    } else {
+      tab.showStructuralForecast = false;
+      tab.structuralForecastStatus = 'INSUFFICIENT_EVIDENCE';
+      tab.structuralForecastError = `${resolvedModelId} has no complete trajectory for the current closed-candle series.`;
+    }
     return false;
   }
-  tab.forecastHorizonBars = built.result.horizonBars;
-  tab.structuralForecastHorizonBars = built.result.horizonBars;
+  tab.forecastHorizonBars = built?.result?.horizonBars || clampedHorizon;
+  tab.structuralForecastHorizonBars = built?.result?.horizonBars || clampedHorizon;
   tab.structuralForecastModel = requestedModelId;
   tab.selectedForecastModelId = requestedModelId;
   tab.structuralForecast = adapted;
@@ -204,6 +231,43 @@ function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence') {
   tab.showChronosForecast = false;
   clearTabChronosForecast(tab);
   return true;
+}
+
+function recomputeActiveTabForecast(tab, { preserveActiveOnInsufficient = false, stillSyncing = false } = {}) {
+  if (!tab || !tab.showStructuralForecast) return;
+  const activeModel = String(tab.structuralForecastModel || tab.selectedForecastModelId || 'structural_wave_js');
+  const candles = Array.isArray(tab.candles) ? tab.candles : [];
+  if (candles.length < 40) {
+    tab.structuralForecast = null;
+    if (preserveActiveOnInsufficient) {
+      tab.structuralForecastStatus = stillSyncing ? 'COMPUTING' : 'INSUFFICIENT_EVIDENCE';
+      tab.structuralForecastError = '';
+    } else {
+      tab.structuralForecastStatus = 'INSUFFICIENT_EVIDENCE';
+    }
+    renderApp();
+    redrawActiveCanvas();
+    return;
+  }
+  if (activeModel !== 'structural_wave_js') {
+    applyNativeModelForecastToTab(tab, activeModel, { preserveActiveOnInsufficient, stillSyncing });
+    saveOpenTabsToStorage();
+    renderApp();
+    redrawActiveCanvas();
+  } else {
+    tab.structuralForecastStatus = 'COMPUTING';
+    tab.structuralForecastError = '';
+    requestStructuralForecastForTab(tab, () => {
+      renderApp();
+      redrawActiveCanvas();
+    }).catch((err) => {
+      tab.structuralForecast = null;
+      tab.structuralForecastStatus = 'ERROR';
+      tab.structuralForecastError = (err && err.message) || 'Structural forecast execution failed';
+      renderApp();
+      redrawActiveCanvas();
+    });
+  }
 }
 
 function ensureInitialTabs(forceHydrate = false) {
@@ -830,9 +894,9 @@ function renderForecastWorkspaceContent(activeTab) {
   const currentModel = String(activeTab?.structuralForecastModel || 'structural_wave_js');
   const nativeModelChoices = defaultForecastRegistry.list();
   const nativeModelButtons = [
+    { id: 'smc_prediction_js', name: isFa ? 'موتور نقدینگی SMC' : 'SMC Prediction Engine', enabled: true, weight: 1, experimentalOnly: false },
     { id: 'AUTO', name: isFa ? 'خودکار (بهترین OOS)' : 'Auto (OOS Best)', enabled: true, weight: 1, experimentalOnly: false },
     ...nativeModelChoices,
-    { id: 'smc_prediction_js', name: isFa ? 'موتور نقدینگی SMC' : 'SMC Prediction Engine', enabled: true, weight: 1, experimentalOnly: false },
     { id: 'empirical_analogs', name: isFa ? 'آنالوگ‌های تاریخی علّی' : 'Causal Historical Analogs', enabled: true, weight: 1, experimentalOnly: false },
     { id: 'ensemble', name: 'Calibrated Ensemble (V2)', enabled: true, weight: 1, experimentalOnly: false },
   ].map((model) => {
@@ -865,6 +929,11 @@ function renderForecastWorkspaceContent(activeTab) {
     nativeEvaluation.visibleComparisonModelIds = visibleCompareIds;
     state._lastForecastResult = nativeEvaluation;
   }
+  const previewCandles = activeTab
+    ? (Array.isArray(activeTab.candles) && activeTab.candles.length > 0
+        ? activeTab.candles
+        : getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, activeTab.timeframe))
+    : [];
   const structuralForecast = activeTab?.structuralForecast;
   let structuralForecastForPreview =
     structuralForecast?.status === 'READY' &&
@@ -873,10 +942,6 @@ function renderForecastWorkspaceContent(activeTab) {
       ? structuralForecast
       : null;
   if (!usesNativeEvaluation && nativeTab === 'overview' && !structuralForecastForPreview && activeTab) {
-    const previewCandles =
-      Array.isArray(activeTab.candles) && activeTab.candles.length > 0
-        ? activeTab.candles
-        : getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, activeTab.timeframe);
     const lastPrevBar = previewCandles.length > 0 ? previewCandles[previewCandles.length - 1] : null;
     const structMemoKey = [
       activeCode,
@@ -926,7 +991,33 @@ function renderForecastWorkspaceContent(activeTab) {
         visibleComparisonModelIds: visibleCompareIds,
       }
     : null;
-  state._forecastCanvasPayload = structuralPreview || nativeEvaluation || null;
+  let smcDirectPreview = null;
+  if (
+    currentModel === 'smc_prediction_js' &&
+    nativeTab === 'overview' &&
+    (!nativeEvaluation || nativeEvaluation.status === 'DATA_NOT_READY') &&
+    previewCandles.length >= 40
+  ) {
+    const smcComputed = computeSmcPrediction(previewCandles, null, horizon, {
+      timeframe: activeTab?.timeframe || 'M15',
+    });
+    if (smcComputed?.status === 'SUCCESS' && Array.isArray(smcComputed.points) && smcComputed.points.length > 0) {
+      smcDirectPreview = {
+        points: smcComputed.points,
+        turningPoints: smcComputed.turningPoints || [],
+        renderMode: activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART',
+        selectedChartModelId: 'smc_prediction_js',
+        smcPoc: smcComputed.meta?.poc ?? null,
+        smcZones: smcComputed.smcZones || [],
+        keyZones: smcComputed.smcZones || [],
+        modelTrajectories: [],
+        visibleComparisonModelIds: [],
+        meta: smcComputed.meta || {},
+      };
+    }
+  }
+  const directEnginePreview = structuralPreview || smcDirectPreview || null;
+  state._forecastCanvasPayload = structuralPreview || smcDirectPreview || nativeEvaluation || null;
   const activeStructMeta = structuralForecastForPreview || structuralForecast;
   const structZonesCount = Number(activeStructMeta?.engine?.params?.structural_zones_count || 0);
   const structAgreeScore = activeStructMeta?.engine?.params?.analog_agreement_score;
@@ -946,8 +1037,18 @@ function renderForecastWorkspaceContent(activeTab) {
         </div>
       </div>`
     : '';
+  const directPreviewCanvasCardHtml =
+    directEnginePreview && (!nativeEvaluation || nativeEvaluation.status === 'DATA_NOT_READY')
+      ? `<div class="ci-fc-card" style="margin-bottom:12px;">
+          <div class="row-between" style="gap:8px;flex-wrap:wrap;margin-bottom:8px;">
+            <strong style="font-size:12.5px;">${currentModel === 'smc_prediction_js' ? (isFa ? 'پیش‌نمایش مستقیم موتور نقدینگی SMC' : 'SMC Prediction Engine Live Preview') : (isFa ? 'پیش‌نمایش مستقیم موج ساختاری (Structural JS)' : 'Structural Wave JS Live Preview')}</strong>
+            <span class="ci-fc-family-tag ltr-num">${directEnginePreview.points.length} bars · ${previewCandles.length} closed bars loaded</span>
+          </div>
+          <canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas"></canvas>
+        </div>`
+      : '';
   const overviewContent = nativeEvaluation
-    ? structuralBannerHtml + renderOverviewPanel(nativeEvaluation, activeTab, decimals, isFa, state.forecastCoordView || 'independent')
+    ? structuralBannerHtml + directPreviewCanvasCardHtml + renderOverviewPanel(nativeEvaluation, activeTab, decimals, isFa, state.forecastCoordView || 'independent')
     : structuralBannerHtml + '<div class="ci-fc-card"><canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas"></canvas></div>';
   const nativePanel = nativeTab === 'overview'
     ? overviewContent
@@ -1018,7 +1119,7 @@ function renderForecastWorkspaceContent(activeTab) {
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
               ${isFa ? 'ثبت در دفتر محلی' : 'Record Local Snapshot'}
             </button>
-            <button type="button" class="btn btn-sm ${isPrimaryPlotted ? 'btn-primary' : ''}" data-action="${primaryChartAction}" ${isNativeModelSelected && (!Array.isArray(nativeEvaluation?.points) || nativeEvaluation.points.length === 0) ? 'disabled' : ''}>
+            <button type="button" class="btn btn-sm ${isPrimaryPlotted ? 'btn-primary' : ''}" data-action="${primaryChartAction}" ${isNativeModelSelected && (!Array.isArray(nativeEvaluation?.points) || nativeEvaluation.points.length === 0) && !smcDirectPreview ? 'disabled' : ''}>
               ${isPrimaryPlotted ? (isFa ? '✓ مدل انتخاب‌شده روی چارت فعال است' : '✓ Selected Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
             </button>
             ${!isNativeModelSelected ? `<button type="button" class="btn btn-sm" style="display:none;" data-action="apply-native-forecast-to-chart" aria-hidden="true"></button>` : ''}
@@ -2523,6 +2624,7 @@ document.addEventListener('click', async (e) => {
   } else if (action === 'set-timeframe' && activeTab) {
     const newTf = el.getAttribute('data-tf') || 'M15';
     const tfReqSeq = (activeTab._tfSwitchSeq = (activeTab._tfSwitchSeq || 0) + 1);
+    const wasForecastActive = Boolean(activeTab.showStructuralForecast);
     activeTab.timeframe = newTf;
     activeTab.chartId = `${activeTab.symbolCode}_${newTf}`;
     activeTab.selectedRangePreset = null;
@@ -2531,7 +2633,11 @@ document.addEventListener('click', async (e) => {
     activeTab.verticalPriceOffset = 0.0;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
     clearTabStructuralForecast(activeTab);
-    activeTab.showStructuralForecast = false;
+    activeTab.showStructuralForecast = wasForecastActive;
+    if (wasForecastActive) {
+      activeTab.structuralForecastStatus = 'COMPUTING';
+      activeTab.structuralForecastError = '';
+    }
     clearTabChronosForecast(activeTab);
     activeTab.showChronosForecast = false;
     activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
@@ -2540,11 +2646,20 @@ document.addEventListener('click', async (e) => {
     }
     saveOpenTabsToStorage();
     renderApp();
+    if (wasForecastActive && activeTab.candles && activeTab.candles.length >= 40) {
+      recomputeActiveTabForecast(activeTab, { preserveActiveOnInsufficient: true, stillSyncing: true });
+    }
     const needsFullBackfill = !activeTab.candles || activeTab.candles.length < 30;
     await syncSymbolNow(activeTab.symbolCode, newTf, () => {
       if (activeTab._tfSwitchSeq !== tfReqSeq || activeTab.timeframe !== newTf) return;
       activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, newTf);
-      renderApp();
+      const symObj = state.symbols.find((s) => s.symbolCode === activeTab.symbolCode);
+      const stillSyncing = Boolean(symObj && symObj.isSyncing);
+      if (activeTab.showStructuralForecast && !stillSyncing) {
+        recomputeActiveTabForecast(activeTab, { preserveActiveOnInsufficient: true, stillSyncing: false });
+      } else {
+        renderApp();
+      }
     }, needsFullBackfill);
   } else if (action === 'set-date-range' && activeTab) {
     const rk = el.getAttribute('data-range') || 'All';
@@ -2571,9 +2686,14 @@ document.addEventListener('click', async (e) => {
     }
 
     const tfChanged = activeTab.timeframe !== targetTf;
+    const wasForecastActive = Boolean(activeTab.showStructuralForecast);
     if (tfChanged) {
       clearTabStructuralForecast(activeTab);
-      activeTab.showStructuralForecast = false;
+      activeTab.showStructuralForecast = wasForecastActive;
+      if (wasForecastActive) {
+        activeTab.structuralForecastStatus = 'COMPUTING';
+        activeTab.structuralForecastError = '';
+      }
       clearTabChronosForecast(activeTab);
       activeTab.showChronosForecast = false;
     }
@@ -2584,6 +2704,9 @@ document.addEventListener('click', async (e) => {
     activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
     saveOpenTabsToStorage();
     renderApp();
+    if (tfChanged && wasForecastActive && activeTab.candles && activeTab.candles.length >= 40) {
+      recomputeActiveTabForecast(activeTab, { preserveActiveOnInsufficient: true, stillSyncing: true });
+    }
 
     const needsFullBackfill = !activeTab.candles || activeTab.candles.length < 30;
     if (tfChanged || needsFullBackfill) {
@@ -2596,7 +2719,13 @@ document.addEventListener('click', async (e) => {
         );
         activeTab.visibleCount = computePresetBarCount(activeTab.candles, rk);
         saveOpenTabsToStorage();
-        renderApp();
+        const symObj = state.symbols.find((s) => s.symbolCode === activeTab.symbolCode);
+        const stillSyncing = Boolean(symObj && symObj.isSyncing);
+        if (activeTab.showStructuralForecast && !stillSyncing) {
+          recomputeActiveTabForecast(activeTab, { preserveActiveOnInsufficient: true, stillSyncing: false });
+        } else {
+          renderApp();
+        }
       }, needsFullBackfill);
     }
   } else if (action === 'set-chart-type' && activeTab) {
@@ -2999,8 +3128,9 @@ document.addEventListener('click', async (e) => {
     }
   } else if (action === 'set-structural-forecast-model' && activeTab) {
     const requestedModel = String(el.getAttribute('data-model') || '');
-    activeTab.structuralForecastModel = ['AUTO', 'structural_wave_js', 'empirical_analogs', 'ensemble'].includes(requestedModel) || defaultForecastRegistry.getPlugin(requestedModel) ? requestedModel : 'structural_wave_js';
-    if (['AUTO', 'ensemble', 'empirical_analogs'].includes(requestedModel) || defaultForecastRegistry.getPlugin(requestedModel)) {
+    const allowedCustomModels = ['AUTO', 'structural_wave_js', 'smc_prediction_js', 'empirical_analogs', 'ensemble'];
+    activeTab.structuralForecastModel = allowedCustomModels.includes(requestedModel) || defaultForecastRegistry.getPlugin(requestedModel) ? requestedModel : 'structural_wave_js';
+    if (['AUTO', 'smc_prediction_js', 'ensemble', 'empirical_analogs'].includes(requestedModel) || defaultForecastRegistry.getPlugin(requestedModel)) {
       activeTab.selectedForecastModelId = requestedModel;
       state.chartPreferences.selectedForecastModelId = requestedModel;
       savePreferences();
@@ -3092,7 +3222,25 @@ document.addEventListener('click', async (e) => {
     state.symbolOverviewCode = null;
     state.isSideDrawerOpen = false;
     renderApp();
-    if (requestedView === 'chart') redrawActiveCanvas();
+    if (requestedView === 'chart') {
+      redrawActiveCanvas();
+    } else if (activeTab) {
+      const activeTf = activeTab.timeframe || 'M15';
+      const cacheKey = `${activeTab.symbolCode}_${activeTab.provider}_${activeTf}`;
+      const barsLoaded = Array.isArray(activeTab.candles) ? activeTab.candles.length : 0;
+      if (!isCandleKeyHydratedFromServer(cacheKey) || barsLoaded < 360) {
+        syncSymbolNow(
+          activeTab.symbolCode,
+          activeTf,
+          () => {
+            if (activeTab.timeframe !== activeTf) return;
+            activeTab.candles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, activeTf);
+            renderApp();
+          },
+          false
+        );
+      }
+    }
   } else if (action === 'toggle-timezone-mode') {
     const nextTz = state.chartPreferences.timezoneMode === 'LOCAL' ? 'UTC' : 'LOCAL';
     state.chartPreferences.timezoneMode = nextTz;

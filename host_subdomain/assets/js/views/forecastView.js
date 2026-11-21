@@ -1,4 +1,4 @@
-import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.40';
+import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
 import {
   RENDER_MODES,
   FORECAST_STATUS,
@@ -11,15 +11,15 @@ import {
   SELECTION_MODE,
   normalizeRenderMode,
   clampHorizonBars,
-} from '../forecast/forecastContract.js?v=1.47.40';
-import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.47.40';
-import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.40';
-import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.40';
-import { selectOosChartWinner } from '../forecast/walkForwardEvaluator.js?v=1.47.40';
-import { computeSmcPrediction } from '../forecast/smcPredictionEngine.js?v=1.47.40';
-import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
+} from '../forecast/forecastContract.js?v=1.47.41';
+import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.47.41';
+import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.41';
+import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.41';
+import { selectOosChartWinner } from '../forecast/walkForwardEvaluator.js?v=1.47.41';
+import { computeSmcPrediction } from '../forecast/smcPredictionEngine.js?v=1.47.41';
+import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.41';
 
-import { state, escapeHtml, getCachedOrAggregatedCandles, safeLocalStorageSet } from '../core/store.js?v=1.47.40';
+import { state, escapeHtml, getCachedOrAggregatedCandles, safeLocalStorageSet } from '../core/store.js?v=1.47.41';
 
 const MODEL_OVERLAY_COLORS = {
   structural_wave_js: '#8B5CF6',

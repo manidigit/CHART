@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
+## [1.47.41] - 2026-11-21
+
+### Fixed (`BUGFIX-V14741-UI-SYNC-TF-SMC`: Topbar Overflow, Full MariaDB Hydration Past 250-Bar Mirror, `SMCPredictionEngine` Selection & Cache-Busting, Timeframe-Switch Forecast Persistence)
+- **Top Header Bar Right-Edge Clipping on Chart View (`assets/css/theme.css?v=1.47.41`, `index.html`):**
+  - Updated `.tv-topbar` to `overflow: hidden`, made `.tv-topbar-left` flex-shrinkable (`flex: 1 1 auto; min-width: 0; overflow-x: auto`) with a bounded flexible `.tv-open-tabs-strip` (`flex: 0 1 280px; min-width: 112px; max-width: 340px`), and pinned `.tv-topbar-right` (`flex-shrink: 0` with subtle left border) plus tightened `@media (max-width: 1400px)` spacing so right-side controls (status dot, `CSV`, snapshot, refresh, fullscreen) never overflow off-screen on desktop Chart view.
+  - Bumped `theme.css` cache-buster in `index.html` from `?v=1.47.1` to `?v=1.47.41`.
+- **False `DATA_NOT_READY (found 250)` After Reload & Hidden Preview Canvas (`core/store.js?v=1.47.41`, `services/apiService.js?v=1.47.41`, `app.js?v=1.47.41`):**
+  - Preserved the 250-bar `localStorage` quota cap (`STORAGE-QUOTA-01`) while adding session RAM server-hydration tracking (`markCandleKeyHydratedFromServer` / `isCandleKeyHydratedFromServer` in `store.js`).
+  - Updated `fetchFromBackend()` in `apiService.js` so `since_ms` delta-only fetches are only used after full MariaDB history has been hydrated into RAM (preventing 250-bar `localStorage` mirrors from trapping symbols in delta-only sync), and triggered automatic full-history sync when opening Forecast Studio (`set-workspace-view: forecast`) if the active tab is not yet server-hydrated or has `< 360` bars.
+  - Updated `renderForecastWorkspaceContent()` in `app.js` to render `#forecast-studio-canvas` cleanly above the `DATA_NOT_READY` notice whenever `Structural JS` or `SMCPredictionEngine` has a ready direct preview (`>= 40` closed bars).
+- **`SMCPredictionEngine` Visibility, Selection Allowlist & Direct Fallback (`app.js?v=1.47.41` + Unified `?v=1.47.41` Bump Across All 27 JS Modules & `index.html`):**
+  - Added `'smc_prediction_js'` to the `set-structural-forecast-model` allowlist (previously falling back to `structural_wave_js` on click), promoted `SMC Prediction Engine` (`موتور نقدینگی SMC`) to the front row right beside `Structural JS` and `Auto (OOS Best)`, and added direct `computeSmcPrediction()` fallback in `applyNativeModelForecastToTab()` and Studio preview for `< 318`-bar series.
+  - Bumped cache-busting uniformly from `?v=1.47.40` to **`?v=1.47.41`** across `index.html` and all 27 ES modules so browsers immediately load the updated `SMCPredictionEngine` bundle and CSS fixes.
+- **Timeframe-Switch Forecast Persistence & Auto-Recompute (`app.js?v=1.47.41`):**
+  - Added `recomputeActiveTabForecast()` and updated `set-timeframe` and `set-date-range` handlers to preserve active forecast state (`showStructuralForecast`, selected model, horizon, render mode, band toggle), clear stale old-timeframe points immediately (`status = 'COMPUTING'`), and automatically recompute and plot the active model on the new timeframe once candles are ready (guarding against early `isSyncing === true` callbacks).
+- **Verification:**
+  - Verified `node --check` on all modified JS files and **51/51** passing tests in `tests/web_parity.test.mjs` (added `BUGFIX-V14741-UI-SYNC-TF-SMC` and verified `ARCH-01` / `ARCH-02` unified `?v=1.47.41`).
+
+---
+
 ## [1.47.40] - 2026-11-20
 
 ### Added (`FORECAST-SMC-ENGINE-01`: Independent Causal `SMCPredictionEngine` (`smc_prediction_js`))

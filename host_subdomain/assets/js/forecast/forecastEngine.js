@@ -21,30 +21,30 @@ import {
   roundToSignificant,
   sha256Hex,
   validateDataReadiness,
-} from './forecastContract.js?v=1.47.40';
-import { extractForecastFeatures } from './featureExtractor.js?v=1.47.40';
-import { defaultForecastRegistry, ForecastModelRegistry } from './modelRegistry.js?v=1.47.40';
+} from './forecastContract.js?v=1.47.41';
+import { extractForecastFeatures } from './featureExtractor.js?v=1.47.41';
+import { defaultForecastRegistry, ForecastModelRegistry } from './modelRegistry.js?v=1.47.41';
 import {
   applyConformalAdjustmentToQuantiles,
   buildZeroDriftLogNormalNaiveQuantiles,
   computeNaiveSigmaRw,
-} from './statisticalTests.js?v=1.47.40';
+} from './statisticalTests.js?v=1.47.41';
 import {
   buildDisjointNestedSplits,
   buildPriceTrajectoryFromPrediction,
   evaluateWalkForward,
   selectOosChartWinner,
-} from './walkForwardEvaluator.js?v=1.47.40';
+} from './walkForwardEvaluator.js?v=1.47.41';
 import {
   computeForecastStability,
   computeOodAndUncertainty,
   coordinateMultiTimeframe,
   detectKeyZonesAndEventTree,
   evaluateNoEdgeGate,
-} from './forecastV130Analyzer.js?v=1.47.40';
-import { EmpiricalAnalogEngine } from './empiricalAnalogEngine.js?v=1.47.40';
-import { SMCPredictionEngine, computeSmcPrediction } from './smcPredictionEngine.js?v=1.47.40';
-import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
+} from './forecastV130Analyzer.js?v=1.47.41';
+import { EmpiricalAnalogEngine } from './empiricalAnalogEngine.js?v=1.47.41';
+import { SMCPredictionEngine, computeSmcPrediction } from './smcPredictionEngine.js?v=1.47.41';
+import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.41';
 
 export { EmpiricalAnalogEngine, SMCPredictionEngine };
 
