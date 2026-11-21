@@ -16,12 +16,14 @@ import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.47.40'
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.40';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.40';
 import { selectOosChartWinner } from '../forecast/walkForwardEvaluator.js?v=1.47.40';
+import { computeSmcPrediction } from '../forecast/smcPredictionEngine.js?v=1.47.40';
 import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
 
 import { state, escapeHtml, getCachedOrAggregatedCandles, safeLocalStorageSet } from '../core/store.js?v=1.47.40';
 
 const MODEL_OVERLAY_COLORS = {
   structural_wave_js: '#8B5CF6',
+  smc_prediction_js: '#06B6D4',
   empirical_analogs: '#F59E0B',
   naive_persistence: '#94A3B8',
   native_arima_diff: '#38BDF8',
@@ -183,6 +185,8 @@ export function buildForecastForTab(activeTab, overrides = {}) {
       selectedChartModelId: selection.selectedModelId,
       selectionMode: selection.selectionMode,
       selectionReason: selection.reason,
+      turningPoints: Array.isArray(chosen?.meta?.turningPoints) ? chosen.meta.turningPoints : [],
+      smcPoc: Number.isFinite(Number(chosen?.meta?.pocPrice)) ? Number(chosen.meta.pocPrice) : null,
       points: nextPoints,
       summary: nextSummary,
     };
@@ -288,7 +292,7 @@ export function renderForecastStudioFanCanvas(
       t.points.length >= pts.length &&
       t.modelId !== forecast.selectedChartModelId &&
       (!Array.isArray(forecast.visibleComparisonModelIds) || forecast.visibleComparisonModelIds.includes(t.modelId)) &&
-      ['structural_wave_js', 'empirical_analogs', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_arima_statsmodels', 'py_prophet', 'py_lstm_mc', 'py_lstm_torch', 'py_tft', 'py_tft_torch'].includes(t.modelId)
+      ['structural_wave_js', 'empirical_analogs', 'smc_prediction_js', 'native_arima_diff', 'native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx', 'py_arima', 'py_arima_statsmodels', 'py_prophet', 'py_lstm_mc', 'py_lstm_torch', 'py_tft', 'py_tft_torch'].includes(t.modelId)
   );
 
   let minP = Infinity;
@@ -1259,7 +1263,8 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
       'AUTO'
   );
   const isStructuralReplay = selectedModelId === 'structural_wave_js';
-  const minTrainingAnchor = isStructuralReplay ? 80 : 154;
+  const isSmcReplay = selectedModelId === 'smc_prediction_js';
+  const minTrainingAnchor = isStructuralReplay || isSmcReplay ? 80 : 154;
   const maxWindows = Math.max(2, Math.min(10, Math.round(Number(options.maxWindows || state.chartPreferences.forecastReplayWindowCount || 3))));
   const fromDate = String(options.fromDate ?? state.chartPreferences.forecastReplayFromDate ?? '').trim();
   const toDate = String(options.toDate ?? state.chartPreferences.forecastReplayToDate ?? '').trim();
@@ -1347,6 +1352,25 @@ export async function runHistoricalForecastReplay(activeTab, options = {}) {
         forecast = {
           status: sRes?.status || 'FAILED',
           selectionReason: sRes?.error || 'Structural JS did not produce a complete path',
+          points: [],
+        };
+      }
+    } else if (isSmcReplay) {
+      const smcRes = computeSmcPrediction(trainingCandles, null, horizonBars, {
+        timeframe: activeTab.timeframe,
+        canonicalTimestamps: actualCandles.map((c) => Number(c.open_time_utc_ms || c.openTimeUtcMs || 0)),
+      });
+      if (smcRes?.status === MODEL_EXECUTION_STATUS.SUCCESS && Array.isArray(smcRes.points) && smcRes.points.length === horizonBars) {
+        forecast = {
+          status: 'READY',
+          selectedChartModelId: 'smc_prediction_js',
+          inputHash: '',
+          points: smcRes.points,
+        };
+      } else {
+        forecast = {
+          status: smcRes?.status || 'FAILED',
+          selectionReason: smcRes?.reason || 'SMC Prediction Engine did not produce a complete path',
           points: [],
         };
       }

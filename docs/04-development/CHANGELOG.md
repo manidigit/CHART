@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.47.40] - 2026-11-20
 
+### Added (`FORECAST-SMC-ENGINE-01`: Independent Causal `SMCPredictionEngine` (`smc_prediction_js`))
+- **Standalone Scientific SMC Engine (`forecast/smcPredictionEngine.js?v=1.47.40`, re-exported from `forecast/forecastEngine.js?v=1.47.40`):**
+  - Implemented `SMCPredictionEngine` / `computeSmcPrediction()` as an independent, strictly causal Smart Money Concepts liquidity model without `Math.random`, `Math.sin`/`Math.cos`, fabricated `volume = 100`, or synthetic OHLC candles.
+  - Builds structured multi-phase liquidity trajectories (Internal FVG/POC rebalance → External `EQH`/`EQL`/`VAH`/`VAL` draw in the recency-weighted `BOS/CHoCH` orderflow direction → Post-sweep equilibrium reaction) with asymmetric empirical dispersion corridors (`q10..q90`) and honest `SKIPPED_LOW_DATA` gating when closed history or SMC structure is insufficient.
+- **First-Class Forecast Studio, Walk-Forward, Compare & Replay Integration (`walkForwardEvaluator.js?v=1.47.40`, `forecastEngine.js?v=1.47.40`, `views/forecastView.js?v=1.47.40`, `app.js?v=1.47.40`):**
+  - Added a dedicated **`SMC Prediction Engine` (`موتور نقدینگی SMC`)** button in Forecast Studio alongside `Structural JS`, `Causal Historical Analogs`, and `Ensemble`, routing cleanly to the main chart via `adaptNativeModelTrajectory()`.
+  - Added `smc_prediction_js` to causal `Walk-Forward` benchmarking (`AUTO OOS` eligible), Studio `Compare Overlays` (cyan `#06B6D4` with diamond `turningPoints` and `POC` reference line + hover HUD rationale), LRU `BASE_RESELECT`, and direct `Historical Replay` scoring.
+- **Verification:**
+  - Verified `node --check` on all 5 created/modified JS modules and **50/50** passing tests in `tests/web_parity.test.mjs` (added `FORECAST-SMC-ENGINE-01`).
+
 ### Changed (`FORECAST-PKG3`: Zero-Lag LRU Caching, Interactive Studio/Replay Crosshair HUD & Causal SMC Liquidity Magnets)
 - **Zero-Lag Forecast Caching & Instant Model/Mode Switching (`views/forecastView.js?v=1.47.40`, `app.js?v=1.47.40`):**
   - Replaced the single-slot `state._forecastBuildMemo` in `buildForecastForTab()` with bounded multi-entry LRU caches (`state._forecastBaseCache` max 16 entries, `state._forecastViewCache` max 24 entries) so switching between symbols/tabs retains prior calculations without full recomputation (`cacheHit: 'EXACT'`).

@@ -2470,4 +2470,118 @@ test('FORECAST-PKG3-HOVER-03: renderForecastStudioFanCanvas renders crosshair HU
   assert.equal(mockCanvas.__ciHoverState.hoverSlotIdx, null);
 });
 
+test('FORECAST-SMC-ENGINE-01: independent causal SMCPredictionEngine (smc_prediction_js) is deterministic, free of sin/random/fake volume, wired into Studio UI, Walk-Forward, Compare & Replay', async () => {
+  const { SMCPredictionEngine, computeSmcPrediction, SMC_PREDICTION_MODEL_ID } = await import('../host_subdomain/assets/js/forecast/smcPredictionEngine.js');
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+  const { runHistoricalForecastReplay } = await import('../host_subdomain/assets/js/views/forecastView.js');
+  const smcSrc = await readFile(new URL('../host_subdomain/assets/js/forecast/smcPredictionEngine.js', import.meta.url), 'utf8');
+  const appSrc = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const viewSrc = await readFile(new URL('../host_subdomain/assets/js/views/forecastView.js', import.meta.url), 'utf8');
+
+  // Static compliance: zero Math.random/sin/cos and zero fake volume=100
+  const execSrc = smcSrc.replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, '');
+  assert.equal(/Math\.random|Math\.sin|Math\.cos/.test(execSrc), false, 'smcPredictionEngine.js must not use Math.random/sin/cos');
+  assert.equal(/volume\s*[:=]\s*100\b/.test(execSrc), false, 'smcPredictionEngine.js must not inject synthetic volume = 100');
+
+  // UI & Compare wiring checks
+  assert.match(appSrc, /id:\s*'smc_prediction_js'/);
+  assert.match(viewSrc, /smc_prediction_js:\s*'#06B6D4'/);
+  assert.match(viewSrc, /'smc_prediction_js'/);
+
+  // Low-data honesty: must return SKIPPED_LOW_DATA when < 40 bars
+  const lowDataRes = computeSmcPrediction([{ open: 100, high: 101, low: 99, close: 100.5, volume: 100, open_time_utc_ms: 1700000000000 }], null, 15);
+  assert.equal(lowDataRes.status, 'SKIPPED_LOW_DATA');
+
+  // Deterministic 260-bar series with clear volume profile POC, swings (BOS/CHoCH), and an unmitigated bullish FVG
+  const baseMs = Date.UTC(2026, 0, 1, 0, 0, 0);
+  const candles = [];
+  let px = 60000;
+  for (let i = 0; i < 260; i++) {
+    const ret = Math.sin(i * 0.22) * 0.006 + Math.cos(i * 0.08) * 0.0028 + 0.00025;
+    let open = px;
+    let close = Math.max(1000, open * Math.exp(ret));
+    const span = Math.max(Math.abs(close - open), open * 0.004);
+    let high = Math.max(open, close) + span * 0.45;
+    let low = Math.min(open, close) - span * 0.45;
+    if (i === 255) {
+      open = px;
+      close = px * 1.003;
+      high = close * 1.001;
+      low = open * 0.998;
+    } else if (i === 256) {
+      open = px;
+      close = px * 1.022;
+      high = close * 1.002;
+      low = open * 0.999;
+    } else if (i === 257) {
+      open = px;
+      close = px * 1.004;
+      high = close * 1.002;
+      low = candles[255].high * 1.008; // Unmitigated Bullish FVG
+    } else if (i >= 258) {
+      open = px;
+      close = px * 1.002;
+      high = close * 1.002;
+      low = Math.max(candles[257].low, open * 0.999);
+    }
+    candles.push({
+      open_time_utc_ms: baseMs + i * 3600000,
+      openTimeUtcMs: baseMs + i * 3600000,
+      open,
+      high,
+      low,
+      close,
+      volume: 1500,
+      is_closed: true,
+    });
+    px = close;
+  }
+
+  const engine = new SMCPredictionEngine({ timeframe: 'H1' });
+  const r1 = engine.project(candles, null, 20);
+  const r2 = engine.project(candles, null, 20);
+  assert.equal(r1.modelId, SMC_PREDICTION_MODEL_ID);
+  assert.equal(r1.status, 'SUCCESS');
+  assert.equal(r1.points.length, 20);
+  assert.ok(r1.turningPoints.length >= 1, 'SMC engine must produce structured liquidity turning points');
+  assert.ok(Number.isFinite(r1.meta.pocPrice) && r1.meta.pocPrice > 0, 'SMC engine must compute active Volume Profile POC');
+  assert.ok(r1.meta.activeFvgCount >= 1, 'SMC engine must detect unmitigated FVG');
+  assert.deepEqual(r1.points, r2.points, 'SMCPredictionEngine must be 100% deterministic');
+  for (const pt of r1.points) {
+    assert.ok(pt.q10 <= pt.q25 && pt.q25 <= pt.q50 && pt.q50 <= pt.q75 && pt.q75 <= pt.q90, 'SMC quantiles must be monotonic');
+  }
+
+  // ForecastEngine + Walk-Forward integration
+  const proj = ForecastEngine.project(candles, {
+    symbolCode: 'BTCUSD',
+    providerId: 'tvdatafeed',
+    timeframe: 'H1',
+    horizonBars: 10,
+    selectedModelId: 'smc_prediction_js',
+    skipBootstrap: true,
+    bypassWalkForwardCache: true,
+  });
+  assert.equal(proj.selectedChartModelId, 'smc_prediction_js');
+  assert.ok(proj.modelTrajectories.some((t) => t.modelId === 'smc_prediction_js' && t.status === 'SUCCESS'));
+  assert.ok(Number.isFinite(proj.smcPoc) && proj.smcPoc > 0);
+  assert.ok(Array.isArray(proj.turningPoints) && proj.turningPoints.length >= 1);
+  const smcBench = (proj.walkForward?.modelBenchmarks || []).find((b) => b.modelId === 'smc_prediction_js');
+  assert.ok(smcBench && smcBench.evaluatedWindows > 0 && Number.isFinite(smcBench.wis), 'Walk-Forward must causally benchmark smc_prediction_js');
+
+  // Historical Replay directly on smc_prediction_js
+  const tab = {
+    symbolCode: 'BTCUSD',
+    provider: 'tvdatafeed',
+    timeframe: 'H1',
+    candles,
+    forecastHorizonBars: 10,
+    structuralForecastModel: 'smc_prediction_js',
+  };
+  const replay = await runHistoricalForecastReplay(tab, { maxWindows: 3, horizonBars: 10, selectedModelId: 'smc_prediction_js' });
+  assert.equal(replay.status, 'COMPLETED');
+  assert.equal(replay.selectedModelId, 'smc_prediction_js');
+  assert.ok(replay.windows.every((w) => w.modelId === 'smc_prediction_js'), 'SMC Replay must score smc_prediction_js directly');
+});
+
+
 

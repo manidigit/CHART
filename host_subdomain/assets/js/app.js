@@ -832,6 +832,7 @@ function renderForecastWorkspaceContent(activeTab) {
   const nativeModelButtons = [
     { id: 'AUTO', name: isFa ? 'خودکار (بهترین OOS)' : 'Auto (OOS Best)', enabled: true, weight: 1, experimentalOnly: false },
     ...nativeModelChoices,
+    { id: 'smc_prediction_js', name: isFa ? 'موتور نقدینگی SMC' : 'SMC Prediction Engine', enabled: true, weight: 1, experimentalOnly: false },
     { id: 'empirical_analogs', name: isFa ? 'آنالوگ‌های تاریخی علّی' : 'Causal Historical Analogs', enabled: true, weight: 1, experimentalOnly: false },
     { id: 'ensemble', name: 'Calibrated Ensemble (V2)', enabled: true, weight: 1, experimentalOnly: false },
   ].map((model) => {

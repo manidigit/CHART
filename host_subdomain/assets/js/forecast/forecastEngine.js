@@ -42,7 +42,8 @@ import {
   detectKeyZonesAndEventTree,
   evaluateNoEdgeGate,
 } from './forecastV130Analyzer.js?v=1.47.40';
-import { EmpiricalAnalogEngine, SMCPredictionEngine } from './empiricalAnalogEngine.js?v=1.47.40';
+import { EmpiricalAnalogEngine } from './empiricalAnalogEngine.js?v=1.47.40';
+import { SMCPredictionEngine, computeSmcPrediction } from './smcPredictionEngine.js?v=1.47.40';
 import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
 
 export { EmpiricalAnalogEngine, SMCPredictionEngine };
@@ -598,6 +599,51 @@ export class ForecastEngine {
       });
     }
 
+    // First-class Independent Causal SMC Prediction Engine (`smc_prediction_js`)
+    let smcRes = null;
+    try {
+      smcRes = computeSmcPrediction(cleanCandles, features, horizonBars, {
+        timeframe,
+        canonicalTimestamps,
+      });
+    } catch (_) {
+      smcRes = null;
+    }
+    if (smcRes?.status === MODEL_EXECUTION_STATUS.SUCCESS && Array.isArray(smcRes.points) && smcRes.points.length >= horizonBars) {
+      modelTrajectories.push({
+        modelId: 'smc_prediction_js',
+        modelName: 'SMC Prediction Engine',
+        family: 'SMC_LIQUIDITY',
+        modelVersion: smcRes.modelVersion || '2.3.0',
+        executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
+        isApproximation: false,
+        isCalibratedInterval: conformalCalibration?.calibrationStatus === 'CALIBRATED_NORMALIZED',
+        status: MODEL_EXECUTION_STATUS.SUCCESS,
+        reason: '',
+        trainingStartUtcMs: trainStartMs,
+        trainingEndUtcMs: trainEndMs,
+        trainingSampleCount: Math.min(cleanCandles.length, 300),
+        points: buildForecastPointsFromQuantileTrajectory(smcRes.points, canonicalTimestamps, features, horizonBars, conformalCalibration),
+        meta: smcRes.meta || {},
+      });
+    } else {
+      modelTrajectories.push({
+        modelId: 'smc_prediction_js',
+        modelName: 'SMC Prediction Engine',
+        family: 'SMC_LIQUIDITY',
+        modelVersion: '2.3.0',
+        executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
+        isApproximation: false,
+        isCalibratedInterval: false,
+        status: MODEL_EXECUTION_STATUS.SKIPPED_LOW_DATA,
+        reason: smcRes?.reason || 'Insufficient causal SMC market structure or liquidity zones.',
+        trainingStartUtcMs: trainStartMs,
+        trainingEndUtcMs: trainEndMs,
+        trainingSampleCount: Math.min(cleanCandles.length, 300),
+        points: [],
+      });
+    }
+
     const selection = selectOosChartWinner(walkForward, modelTrajectories, requestedModelId);
     const chosenTrajectory =
       modelTrajectories.find(
@@ -720,6 +766,8 @@ export class ForecastEngine {
       selectedChartModelId: selection.selectedModelId,
       selectionMode: selection.selectionMode,
       selectionReason: selection.reason,
+      turningPoints: Array.isArray(chosenTrajectory?.meta?.turningPoints) ? chosenTrajectory.meta.turningPoints : [],
+      smcPoc: Number.isFinite(Number(chosenTrajectory?.meta?.pocPrice)) ? Number(chosenTrajectory.meta.pocPrice) : null,
       walkForward,
       summary,
       inputHash,

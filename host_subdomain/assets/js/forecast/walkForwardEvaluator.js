@@ -20,6 +20,7 @@ import {
 } from './statisticalTests.js?v=1.47.40';
 import { EmpiricalAnalogEngine } from './empiricalAnalogEngine.js?v=1.47.40';
 import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.40';
+import { computeSmcPrediction } from './smcPredictionEngine.js?v=1.47.40';
 
 function pinball(actual, qPred, tau) {
   const err = actual - qPred;
@@ -179,6 +180,7 @@ function buildNaiveLogNormalTraj(anchorClose, trainLogReturns, horizon) {
 const AUXILIARY_BENCHMARK_MODELS = [
   { id: 'empirical_analogs', name: 'Causal Historical Analogs', family: 'PATTERN_EMPIRICAL' },
   { id: 'structural_wave_js', name: 'Structural Wave (JS)', family: 'STRUCTURAL_WAVE' },
+  { id: 'smc_prediction_js', name: 'SMC Prediction Engine', family: 'SMC_LIQUIDITY' },
 ];
 
 function predictAuxiliaryWindowTrajectory(modelId, slice, feats, horizon, ctx = {}) {
@@ -224,6 +226,22 @@ function predictAuxiliaryWindowTrajectory(modelId, slice, feats, horizon, ctx = 
       const traj = res.forecast.slice(0, horizon).map((p) =>
         enforceMonotonicQuantiles(
           { q10: p.q10, q25: p.q25, q50: p.q50_median, q75: p.q75, q90: p.q90 },
+          feats.lastClose * 0.01
+        )
+      );
+      return { ok: traj.every((p) => Number.isFinite(p.q50) && p.q50 > 0), traj };
+    }
+    if (modelId === 'smc_prediction_js') {
+      const smcSlice = slice.length > 300 ? slice.slice(-300) : slice;
+      const res = computeSmcPrediction(smcSlice, feats, horizon, {
+        timeframe: ctx.timeframe || 'M15',
+      });
+      if (res.status !== MODEL_EXECUTION_STATUS.SUCCESS || !Array.isArray(res.points) || res.points.length < horizon) {
+        return { ok: false, traj: null };
+      }
+      const traj = res.points.slice(0, horizon).map((p) =>
+        enforceMonotonicQuantiles(
+          { q10: p.q10, q25: p.q25, q50: p.q50, q75: p.q75, q90: p.q90 },
           feats.lastClose * 0.01
         )
       );

@@ -1,7 +1,7 @@
 # گزارش و لیست مشکلات فنی شناسایی‌شده (Known Issues Backlog)
 
 **تاریخ ثبت اولیه:** ۱۵ نوامبر ۲۰۲۶ | **آخرین به‌روزرسانی:** ۲۰ نوامبر ۲۰۲۶ (`v1.47.40`)  
-**وضعیت:** تمامی موارد ۱ تا ۱۶ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`49/49` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
+**وضعیت:** تمامی موارد ۱ تا ۱۷ حل‌شده و دارای تست رگرسیون در کدهای اجرایی (`50/50` پاس در `tests/web_parity.test.mjs`)؛ مسائل باز باقی‌مانده در `docs/03-roadmap-and-issues/OPEN_ISSUES.md` (بخش ۵) پیگیری می‌شوند.
 
 ---
 
@@ -336,6 +336,19 @@
      - افزودن `extractSmcLiquidityZones()` با تکیه بر اندیکاتورهای علّی و واقعی `TechnicalIndicators.computeVolumeProfile()` (`POC`, `VAH`, `VAL` بدون تزریق `volume = 100`) و `TechnicalIndicators.detectMarketStructureSmc()` (`FVG`های پرنشده اخیر، استخرهای نقدینگی `EQH`/`EQL` و شمارش `BOS`/`CHoCH`).
      - ادغام نواحی نقدینگی SMC (`smc_liquidity_zones`) در `findMagnetZone()` با تقویت هم‌پوشانی (`confluence`) با S/R و جذب نرم ثانویه، انتشار فیلدهای تشخیصی `smc_poc`، `smc_vah`، `smc_val`، `active_fvg_count`، `smc_magnet_hits` و `model_diagnostics.smc_liquidity` و نمایش `POC` و تعداد `FVG` فعال در بنر Structural JS (با حفظ ۱۰۰٪ نبود `Math.random`/`sin`/`cos`، نبود OHLC جعلی و یکسانی کامل `forecast` در حالت `skipAnalogs`).
 - **راستی‌آزمایی:** `node --check` روی هر ۳ ماژول اصلاح‌شده و **۴۹/۴۹ پاس** در `tests/web_parity.test.mjs` (افزودن تست‌های `FORECAST-PKG3-SMC-01`، `FORECAST-PKG3-CACHE-02` و `FORECAST-PKG3-HOVER-03`).
+
+---
+
+## ۱۷. فعال‌سازی مجدد `SMCPredictionEngine` (`smc_prediction_js`) به‌صورت مدل مستقل و علمی (`FORECAST-SMC-ENGINE-01` · `v1.47.40`) — ✅ پیاده‌سازی و تست شد
+
+- **اولویت:** بالا (High / P1)
+- **تاریخ اجرا و تأیید:** ۲۰ نوامبر ۲۰۲۶
+- **خلاصه تصمیم و پیاده‌سازی:**
+  - به‌جای بازگرداندن نسخه منسوخ `v1.44.0` (که به دلیل ماشین حالت `sin/cos`، ۶ الگوی مصنوعی، حجم جعلی `100` و OHLC شبح در `Rev 2.1` حذف شده بود)، یک موتور مستقل، علّی و علمی به نام **`SMCPredictionEngine` (`smc_prediction_js`)** در `host_subdomain/assets/js/forecast/smcPredictionEngine.js` ایجاد و در `forecastEngine.js` بازصدور شد.
+  - **منطق مسیر نقدینگی علّی:** استخراج `BOS/CHoCH` وزن‌دار زمانی + هم‌راستایی `EMA20/EMA50` برای جهت جریان سفارشات (`BULLISH_ORDERFLOW` / `BEARISH_ORDERFLOW` / `BALANCED_EQUILIBRIUM`)، استخراج `FVG`های کاملاً پرنشده، استخرهای `EQH/EQL` و پروفایل حجم واقعی (`POC/VAH/VAL` بدون حجم جعلی `100`)؛ ساخت مسیر چندفازی (اصلاح به سمت نقدینگی داخلی `FVG/POC` ← حرکت به سمت نقدینگی بیرونی `EQH/EQL/VAH/VAL` ← واکنش پس از جاروب نقدینگی) همراه با کریدور کوانتایل نامتقارن (`q10..q90`) و صدور صادقانه `SKIPPED_LOW_DATA` در کمبود داده.
+  - **یکپارچه‌سازی کامل در کل اکوسیستم Forecast Studio:** افزودن دکمه مستقل **`موتور نقدینگی SMC` (`SMC Prediction Engine`)** در `app.js`، بنچمارک علّی در `walkForwardEvaluator.js` (قابل انتخاب در `AUTO OOS`)، نمایش در `Compare Overlays` با رنگ `#06B6D4` + نقاط عطف الماسی + خط مرجع `POC` و هاور HUD، پشتیبانی در کش `BASE_RESELECT` و اجرای مستقیم بدون بازگشت به `naive_persistence` در `Historical Replay`.
+- **راستی‌آزمایی:** `node --check` روی هر ۵ ماژول ایجاد/اصلاح‌شده و **۵۰/۵۰ پاس** در `tests/web_parity.test.mjs` (افزودن تست `FORECAST-SMC-ENGINE-01`).
+
 
 
 
