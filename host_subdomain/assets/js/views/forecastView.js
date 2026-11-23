@@ -908,6 +908,7 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     `
     : '';
 
+  const mtfMeta = fc.analogDiagnostics?.mtfMeta || mtf?.modelMtfMeta || null;
   const mtfBannerHtml = mtf
     ? `
       <div class="ci-fc-card" style="margin-bottom:12px;">
@@ -915,7 +916,7 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
           <div>
             <strong style="font-size:12.5px;">${isFa ? 'هماهنگ‌سازی چندتایم‌فریمی (Independent vs Coordinated)' : 'Multi-Timeframe Coordination Check'}</strong>
             <div style="font-size:11px;color:var(--text-muted);" class="ltr-num">
-              Higher TF: ${escapeHtml(mtf.referenceTimeframe)} · OHLC Consistent: ${mtf.ohlcConsistent ? 'YES' : 'NO'} · Independent q50: ${mtf.independentMedianPct >= 0 ? '+' : ''}${mtf.independentMedianPct}% vs Coordinated q50: ${mtf.coordinatedMedianPct >= 0 ? '+' : ''}${mtf.coordinatedMedianPct}%
+              Higher TF: ${escapeHtml(mtf.referenceTimeframe)} · OHLC Consistent: ${mtf.ohlcConsistent ? 'YES' : 'NO'} · Independent q50: ${mtf.independentMedianPct >= 0 ? '+' : ''}${mtf.independentMedianPct}% vs Coordinated q50: ${mtf.coordinatedMedianPct >= 0 ? '+' : ''}${mtf.coordinatedMedianPct}%${mtfMeta ? ` · Cluster: ${escapeHtml(mtfMeta.clusterId)} (${escapeHtml(mtfMeta.mode)})` : ''}
             </div>
           </div>
           <span class="ci-fc-status-badge ${mtf.alignmentState === 'ALIGNED' ? 'ci-fc-badge-valid' : mtf.alignmentState === 'STRUCTURAL_CONFLICT' ? 'ci-fc-badge-blocked' : 'ci-fc-badge-provisional'} ltr-num">
@@ -963,7 +964,7 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
       <div class="ci-fc-card" style="margin-bottom:12px;">
         <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
           <strong style="font-size:13px;">${isFa ? 'مسیرهای نمونه آنالوگ تاریخی (فقط نمایشی — فاقد احتمال)' : 'Illustrative Empirical Analog Medoids (Not Probabilities)'}</strong>
-          <span class="ci-fc-family-tag ltr-num">Causal Analogs: ${fc.analogDiagnostics?.matchedCount ?? 0} · Embargo +${fc.analogDiagnostics?.embargoGap ?? 0}b</span>
+          <span class="ci-fc-family-tag ltr-num">Causal Analogs (Rev 2.3): ${fc.analogDiagnostics?.matchedCount ?? 0} · Embargo +${fc.analogDiagnostics?.embargoGap ?? 0}b · H_ref=${fc.analogDiagnostics?.referenceHorizon ?? 60} · stride=1</span>
         </div>
         <div class="ci-fc-grid-3">
           ${repPaths

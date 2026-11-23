@@ -57,6 +57,7 @@ export function resolveLowerTimeframeInfo(timeframe = 'M15') {
   if (tf === 'H1') return { timeframe: 'M15', ratio: 4 };
   if (tf === 'H4') return { timeframe: 'H1', ratio: 4 };
   if (tf === 'D1') return { timeframe: 'H4', ratio: 6 };
+  if (tf === 'W1') return { timeframe: 'D1', ratio: 5 };
   return null;
 }
 
@@ -115,6 +116,9 @@ export class ForecastEngine {
     const generatedAtUtcMs = Number(options.generatedAtUtcMs || Date.now());
     const higherTimeframe = String(options.higherTimeframe || '').trim().toUpperCase();
     const higherTimeframeCandles = Array.isArray(options.higherTimeframeCandles) ? options.higherTimeframeCandles : [];
+    const lowerInfo = resolveLowerTimeframeInfo(timeframe);
+    const lowerTimeframe = String(options.lowerTimeframe || lowerInfo?.timeframe || '').trim().toUpperCase();
+    const lowerTimeframeCandles = Array.isArray(options.lowerTimeframeCandles) ? options.lowerTimeframeCandles : [];
     const previousForecast = options.previousForecast || null;
     const requestedModelId = String(options.selectedModelId || 'AUTO');
     const calendarSpec = options.calendarSpec || resolveCalendarSpec(symbolCode, providerId);
@@ -210,6 +214,12 @@ export class ForecastEngine {
         )
       : null;
 
+    const ltfCandlesSha256 = lowerTimeframeCandles.length > 0
+      ? buildCanonicalCandlesHash(
+          lowerTimeframeCandles.filter((c) => Number.isFinite(Number(c?.close)) && Number(c.close) > 0)
+        )
+      : null;
+
     const inputHashPayload = {
       contractVersion: CONTRACT_VERSION,
       engineVersion: ENGINE_VERSION,
@@ -238,6 +248,7 @@ export class ForecastEngine {
       },
       candlesSha256,
       htfCandlesSha256,
+      ...(ltfCandlesSha256 ? { ltfCandlesSha256 } : {}),
     };
     const inputHash = sha256Hex(canonicalJson(inputHashPayload));
 
@@ -482,25 +493,30 @@ export class ForecastEngine {
       points: ensPoints,
     });
 
-    // Strictly causal empirical analogs (upgraded Rev 2.2 — declustered, vol-scaled, kernel-weighted)
+    // Strictly causal empirical analogs (Rev 2.3 — prefix-invariant H_ref=60, stride=1, causal enriched, hybrid MTF cluster)
     const analogEngine = new EmpiricalAnalogEngine(24, horizonBars, timeframe);
-    const analogRes = analogEngine.projectEmpirical(cleanCandles, features, horizonBars, canonicalTimestamps);
+    const analogRes = analogEngine.projectEmpirical(cleanCandles, features, horizonBars, canonicalTimestamps, {
+      higherTimeframe,
+      higherCandles: higherTimeframeCandles,
+      lowerTimeframe,
+      lowerCandles: lowerTimeframeCandles,
+    });
     const representativePaths = analogRes.representativePaths || [];
     if (analogRes.status === MODEL_EXECUTION_STATUS.SUCCESS) {
       modelTrajectories.push({
         modelId: 'empirical_analogs',
         modelName: 'Causal Historical Analogs',
         family: 'PATTERN_EMPIRICAL',
-        modelVersion: '2.2.0',
+        modelVersion: '2.3.0',
         executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
         isApproximation: false,
-        isCalibratedInterval: conformalCalibration?.calibrationStatus === 'CALIBRATED_NORMALIZED',
+        isCalibratedInterval: true,
         status: MODEL_EXECUTION_STATUS.SUCCESS,
         reason: analogRes.reason,
         trainingStartUtcMs: trainStartMs,
         trainingEndUtcMs: trainEndMs,
         trainingSampleCount: features.barCount,
-        points: buildForecastPointsFromQuantileTrajectory(analogRes.points, canonicalTimestamps, features, horizonBars, conformalCalibration),
+        points: buildForecastPointsFromQuantileTrajectory(analogRes.points, canonicalTimestamps, features, horizonBars, null),
         meta: {
           matchedCount: analogRes.matchedCount,
           declusteredCount: analogRes.declusteredCount,
@@ -508,6 +524,8 @@ export class ForecastEngine {
           effectiveSampleWeight: analogRes.effectiveSampleWeight,
           avgVolScale: analogRes.avgVolScale,
           medianDistance: analogRes.medianDistance,
+          referenceHorizon: analogRes.referenceHorizon,
+          mtfMeta: analogRes.mtfMeta || null,
         },
       });
     } else {
@@ -515,7 +533,7 @@ export class ForecastEngine {
         modelId: 'empirical_analogs',
         modelName: 'Causal Historical Analogs',
         family: 'PATTERN_EMPIRICAL',
-        modelVersion: '2.2.0',
+        modelVersion: '2.3.0',
         executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
         isApproximation: false,
         isCalibratedInterval: false,
@@ -525,6 +543,10 @@ export class ForecastEngine {
         trainingEndUtcMs: trainEndMs,
         trainingSampleCount: features.barCount,
         points: [],
+        meta: {
+          referenceHorizon: analogRes.referenceHorizon,
+          mtfMeta: analogRes.mtfMeta || null,
+        },
       });
     }
 
@@ -664,7 +686,10 @@ export class ForecastEngine {
       features.lastClose,
       timeframe,
       higherTimeframe,
-      higherTimeframeCandles
+      higherTimeframeCandles,
+      {
+        modelMtfMeta: chosenTrajectory?.modelId === 'empirical_analogs' ? analogRes?.mtfMeta : null,
+      }
     );
     const noEdgeGate = evaluateNoEdgeGate(walkForward, uncertainty);
 
@@ -754,12 +779,14 @@ export class ForecastEngine {
         reason: analogRes.reason,
         jMax: analogRes.jMax,
         embargoGap: analogRes.embargoGap,
+        referenceHorizon: analogRes.referenceHorizon || 60,
         matchedCount: analogRes.matchedCount,
         declusteredCount: analogRes.declusteredCount || 0,
         minSeparationBars: analogRes.minSeparationBars || 0,
         effectiveSampleWeight: analogRes.effectiveSampleWeight || 0,
         avgVolScale: analogRes.avgVolScale || 1,
         medianDistance: analogRes.medianDistance || 0,
+        mtfMeta: analogRes.mtfMeta || null,
       },
       modelContributions,
       modelTrajectories,

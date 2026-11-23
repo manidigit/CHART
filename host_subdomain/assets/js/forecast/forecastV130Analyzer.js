@@ -615,22 +615,27 @@ export function coordinateMultiTimeframe(
   anchorClose,
   timeframe,
   higherTimeframe = '',
-  higherCandles = []
+  higherCandles = [],
+  options = {}
 ) {
+  const modelMtfMeta = options?.modelMtfMeta || null;
   const indLast = independentPoints[independentPoints.length - 1];
   const indMedPct = anchorClose > 0 ? ((indLast.q50 - anchorClose) / anchorClose) * 100 : 0;
 
   if (!Array.isArray(higherCandles) || higherCandles.length < 16 || !higherTimeframe) {
     return {
       referenceTimeframe: higherTimeframe || 'NONE',
-      alignmentState: MTF_ALIGNMENT_STATE.SINGLE_TIMEFRAME,
+      alignmentState: modelMtfMeta?.reconciled ? MTF_ALIGNMENT_STATE.ALIGNED : MTF_ALIGNMENT_STATE.SINGLE_TIMEFRAME,
       ohlcConsistent: true,
       independentMedianPct: Number(indMedPct.toFixed(3)),
       coordinatedMedianPct: Number(indMedPct.toFixed(3)),
       coordinatedPoints: independentPoints,
       coordinatedScenarios: independentScenarios,
-      conflictReasons: ['Higher-timeframe history unavailable locally; running independent engine only'],
+      conflictReasons: modelMtfMeta?.reconciled
+        ? [`Co-dated MTF Cluster (${modelMtfMeta.clusterId}) anchored on ${modelMtfMeta.anchorTimeframe} (${modelMtfMeta.mode})`]
+        : ['Higher-timeframe history unavailable locally; running independent engine only'],
       uncertaintyAdjustmentFactor: 1.0,
+      modelMtfMeta,
     };
   }
 
@@ -638,7 +643,7 @@ export function coordinateMultiTimeframe(
   if (!htfFeats) {
     return {
       referenceTimeframe: higherTimeframe,
-      alignmentState: MTF_ALIGNMENT_STATE.SINGLE_TIMEFRAME,
+      alignmentState: modelMtfMeta?.reconciled ? MTF_ALIGNMENT_STATE.ALIGNED : MTF_ALIGNMENT_STATE.SINGLE_TIMEFRAME,
       ohlcConsistent: true,
       independentMedianPct: Number(indMedPct.toFixed(3)),
       coordinatedMedianPct: Number(indMedPct.toFixed(3)),
@@ -646,6 +651,7 @@ export function coordinateMultiTimeframe(
       coordinatedScenarios: independentScenarios,
       conflictReasons: ['Insufficient higher-timeframe bars for independent check'],
       uncertaintyAdjustmentFactor: 1.0,
+      modelMtfMeta,
     };
   }
 
@@ -670,6 +676,11 @@ export function coordinateMultiTimeframe(
     alignmentState = MTF_ALIGNMENT_STATE.STRUCTURAL_CONFLICT;
     uncAdj = 1.18;
     conflictReasons.push(`Anchor close deviates outside latest closed ${higherTimeframe} [Low, High] envelope`);
+  } else if (modelMtfMeta?.reconciled) {
+    alignmentState = MTF_ALIGNMENT_STATE.ALIGNED;
+    conflictReasons.push(
+      `Hybrid Cluster ${modelMtfMeta.clusterId} reconciled via ${modelMtfMeta.anchorTimeframe} (${modelMtfMeta.mode}, block=${modelMtfMeta.blockSizeBars}b)`
+    );
   } else if (htfDriftSign !== 0 && indSign !== 0 && htfDriftSign !== indSign) {
     const strongHtf = Math.abs(htfFeats.driftZ) >= 1.35;
     alignmentState = strongHtf
@@ -721,6 +732,7 @@ export function coordinateMultiTimeframe(
     coordinatedScenarios: independentScenarios,
     conflictReasons,
     uncertaintyAdjustmentFactor: uncAdj,
+    modelMtfMeta,
   };
 }
 

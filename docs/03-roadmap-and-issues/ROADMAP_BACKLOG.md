@@ -1,7 +1,7 @@
 # CHART — وضعیت واقعی قابلیت‌ها و نقشه راه توسعه (`ROADMAP_BACKLOG`)
 
-> **نسخه:** `1.47.41` · **تاریخ ممیزی واقعی در کد:** `2026-11-21`  
-> این سند تفاوت بین **قابلیت‌های پیاده‌سازی‌شده و تأییدشده در کد فعلی (`v1.47.41`)** (شامل هسته تحلیل تکنیکال `ta-core/1.1`، درخت اشیاء `UI-02`، شبیه‌ساز آفلاین استراتژی `strategy-sim/1.0` و پنل مدیریت چندکاربره `Admin RBAC` در وب و اندروید) را از **بک‌لاگ باقی‌مانده (رفع ناسازگاری چندتایم‌فریمی و ثبات افق موتور پیش‌بینی، ارزیابی آماری OOS مدل‌های مرورگری، اتصال آینده سرور مستقل Python/Chronos-2، فاز ۵ حاکمیت مدل و آزمون‌های عملیاتی cPanel زنده)** به‌طور دقیق و صادقانه جدا می‌کند.
+> **نسخه:** `1.47.41` · **تاریخ ممیزی واقعی در کد:** `2026-11-23`  
+> این سند تفاوت بین **قابلیت‌های پیاده‌سازی‌شده و تأییدشده در کد فعلی (`v1.47.41`)** (شامل هسته تحلیل تکنیکال `ta-core/1.1`، درخت اشیاء `UI-02`، شبیه‌ساز آفلاین استراتژی `strategy-sim/1.0`، پنل مدیریت چندکاربره `Admin RBAC` در وب و اندروید، و ارتقای **`Causal Historical Analogs Rev 2.3`** با ثبات افق `0.0000` و سازگاری چندتایم‌فریمی `Hybrid Two-Cluster MTF`) را از **بک‌لاگ باقی‌مانده (گزارش ارزیابی آماری OOS زنده تمام نمادها، اتصال آینده سرور مستقل Python/Chronos-2، فاز ۵ حاکمیت مدل و آزمون‌های عملیاتی cPanel زنده)** به‌طور دقیق و صادقانه جدا می‌کند.
 
 ---
 
@@ -97,9 +97,9 @@
 > **وضعیت فعلی در `v1.47.41`:** وب (`host_subdomain/`) اکنون با **Unified Browser-Native Forecast Studio** (۱۲ پنل کامل، `AUTO (OOS Best)`، **`Causal Historical Analogs`**، **`Structural JS`**، **`SMC Prediction Engine` (`smc_prediction_js`)**، ۱۰ مدل Native رجیستری، `Calibrated Ensemble`، ۳ حالت رندر بدون OHLC جعلی، `Coordinated MTF`، `Compare Overlays`، `Historical Replay`، کش LRU، کراس‌هیر تعاملی و `ForecastLedger` محلی SHA-256) فعال است و رابط قدیمی Legacy در `v1.47.38` به‌طور دائمی پاک‌سازی شده است. فایل‌های `Chronos-2` (`host_subdomain/api/v1/chronos2_forecast.php`, `host_subdomain/scripts/chronos2_worker.py`, `.github/workflows/chronos2-manual-forecast.yml`) روی هاست اشتراکی به‌صورت `Shelved` حفظ شده‌اند تا پس از تهیه سرور مستقل Python بازبینی و متصل شوند. تب `Forecast` اندروید تا پایان پایدارسازی غیرفعال باقی می‌ماند.
 
 - [x] **Unified Browser-Native Forecast Studio روی وب (`v1.47.35–v1.47.41`):**
-  - `[x]` اجرای ۱۰۰٪ در مرورگر روی کندل‌های بسته‌شده `tvdatafeed` بدون نیاز به `PHP exec()` یا Python، حذف دائمی Legacy UI، پیاده‌سازی `FORECAST-PKG1..3` + `SMCPredictionEngine` علّی و پوشش تست پاریتی **۵۱/۵۱**.
-- [ ] **سازگاری چندتایم‌فریمی، ثبات افق و ارزیابی OOS (`FCST-MODEL-QA-01`):**
-  - `[ ]` بررسی و رفع تناقض بین تایم‌فریم‌ها (`H1×60` در برابر `H4×15`) و ثبات افق (`Prefix-Invariance`) طبق سند در دست بحث [`FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`](../02-architecture/FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md) + ثبت گزارش Walk-Forward OOS به‌ازای نماد/تایم‌فریم.
+  - `[x]` اجرای ۱۰۰٪ در مرورگر روی کندل‌های بسته‌شده `tvdatafeed` بدون نیاز به `PHP exec()` یا Python، حذف دائمی Legacy UI، پیاده‌سازی `FORECAST-PKG1..3` + `SMCPredictionEngine` علّی + **`Causal Historical Analogs Rev 2.3`** (`Prefix-Invariance` دقیق `0.0000` با `H_ref=60`/`stride=1`، سازگاری چندتایم‌فریمی `Hybrid Two-Cluster MTF` با انطباق `0.0000` بین `H1×60` و `H4×15` و `BLOCK_RECONCILED` بین `M15↔H1`، و غنی‌سازی علّی ویژگی‌ها مطابق [`FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`](../02-architecture/FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md))؛ پوشش تست پاریتی **۵۷/۵۷**.
+- [ ] **ارزیابی آماری OOS زنده روی کل نمادها (`FCST-MODEL-QA-01`):**
+  - `[ ]` ثبت گزارش Walk-Forward OOS رسمی روی داده‌های زنده تمام نمادها و تایم‌فریم‌ها پس از استقرار روی `chart.manico.es`.
 - [ ] **ورود فاز سرور مستقل Python (آینده — `FCST-RT-01`):**
   - `[ ]` استقرار سرویس مستقل Python/FastAPI برای `Chronos-2` (با نمونه‌برداری مسیر به جای اتصال نقطه‌ای `q50`) و بازبینی مدل‌های پایتونی بدون تولید OHLC ساختگی.
   - `[ ]` هم‌ترازی و فعال‌سازی مجدد تب `Forecast` در اپلیکیشن اندروید پس از تثبیت معماری نهایی.

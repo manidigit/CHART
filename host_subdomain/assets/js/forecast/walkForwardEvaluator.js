@@ -581,9 +581,12 @@ export function evaluateWalkForward(candles, registry, options = {}) {
       for (const aux of AUXILIARY_BENCHMARK_MODELS) {
         const auxRes = predictAuxiliaryWindowTrajectory(aux.id, slice, feats, horizon, auxCtx);
         if (!auxRes.ok || !auxRes.traj) continue;
-        const calTraj = auxRes.traj.map((q, h) =>
-          applyConformalAdjustmentToQuantiles(q, feats.lastClose, feats.ewmaSigma, h + 1, conformalCalibration, feats.lastClose * 0.01)
-        );
+        const calTraj =
+          aux.id === 'empirical_analogs'
+            ? auxRes.traj
+            : auxRes.traj.map((q, h) =>
+                applyConformalAdjustmentToQuantiles(q, feats.lastClose, feats.ewmaSigma, h + 1, conformalCalibration, feats.lastClose * 0.01)
+              );
         const w = scoreWindow(clean, origin, calTraj, horizon);
         const acc = getAcc(aux.id, aux.name, aux.family, false);
         acc.maeSum += w.maeMean;

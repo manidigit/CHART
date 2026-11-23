@@ -3063,3 +3063,171 @@ test('ADMIN-USERS-RBAC-01: Multi-User Admin PHP RBAC safeguards and Web Admin UI
   assert.doesNotMatch(ownerHtml, /alice<script>/, 'Raw script tag must never appear in Admin UI');
 });
 
+test('FORECAST-ANALOG-REV23-CONSISTENCY-01: EmpiricalAnalogEngine Rev 2.3 guarantees exact Horizon Prefix-Invariance (0.0000 diff), Hybrid MTF consistency (H1x60 vs H4x15 & M15<->H1), causal feature enrichment, and stride=1 speed', async () => {
+  const { EmpiricalAnalogEngine, CANONICAL_ANALOG_HORIZON, ANALOG_ENGINE_VERSION } = await import('../host_subdomain/assets/js/forecast/empiricalAnalogEngine.js');
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+  const { extractForecastFeatures } = await import('../host_subdomain/assets/js/forecast/featureExtractor.js');
+
+  assert.equal(CANONICAL_ANALOG_HORIZON, 60);
+  assert.equal(ANALOG_ENGINE_VERSION, '2.3.0');
+
+  // 1. Deterministic 2400-bar multi-regime H1 series + exact 4-bar aggregated 600-bar H4 series
+  const baseMs = Date.UTC(2025, 0, 1, 0, 0, 0);
+  const h1 = [];
+  let px = 80;
+  for (let i = 0; i < 2400; i++) {
+    const reg = i < 600 ? 0.00025 : i < 1200 ? -0.0002 : i < 1800 ? 0.00005 : 0.0003;
+    const vol = i >= 2100 ? 0.0065 : i >= 1200 && i < 1500 ? 0.005 : 0.0032;
+    const ret = reg + Math.sin(i * 0.19) * vol + Math.cos(i * 0.07) * (vol * 0.55);
+    const open = px;
+    const close = Math.max(20, open * Math.exp(ret));
+    const spread = Math.max(Math.abs(close - open), open * vol * 0.65);
+    h1.push({
+      openTimeUtcMs: baseMs + i * 3600000,
+      open_time_utc_ms: baseMs + i * 3600000,
+      open,
+      high: Math.max(open, close) + spread * 0.45,
+      low: Math.min(open, close) - spread * 0.45,
+      close,
+      volume: 1000 + (i % 7) * 150,
+      is_closed: true,
+    });
+    px = close;
+  }
+  const h4 = [];
+  for (let b = 0; b + 3 < h1.length; b += 4) {
+    const grp = h1.slice(b, b + 4);
+    h4.push({
+      openTimeUtcMs: grp[0].openTimeUtcMs,
+      open_time_utc_ms: grp[0].open_time_utc_ms,
+      open: grp[0].open,
+      high: Math.max(...grp.map((g) => g.high)),
+      low: Math.min(...grp.map((g) => g.low)),
+      close: grp[3].close,
+      volume: grp.reduce((s, g) => s + g.volume, 0),
+      is_closed: true,
+    });
+  }
+
+  const f1 = extractForecastFeatures(h1, 2500);
+  const f4 = extractForecastFeatures(h4, 2500);
+
+  const t0 = performance.now();
+  const s60 = new EmpiricalAnalogEngine(24, 60, 'H1').findCausalAnalogs(h1, 60, f1.atr14, { higherTimeframe: 'H4', higherCandles: h4 });
+  const r15 = new EmpiricalAnalogEngine(24, 15, 'H1').projectEmpirical(h1, f1, 15, [], { higherTimeframe: 'H4', higherCandles: h4 });
+  const r30 = new EmpiricalAnalogEngine(24, 30, 'H1').projectEmpirical(h1, f1, 30, [], { higherTimeframe: 'H4', higherCandles: h4 });
+  const r60 = new EmpiricalAnalogEngine(24, 60, 'H1').projectEmpirical(h1, f1, 60, [], { higherTimeframe: 'H4', higherCandles: h4 });
+  const rH4 = new EmpiricalAnalogEngine(24, 15, 'H4').projectEmpirical(h4, f4, 15, [], { lowerTimeframe: 'H1', lowerCandles: h1 });
+  const avgRunMs = (performance.now() - t0) / 5;
+
+  assert.equal(s60.status, 'READY');
+  assert.equal(s60.stride, 1, 'Rev 2.3 must eliminate dynamic stride and scan with stride = 1');
+  assert.equal(s60.referenceHorizon, 60);
+  assert.ok(s60.analogs.every((a) => Number.isFinite(a.trendDist) && Number.isFinite(a.srDist) && Number.isFinite(a.macroDist)));
+  assert.ok(s60.analogs.every((a) => a.futureEndRefIndex < h1.length - s60.windowLength - s60.embargoGap), 'Strict causality must hold across full canonical refH');
+  assert.ok(avgRunMs < 250, `Expected stride=1 average execution well under budget, got ${avgRunMs.toFixed(1)}ms`);
+
+  // Exact 0.0000 prefix diff across H = 15 / 30 / 60 for all 5 quantiles
+  for (let i = 0; i < 15; i++) {
+    for (const qk of ['q10', 'q25', 'q50', 'q75', 'q90']) {
+      assert.equal(r15.points[i][qk], r60.points[i][qk], `Prefix-invariance violated at step ${i + 1} (${qk}) for H=15 vs H=60`);
+    }
+  }
+  for (let i = 0; i < 30; i++) {
+    for (const qk of ['q10', 'q25', 'q50', 'q75', 'q90']) {
+      assert.equal(r30.points[i][qk], r60.points[i][qk], `Prefix-invariance violated at step ${i + 1} (${qk}) for H=30 vs H=60`);
+    }
+  }
+
+  // Exact 0.0000 cross-timeframe alignment across all 15 shared 4h boundaries (H1x60 vs H4x15)
+  assert.equal(rH4.status, 'SUCCESS');
+  assert.equal(rH4.mtfMeta.clusterId, 'INTRADAY_M15_H1_H4');
+  assert.equal(rH4.mtfMeta.anchorTimeframe, 'H1');
+  assert.equal(rH4.mtfMeta.mode, 'LOWER_TF_AGGREGATED');
+  assert.equal(rH4.mtfMeta.reconciled, true);
+  assert.equal(rH4.mtfMeta.blockSizeBars, 4);
+  for (let k = 0; k < 15; k++) {
+    assert.equal(rH4.points[k].q50, r60.points[4 * k + 3].q50, `H4 bar +${k + 1} must match H1 bar +${4 * k + 4}`);
+  }
+  // Verify intra-block H1 natural fluctuations (not straight-line interpolation inside 4h blocks)
+  let nonLinearBlocks = 0;
+  for (let k = 0; k < 15; k++) {
+    const startP = k === 0 ? f1.lastClose : r60.points[4 * k - 1].q50;
+    const endP = r60.points[4 * k + 3].q50;
+    const midActual = r60.points[4 * k + 1].q50;
+    const midLinear = (startP + endP) / 2;
+    if (Math.abs(midActual - midLinear) > 1e-4) nonLinearBlocks++;
+  }
+  assert.ok(nonLinearBlocks >= 8, 'Intra-block H1 steps must retain natural intermediate retracements/fluctuations');
+
+  // 2. Full ForecastEngine.project Prefix-Invariance & MTF Consistency
+  const fe15 = ForecastEngine.project(h1, { symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 15, higherTimeframe: 'H4', higherTimeframeCandles: h4, skipWalkForward: true });
+  const fe60 = ForecastEngine.project(h1, { symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 60, higherTimeframe: 'H4', higherTimeframeCandles: h4, skipWalkForward: true });
+  const feH4 = ForecastEngine.project(h4, { symbolCode: 'SPOTBRENT', timeframe: 'H4', horizonBars: 15, lowerTimeframe: 'H1', lowerTimeframeCandles: h1, selectedModelId: 'empirical_analogs', skipWalkForward: true });
+  const fePts15 = fe15.modelTrajectories.find((t) => t.modelId === 'empirical_analogs').points;
+  const fePts60 = fe60.modelTrajectories.find((t) => t.modelId === 'empirical_analogs').points;
+  const fePtsH4 = feH4.modelTrajectories.find((t) => t.modelId === 'empirical_analogs').points;
+  for (let i = 0; i < 15; i++) {
+    for (const qk of ['q10', 'q25', 'q50', 'q75', 'q90']) {
+      assert.equal(fePts15[i][qk], fePts60[i][qk], `ForecastEngine empirical_analogs must remain prefix-invariant at step ${i + 1} (${qk})`);
+    }
+  }
+  assert.equal(fePtsH4[14].q50, fePts60[59].q50, 'ForecastEngine H4x15 and H1x60 terminal q50 must match exactly');
+  assert.equal(feH4.mtfCoordination.alignmentState, 'ALIGNED');
+
+  // 3. M15 <-> H1 Higher-Anchor Block Reconciliation + real 260-bar SPOTBRENT M15 prefix-invariance
+  const m15 = [];
+  let mPx = 90;
+  for (let i = 0; i < 960; i++) {
+    const ret = 0.0001 + Math.sin(i * 0.14) * 0.0022 + Math.cos(i * 0.04) * 0.0012;
+    const open = mPx;
+    const close = Math.max(20, open * Math.exp(ret));
+    const span = Math.max(Math.abs(close - open), open * 0.0018);
+    m15.push({
+      openTimeUtcMs: baseMs + i * 900000,
+      open_time_utc_ms: baseMs + i * 900000,
+      open,
+      high: Math.max(open, close) + span * 0.4,
+      low: Math.min(open, close) - span * 0.4,
+      close,
+      volume: 400,
+      is_closed: true,
+    });
+    mPx = close;
+  }
+  const m15H1 = [];
+  for (let b = 0; b + 3 < m15.length; b += 4) {
+    const grp = m15.slice(b, b + 4);
+    m15H1.push({
+      openTimeUtcMs: grp[0].openTimeUtcMs,
+      open_time_utc_ms: grp[0].open_time_utc_ms,
+      open: grp[0].open,
+      high: Math.max(...grp.map((g) => g.high)),
+      low: Math.min(...grp.map((g) => g.low)),
+      close: grp[3].close,
+      volume: 1600,
+      is_closed: true,
+    });
+  }
+  const fm15 = extractForecastFeatures(m15, 2500);
+  const rm15 = new EmpiricalAnalogEngine(24, 40, 'M15').projectEmpirical(m15, fm15, 40, [], { higherTimeframe: 'H1', higherCandles: m15H1 });
+  assert.equal(rm15.status, 'SUCCESS');
+  assert.equal(rm15.mtfMeta.mode, 'BLOCK_RECONCILED');
+  assert.equal(rm15.mtfMeta.reconciled, true);
+  assert.equal(rm15.mtfMeta.anchorTimeframe, 'H1');
+  for (const pt of rm15.points) {
+    assert.ok(pt.q10 <= pt.q25 && pt.q25 <= pt.q50 && pt.q50 <= pt.q75 && pt.q75 <= pt.q90, 'Reconciled M15 quantiles must stay monotonic');
+  }
+
+  const realSpotBrent = JSON.parse(await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8')).candles;
+  const fReal = extractForecastFeatures(realSpotBrent, 2500);
+  const real15 = new EmpiricalAnalogEngine(24, 15, 'M15').projectEmpirical(realSpotBrent, fReal, 15);
+  const real60 = new EmpiricalAnalogEngine(24, 60, 'M15').projectEmpirical(realSpotBrent, fReal, 60);
+  assert.equal(real15.status, 'SUCCESS');
+  assert.equal(real60.status, 'SUCCESS');
+  for (let i = 0; i < 15; i++) {
+    assert.equal(real15.points[i].q50, real60.points[i].q50, `Real SPOTBRENT M15 prefix-invariance violated at step ${i + 1}`);
+  }
+});
+
+
