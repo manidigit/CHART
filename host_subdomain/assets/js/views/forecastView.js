@@ -908,7 +908,8 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     `
     : '';
 
-  const mtfMeta = fc.analogDiagnostics?.mtfMeta || mtf?.modelMtfMeta || null;
+  const activeModelTraj = (fc.modelTrajectories || []).find((t) => t.modelId === fc.selectedChartModelId) || null;
+  const mtfMeta = activeModelTraj?.meta?.mtfMeta || mtf?.modelMtfMeta || fc.analogDiagnostics?.mtfMeta || null;
   const mtfBannerHtml = mtf
     ? `
       <div class="ci-fc-card" style="margin-bottom:12px;">
@@ -916,7 +917,7 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
           <div>
             <strong style="font-size:12.5px;">${isFa ? 'هماهنگ‌سازی چندتایم‌فریمی (Independent vs Coordinated)' : 'Multi-Timeframe Coordination Check'}</strong>
             <div style="font-size:11px;color:var(--text-muted);" class="ltr-num">
-              Higher TF: ${escapeHtml(mtf.referenceTimeframe)} · OHLC Consistent: ${mtf.ohlcConsistent ? 'YES' : 'NO'} · Independent q50: ${mtf.independentMedianPct >= 0 ? '+' : ''}${mtf.independentMedianPct}% vs Coordinated q50: ${mtf.coordinatedMedianPct >= 0 ? '+' : ''}${mtf.coordinatedMedianPct}%${mtfMeta ? ` · Cluster: ${escapeHtml(mtfMeta.clusterId)} (${escapeHtml(mtfMeta.mode)})` : ''}
+              Higher TF: ${escapeHtml(mtf.referenceTimeframe)} · OHLC Consistent: ${mtf.ohlcConsistent ? 'YES' : 'NO'} · Independent q50: ${mtf.independentMedianPct >= 0 ? '+' : ''}${mtf.independentMedianPct}% vs Coordinated q50: ${mtf.coordinatedMedianPct >= 0 ? '+' : ''}${mtf.coordinatedMedianPct}%${mtfMeta ? ` · Cluster: ${escapeHtml(mtfMeta.clusterId)} (${escapeHtml(mtfMeta.mode)}) · H_ref=${Number(mtfMeta.referenceHorizon || 60)}` : ''}
             </div>
           </div>
           <span class="ci-fc-status-badge ${mtf.alignmentState === 'ALIGNED' ? 'ci-fc-badge-valid' : mtf.alignmentState === 'STRUCTURAL_CONFLICT' ? 'ci-fc-badge-blocked' : 'ci-fc-badge-provisional'} ltr-num">

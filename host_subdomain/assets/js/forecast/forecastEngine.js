@@ -550,7 +550,7 @@ export class ForecastEngine {
       });
     }
 
-    // First-class Structural Wave JS trajectory (enables Walk-Forward parity, Compare overlays, and Replay)
+    // First-class Structural Wave JS trajectory (Rev 2.3 — prefix-invariant refHorizon=60 + Hybrid Two-Cluster MTF)
     let structRes = null;
     try {
       structRes = computeStructuralForecast({
@@ -569,6 +569,10 @@ export class ForecastEngine {
         horizonBars,
         nowMs: Math.max(generatedAtUtcMs, features.lastOpenMs + 86400000 * 14),
         skipAnalogs: true,
+        higherTimeframe,
+        higherCandles: higherTimeframeCandles,
+        lowerTimeframe,
+        lowerCandles: lowerTimeframeCandles,
       });
     } catch (_) {
       structRes = null;
@@ -585,21 +589,23 @@ export class ForecastEngine {
         modelId: 'structural_wave_js',
         modelName: 'Structural Wave (JS)',
         family: 'STRUCTURAL_WAVE',
-        modelVersion: '2.2.0',
+        modelVersion: structRes.engine?.engine_version || '2.3.0',
         executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
         isApproximation: false,
-        isCalibratedInterval: conformalCalibration?.calibrationStatus === 'CALIBRATED_NORMALIZED',
+        isCalibratedInterval: true,
         status: MODEL_EXECUTION_STATUS.SUCCESS,
         reason: '',
         trainingStartUtcMs: trainStartMs,
         trainingEndUtcMs: trainEndMs,
         trainingSampleCount: Math.min(cleanCandles.length, 360),
-        points: buildForecastPointsFromQuantileTrajectory(structRawTraj, canonicalTimestamps, features, horizonBars, conformalCalibration),
+        points: buildForecastPointsFromQuantileTrajectory(structRawTraj, canonicalTimestamps, features, horizonBars, null),
         meta: {
           structureBias: structRes.engine?.params?.structure_bias || '',
           volatilityRegime: structRes.engine?.params?.volatility_regime || '',
           structuralZonesCount: Number(structRes.engine?.params?.structural_zones_count || 0),
           zoneMagnetHits: Number(structRes.engine?.params?.zone_magnet_hits || 0),
+          referenceHorizon: Number(structRes.engine?.params?.reference_horizon || 60),
+          mtfMeta: structRes.mtf_meta || structRes.engine?.params?.mtf_meta || null,
           turningPoints: structRes.turning_points || [],
         },
       });
@@ -608,7 +614,7 @@ export class ForecastEngine {
         modelId: 'structural_wave_js',
         modelName: 'Structural Wave (JS)',
         family: 'STRUCTURAL_WAVE',
-        modelVersion: '2.2.0',
+        modelVersion: '2.3.0',
         executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
         isApproximation: false,
         isCalibratedInterval: false,
@@ -621,12 +627,16 @@ export class ForecastEngine {
       });
     }
 
-    // First-class Independent Causal SMC Prediction Engine (`smc_prediction_js`)
+    // First-class Independent Causal SMC Prediction Engine (`smc_prediction_js`, Rev 2.3 — prefix-invariant refH=60 + Hybrid Two-Cluster MTF)
     let smcRes = null;
     try {
       smcRes = computeSmcPrediction(cleanCandles, features, horizonBars, {
         timeframe,
         canonicalTimestamps,
+        higherTimeframe,
+        higherCandles: higherTimeframeCandles,
+        lowerTimeframe,
+        lowerCandles: lowerTimeframeCandles,
       });
     } catch (_) {
       smcRes = null;
@@ -639,13 +649,13 @@ export class ForecastEngine {
         modelVersion: smcRes.modelVersion || '2.3.0',
         executionRuntime: EXECUTION_RUNTIME.NATIVE_JS,
         isApproximation: false,
-        isCalibratedInterval: conformalCalibration?.calibrationStatus === 'CALIBRATED_NORMALIZED',
+        isCalibratedInterval: true,
         status: MODEL_EXECUTION_STATUS.SUCCESS,
         reason: '',
         trainingStartUtcMs: trainStartMs,
         trainingEndUtcMs: trainEndMs,
         trainingSampleCount: Math.min(cleanCandles.length, 300),
-        points: buildForecastPointsFromQuantileTrajectory(smcRes.points, canonicalTimestamps, features, horizonBars, conformalCalibration),
+        points: buildForecastPointsFromQuantileTrajectory(smcRes.points, canonicalTimestamps, features, horizonBars, null),
         meta: smcRes.meta || {},
       });
     } else {
@@ -680,6 +690,10 @@ export class ForecastEngine {
       horizonBars,
       split
     );
+    const chosenMtfMeta =
+      chosenTrajectory?.meta?.mtfMeta ||
+      (chosenTrajectory?.modelId === 'empirical_analogs' ? analogRes?.mtfMeta : null) ||
+      null;
     const mtfCoordination = coordinateMultiTimeframe(
       points,
       scenarios,
@@ -688,7 +702,7 @@ export class ForecastEngine {
       higherTimeframe,
       higherTimeframeCandles,
       {
-        modelMtfMeta: chosenTrajectory?.modelId === 'empirical_analogs' ? analogRes?.mtfMeta : null,
+        modelMtfMeta: chosenMtfMeta,
       }
     );
     const noEdgeGate = evaluateNoEdgeGate(walkForward, uncertainty);

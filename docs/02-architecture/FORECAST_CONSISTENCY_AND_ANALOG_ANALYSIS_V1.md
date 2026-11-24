@@ -1,9 +1,9 @@
-# CHART Forecast — تحلیل سازگاری چندتایم‌فریمی، ثبات افق و بازبینی مدل `Causal Historical Analogs`
+# CHART Forecast — تحلیل سازگاری چندتایم‌فریمی، ثبات افق و استاندارد `Rev 2.3` در مدل‌های اصلی مرورگر
 
-- **نسخه سند:** `2.0.0`
-- **تاریخ ایجاد:** `2026-11-21` · **آخرین به‌روزرسانی (تکمیل پیاده‌سازی):** `2026-11-23`
-- **وضعیت:** `IMPLEMENTED IN CODE (Rev 2.3 — v1.47.41)` — **تصمیمات ۵گانه با تأیید مالک نهایی و در موتور `Causal Historical Analogs` پیاده‌سازی و با `۵۷/۵۷` تست پاس تأیید شد**
-- **مبنای وضعیت کد بررسی‌شده:** وب بومی مرورگری `v1.47.41` (`host_subdomain/assets/js/forecast/`, `empiricalAnalogEngine.js` نسخه `2.3.0`)
+- **نسخه سند:** `2.1.0`
+- **تاریخ ایجاد:** `2026-11-21` · **آخرین به‌روزرسانی (تکمیل پیاده‌سازی هر ۳ مدل ترجیحی):** `2026-11-24`
+- **وضعیت:** `IMPLEMENTED IN CODE (Rev 2.3 — v1.47.41)` — **استاندارد ۵گانه `Rev 2.3` در هر سه مدل ترجیحی مرورگر (`Causal Historical Analogs`، `Structural JS` و `SMC Prediction Engine`) پیاده‌سازی و با `۵۸/۵۸` تست پاس وب و بیلد سالم اندروید تأیید شد**
+- **مبنای وضعیت کد بررسی‌شده:** وب بومی مرورگری `v1.47.41` (`empiricalAnalogEngine.js`، `structuralForecastEngine.js` و `smcPredictionEngine.js` هر سه نسخه `2.3.0`)
 - **مرجع هم‌راستا:** [`FORECAST_PRODUCT_FOUNDATION_V1.md`](../01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) (به‌ویژه بخش ۶: سازگاری چندتایم‌فریمی)
 
 ---
@@ -173,5 +173,27 @@
 | **سرعت اجرا با اسکن کامل (`stride = 1` روی `2400` کندل)** | `stride` پویا با از دست رفتن آنالوگ‌ها | **`~47 ms`** میانگین هر اجرا (بسیار کمتر از سقف `250 ms`) | ✅ پاس |
 | **تست‌های پاریتی وب و کامپایل اندروید** | `56/56` | **`57/57` تست وب پاس** + `compile_applet` اندروید بدون خطا | ✅ پاس |
 
-### ۸.۳. گام بعدی بازمانده
+### ۸.۳. گسترش استاندارد `Rev 2.3` به `Structural JS` و `SMC Prediction Engine` (`2026-11-24`)
+
+در گام بعدی و با تأیید صریح مالک، دقیقاً همان دو استاندارد بنیادین **`Rev 2.3`** — یعنی **(۱) ثبات افق دقیق `0.0000` (`refHorizon = 60` روی `H = 15 / 30 / 60` برای هر ۵ کوانتایل)** و **(۲) سازگاری چندتایم‌فریمی دوخوشه‌ای (`Hybrid Two-Cluster MTF`: `INTRADAY_M15_H1_H4` با لنگر `H1` و `SWING_H4_D1_W1` با لنگر `D1`)** — روی دو مدل ترجیحی دیگر نیز پیاده‌سازی شد:
+
+#### فایل‌های ارتقایافته (`v1.47.41` — `Rev 2.3`)
+- `host_subdomain/assets/js/algorithms/structuralForecastEngine.js` — ارتقا به **`STRUCTURAL_FORECAST_VERSION = '2.3.0'`** (`STRUCTURAL_CANONICAL_HORIZON = 60`)؛ قفل کردن طول افق مرجع `refHorizon = Math.max(60, horizon)` در تحلیل نوسان تجربی، محدودسازی مدت موج و حلقه تولید نقاط عطف پیش از برش به `horizon`؛ افزودن `LOWER_TF_AGGREGATED` (`H4←H1` و `W1←D1`)، `BLOCK_RECONCILED` (`M15/M30↔H1` و `H4↔D1`) و `ANCHOR_MACRO_AWARE` (سوگیری علّی EMA کلان تایم‌فریم بالاتر با وزن `0.22`)؛ انتقال کندل‌های MTF به `EmpiricalAnalogEngine` داخلی با حفظ کامل `skipAnalogs` و صفر بودن `Math.random`/`sin`/`cos`.
+- `host_subdomain/assets/js/forecast/smcPredictionEngine.js` — ارتقا به **`SMC_PREDICTION_MODEL_VERSION = '2.3.0'`** (`CANONICAL_SMC_HORIZON = 60`)؛ قفل کردن `refH = Math.max(60, H)` در پخش تجربی، مسیر چندفازی نقدینگی و کوانتایل‌های مرجع پیش از برش به `H`؛ افزودن همان سه حالت `Hybrid Two-Cluster MTF` (`LOWER_TF_AGGREGATED`، `BLOCK_RECONCILED` و `ANCHOR_MACRO_AWARE` مبتنی بر `BOS/CHoCH + EMA` علّی تایم‌فریم بالاتر) با صفر بودن `Math.random`/`sin`/`cos` و حجم ساختگی.
+- `host_subdomain/assets/js/forecast/forecastEngine.js` و `walkForwardEvaluator.js` — ارسال `higherCandles` و `lowerCandles` به هر دو مدل، حذف double-padding ضرایب `conformalCalibration` انسمبل روی کوانتایل‌های تجربی بومی `structural_wave_js` و `smc_prediction_js` (برای حفظ ثبات پیشوند `0.0000` و هم‌ترازی ۱:۱ بین `ForecastEngine.project` و `Walk-Forward`) و انتقال `mtfMeta` مدل فعال به `coordinateMultiTimeframe`.
+- `host_subdomain/assets/js/services/structuralForecastService.js`، `views/forecastView.js` و `app.js` — تزریق خودکار کندل‌های تایم‌فریم بالاتر و پایین‌تر به مسیر Web Worker / کش `Structural JS` و پیش‌نمایش‌های مستقیم `Structural JS` / `SMC` در `app.js`، رفع باگ خواندن `smcPoc` (`meta.pocPrice` به‌جای `meta.poc`) و نمایش بج‌های `H_ref=60` و وضعیت `MTF` در پنل `Overview` و بنر `Structural JS`.
+- `tests/web_parity.test.mjs` — افزودن تست رگرسیون **`FORECAST-STRUCT-SMC-REV23-CONSISTENCY-01`** (**۵۸/۵۸** تست پاس).
+
+#### نتایج راستی‌آزمایی `Structural JS Rev 2.3` و `SMC Prediction Engine Rev 2.3`
+| معیار پذیرش | `Structural JS` (`2.3.0`) | `SMC Prediction Engine` (`2.3.0`) | وضعیت |
+|---|---|---|---|
+| **ثبات افق `H=15 / 30 / 60` (هر ۵ کوانتایل + `SPOTBRENT M15` واقعی)** | **`0.0000`** اختلاف (مستقل و داخل `ForecastEngine`) | **`0.0000`** اختلاف (مستقل و داخل `ForecastEngine`) | ✅ پاس |
+| **سازگاری `H1 × 60` در برابر `H4 × 15` (۱۵ مرز مشترک ۴ساعته)** | **`0.0000`** اختلاف در تمام ۱۵ مرز (`LOWER_TF_AGGREGATED`) | **`0.0000`** اختلاف در تمام ۱۵ مرز (`LOWER_TF_AGGREGATED`) | ✅ پاس |
+| **آشتی بلوکی `M15 ↔ H1` (`BLOCK_RECONCILED`) + ثبات پیشوند `M15`** | یکنواخت + **`0.0000`** اختلاف روی `H=15/40` | یکنواخت + **`0.0000`** اختلاف روی `H=15/40` | ✅ پاس |
+| **سرعت اجرا (`2400` کندل `H1` با زمینه کلان `H4`، `H=60`)** | **`~70.4 ms`** | **`~15.3 ms`** | ✅ پاس |
+| **عملکرد `Walk-Forward OOS` (`30` پنجره چندرژیمی، `H=30`)** | `WIS = 2.3947` · پوشش ۸۰٪ = `53.56%` | **`WIS = 1.9972`** (بهتر از Naive `2.1096`) · پوشش ۸۰٪ = `68.33%` · **دقت جهت `73.33%`** | ✅ ثبت‌شده |
+| **حفظ `skipAnalogs` و تست‌های پاریتی/بیلد** | عدم تغییر مسیر با `skipAnalogs` | **`58/58` تست وب پاس** + `compile_applet` اندروید بدون خطا | ✅ پاس |
+
+### ۸.۴. گام بعدی بازمانده
 - ثبت گزارش پذیرش OOS روی داده‌های زنده تمام نمادها و تایم‌فریم‌ها پس از استقرار روی `chart.manico.es` (`FCST-MODEL-QA-01`).
+

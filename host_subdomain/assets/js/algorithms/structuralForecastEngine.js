@@ -21,6 +21,8 @@ import { advanceFutureTimestampsWithCalendar } from '../forecast/calendarRegistr
 
 export const STRUCTURAL_FORECAST_ENGINE_ID = 'structural_wave_js';
 export const STRUCTURAL_FORECAST_SCHEMA = 'chart_structural_forecast_v1';
+export const STRUCTURAL_FORECAST_VERSION = '2.3.0';
+export const STRUCTURAL_CANONICAL_HORIZON = 60;
 export const STRUCTURAL_FORECAST_MIN_CLOSED_BARS = 40;
 
 function median(values) {
@@ -462,8 +464,150 @@ function smoothSegmentInterpolate(t, asymmetryExp = 1.0) {
   return shaped * shaped * (3 - 2 * shaped);
 }
 
+function extractOpenMsSafe(c) {
+  if (!c) return 0;
+  const raw = c.open_time_utc_ms ?? c.openTimeUtcMs ?? c.time;
+  if (raw !== undefined && raw !== null) {
+    const num = Number(raw);
+    if (Number.isFinite(num) && num > 0) {
+      return num < 1e12 && !c.open_time_utc_ms && !c.openTimeUtcMs ? num * 1000 : num;
+    }
+  }
+  const sec = Number(c.openTimeSec);
+  return Number.isFinite(sec) && sec > 0 ? sec * 1000 : 0;
+}
+
+function resolveStructuralMtfCluster(timeframe = 'M15') {
+  const tf = String(timeframe || 'M15').trim().toUpperCase();
+  if (tf === 'M15' || tf === 'M30' || tf === 'H1' || tf === 'H4') {
+    return { clusterId: 'INTRADAY_M15_H1_H4', anchorTimeframe: 'H1' };
+  }
+  return { clusterId: 'SWING_H4_D1_W1', anchorTimeframe: 'D1' };
+}
+
+function resolveStructuralBlockRatio(lowerTf, higherTf) {
+  const lo = String(lowerTf || '').trim().toUpperCase();
+  const hi = String(higherTf || '').trim().toUpperCase();
+  if (lo === 'M15' && hi === 'H1') return 4;
+  if (lo === 'M30' && hi === 'H1') return 2;
+  if (lo === 'H1' && hi === 'H4') return 4;
+  if (lo === 'H4' && hi === 'D1') return 6;
+  if (lo === 'D1' && hi === 'W1') return 5;
+  return 0;
+}
+
+function sliceCoDatedLowerSeries(lowerCandles, targetAnchorCloseMs, lowerTf) {
+  if (!Array.isArray(lowerCandles) || lowerCandles.length === 0 || !targetAnchorCloseMs) return [];
+  const stepMs = PriceFormatter.stepMilliseconds(lowerTf || 'H1') || 3600000;
+  let cut = lowerCandles.length;
+  while (cut > 0) {
+    const ms = extractOpenMsSafe(lowerCandles[cut - 1]);
+    if (ms > 0 && ms + stepMs <= targetAnchorCloseMs + 1000) break;
+    cut--;
+  }
+  return cut > 0 ? lowerCandles.slice(0, cut) : [];
+}
+
+function computeCausalHtfMacroBias(higherCandles = []) {
+  if (!Array.isArray(higherCandles) || higherCandles.length < 20) return null;
+  const clean = [];
+  for (const c of higherCandles) {
+    if (!c || c.is_closed === false) continue;
+    const cl = Number(c.close);
+    const hi = Number(c.high);
+    const lo = Number(c.low);
+    const op = Number(c.open);
+    if (Number.isFinite(cl) && cl > 0 && Number.isFinite(hi) && Number.isFinite(lo) && Number.isFinite(op)) {
+      clean.push({
+        open: op,
+        high: Math.max(hi, op, cl),
+        low: Math.min(lo, op, cl),
+        close: cl,
+      });
+    }
+  }
+  if (clean.length < 20) return null;
+  const slice = clean.slice(-180);
+  const atrArr = TechnicalIndicators.computeAtr(slice, 14);
+  const validAtr = atrArr.filter((v) => v !== null && Number.isFinite(v) && v > 0);
+  const atrNow = validAtr.length > 0 ? validAtr[validAtr.length - 1] : slice[slice.length - 1].close * 0.005;
+  const ema20 = TechnicalIndicators.computeEma(slice, 20);
+  const ema50 = TechnicalIndicators.computeEma(slice, 50);
+  const n = slice.length;
+  const lastClose = slice[n - 1].close;
+  const e20 = Number(ema20[n - 1] || lastClose);
+  const e50 = Number(ema50[n - 1] || lastClose);
+  const e20Prev = Number(ema20[Math.max(0, n - 5)] || e20);
+  const emaSpread = clamp((e20 - e50) / Math.max(1e-9, atrNow * 1.4), -1, 1);
+  const posVsE20 = clamp((lastClose - e20) / Math.max(1e-9, atrNow * 1.8), -1, 1);
+  const slopeBias = clamp((e20 - e20Prev) / Math.max(1e-9, atrNow * 1.1), -1, 1);
+  const score = clamp(emaSpread * 0.45 + posVsE20 * 0.30 + slopeBias * 0.25, -1, 1);
+  return {
+    score: Number(score.toFixed(4)),
+    direction: score >= 0.18 ? 1 : score <= -0.18 ? -1 : 0,
+  };
+}
+
+function applyBlockReconciliationToStructuralForecast(refForecast, anchorForecast, blockSize, alpha = 0.72) {
+  if (!Array.isArray(refForecast) || refForecast.length === 0) return refForecast;
+  if (!Array.isArray(anchorForecast) || anchorForecast.length === 0 || blockSize < 2) return refForecast;
+  const total = refForecast.length;
+  const maxBlocks = Math.min(anchorForecast.length, Math.floor(total / blockSize));
+  if (maxBlocks <= 0) return refForecast;
+
+  const out = refForecast.map((pt) => ({ ...pt }));
+  let cumulativeShift = 0;
+
+  for (let b = 0; b < maxBlocks; b++) {
+    const startIdx = b * blockSize;
+    const endIdx = startIdx + blockSize - 1;
+    const localEndQ50 = Math.max(1e-6, Number(out[endIdx].q50_median) * Math.exp(cumulativeShift));
+    const anchorEndQ50 = Math.max(1e-6, Number(anchorForecast[b].q50_median ?? anchorForecast[b].q50));
+    if (!Number.isFinite(anchorEndQ50) || anchorEndQ50 <= 0) continue;
+
+    const blockLogDelta = Math.log(anchorEndQ50 / localEndQ50) * alpha;
+    for (let j = 0; j < blockSize; j++) {
+      const idx = startIdx + j;
+      const ramp = (j + 1) / blockSize;
+      const mult = Math.exp(cumulativeShift + blockLogDelta * ramp);
+      const q50 = Math.max(1e-6, out[idx].q50_median * mult);
+      const q10 = Math.max(1e-6, Math.min(q50, out[idx].q10 * mult));
+      const q25 = Math.max(q10, Math.min(q50, out[idx].q25 * mult));
+      const q75 = Math.max(q50, out[idx].q75 * mult);
+      const q90 = Math.max(q75, out[idx].q90 * mult);
+      out[idx].q10 = Number(q10.toFixed(6));
+      out[idx].q25 = Number(q25.toFixed(6));
+      out[idx].q50_median = Number(q50.toFixed(6));
+      out[idx].q75 = Number(q75.toFixed(6));
+      out[idx].q90 = Number(q90.toFixed(6));
+    }
+    cumulativeShift += blockLogDelta;
+  }
+
+  // Carry final cumulative shift smoothly to any trailing partial block
+  const tailStart = maxBlocks * blockSize;
+  if (tailStart < total && Math.abs(cumulativeShift) > 1e-9) {
+    const mult = Math.exp(cumulativeShift);
+    for (let idx = tailStart; idx < total; idx++) {
+      const q50 = Math.max(1e-6, out[idx].q50_median * mult);
+      const q10 = Math.max(1e-6, Math.min(q50, out[idx].q10 * mult));
+      const q25 = Math.max(q10, Math.min(q50, out[idx].q25 * mult));
+      const q75 = Math.max(q50, out[idx].q75 * mult);
+      const q90 = Math.max(q75, out[idx].q90 * mult);
+      out[idx].q10 = Number(q10.toFixed(6));
+      out[idx].q25 = Number(q25.toFixed(6));
+      out[idx].q50_median = Number(q50.toFixed(6));
+      out[idx].q75 = Number(q75.toFixed(6));
+      out[idx].q90 = Number(q90.toFixed(6));
+    }
+  }
+  return out;
+}
+
 /**
  * Computes a complete deterministic Native JS Structural Forecast from closed candles.
+ * Rev 2.3: Guarantees exact 0.0000 Horizon Prefix-Invariance (refHorizon = 60) and
+ * Hybrid Two-Cluster MTF consistency (`INTRADAY_M15_H1_H4` & `SWING_H4_D1_W1`).
  */
 export function computeStructuralForecast({
   candles = [],
@@ -473,11 +617,20 @@ export function computeStructuralForecast({
   horizonBars = 30,
   nowMs = Date.now(),
   skipAnalogs = false,
+  higherTimeframe = '',
+  higherCandles = [],
+  lowerTimeframe = '',
+  lowerCandles = [],
+  mtfInternal = false,
 } = {}) {
   const cleanSym = String(symbolCode || 'SPOTBRENT').trim().toUpperCase();
   const cleanProv = String(provider || 'tvdatafeed').trim().toLowerCase();
   const cleanTf = String(timeframe || 'M15').trim().toUpperCase();
+  const cleanHigherTf = String(higherTimeframe || '').trim().toUpperCase();
+  const cleanLowerTf = String(lowerTimeframe || '').trim().toUpperCase();
   const horizon = Math.max(1, Math.min(120, Math.round(Number(horizonBars) || 30)));
+  const refHorizon = Math.max(STRUCTURAL_CANONICAL_HORIZON, horizon);
+  const clusterInfo = resolveStructuralMtfCluster(cleanTf);
 
   // Normalize & strictly retain closed candles only
   const closedMap = new Map();
@@ -579,7 +732,7 @@ export function computeStructuralForecast({
   }
 
   const atrSeries = TechnicalIndicators.computeAtr(closedCandles, 14);
-  const volInfo = analyzeVolatilityAndEmpiricalSpread(closedCandles, atrSeries, horizon);
+  const volInfo = analyzeVolatilityAndEmpiricalSpread(closedCandles, atrSeries, refHorizon);
   if (volInfo.atrNow <= 0 || !Number.isFinite(volInfo.atrNow)) {
     return buildInsufficientResult(['Price series has zero measurable volatility / flat range.']);
   }
@@ -649,10 +802,12 @@ export function computeStructuralForecast({
   const netEfficiency = Math.abs(netSwingMove) / totalLegPath;
   const emaSpreadBias = (e20 - e50) / Math.max(1e-9, volInfo.atrNow);
 
+  const htfMacro = computeCausalHtfMacroBias(higherCandles);
   let biasDir = 0;
   let structureBias = 'ROTATIONAL_RANGE';
-  if (netEfficiency >= 0.20 || Math.abs(hhScore) >= 2 || Math.abs(emaSpreadBias) >= 0.65) {
-    const rawScore = hhScore * 0.45 + Math.sign(netSwingMove) * 0.30 + clamp(emaSpreadBias, -1, 1) * 0.25;
+  if (netEfficiency >= 0.20 || Math.abs(hhScore) >= 2 || Math.abs(emaSpreadBias) >= 0.65 || (htfMacro && Math.abs(htfMacro.score) >= 0.45)) {
+    const localScore = hhScore * 0.45 + Math.sign(netSwingMove) * 0.30 + clamp(emaSpreadBias, -1, 1) * 0.25;
+    const rawScore = htfMacro ? localScore * 0.78 + htfMacro.score * 0.22 : localScore;
     if (rawScore >= 0.22) {
       biasDir = 1;
       structureBias = 'BULLISH_STRUCTURE';
@@ -690,9 +845,9 @@ export function computeStructuralForecast({
   const impulseAmpMedian = clamp(rawImpAmp, volInfo.atrNow * 0.8, volInfo.horizonScaledMaxMove);
   const impulseAmpQ25 = clamp(quantile(impAmps, 0.25) || impulseAmpMedian * 0.78, volInfo.atrNow * 0.55, impulseAmpMedian);
   const impulseAmpQ75 = clamp(quantile(impAmps, 0.75) || impulseAmpMedian * 1.25, impulseAmpMedian, volInfo.horizonScaledMaxMove);
-  const impulseDurMedian = clamp(Math.round(rawImpDur), 4, Math.max(6, Math.round(horizon * 0.75)));
+  const impulseDurMedian = clamp(Math.round(rawImpDur), 4, Math.max(6, Math.round(refHorizon * 0.75)));
   const impulseDurQ25 = clamp(Math.round(quantile(impDurs, 0.25) || impulseDurMedian * 0.75), 3, impulseDurMedian);
-  const impulseDurQ75 = clamp(Math.round(quantile(impDurs, 0.75) || impulseDurMedian * 1.25), impulseDurMedian, Math.max(7, Math.round(horizon * 0.85)));
+  const impulseDurQ75 = clamp(Math.round(quantile(impDurs, 0.75) || impulseDurMedian * 1.25), impulseDurMedian, Math.max(7, Math.round(refHorizon * 0.85)));
   const corrRetraceMedian =
     biasDir === 0
       ? clamp(retraceRatios.length > 0 ? median(retraceRatios) : 0.85, 0.65, 1.05)
@@ -701,8 +856,8 @@ export function computeStructuralForecast({
     biasDir === 0
       ? clamp(retraceRatios.length > 0 ? quantile(retraceRatios, 0.75) : 0.95, corrRetraceMedian, 1.12)
       : clamp(retraceRatios.length > 0 ? quantile(retraceRatios, 0.75) : 0.62, corrRetraceMedian, 0.86);
-  const corrDurMedian = clamp(Math.round(rawCorrDur), 3, Math.max(5, Math.round(horizon * 0.6)));
-  const corrDurQ75 = clamp(Math.round(quantile(corrDurs, 0.75) || corrDurMedian * 1.25), corrDurMedian, Math.max(6, Math.round(horizon * 0.72)));
+  const corrDurMedian = clamp(Math.round(rawCorrDur), 3, Math.max(5, Math.round(refHorizon * 0.6)));
+  const corrDurQ75 = clamp(Math.round(quantile(corrDurs, 0.75) || corrDurMedian * 1.25), corrDurMedian, Math.max(6, Math.round(refHorizon * 0.72)));
 
   const structureClarity = clamp(
     0.45 * Math.min(1, recentSwings.length / 8) + 0.35 * Math.min(1, netEfficiency / 0.45) + 0.20 * (gapCount === 0 ? 1 : 0.65),
@@ -788,7 +943,7 @@ export function computeStructuralForecast({
   const wasLastLegExtended = lastCompletedLeg ? lastCompletedLeg.absMove >= impulseAmpQ75 * 0.95 : false;
   const emaStretchAtr = Math.abs(lastClose - e50) / Math.max(1e-9, volInfo.atrNow);
 
-  const turningPoints = [];
+  const refTurningPoints = [];
   let cursorStep = 0;
   let cursorPrice = lastClose;
   let nextDir = activeLegDir;
@@ -801,7 +956,7 @@ export function computeStructuralForecast({
 
   let waveCycle = 0;
   let prevLegAmp = Math.max(volInfo.atrNow * 0.5, currentLegProgressAmt || impulseAmpMedian);
-  while (cursorStep < horizon && waveCycle < 10) {
+  while (cursorStep < refHorizon && waveCycle < 14) {
     const isImpulse = biasDir === 0 ? true : nextDir === biasDir;
     // Non-mechanical quartile modulation: alternate between empirical Q25/median/Q75 regimes based on extension & mean-reversion
     let rawStepDur;
@@ -871,7 +1026,7 @@ export function computeStructuralForecast({
       targetPrice = Math.max(1e-6, targetPrice);
     }
 
-    const nextStep = Math.min(horizon, cursorStep + legDur);
+    const nextStep = Math.min(refHorizon, cursorStep + legDur);
     const stepFraction = (nextStep - cursorStep) / Math.max(1, legDur);
     const actualTargetPrice = Math.max(1e-6, cursorPrice + (targetPrice - cursorPrice) * stepFraction);
 
@@ -898,7 +1053,7 @@ export function computeStructuralForecast({
       rationale = `${Math.round(retraceToUse * 100)}% structural pullback zone`;
     }
 
-    turningPoints.push({
+    refTurningPoints.push({
       step: nextStep,
       price: Number(actualTargetPrice.toFixed(6)),
       direction: nextDir,
@@ -920,27 +1075,24 @@ export function computeStructuralForecast({
     waveCycle++;
   }
 
-  // Step 6 & 7: Build bar-by-bar central path & calibrated ASYMMETRIC empirical uncertainty bands + timestamps
-  const forecast = [];
-  const projectedTimestamps = advanceFutureTimestampsWithCalendar(originOpenMs, cleanTf, horizon, cleanSym, cleanProv);
+  // Step 6 & 7: Build canonical refHorizon bar-by-bar central path & asymmetric empirical uncertainty bands
+  const refProjectedTimestamps = advanceFutureTimestampsWithCalendar(originOpenMs, cleanTf, refHorizon, cleanSym, cleanProv);
   const ambiguityPenalty = 1 + (1 - structureClarity) * 0.45 + (volInfo.regime === 'EXPANDING' ? 0.22 : 0);
-  // Modest bias-aware tail skew combined with empirical historical up/down return dispersion
   const biasUpMult = biasDir > 0 ? 1.06 : biasDir < 0 ? 0.94 : 1.0;
   const biasDownMult = biasDir < 0 ? 1.06 : biasDir > 0 ? 0.94 : 1.0;
   const upBandMult = clamp(volInfo.upAsymFactor * biasUpMult, 0.74, 1.35);
   const downBandMult = clamp(volInfo.downAsymFactor * biasDownMult, 0.74, 1.35);
 
-  for (let step = 1; step <= horizon; step++) {
-    const prevOpenMs = projectedTimestamps[step - 1] || advanceForecastTimestampMs(originOpenMs, cleanTf, cleanSym, cleanProv);
-    const seg = turningPoints.find((tp) => step >= tp.start_step && step <= tp.step) || turningPoints[turningPoints.length - 1];
+  let refForecast = [];
+  for (let step = 1; step <= refHorizon; step++) {
+    const prevOpenMs = refProjectedTimestamps[step - 1] || advanceForecastTimestampMs(originOpenMs, cleanTf, cleanSym, cleanProv);
+    const seg = refTurningPoints.find((tp) => step >= tp.start_step && step <= tp.step) || refTurningPoints[refTurningPoints.length - 1];
     const spanSteps = Math.max(1, seg.step - seg.start_step);
     const localT = clamp((step - seg.start_step) / spanSteps, 0, 1);
-    // Impulsive waves accelerate out cleanly (0.90), corrective legs decelerate gradually (1.12)
     const asymExp = seg.is_impulse ? 0.90 : 1.12;
     const eased = smoothSegmentInterpolate(localT, asymExp);
     const central = Math.max(1e-6, seg.start_price + (seg.price - seg.start_price) * eased);
 
-    // Horizon uncertainty half-widths calibrated from empirical asymmetric dispersion + regime + clarity
     const baseInner = volInfo.baseStepSigma * Math.sqrt(step) * 0.72 * ambiguityPenalty;
     const innerUp = baseInner * upBandMult;
     const innerDown = baseInner * downBandMult;
@@ -953,7 +1105,7 @@ export function computeStructuralForecast({
     const q10 = Number(Math.max(1e-6, Math.min(q25, central - outerDown)).toFixed(6));
     const q90 = Number(Math.max(q75, central + outerUp).toFixed(6));
 
-    forecast.push({
+    refForecast.push({
       step,
       open_time_utc_ms: prevOpenMs,
       open_time_utc_iso: new Date(prevOpenMs).toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
@@ -965,11 +1117,151 @@ export function computeStructuralForecast({
     });
   }
 
-  // Attach real projected timestamps onto turningPoints
-  for (const tp of turningPoints) {
-    const pt = forecast[tp.step - 1];
-    tp.open_time_utc_ms = pt ? pt.open_time_utc_ms : originOpenMs;
-    tp.open_time_utc_iso = pt ? pt.open_time_utc_iso : '';
+  // Hybrid Two-Cluster MTF Coordination (Rev 2.3):
+  //  - H4 / W1 aggregate exact block-end bars from anchor lower TF (H1 / D1) -> 0.0000 boundary diff
+  //  - M15 / M30 (and H4 when only D1 is available) smoothly reconcile blocks to anchor higher TF on refHorizon
+  //  - H1 / D1 incorporate causal macro HTF bias (`ANCHOR_MACRO_AWARE`)
+  let mtfMeta = {
+    clusterId: clusterInfo.clusterId,
+    anchorTimeframe: clusterInfo.anchorTimeframe,
+    mode: htfMacro ? 'ANCHOR_MACRO_AWARE' : 'STANDALONE',
+    reconciled: Boolean(htfMacro),
+    blockSizeBars: cleanTf === 'H1' || cleanTf === 'M15' ? 4 : cleanTf === 'D1' || cleanTf === 'W1' ? 5 : 2,
+    referenceHorizon: refHorizon,
+  };
+
+  let forecast = null;
+  let turningPoints = null;
+
+  if (!mtfInternal) {
+    const inferredLowerTf = cleanLowerTf || (cleanTf === 'H4' ? 'H1' : cleanTf === 'W1' ? 'D1' : '');
+    const lowerBlockRatio = resolveStructuralBlockRatio(inferredLowerTf, cleanTf);
+    const canLowerAggregate =
+      ((cleanTf === 'H4' && inferredLowerTf === 'H1') || (cleanTf === 'W1' && inferredLowerTf === 'D1')) &&
+      lowerBlockRatio >= 2 &&
+      Array.isArray(lowerCandles) &&
+      lowerCandles.length >= STRUCTURAL_FORECAST_MIN_CLOSED_BARS &&
+      horizon * lowerBlockRatio <= 120;
+
+    if (canLowerAggregate) {
+      const targetAnchorCloseMs = originOpenMs + (PriceFormatter.stepMilliseconds(cleanTf) || 14400000);
+      const coDatedLower = sliceCoDatedLowerSeries(lowerCandles, targetAnchorCloseMs, inferredLowerTf);
+      if (coDatedLower.length >= STRUCTURAL_FORECAST_MIN_CLOSED_BARS) {
+        const lowerRes = computeStructuralForecast({
+          candles: coDatedLower,
+          symbolCode: cleanSym,
+          provider: cleanProv,
+          timeframe: inferredLowerTf,
+          horizonBars: horizon * lowerBlockRatio,
+          nowMs,
+          skipAnalogs: true,
+          higherTimeframe: cleanTf,
+          higherCandles: closedCandles,
+          mtfInternal: true,
+        });
+        if (lowerRes?.status === 'READY' && Array.isArray(lowerRes.forecast) && lowerRes.forecast.length >= horizon * lowerBlockRatio) {
+          forecast = [];
+          for (let k = 0; k < horizon; k++) {
+            const src = lowerRes.forecast[k * lowerBlockRatio + (lowerBlockRatio - 1)];
+            const ts = refProjectedTimestamps[k] || advanceForecastTimestampMs(originOpenMs, cleanTf, cleanSym, cleanProv);
+            forecast.push({
+              step: k + 1,
+              open_time_utc_ms: ts,
+              open_time_utc_iso: new Date(ts).toISOString().slice(0, 16).replace('T', ' ') + ' UTC',
+              q10: src.q10,
+              q25: src.q25,
+              q50_median: src.q50_median,
+              q75: src.q75,
+              q90: src.q90,
+            });
+          }
+          const mappedTps = [];
+          let prevMappedStep = 0;
+          let prevMappedPrice = lastClose;
+          for (const tp of lowerRes.turning_points || []) {
+            const mStep = clamp(Math.ceil(tp.step / lowerBlockRatio), 1, horizon);
+            if (mStep <= prevMappedStep) continue;
+            const mPrice = forecast[mStep - 1].q50_median;
+            mappedTps.push({
+              ...tp,
+              start_step: prevMappedStep,
+              start_price: prevMappedPrice,
+              step: mStep,
+              price: mPrice,
+              open_time_utc_ms: forecast[mStep - 1].open_time_utc_ms,
+              open_time_utc_iso: forecast[mStep - 1].open_time_utc_iso,
+            });
+            prevMappedStep = mStep;
+            prevMappedPrice = mPrice;
+          }
+          turningPoints = mappedTps;
+          mtfMeta = {
+            clusterId: clusterInfo.clusterId,
+            anchorTimeframe: inferredLowerTf,
+            mode: 'LOWER_TF_AGGREGATED',
+            reconciled: true,
+            blockSizeBars: lowerBlockRatio,
+            referenceHorizon: Math.max(STRUCTURAL_CANONICAL_HORIZON, horizon * lowerBlockRatio),
+          };
+        }
+      }
+    }
+
+    if (!forecast) {
+      const inferredHigherTf = cleanHigherTf || (cleanTf === 'M15' || cleanTf === 'M30' ? 'H1' : cleanTf === 'H4' ? 'D1' : '');
+      const higherBlockRatio = resolveStructuralBlockRatio(cleanTf, inferredHigherTf);
+      const canHigherReconcile =
+        ((cleanTf === 'M15' && inferredHigherTf === 'H1') ||
+          (cleanTf === 'M30' && inferredHigherTf === 'H1') ||
+          (cleanTf === 'H4' && inferredHigherTf === 'D1')) &&
+        higherBlockRatio >= 2 &&
+        Array.isArray(higherCandles) &&
+        higherCandles.length >= STRUCTURAL_FORECAST_MIN_CLOSED_BARS;
+
+      if (canHigherReconcile) {
+        const anchorHorizon = Math.max(1, Math.ceil(refHorizon / higherBlockRatio));
+        const higherRes = computeStructuralForecast({
+          candles: higherCandles,
+          symbolCode: cleanSym,
+          provider: cleanProv,
+          timeframe: inferredHigherTf,
+          horizonBars: anchorHorizon,
+          nowMs,
+          skipAnalogs: true,
+          mtfInternal: true,
+        });
+        if (higherRes?.status === 'READY' && Array.isArray(higherRes.forecast) && higherRes.forecast.length >= anchorHorizon) {
+          refForecast = applyBlockReconciliationToStructuralForecast(refForecast, higherRes.forecast, higherBlockRatio, 0.72);
+          mtfMeta = {
+            clusterId: clusterInfo.clusterId,
+            anchorTimeframe: inferredHigherTf,
+            mode: 'BLOCK_RECONCILED',
+            reconciled: true,
+            blockSizeBars: higherBlockRatio,
+            referenceHorizon: refHorizon,
+          };
+        }
+      }
+    }
+  }
+
+  if (!forecast) {
+    forecast = refForecast.slice(0, horizon);
+    turningPoints = [];
+    for (const tp of refTurningPoints) {
+      if (tp.start_step >= horizon) break;
+      const clippedStep = Math.min(horizon, tp.step);
+      const pt = forecast[clippedStep - 1];
+      const startPtPrice = tp.start_step === 0 ? lastClose : forecast[tp.start_step - 1]?.q50_median ?? tp.start_price;
+      turningPoints.push({
+        ...tp,
+        start_price: startPtPrice,
+        step: clippedStep,
+        price: pt ? pt.q50_median : tp.price,
+        open_time_utc_ms: pt ? pt.open_time_utc_ms : originOpenMs,
+        open_time_utc_iso: pt ? pt.open_time_utc_iso : '',
+      });
+    }
   }
 
   const limitations = [];
@@ -1007,7 +1299,13 @@ export function computeStructuralForecast({
       closedCandles,
       { lastClose, atr14: volInfo.atrNow },
       horizon,
-      forecast.map((point) => point.open_time_utc_ms)
+      forecast.map((point) => point.open_time_utc_ms),
+      {
+        higherTimeframe: cleanHigherTf,
+        higherCandles,
+        lowerTimeframe: cleanLowerTf,
+        lowerCandles,
+      }
     );
   }
   const chosenAnalogPath =
@@ -1070,10 +1368,12 @@ export function computeStructuralForecast({
     engine: {
       engine_id: STRUCTURAL_FORECAST_ENGINE_ID,
       engine_name: 'Native Structural Wave Forecast (JS)',
+      engine_version: STRUCTURAL_FORECAST_VERSION,
       is_chronos2: false,
       execution_mode: 'browser_on_demand',
       params: {
         horizon_bars: horizon,
+        reference_horizon: refHorizon,
         context_bars_used: closedCandles.length,
         swing_pivot_len: pivotLen,
         atr_period: 14,
@@ -1097,8 +1397,10 @@ export function computeStructuralForecast({
         impulse_dur_median: impulseDurMedian,
         correction_retrace_median: Number(corrRetraceMedian.toFixed(3)),
         correction_dur_median: corrDurMedian,
+        mtf_meta: mtfMeta,
       },
     },
+    mtf_meta: mtfMeta,
     series: {
       symbol: cleanSym,
       provider: cleanProv,

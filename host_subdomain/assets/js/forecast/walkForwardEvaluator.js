@@ -582,7 +582,7 @@ export function evaluateWalkForward(candles, registry, options = {}) {
         const auxRes = predictAuxiliaryWindowTrajectory(aux.id, slice, feats, horizon, auxCtx);
         if (!auxRes.ok || !auxRes.traj) continue;
         const calTraj =
-          aux.id === 'empirical_analogs'
+          aux.id === 'empirical_analogs' || aux.id === 'structural_wave_js' || aux.id === 'smc_prediction_js'
             ? auxRes.traj
             : auxRes.traj.map((q, h) =>
                 applyConformalAdjustmentToQuantiles(q, feats.lastClose, feats.ewmaSigma, h + 1, conformalCalibration, feats.lastClose * 0.01)

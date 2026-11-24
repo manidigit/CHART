@@ -3230,4 +3230,254 @@ test('FORECAST-ANALOG-REV23-CONSISTENCY-01: EmpiricalAnalogEngine Rev 2.3 guaran
   }
 });
 
+test('FORECAST-STRUCT-SMC-REV23-CONSISTENCY-01: Structural JS & SMC Prediction Engine Rev 2.3 guarantee exact 0.0000 Horizon Prefix-Invariance, Hybrid Two-Cluster MTF (H1x60 vs H4x15 & M15<->H1), ForecastEngine wiring, and skipAnalogs invariance', async () => {
+  const {
+    computeStructuralForecast,
+    STRUCTURAL_FORECAST_VERSION,
+    STRUCTURAL_CANONICAL_HORIZON,
+  } = await import('../host_subdomain/assets/js/algorithms/structuralForecastEngine.js');
+  const {
+    computeSmcPrediction,
+    SMC_PREDICTION_MODEL_VERSION,
+    CANONICAL_SMC_HORIZON,
+  } = await import('../host_subdomain/assets/js/forecast/smcPredictionEngine.js');
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+
+  assert.equal(STRUCTURAL_FORECAST_VERSION, '2.3.0');
+  assert.equal(STRUCTURAL_CANONICAL_HORIZON, 60);
+  assert.equal(SMC_PREDICTION_MODEL_VERSION, '2.3.0');
+  assert.equal(CANONICAL_SMC_HORIZON, 60);
+
+  // 1. Deterministic 2400-bar multi-regime H1 series + exact 4-bar aggregated 600-bar H4 series
+  const baseMs = Date.UTC(2025, 0, 1, 0, 0, 0);
+  const h1 = [];
+  let px = 80;
+  for (let i = 0; i < 2400; i++) {
+    const reg = i < 600 ? 0.00025 : i < 1200 ? -0.0002 : i < 1800 ? 0.00005 : 0.0003;
+    const vol = i >= 2100 ? 0.0065 : i >= 1200 && i < 1500 ? 0.005 : 0.0032;
+    const ret = reg + Math.sin(i * 0.19) * vol + Math.cos(i * 0.07) * (vol * 0.55);
+    const open = px;
+    const close = Math.max(20, open * Math.exp(ret));
+    const spread = Math.max(Math.abs(close - open), open * vol * 0.65);
+    h1.push({
+      openTimeUtcMs: baseMs + i * 3600000,
+      open_time_utc_ms: baseMs + i * 3600000,
+      open,
+      high: Math.max(open, close) + spread * 0.45,
+      low: Math.min(open, close) - spread * 0.45,
+      close,
+      volume: 1000 + (i % 7) * 150,
+      is_closed: true,
+    });
+    px = close;
+  }
+  const h4 = [];
+  for (let b = 0; b + 3 < h1.length; b += 4) {
+    const grp = h1.slice(b, b + 4);
+    h4.push({
+      openTimeUtcMs: grp[0].openTimeUtcMs,
+      open_time_utc_ms: grp[0].open_time_utc_ms,
+      open: grp[0].open,
+      high: Math.max(...grp.map((g) => g.high)),
+      low: Math.min(...grp.map((g) => g.low)),
+      close: grp[3].close,
+      volume: grp.reduce((s, g) => s + g.volume, 0),
+      is_closed: true,
+    });
+  }
+  const fixedNowMs = h1[h1.length - 1].open_time_utc_ms + 8 * 3600000;
+
+  // --- Structural JS Rev 2.3 ---
+  const st15 = computeStructuralForecast({ candles: h1, symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 15, nowMs: fixedNowMs, higherTimeframe: 'H4', higherCandles: h4 });
+  const st30 = computeStructuralForecast({ candles: h1, symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 30, nowMs: fixedNowMs, higherTimeframe: 'H4', higherCandles: h4 });
+  const st60 = computeStructuralForecast({ candles: h1, symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 60, nowMs: fixedNowMs, higherTimeframe: 'H4', higherCandles: h4 });
+  const st60NoAnalogs = computeStructuralForecast({ candles: h1, symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 60, nowMs: fixedNowMs, higherTimeframe: 'H4', higherCandles: h4, skipAnalogs: true });
+  const stH4 = computeStructuralForecast({ candles: h4, symbolCode: 'SPOTBRENT', timeframe: 'H4', horizonBars: 15, nowMs: fixedNowMs, lowerTimeframe: 'H1', lowerCandles: h1 });
+
+  assert.equal(st15.status, 'READY');
+  assert.equal(st30.status, 'READY');
+  assert.equal(st60.status, 'READY');
+  assert.equal(stH4.status, 'READY');
+  assert.equal(st60.engine.engine_version, '2.3.0');
+  assert.equal(st60.engine.params.reference_horizon, 60);
+  assert.equal(st60.mtf_meta.mode, 'ANCHOR_MACRO_AWARE');
+
+  const stQuantileKeys = ['q10', 'q25', 'q50_median', 'q75', 'q90'];
+  for (let i = 0; i < 15; i++) {
+    for (const qk of stQuantileKeys) {
+      assert.equal(st15.forecast[i][qk], st60.forecast[i][qk], `Structural JS prefix-invariance violated at step ${i + 1} (${qk}) for H=15 vs H=60`);
+    }
+  }
+  for (let i = 0; i < 30; i++) {
+    for (const qk of stQuantileKeys) {
+      assert.equal(st30.forecast[i][qk], st60.forecast[i][qk], `Structural JS prefix-invariance violated at step ${i + 1} (${qk}) for H=30 vs H=60`);
+    }
+  }
+  // skipAnalogs invariance preserved
+  for (let i = 0; i < 60; i++) {
+    assert.equal(st60.forecast[i].q50_median, st60NoAnalogs.forecast[i].q50_median, `Structural JS skipAnalogs invariance violated at step ${i + 1}`);
+  }
+  // H4x15 vs H1x60 exact boundary alignment (all 15 shared 4h boundaries)
+  assert.equal(stH4.mtf_meta.clusterId, 'INTRADAY_M15_H1_H4');
+  assert.equal(stH4.mtf_meta.anchorTimeframe, 'H1');
+  assert.equal(stH4.mtf_meta.mode, 'LOWER_TF_AGGREGATED');
+  assert.equal(stH4.mtf_meta.reconciled, true);
+  assert.equal(stH4.mtf_meta.blockSizeBars, 4);
+  for (let k = 0; k < 15; k++) {
+    for (const qk of stQuantileKeys) {
+      assert.equal(stH4.forecast[k][qk], st60.forecast[4 * k + 3][qk], `Structural JS H4 bar +${k + 1} (${qk}) must match H1 bar +${4 * k + 4}`);
+    }
+  }
+
+  // --- SMC Prediction Engine Rev 2.3 ---
+  const smc15 = computeSmcPrediction(h1, null, 15, { timeframe: 'H1', higherTimeframe: 'H4', higherCandles: h4 });
+  const smc30 = computeSmcPrediction(h1, null, 30, { timeframe: 'H1', higherTimeframe: 'H4', higherCandles: h4 });
+  const smc60 = computeSmcPrediction(h1, null, 60, { timeframe: 'H1', higherTimeframe: 'H4', higherCandles: h4 });
+  const smcH4 = computeSmcPrediction(h4, null, 15, { timeframe: 'H4', lowerTimeframe: 'H1', lowerCandles: h1 });
+
+  assert.equal(smc15.status, 'SUCCESS');
+  assert.equal(smc30.status, 'SUCCESS');
+  assert.equal(smc60.status, 'SUCCESS');
+  assert.equal(smcH4.status, 'SUCCESS');
+  assert.equal(smc60.modelVersion, '2.3.0');
+  assert.equal(smc60.referenceHorizon, 60);
+  assert.equal(smc60.mtfMeta.mode, 'ANCHOR_MACRO_AWARE');
+
+  for (let i = 0; i < 15; i++) {
+    for (const qk of ['q10', 'q25', 'q50', 'q75', 'q90']) {
+      assert.equal(smc15.points[i][qk], smc60.points[i][qk], `SMC prefix-invariance violated at step ${i + 1} (${qk}) for H=15 vs H=60`);
+    }
+  }
+  for (let i = 0; i < 30; i++) {
+    for (const qk of ['q10', 'q25', 'q50', 'q75', 'q90']) {
+      assert.equal(smc30.points[i][qk], smc60.points[i][qk], `SMC prefix-invariance violated at step ${i + 1} (${qk}) for H=30 vs H=60`);
+    }
+  }
+  assert.equal(smcH4.mtfMeta.clusterId, 'INTRADAY_M15_H1_H4');
+  assert.equal(smcH4.mtfMeta.anchorTimeframe, 'H1');
+  assert.equal(smcH4.mtfMeta.mode, 'LOWER_TF_AGGREGATED');
+  assert.equal(smcH4.mtfMeta.reconciled, true);
+  assert.equal(smcH4.mtfMeta.blockSizeBars, 4);
+  for (let k = 0; k < 15; k++) {
+    for (const qk of ['q10', 'q25', 'q50', 'q75', 'q90']) {
+      assert.equal(smcH4.points[k][qk], smc60.points[4 * k + 3][qk], `SMC H4 bar +${k + 1} (${qk}) must match H1 bar +${4 * k + 4}`);
+    }
+  }
+
+  // --- M15 <-> H1 Higher-Anchor Block Reconciliation + Prefix-Invariance ---
+  const m15 = [];
+  let mPx = 90;
+  for (let i = 0; i < 960; i++) {
+    const ret = 0.0001 + Math.sin(i * 0.14) * 0.0022 + Math.cos(i * 0.04) * 0.0012;
+    const open = mPx;
+    const close = Math.max(20, open * Math.exp(ret));
+    const span = Math.max(Math.abs(close - open), open * 0.0018);
+    m15.push({
+      openTimeUtcMs: baseMs + i * 900000,
+      open_time_utc_ms: baseMs + i * 900000,
+      open,
+      high: Math.max(open, close) + span * 0.4,
+      low: Math.min(open, close) - span * 0.4,
+      close,
+      volume: 400,
+      is_closed: true,
+    });
+    mPx = close;
+  }
+  const m15H1 = [];
+  for (let b = 0; b + 3 < m15.length; b += 4) {
+    const grp = m15.slice(b, b + 4);
+    m15H1.push({
+      openTimeUtcMs: grp[0].openTimeUtcMs,
+      open_time_utc_ms: grp[0].open_time_utc_ms,
+      open: grp[0].open,
+      high: Math.max(...grp.map((g) => g.high)),
+      low: Math.min(...grp.map((g) => g.low)),
+      close: grp[3].close,
+      volume: 1600,
+      is_closed: true,
+    });
+  }
+  const m15NowMs = m15[m15.length - 1].open_time_utc_ms + 4 * 3600000;
+
+  const stM15_15 = computeStructuralForecast({ candles: m15, symbolCode: 'SPOTBRENT', timeframe: 'M15', horizonBars: 15, nowMs: m15NowMs, higherTimeframe: 'H1', higherCandles: m15H1 });
+  const stM15_40 = computeStructuralForecast({ candles: m15, symbolCode: 'SPOTBRENT', timeframe: 'M15', horizonBars: 40, nowMs: m15NowMs, higherTimeframe: 'H1', higherCandles: m15H1 });
+  assert.equal(stM15_40.status, 'READY');
+  assert.equal(stM15_40.mtf_meta.mode, 'BLOCK_RECONCILED');
+  assert.equal(stM15_40.mtf_meta.reconciled, true);
+  assert.equal(stM15_40.mtf_meta.anchorTimeframe, 'H1');
+  for (let i = 0; i < 15; i++) {
+    assert.equal(stM15_15.forecast[i].q50_median, stM15_40.forecast[i].q50_median, `Reconciled Structural JS M15 prefix-invariance violated at step ${i + 1}`);
+  }
+  for (const pt of stM15_40.forecast) {
+    assert.ok(pt.q10 <= pt.q25 && pt.q25 <= pt.q50_median && pt.q50_median <= pt.q75 && pt.q75 <= pt.q90, 'Reconciled Structural JS M15 quantiles must stay monotonic');
+  }
+
+  const smcM15_15 = computeSmcPrediction(m15, null, 15, { timeframe: 'M15', higherTimeframe: 'H1', higherCandles: m15H1 });
+  const smcM15_40 = computeSmcPrediction(m15, null, 40, { timeframe: 'M15', higherTimeframe: 'H1', higherCandles: m15H1 });
+  assert.equal(smcM15_40.status, 'SUCCESS');
+  assert.equal(smcM15_40.mtfMeta.mode, 'BLOCK_RECONCILED');
+  assert.equal(smcM15_40.mtfMeta.reconciled, true);
+  assert.equal(smcM15_40.mtfMeta.anchorTimeframe, 'H1');
+  for (let i = 0; i < 15; i++) {
+    assert.equal(smcM15_15.points[i].q50, smcM15_40.points[i].q50, `Reconciled SMC M15 prefix-invariance violated at step ${i + 1}`);
+  }
+  for (const pt of smcM15_40.points) {
+    assert.ok(pt.q10 <= pt.q25 && pt.q25 <= pt.q50 && pt.q50 <= pt.q75 && pt.q75 <= pt.q90, 'Reconciled SMC M15 quantiles must stay monotonic');
+  }
+
+  // --- Real 260-bar SPOTBRENT M15 prefix-invariance for both engines ---
+  const realSpotBrent = JSON.parse(await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8')).candles;
+  const realNowMs = Number(realSpotBrent[realSpotBrent.length - 1].open_time_utc_ms) + 8 * 3600000;
+  const realSt15 = computeStructuralForecast({ candles: realSpotBrent, symbolCode: 'SPOTBRENT', timeframe: 'M15', horizonBars: 15, nowMs: realNowMs });
+  const realSt60 = computeStructuralForecast({ candles: realSpotBrent, symbolCode: 'SPOTBRENT', timeframe: 'M15', horizonBars: 60, nowMs: realNowMs });
+  assert.equal(realSt15.status, 'READY');
+  assert.equal(realSt60.status, 'READY');
+  for (let i = 0; i < 15; i++) {
+    assert.equal(realSt15.forecast[i].q50_median, realSt60.forecast[i].q50_median, `Real SPOTBRENT M15 Structural JS prefix-invariance violated at step ${i + 1}`);
+  }
+  const realSmc15 = computeSmcPrediction(realSpotBrent, null, 15, { timeframe: 'M15' });
+  const realSmc60 = computeSmcPrediction(realSpotBrent, null, 60, { timeframe: 'M15' });
+  assert.equal(realSmc15.status, 'SUCCESS');
+  assert.equal(realSmc60.status, 'SUCCESS');
+  for (let i = 0; i < 15; i++) {
+    assert.equal(realSmc15.points[i].q50, realSmc60.points[i].q50, `Real SPOTBRENT M15 SMC prefix-invariance violated at step ${i + 1}`);
+  }
+
+  // --- Full ForecastEngine.project Prefix-Invariance & MTF Coordination for both models ---
+  const fe15 = ForecastEngine.project(h1, { symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 15, higherTimeframe: 'H4', higherTimeframeCandles: h4, skipWalkForward: true });
+  const fe60 = ForecastEngine.project(h1, { symbolCode: 'SPOTBRENT', timeframe: 'H1', horizonBars: 60, higherTimeframe: 'H4', higherTimeframeCandles: h4, skipWalkForward: true });
+  const feH4Struct = ForecastEngine.project(h4, { symbolCode: 'SPOTBRENT', timeframe: 'H4', horizonBars: 15, lowerTimeframe: 'H1', lowerTimeframeCandles: h1, selectedModelId: 'structural_wave_js', skipWalkForward: true });
+  const feH4Smc = ForecastEngine.project(h4, { symbolCode: 'SPOTBRENT', timeframe: 'H4', horizonBars: 15, lowerTimeframe: 'H1', lowerTimeframeCandles: h1, selectedModelId: 'smc_prediction_js', skipWalkForward: true });
+
+  for (const modelId of ['structural_wave_js', 'smc_prediction_js']) {
+    const pts15 = fe15.modelTrajectories.find((t) => t.modelId === modelId).points;
+    const pts60 = fe60.modelTrajectories.find((t) => t.modelId === modelId).points;
+    for (let i = 0; i < 15; i++) {
+      for (const qk of ['q10', 'q25', 'q50', 'q75', 'q90']) {
+        assert.equal(pts15[i][qk], pts60[i][qk], `ForecastEngine ${modelId} must remain prefix-invariant at step ${i + 1} (${qk})`);
+      }
+    }
+  }
+  const feH4StructPts = feH4Struct.modelTrajectories.find((t) => t.modelId === 'structural_wave_js').points;
+  const fe60StructPts = fe60.modelTrajectories.find((t) => t.modelId === 'structural_wave_js').points;
+  assert.equal(feH4StructPts[14].q50, fe60StructPts[59].q50, 'ForecastEngine structural_wave_js H4x15 and H1x60 terminal q50 must match exactly');
+  assert.equal(feH4Struct.mtfCoordination.alignmentState, 'ALIGNED');
+
+  const feH4SmcPts = feH4Smc.modelTrajectories.find((t) => t.modelId === 'smc_prediction_js').points;
+  const fe60SmcPts = fe60.modelTrajectories.find((t) => t.modelId === 'smc_prediction_js').points;
+  assert.equal(feH4SmcPts[14].q50, fe60SmcPts[59].q50, 'ForecastEngine smc_prediction_js H4x15 and H1x60 terminal q50 must match exactly');
+  assert.equal(feH4Smc.mtfCoordination.alignmentState, 'ALIGNED');
+
+  // --- Service & App UI MTF wiring sanity checks ---
+  const serviceSrc = await readFile(new URL('../host_subdomain/assets/js/services/structuralForecastService.js', import.meta.url), 'utf8');
+  const appSrc = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  assert.match(serviceSrc, /higherCandles:\s*higherClosed/);
+  assert.match(serviceSrc, /lowerCandles:\s*lowerClosed/);
+  assert.match(appSrc, /resolveMtfContextForTab/);
+  assert.match(appSrc, /smcPoc:\s*smcComputed\.meta\?\.pocPrice\s*\?\?\s*null/);
+  assert.match(appSrc, /H_ref=/);
+});
+
+
 

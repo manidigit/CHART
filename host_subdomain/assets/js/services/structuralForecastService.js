@@ -1,14 +1,25 @@
 import {
   state,
+  getCachedOrAggregatedCandles,
   isStructuralForecastMatchingTab,
   clearTabStructuralForecast,
 } from '../core/store.js?v=1.47.41';
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
+import { resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.41';
 import {
   computeStructuralForecast,
   computeClosedCandlesDigest,
   STRUCTURAL_FORECAST_ENGINE_ID,
 } from '../algorithms/structuralForecastEngine.js?v=1.47.41';
+
+function resolveHigherTimeframeForStructural(tf = 'M15') {
+  const norm = String(tf || 'M15').trim().toUpperCase();
+  if (norm === 'M15' || norm === 'M30') return 'H1';
+  if (norm === 'H1') return 'H4';
+  if (norm === 'H4') return 'D1';
+  if (norm === 'D1') return 'W1';
+  return '';
+}
 
 const _structuralForecastMemoryCache = new Map();
 let _workerInstance = null;
@@ -20,13 +31,15 @@ export function buildStructuralForecastCacheKey(
   timeframe,
   originOpenMs,
   horizonBars = 30,
-  seriesDigest = ''
+  seriesDigest = '',
+  mtfSuffix = ''
 ) {
   const sym = String(symbolCode || '').trim().toUpperCase();
   const prov = String(provider || 'tvdatafeed').trim().toLowerCase();
   const tf = String(timeframe || 'M15').trim().toUpperCase();
   const h = Math.max(1, Math.min(120, Math.round(Number(horizonBars) || 30)));
-  return `${sym}|${prov}|${tf}|${Number(originOpenMs)}|H${h}|${STRUCTURAL_FORECAST_ENGINE_ID}|${seriesDigest}`;
+  const base = `${sym}|${prov}|${tf}|${Number(originOpenMs)}|H${h}|${STRUCTURAL_FORECAST_ENGINE_ID}|${seriesDigest}`;
+  return mtfSuffix ? `${base}|${mtfSuffix}` : base;
 }
 
 export function clearStructuralForecastCache() {
@@ -177,6 +190,47 @@ export async function requestStructuralForecastForTab(
       return tab.structuralForecast;
     }
 
+    const higherTf = resolveHigherTimeframeForStructural(timeframe);
+    const higherRaw = higherTf ? getCachedOrAggregatedCandles(symbolCode, provider, higherTf) : [];
+    const higherClosed = Array.isArray(higherRaw)
+      ? higherRaw
+          .filter((c) => {
+            const openMs = Number(c?.open_time_utc_ms || 0);
+            const closeVal = Number(c?.close);
+            return (
+              openMs > 0 &&
+              Number.isFinite(closeVal) &&
+              closeVal > 0 &&
+              c?.is_closed !== false &&
+              PriceFormatter.isCandleClosed(openMs, higherTf, nowMs, symbolCode)
+            );
+          })
+          .sort((a, b) => Number(a.open_time_utc_ms) - Number(b.open_time_utc_ms))
+          .slice(-360)
+      : [];
+    const lowerInfo = resolveLowerTimeframeInfo(timeframe);
+    const lowerTf = lowerInfo ? lowerInfo.timeframe : '';
+    const lowerRaw = lowerTf ? getCachedOrAggregatedCandles(symbolCode, provider, lowerTf) : [];
+    const lowerClosed = Array.isArray(lowerRaw)
+      ? lowerRaw
+          .filter((c) => {
+            const openMs = Number(c?.open_time_utc_ms || 0);
+            const closeVal = Number(c?.close);
+            return (
+              openMs > 0 &&
+              Number.isFinite(closeVal) &&
+              closeVal > 0 &&
+              c?.is_closed !== false &&
+              PriceFormatter.isCandleClosed(openMs, lowerTf, nowMs, symbolCode)
+            );
+          })
+          .sort((a, b) => Number(a.open_time_utc_ms) - Number(b.open_time_utc_ms))
+          .slice(-600)
+      : [];
+    const lastHigherMs = higherClosed.length > 0 ? Number(higherClosed[higherClosed.length - 1].open_time_utc_ms || 0) : 0;
+    const lastLowerMs = lowerClosed.length > 0 ? Number(lowerClosed[lowerClosed.length - 1].open_time_utc_ms || 0) : 0;
+    const mtfSuffix = `H:${higherTf}:${higherClosed.length}:${lastHigherMs}|L:${lowerTf}:${lowerClosed.length}:${lastLowerMs}`;
+
     const lastClosedCandle = closedCandles[closedCandles.length - 1];
     const originOpenMs = Number(lastClosedCandle.open_time_utc_ms);
     const digest = computeClosedCandlesDigest(closedCandles);
@@ -186,7 +240,8 @@ export async function requestStructuralForecastForTab(
       timeframe,
       originOpenMs,
       horizonBars,
-      digest
+      digest,
+      mtfSuffix
     );
 
     if (!forceRefresh && _structuralForecastMemoryCache.has(cacheKey)) {
@@ -212,6 +267,10 @@ export async function requestStructuralForecastForTab(
       timeframe,
       horizonBars,
       nowMs,
+      higherTimeframe: higherTf,
+      higherCandles: higherClosed,
+      lowerTimeframe: lowerTf,
+      lowerCandles: lowerClosed,
     });
 
     // Verify tab and request sequence still match user's explicit request

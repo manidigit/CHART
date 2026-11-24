@@ -91,8 +91,9 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.41';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.41';
-import { renderForecastStudioFanCanvas, bindForecastCanvasHover, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay } from './views/forecastView.js?v=1.47.41';
+import { renderForecastStudioFanCanvas, bindForecastCanvasHover, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay, resolveHigherTimeframe } from './views/forecastView.js?v=1.47.41';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=1.47.41';
+import { resolveLowerTimeframeInfo } from './forecast/forecastEngine.js?v=1.47.41';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.47.41';
 import { defaultForecastLedger } from './forecast/forecastLedger.js?v=1.47.41';
 import { computeSmcPrediction } from './forecast/smcPredictionEngine.js?v=1.47.41';
@@ -141,6 +142,26 @@ function invalidateForecastAfterModelConfigChange(tab, changedModelId = '') {
   saveOpenTabsToStorage();
 }
 
+function resolveMtfContextForTab(tab) {
+  if (!tab) return { higherTimeframe: '', higherCandles: [], lowerTimeframe: '', lowerCandles: [] };
+  const tf = String(tab.timeframe || 'M15').trim().toUpperCase();
+  const higherTimeframe = tf === 'M30' ? 'H1' : resolveHigherTimeframe(tf);
+  const higherCandles = higherTimeframe
+    ? getCachedOrAggregatedCandles(tab.symbolCode, tab.provider, higherTimeframe)
+    : [];
+  const lowerInfo = resolveLowerTimeframeInfo(tf);
+  const lowerTimeframe = lowerInfo ? lowerInfo.timeframe : '';
+  const lowerCandles = lowerTimeframe
+    ? getCachedOrAggregatedCandles(tab.symbolCode, tab.provider, lowerTimeframe)
+    : [];
+  return {
+    higherTimeframe: higherTimeframe || '',
+    higherCandles: Array.isArray(higherCandles) ? higherCandles : [],
+    lowerTimeframe: lowerTimeframe || '',
+    lowerCandles: Array.isArray(lowerCandles) ? lowerCandles : [],
+  };
+}
+
 function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence', opts = {}) {
   if (!tab) return false;
   const preserveActiveOnInsufficient = Boolean(opts?.preserveActiveOnInsufficient);
@@ -161,8 +182,13 @@ function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence', opts 
   let trajectory = (built?.result?.modelTrajectories || []).find((item) => item.modelId === resolvedModelId);
   let directSmcResult = null;
   if (!trajectory && resolvedModelId === 'smc_prediction_js' && candles.length >= 40) {
+    const mtfCtx = resolveMtfContextForTab(tab);
     directSmcResult = computeSmcPrediction(candles, null, clampedHorizon, {
       timeframe: tab.timeframe || 'M15',
+      higherTimeframe: mtfCtx.higherTimeframe,
+      higherCandles: mtfCtx.higherCandles,
+      lowerTimeframe: mtfCtx.lowerTimeframe,
+      lowerCandles: mtfCtx.lowerCandles,
     });
     if (directSmcResult?.status === 'SUCCESS' && Array.isArray(directSmcResult.points) && directSmcResult.points.length > 0) {
       trajectory = {
@@ -951,6 +977,9 @@ function renderForecastWorkspaceContent(activeTab) {
     isStructuralForecastMatchingTab(activeTab, structuralForecast)
       ? structuralForecast
       : null;
+  const previewMtfCtx = resolveMtfContextForTab(activeTab);
+  const lastHigherPrevBar = previewMtfCtx.higherCandles.length > 0 ? previewMtfCtx.higherCandles[previewMtfCtx.higherCandles.length - 1] : null;
+  const lastLowerPrevBar = previewMtfCtx.lowerCandles.length > 0 ? previewMtfCtx.lowerCandles[previewMtfCtx.lowerCandles.length - 1] : null;
   if (!usesNativeEvaluation && nativeTab === 'overview' && !structuralForecastForPreview && activeTab) {
     const lastPrevBar = previewCandles.length > 0 ? previewCandles[previewCandles.length - 1] : null;
     const structMemoKey = [
@@ -961,6 +990,12 @@ function renderForecastWorkspaceContent(activeTab) {
       previewCandles.length,
       lastPrevBar?.open_time_utc_ms || 0,
       lastPrevBar?.close || 0,
+      previewMtfCtx.higherTimeframe,
+      previewMtfCtx.higherCandles.length,
+      lastHigherPrevBar?.open_time_utc_ms || 0,
+      previewMtfCtx.lowerTimeframe,
+      previewMtfCtx.lowerCandles.length,
+      lastLowerPrevBar?.open_time_utc_ms || 0,
     ].join('|');
     if (state._structuralPreviewMemo && state._structuralPreviewMemo.key === structMemoKey) {
       structuralForecastForPreview = state._structuralPreviewMemo.value;
@@ -971,6 +1006,10 @@ function renderForecastWorkspaceContent(activeTab) {
         provider: activeTab.provider || 'tvdatafeed',
         timeframe: activeTab.timeframe || 'M15',
         horizonBars: horizon,
+        higherTimeframe: previewMtfCtx.higherTimeframe,
+        higherCandles: previewMtfCtx.higherCandles,
+        lowerTimeframe: previewMtfCtx.lowerTimeframe,
+        lowerCandles: previewMtfCtx.lowerCandles,
       });
       state._structuralPreviewMemo = { key: structMemoKey, value: computed };
       if (computed?.status === 'READY') structuralForecastForPreview = computed;
@@ -1010,6 +1049,10 @@ function renderForecastWorkspaceContent(activeTab) {
   ) {
     const smcComputed = computeSmcPrediction(previewCandles, null, horizon, {
       timeframe: activeTab?.timeframe || 'M15',
+      higherTimeframe: previewMtfCtx.higherTimeframe,
+      higherCandles: previewMtfCtx.higherCandles,
+      lowerTimeframe: previewMtfCtx.lowerTimeframe,
+      lowerCandles: previewMtfCtx.lowerCandles,
     });
     if (smcComputed?.status === 'SUCCESS' && Array.isArray(smcComputed.points) && smcComputed.points.length > 0) {
       smcDirectPreview = {
@@ -1017,7 +1060,7 @@ function renderForecastWorkspaceContent(activeTab) {
         turningPoints: smcComputed.turningPoints || [],
         renderMode: activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART',
         selectedChartModelId: 'smc_prediction_js',
-        smcPoc: smcComputed.meta?.poc ?? null,
+        smcPoc: smcComputed.meta?.pocPrice ?? null,
         smcZones: smcComputed.smcZones || [],
         keyZones: smcComputed.smcZones || [],
         modelTrajectories: [],
@@ -1033,13 +1076,15 @@ function renderForecastWorkspaceContent(activeTab) {
   const structAgreeScore = activeStructMeta?.engine?.params?.analog_agreement_score;
   const structPocVal = activeStructMeta?.engine?.params?.smc_poc;
   const structFvgCount = Number(activeStructMeta?.engine?.params?.active_fvg_count || 0);
+  const structMtfMeta = activeStructMeta?.mtf_meta || activeStructMeta?.engine?.params?.mtf_meta || null;
+  const structRefH = Number(activeStructMeta?.engine?.params?.reference_horizon || structMtfMeta?.referenceHorizon || 0);
   const structuralBannerHtml = !usesNativeEvaluation && nativeTab === 'overview'
     ? `<div class="ci-fc-card" style="margin-bottom:12px;border-color:rgba(139,92,246,0.45);">
         <div class="row-between" style="gap:10px;flex-wrap:wrap;">
           <div>
             <strong style="font-size:13px;">${isFa ? 'موتور موج ساختاری (Structural JS)' : 'Structural Wave JS Engine'}</strong>
             <div class="ltr-num" style="font-size:11.5px;color:var(--text-muted);margin-top:3px;">
-              ${escapeHtml(activeStructMeta?.status || activeTab?.structuralForecastStatus || 'IDLE')}${activeStructMeta?.engine?.params?.structure_bias ? ' · ' + escapeHtml(activeStructMeta.engine.params.structure_bias) : ''}${activeStructMeta?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(activeStructMeta.engine.params.volatility_regime) : ''}${structZonesCount > 0 ? ' · ' + structZonesCount + ' S/R zones' : ''}${Number.isFinite(Number(structPocVal)) && Number(structPocVal) > 0 ? ' · POC ' + PriceFormatter.formatPrice(Number(structPocVal), decimals) : ''}${structFvgCount > 0 ? ' · ' + structFvgCount + ' FVG' : ''}${structAgreeScore != null ? ' · Analog Sync ' + Math.round(Number(structAgreeScore) * 100) + '%' : ''}${structuralPreview ? ' · ' + structuralPreview.points.length + ' bars ready' : ''}
+              ${escapeHtml(activeStructMeta?.status || activeTab?.structuralForecastStatus || 'IDLE')}${activeStructMeta?.engine?.params?.structure_bias ? ' · ' + escapeHtml(activeStructMeta.engine.params.structure_bias) : ''}${activeStructMeta?.engine?.params?.volatility_regime ? ' · ' + escapeHtml(activeStructMeta.engine.params.volatility_regime) : ''}${structZonesCount > 0 ? ' · ' + structZonesCount + ' S/R zones' : ''}${Number.isFinite(Number(structPocVal)) && Number(structPocVal) > 0 ? ' · POC ' + PriceFormatter.formatPrice(Number(structPocVal), decimals) : ''}${structFvgCount > 0 ? ' · ' + structFvgCount + ' FVG' : ''}${structAgreeScore != null ? ' · Analog Sync ' + Math.round(Number(structAgreeScore) * 100) + '%' : ''}${structMtfMeta?.mode ? ' · MTF ' + escapeHtml(structMtfMeta.mode) : ''}${structRefH > 0 ? ' · H_ref=' + structRefH : ''}${structuralPreview ? ' · ' + structuralPreview.points.length + ' bars ready' : ''}
             </div>
             ${activeTab?.structuralForecastError ? `<div style="color:var(--bear);font-size:11.5px;margin-top:4px;">${escapeHtml(activeTab.structuralForecastError)}</div>` : ''}
           </div>
