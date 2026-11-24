@@ -844,11 +844,253 @@ export function bindForecastCanvasHover(
 
 // Legacy renderForecastStudioView removed in Phase 3 (v1.47.38); New Forecast Studio in app.js consumes shared panels below directly.
 
+function formatUtcDateTimeShort(ms) {
+  const n = Number(ms || 0);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  try {
+    return new Date(n).toISOString().slice(0, 16).replace('T', ' ');
+  } catch (_) {
+    return '—';
+  }
+}
+
+export function computeMultiModelZoneConvergence(fc) {
+  if (!fc) return { hasConvergence: false, targetConsensus: null, overlappingZones: [] };
+  const trajectories = Array.isArray(fc.modelTrajectories)
+    ? fc.modelTrajectories.filter((t) => t.status === MODEL_EXECUTION_STATUS.SUCCESS && Array.isArray(t.points) && t.points.length > 0)
+    : [];
+  const anchorClose = Number(fc.anchorClose || 0);
+
+  let bullCount = 0;
+  let bearCount = 0;
+  const terminalPrices = [];
+  for (const t of trajectories) {
+    const lastPt = t.points[t.points.length - 1];
+    const q50 = Number(lastPt?.q50 ?? lastPt?.q50_median);
+    if (!Number.isFinite(q50) || !(q50 > 0)) continue;
+    terminalPrices.push({ modelId: t.modelId, modelName: t.modelName || t.modelId, q50 });
+    if (anchorClose > 0) {
+      if (q50 >= anchorClose) bullCount += 1;
+      else bearCount += 1;
+    }
+  }
+
+  let targetSpreadPct = null;
+  let targetLevel = 'DIVERGENT';
+  if (terminalPrices.length >= 2 && anchorClose > 0) {
+    const minP = Math.min(...terminalPrices.map((p) => p.q50));
+    const maxP = Math.max(...terminalPrices.map((p) => p.q50));
+    targetSpreadPct = ((maxP - minP) / anchorClose) * 100;
+    targetLevel = targetSpreadPct <= 0.65 ? 'TIGHT' : targetSpreadPct <= 1.5 ? 'MODERATE' : 'WIDE';
+  }
+
+  // Gather candidate zones across top-level keyZones and trajectory smcZones
+  const rawZones = [];
+  for (const z of Array.isArray(fc.keyZones) ? fc.keyZones : []) {
+    rawZones.push({ source: 'Primary', type: String(z.zoneType || 'ZONE'), low: Number(z.lowPrice || 0), high: Number(z.highPrice || 0) });
+  }
+  for (const t of trajectories) {
+    const tZones = Array.isArray(t.meta?.smcZones) ? t.meta.smcZones : [];
+    for (const z of tZones) {
+      rawZones.push({ source: t.modelName || t.modelId, type: String(z.zoneType || 'ZONE'), low: Number(z.lowPrice || 0), high: Number(z.highPrice || 0) });
+    }
+  }
+
+  const overlappingZones = [];
+  const tolPct = 0.0045;
+  for (let i = 0; i < rawZones.length; i++) {
+    const a = rawZones[i];
+    if (!(a.high > 0)) continue;
+    const aMid = (a.low + a.high) * 0.5;
+    for (let j = i + 1; j < rawZones.length; j++) {
+      const b = rawZones[j];
+      if (!(b.high > 0) || a.source === b.source) continue;
+      const bMid = (b.low + b.high) * 0.5;
+      const overlap = a.low <= b.high * (1 + tolPct) && b.low <= a.high * (1 + tolPct);
+      const nearMid = aMid > 0 && Math.abs(aMid - bMid) / aMid <= tolPct;
+      if (overlap || nearMid) {
+        overlappingZones.push({
+          low: Math.min(a.low, b.low),
+          high: Math.max(a.high, b.high),
+          type: a.type,
+          sources: [a.source, b.source],
+        });
+      }
+    }
+  }
+
+  return {
+    hasConvergence: targetLevel === 'TIGHT' || overlappingZones.length > 0,
+    modelCount: terminalPrices.length,
+    bullCount,
+    bearCount,
+    targetSpreadPct: targetSpreadPct !== null ? Number(targetSpreadPct.toFixed(2)) : null,
+    targetLevel,
+    overlappingZones: overlappingZones.slice(0, 3),
+  };
+}
+
+export function buildLedgerOverlayPayload(selectedEntries = [], candles = []) {
+  const validEntries = (Array.isArray(selectedEntries) ? selectedEntries : []).filter(
+    (e) => e && Number.isFinite(Number(e.anchorClose)) && Number(e.anchorOpenTimeUtcMs) > 0
+  );
+  if (validEntries.length === 0 || !Array.isArray(candles) || candles.length === 0) return null;
+
+  const sortedCandles = candles
+    .filter((c) => Number.isFinite(Number(c?.close)) && Number(c?.open_time_utc_ms ?? c?.openTimeUtcMs ?? 0) > 0)
+    .slice()
+    .sort((a, b) => Number(a.open_time_utc_ms ?? a.openTimeUtcMs) - Number(b.open_time_utc_ms ?? b.openTimeUtcMs));
+
+  const primary = validEntries[0];
+  const anchorMs = Number(primary.anchorOpenTimeUtcMs || 0);
+  const maxHorizon = Math.max(...validEntries.map((e) => Number(e.horizonBars || e.stepPoints?.length || 15)));
+
+  const histCandles = sortedCandles.filter((c) => Number(c.open_time_utc_ms ?? c.openTimeUtcMs) <= anchorMs).slice(-48);
+  const futureCandles = sortedCandles.filter((c) => Number(c.open_time_utc_ms ?? c.openTimeUtcMs) > anchorMs).slice(0, maxHorizon);
+
+  const buildEntryPoints = (entry) => {
+    if (Array.isArray(entry.stepPoints) && entry.stepPoints.length > 0) {
+      return entry.stepPoints.map((pt, idx) => ({
+        stepAhead: Number(pt.step || idx + 1),
+        openTimeUtcMs: Number(pt.openTimeUtcMs || 0),
+        q10: Number(pt.q10),
+        q25: Number(pt.q25 ?? pt.q50),
+        q50: Number(pt.q50),
+        q75: Number(pt.q75 ?? pt.q50),
+        q90: Number(pt.q90),
+      }));
+    }
+    const h = Math.max(1, Number(entry.horizonBars || 15));
+    const anc = Number(entry.anchorClose || 0);
+    const tQ10 = Number(entry.terminalQ10 || anc);
+    const tQ50 = Number(entry.terminalMedian || anc);
+    const tQ90 = Number(entry.terminalQ90 || anc);
+    const pts = [];
+    for (let i = 1; i <= h; i++) {
+      const f = i / h;
+      pts.push({
+        stepAhead: i,
+        q10: anc + (tQ10 - anc) * f,
+        q25: anc + ((tQ10 + tQ50) * 0.5 - anc) * f,
+        q50: anc + (tQ50 - anc) * f,
+        q75: anc + ((tQ50 + tQ90) * 0.5 - anc) * f,
+        q90: anc + (tQ90 - anc) * f,
+      });
+    }
+    return pts;
+  };
+
+  const primaryPoints = buildEntryPoints(primary);
+  const secondaryTrajectories = validEntries.slice(1).map((entry, idx) => ({
+    modelId: entry.modelId || `snapshot_${idx + 2}`,
+    modelName: `${entry.modelName || entry.modelId || 'Model'} (#${entry.seq})`,
+    status: MODEL_EXECUTION_STATUS.SUCCESS,
+    points: buildEntryPoints(entry),
+  }));
+
+  return {
+    histCandles: histCandles.length > 0 ? histCandles : sortedCandles.slice(-48),
+    payload: {
+      points: primaryPoints,
+      actualPoints: futureCandles.map((c) => ({ close: Number(c.close), openTimeUtcMs: Number(c.open_time_utc_ms ?? c.openTimeUtcMs) })),
+      selectedChartModelId: primary.modelId || 'AUTO',
+      renderMode: RENDER_MODES.FAN_CHART,
+      modelTrajectories: secondaryTrajectories,
+      visibleComparisonModelIds: secondaryTrajectories.map((t) => t.modelId),
+    },
+  };
+}
+
+function getMarketConditionLabel(tag, isFa) {
+  const norm = String(tag || '').toUpperCase();
+  if (norm === 'TRENDING_EDGE') return isFa ? 'رونددار + برتری آماری (Trending + Edge)' : 'TRENDING + EDGE';
+  if (norm === 'TRENDING_NO_EDGE') return isFa ? 'رونددار + بدون برتری آماری' : 'TRENDING + NO_EDGE';
+  if (norm === 'RANGING_EDGE') return isFa ? 'رنج + برتری آماری (Ranging + Edge)' : 'RANGING + EDGE';
+  return isFa ? 'رنج / نوسانی + بدون برتری آماری' : 'RANGING + NO_EDGE';
+}
+
+function renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa) {
+  const symbolCode = fc?.symbolCode || activeTab?.symbolCode || 'SPOTBRENT';
+  const timeframe = fc?.timeframe || activeTab?.timeframe || 'M15';
+  const candles = Array.isArray(activeTab?.candles) ? activeTab.candles : [];
+  const currentPrice = candles.length > 0 ? Number(candles[candles.length - 1]?.close || fc?.anchorClose || 0) : Number(fc?.anchorClose || 0);
+
+  const allEntries = defaultForecastLedger.loadEntries().filter((e) => e.symbolCode === symbolCode);
+  const allLifecycle = defaultForecastLedger.loadLifecycleEvents();
+  const maturedSet = new Set(
+    allLifecycle
+      .filter((ev) => ev.lifecycleStatus === LIFECYCLE_STATUS.MATURED)
+      .map((ev) => `${ev.forecastHash}:${ev.horizonStep}`)
+  );
+  let pendingCount = 0;
+  let maturedCount = 0;
+  for (const e of allEntries) {
+    if (maturedSet.has(`${e.forecastHash}:${e.horizonBars}`)) maturedCount += 1;
+    else pendingCount += 1;
+  }
+
+  const st = fc?.status || FORECAST_STATUS.DATA_NOT_READY;
+  const plainStatusMap = {
+    VALID: isFa ? 'معتبر (هم‌راستا با آزمون آماری)' : 'Statistically Validated',
+    PROVISIONAL: isFa ? 'موقت (داده کم یا شرایط غیرعادی OOD)' : 'Provisional (Small Sample or OOD)',
+    NO_EDGE: isFa ? 'احتیاط: برتری قطعی نسبت به مدل ساده ندارد' : 'No Proven Edge Over Baseline',
+    INSUFFICIENT_EVIDENCE: isFa ? 'شواهد آماری ناکافی در این بازه' : 'Insufficient Historical Sample',
+    DATA_NOT_READY: isFa ? 'داده هنوز آماده نیست' : 'Data Not Ready',
+  };
+
+  const convergence = computeMultiModelZoneConvergence(fc);
+  const convLabel = convergence.modelCount >= 2
+    ? isFa
+      ? `اجماع ${Math.max(convergence.bullCount, convergence.bearCount)}/${convergence.modelCount} مدل (${convergence.bullCount >= convergence.bearCount ? 'صعودی' : 'نزولی'}) · فاصله هدف ${convergence.targetSpreadPct ?? '—'}% (${convergence.targetLevel === 'TIGHT' ? 'همگرایی بالا' : convergence.targetLevel === 'MODERATE' ? 'متوسط' : 'واگرا'})${convergence.overlappingZones.length > 0 ? ` · ${convergence.overlappingZones.length} زون S/R مشترک` : ''}`
+      : `${Math.max(convergence.bullCount, convergence.bearCount)}/${convergence.modelCount} Consensus (${convergence.bullCount >= convergence.bearCount ? 'Bullish' : 'Bearish'}) · Spread ${convergence.targetSpreadPct ?? '—'}% (${convergence.targetLevel})${convergence.overlappingZones.length > 0 ? ` · ${convergence.overlappingZones.length} Overlapping S/R Zone(s)` : ''}`
+    : isFa
+      ? 'برای سنجش همگرایی، چند مدل فعال را مقایسه کنید'
+      : 'Enable 2+ models to measure target & S/R convergence';
+
+  const regimeStr = String(fc?.regime || 'RANGING').toUpperCase();
+  const hasEdge = Boolean(fc?.noEdgeGate?.hasEdge) || st === FORECAST_STATUS.VALID;
+  const condTag = (regimeStr.includes('TREND') || regimeStr.includes('BULL') || regimeStr.includes('BEAR'))
+    ? (hasEdge ? 'TRENDING_EDGE' : 'TRENDING_NO_EDGE')
+    : (hasEdge ? 'RANGING_EDGE' : 'RANGING_NO_EDGE');
+
+  return `
+    <div class="ci-fc-card" style="margin-bottom:12px;">
+      <div class="ci-fc-summary-strip ltr-num">
+        <div class="ci-fc-mini-stat">
+          <span>${isFa ? 'نماد و تایم‌فریم' : 'Symbol & Timeframe'}</span>
+          <strong>${escapeHtml(symbolCode)} · ${escapeHtml(timeframe)}</strong>
+        </div>
+        <div class="ci-fc-mini-stat">
+          <span>${isFa ? 'قیمت فعلی' : 'Current Price'}</span>
+          <strong>${currentPrice > 0 ? PriceFormatter.formatPrice(currentPrice, decimals) : '—'}</strong>
+        </div>
+        <div class="ci-fc-mini-stat">
+          <span>${isFa ? 'پیش‌بینی‌های در انتظار' : 'Pending Snapshots'}</span>
+          <strong style="color:var(--gold);">${pendingCount}</strong>
+        </div>
+        <div class="ci-fc-mini-stat">
+          <span>${isFa ? 'پیش‌بینی‌های تکمیل‌شده' : 'Matured Outcomes'}</span>
+          <strong style="color:var(--bull);">${maturedCount}</strong>
+        </div>
+        <div class="ci-fc-mini-stat">
+          <span>${isFa ? 'شرایط بازار' : 'Market Condition'}</span>
+          <strong style="font-size:11px;">${escapeHtml(getMarketConditionLabel(condTag, isFa))}</strong>
+        </div>
+      </div>
+      <div class="row-between" style="margin-top:8px;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--text-muted);">
+        <span><strong>${escapeHtml(st)}</strong> — ${escapeHtml(plainStatusMap[st] || st)}</span>
+        <span class="ci-fc-family-tag">${escapeHtml(convLabel)}</span>
+      </div>
+    </div>
+  `;
+}
+
 export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
   if (!fc || fc.status === FORECAST_STATUS.DATA_NOT_READY) {
     const reqBars = fc?.readiness?.nOpMin || 155;
     const reasons = (fc?.readiness?.issues || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('');
     return `
+      ${renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa)}
       <div class="ci-fc-card" style="text-align:center;padding:32px;">
         <h3 style="margin:0 0 8px 0;color:var(--bear);">${isFa ? 'دروازه آماده بودن داده: DATA_NOT_READY' : 'Data Readiness Gate: DATA_NOT_READY'}</h3>
         <p style="margin:0 0 12px 0;color:var(--text-muted);font-size:13px;">
@@ -1142,7 +1384,24 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     `
     : '';
 
+  const technicalDiagnosticsDrawerHtml = `
+    <details class="ci-fc-card ci-fc-accordion" style="margin-bottom:12px;">
+      <summary>
+        <span>${isFa ? 'جزئیات فنی و آماری (Conformal Calibration، تفکیک Aleatoric/Epistemic، MTF و آنالوگ‌ها)' : 'Technical Calibration, Uncertainty Decomposition, MTF & Analogs (Click to expand)'}</span>
+        <span class="ci-fc-family-tag ltr-num">${escapeHtml(conformalCal?.calibrationStatus || 'CALIBRATED')} · OOD ${escapeHtml(unc?.oodStatus || 'IN_DISTRIBUTION')}</span>
+      </summary>
+      <div class="ci-fc-accordion-body">
+        ${conformalBannerHtml}
+        ${edgeBannerHtml}
+        ${uncertaintyCardHtml}
+        ${mtfBannerHtml}
+        ${representativePathsHtml}
+      </div>
+    </details>
+  `;
+
   return `
+    ${renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa)}
     <div class="ci-fc-canvas-wrap ci-fc-card">
       <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
         <div>
@@ -1159,13 +1418,8 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     </div>
 
     ${winnerBannerHtml}
-    ${conformalBannerHtml}
     ${comparisonChipsHtml}
     ${comparisonCanvasesHtml}
-    ${representativePathsHtml}
-    ${edgeBannerHtml}
-    ${uncertaintyCardHtml}
-    ${mtfBannerHtml}
 
     <div class="ci-fc-card" style="margin-bottom:12px;">
       <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
@@ -1177,10 +1431,12 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
 
     ${keyZonesHtml ? `<div class="ci-fc-grid-2" style="margin-bottom:12px;">${keyZonesHtml}</div>` : ''}
 
-    <div class="ci-fc-card">
+    <div class="ci-fc-card" style="margin-bottom:12px;">
       <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">${isFa ? 'نردبان افق پیش‌بینی (میانه q50 و بازه ۸۰٪)' : 'Horizon Step Quantile Ladder (Median q50 & 80% Corridor)'}</div>
       <div class="ci-fc-ladder-grid">${ladderCards}</div>
     </div>
+
+    ${technicalDiagnosticsDrawerHtml}
   `;
 }
 
@@ -1643,66 +1899,454 @@ export function renderBacktestPanel(fc, decimals, isFa) {
         : ''
     }
 
-    <div class="ci-fc-card" style="overflow-x:auto;margin-bottom:12px;">
-      <table class="ci-fc-table">
-        <thead>
-          <tr>
-            <th>Model / Runtime</th>
-            <th>Family</th>
-            <th>Status</th>
-            <th>MAE</th>
-            <th>rMAE</th>
-            <th>MASE</th>
-            <th>Dir Acc</th>
-            <th>80% Cov</th>
-            <th>WIS (5Q)</th>
-            <th>HLN-DM p</th>
-            <th>Boot p</th>
-          </tr>
-        </thead>
-        <tbody>${rows}</tbody>
-      </table>
-    </div>
-
-    ${
-      sensRows
-        ? `
-      <div class="ci-fc-card" style="overflow-x:auto;">
-        <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">${isFa ? 'ماتریس حساسیت فرهنگ رویداد (ATR Penetration × Reclaim Window)' : 'Event Dictionary Sensitivity Grid (ATR Penetration × Reclaim Window)'}</div>
-        <table class="ci-fc-table">
-          <thead>
-            <tr>
-              <th>Penetration</th>
-              <th>Reclaim Window</th>
-              <th>Confirm Closes</th>
-              <th>Touch %</th>
-              <th>Reclaim %</th>
-              <th>Breakout %</th>
-              <th>Ambiguous %</th>
-            </tr>
-          </thead>
-          <tbody>${sensRows}</tbody>
-        </table>
-      </div>
-    `
-        : ''
-    }
     ${renderHistoricalReplaySection(isFa, decimals)}
+
+    <details class="ci-fc-card ci-fc-accordion" style="margin-top:12px;">
+      <summary>
+        <span>${isFa ? 'جدول‌های خام بنچمارک Walk-Forward و ماتریس حساسیت (کلیک برای باز/بسته شدن)' : 'Raw Walk-Forward Model Benchmark Table & Sensitivity Grid (Click to expand)'}</span>
+        <span class="ci-fc-family-tag ltr-num">${(wf.modelBenchmarks || []).length + 1} rows · ${sensRows ? sensGrid.length : 0} sensitivity cells</span>
+      </summary>
+      <div class="ci-fc-accordion-body">
+        <div style="overflow-x:auto;margin-bottom:12px;">
+          <table class="ci-fc-table">
+            <thead>
+              <tr>
+                <th>Model / Runtime</th>
+                <th>Family</th>
+                <th>Status</th>
+                <th>MAE</th>
+                <th>rMAE</th>
+                <th>MASE</th>
+                <th>Dir Acc</th>
+                <th>80% Cov</th>
+                <th>WIS (5Q)</th>
+                <th>HLN-DM p</th>
+                <th>Boot p</th>
+              </tr>
+            </thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>
+        ${
+          sensRows
+            ? `
+          <div style="overflow-x:auto;">
+            <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">${isFa ? 'ماتریس حساسیت فرهنگ رویداد (ATR Penetration × Reclaim Window)' : 'Event Dictionary Sensitivity Grid (ATR Penetration × Reclaim Window)'}</div>
+            <table class="ci-fc-table">
+              <thead>
+                <tr>
+                  <th>Penetration</th>
+                  <th>Reclaim Window</th>
+                  <th>Confirm Closes</th>
+                  <th>Touch %</th>
+                  <th>Reclaim %</th>
+                  <th>Breakout %</th>
+                  <th>Ambiguous %</th>
+                </tr>
+              </thead>
+              <tbody>${sensRows}</tbody>
+            </table>
+          </div>
+        `
+            : ''
+        }
+      </div>
+    </details>
   `;
 }
 
 export function renderLedgerPanel(decimals, isFa) {
-  const entries = defaultForecastLedger.loadEntries().slice().reverse();
+  const rawEntries = defaultForecastLedger.loadEntries();
+  const rawEvents = defaultForecastLedger.loadLifecycleEvents();
   const audit = defaultForecastLedger.verifyChain();
-  const lifecycleEvents = defaultForecastLedger.loadLifecycleEvents().slice().reverse();
   const lcAudit = defaultForecastLedger.verifyLifecycleChain();
   const serverEntries = Array.isArray(state.forecastServerLedger) ? state.forecastServerLedger : [];
   const serverLifecycle = Array.isArray(state.forecastServerLifecycle) ? state.forecastServerLifecycle : [];
 
+  const activeTab = state.openTabs?.find((item) => item.tabId === state.activeTabId) || state.openTabs?.[0] || null;
+  const activeSymbol = activeTab?.symbolCode || '';
+
+  // Map terminal/latest lifecycle event per forecastHash
+  const lifecycleByHash = new Map();
+  const terminalByHash = new Map();
+  for (const ev of rawEvents) {
+    lifecycleByHash.set(ev.forecastHash, ev);
+    if (ev.lifecycleStatus === LIFECYCLE_STATUS.MATURED) {
+      const prev = terminalByHash.get(ev.forecastHash);
+      if (!prev || Number(ev.horizonStep) >= Number(prev.horizonStep)) {
+        terminalByHash.set(ev.forecastHash, ev);
+      }
+    }
+  }
+
+  // Enrich each entry with resolved status, timestamps, and 5D evaluation
+  const enrichedAll = rawEntries.map((e) => {
+    const termEv = terminalByHash.get(e.forecastHash);
+    const latestEv = lifecycleByHash.get(e.forecastHash);
+    const isFullMatured = Boolean(termEv && Number(termEv.horizonStep) === Number(e.horizonBars));
+    const evalDetails = termEv?.evaluationDetails || latestEv?.evaluationDetails || null;
+    const isEarlyInvalidated = Boolean(evalDetails?.earlyInvalidated);
+    const isAmbiguous = latestEv?.evaluationOutcome === EVALUATION_OUTCOME.AMBIGUOUS;
+    const isSuperseded = !isFullMatured && latestEv?.lifecycleStatus === LIFECYCLE_STATUS.SUPERSEDED;
+
+    let displayStatus = 'PENDING';
+    if (isFullMatured && isAmbiguous) displayStatus = 'AMBIGUOUS';
+    else if (isFullMatured && isEarlyInvalidated) displayStatus = 'INVALIDATED_EARLY';
+    else if (isFullMatured) displayStatus = 'MATURED';
+    else if (isSuperseded) displayStatus = 'SUPERSEDED';
+
+    return {
+      entry: e,
+      termEv,
+      latestEv,
+      evalDetails,
+      isFullMatured,
+      displayStatus,
+      tfHorizonKey: `${e.timeframe} | +${e.horizonBars}b`,
+      modelKey: String(e.modelId || 'AUTO'),
+      modelLabel: String(e.modelName || e.modelId || 'AUTO'),
+      hasEdge: String(e.marketConditionTag || '').endsWith('_EDGE') && !String(e.marketConditionTag || '').endsWith('_NO_EDGE'),
+    };
+  });
+
+  // Group multi-model batches
+  const batchMap = new Map();
+  for (const item of enrichedAll) {
+    const bId = String(item.entry.batchId || '');
+    if (!bId) continue;
+    if (!batchMap.has(bId)) batchMap.set(bId, []);
+    batchMap.get(bId).push(item);
+  }
+  const multiModelBatches = Array.from(batchMap.entries())
+    .filter(([, items]) => items.length >= 2)
+    .reverse();
+
+  // Read filters from state
+  const filters = state._forecastLedgerFilters || { model: 'ALL', tfHorizon: 'ALL', status: 'ALL', condition: 'ALL' };
+  const modelOptions = [...new Set(enrichedAll.map((i) => i.modelKey))];
+  const tfHorizonOptions = [...new Set(enrichedAll.map((i) => i.tfHorizonKey))];
+
+  const filteredItems = enrichedAll
+    .slice()
+    .reverse()
+    .filter((item) => {
+      if (filters.model !== 'ALL' && item.modelKey !== filters.model) return false;
+      if (filters.tfHorizon !== 'ALL' && item.tfHorizonKey !== filters.tfHorizon) return false;
+      if (filters.condition === 'EDGE_ONLY' && !item.hasEdge) return false;
+      if (filters.condition === 'NO_EDGE_ONLY' && item.hasEdge) return false;
+      if (filters.status === 'PENDING' && item.isFullMatured) return false;
+      if (filters.status === 'MATURED' && !item.isFullMatured) return false;
+      if (filters.status === 'BATCH_ONLY') {
+        const bItems = batchMap.get(String(item.entry.batchId || ''));
+        if (!bItems || bItems.length < 2) return false;
+      }
+      return true;
+    });
+
+  const pendingTotal = enrichedAll.filter((i) => !i.isFullMatured).length;
+  const maturedTotal = enrichedAll.filter((i) => i.isFullMatured).length;
+  const currentOverlayHashes = Array.isArray(state._ledgerOverlayHashes) ? state._ledgerOverlayHashes : [];
+
+  // Rolling Scorecards
+  const scorecards = defaultForecastLedger.buildModelScorecards(20, activeSymbol);
+  const scorecardsHtml = scorecards.length > 0
+    ? `
+      <div class="ci-fc-card" style="margin-bottom:12px;">
+        <div class="row-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+          <strong style="font-size:13px;">${isFa ? 'کارنامه تجمیعی مدل‌ها (آخرین ۲۰ پیش‌بینی تکمیل‌شده)' : 'Rolling Model Scorecards (Last 20 Matured Outcomes)'}</strong>
+          <span class="ci-fc-family-tag ltr-num">${scorecards.length} ${isFa ? 'مدل' : 'models'} · ${activeSymbol || 'ALL'}</span>
+        </div>
+        <div class="ci-fc-scorecard-grid ltr-num">
+          ${scorecards
+            .map((sc) => {
+              const scoreColor =
+                sc.meanScore == null
+                  ? 'var(--text-muted)'
+                  : sc.meanScore >= 70
+                    ? 'var(--bull)'
+                    : sc.meanScore >= 45
+                      ? 'var(--gold)'
+                      : 'var(--bear)';
+              return `
+                <div class="ci-fc-mini-stat" style="text-align:left;padding:10px;gap:5px;">
+                  <div class="row-between" style="gap:6px;">
+                    <strong style="font-size:12px;color:var(--text-strong);">${escapeHtml(sc.modelName)}</strong>
+                    <span class="ci-fc-status-badge ${sc.meanScore >= 70 ? 'ci-fc-badge-valid' : sc.meanScore >= 45 ? 'ci-fc-badge-provisional' : 'ci-fc-badge-blocked'}" style="color:${scoreColor};">
+                      ${sc.meanScore != null ? `${sc.meanScore}/100` : 'Pending'}
+                    </span>
+                  </div>
+                  <div style="font-size:11px;color:var(--text-muted);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;">
+                    <span>Dir Acc: <strong>${sc.directionAccuracyPct != null ? sc.directionAccuracyPct + '%' : '—'}</strong></span>
+                    <span>Band Hit: <strong>${sc.meanHitRatePct != null ? sc.meanHitRatePct + '%' : '—'}</strong></span>
+                    <span>Contain: <strong>${sc.containmentRatePct != null ? sc.containmentRatePct + '%' : '—'}</strong></span>
+                    <span>Err ATR: <strong>${sc.meanVolAdjErrorAtr != null ? sc.meanVolAdjErrorAtr + '×' : '—'}</strong></span>
+                    <span>vs Naive: <strong>${sc.baselineBeatRatePct != null ? sc.baselineBeatRatePct + '%' : '—'}</strong></span>
+                    <span>Best: <strong>${escapeHtml(sc.bestContext)}</strong></span>
+                  </div>
+                  <div style="font-size:10px;color:var(--text-muted);">
+                    Matured: <strong>${sc.maturedCount}</strong> · Pending: <strong>${sc.pendingCount}</strong>
+                  </div>
+                </div>
+              `;
+            })
+            .join('')}
+        </div>
+      </div>
+    `
+    : '';
+
+  // History Filter Bar
+  const filterBarHtml = `
+    <div class="ci-fc-filter-bar ltr-num">
+      <label class="ci-fc-param-item">
+        <span>${isFa ? 'فیلتر مدل' : 'Model Filter'}</span>
+        <select class="input-field" style="min-height:30px;font-size:11.5px;" data-action="set-forecast-ledger-filter" data-filter-key="model">
+          <option value="ALL" ${filters.model === 'ALL' ? 'selected' : ''}>${isFa ? 'همه مدل‌ها' : 'All Models'}</option>
+          ${modelOptions.map((m) => `<option value="${escapeHtml(m)}" ${filters.model === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
+        </select>
+      </label>
+      <label class="ci-fc-param-item">
+        <span>${isFa ? 'تایم‌فریم و افق' : 'TF & Horizon'}</span>
+        <select class="input-field" style="min-height:30px;font-size:11.5px;" data-action="set-forecast-ledger-filter" data-filter-key="tfHorizon">
+          <option value="ALL" ${filters.tfHorizon === 'ALL' ? 'selected' : ''}>${isFa ? 'همه افق‌ها' : 'All TF / Horizons'}</option>
+          ${tfHorizonOptions.map((k) => `<option value="${escapeHtml(k)}" ${filters.tfHorizon === k ? 'selected' : ''}>${escapeHtml(k)}</option>`).join('')}
+        </select>
+      </label>
+      <label class="ci-fc-param-item">
+        <span>${isFa ? 'وضعیت' : 'Status'}</span>
+        <select class="input-field" style="min-height:30px;font-size:11.5px;" data-action="set-forecast-ledger-filter" data-filter-key="status">
+          <option value="ALL" ${filters.status === 'ALL' ? 'selected' : ''}>${isFa ? 'همه وضعیت‌ها' : 'All Statuses'}</option>
+          <option value="PENDING" ${filters.status === 'PENDING' ? 'selected' : ''}>${isFa ? 'در انتظار سررسید (Pending)' : 'Pending Only'}</option>
+          <option value="MATURED" ${filters.status === 'MATURED' ? 'selected' : ''}>${isFa ? 'تکمیل‌شده (Matured)' : 'Matured Only'}</option>
+          <option value="BATCH_ONLY" ${filters.status === 'BATCH_ONLY' ? 'selected' : ''}>${isFa ? 'فقط گروهی چندمدله' : 'Multi-Model Batches Only'}</option>
+        </select>
+      </label>
+      <label class="ci-fc-param-item">
+        <span>${isFa ? 'شرایط بازار' : 'Market Condition'}</span>
+        <select class="input-field" style="min-height:30px;font-size:11.5px;" data-action="set-forecast-ledger-filter" data-filter-key="condition">
+          <option value="ALL" ${filters.condition === 'ALL' ? 'selected' : ''}>${isFa ? 'همه شرایط' : 'All Conditions'}</option>
+          <option value="EDGE_ONLY" ${filters.condition === 'EDGE_ONLY' ? 'selected' : ''}>${isFa ? 'فقط با برتری آماری (EDGE)' : 'Edge Only'}</option>
+          <option value="NO_EDGE_ONLY" ${filters.condition === 'NO_EDGE_ONLY' ? 'selected' : ''}>${isFa ? 'بدون برتری آماری (NO_EDGE)' : 'No-Edge Only'}</option>
+        </select>
+      </label>
+    </div>
+  `;
+
+  // Unified Snapshot <-> 5D Outcome Table Rows
+  const unifiedRowsHtml = filteredItems.length === 0
+    ? `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:18px;">${isFa ? 'رکوردی مطابق فیلتر انتخاب‌شده یافت نشد.' : 'No recorded forecast snapshots match the active filters.'}</td></tr>`
+    : filteredItems
+        .map((item) => {
+          const e = item.entry;
+          const d = item.evalDetails;
+          const bId = String(e.batchId || '');
+          const isBatch = (batchMap.get(bId)?.length || 0) >= 2;
+          const recordedStr = formatUtcDateTimeShort(e.recordedAtUtcMs || e.generatedAtUtcMs);
+          const maturesStr = formatUtcDateTimeShort(e.maturesAtUtcMs);
+          const evaluatedStr = item.termEv ? formatUtcDateTimeShort(item.termEv.recordedAtUtcMs) : '—';
+          const predPct = e.anchorClose > 0 ? ((e.terminalMedian - e.anchorClose) / e.anchorClose) * 100 : 0;
+          const obsClose = item.termEv?.observedClose ?? item.latestEv?.observedClose ?? null;
+          const obsPct = obsClose != null && e.anchorClose > 0 ? ((obsClose - e.anchorClose) / e.anchorClose) * 100 : null;
+          const overlayChecked = currentOverlayHashes.includes(e.forecastHash);
+
+          let statusBadgeClass = 'ci-fc-badge-provisional';
+          let statusBadgeText = isFa ? 'در انتظار سررسید (Pending)' : 'Pending';
+          if (item.displayStatus === 'MATURED') {
+            statusBadgeClass = d?.terminalInsideBand ? 'ci-fc-badge-valid' : 'ci-fc-badge-blocked';
+            statusBadgeText = isFa ? 'تکمیل‌شده (Matured)' : 'Matured';
+          } else if (item.displayStatus === 'INVALIDATED_EARLY') {
+            statusBadgeClass = 'ci-fc-badge-blocked';
+            statusBadgeText = isFa ? `نقض زودهنگام (+${d?.earlyInvalidatedAtStep}b)` : `Invalidated (+${d?.earlyInvalidatedAtStep}b)`;
+          } else if (item.displayStatus === 'AMBIGUOUS') {
+            statusBadgeClass = 'ci-fc-badge-provisional';
+            statusBadgeText = isFa ? 'مبهم (Ambiguous)' : 'Ambiguous';
+          } else if (item.displayStatus === 'SUPERSEDED') {
+            statusBadgeClass = 'ci-fc-badge-provisional';
+            statusBadgeText = isFa ? 'جایگزین‌شده (Superseded)' : 'Superseded';
+          }
+
+          const eval5dHtml = d
+            ? `
+              <div style="display:flex;flex-direction:column;gap:2px;font-size:10.5px;">
+                <div>
+                  <span style="color:${d.directionHit ? 'var(--bull)' : 'var(--bear)'};font-weight:700;">${d.directionHit ? '✓ Trend' : '✗ Trend'}</span>
+                  · Hit <strong>${d.insideCount}/${d.totalBars}</strong> (${d.hitRatePct}%)
+                  · Score <strong style="color:${d.overallScore >= 70 ? 'var(--bull)' : d.overallScore >= 45 ? 'var(--gold)' : 'var(--bear)'};">${d.overallScore}/100</strong>
+                </div>
+                <div style="color:var(--text-muted);">
+                  MAE ${d.q50MaePct}% (${d.volAdjustedMaeAtr}×ATR) · vs Naive <strong style="color:${d.beatsBaseline ? 'var(--bull)' : 'var(--bear)'};">${d.edgeVsNaivePct >= 0 ? '+' : ''}${d.edgeVsNaivePct}%</strong> · S/R: ${escapeHtml(d.srSummaryStatus)}
+                </div>
+              </div>
+            `
+            : `<span style="color:var(--text-muted);font-size:11px;">${isFa ? 'منتظر بسته شدن کندل سررسید' : 'Awaiting maturity candle'}</span>`;
+
+          return `
+            <tr>
+              <td class="ltr-num"><input type="checkbox" data-action="toggle-ledger-overlay-entry" data-hash="${escapeHtml(e.forecastHash)}" ${overlayChecked ? 'checked' : ''} aria-label="Overlay forecast #${e.seq}" /></td>
+              <td class="ltr-num">
+                <strong>#${e.seq}</strong>
+                ${
+                  isBatch
+                    ? `<div><button type="button" class="chip ${state._selectedForecastBatchId === bId ? 'active' : ''}" style="font-size:9.5px;padding:1px 5px;min-height:18px;" data-action="select-forecast-batch" data-batch-id="${escapeHtml(bId)}">${escapeHtml(bId.slice(-10))}</button></div>`
+                    : `<div style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(bId.slice(0, 12))}</div>`
+                }
+              </td>
+              <td class="ltr-num">
+                <strong>${escapeHtml(item.modelLabel)}</strong>
+                <div style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(getMarketConditionLabel(e.marketConditionTag, false))}</div>
+              </td>
+              <td class="ltr-num">
+                <div>${escapeHtml(recordedStr)}</div>
+                <div style="font-size:10px;color:var(--text-muted);">Anchor ${PriceFormatter.formatPrice(e.anchorClose, decimals)}</div>
+              </td>
+              <td class="ltr-num">
+                <div><strong>${escapeHtml(e.symbolCode)}</strong> · ${escapeHtml(e.timeframe)} (+${e.horizonBars}b)</div>
+                <div style="font-size:10px;color:var(--text-muted);">Due ${escapeHtml(maturesStr)}</div>
+              </td>
+              <td class="ltr-num">
+                <div><strong>${PriceFormatter.formatPrice(e.terminalMedian, decimals)}</strong> <span style="color:${predPct >= 0 ? 'var(--bull)' : 'var(--bear)'};">(${predPct >= 0 ? '+' : ''}${predPct.toFixed(2)}%)</span></div>
+                <div style="font-size:10px;color:var(--text-muted);">[${PriceFormatter.formatPrice(e.terminalQ10, decimals)} .. ${PriceFormatter.formatPrice(e.terminalQ90, decimals)}]</div>
+              </td>
+              <td class="ltr-num">
+                <div>${obsClose != null ? `<strong>${PriceFormatter.formatPrice(obsClose, decimals)}</strong> <span style="color:${obsPct >= 0 ? 'var(--bull)' : 'var(--bear)'};">(${obsPct >= 0 ? '+' : ''}${obsPct.toFixed(2)}%)</span>` : '—'}</div>
+                <div style="font-size:10px;color:var(--text-muted);">${escapeHtml(evaluatedStr)}</div>
+              </td>
+              <td class="ltr-num">${eval5dHtml}</td>
+              <td class="ltr-num"><span class="ci-fc-status-badge ${statusBadgeClass}">${escapeHtml(statusBadgeText)}</span></td>
+            </tr>
+          `;
+        })
+        .join('');
+
+  // Side-by-Side Batch Comparison Section
+  const selectedBatchId =
+    state._selectedForecastBatchId && batchMap.has(state._selectedForecastBatchId)
+      ? state._selectedForecastBatchId
+      : multiModelBatches[0]?.[0] || '';
+  const selectedBatchItems = selectedBatchId ? (batchMap.get(selectedBatchId) || []) : [];
+
+  let batchComparisonHtml = '';
+  if (multiModelBatches.length > 0 && selectedBatchItems.length >= 2) {
+    let bestItem = null;
+    let bestScore = -1;
+    for (const item of selectedBatchItems) {
+      const sc = Number(item.evalDetails?.overallScore ?? -1);
+      if (sc > bestScore) {
+        bestScore = sc;
+        bestItem = item;
+      }
+    }
+
+    const batchSelectorPills = multiModelBatches
+      .slice(0, 6)
+      .map(([bId, items]) => {
+        const sample = items[0].entry;
+        const label = `${sample.symbolCode} ${sample.timeframe} +${sample.horizonBars}b (${items.length} models · ${formatUtcDateTimeShort(sample.recordedAtUtcMs)})`;
+        return `<button type="button" class="chip ${selectedBatchId === bId ? 'active' : ''}" data-action="select-forecast-batch" data-batch-id="${escapeHtml(bId)}">${escapeHtml(label)}</button>`;
+      })
+      .join('');
+
+    const colHeaders = selectedBatchItems
+      .map((item) => {
+        const isWinner = bestItem && bestItem.entry.forecastHash === item.entry.forecastHash && bestScore >= 0;
+        return `
+          <th>
+            <div>${escapeHtml(item.modelLabel)}</div>
+            ${isWinner ? `<span class="ci-fc-batch-winner-badge">★ ${isFa ? 'برنده گروه' : 'Best Performer'}</span>` : ''}
+          </th>
+        `;
+      })
+      .join('');
+
+    const makeRow = (label, fn) => `<tr><td><strong>${escapeHtml(label)}</strong></td>${selectedBatchItems.map((it) => `<td class="ltr-num">${fn(it)}</td>`).join('')}</tr>`;
+
+    batchComparisonHtml = `
+      <div class="ci-fc-card" style="margin-bottom:12px;">
+        <div class="row-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+          <div>
+            <strong style="font-size:13px;">${isFa ? 'مقایسه کنار هم چند مدل (Batch Comparison)' : 'Side-by-Side Multi-Model Batch Comparison'}</strong>
+            <div style="font-size:11px;color:var(--text-muted);" class="ltr-num">Batch: ${escapeHtml(selectedBatchId)} · Recorded ${escapeHtml(formatUtcDateTimeShort(selectedBatchItems[0].entry.recordedAtUtcMs))} · Anchor ${PriceFormatter.formatPrice(selectedBatchItems[0].entry.anchorClose, decimals)}</div>
+          </div>
+          <div class="chip-group" style="flex-wrap:wrap;">${batchSelectorPills}</div>
+        </div>
+        <div style="overflow-x:auto;">
+          <table class="ci-fc-table">
+            <thead>
+              <tr>
+                <th>${isFa ? 'معیار ارزیابی' : 'Evaluation Metric'}</th>
+                ${colHeaders}
+              </tr>
+            </thead>
+            <tbody>
+              ${makeRow(isFa ? 'هدف Q50 در برابر کلوز واقعی' : 'Q50 Target vs Actual Close', (it) => {
+                const target = PriceFormatter.formatPrice(it.entry.terminalMedian, decimals);
+                const actual = it.termEv?.observedClose != null ? PriceFormatter.formatPrice(it.termEv.observedClose, decimals) : 'Pending';
+                return `${target} vs <strong>${actual}</strong>`;
+              })}
+              ${makeRow(isFa ? 'دقت جهت و روند' : 'Trend Accuracy', (it) => {
+                if (!it.evalDetails) return 'Pending';
+                const col = it.evalDetails.directionHit ? 'var(--bull)' : 'var(--bear)';
+                return `<span style="color:${col};font-weight:700;">${it.evalDetails.directionHit ? '✓ Correct' : '✗ Wrong'}</span> (${it.evalDetails.actualPctChange >= 0 ? '+' : ''}${it.evalDetails.actualPctChange}% vs ${it.evalDetails.predPctChange >= 0 ? '+' : ''}${it.evalDetails.predPctChange}%)`;
+              })}
+              ${makeRow(isFa ? 'کندل‌های داخل بازه [q10..q90]' : 'Candles Inside Band', (it) =>
+                it.evalDetails ? `<strong>${it.evalDetails.insideCount}/${it.evalDetails.totalBars}</strong> (${it.evalDetails.hitRatePct}%)` : 'Pending'
+              )}
+              ${makeRow(isFa ? 'خطای میانگین (MAE% & ×ATR)' : 'Price Error (MAE% & ×ATR)', (it) =>
+                it.evalDetails ? `${it.evalDetails.q50MaePct}% · <strong>${it.evalDetails.volAdjustedMaeAtr}× ATR</strong>` : 'Pending'
+              )}
+              ${makeRow(isFa ? 'برتری نسبت به مدل پایه (Naive)' : 'vs Naive Baseline', (it) => {
+                if (!it.evalDetails) return 'Pending';
+                const col = it.evalDetails.beatsBaseline ? 'var(--bull)' : 'var(--bear)';
+                return `<span style="color:${col};font-weight:700;">${it.evalDetails.edgeVsNaivePct >= 0 ? '+' : ''}${it.evalDetails.edgeVsNaivePct}%</span>`;
+              })}
+              ${makeRow(isFa ? 'واکنش سطوح S/R' : 'S/R Zone Reaction', (it) =>
+                it.evalDetails ? escapeHtml(it.evalDetails.srSummaryStatus) : 'Pending'
+              )}
+              ${makeRow(isFa ? 'امتیاز کل پیش‌بینی (۰–۱۰۰)' : 'Overall Score (0–100)', (it) =>
+                it.evalDetails ? `<strong>${it.evalDetails.overallScore}/100</strong>` : 'Pending'
+              )}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    `;
+  }
+
+  // Visual Replay Overlay Selection
+  const overlayCandidates = currentOverlayHashes.length > 0
+    ? rawEntries.filter((e) => currentOverlayHashes.includes(e.forecastHash))
+    : selectedBatchItems.length >= 2
+      ? selectedBatchItems.map((i) => i.entry).slice(0, 4)
+      : rawEntries.slice(-2);
+
+  const visualOverlayLegend = overlayCandidates
+    .map((e, idx) => {
+      const col = idx === 0 ? '#F59E0B' : MODEL_OVERLAY_COLORS[e.modelId] || '#38BDF8';
+      return `<span class="ci-fc-family-tag ltr-num" style="border-color:${col};color:${col};">#${e.seq} ${escapeHtml(e.modelName || e.modelId || 'AUTO')}</span>`;
+    })
+    .join('');
+
+  const visualOverlayHtml = overlayCandidates.length > 0
+    ? `
+      <div class="ci-fc-card" style="margin-bottom:12px;">
+        <div class="row-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap;">
+          <div>
+            <strong style="font-size:13px;">${isFa ? 'بازپخش بصری مسیر مدل‌های ثبت‌شده روی کندل‌های واقعی' : 'Visual Replay Overlay · Recorded Models vs Realized Candles'}</strong>
+            <div style="font-size:11px;color:var(--text-muted);">${isFa ? 'با تیک زدن ستون چپ جدول، ۲ تا ۴ پیش‌بینی را هم‌زمان روی کندل‌های واقعی مقایسه کنید.' : 'Check 2–4 snapshots in the table above to overlay their predicted trajectories on realized price action.'}</div>
+          </div>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;">${visualOverlayLegend}</div>
+        </div>
+        <canvas id="forecast-ledger-overlay-canvas" class="ci-fc-preview-canvas" style="min-height:230px;"></canvas>
+      </div>
+    `
+    : '';
+
+  // Legacy SHA-256 Raw Audit Rows inside Collapsible Accordion
+  const entriesReversed = rawEntries.slice().reverse();
   const rowsHtml =
-    entries.length === 0
-      ? `<div style="padding:18px;text-align:center;color:var(--text-muted);font-size:12.5px;">${isFa ? 'هنوز هیچ پیش‌بینی‌ای در دفتر کل محلی ثبت نشده است.' : 'No immutable forecast snapshots recorded yet.'}</div>`
-      : entries
+    entriesReversed.length === 0
+      ? `<tr><td colspan="8" style="padding:18px;text-align:center;color:var(--text-muted);font-size:12.5px;">${isFa ? 'هنوز هیچ پیش‌بینی‌ای در دفتر کل محلی ثبت نشده است.' : 'No immutable forecast snapshots recorded yet.'}</td></tr>`
+      : entriesReversed
           .map(
             (e) => `
           <tr>
@@ -1719,10 +2363,11 @@ export function renderLedgerPanel(decimals, isFa) {
           )
           .join('');
 
+  const lcEventsReversed = rawEvents.slice().reverse();
   const lcRowsHtml =
-    lifecycleEvents.length === 0
+    lcEventsReversed.length === 0
       ? `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">${isFa ? 'هنوز رویداد چرخه عمر ثبت نشده است.' : 'No append-only lifecycle events yet.'}</td></tr>`
-      : lifecycleEvents
+      : lcEventsReversed
           .map((ev) => {
             const outCol =
               ev.evaluationOutcome === EVALUATION_OUTCOME.SUCCESS
@@ -1750,56 +2395,93 @@ export function renderLedgerPanel(decimals, isFa) {
     <div class="ci-fc-card" style="margin-bottom:12px;">
       <div class="row-between" style="flex-wrap:wrap;gap:8px;">
         <div>
-          <strong style="font-size:13px;">${isFa ? 'دفتر کل زنجیره هش SHA-256 (مقاوم در برابر دستکاری)' : 'Append-Only SHA-256 Hash-Chained Ledger & Lifecycle Log'}</strong>
-          <div style="font-size:11.5px;color:${audit.valid ? 'var(--bull)' : 'var(--bear)'};" class="ltr-num">Runs: ${escapeHtml(audit.reason)} · Lifecycle: ${escapeHtml(lcAudit.reason)}</div>
+          <strong style="font-size:13.5px;">${isFa ? 'گزارش جامع پیش‌بینی‌ها، ارزیابی ۵بعدی و مقایسه مدل‌ها' : 'Forecast Snapshot Tracker, 5D Evaluation & Multi-Model Comparison'}</strong>
+          <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;" class="ltr-num">
+            ${isFa ? `کل: ${rawEntries.length} | در انتظار: ${pendingTotal} | تکمیل‌شده: ${maturedTotal} | دسته‌های چندمدله: ${multiModelBatches.length}` : `Total: ${rawEntries.length} · Pending: ${pendingTotal} · Matured: ${maturedTotal} · Multi-Model Batches: ${multiModelBatches.length}`}
+          </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn btn-sm btn-primary" data-action="record-forecast-snapshot">${isFa ? 'ثبت اسنپ‌شات فعلی' : 'Record Current Snapshot'}</button>
-          <button type="button" class="btn btn-sm" data-action="evaluate-forecast-outcomes">${isFa ? 'ارزیابی سررسید و Ambiguous' : 'Evaluate Matured Outcomes'}</button>
-          <button type="button" class="btn btn-sm" data-action="refresh-forecast-ledger">${isFa ? 'به‌روزرسانی دفتر محلی' : 'Refresh Local Ledger'}</button>
+          <button type="button" class="btn btn-sm btn-primary" data-action="record-selected-forecast-models">${isFa ? 'ثبت گروهی مدل‌های انتخاب‌شده' : 'Record Selected Models'}</button>
+          <button type="button" class="btn btn-sm" data-action="evaluate-forecast-outcomes">${isFa ? 'ارزیابی سررسیدها' : 'Evaluate Matured Outcomes'}</button>
+          <button type="button" class="btn btn-sm" data-action="refresh-forecast-ledger">${isFa ? 'به‌روزرسانی' : 'Refresh Local Ledger'}</button>
         </div>
       </div>
     </div>
 
-    <div class="ci-fc-card" style="overflow-x:auto;margin-bottom:12px;">
-      <table class="ci-fc-table">
-        <thead>
-          <tr>
-            <th>Seq</th>
-            <th>Symbol / Horizon</th>
-            <th>Status</th>
-            <th>Edge Gate</th>
-            <th>q50 Target</th>
-            <th>80% Interval</th>
-            <th>Hash Chain</th>
-            <th>Sync</th>
-          </tr>
-        </thead>
-        <tbody>${rowsHtml}</tbody>
-      </table>
-      ${
-        serverEntries.length > 0 || serverLifecycle.length > 0
-          ? `<div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);" class="ltr-num">Server MariaDB runs: ${serverEntries.length} · Server lifecycle events: ${serverLifecycle.length}</div>`
-          : ''
-      }
+    ${scorecardsHtml}
+
+    <div class="ci-fc-card" style="margin-bottom:12px;">
+      ${filterBarHtml}
+      <div style="overflow-x:auto;">
+        <table class="ci-fc-table">
+          <thead>
+            <tr>
+              <th>Plot</th>
+              <th>Batch / Seq</th>
+              <th>Model & Condition</th>
+              <th>Recorded At & Anchor</th>
+              <th>Horizon & Matures At</th>
+              <th>Q50 Target & 80% Band</th>
+              <th>Actual & Evaluated At</th>
+              <th>5D Evaluation</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>${unifiedRowsHtml}</tbody>
+        </table>
+      </div>
     </div>
 
-    <div class="ci-fc-card" style="overflow-x:auto;">
-      <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">${isFa ? 'گزارش فقط‌افزودنی چرخه عمر و نتایج سررسید (ACTIVE / MATURED / AMBIGUOUS)' : 'Append-Only Lifecycle & Per-Horizon Outcome Log (Never Mutates Runs)'}</div>
-      <table class="ci-fc-table">
-        <thead>
-          <tr>
-            <th>Seq</th>
-            <th>Symbol / Step</th>
-            <th>Lifecycle</th>
-            <th>Outcome</th>
-            <th>Observed Close</th>
-            <th>Event Hash</th>
-            <th>Reason</th>
-          </tr>
-        </thead>
-        <tbody>${lcRowsHtml}</tbody>
-      </table>
-    </div>
+    ${batchComparisonHtml}
+    ${visualOverlayHtml}
+
+    <details class="ci-fc-card ci-fc-accordion">
+      <summary>
+        <span>${isFa ? 'دفتر کل فنی زنجیره هش SHA-256 و لاگ چرخه عمر (کلیک برای مشاهده جزئیات ممیزی)' : 'Append-Only SHA-256 Hash-Chained Audit Ledger & Raw Lifecycle Log (Click to expand)'}</span>
+        <span class="ltr-num" style="font-size:11px;color:${audit.valid && lcAudit.valid ? 'var(--bull)' : 'var(--bear)'};">Runs: ${escapeHtml(audit.reason)} · Lifecycle: ${escapeHtml(lcAudit.reason)}</span>
+      </summary>
+      <div class="ci-fc-accordion-body">
+        <div style="overflow-x:auto;margin-bottom:12px;">
+          <table class="ci-fc-table">
+            <thead>
+              <tr>
+                <th>Seq</th>
+                <th>Symbol / Horizon</th>
+                <th>Status</th>
+                <th>Edge Gate</th>
+                <th>q50 Target</th>
+                <th>80% Interval</th>
+                <th>Hash Chain</th>
+                <th>Sync</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          ${
+            serverEntries.length > 0 || serverLifecycle.length > 0
+              ? `<div style="margin-top:10px;font-size:11.5px;color:var(--text-muted);" class="ltr-num">Server MariaDB runs: ${serverEntries.length} · Server lifecycle events: ${serverLifecycle.length}</div>`
+              : ''
+          }
+        </div>
+        <div style="overflow-x:auto;">
+          <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">${isFa ? 'گزارش فقط‌افزودنی چرخه عمر و نتایج سررسید (ACTIVE / MATURED / AMBIGUOUS)' : 'Append-Only Lifecycle & Per-Horizon Outcome Log (Never Mutates Runs)'}</div>
+          <table class="ci-fc-table">
+            <thead>
+              <tr>
+                <th>Seq</th>
+                <th>Symbol / Step</th>
+                <th>Lifecycle</th>
+                <th>Outcome</th>
+                <th>Observed Close</th>
+                <th>Event Hash</th>
+                <th>Reason</th>
+              </tr>
+            </thead>
+            <tbody>${lcRowsHtml}</tbody>
+          </table>
+        </div>
+      </div>
+    </details>
   `;
 }

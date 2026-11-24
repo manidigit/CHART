@@ -2938,3 +2938,83 @@ body.is-forecast-scroll #app-root,
   color: var(--gold);
   border: 1px solid rgba(245, 158, 11, 0.35);
 }
+
+/* Forecast UI/UX & Multi-Dimensional Evaluation Checklist Styles */
+.ci-fc-accordion {
+  padding: 0;
+  overflow: hidden;
+}
+
+.ci-fc-accordion > summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  font-size: 12.5px;
+  font-weight: 700;
+  color: var(--text-strong);
+  user-select: none;
+  background: rgba(120, 123, 134, 0.04);
+}
+
+.ci-fc-accordion > summary::-webkit-details-marker {
+  display: none;
+}
+
+.ci-fc-accordion > summary::after {
+  content: '▾';
+  font-size: 12px;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+
+.ci-fc-accordion[open] > summary::after {
+  transform: rotate(180deg);
+}
+
+.ci-fc-accordion-body {
+  padding: 12px 14px 14px;
+  border-top: 1px solid var(--border);
+}
+
+.ci-fc-summary-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(138px, 100%), 1fr));
+  gap: 8px;
+}
+
+.ci-fc-filter-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px 14px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  margin-bottom: 12px;
+}
+
+.ci-fc-scorecard-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(220px, 100%), 1fr));
+  gap: 10px;
+}
+
+.ci-fc-batch-winner-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 800;
+  background: rgba(38, 166, 154, 0.18);
+  color: var(--bull);
+  border: 1px solid rgba(38, 166, 154, 0.48);
+}
+

@@ -3479,5 +3479,206 @@ test('FORECAST-STRUCT-SMC-REV23-CONSISTENCY-01: Structural JS & SMC Prediction E
   assert.match(appSrc, /H_ref=/);
 });
 
+test('FORECAST-UX-EVAL-CHECKLIST-01: Multi-model batch recording, 5D evaluation, rolling scorecards, unified ledger UI, collapsible accordions, and visual replay overlay', async () => {
+  const { ForecastLedger, defaultForecastLedger } = await import('../host_subdomain/assets/js/forecast/forecastLedger.js');
+  const { renderOverviewPanel, renderBacktestPanel, renderLedgerPanel, computeMultiModelZoneConvergence, buildLedgerOverlayPayload } = await import('../host_subdomain/assets/js/views/forecastView.js');
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+  const { state } = await import('../host_subdomain/assets/js/core/store.js');
+
+  // Construct 220 deterministic M15 bars (anchor at 199, 15 future closed bars after anchor)
+  const baseMs = Date.UTC(2026, 5, 1, 0, 0, 0);
+  const allBars = [];
+  let px = 80.0;
+  for (let i = 0; i < 220; i++) {
+    const ret = i < 200 ? Math.sin(i * 0.2) * 0.004 + 0.0005 : 0.0022;
+    const open = px;
+    const close = Number((open * Math.exp(ret)).toFixed(4));
+    const high = Number((Math.max(open, close) + 0.25).toFixed(4));
+    const low = Number((Math.min(open, close) - 0.25).toFixed(4));
+    allBars.push({
+      open_time_utc_ms: baseMs + i * 900000,
+      openTimeUtcMs: baseMs + i * 900000,
+      open,
+      high,
+      low,
+      close,
+      volume: 1200,
+      is_closed: true,
+    });
+    px = close;
+  }
+
+  const anchorBars = allBars.slice(0, 200);
+  const anchorClose = anchorBars[anchorBars.length - 1].close;
+  const anchorTimeMs = anchorBars[anchorBars.length - 1].open_time_utc_ms;
+  const futureClose = allBars[214].close;
+
+  const fc = ForecastEngine.project(anchorBars, {
+    symbolCode: 'SPOTBRENT',
+    providerId: 'tvdatafeed',
+    timeframe: 'M15',
+    horizonBars: 15,
+    skipWalkForward: true,
+    skipBootstrap: true,
+  });
+  assert.notEqual(fc.status, 'DATA_NOT_READY');
+
+  // Check multi-model convergence computation
+  const conv = computeMultiModelZoneConvergence(fc);
+  assert.ok(conv.modelCount >= 2);
+  assert.ok(conv.targetSpreadPct !== null);
+
+  // Build synthetic batch entries with deterministic accurate model vs divergent/invalidated model
+  const accuratePts = allBars.slice(200, 215).map((b, idx) => ({
+    stepAhead: idx + 1,
+    openTimeUtcMs: b.open_time_utc_ms,
+    q10: b.close - 0.8,
+    q25: b.close - 0.4,
+    q50: b.close,
+    q75: b.close + 0.4,
+    q90: b.close + 0.8,
+  }));
+  const badPts = allBars.slice(200, 215).map((b, idx) => ({
+    stepAhead: idx + 1,
+    openTimeUtcMs: b.open_time_utc_ms,
+    q10: anchorClose - 3.5 - idx * 0.2,
+    q25: anchorClose - 3.0 - idx * 0.2,
+    q50: anchorClose - 2.5 - idx * 0.2,
+    q75: anchorClose - 2.0 - idx * 0.2,
+    q90: anchorClose - 1.5 - idx * 0.2,
+  }));
+
+  const resTouch = {
+    zoneId: 'RES_TEST_1',
+    zoneType: 'RESISTANCE_ZONE',
+    lowPrice: Math.min(...allBars.slice(200, 215).map((b) => b.high)) + 0.05,
+    highPrice: Math.max(...allBars.slice(200, 215).map((b) => b.high)) + 0.4,
+    invalidationPrice: futureClose + 2.0,
+    strength: 0.82,
+  };
+
+  const batchResultPayload = {
+    ...fc,
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    horizonBars: 15,
+    anchorOpenTimeUtcMs: anchorTimeMs,
+    anchorClose,
+    selectedChartModelId: 'structural_wave_js',
+    points: accuratePts,
+    keyZones: [resTouch],
+    modelTrajectories: [
+      { modelId: 'structural_wave_js', modelName: 'Structural JS', status: 'SUCCESS', points: accuratePts, meta: { smcZones: [resTouch] } },
+      { modelId: 'smc_prediction_js', modelName: 'SMC Engine', status: 'SUCCESS', points: badPts, meta: { smcZones: [] } },
+      { modelId: 'naive_persistence', modelName: 'Naive Persistence', status: 'SUCCESS', points: accuratePts.map((p) => ({ ...p, q50: anchorClose })), meta: {} },
+    ],
+  };
+
+  const testLedger = new ForecastLedger('ci_test_ux_checklist_ledger_v1');
+  testLedger.clear();
+  const batchRes = testLedger.appendBatchFromForecast(batchResultPayload, ['structural_wave_js', 'smc_prediction_js']);
+  assert.ok(batchRes.batchId.startsWith('BATCH-SPOTBRENT-M15-'));
+  assert.equal(batchRes.entries.length, 2);
+  assert.equal(batchRes.entries[0].batchId, batchRes.entries[1].batchId);
+  assert.ok(batchRes.entries[0].maturesAtUtcMs > batchRes.entries[0].anchorOpenTimeUtcMs);
+  assert.ok(['TRENDING_EDGE', 'TRENDING_NO_EDGE', 'RANGING_EDGE', 'RANGING_NO_EDGE'].includes(batchRes.entries[0].marketConditionTag));
+
+  // Evaluate against realized future candles
+  const evalEvents = testLedger.evaluateMaturedForecasts(allBars, 'SPOTBRENT', 'M15');
+  assert.ok(evalEvents.length >= 2);
+  const fullStructEv = evalEvents.find((ev) => ev.forecastHash === batchRes.entries[0].forecastHash && ev.horizonStep === 15);
+  const fullBadEv = evalEvents.find((ev) => ev.forecastHash === batchRes.entries[1].forecastHash && ev.horizonStep === 15);
+  assert.ok(fullStructEv && fullStructEv.evaluationDetails, 'Full 15-bar evaluation details must be attached');
+  assert.ok(fullBadEv && fullBadEv.evaluationDetails);
+
+  assert.equal(fullStructEv.evaluationDetails.directionHit, true);
+  assert.equal(fullStructEv.evaluationDetails.insideCount, 15);
+  assert.equal(fullStructEv.evaluationDetails.hitRatePct, 100);
+  assert.equal(fullStructEv.evaluationDetails.terminalInsideBand, true);
+  assert.equal(fullStructEv.evaluationDetails.beatsBaseline, true);
+  assert.ok(fullStructEv.evaluationDetails.overallScore >= 85, `Expected high score, got ${fullStructEv.evaluationDetails.overallScore}`);
+  assert.ok(fullStructEv.evaluationDetails.volAdjustedMaeAtr >= 0);
+
+  assert.equal(fullBadEv.evaluationDetails.earlyInvalidated, true, 'Far-off prediction must trigger early invalidation alert');
+  assert.ok(fullBadEv.evaluationDetails.earlyInvalidatedAtStep >= 1 && fullBadEv.evaluationDetails.earlyInvalidatedAtStep < 15);
+  assert.ok(fullStructEv.evaluationDetails.overallScore > fullBadEv.evaluationDetails.overallScore);
+
+  assert.equal(testLedger.verifyChain().valid, true);
+  assert.equal(testLedger.verifyLifecycleChain().valid, true);
+
+  // Rolling Scorecards
+  const scorecards = testLedger.buildModelScorecards(20, 'SPOTBRENT');
+  assert.equal(scorecards.length, 2);
+  assert.equal(scorecards[0].modelId, 'structural_wave_js');
+  assert.ok(scorecards[0].meanScore > scorecards[1].meanScore);
+  assert.equal(scorecards[0].maturedCount, 1);
+
+  // Visual Replay Overlay helper
+  const overlayData = buildLedgerOverlayPayload(batchRes.entries, allBars);
+  assert.ok(overlayData && overlayData.histCandles.length === 48);
+  assert.equal(overlayData.payload.actualPoints.length, 15);
+  assert.equal(overlayData.payload.modelTrajectories.length, 1);
+
+  // Render Overview, Backtest, and Ledger panels using defaultForecastLedger populated cleanly
+  defaultForecastLedger.clear();
+  defaultForecastLedger.appendBatchFromForecast(batchResultPayload, ['structural_wave_js', 'smc_prediction_js']);
+  defaultForecastLedger.evaluateMaturedForecasts(allBars, 'SPOTBRENT', 'M15');
+
+  const prevTabs = state.openTabs;
+  const prevActiveId = state.activeTabId;
+  state.openTabs = [{ tabId: 'tab_spot', symbolCode: 'SPOTBRENT', timeframe: 'M15', provider: 'tvdatafeed', decimals: 2, candles: allBars }];
+  state.activeTabId = 'tab_spot';
+  state._selectedForecastBatchId = batchRes.batchId;
+
+  const overviewHtml = renderOverviewPanel(fc, state.openTabs[0], 2, false, 'independent');
+  assert.match(overviewHtml, /ci-fc-summary-strip/, 'Overview must render Top Summary Status Card');
+  assert.match(overviewHtml, /ci-fc-accordion/, 'Overview must collapse advanced diagnostics into accordion');
+  assert.match(overviewHtml, /Pending Snapshots/);
+  assert.match(overviewHtml, /Matured Outcomes/);
+
+  const backtestHtml = renderBacktestPanel({
+    ...fc,
+    walkForward: {
+      evaluatedWindows: 4,
+      evalHorizon: 15,
+      acceptancePassed: false,
+      acceptanceReason: 'Sample verification gate',
+      ensembleMetrics: {
+        modelId: 'ensemble',
+        modelName: 'Calibrated Ensemble',
+        family: 'ENSEMBLE',
+        status: 'SUCCESS',
+        evaluatedWindows: 4,
+        mae: 0.42,
+        maePct: 0.51,
+        rMae: 0.94,
+        mase: 0.92,
+        directionalAccuracyPct: 62.5,
+        coverage80Pct: 80.0,
+        wis: 0.38,
+      },
+      modelBenchmarks: [],
+    },
+  }, 2, false);
+  assert.match(backtestHtml, /ci-fc-accordion/, 'Backtest must collapse raw tables into accordion');
+
+  const ledgerHtml = renderLedgerPanel(2, false);
+  assert.match(ledgerHtml, /record-selected-forecast-models/, 'Ledger must expose Record Selected Models button');
+  assert.match(ledgerHtml, /Rolling Model Scorecards/);
+  assert.match(ledgerHtml, /set-forecast-ledger-filter/, 'Ledger must include history filter selects');
+  assert.match(ledgerHtml, /Side-by-Side Multi-Model Batch Comparison/);
+  assert.match(ledgerHtml, /Best Performer/, 'Batch comparison must crown Best Performer');
+  assert.match(ledgerHtml, /id="forecast-ledger-overlay-canvas"/, 'Ledger must render Visual Replay Overlay canvas');
+  assert.match(ledgerHtml, /ci-fc-accordion/, 'Ledger must collapse raw SHA-256 audit log into accordion');
+
+  // Clean up
+  testLedger.clear();
+  defaultForecastLedger.clear();
+  state.openTabs = prevTabs;
+  state.activeTabId = prevActiveId;
+  delete state._selectedForecastBatchId;
+});
+
+
 
 

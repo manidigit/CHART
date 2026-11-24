@@ -7,7 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.47.41] - 2026-11-21
+## [1.47.41] - 2026-11-24
+
+### Added & Changed (`FORECAST-UX-EVAL-CHECKLIST-01`: Forecast Studio UX Overhaul, 5D Evaluation, Multi-Model Batch Comparison & Visual Replay)
+- **Top Summary Status Card & Collapsible Diagnostic Accordions (`host_subdomain/assets/js/views/forecastView.js`, `assets/css/theme.css`):**
+  - Added `renderForecastSummaryHeaderCard()` at the top of `Overview` and `Ledger` displaying symbol, timeframe, current anchor price, Pending vs. Matured counts, Market Condition tag, plain-language directional/confidence status, and `computeMultiModelZoneConvergence(fc)` multi-model target/band agreement.
+  - Wrapped heavy technical diagnostics (`Conformal Calibration`, `Edge Gate`, `Aleatoric/Epistemic Uncertainty`, `MTF check`, `Empirical Analog Medoids`) in `renderOverviewPanel()`, raw `Walk-Forward` benchmark & sensitivity tables in `renderBacktestPanel()`, and raw `SHA-256` hash-chain / lifecycle logs in `renderLedgerPanel()` inside collapsible `<details class="ci-fc-card ci-fc-accordion">` panels so primary screens stay focused on recording and comparing forecasts.
+- **5-Dimensional Forecast Evaluation & 4 Analytical Intelligence Enhancements (`host_subdomain/assets/js/forecast/forecastLedger.js`):**
+  - Enriched `appendFromForecast()` with explicit `batchId`, `batchSize`, `modelId`, `modelName`, `recordedAtUtcMs`, `maturesAtUtcMs`, `atrAtAnchor`, `baselineTerminalQ50`, `driftBaselineTerminalQ50`, `marketConditionTag` (`TRENDING_EDGE`, `TRENDING_NO_EDGE`, `RANGING_EDGE`, `RANGING_NO_EDGE`), `stepPoints`, and `keyZones`.
+  - Upgraded `evaluateMaturedForecasts()` with `_computeMultiDimensionalEvaluation()` calculating **5 evaluation dimensions**: (1) Trend/Direction accuracy, (2) Candle-by-Candle `[q10..q90]` band hit rate & `Q50 MAE%`, (3) Support/Resistance zone reaction (`TOUCHED`, `BOUNCE_HELD`, `BROKEN`, `UNTESTED`, `NO_ZONES`), (4) Terminal interval containment, and (5) `0–100` `overallScore` — alongside **4 analytical enhancements**: volatility-adjusted error (`×ATR`), Naive Persistence baseline comparison (`vs Naive`), early invalidation detection (`earlyInvalidatedAtStep`), and market-condition tagging.
+- **Simultaneous Multi-Model Batch Snapshotting, Rolling Scorecards, History Filters & Visual Replay Overlay (`forecastLedger.js`, `forecastView.js`, `app.js`):**
+  - Added `appendBatchFromForecast()` and `Record Selected Models` (`data-action="record-selected-forecast-models"`) to snapshot multiple checked models simultaneously under a shared `batchId` and anchor candle.
+  - Replaced disconnected `SEQ` tables in `renderLedgerPanel()` with a **Unified Snapshot ↔ 5D Outcome Table** (exact UTC `Recorded At`, `Horizon & Matures At`, `Observed Close & Evaluated At`, color-coded status badges), a **Rolling 20-Forecast Model Scorecard** (`buildModelScorecards(20, activeSymbol)`), **History Filters** (`Model`, `TF & Horizon`, `Status`, `Market Condition`), a transposed **Side-by-Side Batch Comparison** table crowning `Best Performer ★`, and an interactive **`#forecast-ledger-overlay-canvas` Visual Replay Overlay** (`buildLedgerOverlayPayload`) plotting up to 4 recorded trajectories directly over realized market candlesticks.
+  - Wired automatic idempotent ledger maturity checks during Forecast Studio rendering and verified **59/59** passing Web parity tests (`FORECAST-UX-EVAL-CHECKLIST-01`) + clean Android `compile_applet`.
 
 ### Documentation & Repository Hygiene (`REPO-CLEANUP-2026-11-21`)
 - **Removed Dead Directories & Superseded Docs (Owner-Approved with External Backup):**

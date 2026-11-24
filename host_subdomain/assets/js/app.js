@@ -91,7 +91,7 @@ import {
   renderSymbolBadge,
 } from './views/watchlistView.js?v=1.47.41';
 import { renderSettingsModal } from './views/settingsView.js?v=1.47.41';
-import { renderForecastStudioFanCanvas, bindForecastCanvasHover, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay, resolveHigherTimeframe } from './views/forecastView.js?v=1.47.41';
+import { renderForecastStudioFanCanvas, bindForecastCanvasHover, renderOverviewPanel, buildForecastForTab, renderBacktestPanel, renderLedgerPanel, renderModelsPanel, runHistoricalForecastReplay, resolveHigherTimeframe, buildLedgerOverlayPayload } from './views/forecastView.js?v=1.47.41';
 import { adaptNativeModelTrajectory } from './forecast/forecastContract.js?v=1.47.41';
 import { resolveLowerTimeframeInfo } from './forecast/forecastEngine.js?v=1.47.41';
 import { defaultForecastRegistry } from './forecast/modelRegistry.js?v=1.47.41';
@@ -970,6 +970,9 @@ function renderForecastWorkspaceContent(activeTab) {
         ? activeTab.candles
         : getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, activeTab.timeframe))
     : [];
+  if (activeTab && previewCandles.length > 0 && defaultForecastLedger.loadEntries().length > 0) {
+    defaultForecastLedger.evaluateMaturedForecasts(previewCandles, activeTab.symbolCode, activeTab.timeframe);
+  }
   const structuralForecast = activeTab?.structuralForecast;
   let structuralForecastForPreview =
     structuralForecast?.status === 'READY' &&
@@ -1127,6 +1130,9 @@ function renderForecastWorkspaceContent(activeTab) {
         <div class="chip-group" style="display:flex;gap:6px;flex-wrap:wrap;">
           ${comparisonCandidates.map((model) => `<label class="chip ${visibleCompareIds.includes(model.modelId) ? 'active' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" data-action="toggle-forecast-compare-model" data-model-id="${escapeHtml(model.modelId)}" ${visibleCompareIds.includes(model.modelId) ? 'checked' : ''} />${escapeHtml(model.modelName || model.modelId)}</label>`).join('')}
         </div>
+        <button type="button" class="btn btn-sm btn-primary" data-action="record-selected-forecast-models">
+          ${isFa ? 'ثبت هم‌زمان مدل‌های انتخاب‌شده' : 'Record Selected Models'}
+        </button>
       </div>`
     : '';
   const nativeEvaluationPanels = '<div class="ci-fc-card" style="display:none;" aria-hidden="true"></div>';
@@ -1173,6 +1179,9 @@ function renderForecastWorkspaceContent(activeTab) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
               ${isFa ? 'ثبت در دفتر محلی' : 'Record Local Snapshot'}
+            </button>
+            <button type="button" class="btn btn-sm" data-action="record-selected-forecast-models">
+              ${isFa ? 'ثبت گروهی مدل‌ها' : 'Record Selected Models'}
             </button>
             <button type="button" class="btn btn-sm ${isPrimaryPlotted ? 'btn-primary' : ''}" data-action="${primaryChartAction}" ${isNativeModelSelected && (!Array.isArray(nativeEvaluation?.points) || nativeEvaluation.points.length === 0) && !smcDirectPreview ? 'disabled' : ''}>
               ${isPrimaryPlotted ? (isFa ? '✓ مدل انتخاب‌شده روی چارت فعال است' : '✓ Selected Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
@@ -1388,6 +1397,47 @@ export function renderApp() {
           'independent'
         );
       });
+      const ledgerOverlayCanvas = document.getElementById('forecast-ledger-overlay-canvas');
+      if (ledgerOverlayCanvas) {
+        const allEntries = defaultForecastLedger.loadEntries();
+        const checkedHashes = Array.isArray(state._ledgerOverlayHashes) ? state._ledgerOverlayHashes : [];
+        let selectedEntries = checkedHashes.length > 0
+          ? allEntries.filter((e) => checkedHashes.includes(e.forecastHash))
+          : [];
+        if (selectedEntries.length === 0 && state._selectedForecastBatchId) {
+          selectedEntries = allEntries.filter((e) => e.batchId === state._selectedForecastBatchId);
+        }
+        if (selectedEntries.length === 0) {
+          selectedEntries = allEntries.slice(-2);
+        }
+        const firstSym = selectedEntries[0]?.symbolCode || activeTab?.symbolCode;
+        const firstTf = selectedEntries[0]?.timeframe || activeTab?.timeframe;
+        const sameTargetEntries = selectedEntries.filter((e) => e.symbolCode === firstSym && e.timeframe === firstTf).slice(0, 4);
+        const overlayCandles = sameTargetEntries.length > 0
+          ? (firstSym === activeTab?.symbolCode && firstTf === activeTab?.timeframe && activeTab?.candles?.length
+              ? activeTab.candles
+              : getCachedOrAggregatedCandles(firstSym, activeTab?.provider || 'tvdatafeed', firstTf))
+          : [];
+        const overlayData = buildLedgerOverlayPayload(sameTargetEntries, overlayCandles);
+        if (overlayData) {
+          renderForecastStudioFanCanvas(
+            ledgerOverlayCanvas,
+            overlayData.histCandles,
+            overlayData.payload,
+            studioDecimals,
+            studioIsDark,
+            'independent'
+          );
+          bindForecastCanvasHover(
+            ledgerOverlayCanvas,
+            overlayData.histCandles,
+            overlayData.payload,
+            studioDecimals,
+            studioIsDark,
+            'independent'
+          );
+        }
+      }
     } else {
       bindPanelResizers();
       bindCanvasEvents(activeTab);
@@ -2984,13 +3034,74 @@ document.addEventListener('click', async (e) => {
     redrawActiveCanvas();
   } else if (action === 'record-forecast-snapshot') {
     const result = state._lastForecastResult;
+    const activePayload = state._forecastCanvasPayload;
+    const isFa = i18n.getCurrentLanguage() === 'fa';
     if (result && result.status && result.status !== 'DATA_NOT_READY') {
-      const entry = defaultForecastLedger.appendFromForecast(result);
-      showFloatingToast(entry ? (i18n.getCurrentLanguage() === 'fa' ? 'پیش‌بینی در دفتر محلی ثبت شد.' : 'Forecast snapshot saved to local ledger.') : (i18n.getCurrentLanguage() === 'fa' ? 'ثبت پیش‌بینی انجام نشد.' : 'Forecast snapshot could not be recorded.'));
+      const overrideOptions = activePayload?.points?.length && activePayload?.selectedChartModelId && activePayload.selectedChartModelId !== result.selectedChartModelId
+        ? {
+            modelId: activePayload.selectedChartModelId,
+            points: activePayload.points,
+            keyZones: activePayload.keyZones || activePayload.smcZones || result.keyZones,
+          }
+        : {};
+      const entry = defaultForecastLedger.appendFromForecast(result, overrideOptions);
+      showFloatingToast(entry ? (isFa ? 'پیش‌بینی در دفتر محلی ثبت شد.' : 'Forecast snapshot saved to local ledger.') : (isFa ? 'ثبت پیش‌بینی انجام نشد.' : 'Forecast snapshot could not be recorded.'));
     } else {
-      showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'خروجی معتبری برای ثبت وجود ندارد.' : 'No forecast result is available to record.');
+      showFloatingToast(isFa ? 'خروجی معتبری برای ثبت وجود ندارد.' : 'No forecast result is available to record.');
     }
     renderApp();
+  } else if (action === 'record-selected-forecast-models') {
+    const result = state._lastForecastResult;
+    const activePayload = state._forecastCanvasPayload;
+    const isFa = i18n.getCurrentLanguage() === 'fa';
+    if (result && result.status && result.status !== 'DATA_NOT_READY') {
+      const trajectories = Array.isArray(result.modelTrajectories) ? [...result.modelTrajectories] : [];
+      if (activePayload?.points?.length && activePayload?.selectedChartModelId && !trajectories.some((t) => t.modelId === activePayload.selectedChartModelId)) {
+        trajectories.unshift({
+          modelId: activePayload.selectedChartModelId,
+          modelName: activePayload.selectedChartModelId === 'structural_wave_js' ? 'Structural JS' : activePayload.selectedChartModelId,
+          status: 'SUCCESS',
+          points: activePayload.points,
+          meta: { smcZones: activePayload.smcZones || activePayload.keyZones || [] },
+        });
+      }
+      const enrichedResult = { ...result, modelTrajectories: trajectories };
+      const primaryId = activePayload?.selectedChartModelId || result.selectedChartModelId || 'AUTO';
+      const compareIds = Array.isArray(state.chartPreferences.forecastCompareModelIds)
+        ? state.chartPreferences.forecastCompareModelIds
+        : trajectories.filter((t) => t.status === 'SUCCESS').slice(0, 3).map((t) => t.modelId);
+      const selectedIds = [...new Set([primaryId, ...compareIds])].filter(Boolean);
+      const batchRes = defaultForecastLedger.appendBatchFromForecast(enrichedResult, selectedIds);
+      if (batchRes?.entries?.length > 0) {
+        state._selectedForecastBatchId = batchRes.batchId;
+        state._ledgerOverlayHashes = batchRes.entries.map((e) => e.forecastHash).slice(0, 4);
+        showFloatingToast(isFa ? `${batchRes.entries.length} مدل در یک گروه ثبت شدند.` : `Recorded ${batchRes.entries.length} models under batch ${batchRes.batchId.slice(-8)}.`);
+      } else {
+        showFloatingToast(isFa ? 'مدل فعالی برای ثبت گروهی یافت نشد.' : 'No eligible models found to batch record.');
+      }
+    } else {
+      showFloatingToast(isFa ? 'خروجی معتبری برای ثبت وجود ندارد.' : 'No forecast result is available to record.');
+    }
+    renderApp();
+  } else if (action === 'select-forecast-batch') {
+    const bId = String(el.getAttribute('data-batch-id') || '');
+    if (bId) {
+      state._selectedForecastBatchId = bId;
+      const batchEntries = defaultForecastLedger.loadEntries().filter((e) => e.batchId === bId);
+      if (batchEntries.length > 0) {
+        state._ledgerOverlayHashes = batchEntries.map((e) => e.forecastHash).slice(0, 4);
+      }
+      renderApp();
+    }
+  } else if (action === 'toggle-ledger-overlay-entry') {
+    const hash = String(el.getAttribute('data-hash') || '');
+    if (hash) {
+      const current = Array.isArray(state._ledgerOverlayHashes) ? [...state._ledgerOverlayHashes] : [];
+      state._ledgerOverlayHashes = el.checked
+        ? [...new Set([...current, hash])].slice(-4)
+        : current.filter((h) => h !== hash);
+      renderApp();
+    }
   } else if (action === 'evaluate-forecast-outcomes' && activeTab) {
     const events = defaultForecastLedger.evaluateMaturedForecasts(activeTab.candles || [], activeTab.symbolCode, activeTab.timeframe);
     showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? `${events.length} رویداد سررسید بررسی شد.` : `${events.length} matured forecast events evaluated.`);
@@ -3864,6 +3975,21 @@ document.addEventListener('change', async (e) => {
       defaultForecastRegistry.setParams(modelId, { [paramKey]: value });
       state.chartPreferences.forecastPluginConfig = defaultForecastRegistry.serializeConfig();
       savePreferences();
+    }
+    return;
+  }
+  if (action === 'set-forecast-ledger-filter') {
+    const filterKey = String(el.getAttribute('data-filter-key') || '');
+    if (filterKey) {
+      state._forecastLedgerFilters = {
+        model: 'ALL',
+        tfHorizon: 'ALL',
+        status: 'ALL',
+        condition: 'ALL',
+        ...(state._forecastLedgerFilters || {}),
+        [filterKey]: String(el.value || 'ALL'),
+      };
+      renderApp();
     }
     return;
   }
