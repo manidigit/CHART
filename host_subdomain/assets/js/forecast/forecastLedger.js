@@ -182,7 +182,8 @@ export class ForecastLedger {
     const prevForecastHash = last ? last.forecastHash : GENESIS_HASH;
     const seq = last ? Number(last.seq || entries.length) + 1 : 1;
 
-    const rawPoints = Array.isArray(options.points)
+    const hasCustomPoints = Array.isArray(options.points) && options.points.length > 0;
+    const rawPoints = hasCustomPoints
       ? options.points
       : Array.isArray(forecastResult.points)
         ? forecastResult.points
@@ -190,18 +191,22 @@ export class ForecastLedger {
     const lastPoint = rawPoints.length > 0 ? rawPoints[rawPoints.length - 1] : null;
     const terminalMedian =
       options.terminalMedian ??
+      (hasCustomPoints && lastPoint ? Number(lastPoint.q50 ?? lastPoint.q50_median ?? 0) : null) ??
       forecastResult.summary?.terminalQ50 ??
       (lastPoint ? Number(lastPoint.q50 ?? lastPoint.q50_median ?? 0) : 0);
     const terminalQ10 =
       options.terminalQ10 ??
+      (hasCustomPoints && lastPoint ? Number(lastPoint.q10 ?? 0) : null) ??
       forecastResult.summary?.terminalQ10 ??
       (lastPoint ? Number(lastPoint.q10 ?? 0) : 0);
     const terminalQ90 =
       options.terminalQ90 ??
+      (hasCustomPoints && lastPoint ? Number(lastPoint.q90 ?? 0) : null) ??
       forecastResult.summary?.terminalQ90 ??
       (lastPoint ? Number(lastPoint.q90 ?? 0) : 0);
     const generatedAtUtcMs = Number(options.generatedAtUtcMs ?? forecastResult.generatedAtUtcMs ?? Date.now());
-    const horizonBars = Math.max(1, Number(forecastResult.horizonBars || rawPoints.length || 15));
+    const recordedAtUtcMs = Number(options.recordedAtUtcMs ?? options.generatedAtUtcMs ?? Date.now());
+    const horizonBars = Math.max(1, Number(options.horizonBars || (hasCustomPoints ? rawPoints.length : 0) || forecastResult.horizonBars || rawPoints.length || 15));
     const anchorOpenTimeUtcMs = Number(forecastResult.anchorOpenTimeUtcMs || 0);
     const anchorClose = Number(forecastResult.anchorClose || 0);
     const tfStepMs = resolveTimeframeStepMs(forecastResult.timeframe || 'M15');
@@ -272,16 +277,25 @@ export class ForecastLedger {
       }
     }
 
+    const MODEL_FRIENDLY_NAMES = {
+      structural_wave_js: 'Structural JS',
+      smc_prediction_js: 'SMC Prediction Engine',
+      empirical_analogs: 'Causal Historical Analogs',
+      ensemble: 'Calibrated Ensemble (V2)',
+      AUTO: 'Auto (OOS Best)',
+    };
     const resolvedModelId = String(
       options.modelId || forecastResult.selectedChartModelId || forecastResult.model?.id || 'AUTO'
     );
+    const matchedTraj = (forecastResult.modelTrajectories || []).find((t) => t.modelId === resolvedModelId);
     const resolvedModelName = String(
       options.modelName ||
-        (forecastResult.modelTrajectories || []).find((t) => t.modelId === resolvedModelId)?.modelName ||
-        forecastResult.model?.name ||
+        matchedTraj?.modelName ||
+        MODEL_FRIENDLY_NAMES[resolvedModelId] ||
+        (resolvedModelId === (forecastResult.selectedChartModelId || forecastResult.model?.id) ? forecastResult.model?.name : '') ||
         resolvedModelId
     );
-    const batchId = String(options.batchId || `SNAP-${generatedAtUtcMs}-${seq}`);
+    const batchId = String(options.batchId || `SNAP-${recordedAtUtcMs}-${seq}`);
     const batchSize = Math.max(1, Number(options.batchSize || 1));
 
     const atrPct = Number(forecastResult.featuresSummary?.atrPct ?? 0);
@@ -349,7 +363,7 @@ export class ForecastLedger {
       modelId: resolvedModelId,
       modelName: resolvedModelName,
       providerId: String(forecastResult.providerId || forecastResult.series?.provider || 'tvdatafeed'),
-      recordedAtUtcMs: generatedAtUtcMs,
+      recordedAtUtcMs,
       maturesAtUtcMs,
       atrAtAnchor,
       baselineTerminalQ50,
@@ -414,22 +428,36 @@ export class ForecastLedger {
   /**
    * Records multiple selected models simultaneously under a shared Batch ID and anchor timestamp.
    */
-  appendBatchFromForecast(forecastResult, modelIds = []) {
+  appendBatchFromForecast(forecastResult, modelIds = [], options = {}) {
     if (!forecastResult || forecastResult.status === 'DATA_NOT_READY') {
       return { batchId: null, entries: [] };
     }
     const trajectories = Array.isArray(forecastResult.modelTrajectories) ? forecastResult.modelTrajectories : [];
-    const requested = Array.isArray(modelIds) && modelIds.length > 0
-      ? [...new Set(modelIds.map((m) => String(m || '').trim()).filter(Boolean))]
+    const rawRequested = Array.isArray(modelIds) && modelIds.length > 0
+      ? modelIds.map((m) => String(m || '').trim()).filter(Boolean)
       : [String(forecastResult.selectedChartModelId || 'AUTO')];
 
+    // Resolve 'AUTO' to actual winning modelId before deduplicating so AUTO + winner never duplicate
+    const resolvedSelectedId = String(forecastResult.selectedChartModelId || 'AUTO');
+    const requested = [];
+    const seenRequested = new Set();
+    for (const rawId of rawRequested) {
+      const normalizedId = rawId === 'AUTO' && resolvedSelectedId !== 'AUTO' ? resolvedSelectedId : rawId;
+      if (seenRequested.has(normalizedId)) continue;
+      seenRequested.add(normalizedId);
+      requested.push(normalizedId);
+    }
+
     const validModels = [];
+    const seenValidIds = new Set();
     for (const id of requested) {
+      if (seenValidIds.has(id)) continue;
       if (id === forecastResult.selectedChartModelId && Array.isArray(forecastResult.points) && forecastResult.points.length > 0) {
         const tr = trajectories.find((t) => t.modelId === id);
+        seenValidIds.add(id);
         validModels.push({
           modelId: id,
-          modelName: tr?.modelName || id,
+          modelName: tr?.modelName || forecastResult.selectedChartModelName || id,
           points: forecastResult.points,
           keyZones: tr?.meta?.smcZones || forecastResult.keyZones || [],
         });
@@ -439,6 +467,7 @@ export class ForecastLedger {
         (t) => t.modelId === id && t.status === 'SUCCESS' && Array.isArray(t.points) && t.points.length > 0
       );
       if (tr) {
+        seenValidIds.add(tr.modelId);
         validModels.push({
           modelId: tr.modelId,
           modelName: tr.modelName || tr.modelId,
@@ -448,18 +477,27 @@ export class ForecastLedger {
       }
     }
 
+    if (options.requireMultiple && validModels.length < 2) {
+      return { batchId: null, entries: [], reason: 'NEED_AT_LEAST_2_MODELS' };
+    }
+
     if (validModels.length === 0 && Array.isArray(forecastResult.points) && forecastResult.points.length > 0) {
       const fallbackId = String(forecastResult.selectedChartModelId || 'AUTO');
       validModels.push({
         modelId: fallbackId,
-        modelName: fallbackId,
+        modelName: forecastResult.selectedChartModelName || fallbackId,
         points: forecastResult.points,
         keyZones: forecastResult.keyZones || [],
       });
     }
 
-    const batchTimestampMs = Number(forecastResult.generatedAtUtcMs || Date.now());
-    const batchId = `BATCH-${forecastResult.symbolCode || 'SYM'}-${forecastResult.timeframe || 'M15'}-${batchTimestampMs}`;
+    const existingEntries = this.loadEntries();
+    const nextSeq = existingEntries.length > 0 ? Number(existingEntries[existingEntries.length - 1].seq || existingEntries.length) + 1 : 1;
+    const batchTimestampMs = Number(options.batchTimestampMs ?? options.recordedAtUtcMs ?? Date.now());
+    const batchId =
+      validModels.length >= 2
+        ? `BATCH-${forecastResult.symbolCode || 'SYM'}-${forecastResult.timeframe || 'M15'}-${batchTimestampMs}-${nextSeq}`
+        : `SNAP-${batchTimestampMs}-${nextSeq}`;
     const recorded = [];
     for (let i = 0; i < validModels.length; i++) {
       const item = validModels[i];
@@ -471,10 +509,12 @@ export class ForecastLedger {
         modelName: item.modelName,
         points: item.points,
         keyZones: item.keyZones,
+        horizonBars: item.points.length,
         terminalMedian: Number(lastPt?.q50 ?? lastPt?.q50_median ?? forecastResult.summary?.terminalQ50 ?? 0),
         terminalQ10: Number(lastPt?.q10 ?? forecastResult.summary?.terminalQ10 ?? 0),
         terminalQ90: Number(lastPt?.q90 ?? forecastResult.summary?.terminalQ90 ?? 0),
         generatedAtUtcMs: batchTimestampMs + i,
+        recordedAtUtcMs: batchTimestampMs,
       });
       if (entry) recorded.push(entry);
     }
@@ -763,13 +803,32 @@ export class ForecastLedger {
     );
     const appended = [];
 
+    let allEvents = this.loadLifecycleEvents();
+    let backfilledMissingDetails = false;
+
     for (const entry of entries) {
       const subBars = clean.filter((c) => Number(c.open_time_utc_ms ?? c.openTimeUtcMs ?? 0) > entry.anchorOpenTimeUtcMs);
       if (subBars.length === 0) continue;
 
       const checkpoints = [5, 10, entry.horizonBars].filter((s, idx, arr) => s <= entry.horizonBars && arr.indexOf(s) === idx);
       for (const step of checkpoints) {
-        if (this.hasTerminalLifecycleStatus(entry.forecastHash, step)) continue;
+        const existingTerminal = allEvents.find(
+          (ev) =>
+            ev.forecastHash === entry.forecastHash &&
+            ev.horizonStep === step &&
+            [LIFECYCLE_STATUS.MATURED, LIFECYCLE_STATUS.CANCELLED].includes(ev.lifecycleStatus)
+        );
+        if (existingTerminal) {
+          if (
+            existingTerminal.lifecycleStatus === LIFECYCLE_STATUS.MATURED &&
+            !existingTerminal.evaluationDetails &&
+            subBars.length >= step
+          ) {
+            existingTerminal.evaluationDetails = this._computeMultiDimensionalEvaluation(entry, subBars.slice(0, step), step);
+            backfilledMissingDetails = true;
+          }
+          continue;
+        }
         if (subBars.length < step) continue;
 
         const slice = subBars.slice(0, step);
@@ -812,7 +871,11 @@ export class ForecastLedger {
           evaluationDetails: evalDetails,
         });
         appended.push(ev);
+        allEvents = this.loadLifecycleEvents();
       }
+    }
+    if (backfilledMissingDetails) {
+      this.saveLifecycleEvents(allEvents);
     }
     return appended;
   }

@@ -519,15 +519,17 @@ export function renderForecastStudioFanCanvas(
 
     // Overlay q50 comparison trajectories from all competing successful models
     overlayModels.forEach((tr) => {
-      const col = MODEL_OVERLAY_COLORS[tr.modelId] || '#64748B';
+      const col = tr.color || MODEL_OVERLAY_COLORS[tr.modelId] || '#64748B';
+      const hasExplicitColor = Boolean(tr.color);
       ctx.save();
       ctx.strokeStyle = col;
-      ctx.globalAlpha = 0.65;
-      ctx.lineWidth = 1.3;
-      ctx.setLineDash([2, 3]);
+      ctx.globalAlpha = hasExplicitColor ? 0.9 : 0.65;
+      ctx.lineWidth = hasExplicitColor ? 1.85 : 1.3;
+      ctx.setLineDash(hasExplicitColor ? [4, 3] : [2, 3]);
       ctx.beginPath();
       ctx.moveTo(xOf(hist.length - 1), yOf(Number(hist[hist.length - 1].close)));
       for (let idx = 0; idx < pts.length; idx++) {
+        if (!tr.points[idx]) break;
         ctx.lineTo(xOf(hist.length + idx), yOf(Number(tr.points[idx].q50)));
       }
       ctx.stroke();
@@ -536,7 +538,7 @@ export function renderForecastStudioFanCanvas(
     });
 
     // Active Median q50 line
-    const activeLineCol = useCoord ? '#A855F7' : (MODEL_OVERLAY_COLORS[forecast?.selectedChartModelId] || '#F59E0B');
+    const activeLineCol = useCoord ? '#A855F7' : (forecast?.primaryLineColor || MODEL_OVERLAY_COLORS[forecast?.selectedChartModelId] || '#F59E0B');
     ctx.strokeStyle = activeLineCol;
     ctx.lineWidth = 2.2;
     ctx.setLineDash([5, 3]);
@@ -930,6 +932,18 @@ export function computeMultiModelZoneConvergence(fc) {
   };
 }
 
+const LEDGER_OVERLAY_PALETTE = ['#F59E0B', '#38BDF8', '#A855F7', '#26A69A'];
+
+function formatUtcCompactShort(ms) {
+  const n = Number(ms || 0);
+  if (!Number.isFinite(n) || n <= 0) return '—';
+  try {
+    return new Date(n).toISOString().slice(5, 16).replace('T', ' ');
+  } catch (_) {
+    return '—';
+  }
+}
+
 export function buildLedgerOverlayPayload(selectedEntries = [], candles = []) {
   const validEntries = (Array.isArray(selectedEntries) ? selectedEntries : []).filter(
     (e) => e && Number.isFinite(Number(e.anchorClose)) && Number(e.anchorOpenTimeUtcMs) > 0
@@ -982,8 +996,9 @@ export function buildLedgerOverlayPayload(selectedEntries = [], candles = []) {
 
   const primaryPoints = buildEntryPoints(primary);
   const secondaryTrajectories = validEntries.slice(1).map((entry, idx) => ({
-    modelId: entry.modelId || `snapshot_${idx + 2}`,
-    modelName: `${entry.modelName || entry.modelId || 'Model'} (#${entry.seq})`,
+    modelId: `snap_${entry.seq}_${entry.modelId || idx + 2}`,
+    modelName: `#${entry.seq} ${entry.modelName || entry.modelId || 'Model'}`,
+    color: LEDGER_OVERLAY_PALETTE[(idx + 1) % LEDGER_OVERLAY_PALETTE.length],
     status: MODEL_EXECUTION_STATUS.SUCCESS,
     points: buildEntryPoints(entry),
   }));
@@ -994,6 +1009,7 @@ export function buildLedgerOverlayPayload(selectedEntries = [], candles = []) {
       points: primaryPoints,
       actualPoints: futureCandles.map((c) => ({ close: Number(c.close), openTimeUtcMs: Number(c.open_time_utc_ms ?? c.openTimeUtcMs) })),
       selectedChartModelId: primary.modelId || 'AUTO',
+      primaryLineColor: LEDGER_OVERLAY_PALETTE[0],
       renderMode: RENDER_MODES.FAN_CHART,
       modelTrajectories: secondaryTrajectories,
       visibleComparisonModelIds: secondaryTrajectories.map((t) => t.modelId),
@@ -2009,7 +2025,7 @@ export function renderLedgerPanel(decimals, isFa) {
     };
   });
 
-  // Group multi-model batches
+  // Group multi-model batches (deduplicating repeated identical modelId entries per batch)
   const batchMap = new Map();
   for (const item of enrichedAll) {
     const bId = String(item.entry.batchId || '');
@@ -2017,7 +2033,15 @@ export function renderLedgerPanel(decimals, isFa) {
     if (!batchMap.has(bId)) batchMap.set(bId, []);
     batchMap.get(bId).push(item);
   }
-  const multiModelBatches = Array.from(batchMap.entries())
+  const distinctBatchMap = new Map();
+  for (const [bId, items] of batchMap.entries()) {
+    const byModel = new Map();
+    for (const it of items) {
+      byModel.set(it.modelKey, it);
+    }
+    distinctBatchMap.set(bId, Array.from(byModel.values()));
+  }
+  const multiModelBatches = Array.from(distinctBatchMap.entries())
     .filter(([, items]) => items.length >= 2)
     .reverse();
 
@@ -2037,7 +2061,7 @@ export function renderLedgerPanel(decimals, isFa) {
       if (filters.status === 'PENDING' && item.isFullMatured) return false;
       if (filters.status === 'MATURED' && !item.isFullMatured) return false;
       if (filters.status === 'BATCH_ONLY') {
-        const bItems = batchMap.get(String(item.entry.batchId || ''));
+        const bItems = distinctBatchMap.get(String(item.entry.batchId || ''));
         if (!bItems || bItems.length < 2) return false;
       }
       return true;
@@ -2140,45 +2164,93 @@ export function renderLedgerPanel(decimals, isFa) {
           const e = item.entry;
           const d = item.evalDetails;
           const bId = String(e.batchId || '');
-          const isBatch = (batchMap.get(bId)?.length || 0) >= 2;
-          const recordedStr = formatUtcDateTimeShort(e.recordedAtUtcMs || e.generatedAtUtcMs);
-          const maturesStr = formatUtcDateTimeShort(e.maturesAtUtcMs);
-          const evaluatedStr = item.termEv ? formatUtcDateTimeShort(item.termEv.recordedAtUtcMs) : '—';
+          const isBatch = (distinctBatchMap.get(bId)?.length || 0) >= 2;
+          const stepMs = Number(PriceFormatter.stepMilliseconds?.(e.timeframe || 'M15') || 900000);
+          const inferredMaturesMs =
+            Number(e.maturesAtUtcMs) > 0
+              ? Number(e.maturesAtUtcMs)
+              : Number(e.anchorOpenTimeUtcMs) > 0
+                ? Number(e.anchorOpenTimeUtcMs) + Number(e.horizonBars || 15) * stepMs
+                : 0;
+          const recordedFull = formatUtcDateTimeShort(e.recordedAtUtcMs || e.generatedAtUtcMs);
+          const recordedShort = formatUtcCompactShort(e.recordedAtUtcMs || e.generatedAtUtcMs);
+          const maturesFull = formatUtcDateTimeShort(inferredMaturesMs);
+          const maturesShort = formatUtcCompactShort(inferredMaturesMs);
+          const evaluatedFull = item.isFullMatured && item.termEv ? formatUtcDateTimeShort(item.termEv.recordedAtUtcMs) : '—';
+          const evaluatedShort = item.isFullMatured && item.termEv ? formatUtcCompactShort(item.termEv.recordedAtUtcMs) : '—';
           const predPct = e.anchorClose > 0 ? ((e.terminalMedian - e.anchorClose) / e.anchorClose) * 100 : 0;
-          const obsClose = item.termEv?.observedClose ?? item.latestEv?.observedClose ?? null;
+          // Only display observed close from an actual MATURED event, never from SUPERSEDED anchor close!
+          const obsClose = item.isFullMatured && item.termEv?.observedClose != null ? Number(item.termEv.observedClose) : null;
           const obsPct = obsClose != null && e.anchorClose > 0 ? ((obsClose - e.anchorClose) / e.anchorClose) * 100 : null;
+          const partialStep = !item.isFullMatured && item.termEv ? Number(item.termEv.horizonStep || 0) : 0;
           const overlayChecked = currentOverlayHashes.includes(e.forecastHash);
 
+          const legacyContained = obsClose != null ? obsClose >= Number(e.terminalQ10) && obsClose <= Number(e.terminalQ90) : false;
+          const legacyDirHit =
+            obsClose != null
+              ? (Number(e.terminalMedian) >= Number(e.anchorClose)) === (obsClose >= Number(e.anchorClose))
+              : false;
+          const legacyErrPct =
+            obsClose != null && Number(e.anchorClose) > 0
+              ? (Math.abs(obsClose - Number(e.terminalMedian)) / Number(e.anchorClose)) * 100
+              : null;
+          const legacyNaiveErr = obsClose != null ? Math.abs(obsClose - Number(e.anchorClose)) : 0;
+          const legacyModelErr = obsClose != null ? Math.abs(obsClose - Number(e.terminalMedian)) : 0;
+          const legacyBeatsNaive = obsClose != null ? legacyModelErr <= legacyNaiveErr : false;
+          const legacyEdgePct =
+            legacyNaiveErr > 1e-8 ? ((legacyNaiveErr - legacyModelErr) / legacyNaiveErr) * 100 : 0;
+          const legacyScore = legacyContained ? 75 : 30;
+
           let statusBadgeClass = 'ci-fc-badge-provisional';
-          let statusBadgeText = isFa ? 'در انتظار سررسید (Pending)' : 'Pending';
+          let statusBadgeText = isFa ? 'در انتظار' : 'Pending';
           if (item.displayStatus === 'MATURED') {
-            statusBadgeClass = d?.terminalInsideBand ? 'ci-fc-badge-valid' : 'ci-fc-badge-blocked';
-            statusBadgeText = isFa ? 'تکمیل‌شده (Matured)' : 'Matured';
+            const contained = d ? Boolean(d.terminalInsideBand) : legacyContained;
+            statusBadgeClass = contained ? 'ci-fc-badge-valid' : 'ci-fc-badge-blocked';
+            statusBadgeText = isFa ? 'تکمیل‌شده' : 'Matured';
           } else if (item.displayStatus === 'INVALIDATED_EARLY') {
             statusBadgeClass = 'ci-fc-badge-blocked';
-            statusBadgeText = isFa ? `نقض زودهنگام (+${d?.earlyInvalidatedAtStep}b)` : `Invalidated (+${d?.earlyInvalidatedAtStep}b)`;
+            statusBadgeText = isFa ? `نقض (+${d?.earlyInvalidatedAtStep}b)` : `Invalid (+${d?.earlyInvalidatedAtStep}b)`;
           } else if (item.displayStatus === 'AMBIGUOUS') {
             statusBadgeClass = 'ci-fc-badge-provisional';
-            statusBadgeText = isFa ? 'مبهم (Ambiguous)' : 'Ambiguous';
+            statusBadgeText = isFa ? 'مبهم' : 'Ambiguous';
           } else if (item.displayStatus === 'SUPERSEDED') {
             statusBadgeClass = 'ci-fc-badge-provisional';
-            statusBadgeText = isFa ? 'جایگزین‌شده (Superseded)' : 'Superseded';
+            statusBadgeText = isFa ? 'جایگزین‌شده' : 'Superseded';
           }
 
-          const eval5dHtml = d
-            ? `
-              <div style="display:flex;flex-direction:column;gap:2px;font-size:10.5px;">
+          let eval5dHtml = `<span style="color:var(--text-muted);font-size:10.5px;">${
+            partialStep > 0
+              ? (isFa ? `در جریان (+${partialStep}/${e.horizonBars}b)` : `In progress (+${partialStep}/${e.horizonBars}b)`)
+              : (isFa ? 'منتظر سررسید' : 'Awaiting maturity')
+          }</span>`;
+
+          if (d) {
+            eval5dHtml = `
+              <div class="ci-fc-eval5d-cell">
                 <div>
                   <span style="color:${d.directionHit ? 'var(--bull)' : 'var(--bear)'};font-weight:700;">${d.directionHit ? '✓ Trend' : '✗ Trend'}</span>
                   · Hit <strong>${d.insideCount}/${d.totalBars}</strong> (${d.hitRatePct}%)
-                  · Score <strong style="color:${d.overallScore >= 70 ? 'var(--bull)' : d.overallScore >= 45 ? 'var(--gold)' : 'var(--bear)'};">${d.overallScore}/100</strong>
+                  · <strong style="color:${d.overallScore >= 70 ? 'var(--bull)' : d.overallScore >= 45 ? 'var(--gold)' : 'var(--bear)'};">${d.overallScore}/100</strong>
                 </div>
                 <div style="color:var(--text-muted);">
-                  MAE ${d.q50MaePct}% (${d.volAdjustedMaeAtr}×ATR) · vs Naive <strong style="color:${d.beatsBaseline ? 'var(--bull)' : 'var(--bear)'};">${d.edgeVsNaivePct >= 0 ? '+' : ''}${d.edgeVsNaivePct}%</strong> · S/R: ${escapeHtml(d.srSummaryStatus)}
+                  MAE ${d.q50MaePct}% (${d.volAdjustedMaeAtr}×ATR) · Naive <strong style="color:${d.beatsBaseline ? 'var(--bull)' : 'var(--bear)'};">${d.edgeVsNaivePct >= 0 ? '+' : ''}${d.edgeVsNaivePct}%</strong> · S/R ${escapeHtml(d.srSummaryStatus)}
                 </div>
               </div>
-            `
-            : `<span style="color:var(--text-muted);font-size:11px;">${isFa ? 'منتظر بسته شدن کندل سررسید' : 'Awaiting maturity candle'}</span>`;
+            `;
+          } else if (item.isFullMatured && obsClose != null) {
+            eval5dHtml = `
+              <div class="ci-fc-eval5d-cell">
+                <div>
+                  <span style="color:${legacyDirHit ? 'var(--bull)' : 'var(--bear)'};font-weight:700;">${legacyDirHit ? '✓ Trend' : '✗ Trend'}</span>
+                  · Band <strong>${legacyContained ? 'IN' : 'OUT'}</strong>
+                  · <strong style="color:${legacyScore >= 70 ? 'var(--bull)' : 'var(--bear)'};">${legacyScore}/100</strong>
+                </div>
+                <div style="color:var(--text-muted);">
+                  Err ${legacyErrPct != null ? legacyErrPct.toFixed(2) + '%' : '—'} · Naive <strong style="color:${legacyBeatsNaive ? 'var(--bull)' : 'var(--bear)'};">${legacyEdgePct >= 0 ? '+' : ''}${legacyEdgePct.toFixed(1)}%</strong> · Legacy
+                </div>
+              </div>
+            `;
+          }
 
           return `
             <tr>
@@ -2187,43 +2259,43 @@ export function renderLedgerPanel(decimals, isFa) {
                 <strong>#${e.seq}</strong>
                 ${
                   isBatch
-                    ? `<div><button type="button" class="chip ${state._selectedForecastBatchId === bId ? 'active' : ''}" style="font-size:9.5px;padding:1px 5px;min-height:18px;" data-action="select-forecast-batch" data-batch-id="${escapeHtml(bId)}">${escapeHtml(bId.slice(-10))}</button></div>`
-                    : `<div style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(bId.slice(0, 12))}</div>`
+                    ? `<div><button type="button" class="chip ${state._selectedForecastBatchId === bId ? 'active' : ''}" style="font-size:9px;padding:1px 5px;min-height:17px;" data-action="select-forecast-batch" data-batch-id="${escapeHtml(bId)}" title="${escapeHtml(bId)}">BATCH</button></div>`
+                    : `<div style="font-size:9px;color:var(--text-muted);" title="${escapeHtml(bId)}">SNAP</div>`
                 }
               </td>
-              <td class="ltr-num">
+              <td class="ltr-num ci-fc-wrap-cell">
                 <strong>${escapeHtml(item.modelLabel)}</strong>
                 <div style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(getMarketConditionLabel(e.marketConditionTag, false))}</div>
               </td>
-              <td class="ltr-num">
-                <div>${escapeHtml(recordedStr)}</div>
-                <div style="font-size:10px;color:var(--text-muted);">Anchor ${PriceFormatter.formatPrice(e.anchorClose, decimals)}</div>
+              <td class="ltr-num" title="${escapeHtml(recordedFull)} UTC">
+                <div>${escapeHtml(recordedShort)}</div>
+                <div style="font-size:9.5px;color:var(--text-muted);">Anc ${PriceFormatter.formatPrice(e.anchorClose, decimals)}</div>
               </td>
-              <td class="ltr-num">
-                <div><strong>${escapeHtml(e.symbolCode)}</strong> · ${escapeHtml(e.timeframe)} (+${e.horizonBars}b)</div>
-                <div style="font-size:10px;color:var(--text-muted);">Due ${escapeHtml(maturesStr)}</div>
+              <td class="ltr-num" title="Due ${escapeHtml(maturesFull)} UTC">
+                <div><strong>${escapeHtml(e.symbolCode)}</strong> ${escapeHtml(e.timeframe)} +${e.horizonBars}b</div>
+                <div style="font-size:9.5px;color:var(--text-muted);">Due ${escapeHtml(maturesShort)}</div>
               </td>
               <td class="ltr-num">
                 <div><strong>${PriceFormatter.formatPrice(e.terminalMedian, decimals)}</strong> <span style="color:${predPct >= 0 ? 'var(--bull)' : 'var(--bear)'};">(${predPct >= 0 ? '+' : ''}${predPct.toFixed(2)}%)</span></div>
-                <div style="font-size:10px;color:var(--text-muted);">[${PriceFormatter.formatPrice(e.terminalQ10, decimals)} .. ${PriceFormatter.formatPrice(e.terminalQ90, decimals)}]</div>
+                <div style="font-size:9.5px;color:var(--text-muted);">[${PriceFormatter.formatPrice(e.terminalQ10, decimals)}..${PriceFormatter.formatPrice(e.terminalQ90, decimals)}]</div>
               </td>
-              <td class="ltr-num">
+              <td class="ltr-num" title="${escapeHtml(evaluatedFull)}">
                 <div>${obsClose != null ? `<strong>${PriceFormatter.formatPrice(obsClose, decimals)}</strong> <span style="color:${obsPct >= 0 ? 'var(--bull)' : 'var(--bear)'};">(${obsPct >= 0 ? '+' : ''}${obsPct.toFixed(2)}%)</span>` : '—'}</div>
-                <div style="font-size:10px;color:var(--text-muted);">${escapeHtml(evaluatedStr)}</div>
+                <div style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(evaluatedShort)}</div>
               </td>
-              <td class="ltr-num">${eval5dHtml}</td>
+              <td class="ltr-num ci-fc-wrap-cell">${eval5dHtml}</td>
               <td class="ltr-num"><span class="ci-fc-status-badge ${statusBadgeClass}">${escapeHtml(statusBadgeText)}</span></td>
             </tr>
           `;
         })
         .join('');
 
-  // Side-by-Side Batch Comparison Section
+  // Side-by-Side Batch Comparison Section (distinct models per batch only)
   const selectedBatchId =
-    state._selectedForecastBatchId && batchMap.has(state._selectedForecastBatchId)
+    state._selectedForecastBatchId && (distinctBatchMap.get(state._selectedForecastBatchId)?.length || 0) >= 2
       ? state._selectedForecastBatchId
       : multiModelBatches[0]?.[0] || '';
-  const selectedBatchItems = selectedBatchId ? (batchMap.get(selectedBatchId) || []) : [];
+  const selectedBatchItems = selectedBatchId ? (distinctBatchMap.get(selectedBatchId) || []) : [];
 
   let batchComparisonHtml = '';
   if (multiModelBatches.length > 0 && selectedBatchItems.length >= 2) {
@@ -2312,16 +2384,21 @@ export function renderLedgerPanel(decimals, isFa) {
     `;
   }
 
-  // Visual Replay Overlay Selection
-  const overlayCandidates = currentOverlayHashes.length > 0
+  // Visual Replay Overlay Selection (aligned 1-to-1 with app.js canvas colors & target filter)
+  const rawOverlayCandidates = currentOverlayHashes.length > 0
     ? rawEntries.filter((e) => currentOverlayHashes.includes(e.forecastHash))
     : selectedBatchItems.length >= 2
       ? selectedBatchItems.map((i) => i.entry).slice(0, 4)
       : rawEntries.slice(-2);
+  const firstOverlaySym = rawOverlayCandidates[0]?.symbolCode || activeSymbol;
+  const firstOverlayTf = rawOverlayCandidates[0]?.timeframe || activeTab?.timeframe || 'M15';
+  const overlayCandidates = rawOverlayCandidates
+    .filter((e) => e.symbolCode === firstOverlaySym && e.timeframe === firstOverlayTf)
+    .slice(0, 4);
 
   const visualOverlayLegend = overlayCandidates
     .map((e, idx) => {
-      const col = idx === 0 ? '#F59E0B' : MODEL_OVERLAY_COLORS[e.modelId] || '#38BDF8';
+      const col = LEDGER_OVERLAY_PALETTE[idx % LEDGER_OVERLAY_PALETTE.length];
       return `<span class="ci-fc-family-tag ltr-num" style="border-color:${col};color:${col};">#${e.seq} ${escapeHtml(e.modelName || e.modelId || 'AUTO')}</span>`;
     })
     .join('');
@@ -2401,7 +2478,6 @@ export function renderLedgerPanel(decimals, isFa) {
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
-          <button type="button" class="btn btn-sm btn-primary" data-action="record-forecast-snapshot">${isFa ? 'ثبت اسنپ‌شات فعلی' : 'Record Current Snapshot'}</button>
           <button type="button" class="btn btn-sm btn-primary" data-action="record-selected-forecast-models">${isFa ? 'ثبت گروهی مدل‌های انتخاب‌شده' : 'Record Selected Models'}</button>
           <button type="button" class="btn btn-sm" data-action="evaluate-forecast-outcomes">${isFa ? 'ارزیابی سررسیدها' : 'Evaluate Matured Outcomes'}</button>
           <button type="button" class="btn btn-sm" data-action="refresh-forecast-ledger">${isFa ? 'به‌روزرسانی' : 'Refresh Local Ledger'}</button>
@@ -2414,16 +2490,16 @@ export function renderLedgerPanel(decimals, isFa) {
     <div class="ci-fc-card" style="margin-bottom:12px;">
       ${filterBarHtml}
       <div style="overflow-x:auto;">
-        <table class="ci-fc-table">
+        <table class="ci-fc-table ci-fc-ledger-table">
           <thead>
             <tr>
               <th>Plot</th>
-              <th>Batch / Seq</th>
+              <th>Run</th>
               <th>Model & Condition</th>
-              <th>Recorded At & Anchor</th>
-              <th>Horizon & Matures At</th>
-              <th>Q50 Target & 80% Band</th>
-              <th>Actual & Evaluated At</th>
+              <th>Recorded</th>
+              <th>Horizon & Due</th>
+              <th>Q50 & 80% Band</th>
+              <th>Actual</th>
               <th>5D Evaluation</th>
               <th>Status</th>
             </tr>

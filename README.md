@@ -178,7 +178,7 @@ All markdown documentation (except this `README.md`) is organized under `docs/`:
 │       ├── AGENTS.md                         # AI & developer invariants, live map & UI directives
 │       ├── CONTRIBUTING.md                   # Build, test & PR workflow
 │       └── CHANGELOG.md                      # Chronological release history (up to v1.47.41)
-├── tests/                                    # Node.js web parity & Forecast regression suite (59/59 passing)
+├── tests/                                    # Node.js web parity & Forecast regression suite (60/60 passing)
 ├── .github/workflows/
 │   ├── build-apk.yml                         # Android APK build + Web/DB cPanel deployment workflow
 │   ├── forecast-validation.yml               # Forecast native parity & syntax validation

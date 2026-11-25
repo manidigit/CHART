@@ -958,7 +958,8 @@ function renderForecastWorkspaceContent(activeTab) {
         workerUrl: '',
       })?.result
     : null;
-  const comparisonCandidates = (nativeEvaluation?.modelTrajectories || []).filter((model) => model.status === 'SUCCESS' && Array.isArray(model.points) && model.modelId !== nativeEvaluation?.selectedChartModelId);
+  const activeCompareExcludeId = isNativeModelSelected ? nativeEvaluation?.selectedChartModelId : 'structural_wave_js';
+  const comparisonCandidates = (nativeEvaluation?.modelTrajectories || []).filter((model) => model.status === 'SUCCESS' && Array.isArray(model.points) && model.modelId !== activeCompareExcludeId);
   const savedCompareIds = state.chartPreferences.forecastCompareModelIds;
   const visibleCompareIds = Array.isArray(savedCompareIds) ? savedCompareIds : comparisonCandidates.map((model) => model.modelId);
   if (nativeEvaluation) {
@@ -983,7 +984,7 @@ function renderForecastWorkspaceContent(activeTab) {
   const previewMtfCtx = resolveMtfContextForTab(activeTab);
   const lastHigherPrevBar = previewMtfCtx.higherCandles.length > 0 ? previewMtfCtx.higherCandles[previewMtfCtx.higherCandles.length - 1] : null;
   const lastLowerPrevBar = previewMtfCtx.lowerCandles.length > 0 ? previewMtfCtx.lowerCandles[previewMtfCtx.lowerCandles.length - 1] : null;
-  if (!usesNativeEvaluation && nativeTab === 'overview' && !structuralForecastForPreview && activeTab) {
+  if (!usesNativeEvaluation && !structuralForecastForPreview && activeTab) {
     const lastPrevBar = previewCandles.length > 0 ? previewCandles[previewCandles.length - 1] : null;
     const structMemoKey = [
       activeCode,
@@ -1018,7 +1019,7 @@ function renderForecastWorkspaceContent(activeTab) {
       if (computed?.status === 'READY') structuralForecastForPreview = computed;
     }
   }
-  const structuralPreview = !usesNativeEvaluation && nativeTab === 'overview' && structuralForecastForPreview?.status === 'READY' && Array.isArray(structuralForecastForPreview.forecast)
+  const structuralPreview = !usesNativeEvaluation && structuralForecastForPreview?.status === 'READY' && Array.isArray(structuralForecastForPreview.forecast)
     ? {
         points: structuralForecastForPreview.forecast.map((point) => ({
           ...point,
@@ -1029,6 +1030,7 @@ function renderForecastWorkspaceContent(activeTab) {
           : [],
         renderMode: activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART',
         selectedChartModelId: 'structural_wave_js',
+        selectedChartModelName: 'Structural JS',
         smcPoc: structuralForecastForPreview.engine?.params?.smc_poc ?? null,
         smcZones: Array.isArray(structuralForecastForPreview.smc_liquidity_zones)
           ? structuralForecastForPreview.smc_liquidity_zones
@@ -1046,7 +1048,6 @@ function renderForecastWorkspaceContent(activeTab) {
   let smcDirectPreview = null;
   if (
     currentModel === 'smc_prediction_js' &&
-    nativeTab === 'overview' &&
     (!nativeEvaluation || nativeEvaluation.status === 'DATA_NOT_READY') &&
     previewCandles.length >= 40
   ) {
@@ -1063,6 +1064,7 @@ function renderForecastWorkspaceContent(activeTab) {
         turningPoints: smcComputed.turningPoints || [],
         renderMode: activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART',
         selectedChartModelId: 'smc_prediction_js',
+        selectedChartModelName: 'SMC Prediction Engine',
         smcPoc: smcComputed.meta?.pocPrice ?? null,
         smcZones: smcComputed.smcZones || [],
         keyZones: smcComputed.smcZones || [],
@@ -1124,15 +1126,32 @@ function renderForecastWorkspaceContent(activeTab) {
   ];
   const activeMode = activeTab?.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART';
   const coordView = state.forecastCoordView === 'coordinated' ? 'coordinated' : 'independent';
+  const checkedCompareCount = comparisonCandidates.filter((m) => visibleCompareIds.includes(m.modelId)).length;
+  const activeModelDisplayName =
+    currentModel === 'structural_wave_js'
+      ? 'Structural JS'
+      : currentModel === 'smc_prediction_js'
+        ? (isFa ? 'موتور نقدینگی SMC' : 'SMC Prediction Engine')
+        : currentModel === 'empirical_analogs'
+          ? (isFa ? 'آنالوگ‌های تاریخی علّی' : 'Causal Historical Analogs')
+          : currentModel === 'ensemble'
+            ? 'Calibrated Ensemble (V2)'
+            : currentModel === 'AUTO'
+              ? (isFa ? 'خودکار (بهترین OOS)' : 'Auto (OOS Best)')
+              : (nativeModelChoices.find((m) => m.id === currentModel)?.name || currentModel);
   const compareStripHtml = comparisonCandidates.length
     ? `<div class="ci-fc-control-group ci-fc-control-group-full" style="padding-top:6px;border-top:1px solid var(--border);">
         <span class="ci-fc-ctrl-label">${isFa ? 'مسیرهای مقایسه‌ای (پیش‌نمایش و چارت اصلی):' : 'Compare Overlays (Preview & Chart):'}</span>
         <div class="chip-group" style="display:flex;gap:6px;flex-wrap:wrap;">
           ${comparisonCandidates.map((model) => `<label class="chip ${visibleCompareIds.includes(model.modelId) ? 'active' : ''}" style="display:inline-flex;align-items:center;gap:5px;cursor:pointer;"><input type="checkbox" data-action="toggle-forecast-compare-model" data-model-id="${escapeHtml(model.modelId)}" ${visibleCompareIds.includes(model.modelId) ? 'checked' : ''} />${escapeHtml(model.modelName || model.modelId)}</label>`).join('')}
         </div>
-        <button type="button" class="btn btn-sm btn-primary" data-action="record-selected-forecast-models">
-          ${isFa ? 'ثبت هم‌زمان مدل‌های انتخاب‌شده' : 'Record Selected Models'}
-        </button>
+        ${
+          nativeTab === 'overview'
+            ? `<button type="button" class="btn btn-sm btn-primary" data-action="record-selected-forecast-models">
+                ${isFa ? `ثبت گروهی (${1 + checkedCompareCount} مدل)` : `Record Selected Models (${1 + checkedCompareCount})`}
+              </button>`
+            : ''
+        }
       </div>`
     : '';
   const nativeEvaluationPanels = '<div class="ci-fc-card" style="display:none;" aria-hidden="true"></div>';
@@ -1178,10 +1197,7 @@ function renderForecastWorkspaceContent(activeTab) {
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
-              ${isFa ? 'ثبت در دفتر محلی' : 'Record Local Snapshot'}
-            </button>
-            <button type="button" class="btn btn-sm" data-action="record-selected-forecast-models">
-              ${isFa ? 'ثبت گروهی مدل‌ها' : 'Record Selected Models'}
+              ${isFa ? 'ثبت اسنپ‌شات محلی' : 'Record Local Snapshot'}
             </button>
             <button type="button" class="btn btn-sm ${isPrimaryPlotted ? 'btn-primary' : ''}" data-action="${primaryChartAction}" ${isNativeModelSelected && (!Array.isArray(nativeEvaluation?.points) || nativeEvaluation.points.length === 0) && !smcDirectPreview ? 'disabled' : ''}>
               ${isPrimaryPlotted ? (isFa ? '✓ مدل انتخاب‌شده روی چارت فعال است' : '✓ Selected Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
@@ -1190,44 +1206,50 @@ function renderForecastWorkspaceContent(activeTab) {
           </div>
         </div>
 
-        <div class="ci-fc-controls-row">
-          <div class="ci-fc-control-group ci-fc-control-group-full">
-            <span class="ci-fc-ctrl-label">${isFa ? 'مدل پیش‌بینی چارت:' : 'Chart Model:'}</span>
-            <div class="chip-group">
-              <button type="button" class="chip ${currentModel === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">Structural JS</button>
-              ${nativeModelButtons}
+        <details class="ci-fc-controls-drawer" ${nativeTab === 'overview' ? 'open' : ''}>
+          <summary class="ci-fc-controls-drawer-summary ltr-num">
+            <span>${isFa ? 'تنظیمات مدل، افق و مسیرهای مقایسه' : 'Model, Horizon & Compare Overlays'}</span>
+            <span class="ci-fc-family-tag">${escapeHtml(activeModelDisplayName)} · +${horizon}b · ${checkedCompareCount} ${isFa ? 'مقایسه انتخاب‌شده' : 'compare selected'}</span>
+          </summary>
+          <div class="ci-fc-controls-row">
+            <div class="ci-fc-control-group ci-fc-control-group-full">
+              <span class="ci-fc-ctrl-label">${isFa ? 'مدل پیش‌بینی چارت:' : 'Chart Model:'}</span>
+              <div class="chip-group">
+                <button type="button" class="chip ${currentModel === 'structural_wave_js' ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="structural_wave_js">Structural JS</button>
+                ${nativeModelButtons}
+              </div>
             </div>
-          </div>
-          <div class="ci-fc-control-group">
-            <span class="ci-fc-ctrl-label">${isFa ? 'افق پیش‌بینی (کندل):' : 'Horizon (bars):'}</span>
-            <div class="chip-group ltr-num">${horizonOptions.map((h) => `<button type="button" class="chip ${horizon === h ? 'active' : ''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">+${h}</button>`).join('')}</div>
-          </div>
-          <div class="ci-fc-control-group">
-            <span class="ci-fc-ctrl-label">${isFa ? 'حالت نمایش:' : 'Render Mode:'}</span>
-            <div class="chip-group">${modes.map(([id, label]) => `<button type="button" class="chip ${activeMode === id ? 'active' : ''}" data-action="set-forecast-render-mode" data-mode="${id}">${label}</button>`).join('')}</div>
-          </div>
-          <div class="ci-fc-control-group">
-            <span class="ci-fc-ctrl-label">${isFa ? 'لایه MTF:' : 'MTF Layer:'}</span>
-            <div class="chip-group">
-              <button type="button" class="chip ${coordView === 'independent' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="independent">${isFa ? 'مستقل (Independent)' : 'Independent'}</button>
-              <button type="button" class="chip ${coordView === 'coordinated' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="coordinated">${isFa ? 'هماهنگ (Coordinated)' : 'Coordinated'}</button>
+            <div class="ci-fc-control-group">
+              <span class="ci-fc-ctrl-label">${isFa ? 'افق پیش‌بینی (کندل):' : 'Horizon (bars):'}</span>
+              <div class="chip-group ltr-num">${horizonOptions.map((h) => `<button type="button" class="chip ${horizon === h ? 'active' : ''}" data-action="set-structural-forecast-horizon" data-horizon="${h}">+${h}</button>`).join('')}</div>
             </div>
-          </div>
-          <div class="ci-fc-control-group">
-            <span class="ci-fc-ctrl-label">${isFa ? 'باند عدم‌قطعیت:' : 'Uncertainty Band:'}</span>
-            <div class="chip-group">
-              <button type="button" class="chip ${activeTab?.showForecastBand !== false ? 'active' : ''}" data-action="toggle-forecast-band">${activeTab?.showForecastBand !== false ? (isFa ? 'فعال' : 'On') : (isFa ? 'خاموش' : 'Off')}</button>
+            <div class="ci-fc-control-group">
+              <span class="ci-fc-ctrl-label">${isFa ? 'حالت نمایش:' : 'Render Mode:'}</span>
+              <div class="chip-group">${modes.map(([id, label]) => `<button type="button" class="chip ${activeMode === id ? 'active' : ''}" data-action="set-forecast-render-mode" data-mode="${id}">${label}</button>`).join('')}</div>
             </div>
-          </div>
-          ${compareStripHtml}
-          <div class="ci-fc-control-group ci-fc-control-group-full" style="padding-top:6px;border-top:1px dashed var(--border);">
-            <span class="ci-fc-ctrl-label" title="${isFa ? 'قابلیت‌های Legacy که روی هاست اشتراکی کنار گذاشته شده‌اند' : 'Legacy capabilities not yet migrated and verified in New'}">${isFa ? 'خارج از هاست اشتراکی:' : 'Legacy capabilities not yet migrated and verified in New:'}</span>
-            <div class="chip-group">
-              <span class="chip" aria-disabled="true" title="${isFa ? 'Chronos-2 فعلاً روی هاست اشتراکی کنار گذاشته شده است.' : 'Chronos-2 is shelved on shared hosting.'}">${isFa ? 'Chronos-2 · منتقل‌نشده' : 'Chronos-2 · Not migrated'}</span>
-              <span class="chip" aria-disabled="true" title="${isFa ? 'مدل‌های Python Worker روی هاست اشتراکی پشتیبانی نمی‌شوند.' : 'Python Worker models are unsupported on shared hosting.'}">${isFa ? 'مدل‌های Python · منتقل‌نشده' : 'Python models · Not migrated'}</span>
+            <div class="ci-fc-control-group">
+              <span class="ci-fc-ctrl-label">${isFa ? 'لایه MTF:' : 'MTF Layer:'}</span>
+              <div class="chip-group">
+                <button type="button" class="chip ${coordView === 'independent' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="independent">${isFa ? 'مستقل (Independent)' : 'Independent'}</button>
+                <button type="button" class="chip ${coordView === 'coordinated' ? 'active' : ''}" data-action="set-forecast-coord-mode" data-coord="coordinated">${isFa ? 'هماهنگ (Coordinated)' : 'Coordinated'}</button>
+              </div>
             </div>
+            <div class="ci-fc-control-group">
+              <span class="ci-fc-ctrl-label">${isFa ? 'باند عدم‌قطعیت:' : 'Uncertainty Band:'}</span>
+              <div class="chip-group">
+                <button type="button" class="chip ${activeTab?.showForecastBand !== false ? 'active' : ''}" data-action="toggle-forecast-band">${activeTab?.showForecastBand !== false ? (isFa ? 'فعال' : 'On') : (isFa ? 'خاموش' : 'Off')}</button>
+              </div>
+            </div>
+            ${compareStripHtml}
+            <details class="ci-fc-legacy-disclosure">
+              <summary>${isFa ? 'خارج از هاست اشتراکی (Chronos-2 / Python)' : 'Legacy capabilities not yet migrated and verified in New'}</summary>
+              <div class="chip-group" style="margin-top:6px;">
+                <span class="chip" aria-disabled="true" title="${isFa ? 'Chronos-2 فعلاً روی هاست اشتراکی کنار گذاشته شده است.' : 'Chronos-2 is shelved on shared hosting.'}">${isFa ? 'Chronos-2 · منتقل‌نشده' : 'Chronos-2 · Not migrated'}</span>
+                <span class="chip" aria-disabled="true" title="${isFa ? 'مدل‌های Python Worker روی هاست اشتراکی پشتیبانی نمی‌شوند.' : 'Python Worker models are unsupported on shared hosting.'}">${isFa ? 'مدل‌های Python · منتقل‌نشده' : 'Python models · Not migrated'}</span>
+              </div>
+            </details>
           </div>
-        </div>
+        </details>
 
         <div class="ci-fc-subtabs-bar">
           ${nativeTabNav}
@@ -1405,7 +1427,15 @@ export function renderApp() {
           ? allEntries.filter((e) => checkedHashes.includes(e.forecastHash))
           : [];
         if (selectedEntries.length === 0 && state._selectedForecastBatchId) {
-          selectedEntries = allEntries.filter((e) => e.batchId === state._selectedForecastBatchId);
+          const byModel = new Map();
+          for (const e of allEntries) {
+            if (e.batchId === state._selectedForecastBatchId) {
+              byModel.set(String(e.modelId || 'AUTO'), e);
+            }
+          }
+          if (byModel.size >= 2) {
+            selectedEntries = Array.from(byModel.values());
+          }
         }
         if (selectedEntries.length === 0) {
           selectedEntries = allEntries.slice(-2);
@@ -3036,16 +3066,68 @@ document.addEventListener('click', async (e) => {
     const result = state._lastForecastResult;
     const activePayload = state._forecastCanvasPayload;
     const isFa = i18n.getCurrentLanguage() === 'fa';
-    if (result && result.status && result.status !== 'DATA_NOT_READY') {
-      const overrideOptions = activePayload?.points?.length && activePayload?.selectedChartModelId && activePayload.selectedChartModelId !== result.selectedChartModelId
+    const nowMs = Date.now();
+    const canRecordNative = Boolean(result && result.status && result.status !== 'DATA_NOT_READY');
+    const canRecordDirect = Boolean(activePayload?.points?.length && activeTab?.candles?.length);
+    if (canRecordNative || canRecordDirect) {
+      const baseResult = canRecordNative
+        ? result
+        : {
+            symbolCode: activeTab.symbolCode,
+            timeframe: activeTab.timeframe || 'M15',
+            providerId: activeTab.provider || 'tvdatafeed',
+            status: 'PROVISIONAL',
+            regime: 'RANGING',
+            horizonBars: activePayload.points.length,
+            anchorOpenTimeUtcMs: Number(activeTab.candles[activeTab.candles.length - 1]?.open_time_utc_ms || 0),
+            anchorClose: Number(activeTab.candles[activeTab.candles.length - 1]?.close || 0),
+            selectedChartModelId: activePayload.selectedChartModelId || 'structural_wave_js',
+            points: activePayload.points,
+            keyZones: activePayload.keyZones || activePayload.smcZones || [],
+            inputHash: `DIRECT-${activeTab.symbolCode}-${nowMs}`,
+            generatedAtUtcMs: nowMs,
+          };
+      const hasCustomPayload = Boolean(
+        activePayload?.points?.length &&
+        activePayload?.selectedChartModelId &&
+        (activePayload.selectedChartModelId !== baseResult.selectedChartModelId ||
+          activePayload.selectedChartModelId === 'structural_wave_js' ||
+          activePayload.selectedChartModelId === 'smc_prediction_js')
+      );
+      const lastCustomPt = hasCustomPayload ? activePayload.points[activePayload.points.length - 1] : null;
+      const overrideOptions = hasCustomPayload
         ? {
             modelId: activePayload.selectedChartModelId,
+            modelName:
+              activePayload.selectedChartModelName ||
+              (activePayload.selectedChartModelId === 'structural_wave_js'
+                ? 'Structural JS'
+                : activePayload.selectedChartModelId === 'smc_prediction_js'
+                  ? 'SMC Prediction Engine'
+                  : undefined),
             points: activePayload.points,
-            keyZones: activePayload.keyZones || activePayload.smcZones || result.keyZones,
+            horizonBars: activePayload.points.length,
+            terminalMedian: Number(lastCustomPt?.q50 ?? lastCustomPt?.q50_median ?? 0),
+            terminalQ10: Number(lastCustomPt?.q10 ?? 0),
+            terminalQ90: Number(lastCustomPt?.q90 ?? 0),
+            keyZones: activePayload.keyZones || activePayload.smcZones || baseResult.keyZones,
+            recordedAtUtcMs: nowMs,
+            generatedAtUtcMs: nowMs,
           }
-        : {};
-      const entry = defaultForecastLedger.appendFromForecast(result, overrideOptions);
-      showFloatingToast(entry ? (isFa ? 'پیش‌بینی در دفتر محلی ثبت شد.' : 'Forecast snapshot saved to local ledger.') : (isFa ? 'ثبت پیش‌بینی انجام نشد.' : 'Forecast snapshot could not be recorded.'));
+        : {
+            recordedAtUtcMs: nowMs,
+            generatedAtUtcMs: nowMs,
+          };
+      const entry = defaultForecastLedger.appendFromForecast(baseResult, overrideOptions);
+      showFloatingToast(
+        entry
+          ? isFa
+            ? `پیش‌بینی ${entry.modelName} (#${entry.seq}) در دفتر محلی ثبت شد.`
+            : `Saved ${entry.modelName} (#${entry.seq}) to local ledger.`
+          : isFa
+            ? 'ثبت پیش‌بینی انجام نشد.'
+            : 'Forecast snapshot could not be recorded.'
+      );
     } else {
       showFloatingToast(isFa ? 'خروجی معتبری برای ثبت وجود ندارد.' : 'No forecast result is available to record.');
     }
@@ -3054,28 +3136,63 @@ document.addEventListener('click', async (e) => {
     const result = state._lastForecastResult;
     const activePayload = state._forecastCanvasPayload;
     const isFa = i18n.getCurrentLanguage() === 'fa';
+    const nowMs = Date.now();
     if (result && result.status && result.status !== 'DATA_NOT_READY') {
       const trajectories = Array.isArray(result.modelTrajectories) ? [...result.modelTrajectories] : [];
-      if (activePayload?.points?.length && activePayload?.selectedChartModelId && !trajectories.some((t) => t.modelId === activePayload.selectedChartModelId)) {
-        trajectories.unshift({
+      if (activePayload?.points?.length && activePayload?.selectedChartModelId) {
+        const existingIdx = trajectories.findIndex((t) => t.modelId === activePayload.selectedChartModelId);
+        const payloadEntry = {
           modelId: activePayload.selectedChartModelId,
-          modelName: activePayload.selectedChartModelId === 'structural_wave_js' ? 'Structural JS' : activePayload.selectedChartModelId,
+          modelName:
+            activePayload.selectedChartModelName ||
+            (activePayload.selectedChartModelId === 'structural_wave_js'
+              ? 'Structural JS'
+              : activePayload.selectedChartModelId === 'smc_prediction_js'
+                ? 'SMC Prediction Engine'
+                : activePayload.selectedChartModelId),
           status: 'SUCCESS',
           points: activePayload.points,
           meta: { smcZones: activePayload.smcZones || activePayload.keyZones || [] },
-        });
+        };
+        if (existingIdx >= 0) trajectories[existingIdx] = payloadEntry;
+        else trajectories.unshift(payloadEntry);
       }
-      const enrichedResult = { ...result, modelTrajectories: trajectories };
       const primaryId = activePayload?.selectedChartModelId || result.selectedChartModelId || 'AUTO';
+      const enrichedResult = {
+        ...result,
+        selectedChartModelId: primaryId,
+        selectedChartModelName:
+          activePayload?.selectedChartModelName ||
+          trajectories.find((t) => t.modelId === primaryId)?.modelName ||
+          result.model?.name ||
+          primaryId,
+        points: activePayload?.points?.length ? activePayload.points : result.points,
+        modelTrajectories: trajectories,
+      };
       const compareIds = Array.isArray(state.chartPreferences.forecastCompareModelIds)
         ? state.chartPreferences.forecastCompareModelIds
-        : trajectories.filter((t) => t.status === 'SUCCESS').slice(0, 3).map((t) => t.modelId);
+        : trajectories
+            .filter((t) => t.status === 'SUCCESS' && t.modelId !== primaryId)
+            .map((t) => t.modelId);
       const selectedIds = [...new Set([primaryId, ...compareIds])].filter(Boolean);
-      const batchRes = defaultForecastLedger.appendBatchFromForecast(enrichedResult, selectedIds);
-      if (batchRes?.entries?.length > 0) {
+      const batchRes = defaultForecastLedger.appendBatchFromForecast(enrichedResult, selectedIds, {
+        requireMultiple: true,
+        recordedAtUtcMs: nowMs,
+      });
+      if (batchRes?.reason === 'NEED_AT_LEAST_2_MODELS') {
+        showFloatingToast(
+          isFa
+            ? 'برای ثبت گروهی، حداقل یک مدل دیگر را در بخش «مسیرهای مقایسه‌ای (Compare Overlays)» تیک بزنید.'
+            : 'Check at least 1 additional model in Compare Overlays to record a multi-model batch.'
+        );
+      } else if (batchRes?.entries?.length >= 2) {
         state._selectedForecastBatchId = batchRes.batchId;
         state._ledgerOverlayHashes = batchRes.entries.map((e) => e.forecastHash).slice(0, 4);
-        showFloatingToast(isFa ? `${batchRes.entries.length} مدل در یک گروه ثبت شدند.` : `Recorded ${batchRes.entries.length} models under batch ${batchRes.batchId.slice(-8)}.`);
+        showFloatingToast(
+          isFa
+            ? `${batchRes.entries.length} مدل در یک گروه ثبت شدند.`
+            : `Recorded ${batchRes.entries.length} distinct models in one comparison batch.`
+        );
       } else {
         showFloatingToast(isFa ? 'مدل فعالی برای ثبت گروهی یافت نشد.' : 'No eligible models found to batch record.');
       }
@@ -3087,7 +3204,11 @@ document.addEventListener('click', async (e) => {
     const bId = String(el.getAttribute('data-batch-id') || '');
     if (bId) {
       state._selectedForecastBatchId = bId;
-      const batchEntries = defaultForecastLedger.loadEntries().filter((e) => e.batchId === bId);
+      const byModel = new Map();
+      for (const e of defaultForecastLedger.loadEntries()) {
+        if (e.batchId === bId) byModel.set(String(e.modelId || 'AUTO'), e);
+      }
+      const batchEntries = Array.from(byModel.values());
       if (batchEntries.length > 0) {
         state._ledgerOverlayHashes = batchEntries.map((e) => e.forecastHash).slice(0, 4);
       }

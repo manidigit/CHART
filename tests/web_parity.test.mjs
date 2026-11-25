@@ -3679,6 +3679,149 @@ test('FORECAST-UX-EVAL-CHECKLIST-01: Multi-model batch recording, 5D evaluation,
   delete state._selectedForecastBatchId;
 });
 
+test('FORECAST-LEDGER-UX-BUGFIX-02: prevents cached batch collisions, duplicate columns, SUPERSEDED actual leak, legacy awaiting bug, and duplicate buttons', async () => {
+  const { ForecastLedger, defaultForecastLedger } = await import('../host_subdomain/assets/js/forecast/forecastLedger.js');
+  const { renderLedgerPanel, buildLedgerOverlayPayload } = await import('../host_subdomain/assets/js/views/forecastView.js');
+  const { state } = await import('../host_subdomain/assets/js/core/store.js');
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+
+  const sampleRaw = JSON.parse(await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8'));
+  const sampleBars = Array.isArray(sampleRaw) ? sampleRaw : sampleRaw.candles || [];
+  const anchorBar = sampleBars[199];
+  const anchorMs = Number(anchorBar.open_time_utc_ms);
+  const anchorClose = Number(anchorBar.close);
+
+  const mkPts = (delta) =>
+    Array.from({ length: 15 }, (_, idx) => ({
+      step: idx + 1,
+      openTimeUtcMs: anchorMs + (idx + 1) * 900000,
+      q10: anchorClose + delta - 1.0,
+      q25: anchorClose + delta - 0.5,
+      q50: anchorClose + delta,
+      q75: anchorClose + delta + 0.5,
+      q90: anchorClose + delta + 1.0,
+    }));
+
+  const cachedForecastResult = {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    providerId: 'tvdatafeed',
+    status: 'PROVISIONAL',
+    regime: 'RANGING',
+    horizonBars: 15,
+    anchorOpenTimeUtcMs: anchorMs,
+    anchorClose,
+    selectedChartModelId: 'rbf_gaussian',
+    model: { id: 'rbf_gaussian', name: 'RBF Gaussian Process' },
+    summary: { terminalQ50: anchorClose - 1.5, terminalQ10: anchorClose - 2.5, terminalQ90: anchorClose - 0.5 },
+    points: mkPts(-1.5),
+    generatedAtUtcMs: 1795551822913, // Frozen cached timestamp
+    inputHash: 'cached-hash-test',
+    modelTrajectories: [
+      { modelId: 'rbf_gaussian', modelName: 'RBF Gaussian Process', status: 'SUCCESS', points: mkPts(-1.5) },
+      { modelId: 'structural_wave_js', modelName: 'Structural JS', status: 'SUCCESS', points: mkPts(+2.2) },
+      { modelId: 'smc_prediction_js', modelName: 'SMC Prediction Engine', status: 'SUCCESS', points: mkPts(+1.4) },
+    ],
+  };
+
+  // 1. Overridden points in appendFromForecast must use overridden terminal quantiles & model name (not AUTO/RBF summary)
+  const testLedger = new ForecastLedger('ci_test_bugfix02_ledger_v1');
+  testLedger.clear();
+  const structEntry = testLedger.appendFromForecast(cachedForecastResult, {
+    modelId: 'structural_wave_js',
+    points: mkPts(+2.2),
+    recordedAtUtcMs: 1795552000000,
+    generatedAtUtcMs: 1795552000000,
+  });
+  assert.equal(structEntry.modelId, 'structural_wave_js');
+  assert.equal(structEntry.modelName, 'Structural JS');
+  assert.ok(Math.abs(structEntry.terminalMedian - (anchorClose + 2.2)) < 1e-6, 'Overridden points must drive terminalMedian');
+
+  // 2. Single-model requireMultiple batch must be rejected; consecutive multi-model batches must get distinct batchIds
+  const singleRejected = testLedger.appendBatchFromForecast(cachedForecastResult, ['rbf_gaussian'], { requireMultiple: true });
+  assert.equal(singleRejected.reason, 'NEED_AT_LEAST_2_MODELS');
+  assert.equal(singleRejected.entries.length, 0);
+
+  const batchA = testLedger.appendBatchFromForecast(cachedForecastResult, ['structural_wave_js', 'smc_prediction_js'], {
+    requireMultiple: true,
+    recordedAtUtcMs: 1795552100000,
+  });
+  const batchB = testLedger.appendBatchFromForecast(cachedForecastResult, ['structural_wave_js', 'smc_prediction_js'], {
+    requireMultiple: true,
+    recordedAtUtcMs: 1795552105000,
+  });
+  assert.equal(batchA.entries.length, 2);
+  assert.equal(batchB.entries.length, 2);
+  assert.notEqual(batchA.batchId, batchB.batchId, 'Consecutive batches on cached forecast must never collide into one batchId');
+
+  // 3. SUPERSEDED entry must NOT leak anchor price into Actual column; legacy matured entry without evaluationDetails must NOT show Awaiting maturity
+  defaultForecastLedger.clear();
+  const e1 = defaultForecastLedger.appendFromForecast(cachedForecastResult, {
+    modelId: 'structural_wave_js',
+    points: mkPts(+1.2),
+    recordedAtUtcMs: 1795552200000,
+    generatedAtUtcMs: 1795552200000,
+  });
+  // Record second snapshot of same model -> supersedes e1 with observedClose = anchorClose
+  defaultForecastLedger.appendFromForecast(cachedForecastResult, {
+    modelId: 'structural_wave_js',
+    points: mkPts(+1.5),
+    recordedAtUtcMs: 1795552300000,
+    generatedAtUtcMs: 1795552300000,
+  });
+  // Record a legacy matured entry without evaluationDetails
+  const eLegacy = defaultForecastLedger.appendFromForecast(cachedForecastResult, {
+    modelId: 'AUTO',
+    modelName: 'AUTO',
+    points: mkPts(+0.8),
+    recordedAtUtcMs: 1795551000000,
+    generatedAtUtcMs: 1795551000000,
+  });
+  defaultForecastLedger.appendLifecycleEvent({
+    forecastHash: eLegacy.forecastHash,
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    horizonStep: 15,
+    lifecycleStatus: 'MATURED',
+    evaluationOutcome: 'SUCCESS',
+    observedClose: anchorClose + 0.6,
+    recordedAtUtcMs: 1795551900000,
+    evaluationDetails: null,
+  });
+
+  const prevTabs = state.openTabs;
+  const prevActiveId = state.activeTabId;
+  state.openTabs = [{ tabId: 'tab_spot', symbolCode: 'SPOTBRENT', timeframe: 'M15', provider: 'tvdatafeed', decimals: 3, candles: sampleBars }];
+  state.activeTabId = 'tab_spot';
+
+  const ledgerHtml = renderLedgerPanel(3, false);
+  // Extract row for e1 (#1, SUPERSEDED) and verify (+0.00%) anchor price is NOT shown in Actual column
+  assert.doesNotMatch(ledgerHtml, /\(\+0\.00%\)/, 'SUPERSEDED entries must not display anchor close (+0.00%) as Actual');
+  // Legacy matured row must show Legacy eval instead of Awaiting maturity
+  assert.match(ledgerHtml, /Legacy/, 'Legacy matured entries without evaluationDetails must display fallback evaluation');
+  assert.doesNotMatch(ledgerHtml, /Record Current Snapshot/, 'Duplicate Record Current Snapshot button must be removed from Ledger header');
+  assert.match(ledgerHtml, /ci-fc-ledger-table/, 'Unified Ledger table must use compact ci-fc-ledger-table layout');
+
+  // 4. Visual Replay Overlay assigns explicit distinct palette colors & unique snap_ modelIds
+  const overlay = buildLedgerOverlayPayload([e1, eLegacy], sampleBars);
+  assert.equal(overlay.payload.primaryLineColor, '#F59E0B');
+  assert.equal(overlay.payload.modelTrajectories[0].color, '#38BDF8');
+  assert.ok(overlay.payload.modelTrajectories[0].modelId.startsWith('snap_'));
+
+  // 5. app.js preserves Structural JS & SMC previews across subtabs and removes duplicate topbar batch button
+  assert.doesNotMatch(appSource, /const structuralPreview = !usesNativeEvaluation && nativeTab === 'overview'/);
+  assert.match(appSource, /class="ci-fc-controls-drawer"/);
+  assert.match(appSource, /class="ci-fc-legacy-disclosure"/);
+  assert.match(appSource, /requireMultiple:\s*true/);
+
+  // Clean up
+  testLedger.clear();
+  defaultForecastLedger.clear();
+  state.openTabs = prevTabs;
+  state.activeTabId = prevActiveId;
+});
+
+
 
 
 
