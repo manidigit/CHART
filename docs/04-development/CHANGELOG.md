@@ -9,6 +9,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.47.41] - 2026-11-25
 
+### Changed (`TOPBAR-RIGHT-NAV-DOCK-01`: Right-Docked Topbar Workspace Navigation & Expanded Chart Tab Strip)
+- **Right-Docked Workspace Navigation (`host_subdomain/assets/js/views/headerView.js`, `assets/css/theme.css`):**
+  - Moved the workspace navigation group (`.tv-top-nav-group`: `Chart`, `Forecast`, `Strategy`, `Performance`, `Watchlist`, `Settings`) from `.tv-topbar-left` to the leading edge of `.tv-topbar-right` directly adjacent to the status dot, `CSV`, snapshot, sync, and fullscreen buttons (separated by `.tv-divider`) across both Chart and Forecast views, eliminating the unused middle-right gap in the header.
+  - Expanded `.tv-open-tabs-strip` from the tight `flex: 0 1 280px; max-width: 340px` (`245px` under `1400px`) cap to `flex: 0 1 auto; max-width: min(680px, 100%)` (`min(520px, 100%)` under `1400px`) so multiple open chart tabs render comfortably in the newly freed left space, with automatic icon-only nav compaction at `@media (max-width: 1080px)` and `flex-shrink: 0` on primary topbar buttons.
+- **Verification:**
+  - Extended `TOPBAR-DROPDOWNS-STRATEGY-01` in `tests/web_parity.test.mjs` to verify `.tv-top-nav-group` placement inside `.tv-topbar-right` in both Chart and Forecast views plus the flexible `.tv-open-tabs-strip` CSS rules; verified `node --check` and **62/62** passing tests.
+
 ### Added (`SIGNAL-GEN-RR-GATE-01`: Classical Signal Generators, Immutable Net R:R ≥ 2.0 Hard Gate & `strategy-sim/2.0`)
 - **Non-Negotiable Risk/Reward Intelligence Hard Gate (`host_subdomain/assets/js/strategy/riskRewardEngine.js`):**
   - Enforced immutable `MINIMUM_REQUIRED_RR = 2.0` (`enforceMinimumRequiredRR()`) across engine, backtester, and UI controls; trades with `Net R:R < 2.0` after `Spread + Commission + Slippage` are strictly rejected (`status: 'no_trade'`).

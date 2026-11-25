@@ -368,10 +368,6 @@ export function renderTopHeaderBar(activeTab, i18n) {
         <!-- TradingView-style Candle Timeframe Dropdown -->
         ${tfDropdownHtml}
 
-        <div class="tv-divider"></div>
-
-        ${topWorkspaceNavHtml}
-
         <span class="tv-ws-header-pill" style="display: none;">${isFa ? 'آزمایشگاه پیش‌بینی و سناریو' : 'Forecast Studio'}</span>
       `
     : `
@@ -419,10 +415,6 @@ export function renderTopHeaderBar(activeTab, i18n) {
               : ''
           }
         </button>
-
-        <div class="tv-divider"></div>
-
-        ${topWorkspaceNavHtml}
       `;
 
   return `
@@ -432,6 +424,8 @@ export function renderTopHeaderBar(activeTab, i18n) {
       </div>
 
       <div class="tv-topbar-right">
+        ${topWorkspaceNavHtml}
+        <div class="tv-divider"></div>
         ${
           isForecastView
             ? ''

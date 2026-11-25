@@ -3870,11 +3870,29 @@ test('TOPBAR-DROPDOWNS-STRATEGY-01: top header uses TradingView-style Timeframe 
     const perfIdx = lineHeader.indexOf('data-action="open-active-symbol-overview"');
     assert.ok(forecastIdx > 0 && strategyIdx > forecastIdx && perfIdx > strategyIdx, 'Strategy button must appear directly after Forecast and before Performance in topbar nav');
 
+    // Workspace navigation (Chart/Forecast/Strategy/Performance/Watchlist/Settings) must be docked inside .tv-topbar-right adjacent to utility buttons
+    const rightPanelIdx = lineHeader.indexOf('class="tv-topbar-right"');
+    const navGroupIdx = lineHeader.indexOf('class="tv-toolbar-group tv-top-nav-group"');
+    const csvActionIdx = lineHeader.indexOf('data-action="export-candles-csv"');
+    const snapActionIdx = lineHeader.indexOf('data-action="take-chart-snapshot"');
+    const fsActionIdx = lineHeader.indexOf('data-action="toggle-fullscreen"');
+    assert.ok(
+      rightPanelIdx > 0 && navGroupIdx > rightPanelIdx && csvActionIdx > navGroupIdx && snapActionIdx > csvActionIdx && fsActionIdx > snapActionIdx,
+      'Chart view topbar must dock tv-top-nav-group inside .tv-topbar-right directly beside CSV/snapshot/fullscreen actions'
+    );
+
     state.activeWorkspaceView = 'forecast';
     state.activeTopDropdown = null;
     const forecastHeader = renderTopHeaderBar(sampleTab, mockI18n);
     assert.ok(forecastHeader.includes('data-dropdown="timeframe"'), 'Forecast view topbar must also use Timeframe dropdown');
     assert.ok(forecastHeader.includes('data-modal="strategy-lab"'), 'Forecast view topbar must include Strategy nav button');
+    const fcRightIdx = forecastHeader.indexOf('class="tv-topbar-right"');
+    const fcNavIdx = forecastHeader.indexOf('class="tv-toolbar-group tv-top-nav-group"');
+    const fcCsvIdx = forecastHeader.indexOf('data-action="export-candles-csv"');
+    assert.ok(
+      fcRightIdx > 0 && fcNavIdx > fcRightIdx && fcCsvIdx > fcNavIdx,
+      'Forecast view topbar must also dock tv-top-nav-group inside .tv-topbar-right'
+    );
 
     const leftRailHtml = renderLeftToolRail(sampleTab, mockI18n, null);
     assert.equal(leftRailHtml.includes('data-modal="strategy-lab"'), false, 'Strategy button must be removed from desktop left drawing tool rail');
@@ -3886,6 +3904,7 @@ test('TOPBAR-DROPDOWNS-STRATEGY-01: top header uses TradingView-style Timeframe 
     assert.match(appSource, /renderStrategyLabModal\(activeTab, i18n\)/);
     assert.doesNotMatch(appSource, /isForecastWorkspace \? '' : renderStrategyLabModal/);
     assert.match(cssSource, /\.tv-topbar-dropdown-menu\s*\{[\s\S]*?position:\s*fixed;/);
+    assert.match(cssSource, /\.tv-open-tabs-strip\s*\{[\s\S]*?flex:\s*0\s+1\s+auto;[\s\S]*?max-width:\s*min\(680px,\s*100%\);/);
   } finally {
     state.activeWorkspaceView = prevWorkspace;
     state.activeTopDropdown = prevDropdown;
