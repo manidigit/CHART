@@ -3246,3 +3246,82 @@ body.is-forecast-scroll #app-root,
   line-height: 1.35;
 }
 
+/* Classical Signal Generator & Risk/Reward Hard Gate Lab (`signal-gen/1.0`) */
+.ci-strat-banner {
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  line-height: 1.45;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.ci-strat-banner-valid {
+  background: rgba(16, 185, 129, 0.10);
+  border: 1px solid rgba(16, 185, 129, 0.55);
+}
+
+.ci-strat-banner-notrade {
+  background: rgba(245, 158, 11, 0.09);
+  border: 1px solid rgba(245, 158, 11, 0.48);
+}
+
+.ci-strat-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 7px;
+  border-radius: 4px;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
+.ci-strat-badge-valid {
+  background: rgba(16, 185, 129, 0.18);
+  color: var(--bull);
+  border: 1px solid rgba(16, 185, 129, 0.45);
+}
+
+.ci-strat-badge-notrade {
+  background: rgba(245, 158, 11, 0.18);
+  color: #f59e0b;
+  border: 1px solid rgba(245, 158, 11, 0.45);
+}
+
+.ci-strat-badge-gate {
+  background: rgba(41, 98, 255, 0.14);
+  color: var(--primary);
+  border: 1px solid rgba(41, 98, 255, 0.35);
+}
+
+.ci-strat-badge-research {
+  background: rgba(148, 163, 184, 0.16);
+  color: var(--text-muted);
+  border: 1px solid var(--border);
+}
+
+.ci-strat-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 11px;
+}
+
+.ci-strat-table th,
+.ci-strat-table td {
+  padding: 6px 7px;
+  border-bottom: 1px solid var(--border-subtle, rgba(255, 255, 255, 0.06));
+  text-align: left;
+  vertical-align: middle;
+}
+
+.ci-strat-table th {
+  color: var(--text-muted);
+  font-size: 10px;
+  font-weight: 700;
+  border-bottom: 1px solid var(--border);
+}
+
+

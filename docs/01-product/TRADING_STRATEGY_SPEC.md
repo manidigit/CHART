@@ -1,10 +1,10 @@
 # TRADING STRATEGY SPEC
 
-**وضعیت:** **پیاده‌سازی نسخه اول شبیه‌ساز پژوهشی آفلاین (`strategy-sim/1.0` روی وب و اندروید در `v1.47.41`)** — فاز ۶ (Trading Strategy & Offline Simulation؛ مستقل از موتور پیش‌بینی در حال بازنگری).  
-**آخرین بازبینی:** 2026-11-21  
-**وابسته به:** [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md)  
+**وضعیت:** **پیاده‌سازی نسخه ۲ روی وب (`signal-gen/1.0` + `strategy-sim/2.0` در `v1.47.41` شامل ۵ استراتژی کلاسیک و Hard Gate نسبت `Net R:R ≥ 2.0`) و نسخه ۱ (`strategy-sim/1.0`) روی اندروید** — فاز ۶ (Trading Strategy & Offline Simulation؛ کاملاً مستقل از موتور پیش‌بینی).  
+**آخرین بازبینی:** 2026-11-25  
+**وابسته به:** [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md) · **معماری و ممیزی فنی:** [`SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md`](../02-architecture/SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md)  
 **واحد شبیه‌سازی:** هر `chart_id` مستقل؛ این سند به فهرست بسته‌ای از Instrumentها وابسته نیست.  
-**مرجع داده و پیش‌بینی:** قرارداد Forecast، هویت سری، Data Readiness و Model Governance فقط در [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md) تعریف می‌شوند؛ شبیه‌ساز فعلی (`strategy-sim/1.0`) به‌صورت مستقیم از هسته قطعی `TechnicalAnalysisCore` (`ta-core/1.1`) تغذیه می‌کند و هیچ وابستگی یا مداخله‌ای در موتور Forecast ندارد.
+**مرجع داده و پیش‌بینی:** قرارداد Forecast، هویت سری، Data Readiness و Model Governance فقط در [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md) تعریف می‌شوند؛ موتور سیگنال‌دهی و شبیه‌ساز (`signal-gen/1.0` / `strategy-sim/2.0`) به‌صورت انحصاری از هسته قطعی `TechnicalAnalysisCore` (`ta-core/1.1`) تغذیه می‌کند و هیچ وابستگی یا مداخله‌ای در موتور Forecast ندارد.
 
 ------------------------------------------------------------------------
 
@@ -16,7 +16,7 @@
 
 وظیفه این ماژول، تبدیل خروجی پیش‌بینی به قواعد معاملاتی و سپس شبیه‌سازی عملکرد آن قواعد است. این ماژول نباید تعریف یا معیار موفقیت هسته پیش‌بینی را تغییر دهد.
 
-نمایش نمودار و نتایج بصری این ماژول از کتابخانه رایگان TradingView Lightweight Charts استفاده می‌کند؛ این کتابخانه به اشتراک پولی TradingView وابسته نیست و منبع داده بازار نیز نیست؛ مرجع پیاده‌سازی، فایل‌های `README.md`، `.github/skills/lightweight-charts/SKILL.md`، `.github/skills/lightweight-charts-plugin-authoring/SKILL.md` و `plugin-examples/README.md` در مخزن `https://github.com/tradingview/lightweight-charts` هستند. خروجی شبیه‌سازی فقط به‌صورت Overlay بصری نمایش داده می‌شود؛ این Overlay دستور قابل‌ارسال به کارگزار نیست. منطق Strategy، بک‌تست و محاسبات ریسک مستقل از کتابخانه نمودار باقی می‌مانند. نوع و جزئیات Overlayهای مرحله شبیه‌سازی هنگام طراحی رابط این مرحله مشخص می‌شوند.
+نمایش نمودار و نتایج بصری سیگنال‌های تأییدشده (`Entry`, `SL`, `TP1`, `TP2` و نواحی ریسک/ریوارد) در نسخه وب (`v1.47.41`) با **تصمیم معماری تأییدشده مالک** مستقیماً روی بوم HTML5 Canvas اختصاصی پروژه (`host_subdomain/assets/js/components/chartRenderer.js`) پیاده‌سازی شده است تا یکپارچگی کامل با ابزارهای رسم، SMC، اندیکاتورها و لایه Forecast حفظ شود (بدون جایگزینی چارت با Lightweight Charts). خروجی شبیه‌سازی فقط به‌صورت Overlay بصری برای سیگنال‌های معتبر (`status: 'valid'` و `Net R:R ≥ 2.0`) نمایش داده می‌شود؛ سیگنال‌های ردشده (`NO TRADE`) هرگز به‌عنوان فلش خرید/فروش روی نمودار رسم نمی‌شوند و این Overlay دستور قابل‌ارسال به کارگزار نیست. منطق Strategy، بک‌تست و محاسبات ریسک کاملاً مستقل از رندرر نمودار در `host_subdomain/assets/js/strategy/` قرار دارند.
 
 ## 12.2 پارامترهای اولیه شبیه‌سازی
 
@@ -137,25 +137,27 @@ Freqtrade صراحتاً خارج از دامنه است: مخزن `https://gith
 
 - **تصمیم پیاده‌سازی‌شده (`v1.47.41`):** بودجه ریسک هر معامله معادل **`1%` از Equity جاری** تا فاصله حد ضرر (`ATR(14) × atrStopMult`) با سقف اهرم محافظه‌کارانه (`maxLeverage = 5x`) و حداکثر یک پوزیشن باز در هر `chart_id` محاسبه می‌شود؛ هزینه‌های صریح معاملاتی (`Spread`, `Commission`, `Slippage`, `Swap`) به‌صورت جداگانه از سود ناخالص کسر و گزارش می‌شوند.
 
-## 13.3 وضعیت پیاده‌سازی قواعد ورود و خروج (`strategy-sim/1.0`)
+## 13.3 وضعیت پیاده‌سازی قواعد ورود، خروج و Hard Gate ریسک به ریوارد (`signal-gen/1.0` + `strategy-sim/2.0`)
 
-- **تصمیم پیاده‌سازی‌شده (`v1.47.41`):** برای جلوگیری از وابستگی به موتور Forecast (که در حال بازنگری چندتایم‌فریمی است)، ۴ پریست قطعی و کاملاً علّی مبتنی بر `TechnicalAnalysisCore` پیاده‌سازی شده‌اند:
-  1. `EMA_TREND_PULLBACK` (`EMA20/EMA50` + بازگشت `RSI(14)` + حد ضرر `ATR`)
-  2. `SR_ZONE_PATTERN_BOUNCE` (سقف/کف پیوت تأییدشده علّی + الگوهای کندلی `Hammer`/`Pin Bar`/`Engulfing`)
-  3. `SUPERTREND_MOMENTUM` (تغییر جهت `Supertrend(10,3)` با تأیید هیستوگرام `MACD`)
-  4. `BOLLINGER_MEAN_REVERSION` (بازگشت به داخل باندهای `Bollinger(20, 2σ)` با فیلتر `RSI`)
-- تمام سیگنال‌ها روی **بسته‌شدن کندل `i`** ارزیابی و روی **بازشدن کندل `i+1`** اجرا می‌شوند (صفر Look-ahead) و شامل حد ضرر `ATR`، هدف سود با نسبت قابل تنظیم `R:R`، خروج زمانی (`maxHoldBars`) و تسویه پایان داده (`END_OF_DATA`) هستند.
-- *(موضوع باز آینده)*: اتصال سیگنال‌های `forecast-contract/v2` به Strategy Engine پس از پایان بازنگری موتور پیش‌بینی انجام خواهد شد.
+- **قانون غیرقابل‌مذاکره (`Hard Gate` — `riskRewardEngine.js`):** حداقل نسبت خالص ریسک به ریوارد **`MINIMUM_REQUIRED_RR = 2.0`** در کد و UI قفل شده و غیرقابل کاهش است. حد ضرر (SL) و حد سود اول (`TP1` و `TP2` اختیاری) منحصراً از ساختار واقعی علّی نمودار (`Swings` و `S/R Zones` تأییدشده تا کندل `i`) استخراج می‌شوند؛ دورتر کردن مصنوعی TP صرفاً برای رسیدن به 1:2 یا 1:3 اکیداً ممنوع است. اگر نسبت Gross R:R مثلاً `2.10` باشد اما هزینه‌های معاملاتی (`Spread + Commission + Slippage`) نسبت خالص `Net R:R` را به زیر `2.00` (مثلاً `1.95`) کاهش دهند، سیگنال با خروجی صریح **`NO TRADE`** رد می‌شود.
+- **۵ استراتژی کلاسیک مستقل روی وب (`host_subdomain/assets/js/strategy/classicalGenerators.js` — مبتنی بر `ta-core/1.1`):**
+  1. `trend_pullback_v1` (اولویت بالا: روند `SMA 20/50/200` + پولبک به ناحیه `SMA 20–50` + کندل تأیید و شکست کندل قبلی)
+  2. `rsi_reversion_v1` (اولویت بالا: فیلتر `SMA 200` + واریانت `RSI(14)` با آستانه `30/35/40` و واریانت `Connors RSI(2) < 10` با قاعده خروج مجزای `Close > SMA(5)`)
+  3. `breakout_v1` (شکست کانال علّی `Donchian N` صرفاً روی `[i-N .. i-1]` بدون کندل جاری + فیلتر ضد شکست جعلی + فیلترهای اختیاری حجم و ATR/روند)
+  4. `sma_crossover_v1` (تقاطع کلاسیک `20/50` و `50/200` با فیلترهای اختیاری موقعیت Close و قدرت روند)
+  5. `rsi_dip_v1` (صرفاً **مبنای مقایسه پژوهشی** — نسخه پایه ضعیف‌تر برای مقایسه شفاف در کنار استراتژی‌های اصلی بدون پنهان‌کردن نتایج ضعیف)
+- **پریست‌های Legacy (`strategy-sim/1.0`):** هر ۴ پریست نسخه ۱ (`EMA_TREND_PULLBACK`, `SR_ZONE_PATTERN_BOUNCE`, `SUPERTREND_MOMENTUM`, `BOLLINGER_MEAN_REVERSION`) برای سازگاری عقب‌رو در وب و اندروید حفظ شده‌اند.
+- *(موضوع باز آینده)*: هم‌ترازی اندروید با `signal-gen/1.0` / `strategy-sim/2.0` و اتصال اختیاری به `forecast-contract/v2` پس از تکمیل ارزیابی OOS موتور پیش‌بینی انجام خواهد شد.
 
-## 13.4 وضعیت پیاده‌سازی واقع‌گرایی اجرای شبیه‌سازی (`strategy-sim/1.0`)
+## 13.4 وضعیت پیاده‌سازی واقع‌گرایی اجرای شبیه‌سازی (`strategy-sim/2.0`)
 
-- **سیاست محافظه‌کارانه برخورد هم‌زمان SL/TP (`SL_BEFORE_TP`):** پیاده‌سازی و با تست‌های واحد دوپلتفرمه تأیید شد که در صورت لمس هم‌زمان حد ضرر و حد سود در یک کندل، **حد ضرر پیش از حد سود (`SL_HIT`)** اعمال می‌شود.
-- **حساسیت به هزینه (`Cost Sensitivity`):** هر اجرا به‌صورت خودکار تحلیل حساسیت هزینه‌ها را در سه ضریب **`1.0x` (پایه)**، **`1.5x` (تنش متوسط)** و **`2.0x` (تنش بالا)** محاسبه و گزارش می‌کند.
-- **شاخص‌های کامل گزارش‌شده:** `Net Return`، `Final Equity`، `Win Rate`، `Profit Factor`، `Expectancy`، `Average R`، `Maximum Drawdown`، `Sharpe Ratio`، `Sortino Ratio`، `Max Consecutive Losses`، `Total Costs`، نمودار `Equity Curve` و دفتر کل معاملات شبیه‌سازی‌شده (`Trade Ledger`).
+- **سیاست محافظه‌کارانه برخورد هم‌زمان SL/TP (`SL_BEFORE_TP`):** پیاده‌سازی و با تست‌های واحد تأیید شد که در صورت لمس هم‌زمان حد ضرر و حد سود در یک کندل، **حد ضرر پیش از حد سود (`SL_HIT`)** اعمال می‌شود؛ همچنین گپ بازگشایی که از SL یا TP1 عبور کرده باشد از پرشدن کاذب جلوگیری می‌کند.
+- **حساسیت به هزینه (`Cost Sensitivity`) و تفکیک زمانی (`IS/OOS`):** هر اجرا به‌صورت خودکار سناریوهای **`0.0x` (Gross/بدون هزینه)**، **`1.0x` (پایه)**، **`1.5x`** و **`2.0x`** بعلاوه تفکیک زمانی **`70% In-Sample / 30% Out-of-Sample`** بدون نشت داده را محاسبه می‌کند.
+- **شاخص‌های کامل گزارش‌شده:** `Net Return`، `Gross Return`، `CAGR` (فقط برای بازه ≥ ۳۰ روز)، `Final Equity`، `Win Rate`، `Profit Factor`، `Expectancy`، `Average R`، `Avg Holding Period`، `Maximum Drawdown`، `Sharpe Ratio`، `Sortino Ratio`، `Max Consecutive Wins/Losses`، `Total Costs`، تعداد سیگنال‌های ردشده توسط Hard Gate (`RR-Rejected Count`)، میانگین `Net R:R` پذیرفته‌شده، جدول مقایسه تمام استراتژی‌ها، تب `Diagnostics (NO TRADE)`، نمودار `Equity Curve` و دفتر کل معاملات شبیه‌سازی‌شده (`Trade Ledger`).
 
 ## 13.5 OPEN — معیار پذیرش Strategy
 
-- حداقل تعداد معامله، حداقل طول دوره آزمون و آستانه‌های پذیرش رسمی بین رژیم‌های مختلف بازار همچنان باز هستند؛ لذا تمام خروجی‌های `Strategy Lab` با برچسب شفاف **«پژوهشی و شبیه‌سازی آفلاین — بدون اتصال به کارگزاری»** نمایش داده می‌شوند.
+- حداقل تعداد معامله، حداقل طول دوره آزمون، مشخصات دقیق Tick/Contract هر کارگزار (در نبود آن از `UNIT_APPROXIMATION` با اعلان شفاف در UI استفاده می‌شود) و آستانه‌های پذیرش رسمی بین رژیم‌های مختلف بازار همچنان باز هستند؛ لذا تمام خروجی‌های `Strategy Lab` با برچسب شفاف **«پژوهشی و شبیه‌سازی آفلاین — بدون اتصال به کارگزاری»** نمایش داده می‌شوند. جزئیات کامل معماری، منابع اوپن‌سورس (MIT) و شفاف‌سازی عدم دسترسی عمومی به پست `@sopersone` / `GrokBot Strategy Library` در [`SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md`](../02-architecture/SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md) ثبت شده است.
 
 ## 13.6 قواعد اتصال به داده، واچ‌لیست و هزینه Provider
 

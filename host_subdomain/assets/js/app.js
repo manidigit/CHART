@@ -74,7 +74,12 @@ import { PriceFormatter } from './algorithms/priceFormatter.js?v=1.47.41';
 import { GapDetector } from './algorithms/gapDetector.js?v=1.47.41';
 import { DrawingGeometry, PHASE2_DRAWING_TOOLS } from './algorithms/drawingGeometry.js?v=1.47.41';
 import { parseHistoricalBytes, buildManualCandle, isImageBytesOrFilename } from './algorithms/candleImport.js?v=1.47.41';
-import { DEFAULT_STRATEGY_CONFIG } from './algorithms/strategySimulator.js?v=1.47.41';
+import {
+  DEFAULT_STRATEGY_CONFIG,
+  CLASSICAL_STRATEGY_REGISTRY,
+  MINIMUM_REQUIRED_RR,
+  enforceMinimumRequiredRR,
+} from './algorithms/strategySimulator.js?v=1.47.41';
 import { renderCandlestickCanvas } from './components/chartRenderer.js?v=1.47.41';
 import { renderLoginScreen } from './views/loginView.js?v=1.47.41';
 import {
@@ -83,7 +88,7 @@ import {
   renderIndicatorsModal,
 } from './views/headerView.js?v=1.47.41';
 import { renderObjectTreeModal } from './views/objectTreeView.js?v=1.47.41';
-import { renderStrategyLabModal } from './views/strategyLabView.js?v=1.47.41';
+import { renderStrategyLabModal, getCachedStrategySignalById } from './views/strategyLabView.js?v=1.47.41';
 import { renderLeftToolRail, renderMobileBottomSheet } from './views/toolRailView.js?v=1.47.41';
 import {
   renderRightSplitPanel,
@@ -693,6 +698,12 @@ function renderOhlcvOverlay(activeTab) {
   pushPill(activeTab.showObv, pal.obv, 'OBV', 'toggle-obv');
   pushPill(activeTab.showCmf20, pal.cmf20, 'CMF 20', 'toggle-cmf20');
   pushPill(activeTab.showRoc12, pal.roc12, 'ROC 12', 'toggle-roc12');
+  if (activeTab.showStrategySignal && activeTab.activeStrategySignal && activeTab.activeStrategySignal.status === 'valid') {
+    const s = activeTab.activeStrategySignal;
+    const sCol = s.side === 'long' ? '#10B981' : '#EF4444';
+    const sLabel = `${s.side === 'long' ? '▲ LONG' : '▼ SHORT'} · 1:${Number(s.risk_reward?.net_rr || 0).toFixed(2)}R`;
+    pushPill(true, sCol, sLabel, 'strategy-sim-clear-chart-signal');
+  }
   if (activeTab.showStructuralForecast) {
     const fCol = pal.structuralForecastPath || '#8B5CF6';
     const isFa = i18n.getCurrentLanguage() === 'fa';
@@ -3760,15 +3771,63 @@ document.addEventListener('click', async (e) => {
     activeTab.pendingAnchors = [];
     saveDrawings(activeTab.chartId || `${activeTab.symbolCode}_${activeTab.timeframe}`, activeTab.drawings);
     renderApp();
+  } else if (action === 'strategy-lab-set-tab') {
+    const tabKey = el.getAttribute('data-tab') || 'overview';
+    state.strategySimConfig = { ...(state.strategySimConfig || DEFAULT_STRATEGY_CONFIG), activeLabTab: tabKey };
+    renderApp();
   } else if (action === 'strategy-sim-set-field') {
     const field = el.getAttribute('data-field');
     const val = el.getAttribute('data-value');
+    const openTab = el.getAttribute('data-open-tab');
     if (field && val !== null) {
-      state.strategySimConfig = { ...(state.strategySimConfig || DEFAULT_STRATEGY_CONFIG), [field]: val };
+      const nextCfg = { ...(state.strategySimConfig || DEFAULT_STRATEGY_CONFIG), [field]: val };
+      if (openTab) nextCfg.activeLabTab = openTab;
+      state.strategySimConfig = nextCfg;
       renderApp();
     }
+  } else if (action === 'strategy-sim-plot-signal' && activeTab) {
+    const sigId = el.getAttribute('data-signal-id') || '';
+    const sig = getCachedStrategySignalById(sigId);
+    if (sig && sig.status === 'valid' && Number(sig.risk_reward?.net_rr || 0) >= MINIMUM_REQUIRED_RR) {
+      activeTab.showStrategySignal = true;
+      activeTab.activeStrategySignal = sig;
+      state.activeWorkspaceView = 'chart';
+      state.activeModal = null;
+      showFloatingToast(
+        i18n.getCurrentLanguage() === 'fa'
+          ? `سیگنال معتبر (${sig.side.toUpperCase()} · Net R:R 1:${Number(sig.risk_reward.net_rr).toFixed(2)}) روی چارت نمایش داده شد.`
+          : `Validated signal (${sig.side.toUpperCase()} · Net R:R 1:${Number(sig.risk_reward.net_rr).toFixed(2)}) plotted on chart.`
+      );
+      renderApp();
+    }
+  } else if (action === 'strategy-sim-clear-chart-signal' && activeTab) {
+    activeTab.showStrategySignal = false;
+    activeTab.activeStrategySignal = null;
+    renderApp();
   } else if (action === 'strategy-sim-reset') {
-    state.strategySimConfig = { ...DEFAULT_STRATEGY_CONFIG };
+    state.strategySimConfig = {
+      ...DEFAULT_STRATEGY_CONFIG,
+      engineMode: 'CLASSICAL',
+      activeLabTab: 'overview',
+      strategyId: 'trend_pullback_v1',
+      minRequiredRR: MINIMUM_REQUIRED_RR,
+      maxHoldBars: 64,
+      duplicateCooldownBars: 4,
+      enabledStrategies: {
+        trend_pullback_v1: true,
+        rsi_reversion_v1: true,
+        breakout_v1: true,
+        sma_crossover_v1: true,
+        rsi_dip_v1: true,
+      },
+      paramsByStrategy: {
+        trend_pullback_v1: { pullbackLookback: 6, atrStopBuffer: 0.5, requirePriorBarBreak: true },
+        rsi_reversion_v1: { variant: 'RSI14', rsiThreshold: 30, connorsRsi2Threshold: 10, atrStopBuffer: 0.6 },
+        breakout_v1: { breakoutPeriod: 20, useVolumeFilter: false, useAtrTrendFilter: true, atrStopBuffer: 0.5 },
+        sma_crossover_v1: { smaPair: '20_50', requireCloseAlignment: true, useTrendStrengthFilter: true, atrStopBuffer: 0.6 },
+        rsi_dip_v1: { rsiThreshold: 35, atrStopBuffer: 0.6 },
+      },
+    };
     renderApp();
   } else if (action === 'admin-refresh-users') {
     renderApp();
@@ -4155,17 +4214,86 @@ document.addEventListener('change', async (e) => {
     return;
   }
   if (action === 'strategy-sim-select-preset') {
+    const chosen = String(el.value || '');
+    const isClassical = CLASSICAL_STRATEGY_REGISTRY.some((s) => s.id === chosen);
     state.strategySimConfig = {
       ...(state.strategySimConfig || DEFAULT_STRATEGY_CONFIG),
-      presetId: String(el.value || DEFAULT_STRATEGY_CONFIG.presetId),
+      ...(isClassical ? { strategyId: chosen } : { presetId: chosen || DEFAULT_STRATEGY_CONFIG.presetId }),
     };
     renderApp();
     return;
   }
+  if (action === 'strategy-sim-toggle-enabled') {
+    const stratId = el.getAttribute('data-strategy');
+    if (stratId) {
+      const curCfg = state.strategySimConfig || {};
+      state.strategySimConfig = {
+        ...curCfg,
+        enabledStrategies: {
+          ...(curCfg.enabledStrategies || {}),
+          [stratId]: Boolean(el.checked),
+        },
+      };
+      renderApp();
+    }
+    return;
+  }
+  if (action === 'strategy-sim-set-param') {
+    const stratId = el.getAttribute('data-strategy');
+    const paramKey = el.getAttribute('data-param');
+    const valueType = el.getAttribute('data-type') || 'number';
+    if (stratId && paramKey) {
+      const parsed = valueType === 'string' ? String(el.value || '') : Number(el.value);
+      if (valueType === 'string' || Number.isFinite(parsed)) {
+        const curCfg = state.strategySimConfig || {};
+        const curParamsMap = curCfg.paramsByStrategy || {};
+        state.strategySimConfig = {
+          ...curCfg,
+          paramsByStrategy: {
+            ...curParamsMap,
+            [stratId]: {
+              ...(curParamsMap[stratId] || {}),
+              [paramKey]: parsed,
+            },
+          },
+        };
+        renderApp();
+      }
+    }
+    return;
+  }
+  if (action === 'strategy-sim-toggle-param') {
+    const stratId = el.getAttribute('data-strategy');
+    const paramKey = el.getAttribute('data-param');
+    if (stratId && paramKey) {
+      const curCfg = state.strategySimConfig || {};
+      const curParamsMap = curCfg.paramsByStrategy || {};
+      state.strategySimConfig = {
+        ...curCfg,
+        paramsByStrategy: {
+          ...curParamsMap,
+          [stratId]: {
+            ...(curParamsMap[stratId] || {}),
+            [paramKey]: Boolean(el.checked),
+          },
+        },
+      };
+      renderApp();
+    }
+    return;
+  }
   if (action === 'strategy-sim-input') {
     const field = el.getAttribute('data-field');
-    const numVal = Number(el.value);
+    let numVal = Number(el.value);
     if (field && Number.isFinite(numVal)) {
+      if (field === 'minRequiredRR' && numVal < MINIMUM_REQUIRED_RR) {
+        numVal = enforceMinimumRequiredRR(numVal);
+        showFloatingToast(
+          i18n.getCurrentLanguage() === 'fa'
+            ? 'قانون غیرقابل‌مذاکره: حداقل نسبت Net R:R نمی‌تواند کمتر از 1:2.0 باشد.'
+            : 'Hard Gate: Minimum Net R:R cannot be reduced below 1:2.0.'
+        );
+      }
       state.strategySimConfig = {
         ...(state.strategySimConfig || DEFAULT_STRATEGY_CONFIG),
         [field]: numVal,

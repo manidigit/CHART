@@ -1,5 +1,18 @@
 import { TechnicalAnalysisCore } from './technicalAnalysisCore.js?v=1.47.41';
 import { TechnicalIndicators } from './technicalIndicators.js?v=1.47.41';
+import {
+  MINIMUM_REQUIRED_RR,
+  enforceMinimumRequiredRR,
+  evaluateRiskRewardTradePlan,
+  calculateInstrumentPositionSizing,
+} from '../strategy/riskRewardEngine.js?v=1.47.41';
+import { CLASSICAL_STRATEGY_REGISTRY } from '../strategy/classicalGenerators.js?v=1.47.41';
+import { SignalEngine } from '../strategy/signalEngine.js?v=1.47.41';
+import {
+  SignalBacktester,
+  runClassicalStrategyBacktest,
+  compareAllClassicalStrategies,
+} from '../strategy/signalBacktester.js?v=1.47.41';
 
 /**
  * Phase 6 — Offline Trading Strategy Simulator (Web ES Module)
@@ -9,10 +22,22 @@ import { TechnicalIndicators } from './technicalIndicators.js?v=1.47.41';
  * - Causal signal evaluation on bar close -> next-bar open execution (zero look-ahead)
  * - Conservative intrabar tie-breaker: Stop-Loss executes before Take-Profit (SL_BEFORE_TP)
  * - Explicit friction model: Spread, Commission, Slippage, Swap + 1.0x / 1.5x / 2.0x Cost Sensitivity
+ * - Integrated with `signal-gen/1.0` Classical Signal Generators & Hard Gate `Net R:R >= 2.0`
  * - Parity counterpart: StrategySimulatorAlgorithm.kt on Android
  */
 
 export const STRATEGY_SIM_SCHEMA_VERSION = 'strategy-sim/1.0';
+export {
+  MINIMUM_REQUIRED_RR,
+  CLASSICAL_STRATEGY_REGISTRY,
+  SignalEngine,
+  SignalBacktester,
+  enforceMinimumRequiredRR,
+  evaluateRiskRewardTradePlan,
+  calculateInstrumentPositionSizing,
+  runClassicalStrategyBacktest,
+  compareAllClassicalStrategies,
+};
 
 export const STRATEGY_PRESETS = Object.freeze([
   {
@@ -453,8 +478,13 @@ function executeCoreSimulation(candles, indicators, patternsByIndex, swings, swi
 
 export const StrategySimulator = {
   PRESETS: STRATEGY_PRESETS,
+  CLASSICAL_STRATEGIES: CLASSICAL_STRATEGY_REGISTRY,
+  MINIMUM_REQUIRED_RR,
   DEFAULTS: DEFAULT_STRATEGY_CONFIG,
   normalizeConfig: normalizeStrategyConfig,
+  runClassicalBacktest: runClassicalStrategyBacktest,
+  compareAllClassicalStrategies,
+  evaluateRiskReward: evaluateRiskRewardTradePlan,
 
   /**
    * Runs a strictly offline, causal, deterministic strategy backtest on real candles.

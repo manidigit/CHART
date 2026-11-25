@@ -7,7 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ---
 
-## [1.47.41] - 2026-11-24
+## [1.47.41] - 2026-11-25
+
+### Added (`SIGNAL-GEN-RR-GATE-01`: Classical Signal Generators, Immutable Net R:R ≥ 2.0 Hard Gate & `strategy-sim/2.0`)
+- **Non-Negotiable Risk/Reward Intelligence Hard Gate (`host_subdomain/assets/js/strategy/riskRewardEngine.js`):**
+  - Enforced immutable `MINIMUM_REQUIRED_RR = 2.0` (`enforceMinimumRequiredRR()`) across engine, backtester, and UI controls; trades with `Net R:R < 2.0` after `Spread + Commission + Slippage` are strictly rejected (`status: 'no_trade'`).
+  - Anchored Stop Loss and Take Profit (`TP1` + optional `TP2`) exclusively to real causal swings & S/R zones (`buildCausalStructureAtIndex`) with an explicit anti-TP-fabrication rule (never skipping a closer structural barrier to manufacture `2R`/`3R`), anti-chase guard, and closed-candle enforcement (`OPEN_BAR_FORBIDDEN`).
+- **5 Independent Pure Causal Classical Signal Generators on `ta-core/1.1` (`classicalGenerators.js`, `signalEngine.js`):**
+  - Implemented `trend_pullback_v1`, `rsi_reversion_v1` (supporting both `RSI(14)` `30/35/40` and `Connors RSI(2) < 10` with dedicated `Close > SMA(5)` exit rule), `breakout_v1` (strictly causal prior `[i-N..i-1]` Donchian breakout + fakeout/volume/ATR filters), `sma_crossover_v1` (`20/50` & `50/200`), and `rsi_dip_v1` (transparently tagged **Research Comparison Baseline**).
+- **Event-Driven Backtester & Multi-Strategy Comparison (`signalBacktester.js`, `strategySimulator.js`):**
+  - Added `strategy-sim/2.0` with next-bar-open causal fills, opening-gap invalidation guard, `SL_BEFORE_TP` tie-breaker, parallel `Gross (0x)` & `Net (1x)` + `1.5x / 2.0x` Cost Sensitivity, `CAGR` (gated to ≥ 30-day span), chronological `70/30 In-Sample / Out-of-Sample` split, `RR-Rejected Count`, `Avg Accepted Net RR`, and side-by-side `compareAllClassicalStrategies()` while preserving full backward compatibility with `strategy-sim/1.0`.
+- **Upgraded 4-Tab Strategy Lab UI & HTML5 Canvas Signal Overlay (`strategyLabView.js`, `chartRenderer.js`, `store.js`, `app.js`, `theme.css`):**
+  - Upgraded Strategy Lab to 4 tabs (`Signal & Backtest`, `Compare All (5)`, `Valid Signals`, `Diagnostics / NO TRADE`) with live `VALID` / `NO TRADE` status banner, per-strategy parameter controls, locked `Min Net R:R ≥ 2.00` gate, and one-click **Show on Chart** overlay.
+  - Added validated-only Signal Overlay rendering (`Entry`, `SL`, `TP1`, `TP2`, Risk/Reward shaded zones, anchor arrow, right-axis price badges, and removable status pill) directly in `chartRenderer.js` — rejected / `NO TRADE` candidates are never plotted as buy/sell arrows.
+- **Documentation & Verification:**
+  - Created [`docs/02-architecture/SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md`](../02-architecture/SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md) (including external MIT source audit and honest disclosure that the `@sopersone` X post / `GrokBot Strategy Library` dashboard was not publicly verifiable) and updated `TRADING_STRATEGY_SPEC.md`, `OPEN_ISSUES.md`, `docs/README.md`, `AGENTS.md`, and `README.md`.
+  - Verified `node --check` on all 9 new/modified JS modules and **62/62** passing tests in `tests/web_parity.test.mjs` (added `SIGNAL-GEN-RR-GATE-01`).
 
 ### Changed (`TOPBAR-DROPDOWNS-STRATEGY-01`: TradingView-Style Topbar Dropdowns & Top-Nav Strategy Lab)
 - **Compact TradingView-Style Timeframe & Chart Style Dropdowns (`host_subdomain/assets/js/views/headerView.js`, `app.js`, `assets/css/theme.css`):**

@@ -68,7 +68,7 @@
 4. **No Mock Fallbacks:** داده یا پیش‌بینی ساختگی تولید نکنید؛ نبود داده یا محدودیت منبع باید شفاف در UI نمایش داده شود (`Market Closed`, `Cached`, `Sync Error`, `API Key Required`).
 5. **Zero Hardcoding & Dual-Platform Core Parity:** تغییرات الگوریتمی، مدل داده و تنظیمات باید به‌صورت متقارن در هسته PHP، وب (`host_subdomain/assets/js/`) و اندروید (`app/src/main/java/`) پیاده‌سازی شوند.
 6. **Separation of Prediction & Trading:** موتور پیش‌بینی (فاز ۴/۵) هیچ فیلد معامله‌گری (`Buy/Sell`, `Entry`, `SL`, `TP`) صادر نمی‌کند؛ این موارد منحصراً در ماژول مستقل فاز ۶ ([`TRADING_STRATEGY_SPEC.md`](../01-product/TRADING_STRATEGY_SPEC.md)) هستند.
-7. **Unified ES Module Cache-Busting (`ARCH-02`):** در هر تغییر جاوااسکریپت وب، تمام آدرس‌های `?v=` در هر ۲۷ فایل `host_subdomain/assets/js/` و `host_subdomain/index.html` باید به **یک نسخه واحد و یکسان** (فعلاً `1.47.41`) ارتقا یابند و `store.js` همواره از `globalThis.__CI_STORE_SINGLETON_V1__` محافظت شود تا مشکل Split-Singleton در کش مرورگر هرگز بازنگردد.
+7. **Unified ES Module Cache-Busting (`ARCH-02`):** در هر تغییر جاوااسکریپت وب، تمام آدرس‌های `?v=` در هر ۳۱ فایل `host_subdomain/assets/js/` و `host_subdomain/index.html` باید به **یک نسخه واحد و یکسان** (فعلاً `1.47.41`) ارتقا یابند و `store.js` همواره از `globalThis.__CI_STORE_SINGLETON_V1__` محافظت شود تا مشکل Split-Singleton در کش مرورگر هرگز بازنگردد.
 8. **Quota-Safe Storage (`STORAGE-QUOTA-01`):** هیچ فراخوانی مستقیم `localStorage.setItem(...)` در `store.js`، `app.js` و `apiService.js` مجاز نیست؛ تمامی نوشتن‌ها باید از `safeLocalStorageSet()` عبور کنند و کش کندل `localStorage` حداکثر `250` کندل باشد (در حالی که ۵۰۰۰ کندل کامل در RAM و MariaDB حفظ می‌شود).
 
 ---
@@ -78,11 +78,11 @@
 | مسیر | مسئولیت |
 |---|---|
 | `docs/01-product/` | `CHART_INTELLIGENCE_MASTER_SPEC.md`, `FORECAST_PRODUCT_FOUNDATION_V1.md`, `FORECAST_SYSTEM_SPEC_V1.md`, `FORECAST_MODEL_INTAKE_AND_COMPARISON_V1.md`, `FORECAST_CHRONOS2_INPUT_OUTPUT_AND_PATH_CONTRACT_V1.md`, `GROK_OPENMARKET_RESEARCH_NOTES.md`, `TRADING_STRATEGY_SPEC.md` |
-| `docs/02-architecture/` | `ARCHITECTURE.md`, `TECHNICAL_ANALYSIS_CORE_IMPLEMENTATION_PLAN_V1.md`, `DESIGN_WORKSPACE_SPEC.md`, `FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`, `FORECAST_ACCEPTANCE_TEST_PLAN_V1.md`, `FORECASTING_ALGORITHM_REFERENCE.md`, `CHRONOS2_MANUAL_GITHUB_ACTIONS_RUNBOOK_V1.md`, `INFRASTRUCTURE_INVENTORY.md`, `SECURITY.md` |
+| `docs/02-architecture/` | `ARCHITECTURE.md`, `TECHNICAL_ANALYSIS_CORE_IMPLEMENTATION_PLAN_V1.md`, `SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md`, `DESIGN_WORKSPACE_SPEC.md`, `FORECAST_CONSISTENCY_AND_ANALOG_ANALYSIS_V1.md`, `FORECAST_ACCEPTANCE_TEST_PLAN_V1.md`, `FORECASTING_ALGORITHM_REFERENCE.md`, `CHRONOS2_MANUAL_GITHUB_ACTIONS_RUNBOOK_V1.md`, `INFRASTRUCTURE_INVENTORY.md`, `SECURITY.md` |
 | `docs/03-roadmap-and-issues/` | `OPEN_ISSUES.md`, `ROADMAP_BACKLOG.md` |
 | `docs/04-development/` | `PROJECT_GUIDE.md`, `AGENTS.md`, `CONTRIBUTING.md`, `CHANGELOG.md` |
 | `app/src/main/java/es/manico/chartintelligence/` | اپلیکیشن نیتیو اندروید (Kotlin / Jetpack Compose + Coordinators + Pure Algorithms + Providers) |
-| `host_subdomain/assets/js/` | فرانت‌اند وب زنده با ۲۷ ماژول Native ES6 (`?v=1.47.41`) شامل `forecast/` و `algorithms/structuralForecastEngine.js` |
+| `host_subdomain/assets/js/` | فرانت‌اند وب زنده با ۳۱ ماژول Native ES6 (`?v=1.47.41`) شامل `forecast/`، `strategy/` (`signal-gen/1.0` + `strategy-sim/2.0`) و `algorithms/structuralForecastEngine.js` |
 | `host_subdomain/api/v1/` | بک‌اند PHP REST API و آداپتورهای داده + MariaDB (`chronos2_forecast.php` متوقف/`Shelved`) |
 | `.github/workflows/build-apk.yml` | پایپ‌لاین بیلد APK و بسته‌بندی/استقرار وب |
 
@@ -91,7 +91,7 @@
 ## ۴. دستورات استاندارد بررسی و بیلد
 
 قبل از پایان هر نوبت کدنویسی، راستی‌آزمایی واقعی انجام دهید و خروجی واقعی را گزارش کنید:
-- **تست پاریتی و رگرسیون وب (شامل `ARCH-02` و `STORAGE-QUOTA-01`):** `npm test` (یا `node --test tests/web_parity.test.mjs` — فعلاً ۶۱/۶۱ پاس)
+- **تست پاریتی و رگرسیون وب (شامل `ARCH-02` و `STORAGE-QUOTA-01`):** `npm test` (یا `node --test tests/web_parity.test.mjs` — فعلاً ۶۲/۶۲ پاس)
 - **بررسی سینتکس ES6 وب:** `node --check` روی فایل‌های تغییریافته در `host_subdomain/assets/js/`
 - **بیلد اندروید:** ابزار `compile_applet` (یا `gradle assembleDebug`)
 - **تست واحد اندروید:** `gradle :app:testDebugUnitTest`

@@ -3893,6 +3893,283 @@ test('TOPBAR-DROPDOWNS-STRATEGY-01: top header uses TradingView-style Timeframe 
   }
 });
 
+test('SIGNAL-GEN-RR-GATE-01: Classical Signal Generators, immutable Net R:R >= 2.0 Hard Gate, anti-TP-fabrication, causality, Strategy Lab UI, and Canvas overlay', async () => {
+  const {
+    MINIMUM_REQUIRED_RR,
+    enforceMinimumRequiredRR,
+    evaluateRiskRewardTradePlan,
+  } = await import('../host_subdomain/assets/js/strategy/riskRewardEngine.js');
+  const {
+    CLASSICAL_STRATEGY_REGISTRY,
+    evaluateBreakoutAtBar,
+  } = await import('../host_subdomain/assets/js/strategy/classicalGenerators.js');
+  const {
+    prepareTaCoreContext,
+    generateStrategySignals,
+  } = await import('../host_subdomain/assets/js/strategy/signalEngine.js');
+  const {
+    SignalBacktester,
+    SIGNAL_BACKTEST_VERSION,
+  } = await import('../host_subdomain/assets/js/strategy/signalBacktester.js');
+  const { renderStrategyLabModal } = await import('../host_subdomain/assets/js/views/strategyLabView.js');
+  const { state, saveCandlesToCache } = await import('../host_subdomain/assets/js/core/store.js');
+
+  const chartRendererSrc = await readFile(new URL('../host_subdomain/assets/js/components/chartRenderer.js', import.meta.url), 'utf8');
+  const spotBrentRaw = JSON.parse(
+    await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8')
+  );
+  const spotBrentCandles = Array.isArray(spotBrentRaw) ? spotBrentRaw : spotBrentRaw.candles;
+
+  // 1. Immutable Hard Gate constants & floor clamping
+  assert.equal(MINIMUM_REQUIRED_RR, 2.0);
+  assert.equal(enforceMinimumRequiredRR(1.2), 2.0, 'Cannot lower minimum required R:R below 2.0');
+  assert.equal(enforceMinimumRequiredRR(0), 2.0);
+  assert.equal(enforceMinimumRequiredRR(2.5), 2.5);
+  assert.equal(SIGNAL_BACKTEST_VERSION, 'strategy-sim/2.0');
+  assert.equal(CLASSICAL_STRATEGY_REGISTRY.length, 5);
+
+  // Helper to build a clean closed bar context with explicit causal structural targets
+  const makeBarCtx = (targetsAbove = [], opts = {}) => ({
+    bar: {
+      open_time_utc_ms: 1700000000000,
+      open: 99.6,
+      high: 100.2,
+      low: 99.2,
+      close: 100.0,
+      volume: 500,
+      is_closed: opts.is_closed !== undefined ? opts.is_closed : true,
+    },
+    atr: opts.atr ?? 1.0,
+    structure: {
+      supports: [{ price: 98.5, source: 'SR_SUPPORT_ZONE', index: 40, confirmIndex: 43, strength: 2 }],
+      swingLows: [{ price: 98.5, source: 'SWING_LOW', index: 40, confirmIndex: 43, strength: 1 }],
+      resistances: [],
+      swingHighs: targetsAbove.map((p, idx) => ({
+        price: p,
+        source: 'SWING_HIGH',
+        index: 30 + idx * 5,
+        confirmIndex: 33 + idx * 5,
+        strength: 1,
+      })),
+    },
+  });
+
+  const baseCandidate = {
+    strategyId: 'trend_pullback_v1',
+    side: 'long',
+    entryPrice: 100.0,
+    stopLossPrice: 99.0, // 1.00 risk distance
+    reason: 'Synthetic test pullback',
+  };
+
+  // 2. Exact R:R boundary matrix: 1.50 (reject), 1.99 (reject), 2.00 (accept), 2.50 (accept), 3.00 (optimal)
+  const rr150 = evaluateRiskRewardTradePlan(baseCandidate, makeBarCtx([101.50]), { spreadBps: 0, commissionBps: 0, slippageBps: 0 });
+  assert.equal(rr150.passed, false);
+  assert.equal(rr150.status, 'no_trade');
+  assert.equal(rr150.rejection_code, 'GROSS_RR_BELOW_MINIMUM');
+
+  const rr199 = evaluateRiskRewardTradePlan(baseCandidate, makeBarCtx([101.99]), { spreadBps: 0, commissionBps: 0, slippageBps: 0 });
+  assert.equal(rr199.passed, false);
+  assert.equal(rr199.status, 'no_trade');
+  assert.equal(rr199.rejection_code, 'GROSS_RR_BELOW_MINIMUM');
+
+  const rr200 = evaluateRiskRewardTradePlan(baseCandidate, makeBarCtx([102.00]), { spreadBps: 0, commissionBps: 0, slippageBps: 0 });
+  assert.equal(rr200.passed, true);
+  assert.equal(rr200.status, 'valid');
+  assert.equal(rr200.risk_reward.tier, 'CONDITIONAL_ACCEPT');
+  assert.equal(rr200.risk_reward.net_rr, 2.0);
+
+  const rr250 = evaluateRiskRewardTradePlan(baseCandidate, makeBarCtx([102.50, 104.20]), { spreadBps: 0, commissionBps: 0, slippageBps: 0 });
+  assert.equal(rr250.passed, true);
+  assert.equal(rr250.risk_reward.tier, 'CONDITIONAL_ACCEPT');
+  assert.equal(rr250.take_profit_suggested[0], 102.5);
+  assert.equal(rr250.take_profit_suggested[1], 104.2);
+
+  const rr300 = evaluateRiskRewardTradePlan(baseCandidate, makeBarCtx([103.00]), { spreadBps: 0, commissionBps: 0, slippageBps: 0 });
+  assert.equal(rr300.passed, true);
+  assert.equal(rr300.risk_reward.tier, 'OPTIMAL');
+
+  // 3. Gross RR = 2.10 eroded by realistic Spread + Commission + Slippage to Net RR < 2.00 (~1.95) -> MUST REJECT!
+  // Round-trip friction = (spread + 2*comm + 2*slip) = 5 bps on 100 => 0.05/unit => Net RR = (2.10 - 0.05) / (1.00 + 0.05) = 1.9524
+  const rrCostEroded = evaluateRiskRewardTradePlan(baseCandidate, makeBarCtx([102.10]), {
+    spreadBps: 2.0,
+    commissionBps: 1.0,
+    slippageBps: 0.5,
+  });
+  assert.equal(rrCostEroded.passed, false, 'Gross 2.10 eroded by costs to Net ~1.95 MUST be rejected');
+  assert.equal(rrCostEroded.status, 'no_trade');
+  assert.equal(rrCostEroded.rejection_code, 'NET_RR_BELOW_MINIMUM');
+  assert.ok(rrCostEroded.risk_reward.gross_rr >= 2.09);
+  assert.ok(rrCostEroded.risk_reward.net_rr > 1.90 && rrCostEroded.risk_reward.net_rr < 2.00);
+
+  // 4. Anti-TP-Fabrication: nearest structural resistance is at 1.45R, second is at 3.50R -> MUST use 1.45R and REJECT!
+  const rrNoFab = evaluateRiskRewardTradePlan(baseCandidate, makeBarCtx([101.45, 103.50]), {
+    spreadBps: 0,
+    commissionBps: 0,
+    slippageBps: 0,
+  });
+  assert.equal(rrNoFab.passed, false, 'Must NEVER skip nearer structural barrier (1.45R) to fabricate 3.50R');
+  assert.equal(rrNoFab.rejection_code, 'GROSS_RR_BELOW_MINIMUM');
+  assert.equal(rrNoFab.take_profit_suggested[0], 101.45);
+
+  // 5. Missing SL, missing TP, open candle, insufficient data, duplicate suppression
+  const missingSl = evaluateRiskRewardTradePlan({ ...baseCandidate, stopLossPrice: null }, makeBarCtx([103.0]));
+  assert.equal(missingSl.passed, false);
+  assert.equal(missingSl.rejection_code, 'NO_STRUCTURAL_STOP_LOSS');
+
+  const missingTp = evaluateRiskRewardTradePlan(baseCandidate, makeBarCtx([]));
+  assert.equal(missingTp.passed, false);
+  assert.equal(missingTp.rejection_code, 'NO_STRUCTURAL_TARGET');
+
+  const openBarRes = evaluateRiskRewardTradePlan(baseCandidate, makeBarCtx([103.0], { is_closed: false }));
+  assert.equal(openBarRes.passed, false);
+  assert.equal(openBarRes.rejection_code, 'OPEN_BAR_FORBIDDEN');
+
+  const openFilteredCtx = prepareTaCoreContext([
+    ...spotBrentCandles.slice(0, 60),
+    { ...spotBrentCandles[60], is_closed: false },
+  ]);
+  assert.equal(openFilteredCtx.candles.length, 60, 'prepareTaCoreContext MUST exclude unclosed/forming candle');
+
+  const tinyBacktest = SignalBacktester.runBacktest(spotBrentCandles.slice(0, 12), { strategyId: 'trend_pullback_v1' });
+  assert.equal(tinyBacktest.status, 'INSUFFICIENT_DATA');
+  assert.equal(tinyBacktest.signalReport.latestDecision.status, 'NO_TRADE');
+
+  // Verify duplicate cooldown suppression on consecutive signals of same side
+  const dupCtx = prepareTaCoreContext(spotBrentCandles, { symbolCode: 'SPOTBRENT', timeframe: 'M15' });
+  const dupRun = generateStrategySignals(dupCtx, 'rsi_dip_v1', {
+    direction: 'BOTH',
+    duplicateCooldownBars: 8,
+    spreadBps: 0,
+    commissionBps: 0,
+    slippageBps: 0,
+  });
+  for (let k = 1; k < dupRun.validSignals.length; k++) {
+    const prev = dupRun.validSignals[k - 1];
+    const curr = dupRun.validSignals[k];
+    if (prev.side === curr.side) {
+      assert.ok(curr.bar_index - prev.bar_index > 8, 'Valid same-side signals must respect cooldown suppression');
+    }
+  }
+
+  // 6. Causal Donchian Breakout check: current bar MUST NOT pollute [i-N .. i-1] channel
+  const brkCandles = [];
+  for (let i = 0; i < 30; i++) {
+    brkCandles.push({
+      open_time_utc_ms: 1700000000000 + i * 900_000,
+      open: 100,
+      high: 101,
+      low: 99,
+      close: 100,
+      volume: 100,
+      is_closed: true,
+    });
+  }
+  brkCandles.push({
+    open_time_utc_ms: 1700000000000 + 30 * 900_000,
+    open: 100.2,
+    high: 103.0,
+    low: 100.0,
+    close: 102.8, // strong close strictly above prior 20-bar highest high (101)
+    volume: 200,
+    is_closed: true,
+  });
+  const brkCand = evaluateBreakoutAtBar(
+    {
+      candles: brkCandles,
+      indicators: {
+        atr14: Array(31).fill(1.0),
+        sma50: Array(31).fill(98.0),
+        sma200: Array(31).fill(null),
+      },
+      bar: brkCandles[30],
+      atr: 1.0,
+      structure: { supportsBelow: [], resistancesAbove: [] },
+    },
+    30,
+    { breakoutPeriod: 20, useVolumeFilter: false, useAtrTrendFilter: false },
+    'LONG_ONLY'
+  );
+  assert.ok(brkCand && brkCand.side === 'long', 'Causal Donchian breakout must trigger when close breaks prior N-bar high');
+  assert.equal(brkCand.indicatorsSnapshot.priorHighestHigh, 101, 'Prior N-bar high MUST exclude current bar high (103)');
+
+  // 7. Run all 5 classical generators & comparison on real 260-bar SPOTBRENT fixture + verify Connors RSI(2)
+  const compare = SignalBacktester.compareAllStrategies(spotBrentCandles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    chartId: 'SPOTBRENT_tvdatafeed_M15',
+    minRequiredRR: 1.0, // deliberately attempt < 2.0 to prove Hard Gate forces 2.0
+  });
+  assert.equal(compare.rows.length, 5);
+  const rsiDipRow = compare.rows.find((r) => r.strategyId === 'rsi_dip_v1');
+  assert.equal(rsiDipRow.isResearchBenchmarkOnly, true);
+
+  for (const strat of CLASSICAL_STRATEGY_REGISTRY) {
+    const bt = SignalBacktester.runBacktest(spotBrentCandles, {
+      symbolCode: 'SPOTBRENT',
+      timeframe: 'M15',
+      chartId: 'SPOTBRENT_tvdatafeed_M15',
+      strategyId: strat.id,
+      minRequiredRR: 1.1, // must be clamped to 2.0
+    });
+    assert.equal(bt.status, 'READY');
+    assert.equal(bt.config.minRequiredRR, 2.0, `${strat.id} must enforce Hard Gate minRequiredRR = 2.0`);
+    assert.ok(['VALID', 'NO_TRADE'].includes(bt.signalReport.latestDecision.status));
+    assert.equal(bt.costSensitivity.length, 4, `${strat.id} must include 0x/1x/1.5x/2x cost sensitivity`);
+    assert.ok(bt.inSampleOutOfSample && bt.inSampleOutOfSample.splitBarIndex > 0, 'Must compute 70/30 IS/OOS split');
+    // Every emitted valid signal MUST satisfy Net R:R >= 2.0 and contract schema
+    for (const sig of bt.signalReport.validSignals) {
+      assert.equal(sig.status, 'valid');
+      assert.equal(sig.version, 'signal-gen/1.0');
+      assert.ok(sig.risk_reward.net_rr >= 2.0, `${strat.id} emitted signal below Net R:R 2.0!`);
+    }
+  }
+
+  // Verify Connors RSI(2) variant runs cleanly
+  const connorsRun = SignalBacktester.runBacktest(spotBrentCandles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    strategyId: 'rsi_reversion_v1',
+    strategyParams: { variant: 'CONNORS_RSI2', connorsRsi2Threshold: 10 },
+  });
+  assert.equal(connorsRun.status, 'READY');
+  assert.equal(connorsRun.config.minRequiredRR, 2.0);
+
+  // 8. Verify Strategy Lab UI renders all 4 tabs & Canvas chartRenderer enforces valid-only signal overlay
+  const prevModal = state.activeModal;
+  const prevStratCfg = state.strategySimConfig;
+  const prevCache = state.candleCache['SPOTBRENT_tvdatafeed_M15'];
+  try {
+    state.activeModal = 'strategy-lab';
+    saveCandlesToCache('SPOTBRENT_tvdatafeed_M15', spotBrentCandles, 5000, 'SPOTBRENT');
+    const mockI18n = { getCurrentLanguage: () => 'en', t: (k) => k };
+    const tabArg = { symbolCode: 'SPOTBRENT', provider: 'tvdatafeed', timeframe: 'M15' };
+
+    state.strategySimConfig = { ...prevStratCfg, engineMode: 'CLASSICAL', activeLabTab: 'overview', strategyId: 'trend_pullback_v1' };
+    const overviewHtml = renderStrategyLabModal(tabArg, mockI18n);
+    assert.match(overviewHtml, /Net R:R ≥ 1:2\.00/);
+    assert.match(overviewHtml, /strategy-sim-select-preset/);
+    assert.match(overviewHtml, /data-action="strategy-lab-set-tab"/);
+
+    state.strategySimConfig = { ...prevStratCfg, engineMode: 'CLASSICAL', activeLabTab: 'compare' };
+    const compareHtml = renderStrategyLabModal(tabArg, mockI18n);
+    assert.match(compareHtml, /Transparent Multi-Strategy Comparison/);
+    assert.match(compareHtml, /rsi_dip_v1/);
+
+    state.strategySimConfig = { ...prevStratCfg, engineMode: 'CLASSICAL', activeLabTab: 'diagnostics' };
+    const diagHtml = renderStrategyLabModal(tabArg, mockI18n);
+    assert.match(diagHtml, /NO TRADE/);
+
+    assert.match(chartRendererSrc, /tab\.showStrategySignal[\s\S]{0,160}activeStrategySignal\.status === 'valid'[\s\S]{0,120}net_rr \|\| 0\) >= 2\.0/);
+  } finally {
+    state.activeModal = prevModal;
+    state.strategySimConfig = prevStratCfg;
+    if (prevCache === undefined) delete state.candleCache['SPOTBRENT_tvdatafeed_M15'];
+    else saveCandlesToCache('SPOTBRENT_tvdatafeed_M15', prevCache, 5000, 'SPOTBRENT');
+  }
+});
+
+
 
 
 

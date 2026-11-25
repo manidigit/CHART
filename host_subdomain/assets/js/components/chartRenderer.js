@@ -1350,6 +1350,147 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
+  // CLASSICAL STRATEGY SIGNAL OVERLAY (`signal-gen/1.0`, strictly validated Net R:R >= 2.0 ONLY — NEVER plots rejected/NO_TRADE signals)
+  if (
+    tab.showStrategySignal &&
+    tab.activeStrategySignal &&
+    tab.activeStrategySignal.status === 'valid' &&
+    Number(tab.activeStrategySignal.risk_reward?.net_rr || 0) >= 2.0
+  ) {
+    const sig = tab.activeStrategySignal;
+    const expectedChartId = `${tab.symbolCode}_${tab.provider || 'tvdatafeed'}_${tab.timeframe}`;
+    const chartMatches = !sig.chart_id || sig.chart_id === expectedChartId || sig.chart_id === `${tab.symbolCode}_${tab.timeframe}`;
+    if (chartMatches) {
+      const entryP = Number(sig.entry_price_suggested);
+      const slP = Number(sig.stop_loss_suggested);
+      const tp1P = Number(sig.take_profit_suggested?.[0]);
+      const tp2P = Number(sig.take_profit_suggested?.[1]);
+      if (Number.isFinite(entryP) && Number.isFinite(slP) && Number.isFinite(tp1P)) {
+        // Resolve anchored bar index cleanly by UTC timestamp (fallback to bar_index)
+        let sigGlobalIdx = -1;
+        const sigMs = Number(sig.signal_time_utc_ms || 0);
+        if (sigMs > 0) {
+          for (let i = candles.length - 1; i >= 0; i--) {
+            const cMs = Number(candles[i].open_time_utc_ms || (candles[i].openTimeSec ? candles[i].openTimeSec * 1000 : 0));
+            if (cMs === sigMs) {
+              sigGlobalIdx = i;
+              break;
+            }
+          }
+        }
+        if (sigGlobalIdx < 0 && Number.isFinite(sig.bar_index) && sig.bar_index >= 0 && sig.bar_index < candles.length) {
+          sigGlobalIdx = Math.trunc(sig.bar_index);
+        }
+
+        const isLongSig = String(sig.side || '').toLowerCase() === 'long';
+        const anchorX =
+          sigGlobalIdx >= 0
+            ? Math.max(0, Math.min(chartW - 40, idxToX(sigGlobalIdx - startIdx)))
+            : Math.max(0, chartW * 0.45);
+        const endX = chartW;
+
+        const yEntry = priceToY(entryP);
+        const ySl = priceToY(slP);
+        const yTp1 = priceToY(tp1P);
+        const hasTp2 = Number.isFinite(tp2P) && tp2P > 0;
+        const yTp2 = hasTp2 ? priceToY(tp2P) : null;
+
+        const entryCol = '#2962FF';
+        const slCol = '#EF4444';
+        const tp1Col = '#10B981';
+        const tp2Col = '#06B6D4';
+
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, topPad, chartW, chartH);
+        ctx.clip();
+
+        // 1. Risk (Entry -> SL) and Reward (Entry -> TP1) translucent bands
+        const riskTop = Math.min(yEntry, ySl);
+        const riskH = Math.max(1, Math.abs(ySl - yEntry));
+        ctx.fillStyle = hexToRgba(slCol, isDark ? 0.13 : 0.11);
+        ctx.fillRect(anchorX, riskTop, Math.max(24, endX - anchorX), riskH);
+
+        const rewTop = Math.min(yEntry, yTp1);
+        const rewH = Math.max(1, Math.abs(yTp1 - yEntry));
+        ctx.fillStyle = hexToRgba(tp1Col, isDark ? 0.13 : 0.11);
+        ctx.fillRect(anchorX, rewTop, Math.max(24, endX - anchorX), rewH);
+
+        // 2. Horizontal levels (Entry, SL, TP1, optional TP2)
+        const drawSigLine = (yVal, color, dash, lw) => {
+          if (yVal < topPad - 2 || yVal > topPad + chartH + 2) return;
+          ctx.save();
+          ctx.strokeStyle = color;
+          ctx.lineWidth = lw;
+          ctx.setLineDash(dash);
+          ctx.beginPath();
+          ctx.moveTo(anchorX, yVal);
+          ctx.lineTo(endX, yVal);
+          ctx.stroke();
+          ctx.restore();
+        };
+        drawSigLine(yEntry, entryCol, [], 1.5);
+        drawSigLine(ySl, slCol, [5, 4], 1.4);
+        drawSigLine(yTp1, tp1Col, [6, 3], 1.4);
+        if (hasTp2 && yTp2 != null) {
+          drawSigLine(yTp2, tp2Col, [3, 4], 1.15);
+        }
+
+        // 3. Signal anchor arrow marker at entry bar
+        if (sigGlobalIdx >= startIdx && sigGlobalIdx <= endIdx) {
+          const mx = idxToX(sigGlobalIdx - startIdx);
+          const mCol = isLongSig ? tp1Col : slCol;
+          const mR = 5.5;
+          ctx.fillStyle = mCol;
+          ctx.strokeStyle = isDark ? '#0F172A' : '#FFFFFF';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          if (isLongSig) {
+            ctx.moveTo(mx, yEntry - mR);
+            ctx.lineTo(mx - mR, yEntry + mR * 0.9);
+            ctx.lineTo(mx + mR, yEntry + mR * 0.9);
+          } else {
+            ctx.moveTo(mx, yEntry + mR);
+            ctx.lineTo(mx - mR, yEntry - mR * 0.9);
+            ctx.lineTo(mx + mR, yEntry - mR * 0.9);
+          }
+          ctx.closePath();
+          ctx.fill();
+          ctx.stroke();
+        }
+
+        // 4. Compact floating signal banner on canvas (Strategy · Direction · Net R:R · UTC Time)
+        const stratTitle = String(sig.strategy_name_en || sig.strategy_id || 'Signal').split('(')[0].trim();
+        const netRrStr = Number(sig.risk_reward?.net_rr || 0).toFixed(2);
+        const grossRrStr = Number(sig.risk_reward?.gross_rr || 0).toFixed(2);
+        const timeStr = sig.signal_time_utc ? String(sig.signal_time_utc).slice(5, 16).replace('T', ' ') : '';
+        const pillText = `${isLongSig ? '▲ LONG' : '▼ SHORT'} · ${stratTitle} · Net R:R 1:${netRrStr} (Gross 1:${grossRrStr})${timeStr ? ` · ${timeStr} UTC` : ''}`;
+        ctx.font = '700 10.5px "JetBrains Mono", "Inter", monospace';
+        const pillW = Math.min(chartW - 24, ctx.measureText(pillText).width + 18);
+        const pillX = Math.max(8, Math.min(chartW - pillW - 8, anchorX + 6));
+        const pillY = Math.max(topPad + 8, Math.min(topPad + chartH - 28, Math.min(yEntry, yTp1) - 22));
+        ctx.fillStyle = isDark ? 'rgba(15, 23, 42, 0.90)' : 'rgba(255, 255, 255, 0.94)';
+        ctx.strokeStyle = isLongSig ? tp1Col : slCol;
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.roundRect(pillX, pillY, pillW, 20, 5);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = isLongSig ? tp1Col : slCol;
+        ctx.fillText(pillText, pillX + 9, pillY + 13.5, pillW - 14);
+        ctx.restore();
+
+        // 5. Right price-axis badges via existing collision-safe queue
+        queueRightLevelLabel(yEntry, `ENT ${formatPrice(entryP)}`, entryCol);
+        queueRightLevelLabel(ySl, `SL ${formatPrice(slP)}`, slCol);
+        queueRightLevelLabel(yTp1, `TP1 ${formatPrice(tp1P)}`, tp1Col);
+        if (hasTp2 && yTp2 != null) {
+          queueRightLevelLabel(yTp2, `TP2 ${formatPrice(tp2P)}`, tp2Col);
+        }
+      }
+    }
+  }
+
   // NATIVE BROWSER STRUCTURAL WAVE & NATIVE FORECAST OVERLAY (Zero PHP exec / Zero Python / Zero Cron)
   if (tab.showStructuralForecast) {
     const rawRenderMode = String(

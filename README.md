@@ -76,7 +76,7 @@ The roadmap follows a strict **Build → Install → Practical Test → Owner Ap
 | 3 | Holiday-aware Smart Gap detection, EIA/CSV/BIFF8 imports, `CSV` export & `AES-256-GCM` Backup/Restore | **Shipped in code (`v1.41–v1.44`)** | [ROADMAP_BACKLOG.md](docs/03-roadmap-and-issues/ROADMAP_BACKLOG.md) |
 | 4 | Unified Forecast Studio (Browser-Native JS live on Web; Python/Chronos-2 deferred to dedicated server) | **Web Browser-Native Live (`v1.47.41`) · Python/Chronos-2 Shelved · Consistency & OOS Acceptance Open** | [FORECAST_PRODUCT_FOUNDATION_V1.md](docs/01-product/FORECAST_PRODUCT_FOUNDATION_V1.md) |
 | 5 | Live Feedback Loop, `Purged + Embargoed Walk-Forward` governance & `Champion/Challenger` promotion gate | **Planned** | [CHART_INTELLIGENCE_MASTER_SPEC.md](docs/01-product/CHART_INTELLIGENCE_MASTER_SPEC.md) |
-| 6 | Offline Strategy Simulator & Multi-user admin | **Planned** | [TRADING_STRATEGY_SPEC.md](docs/01-product/TRADING_STRATEGY_SPEC.md) |
+| 6 | Classical Signal Generators (`Net R:R ≥ 2.0` Hard Gate), Offline Strategy Simulator (`strategy-sim/2.0`) & Multi-User Admin RBAC | **Web Live (`v1.47.41`) · Android `strategy-sim/1.0` & Admin RBAC Shipped** | [TRADING_STRATEGY_SPEC.md](docs/01-product/TRADING_STRATEGY_SPEC.md) · [SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md](docs/02-architecture/SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md) |
 
 ## Architecture
 
