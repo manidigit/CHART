@@ -36,6 +36,10 @@ import {
   invalidateTabChronosIfStale,
   reconcileTabChronosStateOnRender,
   isStructuralForecastMatchingTab,
+  isPinnedPreviousForecastMatchingTab,
+  evaluateOnChartForecastProgress,
+  pinCurrentForecastAsPrevious,
+  clearTabPinnedForecasts,
   clearTabStructuralForecast,
   invalidateTabStructuralForecastIfStale,
   reconcileTabStructuralForecastOnRender,
@@ -484,7 +488,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
       existing.showChronosForecast = false;
     }
     if (!isSameTabContext && !isStructuralForecastMatchingTab(existing, existing.structuralForecast)) {
-      clearTabStructuralForecast(existing);
+      clearTabStructuralForecast(existing, { clearPinned: true });
       existing.showStructuralForecast = false;
     } else if (existing.structuralForecast && !isStructuralForecastMatchingTab(existing, existing.structuralForecast)) {
       clearTabStructuralForecast(existing);
@@ -560,6 +564,7 @@ function openOrFocusSymbolTab(symbolCode, requestedTf) {
     newTab.structuralForecast = null;
     newTab.structuralForecastStatus = 'IDLE';
     newTab.structuralForecastError = '';
+    newTab.pinnedPreviousForecasts = [];
     state.openTabs.push(newTab);
     state.activeTabId = tabId;
     saveActiveTabId(state.activeTabId);
@@ -721,7 +726,39 @@ function renderOhlcvOverlay(activeTab) {
               ? 'Range'
               : rawBias;
       const biasTag = bias ? ` · ${bias}` : '';
-      pushPill(true, fCol, `Forecast (+${hLen}${bandTag}${biasTag})`, 'toggle-structural-forecast');
+      const modelLabel =
+        fPayload.engine?.engine_id === 'native_model_adapter'
+          ? String(fPayload.model?.name || fPayload.model?.id || 'Forecast').slice(0, 20)
+          : String(activeTab.structuralForecastModel || '') === 'empirical_analogs'
+            ? 'Analogs'
+            : 'Forecast';
+      const liveProg = evaluateOnChartForecastProgress(
+        activeTab.candles,
+        fPayload,
+        activeTab.timeframe,
+        activeTab.symbolCode
+      );
+      const liveStatHtml =
+        liveProg && liveProg.evaluatedBars > 0
+          ? `<span class="tv-ind-pill-live-stat">${escapeHtml(
+              isFa
+                ? `+${liveProg.elapsedBars} کندل · ${liveProg.inBandCount}/${liveProg.evaluatedBars} در بازه (${Math.round(liveProg.hitRatePct || 0)}%)`
+                : `+${liveProg.elapsedBars} bars · ${liveProg.inBandCount}/${liveProg.evaluatedBars} in-band (${Math.round(liveProg.hitRatePct || 0)}%)`
+            )}</span>`
+          : '';
+      const refreshBtnTitle = isFa
+        ? 'دریافت کندل جدید و رسم پیش‌بینی اصلاح‌شده با حفظ پیش‌بینی قبلی روی چارت'
+        : 'Sync latest candle & plot updated forecast while keeping previous forecast on chart';
+      const refreshBtnLabel = isFa ? '↻ رفرش (حفظ قبلی)' : '↻ Refresh (Keep Prev)';
+      pills.push(
+        `<span class="tv-ind-pill tv-ind-pill-forecast" style="border-color:${escapeHtml(fCol)}88">
+          <span class="tv-ind-pill-dot" style="background:${escapeHtml(fCol)}"></span>
+          <span>${escapeHtml(`${modelLabel} (+${hLen}${bandTag}${biasTag})`)}</span>
+          ${liveStatHtml}
+          <button type="button" class="tv-ind-pill-btn tv-ind-pill-refresh" data-action="refresh-forecast-keep-previous" title="${escapeHtml(refreshBtnTitle)}">${escapeHtml(refreshBtnLabel)}</button>
+          <button type="button" class="tv-ind-pill-close" data-action="toggle-structural-forecast" title="Remove">✕</button>
+        </span>`
+      );
     } else if (activeTab.structuralForecastStatus === 'COMPUTING') {
       pushPill(
         true,
@@ -748,6 +785,33 @@ function renderOhlcvOverlay(activeTab) {
     } else {
       pushPill(true, fCol, 'Forecast (Structural JS)', 'toggle-structural-forecast');
     }
+  }
+  const validPinnedForecasts = (Array.isArray(activeTab.pinnedPreviousForecasts)
+    ? activeTab.pinnedPreviousForecasts
+    : []
+  ).filter((item) => isPinnedPreviousForecastMatchingTab(activeTab, item));
+  if (validPinnedForecasts.length > 0) {
+    const isFa = i18n.getCurrentLanguage() === 'fa';
+    const latestPinProg = evaluateOnChartForecastProgress(
+      activeTab.candles,
+      validPinnedForecasts[0],
+      activeTab.timeframe,
+      activeTab.symbolCode
+    );
+    const pinStat =
+      latestPinProg && latestPinProg.evaluatedBars > 0
+        ? ` · ${latestPinProg.inBandCount}/${latestPinProg.evaluatedBars} ✓`
+        : '';
+    const pinLabel = isFa
+      ? `پیش‌بینی قبلی (${validPinnedForecasts.length})${pinStat}`
+      : `Prev Forecast (${validPinnedForecasts.length})${pinStat}`;
+    pills.push(
+      `<span class="tv-ind-pill tv-ind-pill-prev" style="border-color:#F59E0B88">
+        <span class="tv-ind-pill-dot" style="background:#F59E0B"></span>
+        <span>${escapeHtml(pinLabel)}</span>
+        <button type="button" class="tv-ind-pill-close" data-action="clear-pinned-forecasts" title="${escapeHtml(isFa ? 'پاک کردن پیش‌بینی‌های قبلی' : 'Clear previous forecasts')}">✕</button>
+      </span>`
+    );
   }
   if (activeTab.showChronosForecast) {
     const cCol = pal.chronosQ50 || '#A855F7';
@@ -2833,7 +2897,7 @@ document.addEventListener('click', async (e) => {
     activeTab.priceScaleFactor = 1.0;
     activeTab.verticalPriceOffset = 0.0;
     activeTab.drawings = state.drawingsByChartId[activeTab.chartId] || [];
-    clearTabStructuralForecast(activeTab);
+    clearTabStructuralForecast(activeTab, { clearPinned: true });
     activeTab.showStructuralForecast = wasForecastActive;
     if (wasForecastActive) {
       activeTab.structuralForecastStatus = 'COMPUTING';
@@ -2889,7 +2953,7 @@ document.addEventListener('click', async (e) => {
     const tfChanged = activeTab.timeframe !== targetTf;
     const wasForecastActive = Boolean(activeTab.showStructuralForecast);
     if (tfChanged) {
-      clearTabStructuralForecast(activeTab);
+      clearTabStructuralForecast(activeTab, { clearPinned: true });
       activeTab.showStructuralForecast = wasForecastActive;
       if (wasForecastActive) {
         activeTab.structuralForecastStatus = 'COMPUTING';
@@ -3518,7 +3582,7 @@ document.addEventListener('click', async (e) => {
         activeTab.structuralForecastError = '';
       }
     } else {
-      clearTabStructuralForecast(activeTab);
+      clearTabStructuralForecast(activeTab, { clearPinned: true });
     }
     syncIndicatorsAcrossTabsAndPrefs(activeTab);
     renderApp();
@@ -3545,6 +3609,108 @@ document.addEventListener('click', async (e) => {
         });
       }
     }
+  } else if (action === 'refresh-forecast-keep-previous' && activeTab) {
+    const isFa = i18n.getCurrentLanguage() === 'fa';
+    if (!activeTab.showStructuralForecast || !isStructuralForecastMatchingTab(activeTab, activeTab.structuralForecast)) {
+      showFloatingToast(
+        isFa ? 'ابتدا یک پیش‌بینی روی چارت فعال کنید.' : 'Plot a forecast on the chart first.'
+      );
+      return;
+    }
+    const prevOriginMs = Number(activeTab.structuralForecast?.series?.origin_open_time_utc_ms || 0);
+    const activeModel = String(
+      activeTab.structuralForecastModel ||
+        activeTab.structuralForecast?.model?.requested_id ||
+        activeTab.structuralForecast?.model?.id ||
+        'structural_wave_js'
+    );
+    const targetSymbol = activeTab.symbolCode;
+    const targetTf = activeTab.timeframe;
+
+    if (state.isAuthenticated) {
+      try {
+        await syncSymbolNow(targetSymbol, targetTf, null, false, true);
+      } catch {
+        // Proceed with cached candles if sync transiently fails
+      }
+    }
+    if (activeTab.symbolCode !== targetSymbol || activeTab.timeframe !== targetTf) return;
+    const latestCandles = getCachedOrAggregatedCandles(activeTab.symbolCode, activeTab.provider, activeTab.timeframe);
+    if (Array.isArray(latestCandles) && latestCandles.length > 0) {
+      activeTab.candles = latestCandles;
+    }
+
+    const progressAfterSync = evaluateOnChartForecastProgress(
+      activeTab.candles,
+      activeTab.structuralForecast,
+      activeTab.timeframe,
+      activeTab.symbolCode
+    );
+    const hasNewerClosedCandle =
+      Boolean(progressAfterSync && progressAfterSync.elapsedBars > 0) ||
+      Boolean(progressAfterSync && progressAfterSync.latestClosedOpenMs > prevOriginMs);
+
+    if (!hasNewerClosedCandle) {
+      renderApp();
+      redrawActiveCanvas();
+      showFloatingToast(
+        isFa
+          ? 'هنوز کندل بسته جدیدی بعد از مبدأ پیش‌بینی فعلی ثبت نشده است.'
+          : 'No newer closed candle has formed since the current forecast origin.'
+      );
+      return;
+    }
+
+    pinCurrentForecastAsPrevious(activeTab, 3);
+    activeTab.scrollOffset = 0;
+    activeTab.showStructuralForecast = true;
+
+    if (activeModel !== 'structural_wave_js') {
+      const ok = applyNativeModelForecastToTab(activeTab, activeModel);
+      if (ok) {
+        showFloatingToast(
+          isFa
+            ? `پیش‌بینی اصلاح‌شده پس از ${progressAfterSync.elapsedBars} کندل جدید با حفظ قبلی رسم شد.`
+            : `Updated forecast plotted after +${progressAfterSync.elapsedBars} new candle(s) with previous kept.`
+        );
+      }
+      saveOpenTabsToStorage();
+      renderApp();
+      redrawActiveCanvas();
+    } else {
+      activeTab.structuralForecastStatus = 'COMPUTING';
+      activeTab.structuralForecastError = '';
+      renderApp();
+      redrawActiveCanvas();
+      requestStructuralForecastForTab(
+        activeTab,
+        () => {
+          renderApp();
+          redrawActiveCanvas();
+        },
+        true
+      )
+        .then((res) => {
+          if (res && res.status === 'READY') {
+            showFloatingToast(
+              isFa
+                ? `پیش‌بینی اصلاح‌شده پس از ${progressAfterSync.elapsedBars} کندل جدید با حفظ قبلی رسم شد.`
+                : `Updated forecast plotted after +${progressAfterSync.elapsedBars} new candle(s) with previous kept.`
+            );
+          }
+        })
+        .catch((err) => {
+          activeTab.structuralForecast = null;
+          activeTab.structuralForecastStatus = 'ERROR';
+          activeTab.structuralForecastError = (err && err.message) || 'Structural forecast refresh failed';
+          renderApp();
+          redrawActiveCanvas();
+        });
+    }
+  } else if (action === 'clear-pinned-forecasts' && activeTab) {
+    clearTabPinnedForecasts(activeTab);
+    renderApp();
+    redrawActiveCanvas();
   } else if (action === 'set-structural-forecast-model' && activeTab) {
     const requestedModel = String(el.getAttribute('data-model') || '');
     const allowedCustomModels = ['AUTO', 'structural_wave_js', 'smc_prediction_js', 'empirical_analogs', 'ensemble'];
@@ -3556,7 +3722,7 @@ document.addEventListener('click', async (e) => {
     }
     if (activeTab.showStructuralForecast) {
       activeTab.showStructuralForecast = false;
-      clearTabStructuralForecast(activeTab);
+      clearTabStructuralForecast(activeTab, { clearPinned: true });
     }
     saveOpenTabsToStorage();
     renderApp();
@@ -3624,7 +3790,7 @@ document.addEventListener('click', async (e) => {
     renderApp();
   } else if (action === 'apply-native-forecast-to-chart' && activeTab) {
     if (activeTab.showStructuralForecast && activeTab.structuralForecast?.engine?.engine_id === 'native_model_adapter') {
-      activeTab.showStructuralForecast = false; clearTabStructuralForecast(activeTab); saveOpenTabsToStorage(); renderApp(); redrawActiveCanvas(); return;
+      activeTab.showStructuralForecast = false; clearTabStructuralForecast(activeTab, { clearPinned: true }); saveOpenTabsToStorage(); renderApp(); redrawActiveCanvas(); return;
     }
     const requestedId = String(activeTab.structuralForecastModel || activeTab.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
     const selectedId = requestedId === 'structural_wave_js' ? (activeTab.selectedForecastModelId || 'AUTO') : requestedId;
@@ -4986,7 +5152,9 @@ async function bootstrap() {
           const periodicRefresh = isIntraday && nowMs - Math.max(lastAuto, lastFetch) >= 60000;
           if (nearBarClose || periodicRefresh) {
             tab._lastAutoSyncMs = nowMs;
-            syncSymbolNow(tab.symbolCode, tab.timeframe, requestBackgroundRender, false, true).catch(() => {});
+            syncSymbolNow(tab.symbolCode, tab.timeframe, requestBackgroundRender, false, true)
+              .then(() => requestBackgroundRender())
+              .catch(() => {});
           }
 
           // ENG-02: Non-intrusive 15s read-only forming quote tick polling

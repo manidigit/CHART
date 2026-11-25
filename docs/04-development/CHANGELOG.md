@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.47.41] - 2026-11-25
 
+### Added (`LIVE-FORECAST-COMPARE-REFRESH-01`: Live On-Chart Forecast Persistence, Candle-by-Candle Realized Comparison & Refresh Keep Previous)
+- **On-Chart Forecast Persistence & Live Progress Evaluation (`host_subdomain/assets/js/core/store.js`, `services/structuralForecastService.js`):**
+  - Updated `isStructuralForecastMatchingTab(tab, payload, { requireLatestOrigin, allowAnyModel, allowAnyHorizon })` so an active forecast anchored on a closed origin candle **remains plotted on the main chart** as newer candles form and close (e.g., via 15m live background sync), while preserving strict origin-candle close integrity checks and `requireLatestOrigin: true` for fresh computation/cache hits in `structuralForecastService.js`.
+  - Added `evaluateOnChartForecastProgress()` to compute live candle-by-candle comparison metrics (`elapsedBars`, `evaluatedBars`, `inBandCount`, `hitRatePct`, `meanErrPct`, `latestDirMatch`, per-bar `items`) plus `pinCurrentForecastAsPrevious()` (deduplicated, capped at 3), `isPinnedPreviousForecastMatchingTab()`, and `clearTabPinnedForecasts()`.
+- **Canvas Live Comparison & Pinned Previous Forecast Overlays (`host_subdomain/assets/js/components/chartRenderer.js`):**
+  - Fixed `forecastHorizonSlots`, X-axis `timeAxisItems`, and crosshair future step indexing to align cleanly when `elapsedBars > 0` (eliminating empty right-edge drift as real candles progress through the forecast horizon).
+  - Rendered live deviation stems and green/red in-band hit/miss markers on realized closed candles, live accuracy stats in the in-chart forecast badge, floating `Pred vs Real` crosshair tooltips on realized candles, and dashed pinned previous forecast paths (`Prev #1..#3`) with origin markers and accuracy labels.
+- **On-Chart Refresh (Keep Previous) Controls (`host_subdomain/assets/js/app.js`, `assets/css/theme.css`):**
+  - Upgraded the active Forecast overlay pill in `renderOhlcvOverlay()` with live realized progress (`+N کندل · X/Y در بازه` / `+N bars · X/Y in-band`), an inline **`↻ رفرش (حفظ قبلی)` / `↻ Refresh (Keep Prev)`** action (`refresh-forecast-keep-previous`) that syncs the latest closed candle, pins the previous forecast on chart, and plots the updated/self-corrected forecast from the latest candle, plus a removable **`پیش‌بینی قبلی (N) ✕` / `Prev Forecast (N) ✕`** pill (`clear-pinned-forecasts`).
+  - Triggered immediate UI refresh after background candle sync completes so live comparison badges update automatically as candles close.
+- **Verification:**
+  - Added `LIVE-FORECAST-COMPARE-REFRESH-01` regression test in `tests/web_parity.test.mjs`; verified `node --check` on all modified JS files and **64/64** passing tests.
+
 ### Changed (`FORECAST-UX-SIMPLIFY-03`: Everyday Forecast UX Simplification, Duplicate Guard, Clean History Table & Explicit Model Comparison)
 - **Duplicate Snapshot Prevention (`host_subdomain/assets/js/forecast/forecastLedger.js`, `app.js`):**
   - Added `findRecentDuplicateEntry()` matching same symbol + timeframe + horizon + model on the same closed anchor candle or within a 5-minute window, with opt-in `options.preventDuplicate` in `appendFromForecast()` and `appendBatchFromForecast()` (enabled on UI snapshot/batch clicks with clear FA/EN duplicate notifications while preserving append-only SHA-256 chain integrity and backward compatibility for programmatic callers).

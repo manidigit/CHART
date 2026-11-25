@@ -9,6 +9,8 @@ import {
   hexToRgba,
   isChronosForecastMatchingTab,
   isStructuralForecastMatchingTab,
+  isPinnedPreviousForecastMatchingTab,
+  evaluateOnChartForecastProgress,
 } from '../core/store.js?v=1.47.41';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
@@ -344,6 +346,16 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const chronosPoints = hasValidChronosForecast ? tab.chronosForecast.forecast : [];
   const showChronosBand = tab.showChronosBand !== false;
 
+  const resolveForecastOriginGlobalIdx = (payload) => {
+    const originOpenMs = Number(payload?.series?.origin_open_time_utc_ms || 0);
+    if (!(originOpenMs > 0)) return -1;
+    for (let i = candles.length - 1; i >= 0; i--) {
+      const cMs = Number(candles[i].open_time_utc_ms || (candles[i].openTimeSec ? candles[i].openTimeSec * 1000 : 0));
+      if (cMs === originOpenMs) return i;
+    }
+    return -1;
+  };
+
   const activeForecastPoints = hasValidStructuralForecast ? structuralPoints : chronosPoints;
   const hasAnyValidForecast =
     (hasValidStructuralForecast && structuralPoints.length > 0) ||
@@ -353,10 +365,41 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     : hasValidChronosForecast
       ? chronosPoints.length
       : 0;
+  const activeGlobalOriginIdx = hasValidStructuralForecast
+    ? resolveForecastOriginGlobalIdx(tab.structuralForecast)
+    : hasValidChronosForecast
+      ? resolveForecastOriginGlobalIdx(tab.chronosForecast)
+      : -1;
+  const activeForecastProgress = hasValidStructuralForecast
+    ? evaluateOnChartForecastProgress(candles, tab.structuralForecast, tab.timeframe, tab.symbolCode)
+    : null;
+  const pinnedPreviousForecasts = (Array.isArray(tab.pinnedPreviousForecasts) ? tab.pinnedPreviousForecasts : []).filter(
+    (item) => isPinnedPreviousForecastMatchingTab(tab, item)
+  );
+  const pinnedProgressList = pinnedPreviousForecasts.map((pf) => ({
+    payload: pf,
+    originGlobalIdx: resolveForecastOriginGlobalIdx(pf),
+    progress: evaluateOnChartForecastProgress(candles, pf, tab.timeframe, tab.symbolCode),
+  }));
+
+  const activeFutureBeyondCandles =
+    hasAnyValidForecast && activeGlobalOriginIdx >= 0
+      ? Math.max(0, activeGlobalOriginIdx + activeHorizonCount - (candles.length - 1))
+      : hasAnyValidForecast
+        ? activeHorizonCount
+        : 0;
+  let maxPinnedFutureBeyondCandles = 0;
+  for (const item of pinnedProgressList) {
+    if (item.originGlobalIdx >= 0 && Array.isArray(item.payload.forecast)) {
+      const pFuture = Math.max(0, item.originGlobalIdx + item.payload.forecast.length - (candles.length - 1));
+      if (pFuture > maxPinnedFutureBeyondCandles) maxPinnedFutureBeyondCandles = pFuture;
+    }
+  }
+  const totalFutureBeyondCandles = Math.max(activeFutureBeyondCandles, maxPinnedFutureBeyondCandles);
 
   const forecastHorizonSlots =
-    hasAnyValidForecast && offset === 0
-      ? Math.max(1, Math.min(120, activeHorizonCount))
+    offset === 0 && totalFutureBeyondCandles > 0
+      ? Math.max(1, Math.min(120, totalFutureBeyondCandles))
       : 0;
 
   if (hasValidStructuralForecast && offset === 0) {
@@ -413,6 +456,18 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
             if (qn < rawMin) rawMin = qn;
             if (qn > rawMax) rawMax = qn;
           }
+        }
+      }
+    }
+  }
+
+  if (pinnedProgressList.length > 0 && offset === 0) {
+    for (const item of pinnedProgressList) {
+      for (const fp of item.payload.forecast || []) {
+        const q50 = Number(fp.q50_median);
+        if (Number.isFinite(q50) && q50 > 0) {
+          if (q50 < rawMin) rawMin = q50;
+          if (q50 > rawMax) rawMax = q50;
         }
       }
     }
@@ -505,14 +560,21 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     forecastHorizonSlots > 0 && lastVisOpenMs > 0
       ? [
           ...visible,
-          ...Array.from({ length: forecastHorizonSlots }, (_, k) => ({
-            open_time_utc_ms:
-              hasValidStructuralForecast && structuralPoints[k]?.open_time_utc_ms
-                ? Number(structuralPoints[k].open_time_utc_ms)
-                : hasValidChronosForecast && chronosPoints[k]?.target_open_time_utc_ms
-                  ? Number(chronosPoints[k].target_open_time_utc_ms)
+          ...Array.from({ length: forecastHorizonSlots }, (_, k) => {
+            const futureStepIdx =
+              activeGlobalOriginIdx >= 0 ? candles.length + k - activeGlobalOriginIdx - 1 : k;
+            const sPt =
+              hasValidStructuralForecast && futureStepIdx >= 0 ? structuralPoints[futureStepIdx] : null;
+            const cPt =
+              hasValidChronosForecast && futureStepIdx >= 0 ? chronosPoints[futureStepIdx] : null;
+            return {
+              open_time_utc_ms: sPt?.open_time_utc_ms
+                ? Number(sPt.open_time_utc_ms)
+                : cPt?.target_open_time_utc_ms
+                  ? Number(cPt.target_open_time_utc_ms)
                   : lastVisOpenMs + (k + 1) * stepMsAxis,
-          })),
+            };
+          }),
         ]
       : visible;
 
@@ -1492,6 +1554,184 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   }
 
   // NATIVE BROWSER STRUCTURAL WAVE & NATIVE FORECAST OVERLAY (Zero PHP exec / Zero Python / Zero Cron)
+  // Pinned Previous Forecasts (kept on chart when user refreshes forecast after new candles)
+  if (pinnedProgressList.length > 0) {
+    const pinPalette = ['#F59E0B', '#94A3B8', '#64748B'];
+    // Render oldest to newest so newest previous forecast sits cleanly above older pins
+    for (let pinRank = pinnedProgressList.length - 1; pinRank >= 0; pinRank--) {
+      const { payload: pf, originGlobalIdx: pGlobalOriginIdx, progress: pProgress } = pinnedProgressList[pinRank];
+      if (pGlobalOriginIdx < 0 || !candles[pGlobalOriginIdx]) continue;
+      const pOriginIdx = pGlobalOriginIdx - startIdx;
+      const pOriginClose = Number(candles[pGlobalOriginIdx].close);
+      if (!Number.isFinite(pOriginClose)) continue;
+      const pOriginX = idxToX(pOriginIdx);
+      const pOriginY = priceToY(pOriginClose);
+      const pinColor = pinPalette[Math.min(pinRank, pinPalette.length - 1)];
+      const isNewestPin = pinRank === 0;
+
+      const isPinAnalog =
+        pf.engine?.engine_id !== 'native_model_adapter' &&
+        String(pf.pinnedModelId || pf.model?.id || '') === 'empirical_analogs';
+      const pinAnalogPath = isPinAnalog
+        ? (pf.model_paths || []).find((mp) => mp.model_id === 'empirical_analogs' && Array.isArray(mp.points) && mp.points.length > 0)
+        : null;
+      const rawPinForecast =
+        isPinAnalog && pinAnalogPath
+          ? pinAnalogPath.points.map((pt) => ({
+              step: Number(pt.step),
+              q50_median: Number(pt.price),
+              q25: Number(pt.price),
+              q75: Number(pt.price),
+            }))
+          : pf.forecast || [];
+
+      const pPts = rawPinForecast
+        .map((fp, idx) => {
+          const stepNum = Number(fp.step || idx + 1);
+          const x = idxToX(pOriginIdx + stepNum);
+          const q50 = Number(fp.q50_median);
+          const q25 = Number(fp.q25);
+          const q75 = Number(fp.q75);
+          const q10 = Number.isFinite(Number(fp.q10)) && Number(fp.q10) > 0 ? Number(fp.q10) : q25;
+          const q90 = Number.isFinite(Number(fp.q90)) && Number(fp.q90) > 0 ? Number(fp.q90) : q75;
+          return {
+            step: stepNum,
+            x,
+            q10,
+            q25,
+            q50,
+            q75,
+            q90,
+            yQ10: priceToY(q10),
+            yQ25: priceToY(q25),
+            yQ50: priceToY(q50),
+            yQ75: priceToY(q75),
+            yQ90: priceToY(q90),
+          };
+        })
+        .filter((p) => Number.isFinite(p.q50) && p.x >= -slotW && p.x <= chartW + slotW);
+
+      if (pPts.length === 0) continue;
+
+      ctx.save();
+      // Subtle vertical origin anchor divider for previous forecast
+      if (pOriginX >= 0 && pOriginX <= chartW) {
+        ctx.strokeStyle = hexToRgba(pinColor, isNewestPin ? 0.45 : 0.28);
+        ctx.lineWidth = 1;
+        ctx.setLineDash([2, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pOriginX, topPad);
+        ctx.lineTo(pOriginX, topPad + chartH);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        const originTimeLabel = PriceFormatter.formatCandleUtc(
+          pf.series?.origin_open_time_utc_ms,
+          tab.timeframe,
+          tzMode
+        );
+        const shortOriginTime = originTimeLabel.length > 11 ? originTimeLabel.slice(-5) : originTimeLabel;
+        const originTag = `Prev #${pinRank + 1} · ${shortOriginTime}`;
+        ctx.font = '600 9px "JetBrains Mono", monospace';
+        const otW = ctx.measureText(originTag).width + 8;
+        const otX = Math.max(4, Math.min(chartW - otW - 4, pOriginX - otW / 2));
+        const otY = topPad + chartH - 18 - pinRank * 16;
+        ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.86)' : 'rgba(255, 255, 255, 0.92)';
+        ctx.strokeStyle = hexToRgba(pinColor, 0.65);
+        ctx.lineWidth = 0.9;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(otX, otY, otW, 14, 3);
+        else ctx.rect(otX, otY, otW, 14);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = pinColor;
+        ctx.fillText(originTag, otX + 4, otY + 10);
+      }
+
+      // Subtle dashed uncertainty band outline for pinned forecast
+      if (tab.showForecastBand !== false && !isPinAnalog) {
+        ctx.fillStyle = hexToRgba(pinColor, isNewestPin ? (isDark ? 0.06 : 0.05) : 0.03);
+        ctx.beginPath();
+        ctx.moveTo(pOriginX, pOriginY);
+        for (let i = 0; i < pPts.length; i++) ctx.lineTo(pPts[i].x, pPts[i].yQ90);
+        for (let i = pPts.length - 1; i >= 0; i--) ctx.lineTo(pPts[i].x, pPts[i].yQ10);
+        ctx.closePath();
+        ctx.fill();
+
+        ctx.strokeStyle = hexToRgba(pinColor, isNewestPin ? 0.34 : 0.22);
+        ctx.lineWidth = 0.9;
+        ctx.setLineDash([2, 4]);
+        ctx.beginPath();
+        ctx.moveTo(pOriginX, pOriginY);
+        for (let i = 0; i < pPts.length; i++) ctx.lineTo(pPts[i].x, pPts[i].yQ90);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(pOriginX, pOriginY);
+        for (let i = 0; i < pPts.length; i++) ctx.lineTo(pPts[i].x, pPts[i].yQ10);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Dashed previous Q50 path
+      ctx.strokeStyle = hexToRgba(pinColor, isNewestPin ? 0.88 : 0.62);
+      ctx.lineWidth = isNewestPin ? 1.9 : 1.4;
+      ctx.lineJoin = 'round';
+      ctx.lineCap = 'round';
+      ctx.setLineDash([6, 4]);
+      ctx.beginPath();
+      ctx.moveTo(pOriginX, pOriginY);
+      for (let i = 0; i < pPts.length; i++) ctx.lineTo(pPts[i].x, pPts[i].yQ50);
+      ctx.stroke();
+      ctx.setLineDash([]);
+
+      // Origin anchor dot
+      if (pOriginX >= -slotW && pOriginX <= chartW) {
+        ctx.fillStyle = pinColor;
+        ctx.beginPath();
+        ctx.arc(pOriginX, pOriginY, 2.8, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Realized comparison dots for newest pinned forecast
+      if (isNewestPin && pProgress && pProgress.items.length > 0) {
+        for (const item of pProgress.items) {
+          const vIdx = item.candleIdx - startIdx;
+          if (vIdx < 0 || vIdx >= visible.length) continue;
+          const cx = idxToX(vIdx);
+          const cyActual = priceToY(item.actualClose);
+          ctx.strokeStyle = item.inBand ? '#10B981' : '#EF4444';
+          ctx.lineWidth = 1.4;
+          ctx.beginPath();
+          ctx.arc(cx, cyActual, 3.3, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+
+      // Compact end-of-path comparison label for pinned forecast
+      const pLast = pPts[pPts.length - 1];
+      const pModelShort = String(pf.pinnedModelName || pf.model?.name || pf.model?.id || 'Prev').slice(0, 14);
+      const pStatTxt =
+        pProgress && pProgress.evaluatedBars > 0
+          ? `Prev #${pinRank + 1} (${pModelShort}) · ${pProgress.inBandCount}/${pProgress.evaluatedBars} ✓${Number.isFinite(pProgress.meanErrPct) ? ` · ${pProgress.meanErrPct.toFixed(2)}%` : ''}`
+          : `Prev #${pinRank + 1} (${pModelShort})`;
+      ctx.font = '600 9.5px "JetBrains Mono", monospace';
+      const pLblW = Math.min(chartW - 16, ctx.measureText(pStatTxt).width + 10);
+      const pLblX = Math.max(6, Math.min(chartW - pLblW - 6, pLast.x - pLblW + 4));
+      const pLblY = Math.max(topPad + 32 + pinRank * 18, Math.min(topPad + chartH - 36, pLast.yQ50 - 18));
+      ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.88)' : 'rgba(255, 255, 255, 0.94)';
+      ctx.strokeStyle = hexToRgba(pinColor, 0.72);
+      ctx.lineWidth = 0.95;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(pLblX, pLblY, pLblW, 15, 3);
+      else ctx.rect(pLblX, pLblY, pLblW, 15);
+      ctx.fill();
+      ctx.stroke();
+      ctx.fillStyle = pinColor;
+      ctx.fillText(pStatTxt, pLblX + 5, pLblY + 10.5, pLblW - 10);
+      ctx.restore();
+    }
+  }
+
   if (tab.showStructuralForecast) {
     const rawRenderMode = String(
       tab.forecastRenderMode ||
@@ -1513,15 +1753,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     const fcBandCol = isCoordinatedLayer ? '#A855F7' : (indPal.structuralForecastBand || fcColor);
 
     if (hasValidStructuralForecast && structuralPoints.length > 0) {
-      const originOpenMs = Number(tab.structuralForecast.series?.origin_open_time_utc_ms || 0);
-      let globalOriginIdx = -1;
-      for (let i = candles.length - 1; i >= 0; i--) {
-        const cMs = Number(candles[i].open_time_utc_ms || (candles[i].openTimeSec ? candles[i].openTimeSec * 1000 : 0));
-        if (cMs === originOpenMs) {
-          globalOriginIdx = i;
-          break;
-        }
-      }
+      const globalOriginIdx = activeGlobalOriginIdx;
       const originIdx = globalOriginIdx >= 0 ? globalOriginIdx - startIdx : -1;
 
       // Highlight historical Swing Highs / Lows used for structural wave calibration when visible
@@ -1588,7 +1820,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           const drawQuantileBars = isNativeModelAdapter && !isHistoricalAnalogSelected && (activeRenderMode === 'GHOST_CANDLES' || activeRenderMode === 'HYBRID');
 
           ctx.save();
-          // 1. Future Forecast Zone background & vertical anchor divider at last closed candle
+          // 1. Future Forecast Zone background & vertical anchor divider at origin closed candle
           ctx.fillStyle = isDark ? hexToRgba(fcColor, 0.04) : hexToRgba(fcColor, 0.032);
           ctx.fillRect(originX, topPad, Math.max(0, Math.min(chartW, lastPt.x + slotW * 0.5) - originX), chartH);
 
@@ -1721,6 +1953,43 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           for (let i = 0; i < pts.length; i++) ctx.lineTo(pts[i].x, pts[i].yQ50);
           ctx.stroke();
 
+          // 3b. Live Realized-vs-Forecast Comparison Markers when newer closed candles have formed after origin
+          if (activeForecastProgress && activeForecastProgress.evaluatedBars > 0) {
+            ctx.save();
+            for (const evalItem of activeForecastProgress.items) {
+              const vIdx = evalItem.candleIdx - startIdx;
+              if (vIdx < 0 || vIdx >= visible.length) continue;
+              const cx = idxToX(vIdx);
+              const yPred = priceToY(evalItem.predQ50);
+              const yActual = priceToY(evalItem.actualClose);
+              const hitColor = evalItem.inBand ? '#10B981' : '#EF4444';
+
+              // Vertical deviation stem between predicted Q50 and realized Close
+              ctx.strokeStyle = evalItem.inBand ? 'rgba(16, 185, 129, 0.72)' : 'rgba(239, 68, 68, 0.80)';
+              ctx.lineWidth = 1.4;
+              ctx.beginPath();
+              ctx.moveTo(cx, yPred);
+              ctx.lineTo(cx, yActual);
+              ctx.stroke();
+
+              // Predicted node on forecast path
+              ctx.fillStyle = fcColor;
+              ctx.beginPath();
+              ctx.arc(cx, yPred, 2.3, 0, Math.PI * 2);
+              ctx.fill();
+
+              // Realized close hit/miss marker
+              ctx.fillStyle = hitColor;
+              ctx.strokeStyle = isDark ? '#0F172A' : '#FFFFFF';
+              ctx.lineWidth = 1.2;
+              ctx.beginPath();
+              ctx.arc(cx, yActual, 3.2, 0, Math.PI * 2);
+              ctx.fill();
+              ctx.stroke();
+            }
+            ctx.restore();
+          }
+
           // Optional main-chart comparison overlays: q50 paths only, no fabricated OHLC or bands.
           if (isNativeModelAdapter && compareTrajectories.length > 0) {
             const comparePalette = ['#38BDF8', '#F59E0B', '#A78BFA', '#34D399', '#FB7185', '#94A3B8'];
@@ -1756,7 +2025,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           // Historical Analogs is rendered through the selected-model path above.
           // Never draw it as a secondary overlay while Structural JS is selected.
 
-          // Anchor point on last closed candle Close
+          // Anchor point on origin closed candle Close
           ctx.fillStyle = fcColor;
           ctx.beginPath();
           ctx.arc(originX, originY, 3.6, 0, Math.PI * 2);
@@ -1778,7 +2047,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
             ctx.restore();
           }
 
-          // Info badge inside forecast zone (explicitly identifies Active Native/Structural Engine & Layer)
+          // Info badge inside forecast zone (explicitly identifies Active Native/Structural Engine & Live Realized Progress)
           const biasShort =
             params.structure_bias === 'BULLISH_STRUCTURE'
               ? 'Bullish'
@@ -1796,11 +2065,15 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           const modeTag = activeRenderMode === 'HYBRID' ? 'Hybrid' : activeRenderMode === 'GHOST_CANDLES' ? 'QBars' : 'Fan';
           const coordTag = isCoordinatedLayer ? ' · MTF:Coord' : '';
           const autoPrefix = tab.structuralForecast.model?.requested_id === 'AUTO' ? 'AUTO → ' : '';
+          const liveCompareSuffix =
+            activeForecastProgress && activeForecastProgress.evaluatedBars > 0
+              ? ` · Live +${activeForecastProgress.elapsedBars}b · ${activeForecastProgress.inBandCount}/${activeForecastProgress.evaluatedBars} in-band (${Math.round(activeForecastProgress.hitRatePct || 0)}%)${Number.isFinite(activeForecastProgress.meanErrPct) ? ` · err ${activeForecastProgress.meanErrPct.toFixed(2)}%` : ''}`
+              : '';
           const badgeTxt = isNativeModelAdapter
-            ? `${autoPrefix}${tab.structuralForecast.model?.name || tab.structuralForecast.model?.id || 'Native Model'} (+${pts.length} · ${modeTag}${coordTag} · OOS ${tab.structuralForecast.model?.oos?.status || 'NOT_EVALUATED'} · engine ${tab.structuralForecast.model?.source_engine_status || 'UNASSESSED'})`
+            ? `${autoPrefix}${tab.structuralForecast.model?.name || tab.structuralForecast.model?.id || 'Native Model'} (+${pts.length} · ${modeTag}${coordTag} · OOS ${tab.structuralForecast.model?.oos?.status || 'NOT_EVALUATED'} · engine ${tab.structuralForecast.model?.source_engine_status || 'UNASSESSED'})${liveCompareSuffix}`
             : isHistoricalAnalogSelected
-              ? `Historical Analogs (+${pts.length} · ${analogCount} matches · illustrative)`
-              : `Structural JS (+${pts.length} · ${biasShort} · ${volShort} · ${gradeTag})`;
+              ? `Historical Analogs (+${pts.length} · ${analogCount} matches · illustrative)${liveCompareSuffix}`
+              : `Structural JS (+${pts.length} · ${biasShort} · ${volShort} · ${gradeTag})${liveCompareSuffix}`;
           ctx.font = 'bold 10px "JetBrains Mono", monospace';
           const bTw = Math.min(chartW - 24, ctx.measureText(badgeTxt).width + 14);
           const bX = Math.min(chartW - bTw - 8, Math.max(8, originX + 6));
@@ -3196,8 +3469,8 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     ? indPal.structuralForecastPath || '#8B5CF6'
     : indPal.chronosQ50 || '#A855F7';
   const maxInteractiveSlot =
-    hasAnyValidForecast && offset === 0
-      ? visible.length + hoverForecastPoints.length - 1
+    offset === 0 && forecastHorizonSlots > 0
+      ? visible.length + forecastHorizonSlots - 1
       : visible.length - 1;
   const hoverIdx =
     tab.hoverIndex !== null && tab.hoverIndex !== undefined
@@ -3210,8 +3483,17 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
   if (hoverIdx !== null && hoverIdx >= 0 && hoverIdx <= maxInteractiveSlot) {
     const isFutureHover = hoverIdx >= visible.length;
-    const futureStepIdx = isFutureHover ? hoverIdx - visible.length : -1;
-    const fPt = isFutureHover && hoverForecastPoints[futureStepIdx] ? hoverForecastPoints[futureStepIdx] : null;
+    const globalHoverIdx = startIdx + hoverIdx;
+    const futureStepIdx =
+      isFutureHover && activeGlobalOriginIdx >= 0
+        ? globalHoverIdx - activeGlobalOriginIdx - 1
+        : isFutureHover
+          ? hoverIdx - visible.length
+          : -1;
+    const fPt =
+      isFutureHover && futureStepIdx >= 0 && hoverForecastPoints[futureStepIdx]
+        ? hoverForecastPoints[futureStepIdx]
+        : null;
     const hc = !isFutureHover ? visible[hoverIdx] : null;
     const hx = idxToX(hoverIdx);
     const defaultPrice = fPt ? Number(fPt.q50_median) : hc ? Number(hc.close) : minP;
@@ -3246,9 +3528,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
     const rawTimeMs = fPt
       ? fPt.open_time_utc_ms || fPt.target_open_time_utc_ms
-      : hc
-        ? hc.open_time_utc_ms || hc.openTimeUtc || hc.open_time_utc_iso
-        : 0;
+      : isFutureHover && lastVisOpenMs > 0
+        ? lastVisOpenMs + (hoverIdx - visible.length + 1) * stepMsAxis
+        : hc
+          ? hc.open_time_utc_ms || hc.openTimeUtc || hc.open_time_utc_iso
+          : 0;
     const timeText = PriceFormatter.formatCandleUtc(rawTimeMs, tab.timeframe, tzMode);
     ctx.font = 'bold 10.5px "JetBrains Mono", monospace';
     const tw = ctx.measureText(timeText).width + 14;
@@ -3260,7 +3544,11 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
     if (fPt) {
       const prefix = hasValidStructuralForecast
-        ? (isHistoricalAnalogSelected ? 'Historical Analogs' : 'Structural JS')
+        ? (isHistoricalAnalogSelected
+            ? 'Historical Analogs'
+            : isNativeModelAdapter
+              ? String(tab.structuralForecast.model?.name || tab.structuralForecast.model?.id || 'Model')
+              : 'Structural JS')
         : 'Chronos-2';
       const tipText = isHistoricalAnalogSelected
         ? `${prefix} (+${fPt.step}) · Path: ${PriceFormatter.formatPrice(fPt.q50_median, tab.decimals)} · Illustrative`
@@ -3279,6 +3567,39 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ctx.stroke();
       ctx.fillStyle = isDark ? '#F8FAFC' : '#0F172A';
       ctx.fillText(tipText, tipX + 7, tipY + 13);
+    } else if (hc) {
+      // Live realized candle vs active/pinned forecast comparison tooltip
+      const activeEval = activeForecastProgress?.items?.find((item) => item.candleIdx === globalHoverIdx) || null;
+      const pinEval =
+        pinnedProgressList.length > 0
+          ? pinnedProgressList[0].progress?.items?.find((item) => item.candleIdx === globalHoverIdx) || null
+          : null;
+      const primaryEval = activeEval || pinEval;
+      if (primaryEval) {
+        const isFromActive = Boolean(activeEval);
+        const sign = Number(primaryEval.signedErrPct || 0) >= 0 ? '+' : '';
+        const errStr = Number.isFinite(primaryEval.signedErrPct) ? `${sign}${primaryEval.signedErrPct.toFixed(2)}%` : '—';
+        const statusStr = primaryEval.inBand ? '✓ In Band' : '✗ Out Band';
+        const pinExtra =
+          isFromActive && pinEval
+            ? ` | Prev: ${PriceFormatter.formatPrice(pinEval.predQ50, tab.decimals)} (${pinEval.inBand ? '✓' : '✗'})`
+            : '';
+        const tipText = `${isFromActive ? 'Forecast' : 'Prev'} (+${primaryEval.step}) · Pred ${PriceFormatter.formatPrice(primaryEval.predQ50, tab.decimals)} vs Real ${PriceFormatter.formatPrice(primaryEval.actualClose, tab.decimals)} (${errStr}) · ${statusStr}${pinExtra}`;
+        ctx.font = 'bold 10px "JetBrains Mono", monospace';
+        const tipW = Math.min(chartW - 16, ctx.measureText(tipText).width + 14);
+        const tipX = Math.max(8, Math.min(chartW - tipW - 8, hx - tipW / 2));
+        const tipY = Math.max(topPad + 30, priceToY(Number(hc.high || hc.close)) - 26);
+        ctx.fillStyle = isDark ? 'rgba(19, 23, 34, 0.94)' : 'rgba(255, 255, 255, 0.96)';
+        ctx.strokeStyle = primaryEval.inBand ? '#10B981' : '#EF4444';
+        ctx.lineWidth = 1.1;
+        ctx.beginPath();
+        if (ctx.roundRect) ctx.roundRect(tipX, tipY, tipW, 19, 4);
+        else ctx.rect(tipX, tipY, tipW, 19);
+        ctx.fill();
+        ctx.stroke();
+        ctx.fillStyle = isDark ? '#F8FAFC' : '#0F172A';
+        ctx.fillText(tipText, tipX + 7, tipY + 13, tipW - 14);
+      }
     }
   }
 

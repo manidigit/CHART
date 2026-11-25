@@ -4345,3 +4345,252 @@ test('FORECAST-UX-SIMPLIFY-03: duplicate snapshot prevention, simplified history
     state._ledgerCompareMode = prevCompareMode;
   }
 });
+
+test('LIVE-FORECAST-COMPARE-REFRESH-01: on-chart forecast persists across newly closed candles, tracks live hit/miss metrics, pins previous forecasts on refresh, and renders comparison overlays', async () => {
+  const {
+    isStructuralForecastMatchingTab,
+    isPinnedPreviousForecastMatchingTab,
+    evaluateOnChartForecastProgress,
+    pinCurrentForecastAsPrevious,
+    clearTabPinnedForecasts,
+    clearTabStructuralForecast,
+    invalidateTabStructuralForecastIfStale,
+    reconcileTabStructuralForecastOnRender,
+  } = await import('../host_subdomain/assets/js/core/store.js');
+  const { renderCandlestickCanvas } = await import('../host_subdomain/assets/js/components/chartRenderer.js');
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const cssSource = await readFile(new URL('../host_subdomain/assets/css/theme.css', import.meta.url), 'utf8');
+
+  // 1. Build 50 closed M15 candles in the past so every candle is deterministically closed
+  const stepMs = 15 * 60 * 1000;
+  const startMs = Date.UTC(2026, 2, 10, 8, 0, 0);
+  const baseCandles = Array.from({ length: 50 }, (_, i) => {
+    const close = 100 + i * 0.25;
+    return {
+      open_time_utc_ms: startMs + i * stepMs,
+      open_time_utc_iso: new Date(startMs + i * stepMs).toISOString(),
+      open: close - 0.1,
+      high: close + 0.3,
+      low: close - 0.3,
+      close,
+      volume: 1000,
+      is_closed: true,
+    };
+  });
+
+  const originCandle = baseCandles[baseCandles.length - 1];
+  const makeForecastAt = (originBar, horizon = 10, modelId = 'naive_persistence') => ({
+    status: 'READY',
+    engine: {
+      engine_id: 'native_model_adapter',
+      is_chronos2: false,
+      params: {
+        horizon_bars: horizon,
+        model_id: modelId,
+        requested_model_id: modelId,
+      },
+    },
+    model: {
+      id: modelId,
+      requested_id: modelId,
+      name: modelId === 'naive_persistence' ? 'Naive Persistence' : 'Trend Model',
+      oos: { status: 'EVALUATED' },
+      source_engine_status: 'READY',
+    },
+    series: {
+      symbol: 'BTCUSD',
+      provider: 'tvdatafeed',
+      timeframe: 'M15',
+      origin_open_time_utc_ms: originBar.open_time_utc_ms,
+      last_closed_price: originBar.close,
+    },
+    forecast: Array.from({ length: horizon }, (_, idx) => {
+      const step = idx + 1;
+      const q50 = originBar.close + step * 0.2;
+      return {
+        step,
+        open_time_utc_ms: originBar.open_time_utc_ms + step * stepMs,
+        q10: q50 - 0.6,
+        q25: q50 - 0.3,
+        q50_median: q50,
+        q75: q50 + 0.3,
+        q90: q50 + 0.6,
+      };
+    }),
+  });
+
+  const initialForecast = makeForecastAt(originCandle, 10, 'naive_persistence');
+  const tab = {
+    tabId: 'tab_live_fc',
+    symbolCode: 'BTCUSD',
+    provider: 'tvdatafeed',
+    timeframe: 'M15',
+    decimals: 2,
+    candles: [...baseCandles],
+    visibleCount: 40,
+    scrollOffset: 0,
+    showStructuralForecast: true,
+    showForecastBand: true,
+    forecastHorizonBars: 10,
+    structuralForecastHorizonBars: 10,
+    structuralForecastModel: 'naive_persistence',
+    structuralForecast: initialForecast,
+    structuralForecastStatus: 'READY',
+    structuralForecastError: '',
+    pinnedPreviousForecasts: [],
+  };
+
+  // Fresh forecast matches both default and requireLatestOrigin
+  assert.equal(isStructuralForecastMatchingTab(tab, tab.structuralForecast), true);
+  assert.equal(isStructuralForecastMatchingTab(tab, tab.structuralForecast, { requireLatestOrigin: true }), true);
+
+  // 2. Append 3 newly closed candles (2 inside band, 1 outside band)
+  const newBars = [
+    {
+      open_time_utc_ms: originCandle.open_time_utc_ms + 1 * stepMs,
+      open_time_utc_iso: new Date(originCandle.open_time_utc_ms + 1 * stepMs).toISOString(),
+      open: originCandle.close,
+      high: originCandle.close + 0.4,
+      low: originCandle.close - 0.1,
+      close: originCandle.close + 0.25, // step +1 pred q50 = +0.20, band [-0.40..+0.80] -> IN BAND
+      volume: 1100,
+      is_closed: true,
+    },
+    {
+      open_time_utc_ms: originCandle.open_time_utc_ms + 2 * stepMs,
+      open_time_utc_iso: new Date(originCandle.open_time_utc_ms + 2 * stepMs).toISOString(),
+      open: originCandle.close + 0.25,
+      high: originCandle.close + 0.7,
+      low: originCandle.close + 0.1,
+      close: originCandle.close + 0.5, // step +2 pred q50 = +0.40, band [-0.20..+1.00] -> IN BAND
+      volume: 1150,
+      is_closed: true,
+    },
+    {
+      open_time_utc_ms: originCandle.open_time_utc_ms + 3 * stepMs,
+      open_time_utc_iso: new Date(originCandle.open_time_utc_ms + 3 * stepMs).toISOString(),
+      open: originCandle.close + 0.5,
+      high: originCandle.close + 2.6,
+      low: originCandle.close + 0.4,
+      close: originCandle.close + 2.4, // step +3 pred q50 = +0.60, band [0.00..+1.20] -> OUT OF BAND
+      volume: 1400,
+      is_closed: true,
+    },
+  ];
+  tab.candles = [...baseCandles, ...newBars];
+
+  // Forecast MUST NOT vanish when newer closed candles arrive!
+  assert.equal(isStructuralForecastMatchingTab(tab, tab.structuralForecast), true, 'Forecast must stay valid on chart as newer candles close');
+  assert.equal(
+    isStructuralForecastMatchingTab(tab, tab.structuralForecast, { requireLatestOrigin: true }),
+    false,
+    'requireLatestOrigin must detect that newer closed candles exist for refresh'
+  );
+  invalidateTabStructuralForecastIfStale(tab);
+  reconcileTabStructuralForecastOnRender(tab);
+  assert.equal(tab.showStructuralForecast, true, 'Background sync invalidation must keep forecast active on chart');
+  assert.ok(tab.structuralForecast, 'Forecast payload must remain intact after new candle arrival');
+
+  // Live comparison metrics
+  const prog = evaluateOnChartForecastProgress(tab.candles, tab.structuralForecast, 'M15', 'BTCUSD');
+  assert.ok(prog, 'Must compute live forecast progress');
+  assert.equal(prog.elapsedBars, 3);
+  assert.equal(prog.evaluatedBars, 3);
+  assert.equal(prog.inBandCount, 2);
+  assert.equal(Math.round(prog.hitRatePct), 67);
+  assert.equal(prog.latestDirMatch, true);
+  assert.equal(prog.items.length, 3);
+  assert.equal(prog.items[0].inBand, true);
+  assert.equal(prog.items[1].inBand, true);
+  assert.equal(prog.items[2].inBand, false);
+
+  // 3. Pin current forecast as previous, then refresh to latest closed candle
+  assert.equal(pinCurrentForecastAsPrevious(tab, 3), true);
+  assert.equal(tab.pinnedPreviousForecasts.length, 1);
+  // Deduplication check: pinning the exact same forecast again must not create duplicates
+  assert.equal(pinCurrentForecastAsPrevious(tab, 3), true);
+  assert.equal(tab.pinnedPreviousForecasts.length, 1);
+
+  const refreshedForecast = makeForecastAt(newBars[2], 10, 'naive_persistence');
+  tab.structuralForecast = refreshedForecast;
+  assert.equal(isStructuralForecastMatchingTab(tab, tab.structuralForecast, { requireLatestOrigin: true }), true);
+  assert.equal(isPinnedPreviousForecastMatchingTab(tab, tab.pinnedPreviousForecasts[0]), true);
+
+  // 4. Canvas rendering with both pinned previous forecast + active forecast + realized hover tooltip
+  const drawnTexts = [];
+  const mockCtx = {
+    setTransform() {},
+    scale() {},
+    createLinearGradient: () => ({ addColorStop() {} }),
+    clearRect() {},
+    fillRect() {},
+    strokeRect() {},
+    beginPath() {},
+    moveTo() {},
+    lineTo() {},
+    closePath() {},
+    arc() {},
+    fill() {},
+    stroke() {},
+    save() {},
+    restore() {},
+    translate() {},
+    rotate() {},
+    clip() {},
+    rect() {},
+    setLineDash() {},
+    roundRect() {},
+    measureText: (txt) => ({ width: String(txt).length * 6.5 }),
+    fillText: (txt) => { drawnTexts.push(String(txt)); },
+  };
+  const mockCanvas = {
+    width: 900,
+    height: 460,
+    parentElement: { clientWidth: 900, clientHeight: 460 },
+    style: {},
+    getBoundingClientRect: () => ({ left: 0, top: 0, width: 900, height: 460 }),
+    getContext: () => mockCtx,
+  };
+  // Hover directly on the 2nd realized candle of the pinned forecast (global index 51 -> visible index within last 40 bars)
+  tab.hoverIndex = 38;
+  tab.hoverY = 180;
+  const prevWindow = globalThis.window;
+  globalThis.window = { ...(prevWindow || {}), devicePixelRatio: 1 };
+  try {
+    renderCandlestickCanvas(mockCanvas, tab, { isDarkTheme: true, timezoneMode: 'UTC' }, null);
+  } finally {
+    if (prevWindow === undefined) delete globalThis.window;
+    else globalThis.window = prevWindow;
+  }
+  assert.ok(drawnTexts.some((t) => t.includes('Prev #1')), 'Chart must render pinned previous forecast origin/accuracy label');
+  assert.ok(drawnTexts.some((t) => t.includes('Pred ') && t.includes('vs Real ')), 'Hovering a realized candle must render Pred vs Real comparison tooltip');
+
+  // 5. Origin candle price revision STILL invalidates cleanly
+  const corruptedTab = {
+    ...tab,
+    candles: tab.candles.map((c, idx) =>
+      idx === tab.candles.length - 1 ? { ...c, close: c.close + 9.5 } : c
+    ),
+  };
+  assert.equal(isStructuralForecastMatchingTab(corruptedTab, corruptedTab.structuralForecast), false);
+  invalidateTabStructuralForecastIfStale(corruptedTab);
+  assert.equal(corruptedTab.structuralForecast, null);
+  assert.equal(corruptedTab.showStructuralForecast, false);
+
+  // 6. Explicit clear removes pinned forecasts cleanly
+  clearTabPinnedForecasts(tab);
+  assert.equal(tab.pinnedPreviousForecasts.length, 0);
+  pinCurrentForecastAsPrevious(tab, 3);
+  assert.equal(tab.pinnedPreviousForecasts.length, 1);
+  clearTabStructuralForecast(tab, { clearPinned: true });
+  assert.equal(tab.pinnedPreviousForecasts.length, 0);
+
+  // 7. UI action & CSS wiring checks
+  assert.match(appSource, /data-action="refresh-forecast-keep-previous"/, 'OHLCV overlay must expose Refresh (Keep Previous) button');
+  assert.match(appSource, /data-action="clear-pinned-forecasts"/, 'OHLCV overlay must expose Clear Previous Forecasts button');
+  assert.match(appSource, /action === 'refresh-forecast-keep-previous'/, 'app.js must wire refresh-forecast-keep-previous action');
+  assert.match(appSource, /action === 'clear-pinned-forecasts'/, 'app.js must wire clear-pinned-forecasts action');
+  assert.match(cssSource, /\.tv-ind-pill-live-stat/, 'theme.css must style live forecast comparison stat pill');
+  assert.match(cssSource, /\.tv-ind-pill-prev/, 'theme.css must style pinned previous forecast pill');
+});
+

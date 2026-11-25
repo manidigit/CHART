@@ -1311,6 +1311,7 @@ function loadOpenTabsFromStorage() {
       structuralForecast: null,
       structuralForecastStatus: 'IDLE',
       structuralForecastError: '',
+      pinnedPreviousForecasts: [],
     }));
   } catch {
     return [];
@@ -2242,10 +2243,139 @@ export function reconcileTabChronosStateOnRender(tab) {
   }
 }
 
-export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.structuralForecast) {
+export function evaluateOnChartForecastProgress(candles, forecastPayload, timeframe = 'M15', symbolCode = '') {
+  if (
+    !Array.isArray(candles) ||
+    candles.length === 0 ||
+    !forecastPayload ||
+    !Array.isArray(forecastPayload.forecast) ||
+    forecastPayload.forecast.length === 0
+  ) {
+    return null;
+  }
+  const series = forecastPayload.series || {};
+  const originOpenMs = Number(series.origin_open_time_utc_ms || 0);
+  if (!(originOpenMs > 0)) return null;
+
+  const tf = String(timeframe || series.timeframe || 'M15').trim().toUpperCase();
+  const sym = String(symbolCode || series.symbol || '').trim().toUpperCase();
+  const nowMs = Date.now();
+
+  let originIdx = -1;
+  let latestClosedIdx = -1;
+  let latestClosedOpenMs = 0;
+
+  for (let i = candles.length - 1; i >= 0; i--) {
+    const c = candles[i];
+    const openMs = Number(c?.open_time_utc_ms || (c?.openTimeSec ? c.openTimeSec * 1000 : 0));
+    if (latestClosedIdx < 0 && openMs > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(openMs, tf, nowMs, sym)) {
+      latestClosedIdx = i;
+      latestClosedOpenMs = openMs;
+    }
+    if (originIdx < 0 && openMs === originOpenMs) {
+      originIdx = i;
+    }
+    if (latestClosedIdx >= 0 && originIdx >= 0) break;
+  }
+
+  if (originIdx < 0 || latestClosedIdx < originIdx) return null;
+
+  const originCandle = candles[originIdx];
+  const originClose = Number(originCandle?.close);
+  const elapsedBars = Math.max(0, latestClosedIdx - originIdx);
+  const horizonBars = forecastPayload.forecast.length;
+  const evaluatedBars = Math.min(elapsedBars, horizonBars);
+
+  const items = [];
+  let inBandCount = 0;
+  let errPctSum = 0;
+  let errPctCount = 0;
+
+  for (let step = 1; step <= evaluatedBars; step++) {
+    const candleIdx = originIdx + step;
+    const actualCandle = candles[candleIdx];
+    const fp = forecastPayload.forecast[step - 1];
+    if (!actualCandle || !fp) continue;
+    const actualClose = Number(actualCandle.close);
+    const predQ50 = Number(fp.q50_median);
+    const rawQ10 = Number(fp.q10);
+    const rawQ90 = Number(fp.q90);
+    const rawQ25 = Number(fp.q25);
+    const rawQ75 = Number(fp.q75);
+    const bandLow = Number.isFinite(rawQ10) && rawQ10 > 0 ? rawQ10 : rawQ25;
+    const bandHigh = Number.isFinite(rawQ90) && rawQ90 > 0 ? rawQ90 : rawQ75;
+    const inBand =
+      Number.isFinite(actualClose) &&
+      Number.isFinite(bandLow) &&
+      Number.isFinite(bandHigh) &&
+      actualClose >= Math.min(bandLow, bandHigh) &&
+      actualClose <= Math.max(bandLow, bandHigh);
+    if (inBand) inBandCount += 1;
+
+    const absErrPct =
+      Number.isFinite(actualClose) && actualClose > 0 && Number.isFinite(predQ50)
+        ? (Math.abs(actualClose - predQ50) / actualClose) * 100
+        : null;
+    const signedErrPct =
+      Number.isFinite(actualClose) && Number.isFinite(predQ50) && predQ50 > 0
+        ? ((actualClose - predQ50) / predQ50) * 100
+        : null;
+    if (Number.isFinite(absErrPct)) {
+      errPctSum += absErrPct;
+      errPctCount += 1;
+    }
+
+    items.push({
+      step,
+      candleIdx,
+      openTimeMs: Number(actualCandle.open_time_utc_ms || (actualCandle.openTimeSec ? actualCandle.openTimeSec * 1000 : 0)),
+      actualClose,
+      predQ50,
+      bandLow,
+      bandHigh,
+      inBand,
+      absErrPct,
+      signedErrPct,
+    });
+  }
+
+  let latestDirMatch = null;
+  if (items.length > 0 && Number.isFinite(originClose)) {
+    const lastEval = items[items.length - 1];
+    const predDelta = lastEval.predQ50 - originClose;
+    const actualDelta = lastEval.actualClose - originClose;
+    if (Math.abs(predDelta) > 1e-9 && Math.abs(actualDelta) > 1e-9) {
+      latestDirMatch = Math.sign(predDelta) === Math.sign(actualDelta);
+    }
+  }
+
+  return {
+    originIdx,
+    originOpenMs,
+    originClose,
+    latestClosedIdx,
+    latestClosedOpenMs,
+    elapsedBars,
+    horizonBars,
+    evaluatedBars,
+    inBandCount,
+    hitRatePct: evaluatedBars > 0 ? (inBandCount / evaluatedBars) * 100 : null,
+    meanErrPct: errPctCount > 0 ? errPctSum / errPctCount : null,
+    latestDirMatch,
+    isOutdated: elapsedBars > 0,
+    isCompleted: elapsedBars >= horizonBars,
+    items,
+  };
+}
+
+export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.structuralForecast, options = {}) {
   if (!tab || !forecastPayload || typeof forecastPayload !== 'object') return false;
   if (forecastPayload.status !== 'READY') return false;
   if (!Array.isArray(forecastPayload.forecast) || forecastPayload.forecast.length === 0) return false;
+
+  const requireLatestOrigin = Boolean(options?.requireLatestOrigin);
+  const allowAnyModel = Boolean(options?.allowAnyModel);
+  const allowAnyHorizon = Boolean(options?.allowAnyHorizon);
 
   const engine = forecastPayload.engine || {};
   const series = forecastPayload.series || {};
@@ -2264,47 +2394,150 @@ export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.stru
   if (String(series.symbol || '').trim().toUpperCase() !== tabSym) return false;
   if (String(series.provider || '').trim().toLowerCase() !== tabProv) return false;
   if (String(series.timeframe || '').trim().toUpperCase() !== tabTf) return false;
-  if (Number(params.horizon_bars || 0) !== tabHorizon) return false;
+  if (!allowAnyHorizon && Number(params.horizon_bars || 0) !== tabHorizon) return false;
   const isAutoRequestedMatch =
     String(tab.structuralForecastModel || '') === 'AUTO' &&
     String(params.requested_model_id || '') === 'AUTO';
-  if (isNativeModelAdapter && !isAutoRequestedMatch && String(params.model_id || '') !== String(tab.structuralForecastModel || 'naive_persistence')) return false;
+  if (
+    !allowAnyModel &&
+    isNativeModelAdapter &&
+    !isAutoRequestedMatch &&
+    String(params.model_id || '') !== String(tab.structuralForecastModel || 'naive_persistence')
+  ) {
+    return false;
+  }
 
   const candles = Array.isArray(tab.candles) ? tab.candles : [];
   if (candles.length === 0) return false;
+  const originOpenMs = Number(series.origin_open_time_utc_ms || 0);
+  if (!(originOpenMs > 0)) return false;
+
   const nowMs = Date.now();
   let lastClosedOpenMs = 0;
-  let lastClosedPrice = NaN;
+  let originCandle = null;
   for (let i = candles.length - 1; i >= 0; i--) {
     const c = candles[i];
-    const openMs = Number(c?.open_time_utc_ms || 0);
-    if (openMs > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(openMs, tabTf, nowMs, tabSym)) {
+    const openMs = Number(c?.open_time_utc_ms || (c?.openTimeSec ? c.openTimeSec * 1000 : 0));
+    if (
+      lastClosedOpenMs <= 0 &&
+      openMs > 0 &&
+      c?.is_closed !== false &&
+      PriceFormatter.isCandleClosed(openMs, tabTf, nowMs, tabSym)
+    ) {
       lastClosedOpenMs = openMs;
-      lastClosedPrice = Number(c?.close);
-      break;
     }
+    if (!originCandle && openMs === originOpenMs) {
+      originCandle = c;
+    }
+    if (lastClosedOpenMs > 0 && originCandle) break;
   }
-  if (lastClosedOpenMs <= 0) return false;
-  if (Number(series.origin_open_time_utc_ms) !== lastClosedOpenMs) return false;
+  if (lastClosedOpenMs <= 0 || !originCandle) return false;
+  if (originCandle?.is_closed === false || !PriceFormatter.isCandleClosed(originOpenMs, tabTf, nowMs, tabSym)) {
+    return false;
+  }
+  if (requireLatestOrigin) {
+    if (originOpenMs !== lastClosedOpenMs) return false;
+  } else if (originOpenMs > lastClosedOpenMs) {
+    return false;
+  }
+
+  const originClosePrice = Number(originCandle.close);
   if (
     series.last_closed_price !== undefined &&
-    Number.isFinite(lastClosedPrice) &&
-    Math.abs(Number(series.last_closed_price) - lastClosedPrice) > 1e-5
+    Number.isFinite(originClosePrice) &&
+    Math.abs(Number(series.last_closed_price) - originClosePrice) > 1e-5
   ) {
     return false;
   }
   return true;
 }
 
-export function clearTabStructuralForecast(tab) {
+export function isPinnedPreviousForecastMatchingTab(tab, forecastPayload) {
+  return isStructuralForecastMatchingTab(tab, forecastPayload, {
+    requireLatestOrigin: false,
+    allowAnyModel: true,
+    allowAnyHorizon: true,
+  });
+}
+
+export function clearTabPinnedForecasts(tab) {
+  if (!tab) return;
+  tab.pinnedPreviousForecasts = [];
+}
+
+export function pinCurrentForecastAsPrevious(tab, maxPinned = 3) {
+  if (!tab || !isStructuralForecastMatchingTab(tab, tab.structuralForecast)) return false;
+  const src = tab.structuralForecast;
+  const originMs = Number(src.series?.origin_open_time_utc_ms || 0);
+  const modelId = String(
+    src.model?.id ||
+      src.engine?.params?.model_id ||
+      tab.structuralForecastModel ||
+      src.engine?.engine_id ||
+      'structural_wave_js'
+  );
+  const modelName = String(
+    src.model?.name ||
+      (modelId === 'empirical_analogs'
+        ? 'Historical Analogs'
+        : modelId === 'structural_wave_js'
+          ? 'Structural JS'
+          : modelId)
+  );
+  const horizonLen = Array.isArray(src.forecast) ? src.forecast.length : 0;
+  const dedupeKey = `${originMs}|${modelId}|${horizonLen}`;
+
+  const snapshot = {
+    status: 'READY',
+    pinnedAtUtcMs: Date.now(),
+    pinnedModelId: modelId,
+    pinnedModelName: modelName,
+    engine: src.engine ? { ...src.engine, params: src.engine.params ? { ...src.engine.params } : {} } : {},
+    series: src.series ? { ...src.series } : {},
+    model: src.model ? { ...src.model } : { id: modelId, name: modelName },
+    data_quality: src.data_quality ? { ...src.data_quality } : {},
+    forecast: (src.forecast || []).map((pt) => ({ ...pt })),
+    model_paths: Array.isArray(src.model_paths)
+      ? src.model_paths
+          .filter((mp) => mp && mp.model_id === modelId)
+          .map((mp) => ({ ...mp, points: Array.isArray(mp.points) ? mp.points.map((p) => ({ ...p })) : [] }))
+      : [],
+    _pinKey: dedupeKey,
+  };
+
+  const existing = Array.isArray(tab.pinnedPreviousForecasts) ? tab.pinnedPreviousForecasts : [];
+  const filtered = existing.filter((item) => {
+    if (!item || !isPinnedPreviousForecastMatchingTab(tab, item)) return false;
+    const itemKey =
+      item._pinKey ||
+      `${Number(item.series?.origin_open_time_utc_ms || 0)}|${String(
+        item.pinnedModelId || item.model?.id || item.engine?.params?.model_id || ''
+      )}|${Array.isArray(item.forecast) ? item.forecast.length : 0}`;
+    return itemKey !== dedupeKey;
+  });
+
+  const cap = Math.max(1, Math.min(5, Math.round(Number(maxPinned || 3))));
+  tab.pinnedPreviousForecasts = [snapshot, ...filtered].slice(0, cap);
+  return true;
+}
+
+export function clearTabStructuralForecast(tab, options = {}) {
   if (!tab) return;
   tab.structuralForecast = null;
   tab.structuralForecastStatus = 'IDLE';
   tab.structuralForecastError = '';
+  if (options && options.clearPinned) {
+    tab.pinnedPreviousForecasts = [];
+  }
 }
 
 export function invalidateTabStructuralForecastIfStale(tab) {
   if (!tab) return;
+  if (Array.isArray(tab.pinnedPreviousForecasts) && tab.pinnedPreviousForecasts.length > 0) {
+    tab.pinnedPreviousForecasts = tab.pinnedPreviousForecasts.filter((item) =>
+      isPinnedPreviousForecastMatchingTab(tab, item)
+    );
+  }
   if (tab.structuralForecast && !isStructuralForecastMatchingTab(tab, tab.structuralForecast)) {
     clearTabStructuralForecast(tab);
     tab.showStructuralForecast = false;
@@ -2320,6 +2553,11 @@ export function invalidateTabStructuralForecastIfStale(tab) {
 
 export function reconcileTabStructuralForecastOnRender(tab) {
   if (!tab) return;
+  if (Array.isArray(tab.pinnedPreviousForecasts) && tab.pinnedPreviousForecasts.length > 0) {
+    tab.pinnedPreviousForecasts = tab.pinnedPreviousForecasts.filter((item) =>
+      isPinnedPreviousForecastMatchingTab(tab, item)
+    );
+  }
   if (tab.showStructuralForecast) {
     if (tab.structuralForecast && tab.structuralForecast.status === 'READY') {
       if (isStructuralForecastMatchingTab(tab, tab.structuralForecast)) {

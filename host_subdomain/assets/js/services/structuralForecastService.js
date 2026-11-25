@@ -183,7 +183,7 @@ export async function requestStructuralForecastForTab(
       return null;
     }
 
-    if (!forceRefresh && isStructuralForecastMatchingTab(tab, tab.structuralForecast)) {
+    if (!forceRefresh && isStructuralForecastMatchingTab(tab, tab.structuralForecast, { requireLatestOrigin: true })) {
       tab.structuralForecastStatus = 'READY';
       tab.structuralForecastError = '';
       if (typeof onRenderUpdate === 'function') onRenderUpdate();
@@ -246,7 +246,7 @@ export async function requestStructuralForecastForTab(
 
     if (!forceRefresh && _structuralForecastMemoryCache.has(cacheKey)) {
       const cached = _structuralForecastMemoryCache.get(cacheKey);
-      if (cached && cached.status === 'READY' && isStructuralForecastMatchingTab(tab, cached)) {
+      if (cached && cached.status === 'READY' && isStructuralForecastMatchingTab(tab, cached, { requireLatestOrigin: true })) {
         cached.served_from_cache = true;
         tab.structuralForecast = cached;
         tab.structuralForecastStatus = 'READY';
@@ -285,7 +285,7 @@ export async function requestStructuralForecastForTab(
     }
 
     if (result && result.status === 'READY' && Array.isArray(result.forecast) && result.forecast.length > 0) {
-      if (isStructuralForecastMatchingTab(tab, result)) {
+      if (isStructuralForecastMatchingTab(tab, result, { requireLatestOrigin: true })) {
         _structuralForecastMemoryCache.set(cacheKey, result);
         tab.structuralForecast = result;
         tab.structuralForecastStatus = 'READY';

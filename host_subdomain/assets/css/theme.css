@@ -1215,6 +1215,68 @@ body.theme-light .tv-ind-pill {
   font-weight: 700;
 }
 
+.tv-ind-pill-live-stat {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 3px;
+  background: rgba(16, 185, 129, 0.16);
+  border: 1px solid rgba(16, 185, 129, 0.42);
+  color: #34d399;
+  font-size: 10px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+html[data-theme='light'] .tv-ind-pill-live-stat,
+body.theme-light .tv-ind-pill-live-stat {
+  background: rgba(16, 185, 129, 0.12);
+  border-color: rgba(5, 150, 105, 0.36);
+  color: #047857;
+}
+
+.tv-ind-pill-btn {
+  border: 1px solid rgba(139, 92, 246, 0.52);
+  background: rgba(139, 92, 246, 0.18);
+  color: #e9d5ff;
+  border-radius: 3px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+  white-space: nowrap;
+}
+
+.tv-ind-pill-btn:hover {
+  background: rgba(139, 92, 246, 0.34);
+  border-color: rgba(167, 139, 250, 0.85);
+}
+
+html[data-theme='light'] .tv-ind-pill-btn,
+body.theme-light .tv-ind-pill-btn {
+  background: rgba(124, 58, 237, 0.1);
+  border-color: rgba(124, 58, 237, 0.45);
+  color: #5b21b6;
+}
+
+html[data-theme='light'] .tv-ind-pill-btn:hover,
+body.theme-light .tv-ind-pill-btn:hover {
+  background: rgba(124, 58, 237, 0.2);
+}
+
+.tv-ind-pill-prev {
+  background: rgba(45, 29, 10, 0.9);
+  color: #fde68a;
+}
+
+html[data-theme='light'] .tv-ind-pill-prev,
+body.theme-light .tv-ind-pill-prev {
+  background: rgba(255, 251, 235, 0.96);
+  color: #92400e;
+}
+
 .tv-ind-pill-close:hover {
   color: var(--bear);
 }
