@@ -233,16 +233,6 @@ export function renderLeftToolRail(activeTab, i18n, activeRailPopup = null) {
         }
       </button>
 
-      <button
-        type="button"
-        class="btn btn-icon ${state.activeModal === 'strategy-lab' ? 'active' : ''}"
-        data-action="open-modal"
-        data-modal="strategy-lab"
-        title="${isFa ? 'شبیه‌ساز آفلاین استراتژی (فاز ۶)' : 'Offline Strategy Simulator (Phase 6)'}"
-      >
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
-      </button>
-
       ${
         activeTab.selectedDrawingId
           ? `<button class="btn btn-icon" style="color: var(--bear); border-color: var(--bear);" data-action="delete-drawing" title="${i18n.t('draw_delete_selected')}">

@@ -18,12 +18,127 @@ export function renderTopHeaderBar(activeTab, i18n) {
       ? ['D1', 'W1']
       : ['M15', 'M30', 'H1', 'H4', 'D1', 'W1'];
 
-  const tfButtons = allowedTfs
+  const currentTf = (activeTab && activeTab.timeframe) || 'M15';
+  const currentTfLabel = PriceFormatter.displayTimeframeLabel(currentTf);
+  const isFa = i18n.getCurrentLanguage() === 'fa';
+  const activeTopDropdown = state.activeTopDropdown || null;
+  const tfFullNames = {
+    M15: isFa ? '۱۵ دقیقه' : '15 minutes',
+    M30: isFa ? '۳۰ دقیقه' : '30 minutes',
+    H1: isFa ? '۱ ساعت' : '1 hour',
+    H4: isFa ? '۴ ساعت' : '4 hours',
+    D1: isFa ? '۱ روز' : '1 day',
+    W1: isFa ? '۱ هفته' : '1 week',
+  };
+  const caretSvg = `<svg class="tv-dropdown-caret" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>`;
+  const checkSvg = `<svg class="tv-dropdown-check" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+  const candlesIconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4v16"/><rect x="6" y="8" width="6" height="8" rx="1"/><path d="M17 3v18"/><rect x="14" y="7" width="6" height="9" rx="1"/></svg>`;
+  const lineIconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>`;
+
+  const tfMenuItems = allowedTfs
     .map((tf) => {
-      const isAct = activeTab && activeTab.timeframe === tf;
-      return `<button class="tv-tool-btn ltr-num ${isAct ? 'active' : ''}" data-action="set-timeframe" data-tf="${tf}">${PriceFormatter.displayTimeframeLabel(tf)}</button>`;
+      const isAct = currentTf === tf;
+      const shortLbl = PriceFormatter.displayTimeframeLabel(tf);
+      const longLbl = tfFullNames[tf] || shortLbl;
+      return `
+        <button
+          type="button"
+          class="tv-dropdown-item ${isAct ? 'active' : ''}"
+          role="menuitemradio"
+          aria-checked="${isAct ? 'true' : 'false'}"
+          data-action="set-timeframe"
+          data-tf="${tf}"
+        >
+          <span class="tv-dropdown-item-main">
+            <span class="tv-dropdown-item-code ltr-num">${shortLbl}</span>
+            <span class="tv-dropdown-item-desc">${longLbl}</span>
+          </span>
+          ${isAct ? checkSvg : ''}
+        </button>`;
     })
     .join('');
+
+  const tfDropdownHtml = `
+        <div class="tv-topbar-dropdown-wrap" data-top-dropdown-wrap="timeframe">
+          <button
+            type="button"
+            class="tv-tool-btn tv-dropdown-trigger ltr-num ${activeTopDropdown === 'timeframe' ? 'active is-open' : ''}"
+            data-action="toggle-top-dropdown"
+            data-dropdown="timeframe"
+            aria-haspopup="menu"
+            aria-expanded="${activeTopDropdown === 'timeframe' ? 'true' : 'false'}"
+            title="${isFa ? 'انتخاب تایم‌فریم کندل‌ها' : 'Select Candle Timeframe'}"
+          >
+            <span>${currentTfLabel}</span>
+            ${caretSvg}
+          </button>
+          <div
+            class="tv-topbar-dropdown-menu ${activeTopDropdown === 'timeframe' ? 'is-open' : ''}"
+            data-top-dropdown-menu="timeframe"
+            role="menu"
+            dir="${isFa ? 'rtl' : 'ltr'}"
+          >
+            <div class="tv-dropdown-section-label">${isFa ? 'تایم‌فریم' : 'TIMEFRAME'}</div>
+            ${tfMenuItems}
+          </div>
+        </div>
+  `;
+
+  const isLineChart = Boolean(activeTab && activeTab.chartType === 'line');
+  const candlesLabel = i18n.t('chart_type_candles') || (isFa ? 'کندل (Candles)' : 'Candles');
+  const lineLabel = i18n.t('chart_type_line') || (isFa ? 'خطی (Line)' : 'Line');
+  const chartTypeDropdownHtml = `
+        <div class="tv-topbar-dropdown-wrap" data-top-dropdown-wrap="chart-type">
+          <button
+            type="button"
+            class="tv-tool-btn tv-dropdown-trigger ${activeTopDropdown === 'chart-type' ? 'active is-open' : ''}"
+            data-action="toggle-top-dropdown"
+            data-dropdown="chart-type"
+            aria-haspopup="menu"
+            aria-expanded="${activeTopDropdown === 'chart-type' ? 'true' : 'false'}"
+            title="${isLineChart ? lineLabel : candlesLabel}"
+          >
+            ${isLineChart ? lineIconSvg : candlesIconSvg}
+            ${caretSvg}
+          </button>
+          <div
+            class="tv-topbar-dropdown-menu ${activeTopDropdown === 'chart-type' ? 'is-open' : ''}"
+            data-top-dropdown-menu="chart-type"
+            role="menu"
+            dir="${isFa ? 'rtl' : 'ltr'}"
+          >
+            <div class="tv-dropdown-section-label">${isFa ? 'نوع نمودار' : 'CHART STYLE'}</div>
+            <button
+              type="button"
+              class="tv-dropdown-item ${!isLineChart ? 'active' : ''}"
+              role="menuitemradio"
+              aria-checked="${!isLineChart ? 'true' : 'false'}"
+              data-action="set-chart-type"
+              data-type="candles"
+            >
+              <span class="tv-dropdown-item-main">
+                ${candlesIconSvg}
+                <span>${candlesLabel}</span>
+              </span>
+              ${!isLineChart ? checkSvg : ''}
+            </button>
+            <button
+              type="button"
+              class="tv-dropdown-item ${isLineChart ? 'active' : ''}"
+              role="menuitemradio"
+              aria-checked="${isLineChart ? 'true' : 'false'}"
+              data-action="set-chart-type"
+              data-type="line"
+            >
+              <span class="tv-dropdown-item-main">
+                ${lineIconSvg}
+                <span>${lineLabel}</span>
+              </span>
+              ${isLineChart ? checkSvg : ''}
+            </button>
+          </div>
+        </div>
+  `;
 
   const activeIndicatorsCount = activeTab
     ? (activeTab.showSma20 ? 1 : 0) +
@@ -61,7 +176,6 @@ export function renderTopHeaderBar(activeTab, i18n) {
       (activeTab.showCandlePatterns ? 1 : 0)
     : 1;
 
-  const isFa = i18n.getCurrentLanguage() === 'fa';
   const connStatus = (sym && sym.connectionStatus) || 'OFFLINE';
   const lastFetchMs = Number((sym && sym.lastSuccessfulFetchMs) || 0);
   const lastCloseMs = Number((sym && sym.lastCandleCloseMs) || 0);
@@ -108,6 +222,7 @@ export function renderTopHeaderBar(activeTab, i18n) {
   const indicatorsLabel = isFa ? 'اندیکاتورها' : 'Indicators';
   const chartNavLabel = isFa ? 'چارت' : 'Chart';
   const forecastNavLabel = isFa ? 'پیش‌بینی' : 'Forecast';
+  const strategyNavLabel = isFa ? 'استراتژی' : 'Strategy';
   const performanceNavLabel = isFa ? 'عملکرد' : 'Performance';
   const watchlistNavLabel = isFa ? 'واچ‌لیست' : 'Watchlist';
   const settingsNavLabel = isFa ? 'تنظیمات' : 'Settings';
@@ -155,19 +270,22 @@ export function renderTopHeaderBar(activeTab, i18n) {
 
   const isForecastView = state.activeWorkspaceView === 'forecast';
   const isSettingsActive = state.activeModal === 'settings';
-  const isOverviewActive = !isSettingsActive && Boolean(state.symbolOverviewCode);
+  const isStrategyActive = state.activeModal === 'strategy-lab';
+  const isOverviewActive = !isSettingsActive && !isStrategyActive && Boolean(state.symbolOverviewCode);
   const isWatchlistActive =
     !isSettingsActive &&
+    !isStrategyActive &&
     !isOverviewActive &&
     Boolean(state.isSideDrawerOpen);
 
   const forecastDisabledTitle = isFa ? 'ورود به فضای مستقل پیش‌بینی' : 'Open dedicated Forecast workspace';
+  const strategyNavTitle = isFa ? 'شبیه‌ساز آفلاین استراتژی (فاز ۶)' : 'Offline Strategy Simulator (Phase 6)';
 
   const topWorkspaceNavHtml = `
         <div class="tv-toolbar-group tv-top-nav-group" role="navigation" aria-label="Workspace Navigation">
           <button
             type="button"
-            class="tv-tool-btn ${!isOverviewActive && !isSettingsActive && !isForecastView ? 'active' : ''}"
+            class="tv-tool-btn ${!isOverviewActive && !isSettingsActive && !isStrategyActive && !isForecastView ? 'active' : ''}"
             data-action="set-workspace-view"
             data-view="chart"
             title="${chartNavLabel}"
@@ -184,6 +302,16 @@ export function renderTopHeaderBar(activeTab, i18n) {
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1.5"/></svg>
             <span>${forecastNavLabel}</span>
+          </button>
+          <button
+            type="button"
+            class="tv-tool-btn ${isStrategyActive ? 'active' : ''}"
+            data-action="open-modal"
+            data-modal="strategy-lab"
+            title="${strategyNavTitle}"
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+            <span>${strategyNavLabel}</span>
           </button>
           <button
             type="button"
@@ -237,10 +365,8 @@ export function renderTopHeaderBar(activeTab, i18n) {
 
         <div class="tv-divider"></div>
 
-        <!-- Unified Candle Timeframes Group (15m, 30m, 1h, 4h, 1D, 1W) -->
-        <div class="tv-toolbar-group" title="Candle Timeframes">
-          ${tfButtons}
-        </div>
+        <!-- TradingView-style Candle Timeframe Dropdown -->
+        ${tfDropdownHtml}
 
         <div class="tv-divider"></div>
 
@@ -268,22 +394,13 @@ export function renderTopHeaderBar(activeTab, i18n) {
 
         <div class="tv-divider"></div>
 
-        <!-- Unified Candle Timeframes Group (15m, 1h, 4h, 1D, 1W) -->
-        <div class="tv-toolbar-group" title="Candle Timeframes">
-          ${tfButtons}
-        </div>
+        <!-- TradingView-style Candle Timeframe Dropdown -->
+        ${tfDropdownHtml}
 
         <div class="tv-divider"></div>
 
-        <!-- Unified Chart Style Group (Candles / Line) -->
-        <div class="tv-toolbar-group" title="Chart Type">
-          <button class="tv-tool-btn ${activeTab && activeTab.chartType !== 'line' ? 'active' : ''}" data-action="set-chart-type" data-type="candles" title="${i18n.t('chart_type_candles')}">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 4v16"/><rect x="6" y="8" width="6" height="8" rx="1"/><path d="M17 3v18"/><rect x="14" y="7" width="6" height="9" rx="1"/></svg>
-          </button>
-          <button class="tv-tool-btn ${activeTab && activeTab.chartType === 'line' ? 'active' : ''}" data-action="set-chart-type" data-type="line" title="${i18n.t('chart_type_line')}">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 17 9 11 13 15 21 7"/><polyline points="14 7 21 7 21 14"/></svg>
-          </button>
-        </div>
+        <!-- TradingView-style Chart Style Dropdown (Candles / Line) -->
+        ${chartTypeDropdownHtml}
 
         <div class="tv-divider"></div>
 

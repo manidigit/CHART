@@ -91,7 +91,7 @@
 ## ۴. دستورات استاندارد بررسی و بیلد
 
 قبل از پایان هر نوبت کدنویسی، راستی‌آزمایی واقعی انجام دهید و خروجی واقعی را گزارش کنید:
-- **تست پاریتی و رگرسیون وب (شامل `ARCH-02` و `STORAGE-QUOTA-01`):** `npm test` (یا `node --test tests/web_parity.test.mjs` — فعلاً ۶۰/۶۰ پاس)
+- **تست پاریتی و رگرسیون وب (شامل `ARCH-02` و `STORAGE-QUOTA-01`):** `npm test` (یا `node --test tests/web_parity.test.mjs` — فعلاً ۶۱/۶۱ پاس)
 - **بررسی سینتکس ES6 وب:** `node --check` روی فایل‌های تغییریافته در `host_subdomain/assets/js/`
 - **بیلد اندروید:** ابزار `compile_applet` (یا `gradle assembleDebug`)
 - **تست واحد اندروید:** `gradle :app:testDebugUnitTest`

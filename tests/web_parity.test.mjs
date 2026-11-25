@@ -3821,6 +3821,78 @@ test('FORECAST-LEDGER-UX-BUGFIX-02: prevents cached batch collisions, duplicate 
   state.activeTabId = prevActiveId;
 });
 
+test('TOPBAR-DROPDOWNS-STRATEGY-01: top header uses TradingView-style Timeframe & Chart Style dropdowns and moves Strategy Lab from left rail next to Forecast', async () => {
+  const { renderTopHeaderBar } = await import('../host_subdomain/assets/js/views/headerView.js');
+  const { renderLeftToolRail, renderMobileBottomSheet } = await import('../host_subdomain/assets/js/views/toolRailView.js');
+  const { state } = await import('../host_subdomain/assets/js/core/store.js');
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const cssSource = await readFile(new URL('../host_subdomain/assets/css/theme.css', import.meta.url), 'utf8');
+
+  const mockI18n = {
+    t: (k) => k,
+    getCurrentLanguage: () => 'fa',
+  };
+  const prevWorkspace = state.activeWorkspaceView;
+  const prevDropdown = state.activeTopDropdown;
+  const prevModal = state.activeModal;
+
+  const sampleTab = {
+    tabId: 'tab_SPOTBRENT_H4',
+    symbolCode: 'SPOTBRENT',
+    provider: 'tvdatafeed',
+    timeframe: 'H4',
+    chartType: 'candles',
+    decimals: 2,
+    drawings: [],
+    candles: [],
+  };
+
+  try {
+    state.activeWorkspaceView = 'chart';
+    state.activeTopDropdown = 'timeframe';
+    state.activeModal = null;
+
+    const chartHeader = renderTopHeaderBar(sampleTab, mockI18n);
+    assert.match(chartHeader, /data-action="toggle-top-dropdown"[\s\S]{0,160}data-dropdown="timeframe"/);
+    assert.match(chartHeader, /data-top-dropdown-menu="timeframe"[\s\S]*?data-action="set-timeframe"[\s\S]*?data-tf="H4"/);
+    assert.match(chartHeader, /tv-topbar-dropdown-menu is-open"[\s\S]{0,80}data-top-dropdown-menu="timeframe"/);
+
+    state.activeTopDropdown = 'chart-type';
+    sampleTab.chartType = 'line';
+    const lineHeader = renderTopHeaderBar(sampleTab, mockI18n);
+    assert.match(lineHeader, /data-action="toggle-top-dropdown"[\s\S]{0,160}data-dropdown="chart-type"/);
+    assert.match(lineHeader, /tv-topbar-dropdown-menu is-open"[\s\S]{0,80}data-top-dropdown-menu="chart-type"/);
+    assert.match(lineHeader, /data-action="set-chart-type"[\s\S]{0,80}data-type="candles"/);
+    assert.match(lineHeader, /data-action="set-chart-type"[\s\S]{0,80}data-type="line"/);
+
+    const forecastIdx = lineHeader.indexOf('data-view="forecast"');
+    const strategyIdx = lineHeader.indexOf('data-modal="strategy-lab"');
+    const perfIdx = lineHeader.indexOf('data-action="open-active-symbol-overview"');
+    assert.ok(forecastIdx > 0 && strategyIdx > forecastIdx && perfIdx > strategyIdx, 'Strategy button must appear directly after Forecast and before Performance in topbar nav');
+
+    state.activeWorkspaceView = 'forecast';
+    state.activeTopDropdown = null;
+    const forecastHeader = renderTopHeaderBar(sampleTab, mockI18n);
+    assert.ok(forecastHeader.includes('data-dropdown="timeframe"'), 'Forecast view topbar must also use Timeframe dropdown');
+    assert.ok(forecastHeader.includes('data-modal="strategy-lab"'), 'Forecast view topbar must include Strategy nav button');
+
+    const leftRailHtml = renderLeftToolRail(sampleTab, mockI18n, null);
+    assert.equal(leftRailHtml.includes('data-modal="strategy-lab"'), false, 'Strategy button must be removed from desktop left drawing tool rail');
+    const mobileToolsHtml = renderMobileBottomSheet(sampleTab, 'tools', mockI18n);
+    assert.ok(mobileToolsHtml.includes('data-modal="strategy-lab"'), 'Mobile tools sheet keeps Strategy Lab shortcut');
+
+    assert.match(appSource, /action === 'toggle-top-dropdown'/);
+    assert.match(appSource, /function positionActiveTopDropdown\(\)/);
+    assert.match(appSource, /renderStrategyLabModal\(activeTab, i18n\)/);
+    assert.doesNotMatch(appSource, /isForecastWorkspace \? '' : renderStrategyLabModal/);
+    assert.match(cssSource, /\.tv-topbar-dropdown-menu\s*\{[\s\S]*?position:\s*fixed;/);
+  } finally {
+    state.activeWorkspaceView = prevWorkspace;
+    state.activeTopDropdown = prevDropdown;
+    state.activeModal = prevModal;
+  }
+});
+
 
 
 

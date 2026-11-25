@@ -10,7 +10,7 @@
 > - **Owner-Confirmed Preferred Browser Models (All Rev 2.3):** `Causal Historical Analogs` (`empiricalAnalogEngine.js` v2.3.0), `Structural JS` (`structuralForecastEngine.js` v2.3.0), and `SMC Prediction Engine` (`smcPredictionEngine.js` v2.3.0).
 > - **Shelved / Inactive (`Python` & `Chronos-2`):** Shared cPanel hosting blocks `PHP exec()` and Python execution. `host_subdomain/api/v1/chronos2_forecast.php`, `host_subdomain/scripts/chronos2_worker.py`, and `.github/workflows/chronos2-manual-forecast.yml` are **NOT wired to the live UI** and are preserved (`Shelved`) until a dedicated Python server is provisioned.
 > - **Repository Hygiene (`2026-11-21`):** Obsolete `/archive/`, unused `public/assets/aistudio/`, and 11 superseded/duplicate docs were permanently removed (full external owner backup taken).
-> - **Mandatory Invariants:** Unified `?v=1.47.41` across all 27 JS modules + `index.html` (`ARCH-02`), zero bare `localStorage.setItem` calls (`STORAGE-QUOTA-01` → use `safeLocalStorageSet()`), `npm test` = **60/60 passing**.
+> - **Mandatory Invariants:** Unified `?v=1.47.41` across all 27 JS modules + `index.html` (`ARCH-02`), zero bare `localStorage.setItem` calls (`STORAGE-QUOTA-01` → use `safeLocalStorageSet()`), `npm test` = **61/61 passing**.
 
 ---
 

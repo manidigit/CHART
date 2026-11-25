@@ -1343,13 +1343,14 @@ export function renderApp() {
         ${renderSettingsModal(i18n)}
         ${isForecastWorkspace ? '' : renderIndicatorsModal(activeTab, i18n)}
         ${isForecastWorkspace ? '' : renderObjectTreeModal(activeTab, i18n)}
-        ${isForecastWorkspace ? '' : renderStrategyLabModal(activeTab, i18n)}
+        ${renderStrategyLabModal(activeTab, i18n)}
         ${renderSymbolOverviewModal(i18n)}
         ${renderAddSymbolModal()}
         ${isForecastWorkspace ? '' : renderMobileBottomSheet(activeTab, state.mobileSheet, i18n)}
       </div>
     `;
 
+    positionActiveTopDropdown();
     bindSettingsForms();
     if (isForecastWorkspace) {
       const studioCanvas = document.getElementById('forecast-studio-canvas');
@@ -2538,20 +2539,49 @@ function bindSettingsForms() {
   }
 }
 
+function positionActiveTopDropdown() {
+  const key = state.activeTopDropdown;
+  if (!key || typeof document === 'undefined') return;
+  const trigger = document.querySelector(`[data-action="toggle-top-dropdown"][data-dropdown="${key}"]`);
+  const menu = document.querySelector(`[data-top-dropdown-menu="${key}"]`);
+  if (!trigger || !menu) return;
+  const rect = trigger.getBoundingClientRect();
+  const menuWidth = menu.offsetWidth || 168;
+  const maxLeft = Math.max(8, (window.innerWidth || 1280) - menuWidth - 8);
+  const clampedLeft = Math.max(8, Math.min(rect.left, maxLeft));
+  menu.style.top = `${Math.round(rect.bottom + 4)}px`;
+  menu.style.left = `${Math.round(clampedLeft)}px`;
+}
+
 document.addEventListener('click', async (e) => {
   try {
   const el = e.target.closest('[data-action]');
   if (!el) {
+    let shouldReRender = false;
     if (state.activeRailPopup && !e.target.closest('.rail-flyout-menu') && !e.target.closest('.tool-rail-picker-wrap')) {
       state.activeRailPopup = null;
-      renderApp();
+      shouldReRender = true;
     }
+    if (state.activeTopDropdown && !e.target.closest('.tv-topbar-dropdown-menu') && !e.target.closest('.tv-topbar-dropdown-wrap')) {
+      state.activeTopDropdown = null;
+      shouldReRender = true;
+    }
+    if (shouldReRender) renderApp();
     return;
   }
   const action = el.getAttribute('data-action');
   const activeTab = getActiveTab();
 
-  if (action === 'toggle-rail-popup') {
+  if (action !== 'toggle-top-dropdown' && state.activeTopDropdown) {
+    state.activeTopDropdown = null;
+  }
+
+  if (action === 'toggle-top-dropdown') {
+    const ddKey = el.getAttribute('data-dropdown');
+    state.activeRailPopup = null;
+    state.activeTopDropdown = state.activeTopDropdown === ddKey ? null : ddKey;
+    renderApp();
+  } else if (action === 'toggle-rail-popup') {
     const popupType = el.getAttribute('data-popup');
     state.activeRailPopup = state.activeRailPopup === popupType ? null : popupType;
     renderApp();
@@ -4224,6 +4254,12 @@ document.addEventListener('change', async (e) => {
 });
 
 document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && (state.activeTopDropdown || state.activeRailPopup)) {
+    state.activeTopDropdown = null;
+    state.activeRailPopup = null;
+    renderApp();
+    return;
+  }
   if (e.key !== 'Enter') return;
   const el = e.target;
   if (!el || !el.classList || !el.classList.contains('tv-ind-hex-input')) return;
@@ -4242,6 +4278,14 @@ document.addEventListener('keydown', (e) => {
     );
   }
 });
+
+if (typeof window !== 'undefined') {
+  window.addEventListener('resize', () => {
+    if (state.activeTopDropdown) {
+      positionActiveTopDropdown();
+    }
+  });
+}
 
 function showFloatingToast(message, durationMs = 3000) {
   let toast = document.getElementById('ci-floating-toast');

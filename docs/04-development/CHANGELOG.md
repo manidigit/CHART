@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.47.41] - 2026-11-24
 
+### Changed (`TOPBAR-DROPDOWNS-STRATEGY-01`: TradingView-Style Topbar Dropdowns & Top-Nav Strategy Lab)
+- **Compact TradingView-Style Timeframe & Chart Style Dropdowns (`host_subdomain/assets/js/views/headerView.js`, `app.js`, `assets/css/theme.css`):**
+  - Replaced the flat 6-button timeframe strip (`15m..1W`) and the 2-button chart-type group (`Candles / Line`) in `renderTopHeaderBar()` with compact TradingView-style dropdown triggers (`data-action="toggle-top-dropdown"`, `timeframe` and `chart-type`) displaying the active selection + chevron caret.
+  - Rendered popover menus (`.tv-topbar-dropdown-menu`) with `position: fixed` and dynamic viewport-clamped anchor positioning (`positionActiveTopDropdown()`) so menus never clip under `.tv-topbar { overflow: hidden; }` or `.tv-topbar-left { overflow-x: auto; }`, dismissing cleanly on option click, outside click, or `Escape`.
+- **Strategy Lab Promoted to Top Workspace Nav (`headerView.js`, `toolRailView.js`, `app.js`):**
+  - Moved the **Strategy (`استراتژی`)** trigger (`data-modal="strategy-lab"`) out of the desktop left drawing tool rail (`renderLeftToolRail()`) and into `.tv-top-nav-group` right next to **Forecast (`پیش‌بینی`)**, and enabled `renderStrategyLabModal(activeTab, i18n)` across both Chart and Forecast workspaces (keeping the mobile tools sheet shortcut intact).
+- **Verification:**
+  - Verified `node --check` on all modified JS modules and **61/61** passing tests in `tests/web_parity.test.mjs` (added `TOPBAR-DROPDOWNS-STRATEGY-01`).
+
 ### Added & Changed (`FORECAST-UX-EVAL-CHECKLIST-01`: Forecast Studio UX Overhaul, 5D Evaluation, Multi-Model Batch Comparison & Visual Replay)
 - **Top Summary Status Card & Collapsible Diagnostic Accordions (`host_subdomain/assets/js/views/forecastView.js`, `assets/css/theme.css`):**
   - Added `renderForecastSummaryHeaderCard()` at the top of `Overview` and `Ledger` displaying symbol, timeframe, current anchor price, Pending vs. Matured counts, Market Condition tag, plain-language directional/confidence status, and `computeMultiModelZoneConvergence(fc)` multi-model target/band agreement.
