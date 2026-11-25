@@ -9,6 +9,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [1.47.41] - 2026-11-25
 
+### Changed (`FORECAST-UX-SIMPLIFY-03`: Everyday Forecast UX Simplification, Duplicate Guard, Clean History Table & Explicit Model Comparison)
+- **Duplicate Snapshot Prevention (`host_subdomain/assets/js/forecast/forecastLedger.js`, `app.js`):**
+  - Added `findRecentDuplicateEntry()` matching same symbol + timeframe + horizon + model on the same closed anchor candle or within a 5-minute window, with opt-in `options.preventDuplicate` in `appendFromForecast()` and `appendBatchFromForecast()` (enabled on UI snapshot/batch clicks with clear FA/EN duplicate notifications while preserving append-only SHA-256 chain integrity and backward compatibility for programmatic callers).
+  - Annotated historical duplicates in Ledger display with a `Hide Duplicates (N)` toggle (`toggle-ledger-hide-duplicates`, enabled by default) and `تکراری (#X)` / `Duplicate (#X)` badge when visible.
+- **Simplified History Table & Explicit Multi-Model Comparison (`host_subdomain/assets/js/views/forecastView.js`, `app.js`):**
+  - Streamlined the Ledger history table to 7 readable columns: Select, Model, Recorded → Due, Target & Range, Actual Price, Successful Candles (`X/Y` + `%` + `Err %`, with `Legacy` fallback), and plain-language Result (`موفق` / `ناموفق` / `در انتظار` or `Success` / `Failed` / `Pending`).
+  - Added a prominent **«مقایسه مدل‌های انتخاب‌شده» / «Compare Selected Models»** toolbar button (`compare-selected-ledger-entries`) supporting both manually checked rows (2–4 rows) and recorded multi-model batches inside `#ci-fc-compare-card`, displaying outcome, hit candles, error `%`, target vs. actual, and crowning **«★ مدل برتر این بازه» / «★ Best Performer»**.
+- **Decluttered Main Forecast View (`forecastView.js`, `app.js`):**
+  - Replaced heavy technical badges (`INSUFFICIENT_EVIDENCE`, `NO_EDGE_DETECTED`, `OOD: IN_DISTRIBUTION`, `EWMA σ`, `spec v2.1.0`) in the primary Forecast header with clean plain-language status and market condition pills (keeping full technical context in tooltips and drawers).
+  - Moved heavy technical diagnostics (OOS Selection Gate, full model grid, 3-Scenario Conditional Logit/Brier/Dirichlet, Key Zones, Conformal/Aleatoric/Epistemic/MTF/Analogs, Rolling Model Scorecards, and SHA-256 audit log) into collapsed `<details class="ci-fc-accordion">` drawers.
+- **Verification:**
+  - Added `FORECAST-UX-SIMPLIFY-03` regression tests in `tests/web_parity.test.mjs`; verified `node --check` on all modified JS files and **63/63** passing tests.
+
 ### Changed (`TOPBAR-RIGHT-NAV-DOCK-01`: Right-Docked Topbar Workspace Navigation & Expanded Chart Tab Strip)
 - **Right-Docked Workspace Navigation (`host_subdomain/assets/js/views/headerView.js`, `assets/css/theme.css`):**
   - Moved the workspace navigation group (`.tv-top-nav-group`: `Chart`, `Forecast`, `Strategy`, `Performance`, `Watchlist`, `Settings`) from `.tv-topbar-left` to the leading edge of `.tv-topbar-right` directly adjacent to the status dot, `CSV`, snapshot, sync, and fullscreen buttons (separated by `.tv-divider`) across both Chart and Forecast views, eliminating the unused middle-right gap in the header.

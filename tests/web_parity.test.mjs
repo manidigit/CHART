@@ -4188,8 +4188,160 @@ test('SIGNAL-GEN-RR-GATE-01: Classical Signal Generators, immutable Net R:R >= 2
   }
 });
 
+test('FORECAST-UX-SIMPLIFY-03: duplicate snapshot prevention, simplified history table, explicit Compare Selected Models button, and decluttered Forecast Studio accordions', async () => {
+  const { ForecastLedger, defaultForecastLedger } = await import('../host_subdomain/assets/js/forecast/forecastLedger.js');
+  const { renderOverviewPanel, renderLedgerPanel } = await import('../host_subdomain/assets/js/views/forecastView.js');
+  const { state } = await import('../host_subdomain/assets/js/core/store.js');
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
 
+  const sampleRaw = JSON.parse(await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8'));
+  const sampleBars = Array.isArray(sampleRaw) ? sampleRaw : sampleRaw.candles || [];
+  const anchorBar = sampleBars[199];
+  const anchorMs = Number(anchorBar.open_time_utc_ms);
+  const anchorClose = Number(anchorBar.close);
 
+  const mkPts = (delta) =>
+    Array.from({ length: 15 }, (_, idx) => ({
+      step: idx + 1,
+      openTimeUtcMs: anchorMs + (idx + 1) * 900000,
+      q10: anchorClose + delta - 1.2,
+      q25: anchorClose + delta - 0.6,
+      q50: anchorClose + delta,
+      q75: anchorClose + delta + 0.6,
+      q90: anchorClose + delta + 1.2,
+    }));
 
+  const mockForecast = {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    providerId: 'tvdatafeed',
+    status: 'INSUFFICIENT_EVIDENCE',
+    regime: 'RANGING',
+    horizonBars: 15,
+    anchorOpenTimeUtcMs: anchorMs,
+    anchorClose,
+    selectedChartModelId: 'structural_wave_js',
+    model: { id: 'structural_wave_js', name: 'Structural JS' },
+    summary: { terminalQ50: anchorClose + 0.5, terminalQ10: anchorClose - 0.7, terminalQ90: anchorClose + 1.7, corridorWidthPct: 2.6 },
+    points: mkPts(+0.5),
+    featuresSummary: { ewmaSigmaPct: 0.42, atrPct: 0.45 },
+    uncertainty: { oodStatus: 'IN_DISTRIBUTION', oodDistance: 0.4, spreadMultiplierApplied: 1.0, aleatoricShare: 0.7, epistemicShare: 0.3, aleatoricPct: 1.1, epistemicPct: 0.4, totalPct: 1.5, oodReasons: [] },
+    noEdgeGate: { hasEdge: false, gateState: 'NO_EDGE_DETECTED', reasons: ['Sample test'] },
+    conformalCalibration: { calibrationStatus: 'CALIBRATED_NORMALIZED', calibrationWindows: 10, gammaLevel: 0.8, normalizedScaleQ80: 1.2, decayLambda: 0.92 },
+    scenarios: [],
+    keyZones: [],
+    generatedAtUtcMs: 1795560000000,
+    inputHash: 'simplify03-hash',
+    modelTrajectories: [
+      { modelId: 'structural_wave_js', modelName: 'Structural JS', status: 'SUCCESS', points: mkPts(+0.5) },
+      { modelId: 'smc_prediction_js', modelName: 'SMC Prediction Engine', status: 'SUCCESS', points: mkPts(-0.4) },
+      { modelId: 'empirical_analogs', modelName: 'Causal Historical Analogs', status: 'SUCCESS', points: mkPts(+0.2) },
+    ],
+  };
 
+  // 1. preventDuplicate blocks duplicate single & batch snapshots while keeping SHA-256 chain valid
+  const testLedger = new ForecastLedger('ci_test_simplify03_ledger_v1');
+  testLedger.clear();
+  const first = testLedger.appendFromForecast(mockForecast, {
+    modelId: 'structural_wave_js',
+    points: mkPts(+0.5),
+    recordedAtUtcMs: 1795560000000,
+    generatedAtUtcMs: 1795560000000,
+    preventDuplicate: true,
+  });
+  assert.ok(first && !first.duplicateSkipped);
 
+  const secondDup = testLedger.appendFromForecast(mockForecast, {
+    modelId: 'structural_wave_js',
+    points: mkPts(+0.5),
+    recordedAtUtcMs: 1795560010000,
+    generatedAtUtcMs: 1795560010000,
+    preventDuplicate: true,
+  });
+  assert.equal(secondDup.duplicateSkipped, true, 'Duplicate snapshot on same symbol/tf/horizon/model/anchor must be skipped');
+  assert.equal(secondDup.seq, first.seq);
+  assert.equal(testLedger.loadEntries().length, 1);
+
+  const batch1 = testLedger.appendBatchFromForecast(mockForecast, ['structural_wave_js', 'smc_prediction_js', 'empirical_analogs'], {
+    requireMultiple: true,
+    preventDuplicate: true,
+    recordedAtUtcMs: 1795560020000,
+  });
+  assert.equal(batch1.entries.length, 2, 'Only non-duplicate models (SMC + Analogs) should be appended');
+  assert.equal(batch1.skippedDuplicates.length, 1, 'Already-recorded Structural JS must be reported as skipped duplicate');
+  assert.equal(batch1.comparisonHashes.length, 3, 'All 3 models remain selectable together for comparison');
+
+  const batch2AllDup = testLedger.appendBatchFromForecast(mockForecast, ['structural_wave_js', 'smc_prediction_js', 'empirical_analogs'], {
+    requireMultiple: true,
+    preventDuplicate: true,
+    recordedAtUtcMs: 1795560030000,
+  });
+  assert.equal(batch2AllDup.reason, 'ALL_DUPLICATE');
+  assert.equal(batch2AllDup.entries.length, 0);
+  assert.equal(testLedger.verifyChain().valid, true, 'SHA-256 chain must stay 100% valid after duplicate skipping');
+
+  // 2. Simplified Ledger UI: Hide Duplicates toggle, simple outcomes (موفق / ناموفق / در انتظار), explicit Compare Selected Models button
+  const prevTabs = state.openTabs;
+  const prevActiveId = state.activeTabId;
+  const prevFilters = state._forecastLedgerFilters;
+  const prevOverlayHashes = state._ledgerOverlayHashes;
+  const prevCompareMode = state._ledgerCompareMode;
+  try {
+    defaultForecastLedger.clear();
+    const eA = defaultForecastLedger.appendFromForecast(mockForecast, {
+      modelId: 'structural_wave_js',
+      points: mkPts(+0.4),
+      recordedAtUtcMs: 1795560000000,
+      generatedAtUtcMs: 1795560000000,
+    });
+    // Force an older duplicate entry to verify UI duplicate tagging/hiding
+    const eADup = defaultForecastLedger.appendFromForecast(mockForecast, {
+      modelId: 'structural_wave_js',
+      points: mkPts(+0.4),
+      recordedAtUtcMs: 1795560020000,
+      generatedAtUtcMs: 1795560020000,
+    });
+    const eB = defaultForecastLedger.appendFromForecast(mockForecast, {
+      modelId: 'smc_prediction_js',
+      points: mkPts(-2.5),
+      recordedAtUtcMs: 1795560030000,
+      generatedAtUtcMs: 1795560030000,
+    });
+    defaultForecastLedger.evaluateMaturedForecasts(sampleBars, 'SPOTBRENT', 'M15');
+
+    state.openTabs = [{ tabId: 'tab_spot', symbolCode: 'SPOTBRENT', timeframe: 'M15', provider: 'tvdatafeed', decimals: 2, candles: sampleBars }];
+    state.activeTabId = 'tab_spot';
+    state._ledgerOverlayHashes = [eADup.forecastHash, eB.forecastHash];
+    state._ledgerCompareMode = 'selected';
+    state._forecastLedgerFilters = { model: 'ALL', tfHorizon: 'ALL', status: 'ALL', condition: 'ALL', hideDuplicates: true };
+
+    const ledgerFaHidden = renderLedgerPanel(2, true);
+    assert.match(ledgerFaHidden, /data-action="compare-selected-ledger-entries"/, 'Ledger must expose explicit Compare Selected Models button');
+    assert.match(ledgerFaHidden, /مقایسه مدل‌های انتخاب‌شده/, 'Persian Compare Selected Models button must be visible');
+    assert.match(ledgerFaHidden, /مخفی‌سازی تکراری‌ها \(1\)/, 'Hide Duplicates toggle must show hidden duplicate count');
+    assert.match(ledgerFaHidden, /مدل برتر این بازه/, 'Selected rows side-by-side comparison must crown Best Model in Persian');
+    assert.match(ledgerFaHidden, /id="ci-fc-compare-card"/, 'Comparison card must render for manually checked rows even without shared batchId');
+    assert.match(ledgerFaHidden, /(موفق|ناموفق|در انتظار)/, 'Table must show simple Persian outcomes');
+    assert.doesNotMatch(ledgerFaHidden, /تکراری \(#/, 'Duplicate rows must be hidden when hideDuplicates is enabled');
+
+    state._forecastLedgerFilters = { model: 'ALL', tfHorizon: 'ALL', status: 'ALL', condition: 'ALL', hideDuplicates: false };
+    const ledgerFaShown = renderLedgerPanel(2, true);
+    assert.match(ledgerFaShown, /تکراری \(#/, 'When Hide Duplicates is unchecked, duplicate rows must be clearly labeled');
+
+    // 3. Decluttered Overview & app.js wiring
+    const overviewFa = renderOverviewPanel(mockForecast, state.openTabs[0], 2, true, 'independent');
+    const accordionMatches = overviewFa.match(/ci-fc-accordion/g) || [];
+    assert.ok(accordionMatches.length >= 2, 'Overview must tuck scenarios/key-zones and technical diagnostics into collapsible accordions');
+    assert.match(appSource, /preventDuplicate:\s*true/, 'app.js UI recording handlers must pass preventDuplicate: true');
+    assert.match(appSource, /action === 'compare-selected-ledger-entries'/, 'app.js must wire Compare Selected Models action');
+    assert.match(appSource, /action === 'toggle-ledger-hide-duplicates'/, 'app.js must wire Hide Duplicates toggle');
+  } finally {
+    testLedger.clear();
+    defaultForecastLedger.clear();
+    state.openTabs = prevTabs;
+    state.activeTabId = prevActiveId;
+    state._forecastLedgerFilters = prevFilters;
+    state._ledgerOverlayHashes = prevOverlayHashes;
+    state._ledgerCompareMode = prevCompareMode;
+  }
+});

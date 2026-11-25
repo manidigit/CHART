@@ -1017,8 +1017,12 @@ export function buildLedgerOverlayPayload(selectedEntries = [], candles = []) {
   };
 }
 
-function getMarketConditionLabel(tag, isFa) {
+function getMarketConditionLabel(tag, isFa, simple = false) {
   const norm = String(tag || '').toUpperCase();
+  if (simple) {
+    if (norm.startsWith('TRENDING')) return isFa ? 'رونددار' : 'Trending';
+    return isFa ? 'رنج / نوسانی' : 'Ranging';
+  }
   if (norm === 'TRENDING_EDGE') return isFa ? 'رونددار + برتری آماری (Trending + Edge)' : 'TRENDING + EDGE';
   if (norm === 'TRENDING_NO_EDGE') return isFa ? 'رونددار + بدون برتری آماری' : 'TRENDING + NO_EDGE';
   if (norm === 'RANGING_EDGE') return isFa ? 'رنج + برتری آماری (Ranging + Edge)' : 'RANGING + EDGE';
@@ -1047,21 +1051,21 @@ function renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa) {
 
   const st = fc?.status || FORECAST_STATUS.DATA_NOT_READY;
   const plainStatusMap = {
-    VALID: isFa ? 'معتبر (هم‌راستا با آزمون آماری)' : 'Statistically Validated',
-    PROVISIONAL: isFa ? 'موقت (داده کم یا شرایط غیرعادی OOD)' : 'Provisional (Small Sample or OOD)',
-    NO_EDGE: isFa ? 'احتیاط: برتری قطعی نسبت به مدل ساده ندارد' : 'No Proven Edge Over Baseline',
-    INSUFFICIENT_EVIDENCE: isFa ? 'شواهد آماری ناکافی در این بازه' : 'Insufficient Historical Sample',
+    VALID: isFa ? 'آماده و دارای پشتوانه آماری' : 'Ready (Statistically Supported)',
+    PROVISIONAL: isFa ? 'آماده با احتیاط (نمونه محدود)' : 'Ready with Caution (Limited Sample)',
+    NO_EDGE: isFa ? 'احتیاط: بازار فاقد روند یا برتری مشخص است' : 'Caution: Neutral / No Clear Statistical Edge',
+    INSUFFICIENT_EVIDENCE: isFa ? 'داده تاریخی محدود (پیش‌بینی نمایشی/موقت)' : 'Limited Historical Sample (Provisional View)',
     DATA_NOT_READY: isFa ? 'داده هنوز آماده نیست' : 'Data Not Ready',
   };
 
   const convergence = computeMultiModelZoneConvergence(fc);
   const convLabel = convergence.modelCount >= 2
     ? isFa
-      ? `اجماع ${Math.max(convergence.bullCount, convergence.bearCount)}/${convergence.modelCount} مدل (${convergence.bullCount >= convergence.bearCount ? 'صعودی' : 'نزولی'}) · فاصله هدف ${convergence.targetSpreadPct ?? '—'}% (${convergence.targetLevel === 'TIGHT' ? 'همگرایی بالا' : convergence.targetLevel === 'MODERATE' ? 'متوسط' : 'واگرا'})${convergence.overlappingZones.length > 0 ? ` · ${convergence.overlappingZones.length} زون S/R مشترک` : ''}`
-      : `${Math.max(convergence.bullCount, convergence.bearCount)}/${convergence.modelCount} Consensus (${convergence.bullCount >= convergence.bearCount ? 'Bullish' : 'Bearish'}) · Spread ${convergence.targetSpreadPct ?? '—'}% (${convergence.targetLevel})${convergence.overlappingZones.length > 0 ? ` · ${convergence.overlappingZones.length} Overlapping S/R Zone(s)` : ''}`
+      ? `اجماع ${Math.max(convergence.bullCount, convergence.bearCount)} از ${convergence.modelCount} مدل (${convergence.bullCount >= convergence.bearCount ? 'صعودی' : 'نزولی'}) · اختلاف هدف ${convergence.targetSpreadPct ?? '—'}%`
+      : `${Math.max(convergence.bullCount, convergence.bearCount)}/${convergence.modelCount} Models Agree (${convergence.bullCount >= convergence.bearCount ? 'Bullish' : 'Bearish'}) · Spread ${convergence.targetSpreadPct ?? '—'}%`
     : isFa
-      ? 'برای سنجش همگرایی، چند مدل فعال را مقایسه کنید'
-      : 'Enable 2+ models to measure target & S/R convergence';
+      ? 'برای سنجش همگرایی، ۲ مدل یا بیشتر انتخاب کنید'
+      : 'Select 2+ models to see target consensus';
 
   const regimeStr = String(fc?.regime || 'RANGING').toUpperCase();
   const hasEdge = Boolean(fc?.noEdgeGate?.hasEdge) || st === FORECAST_STATUS.VALID;
@@ -1081,20 +1085,20 @@ function renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa) {
           <strong>${currentPrice > 0 ? PriceFormatter.formatPrice(currentPrice, decimals) : '—'}</strong>
         </div>
         <div class="ci-fc-mini-stat">
-          <span>${isFa ? 'پیش‌بینی‌های در انتظار' : 'Pending Snapshots'}</span>
+          <span>${isFa ? 'در انتظار نتیجه' : 'Pending Snapshots'}</span>
           <strong style="color:var(--gold);">${pendingCount}</strong>
         </div>
         <div class="ci-fc-mini-stat">
-          <span>${isFa ? 'پیش‌بینی‌های تکمیل‌شده' : 'Matured Outcomes'}</span>
+          <span>${isFa ? 'ارزیابی‌شده' : 'Matured Outcomes'}</span>
           <strong style="color:var(--bull);">${maturedCount}</strong>
         </div>
         <div class="ci-fc-mini-stat">
-          <span>${isFa ? 'شرایط بازار' : 'Market Condition'}</span>
-          <strong style="font-size:11px;">${escapeHtml(getMarketConditionLabel(condTag, isFa))}</strong>
+          <span>${isFa ? 'حالت بازار' : 'Market Condition'}</span>
+          <strong style="font-size:11.5px;">${escapeHtml(getMarketConditionLabel(condTag, isFa, true))}</strong>
         </div>
       </div>
       <div class="row-between" style="margin-top:8px;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--text-muted);">
-        <span><strong>${escapeHtml(st)}</strong> — ${escapeHtml(plainStatusMap[st] || st)}</span>
+        <span>${escapeHtml(plainStatusMap[st] || st)}</span>
         <span class="ci-fc-family-tag">${escapeHtml(convLabel)}</span>
       </div>
     </div>
@@ -1400,13 +1404,48 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     `
     : '';
 
+  const scenariosAndModelsDrawerHtml = `
+    <details class="ci-fc-card ci-fc-accordion" style="margin-bottom:12px;">
+      <summary>
+        <span>${isFa ? 'سناریوها، سطوح کلیدی و لیست کامل مدل‌ها (کلیک برای مشاهده)' : 'Scenarios, Key S/R Zones & All Model Trajectories (Click to expand)'}</span>
+        <span class="ci-fc-family-tag ltr-num">${(fc.scenarios || []).length} ${isFa ? 'سناریو' : 'scenarios'} · ${(fc.modelTrajectories || []).filter((t) => t.status === MODEL_EXECUTION_STATUS.SUCCESS).length} ${isFa ? 'مدل فعال' : 'active models'}</span>
+      </summary>
+      <div class="ci-fc-accordion-body">
+        ${winnerBannerHtml}
+        ${comparisonChipsHtml}
+        <div class="ci-fc-card" style="margin-bottom:12px;">
+          <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+            <strong style="font-size:13px;">${isFa ? 'سناریوهای شرطی کالیبره‌شده V2.1' : '3-Scenario Conditional Event Tree'}</strong>
+            <span class="ci-fc-family-tag ltr-num">Brier OOS: ${fc.scenarioCalibration?.oosBrierModel ?? '—'} vs Clim ${fc.scenarioCalibration?.oosBrierClimatology ?? '—'}</span>
+          </div>
+          <div class="ci-fc-event-tree-grid">${scenariosHtml}</div>
+        </div>
+        ${keyZonesHtml ? `<div class="ci-fc-grid-2" style="margin-bottom:4px;">${keyZonesHtml}</div>` : ''}
+      </div>
+    </details>
+  `;
+
+  const technicalMetaBannerHtml = `
+    <div class="ci-fc-card" style="margin-bottom:12px;">
+      <div style="font-size:11.5px;color:var(--text-muted);display:flex;gap:8px;flex-wrap:wrap;align-items:center;" class="ltr-num">
+        <span class="ci-fc-family-tag">Status: ${escapeHtml(fc.status || '—')}</span>
+        <span class="ci-fc-family-tag">Edge Gate: ${escapeHtml(edgeGate?.gateState || '—')}</span>
+        <span class="ci-fc-family-tag">OOD: ${escapeHtml(unc?.oodStatus || 'IN_DISTRIBUTION')}</span>
+        <span class="ci-fc-family-tag">${escapeHtml(fc.contractVersion)} · spec v${escapeHtml(fc.specVersion || '2.1.0')}</span>
+        <span class="ci-fc-family-tag">EWMA σ ${fc.featuresSummary.ewmaSigmaPct.toFixed(3)}%</span>
+        <span class="ci-fc-family-tag">Layer: ${coordView.toUpperCase()}</span>
+      </div>
+    </div>
+  `;
+
   const technicalDiagnosticsDrawerHtml = `
     <details class="ci-fc-card ci-fc-accordion" style="margin-bottom:12px;">
       <summary>
-        <span>${isFa ? 'جزئیات فنی و آماری (Conformal Calibration، تفکیک Aleatoric/Epistemic، MTF و آنالوگ‌ها)' : 'Technical Calibration, Uncertainty Decomposition, MTF & Analogs (Click to expand)'}</span>
-        <span class="ci-fc-family-tag ltr-num">${escapeHtml(conformalCal?.calibrationStatus || 'CALIBRATED')} · OOD ${escapeHtml(unc?.oodStatus || 'IN_DISTRIBUTION')}</span>
+        <span>${isFa ? 'جزئیات فنی و آماری پیشرفته (Conformal، OOD، عدم‌قطعیت و MTF)' : 'Advanced Technical Diagnostics (Conformal, OOD, Uncertainty & MTF)'}</span>
+        <span class="ci-fc-family-tag ltr-num">${escapeHtml(fc.status || '—')} · ${escapeHtml(conformalCal?.calibrationStatus || 'CALIBRATED')}</span>
       </summary>
       <div class="ci-fc-accordion-body">
+        ${technicalMetaBannerHtml}
         ${conformalBannerHtml}
         ${edgeBannerHtml}
         ${uncertaintyCardHtml}
@@ -1421,37 +1460,26 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     <div class="ci-fc-canvas-wrap ci-fc-card">
       <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
         <div>
-          <strong style="font-size:13.5px;">${isFa ? 'مخروط عدم‌قطعیت کالیبره‌شده (q10..q90) و مقایسه مدل‌ها' : 'Calibrated Quantile Fan (q10..q90), Key Zones & Multi-Model Overlay'}</strong>
-          <div style="font-size:11px;color:var(--text-muted);" class="ltr-num">
-            ${escapeHtml(fc.contractVersion)} · spec v${escapeHtml(fc.specVersion || '2.1.0')} · Active: ${escapeHtml(fc.selectedChartModelId || 'AUTO')} · Anchor ${PriceFormatter.formatPrice(fc.anchorClose, decimals)} · EWMA σ ${fc.featuresSummary.ewmaSigmaPct.toFixed(3)}% · Layer: ${coordView.toUpperCase()}
+          <strong style="font-size:13.5px;">${isFa ? 'نمودار مسیر پیش‌بینی و بازه قیمتی (۸۰٪)' : 'Forecast Trajectory & 80% Price Range'}</strong>
+          <div style="font-size:11.5px;color:var(--text-muted);" class="ltr-num">
+            ${isFa ? 'مدل فعال:' : 'Model:'} <strong>${escapeHtml(fc.selectedChartModelId || 'AUTO')}</strong> · ${isFa ? 'قیمت مبنا:' : 'Anchor:'} ${PriceFormatter.formatPrice(fc.anchorClose, decimals)}
           </div>
         </div>
         <span style="font-size:11px;color:var(--text-muted);" class="ltr-num">
-          ${isFa ? 'پهنای کریدور پایانی:' : 'Terminal Corridor:'} ${fc.summary.corridorWidthPct.toFixed(2)}%
+          ${isFa ? 'پهنای بازه پایانی:' : 'Range Width:'} ${fc.summary.corridorWidthPct.toFixed(2)}%
         </span>
       </div>
       <canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas"></canvas>
     </div>
 
-    ${winnerBannerHtml}
-    ${comparisonChipsHtml}
     ${comparisonCanvasesHtml}
 
     <div class="ci-fc-card" style="margin-bottom:12px;">
-      <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
-        <strong style="font-size:13px;">${isFa ? 'سناریوهای شرطی کالیبره‌شده V2.1 (بدون کف ساختگی دیریکله)' : '3-Scenario Conditional Logit Event Tree (Zero Synthetic Priors)'}</strong>
-        <span class="ci-fc-family-tag ltr-num">Brier OOS: ${fc.scenarioCalibration?.oosBrierModel ?? '—'} vs Clim ${fc.scenarioCalibration?.oosBrierClimatology ?? '—'}</span>
-      </div>
-      <div class="ci-fc-event-tree-grid">${scenariosHtml}</div>
-    </div>
-
-    ${keyZonesHtml ? `<div class="ci-fc-grid-2" style="margin-bottom:12px;">${keyZonesHtml}</div>` : ''}
-
-    <div class="ci-fc-card" style="margin-bottom:12px;">
-      <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">${isFa ? 'نردبان افق پیش‌بینی (میانه q50 و بازه ۸۰٪)' : 'Horizon Step Quantile Ladder (Median q50 & 80% Corridor)'}</div>
+      <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">${isFa ? 'اهداف قیمتی در افق‌های زمانی (هدف میانه و بازه ۸۰٪)' : 'Price Targets Across Horizon (Median Target & 80% Range)'}</div>
       <div class="ci-fc-ladder-grid">${ladderCards}</div>
     </div>
 
+    ${scenariosAndModelsDrawerHtml}
     ${technicalDiagnosticsDrawerHtml}
   `;
 }
@@ -1995,7 +2023,7 @@ export function renderLedgerPanel(decimals, isFa) {
     }
   }
 
-  // Enrich each entry with resolved status, timestamps, and 5D evaluation
+  // Enrich each entry with resolved status, timestamps, simple outcome, and duplicate tagging
   const enrichedAll = rawEntries.map((e) => {
     const termEv = terminalByHash.get(e.forecastHash);
     const latestEv = lifecycleByHash.get(e.forecastHash);
@@ -2011,6 +2039,31 @@ export function renderLedgerPanel(decimals, isFa) {
     else if (isFullMatured) displayStatus = 'MATURED';
     else if (isSuperseded) displayStatus = 'SUPERSEDED';
 
+    // Only display observed close from an actual MATURED event, never from SUPERSEDED anchor close!
+    const obsClose = isFullMatured && termEv?.observedClose != null ? Number(termEv.observedClose) : null;
+    const legacyContained = obsClose != null ? obsClose >= Number(e.terminalQ10) && obsClose <= Number(e.terminalQ90) : false;
+    const legacyDirHit =
+      obsClose != null
+        ? (Number(e.terminalMedian) >= Number(e.anchorClose)) === (obsClose >= Number(e.anchorClose))
+        : false;
+    const legacyErrPct =
+      obsClose != null && Number(e.anchorClose) > 0
+        ? (Math.abs(obsClose - Number(e.terminalMedian)) / Number(e.anchorClose)) * 100
+        : null;
+    const legacyScore = legacyContained ? 75 : 30;
+
+    // Simple daily outcome: SUCCESS ('موفق'), FAILED ('ناموفق'), PENDING ('در انتظار')
+    let simpleOutcome = 'PENDING';
+    if (isFullMatured) {
+      if (isEarlyInvalidated) {
+        simpleOutcome = 'FAILED';
+      } else if (evalDetails) {
+        simpleOutcome = (evalDetails.terminalInsideBand || Number(evalDetails.overallScore || 0) >= 55) ? 'SUCCESS' : 'FAILED';
+      } else {
+        simpleOutcome = legacyContained ? 'SUCCESS' : 'FAILED';
+      }
+    }
+
     return {
       entry: e,
       termEv,
@@ -2018,12 +2071,41 @@ export function renderLedgerPanel(decimals, isFa) {
       evalDetails,
       isFullMatured,
       displayStatus,
+      simpleOutcome,
+      obsClose,
+      legacyContained,
+      legacyDirHit,
+      legacyErrPct,
+      legacyScore,
+      isDuplicate: false,
+      duplicateOfSeq: null,
       tfHorizonKey: `${e.timeframe} | +${e.horizonBars}b`,
       modelKey: String(e.modelId || 'AUTO'),
       modelLabel: String(e.modelName || e.modelId || 'AUTO'),
       hasEdge: String(e.marketConditionTag || '').endsWith('_EDGE') && !String(e.marketConditionTag || '').endsWith('_NO_EDGE'),
     };
   });
+
+  // Tag historical duplicate snapshots (same symbol + tf + horizon + model on same candle or within 5m)
+  // Keeps the newest record per key as primary and tags older duplicates clearly
+  const latestByDedupeKey = new Map();
+  let duplicateTotalCount = 0;
+  for (let i = enrichedAll.length - 1; i >= 0; i--) {
+    const item = enrichedAll[i];
+    const e = item.entry;
+    const anchorBucket =
+      Number(e.anchorOpenTimeUtcMs || 0) > 0
+        ? `A:${Number(e.anchorOpenTimeUtcMs)}`
+        : `T:${Math.floor(Number(e.recordedAtUtcMs || e.generatedAtUtcMs || 0) / 300000)}`;
+    const dedupeKey = `${e.symbolCode}|${e.timeframe}|${e.horizonBars}|${item.modelKey}|${anchorBucket}`;
+    if (latestByDedupeKey.has(dedupeKey)) {
+      item.isDuplicate = true;
+      item.duplicateOfSeq = latestByDedupeKey.get(dedupeKey).entry.seq;
+      duplicateTotalCount += 1;
+    } else {
+      latestByDedupeKey.set(dedupeKey, item);
+    }
+  }
 
   // Group multi-model batches (deduplicating repeated identical modelId entries per batch)
   const batchMap = new Map();
@@ -2045,8 +2127,15 @@ export function renderLedgerPanel(decimals, isFa) {
     .filter(([, items]) => items.length >= 2)
     .reverse();
 
-  // Read filters from state
-  const filters = state._forecastLedgerFilters || { model: 'ALL', tfHorizon: 'ALL', status: 'ALL', condition: 'ALL' };
+  // Read filters from state (hide duplicates by default for clean daily usage)
+  const filters = state._forecastLedgerFilters || {
+    model: 'ALL',
+    tfHorizon: 'ALL',
+    status: 'ALL',
+    condition: 'ALL',
+    hideDuplicates: true,
+  };
+  const hideDuplicates = filters.hideDuplicates !== false;
   const modelOptions = [...new Set(enrichedAll.map((i) => i.modelKey))];
   const tfHorizonOptions = [...new Set(enrichedAll.map((i) => i.tfHorizonKey))];
 
@@ -2054,12 +2143,15 @@ export function renderLedgerPanel(decimals, isFa) {
     .slice()
     .reverse()
     .filter((item) => {
+      if (hideDuplicates && item.isDuplicate) return false;
       if (filters.model !== 'ALL' && item.modelKey !== filters.model) return false;
       if (filters.tfHorizon !== 'ALL' && item.tfHorizonKey !== filters.tfHorizon) return false;
       if (filters.condition === 'EDGE_ONLY' && !item.hasEdge) return false;
       if (filters.condition === 'NO_EDGE_ONLY' && item.hasEdge) return false;
       if (filters.status === 'PENDING' && item.isFullMatured) return false;
       if (filters.status === 'MATURED' && !item.isFullMatured) return false;
+      if (filters.status === 'SUCCESS' && item.simpleOutcome !== 'SUCCESS') return false;
+      if (filters.status === 'FAILED' && item.simpleOutcome !== 'FAILED') return false;
       if (filters.status === 'BATCH_ONLY') {
         const bItems = distinctBatchMap.get(String(item.entry.batchId || ''));
         if (!bItems || bItems.length < 2) return false;
@@ -2067,63 +2159,67 @@ export function renderLedgerPanel(decimals, isFa) {
       return true;
     });
 
-  const pendingTotal = enrichedAll.filter((i) => !i.isFullMatured).length;
-  const maturedTotal = enrichedAll.filter((i) => i.isFullMatured).length;
+  const uniqueEntriesCount = enrichedAll.length - duplicateTotalCount;
+  const pendingTotal = enrichedAll.filter((i) => !i.isDuplicate && !i.isFullMatured).length;
+  const maturedTotal = enrichedAll.filter((i) => !i.isDuplicate && i.isFullMatured).length;
   const currentOverlayHashes = Array.isArray(state._ledgerOverlayHashes) ? state._ledgerOverlayHashes : [];
+  const checkedItems = enrichedAll.filter((item) => currentOverlayHashes.includes(item.entry.forecastHash));
 
-  // Rolling Scorecards
+  // Rolling Scorecards tucked inside a clean collapsible accordion
   const scorecards = defaultForecastLedger.buildModelScorecards(20, activeSymbol);
-  const scorecardsHtml = scorecards.length > 0
+  const scorecardsAccordionHtml = scorecards.length > 0
     ? `
-      <div class="ci-fc-card" style="margin-bottom:12px;">
-        <div class="row-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap;">
-          <strong style="font-size:13px;">${isFa ? 'کارنامه تجمیعی مدل‌ها (آخرین ۲۰ پیش‌بینی تکمیل‌شده)' : 'Rolling Model Scorecards (Last 20 Matured Outcomes)'}</strong>
+      <details class="ci-fc-card ci-fc-accordion" style="margin-bottom:12px;">
+        <summary>
+          <span>${isFa ? 'کارنامه فنی تجمیعی مدل‌ها (آخرین ۲۰ پیش‌بینی تکمیل‌شده)' : 'Rolling Model Scorecards (Last 20 Matured Outcomes)'}</span>
           <span class="ci-fc-family-tag ltr-num">${scorecards.length} ${isFa ? 'مدل' : 'models'} · ${activeSymbol || 'ALL'}</span>
+        </summary>
+        <div class="ci-fc-accordion-body">
+          <div class="ci-fc-scorecard-grid ltr-num">
+            ${scorecards
+              .map((sc) => {
+                const scoreColor =
+                  sc.meanScore == null
+                    ? 'var(--text-muted)'
+                    : sc.meanScore >= 70
+                      ? 'var(--bull)'
+                      : sc.meanScore >= 45
+                        ? 'var(--gold)'
+                        : 'var(--bear)';
+                return `
+                  <div class="ci-fc-mini-stat" style="text-align:left;padding:10px;gap:5px;">
+                    <div class="row-between" style="gap:6px;">
+                      <strong style="font-size:12px;color:var(--text-strong);">${escapeHtml(sc.modelName)}</strong>
+                      <span class="ci-fc-status-badge ${sc.meanScore >= 70 ? 'ci-fc-badge-valid' : sc.meanScore >= 45 ? 'ci-fc-badge-provisional' : 'ci-fc-badge-blocked'}" style="color:${scoreColor};">
+                        ${sc.meanScore != null ? `${sc.meanScore}/100` : 'Pending'}
+                      </span>
+                    </div>
+                    <div style="font-size:11px;color:var(--text-muted);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;">
+                      <span>Dir Acc: <strong>${sc.directionAccuracyPct != null ? sc.directionAccuracyPct + '%' : '—'}</strong></span>
+                      <span>Band Hit: <strong>${sc.meanHitRatePct != null ? sc.meanHitRatePct + '%' : '—'}</strong></span>
+                      <span>Contain: <strong>${sc.containmentRatePct != null ? sc.containmentRatePct + '%' : '—'}</strong></span>
+                      <span>Err ATR: <strong>${sc.meanVolAdjErrorAtr != null ? sc.meanVolAdjErrorAtr + '×' : '—'}</strong></span>
+                      <span>vs Naive: <strong>${sc.baselineBeatRatePct != null ? sc.baselineBeatRatePct + '%' : '—'}</strong></span>
+                      <span>Best: <strong>${escapeHtml(sc.bestContext)}</strong></span>
+                    </div>
+                    <div style="font-size:10px;color:var(--text-muted);">
+                      Matured: <strong>${sc.maturedCount}</strong> · Pending: <strong>${sc.pendingCount}</strong>
+                    </div>
+                  </div>
+                `;
+              })
+              .join('')}
+          </div>
         </div>
-        <div class="ci-fc-scorecard-grid ltr-num">
-          ${scorecards
-            .map((sc) => {
-              const scoreColor =
-                sc.meanScore == null
-                  ? 'var(--text-muted)'
-                  : sc.meanScore >= 70
-                    ? 'var(--bull)'
-                    : sc.meanScore >= 45
-                      ? 'var(--gold)'
-                      : 'var(--bear)';
-              return `
-                <div class="ci-fc-mini-stat" style="text-align:left;padding:10px;gap:5px;">
-                  <div class="row-between" style="gap:6px;">
-                    <strong style="font-size:12px;color:var(--text-strong);">${escapeHtml(sc.modelName)}</strong>
-                    <span class="ci-fc-status-badge ${sc.meanScore >= 70 ? 'ci-fc-badge-valid' : sc.meanScore >= 45 ? 'ci-fc-badge-provisional' : 'ci-fc-badge-blocked'}" style="color:${scoreColor};">
-                      ${sc.meanScore != null ? `${sc.meanScore}/100` : 'Pending'}
-                    </span>
-                  </div>
-                  <div style="font-size:11px;color:var(--text-muted);display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:4px;">
-                    <span>Dir Acc: <strong>${sc.directionAccuracyPct != null ? sc.directionAccuracyPct + '%' : '—'}</strong></span>
-                    <span>Band Hit: <strong>${sc.meanHitRatePct != null ? sc.meanHitRatePct + '%' : '—'}</strong></span>
-                    <span>Contain: <strong>${sc.containmentRatePct != null ? sc.containmentRatePct + '%' : '—'}</strong></span>
-                    <span>Err ATR: <strong>${sc.meanVolAdjErrorAtr != null ? sc.meanVolAdjErrorAtr + '×' : '—'}</strong></span>
-                    <span>vs Naive: <strong>${sc.baselineBeatRatePct != null ? sc.baselineBeatRatePct + '%' : '—'}</strong></span>
-                    <span>Best: <strong>${escapeHtml(sc.bestContext)}</strong></span>
-                  </div>
-                  <div style="font-size:10px;color:var(--text-muted);">
-                    Matured: <strong>${sc.maturedCount}</strong> · Pending: <strong>${sc.pendingCount}</strong>
-                  </div>
-                </div>
-              `;
-            })
-            .join('')}
-        </div>
-      </div>
+      </details>
     `
     : '';
 
-  // History Filter Bar
+  // Clean History Filter Bar (with Hide Duplicates toggle)
   const filterBarHtml = `
-    <div class="ci-fc-filter-bar ltr-num">
+    <div class="ci-fc-filter-bar ltr-num" style="align-items:flex-end;">
       <label class="ci-fc-param-item">
-        <span>${isFa ? 'فیلتر مدل' : 'Model Filter'}</span>
+        <span>${isFa ? 'مدل' : 'Model'}</span>
         <select class="input-field" style="min-height:30px;font-size:11.5px;" data-action="set-forecast-ledger-filter" data-filter-key="model">
           <option value="ALL" ${filters.model === 'ALL' ? 'selected' : ''}>${isFa ? 'همه مدل‌ها' : 'All Models'}</option>
           ${modelOptions.map((m) => `<option value="${escapeHtml(m)}" ${filters.model === m ? 'selected' : ''}>${escapeHtml(m)}</option>`).join('')}
@@ -2137,28 +2233,25 @@ export function renderLedgerPanel(decimals, isFa) {
         </select>
       </label>
       <label class="ci-fc-param-item">
-        <span>${isFa ? 'وضعیت' : 'Status'}</span>
+        <span>${isFa ? 'نتیجه' : 'Result'}</span>
         <select class="input-field" style="min-height:30px;font-size:11.5px;" data-action="set-forecast-ledger-filter" data-filter-key="status">
-          <option value="ALL" ${filters.status === 'ALL' ? 'selected' : ''}>${isFa ? 'همه وضعیت‌ها' : 'All Statuses'}</option>
-          <option value="PENDING" ${filters.status === 'PENDING' ? 'selected' : ''}>${isFa ? 'در انتظار سررسید (Pending)' : 'Pending Only'}</option>
-          <option value="MATURED" ${filters.status === 'MATURED' ? 'selected' : ''}>${isFa ? 'تکمیل‌شده (Matured)' : 'Matured Only'}</option>
-          <option value="BATCH_ONLY" ${filters.status === 'BATCH_ONLY' ? 'selected' : ''}>${isFa ? 'فقط گروهی چندمدله' : 'Multi-Model Batches Only'}</option>
+          <option value="ALL" ${filters.status === 'ALL' ? 'selected' : ''}>${isFa ? 'همه نتایج' : 'All Results'}</option>
+          <option value="PENDING" ${filters.status === 'PENDING' ? 'selected' : ''}>${isFa ? 'در انتظار' : 'Pending'}</option>
+          <option value="SUCCESS" ${filters.status === 'SUCCESS' ? 'selected' : ''}>${isFa ? 'موفق' : 'Success'}</option>
+          <option value="FAILED" ${filters.status === 'FAILED' ? 'selected' : ''}>${isFa ? 'ناموفق' : 'Failed'}</option>
+          <option value="BATCH_ONLY" ${filters.status === 'BATCH_ONLY' ? 'selected' : ''}>${isFa ? 'فقط ثبت گروهی' : 'Multi-Model Batches'}</option>
         </select>
       </label>
-      <label class="ci-fc-param-item">
-        <span>${isFa ? 'شرایط بازار' : 'Market Condition'}</span>
-        <select class="input-field" style="min-height:30px;font-size:11.5px;" data-action="set-forecast-ledger-filter" data-filter-key="condition">
-          <option value="ALL" ${filters.condition === 'ALL' ? 'selected' : ''}>${isFa ? 'همه شرایط' : 'All Conditions'}</option>
-          <option value="EDGE_ONLY" ${filters.condition === 'EDGE_ONLY' ? 'selected' : ''}>${isFa ? 'فقط با برتری آماری (EDGE)' : 'Edge Only'}</option>
-          <option value="NO_EDGE_ONLY" ${filters.condition === 'NO_EDGE_ONLY' ? 'selected' : ''}>${isFa ? 'بدون برتری آماری (NO_EDGE)' : 'No-Edge Only'}</option>
-        </select>
+      <label class="chip ${hideDuplicates ? 'active' : ''}" style="display:inline-flex;align-items:center;gap:6px;cursor:pointer;min-height:30px;">
+        <input type="checkbox" data-action="toggle-ledger-hide-duplicates" ${hideDuplicates ? 'checked' : ''} />
+        <span>${isFa ? `مخفی‌سازی تکراری‌ها${duplicateTotalCount > 0 ? ` (${duplicateTotalCount})` : ''}` : `Hide Duplicates${duplicateTotalCount > 0 ? ` (${duplicateTotalCount})` : ''}`}</span>
       </label>
     </div>
   `;
 
-  // Unified Snapshot <-> 5D Outcome Table Rows
+  // Simplified, scannable History & Results Table Rows
   const unifiedRowsHtml = filteredItems.length === 0
-    ? `<tr><td colspan="9" style="text-align:center;color:var(--text-muted);padding:18px;">${isFa ? 'رکوردی مطابق فیلتر انتخاب‌شده یافت نشد.' : 'No recorded forecast snapshots match the active filters.'}</td></tr>`
+    ? `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);padding:18px;">${isFa ? 'رکوردی مطابق فیلتر انتخاب‌شده یافت نشد.' : 'No recorded forecast snapshots match the active filters.'}</td></tr>`
     : filteredItems
         .map((item) => {
           const e = item.entry;
@@ -2179,165 +2272,160 @@ export function renderLedgerPanel(decimals, isFa) {
           const evaluatedFull = item.isFullMatured && item.termEv ? formatUtcDateTimeShort(item.termEv.recordedAtUtcMs) : '—';
           const evaluatedShort = item.isFullMatured && item.termEv ? formatUtcCompactShort(item.termEv.recordedAtUtcMs) : '—';
           const predPct = e.anchorClose > 0 ? ((e.terminalMedian - e.anchorClose) / e.anchorClose) * 100 : 0;
-          // Only display observed close from an actual MATURED event, never from SUPERSEDED anchor close!
-          const obsClose = item.isFullMatured && item.termEv?.observedClose != null ? Number(item.termEv.observedClose) : null;
+          const obsClose = item.obsClose;
           const obsPct = obsClose != null && e.anchorClose > 0 ? ((obsClose - e.anchorClose) / e.anchorClose) * 100 : null;
           const partialStep = !item.isFullMatured && item.termEv ? Number(item.termEv.horizonStep || 0) : 0;
           const overlayChecked = currentOverlayHashes.includes(e.forecastHash);
 
-          const legacyContained = obsClose != null ? obsClose >= Number(e.terminalQ10) && obsClose <= Number(e.terminalQ90) : false;
-          const legacyDirHit =
-            obsClose != null
-              ? (Number(e.terminalMedian) >= Number(e.anchorClose)) === (obsClose >= Number(e.anchorClose))
-              : false;
-          const legacyErrPct =
-            obsClose != null && Number(e.anchorClose) > 0
-              ? (Math.abs(obsClose - Number(e.terminalMedian)) / Number(e.anchorClose)) * 100
-              : null;
-          const legacyNaiveErr = obsClose != null ? Math.abs(obsClose - Number(e.anchorClose)) : 0;
-          const legacyModelErr = obsClose != null ? Math.abs(obsClose - Number(e.terminalMedian)) : 0;
-          const legacyBeatsNaive = obsClose != null ? legacyModelErr <= legacyNaiveErr : false;
-          const legacyEdgePct =
-            legacyNaiveErr > 1e-8 ? ((legacyNaiveErr - legacyModelErr) / legacyNaiveErr) * 100 : 0;
-          const legacyScore = legacyContained ? 75 : 30;
-
+          // Simple plain-language status pill
           let statusBadgeClass = 'ci-fc-badge-provisional';
           let statusBadgeText = isFa ? 'در انتظار' : 'Pending';
-          if (item.displayStatus === 'MATURED') {
-            const contained = d ? Boolean(d.terminalInsideBand) : legacyContained;
-            statusBadgeClass = contained ? 'ci-fc-badge-valid' : 'ci-fc-badge-blocked';
-            statusBadgeText = isFa ? 'تکمیل‌شده' : 'Matured';
-          } else if (item.displayStatus === 'INVALIDATED_EARLY') {
+          let statusDetailTitle = isFa ? 'منتظر رسیدن به کندل سررسید' : 'Awaiting maturity candle';
+          if (item.simpleOutcome === 'SUCCESS') {
+            statusBadgeClass = 'ci-fc-badge-valid';
+            statusBadgeText = isFa ? 'موفق' : 'Success';
+            statusDetailTitle = d ? `Score ${d.overallScore}/100 · MAE ${d.q50MaePct}%` : `Score ${item.legacyScore}/100`;
+          } else if (item.simpleOutcome === 'FAILED') {
             statusBadgeClass = 'ci-fc-badge-blocked';
-            statusBadgeText = isFa ? `نقض (+${d?.earlyInvalidatedAtStep}b)` : `Invalid (+${d?.earlyInvalidatedAtStep}b)`;
-          } else if (item.displayStatus === 'AMBIGUOUS') {
-            statusBadgeClass = 'ci-fc-badge-provisional';
-            statusBadgeText = isFa ? 'مبهم' : 'Ambiguous';
+            statusBadgeText = isFa ? 'ناموفق' : 'Failed';
+            statusDetailTitle =
+              item.displayStatus === 'INVALIDATED_EARLY'
+                ? (isFa ? `نقض زودهنگام در کندل +${d?.earlyInvalidatedAtStep}` : `Early invalidated at +${d?.earlyInvalidatedAtStep}b`)
+                : (d ? `Score ${d.overallScore}/100 · MAE ${d.q50MaePct}%` : `Score ${item.legacyScore}/100`);
           } else if (item.displayStatus === 'SUPERSEDED') {
-            statusBadgeClass = 'ci-fc-badge-provisional';
-            statusBadgeText = isFa ? 'جایگزین‌شده' : 'Superseded';
+            statusDetailTitle = isFa ? 'در انتظار (اسنپ‌شات جدیدتری ثبت شده است)' : 'Pending (newer snapshot exists)';
           }
 
-          let eval5dHtml = `<span style="color:var(--text-muted);font-size:10.5px;">${
+          // Clean Successful Candles & Error cell
+          let candleHitHtml = `<span style="color:var(--text-muted);font-size:11px;">${
             partialStep > 0
-              ? (isFa ? `در جریان (+${partialStep}/${e.horizonBars}b)` : `In progress (+${partialStep}/${e.horizonBars}b)`)
-              : (isFa ? 'منتظر سررسید' : 'Awaiting maturity')
+              ? (isFa ? `${partialStep}/${e.horizonBars} در جریان` : `${partialStep}/${e.horizonBars} live`)
+              : '—'
           }</span>`;
 
           if (d) {
-            eval5dHtml = `
-              <div class="ci-fc-eval5d-cell">
-                <div>
-                  <span style="color:${d.directionHit ? 'var(--bull)' : 'var(--bear)'};font-weight:700;">${d.directionHit ? '✓ Trend' : '✗ Trend'}</span>
-                  · Hit <strong>${d.insideCount}/${d.totalBars}</strong> (${d.hitRatePct}%)
-                  · <strong style="color:${d.overallScore >= 70 ? 'var(--bull)' : d.overallScore >= 45 ? 'var(--gold)' : 'var(--bear)'};">${d.overallScore}/100</strong>
-                </div>
-                <div style="color:var(--text-muted);">
-                  MAE ${d.q50MaePct}% (${d.volAdjustedMaeAtr}×ATR) · Naive <strong style="color:${d.beatsBaseline ? 'var(--bull)' : 'var(--bear)'};">${d.edgeVsNaivePct >= 0 ? '+' : ''}${d.edgeVsNaivePct}%</strong> · S/R ${escapeHtml(d.srSummaryStatus)}
-                </div>
+            const hitCol = d.hitRatePct >= 65 ? 'var(--bull)' : d.hitRatePct >= 45 ? 'var(--gold)' : 'var(--bear)';
+            candleHitHtml = `
+              <div class="ci-fc-eval5d-cell" title="Score ${d.overallScore}/100 · ${d.volAdjustedMaeAtr}×ATR · vs Naive ${d.edgeVsNaivePct >= 0 ? '+' : ''}${d.edgeVsNaivePct}% · S/R ${escapeHtml(d.srSummaryStatus)}">
+                <div><strong style="color:${hitCol};font-size:12.5px;">${d.insideCount}/${d.totalBars}</strong> <span style="color:var(--text-muted);">(${d.hitRatePct}%)</span></div>
+                <div style="font-size:10px;color:var(--text-muted);">${isFa ? 'خطا' : 'Err'} ${d.q50MaePct}% · <span style="color:${d.directionHit ? 'var(--bull)' : 'var(--bear)'};">${d.directionHit ? (isFa ? 'جهت ✓' : 'Dir ✓') : (isFa ? 'جهت ✗' : 'Dir ✗')}</span></div>
               </div>
             `;
           } else if (item.isFullMatured && obsClose != null) {
-            eval5dHtml = `
+            candleHitHtml = `
               <div class="ci-fc-eval5d-cell">
-                <div>
-                  <span style="color:${legacyDirHit ? 'var(--bull)' : 'var(--bear)'};font-weight:700;">${legacyDirHit ? '✓ Trend' : '✗ Trend'}</span>
-                  · Band <strong>${legacyContained ? 'IN' : 'OUT'}</strong>
-                  · <strong style="color:${legacyScore >= 70 ? 'var(--bull)' : 'var(--bear)'};">${legacyScore}/100</strong>
-                </div>
-                <div style="color:var(--text-muted);">
-                  Err ${legacyErrPct != null ? legacyErrPct.toFixed(2) + '%' : '—'} · Naive <strong style="color:${legacyBeatsNaive ? 'var(--bull)' : 'var(--bear)'};">${legacyEdgePct >= 0 ? '+' : ''}${legacyEdgePct.toFixed(1)}%</strong> · Legacy
-                </div>
+                <div><strong>${item.legacyContained ? (isFa ? 'داخل بازه' : 'In Band') : (isFa ? 'خارج بازه' : 'Out Band')}</strong></div>
+                <div style="font-size:10px;color:var(--text-muted);">${isFa ? 'خطا' : 'Err'} ${item.legacyErrPct != null ? item.legacyErrPct.toFixed(2) + '%' : '—'} · Legacy</div>
               </div>
             `;
           }
 
           return `
-            <tr>
-              <td class="ltr-num"><input type="checkbox" data-action="toggle-ledger-overlay-entry" data-hash="${escapeHtml(e.forecastHash)}" ${overlayChecked ? 'checked' : ''} aria-label="Overlay forecast #${e.seq}" /></td>
-              <td class="ltr-num">
-                <strong>#${e.seq}</strong>
-                ${
-                  isBatch
-                    ? `<div><button type="button" class="chip ${state._selectedForecastBatchId === bId ? 'active' : ''}" style="font-size:9px;padding:1px 5px;min-height:17px;" data-action="select-forecast-batch" data-batch-id="${escapeHtml(bId)}" title="${escapeHtml(bId)}">BATCH</button></div>`
-                    : `<div style="font-size:9px;color:var(--text-muted);" title="${escapeHtml(bId)}">SNAP</div>`
-                }
-              </td>
+            <tr style="${item.isDuplicate ? 'opacity:0.72;' : ''}">
+              <td class="ltr-num"><input type="checkbox" data-action="toggle-ledger-overlay-entry" data-hash="${escapeHtml(e.forecastHash)}" ${overlayChecked ? 'checked' : ''} aria-label="Select forecast #${e.seq} for comparison" /></td>
               <td class="ltr-num ci-fc-wrap-cell">
-                <strong>${escapeHtml(item.modelLabel)}</strong>
-                <div style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(getMarketConditionLabel(e.marketConditionTag, false))}</div>
+                <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
+                  <strong>${escapeHtml(item.modelLabel)}</strong>
+                  <span style="font-size:10px;color:var(--text-muted);">#${e.seq}</span>
+                  ${
+                    isBatch
+                      ? `<button type="button" class="chip ${state._selectedForecastBatchId === bId && state._ledgerCompareMode !== 'selected' ? 'active' : ''}" style="font-size:9px;padding:1px 5px;min-height:17px;" data-action="select-forecast-batch" data-batch-id="${escapeHtml(bId)}" title="${escapeHtml(bId)}">${isFa ? 'گروهی' : 'Batch'}</button>`
+                      : ''
+                  }
+                  ${
+                    item.isDuplicate
+                      ? `<span class="ci-fc-status-badge ci-fc-badge-provisional" style="font-size:9px;padding:1px 5px;">${isFa ? `تکراری (#${item.duplicateOfSeq})` : `Duplicate (#${item.duplicateOfSeq})`}</span>`
+                      : ''
+                  }
+                </div>
+                <div style="font-size:10px;color:var(--text-muted);">${escapeHtml(e.symbolCode)} · ${escapeHtml(e.timeframe)} (+${e.horizonBars})</div>
               </td>
-              <td class="ltr-num" title="${escapeHtml(recordedFull)} UTC">
+              <td class="ltr-num" title="${isFa ? 'ثبت:' : 'Recorded:'} ${escapeHtml(recordedFull)} UTC | ${isFa ? 'سررسید:' : 'Due:'} ${escapeHtml(maturesFull)} UTC">
                 <div>${escapeHtml(recordedShort)}</div>
-                <div style="font-size:9.5px;color:var(--text-muted);">Anc ${PriceFormatter.formatPrice(e.anchorClose, decimals)}</div>
-              </td>
-              <td class="ltr-num" title="Due ${escapeHtml(maturesFull)} UTC">
-                <div><strong>${escapeHtml(e.symbolCode)}</strong> ${escapeHtml(e.timeframe)} +${e.horizonBars}b</div>
-                <div style="font-size:9.5px;color:var(--text-muted);">Due ${escapeHtml(maturesShort)}</div>
+                <div style="font-size:10px;color:var(--text-muted);">→ ${escapeHtml(maturesShort)}</div>
               </td>
               <td class="ltr-num">
                 <div><strong>${PriceFormatter.formatPrice(e.terminalMedian, decimals)}</strong> <span style="color:${predPct >= 0 ? 'var(--bull)' : 'var(--bear)'};">(${predPct >= 0 ? '+' : ''}${predPct.toFixed(2)}%)</span></div>
-                <div style="font-size:9.5px;color:var(--text-muted);">[${PriceFormatter.formatPrice(e.terminalQ10, decimals)}..${PriceFormatter.formatPrice(e.terminalQ90, decimals)}]</div>
+                <div style="font-size:10px;color:var(--text-muted);">[${PriceFormatter.formatPrice(e.terminalQ10, decimals)} .. ${PriceFormatter.formatPrice(e.terminalQ90, decimals)}]</div>
               </td>
               <td class="ltr-num" title="${escapeHtml(evaluatedFull)}">
                 <div>${obsClose != null ? `<strong>${PriceFormatter.formatPrice(obsClose, decimals)}</strong> <span style="color:${obsPct >= 0 ? 'var(--bull)' : 'var(--bear)'};">(${obsPct >= 0 ? '+' : ''}${obsPct.toFixed(2)}%)</span>` : '—'}</div>
-                <div style="font-size:9.5px;color:var(--text-muted);">${escapeHtml(evaluatedShort)}</div>
+                <div style="font-size:10px;color:var(--text-muted);">${obsClose != null ? escapeHtml(evaluatedShort) : ''}</div>
               </td>
-              <td class="ltr-num ci-fc-wrap-cell">${eval5dHtml}</td>
-              <td class="ltr-num"><span class="ci-fc-status-badge ${statusBadgeClass}">${escapeHtml(statusBadgeText)}</span></td>
+              <td class="ltr-num ci-fc-wrap-cell">${candleHitHtml}</td>
+              <td class="ltr-num"><span class="ci-fc-status-badge ${statusBadgeClass}" title="${escapeHtml(statusDetailTitle)}">${escapeHtml(statusBadgeText)}</span></td>
             </tr>
           `;
         })
         .join('');
 
-  // Side-by-Side Batch Comparison Section (distinct models per batch only)
+  // Unified Side-by-Side Comparison Card (supports BOTH manually checked rows AND recorded multi-model batches!)
   const selectedBatchId =
     state._selectedForecastBatchId && (distinctBatchMap.get(state._selectedForecastBatchId)?.length || 0) >= 2
       ? state._selectedForecastBatchId
       : multiModelBatches[0]?.[0] || '';
   const selectedBatchItems = selectedBatchId ? (distinctBatchMap.get(selectedBatchId) || []) : [];
+  const compareMode =
+    state._ledgerCompareMode === 'selected' && checkedItems.length >= 2
+      ? 'selected'
+      : selectedBatchItems.length >= 2
+        ? 'batch'
+        : checkedItems.length >= 2
+          ? 'selected'
+          : 'none';
+  const compareItems = compareMode === 'selected' ? checkedItems.slice(0, 4) : selectedBatchItems;
 
   let batchComparisonHtml = '';
-  if (multiModelBatches.length > 0 && selectedBatchItems.length >= 2) {
+  if (compareItems.length >= 2) {
     let bestItem = null;
-    let bestScore = -1;
-    for (const item of selectedBatchItems) {
-      const sc = Number(item.evalDetails?.overallScore ?? -1);
-      if (sc > bestScore) {
-        bestScore = sc;
+    let bestRankScore = -Infinity;
+    for (const item of compareItems) {
+      if (!item.isFullMatured) continue;
+      const sc = item.evalDetails ? Number(item.evalDetails.overallScore ?? -1) : Number(item.legacyScore ?? -1);
+      const errPenalty = item.evalDetails ? Number(item.evalDetails.q50MaePct ?? 0) * 0.01 : Number(item.legacyErrPct ?? 0) * 0.01;
+      const rankScore = sc - errPenalty;
+      if (rankScore > bestRankScore) {
+        bestRankScore = rankScore;
         bestItem = item;
       }
     }
 
-    const batchSelectorPills = multiModelBatches
-      .slice(0, 6)
-      .map(([bId, items]) => {
+    const batchSelectorPills = [
+      checkedItems.length >= 2
+        ? `<button type="button" class="chip ${compareMode === 'selected' ? 'active' : ''}" data-action="compare-selected-ledger-entries">${isFa ? `ردیف‌های انتخاب‌شده (${checkedItems.length})` : `Selected Rows (${checkedItems.length})`}</button>`
+        : '',
+      ...multiModelBatches.slice(0, 5).map(([bId, items]) => {
         const sample = items[0].entry;
-        const label = `${sample.symbolCode} ${sample.timeframe} +${sample.horizonBars}b (${items.length} models · ${formatUtcDateTimeShort(sample.recordedAtUtcMs)})`;
-        return `<button type="button" class="chip ${selectedBatchId === bId ? 'active' : ''}" data-action="select-forecast-batch" data-batch-id="${escapeHtml(bId)}">${escapeHtml(label)}</button>`;
-      })
+        const label = `${sample.symbolCode} ${sample.timeframe} +${sample.horizonBars} (${items.length} ${isFa ? 'مدل' : 'models'} · ${formatUtcCompactShort(sample.recordedAtUtcMs)})`;
+        return `<button type="button" class="chip ${compareMode === 'batch' && selectedBatchId === bId ? 'active' : ''}" data-action="select-forecast-batch" data-batch-id="${escapeHtml(bId)}">${escapeHtml(label)}</button>`;
+      }),
+    ]
+      .filter(Boolean)
       .join('');
 
-    const colHeaders = selectedBatchItems
+    const colHeaders = compareItems
       .map((item) => {
-        const isWinner = bestItem && bestItem.entry.forecastHash === item.entry.forecastHash && bestScore >= 0;
+        const isWinner = bestItem && bestItem.entry.forecastHash === item.entry.forecastHash;
         return `
           <th>
-            <div>${escapeHtml(item.modelLabel)}</div>
-            ${isWinner ? `<span class="ci-fc-batch-winner-badge">★ ${isFa ? 'برنده گروه' : 'Best Performer'}</span>` : ''}
+            <div>${escapeHtml(item.modelLabel)} <span style="font-size:10px;color:var(--text-muted);">#${item.entry.seq}</span></div>
+            ${isWinner ? `<span class="ci-fc-batch-winner-badge">★ ${isFa ? 'مدل برتر این بازه' : 'Best Performer'}</span>` : ''}
           </th>
         `;
       })
       .join('');
 
-    const makeRow = (label, fn) => `<tr><td><strong>${escapeHtml(label)}</strong></td>${selectedBatchItems.map((it) => `<td class="ltr-num">${fn(it)}</td>`).join('')}</tr>`;
+    const makeRow = (label, fn) => `<tr><td><strong>${escapeHtml(label)}</strong></td>${compareItems.map((it) => `<td class="ltr-num">${fn(it)}</td>`).join('')}</tr>`;
+    const sampleEntry = compareItems[0].entry;
 
     batchComparisonHtml = `
-      <div class="ci-fc-card" style="margin-bottom:12px;">
+      <div id="ci-fc-compare-card" class="ci-fc-card" style="margin-bottom:12px;">
         <div class="row-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap;">
           <div>
-            <strong style="font-size:13px;">${isFa ? 'مقایسه کنار هم چند مدل (Batch Comparison)' : 'Side-by-Side Multi-Model Batch Comparison'}</strong>
-            <div style="font-size:11px;color:var(--text-muted);" class="ltr-num">Batch: ${escapeHtml(selectedBatchId)} · Recorded ${escapeHtml(formatUtcDateTimeShort(selectedBatchItems[0].entry.recordedAtUtcMs))} · Anchor ${PriceFormatter.formatPrice(selectedBatchItems[0].entry.anchorClose, decimals)}</div>
+            <strong style="font-size:13px;">${isFa ? 'مقایسه کنار هم مدل‌های انتخاب‌شده' : 'Side-by-Side Multi-Model Batch Comparison'}</strong>
+            <div style="font-size:11px;color:var(--text-muted);" class="ltr-num">
+              ${escapeHtml(sampleEntry.symbolCode)} · ${escapeHtml(sampleEntry.timeframe)} (+${sampleEntry.horizonBars}) · ${isFa ? 'قیمت مبنا:' : 'Anchor:'} ${PriceFormatter.formatPrice(sampleEntry.anchorClose, decimals)}
+            </div>
           </div>
           <div class="chip-group" style="flex-wrap:wrap;">${batchSelectorPills}</div>
         </div>
@@ -2345,37 +2433,52 @@ export function renderLedgerPanel(decimals, isFa) {
           <table class="ci-fc-table">
             <thead>
               <tr>
-                <th>${isFa ? 'معیار ارزیابی' : 'Evaluation Metric'}</th>
+                <th>${isFa ? 'شاخص مقایسه' : 'Comparison Metric'}</th>
                 ${colHeaders}
               </tr>
             </thead>
             <tbody>
-              ${makeRow(isFa ? 'هدف Q50 در برابر کلوز واقعی' : 'Q50 Target vs Actual Close', (it) => {
+              ${makeRow(isFa ? 'نتیجه' : 'Result', (it) => {
+                if (it.simpleOutcome === 'SUCCESS') return `<span class="ci-fc-status-badge ci-fc-badge-valid">${isFa ? 'موفق' : 'Success'}</span>`;
+                if (it.simpleOutcome === 'FAILED') return `<span class="ci-fc-status-badge ci-fc-badge-blocked">${isFa ? 'ناموفق' : 'Failed'}</span>`;
+                return `<span class="ci-fc-status-badge ci-fc-badge-provisional">${isFa ? 'در انتظار' : 'Pending'}</span>`;
+              })}
+              ${makeRow(isFa ? 'تعداد کندل‌های درست' : 'Successful Candles', (it) =>
+                it.evalDetails
+                  ? `<strong>${it.evalDetails.insideCount}/${it.evalDetails.totalBars}</strong> (${it.evalDetails.hitRatePct}%)`
+                  : it.isFullMatured
+                    ? (it.legacyContained ? (isFa ? 'داخل بازه' : 'In Band') : (isFa ? 'خارج بازه' : 'Out Band'))
+                    : (isFa ? 'در انتظار' : 'Pending')
+              )}
+              ${makeRow(isFa ? 'میزان خطا' : 'Price Error (MAE%)', (it) =>
+                it.evalDetails
+                  ? `<strong>${it.evalDetails.q50MaePct}%</strong>`
+                  : it.legacyErrPct != null
+                    ? `<strong>${it.legacyErrPct.toFixed(2)}%</strong>`
+                    : (isFa ? 'در انتظار' : 'Pending')
+              )}
+              ${makeRow(isFa ? 'هدف پیش‌بینی / قیمت واقعی' : 'Target vs Actual Close', (it) => {
                 const target = PriceFormatter.formatPrice(it.entry.terminalMedian, decimals);
-                const actual = it.termEv?.observedClose != null ? PriceFormatter.formatPrice(it.termEv.observedClose, decimals) : 'Pending';
-                return `${target} vs <strong>${actual}</strong>`;
+                const actual = it.obsClose != null ? PriceFormatter.formatPrice(it.obsClose, decimals) : (isFa ? 'در انتظار' : 'Pending');
+                return `${target} / <strong>${actual}</strong>`;
               })}
-              ${makeRow(isFa ? 'دقت جهت و روند' : 'Trend Accuracy', (it) => {
-                if (!it.evalDetails) return 'Pending';
-                const col = it.evalDetails.directionHit ? 'var(--bull)' : 'var(--bear)';
-                return `<span style="color:${col};font-weight:700;">${it.evalDetails.directionHit ? '✓ Correct' : '✗ Wrong'}</span> (${it.evalDetails.actualPctChange >= 0 ? '+' : ''}${it.evalDetails.actualPctChange}% vs ${it.evalDetails.predPctChange >= 0 ? '+' : ''}${it.evalDetails.predPctChange}%)`;
+              ${makeRow(isFa ? 'تشخیص جهت حرکت' : 'Direction Accuracy', (it) => {
+                if (it.evalDetails) {
+                  const col = it.evalDetails.directionHit ? 'var(--bull)' : 'var(--bear)';
+                  return `<span style="color:${col};font-weight:700;">${it.evalDetails.directionHit ? (isFa ? '✓ درست' : '✓ Correct') : (isFa ? '✗ نادرست' : '✗ Wrong')}</span>`;
+                }
+                if (it.isFullMatured) {
+                  const col = it.legacyDirHit ? 'var(--bull)' : 'var(--bear)';
+                  return `<span style="color:${col};font-weight:700;">${it.legacyDirHit ? (isFa ? '✓ درست' : '✓ Correct') : (isFa ? '✗ نادرست' : '✗ Wrong')}</span>`;
+                }
+                return isFa ? 'در انتظار' : 'Pending';
               })}
-              ${makeRow(isFa ? 'کندل‌های داخل بازه [q10..q90]' : 'Candles Inside Band', (it) =>
-                it.evalDetails ? `<strong>${it.evalDetails.insideCount}/${it.evalDetails.totalBars}</strong> (${it.evalDetails.hitRatePct}%)` : 'Pending'
-              )}
-              ${makeRow(isFa ? 'خطای میانگین (MAE% & ×ATR)' : 'Price Error (MAE% & ×ATR)', (it) =>
-                it.evalDetails ? `${it.evalDetails.q50MaePct}% · <strong>${it.evalDetails.volAdjustedMaeAtr}× ATR</strong>` : 'Pending'
-              )}
-              ${makeRow(isFa ? 'برتری نسبت به مدل پایه (Naive)' : 'vs Naive Baseline', (it) => {
-                if (!it.evalDetails) return 'Pending';
-                const col = it.evalDetails.beatsBaseline ? 'var(--bull)' : 'var(--bear)';
-                return `<span style="color:${col};font-weight:700;">${it.evalDetails.edgeVsNaivePct >= 0 ? '+' : ''}${it.evalDetails.edgeVsNaivePct}%</span>`;
-              })}
-              ${makeRow(isFa ? 'واکنش سطوح S/R' : 'S/R Zone Reaction', (it) =>
-                it.evalDetails ? escapeHtml(it.evalDetails.srSummaryStatus) : 'Pending'
-              )}
-              ${makeRow(isFa ? 'امتیاز کل پیش‌بینی (۰–۱۰۰)' : 'Overall Score (0–100)', (it) =>
-                it.evalDetails ? `<strong>${it.evalDetails.overallScore}/100</strong>` : 'Pending'
+              ${makeRow(isFa ? 'امتیاز کل (از ۱۰۰)' : 'Overall Score (0–100)', (it) =>
+                it.evalDetails
+                  ? `<strong>${it.evalDetails.overallScore}/100</strong>`
+                  : it.isFullMatured
+                    ? `<strong>${it.legacyScore}/100</strong>`
+                    : (isFa ? 'در انتظار' : 'Pending')
               )}
             </tbody>
           </table>
@@ -2387,8 +2490,8 @@ export function renderLedgerPanel(decimals, isFa) {
   // Visual Replay Overlay Selection (aligned 1-to-1 with app.js canvas colors & target filter)
   const rawOverlayCandidates = currentOverlayHashes.length > 0
     ? rawEntries.filter((e) => currentOverlayHashes.includes(e.forecastHash))
-    : selectedBatchItems.length >= 2
-      ? selectedBatchItems.map((i) => i.entry).slice(0, 4)
+    : compareItems.length >= 2
+      ? compareItems.map((i) => i.entry).slice(0, 4)
       : rawEntries.slice(-2);
   const firstOverlaySym = rawOverlayCandidates[0]?.symbolCode || activeSymbol;
   const firstOverlayTf = rawOverlayCandidates[0]?.timeframe || activeTab?.timeframe || 'M15';
@@ -2408,8 +2511,8 @@ export function renderLedgerPanel(decimals, isFa) {
       <div class="ci-fc-card" style="margin-bottom:12px;">
         <div class="row-between" style="margin-bottom:8px;gap:8px;flex-wrap:wrap;">
           <div>
-            <strong style="font-size:13px;">${isFa ? 'بازپخش بصری مسیر مدل‌های ثبت‌شده روی کندل‌های واقعی' : 'Visual Replay Overlay · Recorded Models vs Realized Candles'}</strong>
-            <div style="font-size:11px;color:var(--text-muted);">${isFa ? 'با تیک زدن ستون چپ جدول، ۲ تا ۴ پیش‌بینی را هم‌زمان روی کندل‌های واقعی مقایسه کنید.' : 'Check 2–4 snapshots in the table above to overlay their predicted trajectories on realized price action.'}</div>
+            <strong style="font-size:13px;">${isFa ? 'نمایش مسیر مدل‌های انتخاب‌شده روی کندل‌های واقعی' : 'Visual Replay Overlay · Recorded Models vs Realized Candles'}</strong>
+            <div style="font-size:11px;color:var(--text-muted);">${isFa ? 'با تیک زدن ۲ تا ۴ ردیف در جدول بالا، مسیر پیش‌بینی‌ها را روی کندل‌های واقعی ببینید.' : 'Check 2–4 snapshots above to overlay their predicted paths on realized candles.'}</div>
           </div>
           <div style="display:flex;gap:6px;flex-wrap:wrap;">${visualOverlayLegend}</div>
         </div>
@@ -2422,7 +2525,7 @@ export function renderLedgerPanel(decimals, isFa) {
   const entriesReversed = rawEntries.slice().reverse();
   const rowsHtml =
     entriesReversed.length === 0
-      ? `<tr><td colspan="8" style="padding:18px;text-align:center;color:var(--text-muted);font-size:12.5px;">${isFa ? 'هنوز هیچ پیش‌بینی‌ای در دفتر کل محلی ثبت نشده است.' : 'No immutable forecast snapshots recorded yet.'}</td></tr>`
+      ? `<tr><td colspan="8" style="padding:18px;text-align:center;color:var(--text-muted);font-size:12.5px;">${isFa ? 'هنوز هیچ پیش‌بینی‌ای ثبت نشده است.' : 'No immutable forecast snapshots recorded yet.'}</td></tr>`
       : entriesReversed
           .map(
             (e) => `
@@ -2443,7 +2546,7 @@ export function renderLedgerPanel(decimals, isFa) {
   const lcEventsReversed = rawEvents.slice().reverse();
   const lcRowsHtml =
     lcEventsReversed.length === 0
-      ? `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">${isFa ? 'هنوز رویداد چرخه عمر ثبت نشده است.' : 'No append-only lifecycle events yet.'}</td></tr>`
+      ? `<tr><td colspan="7" style="text-align:center;color:var(--text-muted);">${isFa ? 'هنوز رویدادی ثبت نشده است.' : 'No append-only lifecycle events yet.'}</td></tr>`
       : lcEventsReversed
           .map((ev) => {
             const outCol =
@@ -2468,24 +2571,28 @@ export function renderLedgerPanel(decimals, isFa) {
           })
           .join('');
 
+  const compareBtnCount = checkedItems.length >= 2 ? checkedItems.length : selectedBatchItems.length;
+  const compareBtnLabel = isFa
+    ? `مقایسه مدل‌های انتخاب‌شده${compareBtnCount >= 2 ? ` (${compareBtnCount})` : ''}`
+    : `Compare Selected Models${compareBtnCount >= 2 ? ` (${compareBtnCount})` : ''}`;
+
   return `
     <div class="ci-fc-card" style="margin-bottom:12px;">
       <div class="row-between" style="flex-wrap:wrap;gap:8px;">
         <div>
-          <strong style="font-size:13.5px;">${isFa ? 'گزارش جامع پیش‌بینی‌ها، ارزیابی ۵بعدی و مقایسه مدل‌ها' : 'Forecast Snapshot Tracker, 5D Evaluation & Multi-Model Comparison'}</strong>
+          <strong style="font-size:13.5px;">${isFa ? 'سوابق پیش‌بینی‌ها و مقایسه نتایج' : 'Forecast History & Model Comparison'}</strong>
           <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;" class="ltr-num">
-            ${isFa ? `کل: ${rawEntries.length} | در انتظار: ${pendingTotal} | تکمیل‌شده: ${maturedTotal} | دسته‌های چندمدله: ${multiModelBatches.length}` : `Total: ${rawEntries.length} · Pending: ${pendingTotal} · Matured: ${maturedTotal} · Multi-Model Batches: ${multiModelBatches.length}`}
+            ${isFa ? `ثبت‌شده: ${uniqueEntriesCount} | در انتظار: ${pendingTotal} | ارزیابی‌شده: ${maturedTotal}` : `Saved: ${uniqueEntriesCount} · Pending: ${pendingTotal} · Matured: ${maturedTotal}`}
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn btn-sm btn-primary" data-action="record-selected-forecast-models">${isFa ? 'ثبت گروهی مدل‌های انتخاب‌شده' : 'Record Selected Models'}</button>
-          <button type="button" class="btn btn-sm" data-action="evaluate-forecast-outcomes">${isFa ? 'ارزیابی سررسیدها' : 'Evaluate Matured Outcomes'}</button>
-          <button type="button" class="btn btn-sm" data-action="refresh-forecast-ledger">${isFa ? 'به‌روزرسانی' : 'Refresh Local Ledger'}</button>
+          <button type="button" class="btn btn-sm ${compareBtnCount >= 2 ? 'btn-primary' : ''}" data-action="compare-selected-ledger-entries">${compareBtnLabel}</button>
+          <button type="button" class="btn btn-sm" data-action="evaluate-forecast-outcomes">${isFa ? 'بررسی سررسیدها' : 'Evaluate Matured'}</button>
+          <button type="button" class="btn btn-sm" data-action="refresh-forecast-ledger">${isFa ? 'به‌روزرسانی' : 'Refresh'}</button>
         </div>
       </div>
     </div>
-
-    ${scorecardsHtml}
 
     <div class="ci-fc-card" style="margin-bottom:12px;">
       ${filterBarHtml}
@@ -2493,15 +2600,13 @@ export function renderLedgerPanel(decimals, isFa) {
         <table class="ci-fc-table ci-fc-ledger-table">
           <thead>
             <tr>
-              <th>Plot</th>
-              <th>Run</th>
-              <th>Model & Condition</th>
-              <th>Recorded</th>
-              <th>Horizon & Due</th>
-              <th>Q50 & 80% Band</th>
-              <th>Actual</th>
-              <th>5D Evaluation</th>
-              <th>Status</th>
+              <th>${isFa ? 'انتخاب' : 'Select'}</th>
+              <th>${isFa ? 'مدل' : 'Model'}</th>
+              <th>${isFa ? 'ثبت و سررسید' : 'Recorded → Due'}</th>
+              <th>${isFa ? 'هدف و بازه پیش‌بینی' : 'Target & Range'}</th>
+              <th>${isFa ? 'قیمت واقعی' : 'Actual'}</th>
+              <th>${isFa ? 'کندل‌های موفق' : 'Successful Candles'}</th>
+              <th>${isFa ? 'نتیجه' : 'Result'}</th>
             </tr>
           </thead>
           <tbody>${unifiedRowsHtml}</tbody>
@@ -2511,10 +2616,11 @@ export function renderLedgerPanel(decimals, isFa) {
 
     ${batchComparisonHtml}
     ${visualOverlayHtml}
+    ${scorecardsAccordionHtml}
 
     <details class="ci-fc-card ci-fc-accordion">
       <summary>
-        <span>${isFa ? 'دفتر کل فنی زنجیره هش SHA-256 و لاگ چرخه عمر (کلیک برای مشاهده جزئیات ممیزی)' : 'Append-Only SHA-256 Hash-Chained Audit Ledger & Raw Lifecycle Log (Click to expand)'}</span>
+        <span>${isFa ? 'جزئیات فنی ممیزی و زنجیره هش SHA-256 (کلیک برای باز شدن)' : 'Append-Only SHA-256 Hash-Chained Audit Ledger & Raw Lifecycle Log (Click to expand)'}</span>
         <span class="ltr-num" style="font-size:11px;color:${audit.valid && lcAudit.valid ? 'var(--bull)' : 'var(--bear)'};">Runs: ${escapeHtml(audit.reason)} · Lifecycle: ${escapeHtml(lcAudit.reason)}</span>
       </summary>
       <div class="ci-fc-accordion-body">
@@ -2541,7 +2647,7 @@ export function renderLedgerPanel(decimals, isFa) {
           }
         </div>
         <div style="overflow-x:auto;">
-          <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">${isFa ? 'گزارش فقط‌افزودنی چرخه عمر و نتایج سررسید (ACTIVE / MATURED / AMBIGUOUS)' : 'Append-Only Lifecycle & Per-Horizon Outcome Log (Never Mutates Runs)'}</div>
+          <div style="font-size:12.5px;font-weight:700;margin-bottom:8px;">${isFa ? 'گزارش چرخه عمر و نتایج سررسید (ACTIVE / MATURED / AMBIGUOUS)' : 'Append-Only Lifecycle & Per-Horizon Outcome Log'}</div>
           <table class="ci-fc-table">
             <thead>
               <tr>

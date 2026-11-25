@@ -173,6 +173,49 @@ export class ForecastLedger {
     };
   }
 
+  /**
+   * Finds an existing snapshot matching the same symbol, timeframe, horizon, and model
+   * recorded on the same closed candle anchor or within the deduplication time window.
+   */
+  findRecentDuplicateEntry(
+    {
+      symbolCode,
+      timeframe,
+      horizonBars,
+      modelId,
+      anchorOpenTimeUtcMs = 0,
+      recordedAtUtcMs = Date.now(),
+      windowMs = 5 * 60 * 1000,
+    },
+    entriesOverride = null
+  ) {
+    const entries = Array.isArray(entriesOverride) ? entriesOverride : this.loadEntries();
+    const normSym = String(symbolCode || '').trim();
+    const normTf = String(timeframe || '').trim();
+    const normH = Math.max(1, Number(horizonBars || 15));
+    const normModel = String(modelId || 'AUTO').trim();
+    const targetAnchor = Number(anchorOpenTimeUtcMs || 0);
+    const targetRecMs = Number(recordedAtUtcMs || Date.now());
+    const safeWindowMs = Math.max(0, Number(windowMs ?? 5 * 60 * 1000));
+
+    for (let i = entries.length - 1; i >= 0; i--) {
+      const e = entries[i];
+      if (!e) continue;
+      if (String(e.symbolCode || '') !== normSym) continue;
+      if (String(e.timeframe || '') !== normTf) continue;
+      if (Number(e.horizonBars || 0) !== normH) continue;
+      if (String(e.modelId || 'AUTO') !== normModel) continue;
+
+      const sameAnchor = targetAnchor > 0 && Number(e.anchorOpenTimeUtcMs || 0) === targetAnchor;
+      const prevRecMs = Number(e.recordedAtUtcMs || e.generatedAtUtcMs || 0);
+      const withinWindow = safeWindowMs > 0 && prevRecMs > 0 && Math.abs(targetRecMs - prevRecMs) <= safeWindowMs;
+      if (sameAnchor || withinWindow) {
+        return e;
+      }
+    }
+    return null;
+  }
+
   appendFromForecast(forecastResult, options = {}) {
     if (!forecastResult || forecastResult.status === 'DATA_NOT_READY') {
       return null;
@@ -217,6 +260,27 @@ export class ForecastLedger {
         : anchorOpenTimeUtcMs > 0
           ? anchorOpenTimeUtcMs + horizonBars * tfStepMs
           : generatedAtUtcMs + horizonBars * tfStepMs;
+
+    const previewModelId = String(
+      options.modelId || forecastResult.selectedChartModelId || forecastResult.model?.id || 'AUTO'
+    );
+    if (options.preventDuplicate) {
+      const existingDup = this.findRecentDuplicateEntry(
+        {
+          symbolCode: forecastResult.symbolCode,
+          timeframe: forecastResult.timeframe,
+          horizonBars,
+          modelId: previewModelId,
+          anchorOpenTimeUtcMs,
+          recordedAtUtcMs,
+          windowMs: options.dedupeWindowMs ?? 5 * 60 * 1000,
+        },
+        entries
+      );
+      if (existingDup) {
+        return { ...existingDup, duplicateSkipped: true };
+      }
+    }
 
     const candidate = {
       seq,
@@ -494,17 +558,51 @@ export class ForecastLedger {
     const existingEntries = this.loadEntries();
     const nextSeq = existingEntries.length > 0 ? Number(existingEntries[existingEntries.length - 1].seq || existingEntries.length) + 1 : 1;
     const batchTimestampMs = Number(options.batchTimestampMs ?? options.recordedAtUtcMs ?? Date.now());
+    const dedupeWindowMs = options.dedupeWindowMs ?? 5 * 60 * 1000;
+
+    let modelsToRecord = validModels;
+    const skippedDuplicates = [];
+    if (options.preventDuplicate) {
+      modelsToRecord = [];
+      for (const item of validModels) {
+        const dup = this.findRecentDuplicateEntry(
+          {
+            symbolCode: forecastResult.symbolCode,
+            timeframe: forecastResult.timeframe,
+            horizonBars: item.points.length,
+            modelId: item.modelId,
+            anchorOpenTimeUtcMs: Number(forecastResult.anchorOpenTimeUtcMs || 0),
+            recordedAtUtcMs: batchTimestampMs,
+            windowMs: dedupeWindowMs,
+          },
+          existingEntries
+        );
+        if (dup) skippedDuplicates.push(dup);
+        else modelsToRecord.push(item);
+      }
+      if (modelsToRecord.length === 0) {
+        const sharedBatchId = skippedDuplicates[0]?.batchId || null;
+        return {
+          batchId: sharedBatchId,
+          entries: [],
+          skippedDuplicates,
+          comparisonHashes: skippedDuplicates.map((e) => e.forecastHash),
+          reason: 'ALL_DUPLICATE',
+        };
+      }
+    }
+
     const batchId =
-      validModels.length >= 2
+      modelsToRecord.length >= 2
         ? `BATCH-${forecastResult.symbolCode || 'SYM'}-${forecastResult.timeframe || 'M15'}-${batchTimestampMs}-${nextSeq}`
         : `SNAP-${batchTimestampMs}-${nextSeq}`;
     const recorded = [];
-    for (let i = 0; i < validModels.length; i++) {
-      const item = validModels[i];
+    for (let i = 0; i < modelsToRecord.length; i++) {
+      const item = modelsToRecord[i];
       const lastPt = item.points[item.points.length - 1];
       const entry = this.appendFromForecast(forecastResult, {
         batchId,
-        batchSize: validModels.length,
+        batchSize: modelsToRecord.length,
         modelId: item.modelId,
         modelName: item.modelName,
         points: item.points,
@@ -519,7 +617,8 @@ export class ForecastLedger {
       if (entry) recorded.push(entry);
     }
 
-    return { batchId, entries: recorded };
+    const comparisonHashes = [...recorded, ...skippedDuplicates].map((e) => e.forecastHash);
+    return { batchId, entries: recorded, skippedDuplicates, comparisonHashes };
   }
 
   hasTerminalLifecycleStatus(forecastHash, horizonStep = null) {

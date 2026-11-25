@@ -1128,7 +1128,7 @@ function renderForecastWorkspaceContent(activeTab) {
       : nativeTab === 'backtest'
         ? renderBacktestPanel(nativeEvaluation, Number(activeTab?.decimals || 2), isFa)
         : renderLedgerPanel(Number(activeTab?.decimals || 2), isFa);
-  const nativeTabs = [['overview', isFa ? 'پیش‌بینی و سناریوها (V2.1)' : 'Projection & Event Tree'], ['models', isFa ? 'مدل‌ها و تنظیمات' : 'Models & Configuration'], ['backtest', isFa ? 'Walk-Forward و کالیبراسیون' : 'Walk-Forward & Calibration'], ['ledger', isFa ? 'دفتر کل SHA-256 و چرخه عمر' : 'SHA-256 Ledger & Lifecycle']];
+  const nativeTabs = [['overview', isFa ? 'نمای پیش‌بینی' : 'Forecast'], ['models', isFa ? 'مدل‌ها و تنظیمات' : 'Models'], ['backtest', isFa ? 'آزمون تاریخی' : 'Backtest'], ['ledger', isFa ? 'سوابق و مقایسه' : 'History & Compare']];
   const nativeTabNav = nativeTabs.map(([id, label]) => '<button type="button" class="ci-fc-subtab ' + (nativeTab === id ? 'active' : '') + '" data-action="set-forecast-subtab" data-tab="' + id + '">' + label + '</button>').join('');
   const modes = [
     ['FAN_CHART', isFa ? 'ابری کوانتایل (Fan)' : 'Quantile Fan'],
@@ -1168,25 +1168,28 @@ function renderForecastWorkspaceContent(activeTab) {
   const nativeEvaluationPanels = '<div class="ci-fc-card" style="display:none;" aria-hidden="true"></div>';
 
   const evalStatus = nativeEvaluation?.status || 'DATA_NOT_READY';
-  const evalStatusClass = evalStatus === 'VALID' ? 'ci-fc-badge-valid' : evalStatus === 'PROVISIONAL' ? 'ci-fc-badge-provisional' : 'ci-fc-badge-blocked';
+  const evalStatusClass = evalStatus === 'VALID' ? 'ci-fc-badge-valid' : evalStatus === 'DATA_NOT_READY' ? 'ci-fc-badge-blocked' : 'ci-fc-badge-provisional';
   const evalStatusLabelMap = {
-    VALID: isFa ? 'تأییدشده (VALID)' : 'VALID',
-    PROVISIONAL: isFa ? 'موقت / OOD (PROVISIONAL)' : 'PROVISIONAL',
-    NO_EDGE: isFa ? 'بدون برتری آماری (NO_EDGE)' : 'NO_EDGE',
-    INSUFFICIENT_EVIDENCE: isFa ? 'شواهد آماری ناکافی (INSUFFICIENT_EVIDENCE)' : 'INSUFFICIENT_EVIDENCE',
-    DATA_NOT_READY: isFa ? 'داده آماده نیست (DATA_NOT_READY)' : 'DATA_NOT_READY',
+    VALID: isFa ? 'آماده' : 'Ready',
+    PROVISIONAL: isFa ? 'آماده (احتیاط)' : 'Provisional',
+    NO_EDGE: isFa ? 'بازار خنثی' : 'Neutral Market',
+    INSUFFICIENT_EVIDENCE: isFa ? 'داده محدود' : 'Limited Sample',
+    DATA_NOT_READY: isFa ? 'نیاز به داده بیشتر' : 'Needs More Data',
   };
   const evalStatusLabel = evalStatusLabelMap[evalStatus] || evalStatus;
   const evalEdgeGate = nativeEvaluation?.noEdgeGate;
-  const evalEdgeBadge = evalEdgeGate
-    ? `<span class="ci-fc-status-badge ${evalEdgeGate.hasEdge ? 'ci-fc-badge-edge' : 'ci-fc-badge-no-edge'} ltr-num">${escapeHtml(evalEdgeGate.gateState)}</span>`
-    : '';
   const evalOod = nativeEvaluation?.uncertainty?.oodStatus;
-  const evalOodBadge = evalOod
-    ? `<span class="ci-fc-status-badge ${evalOod === 'EXTREME' ? 'ci-fc-badge-ood-extreme' : evalOod === 'ELEVATED' ? 'ci-fc-badge-provisional' : 'ci-fc-badge-valid'} ltr-num">OOD: ${escapeHtml(evalOod)}</span>`
+  const technicalStatusTooltip = escapeHtml(
+    `${evalStatus} · ${evalEdgeGate?.gateState || '—'} · OOD: ${evalOod || '—'} · ${nativeEvaluation?.regime || '—'}`
+  );
+  const rawRegimeStr = String(nativeEvaluation?.regime || '').toUpperCase();
+  const simpleRegimeLabel = rawRegimeStr
+    ? rawRegimeStr.includes('TREND') || rawRegimeStr.includes('BULL') || rawRegimeStr.includes('BEAR')
+      ? (isFa ? 'رونددار' : 'Trending')
+      : (isFa ? 'رنج' : 'Ranging')
     : '';
-  const evalRegimeBadge = nativeEvaluation?.regime
-    ? `<span class="ci-fc-regime-badge ltr-num">${escapeHtml(nativeEvaluation.regime)}</span>`
+  const evalRegimeBadge = simpleRegimeLabel
+    ? `<span class="ci-fc-regime-badge" title="${escapeHtml(nativeEvaluation?.regime || '')}">${escapeHtml(simpleRegimeLabel)}</span>`
     : '';
   const horizonOptions = isNativeModelSelected ? [10, 15, 20, 30, 45, 60] : [15, 30, 45, 60, 90, 120];
   const isNativePlotted = Boolean(activeTab?.showStructuralForecast && activeTab?.structuralForecast?.engine?.engine_id === 'native_model_adapter');
@@ -1201,14 +1204,12 @@ function renderForecastWorkspaceContent(activeTab) {
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             ${renderSymbolBadge(activeCode, 28)}
             <span class="ltr-num" style="font-weight:800;font-size:14px;color:var(--text-strong);">${escapeHtml(activeCode)}</span>
-            <span class="ci-fc-status-badge ${evalStatusClass} ltr-num">${escapeHtml(evalStatusLabel)}</span>
-            ${evalEdgeBadge}
-            ${evalOodBadge}
+            <span class="ci-fc-status-badge ${evalStatusClass}" title="${technicalStatusTooltip}">${escapeHtml(evalStatusLabel)}</span>
             ${evalRegimeBadge}
           </div>
           <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
             <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
-              ${isFa ? 'ثبت اسنپ‌شات محلی' : 'Record Local Snapshot'}
+              ${isFa ? 'ثبت اسنپ‌شات' : 'Record Local Snapshot'}
             </button>
             <button type="button" class="btn btn-sm ${isPrimaryPlotted ? 'btn-primary' : ''}" data-action="${primaryChartAction}" ${isNativeModelSelected && (!Array.isArray(nativeEvaluation?.points) || nativeEvaluation.points.length === 0) && !smcDirectPreview ? 'disabled' : ''}>
               ${isPrimaryPlotted ? (isFa ? '✓ مدل انتخاب‌شده روی چارت فعال است' : '✓ Selected Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
@@ -3154,21 +3155,31 @@ document.addEventListener('click', async (e) => {
             keyZones: activePayload.keyZones || activePayload.smcZones || baseResult.keyZones,
             recordedAtUtcMs: nowMs,
             generatedAtUtcMs: nowMs,
+            preventDuplicate: true,
           }
         : {
             recordedAtUtcMs: nowMs,
             generatedAtUtcMs: nowMs,
+            preventDuplicate: true,
           };
       const entry = defaultForecastLedger.appendFromForecast(baseResult, overrideOptions);
-      showFloatingToast(
-        entry
-          ? isFa
-            ? `پیش‌بینی ${entry.modelName} (#${entry.seq}) در دفتر محلی ثبت شد.`
-            : `Saved ${entry.modelName} (#${entry.seq}) to local ledger.`
-          : isFa
-            ? 'ثبت پیش‌بینی انجام نشد.'
-            : 'Forecast snapshot could not be recorded.'
-      );
+      if (entry?.duplicateSkipped) {
+        showFloatingToast(
+          isFa
+            ? `اسنپ‌شات مشابه ${entry.modelName} قبلاً در #${entry.seq} ثبت شده است (ردیف تکراری ساخته نشد).`
+            : `Similar ${entry.modelName} snapshot already exists (#${entry.seq}) — duplicate skipped.`
+        );
+      } else {
+        showFloatingToast(
+          entry
+            ? isFa
+              ? `پیش‌بینی ${entry.modelName} (#${entry.seq}) ثبت شد.`
+              : `Saved ${entry.modelName} (#${entry.seq}) to local history.`
+            : isFa
+              ? 'ثبت پیش‌بینی انجام نشد.'
+              : 'Forecast snapshot could not be recorded.'
+        );
+      }
     } else {
       showFloatingToast(isFa ? 'خروجی معتبری برای ثبت وجود ندارد.' : 'No forecast result is available to record.');
     }
@@ -3218,6 +3229,7 @@ document.addEventListener('click', async (e) => {
       const selectedIds = [...new Set([primaryId, ...compareIds])].filter(Boolean);
       const batchRes = defaultForecastLedger.appendBatchFromForecast(enrichedResult, selectedIds, {
         requireMultiple: true,
+        preventDuplicate: true,
         recordedAtUtcMs: nowMs,
       });
       if (batchRes?.reason === 'NEED_AT_LEAST_2_MODELS') {
@@ -3226,13 +3238,34 @@ document.addEventListener('click', async (e) => {
             ? 'برای ثبت گروهی، حداقل یک مدل دیگر را در بخش «مسیرهای مقایسه‌ای (Compare Overlays)» تیک بزنید.'
             : 'Check at least 1 additional model in Compare Overlays to record a multi-model batch.'
         );
-      } else if (batchRes?.entries?.length >= 2) {
-        state._selectedForecastBatchId = batchRes.batchId;
-        state._ledgerOverlayHashes = batchRes.entries.map((e) => e.forecastHash).slice(0, 4);
+      } else if (batchRes?.reason === 'ALL_DUPLICATE') {
+        if (batchRes.batchId) state._selectedForecastBatchId = batchRes.batchId;
+        if (Array.isArray(batchRes.comparisonHashes) && batchRes.comparisonHashes.length >= 2) {
+          state._ledgerOverlayHashes = batchRes.comparisonHashes.slice(0, 4);
+          state._ledgerCompareMode = 'selected';
+        }
         showFloatingToast(
           isFa
-            ? `${batchRes.entries.length} مدل در یک گروه ثبت شدند.`
-            : `Recorded ${batchRes.entries.length} distinct models in one comparison batch.`
+            ? 'تمام مدل‌های انتخاب‌شده قبلاً روی همین کندل ثبت شده‌اند — ردیف تکراری ساخته نشد و آماده مقایسه هستند.'
+            : 'All selected models were already recorded on this candle — skipped duplicates and selected them for comparison.'
+        );
+      } else if ((batchRes?.entries?.length || 0) >= 1) {
+        const skippedCount = batchRes.skippedDuplicates?.length || 0;
+        if (batchRes.entries.length >= 2) {
+          state._selectedForecastBatchId = batchRes.batchId;
+          state._ledgerCompareMode = 'batch';
+        } else {
+          state._ledgerCompareMode = 'selected';
+        }
+        state._ledgerOverlayHashes = (batchRes.comparisonHashes || batchRes.entries.map((e) => e.forecastHash)).slice(0, 4);
+        showFloatingToast(
+          isFa
+            ? skippedCount > 0
+              ? `${batchRes.entries.length} مدل جدید ثبت شد و ${skippedCount} مورد تکراری رد شد.`
+              : `${batchRes.entries.length} مدل در یک گروه ثبت شدند.`
+            : skippedCount > 0
+              ? `Recorded ${batchRes.entries.length} new model(s) and skipped ${skippedCount} duplicate(s).`
+              : `Recorded ${batchRes.entries.length} distinct models in one comparison batch.`
         );
       } else {
         showFloatingToast(isFa ? 'مدل فعالی برای ثبت گروهی یافت نشد.' : 'No eligible models found to batch record.');
@@ -3241,10 +3274,33 @@ document.addEventListener('click', async (e) => {
       showFloatingToast(isFa ? 'خروجی معتبری برای ثبت وجود ندارد.' : 'No forecast result is available to record.');
     }
     renderApp();
+  } else if (action === 'compare-selected-ledger-entries') {
+    const isFa = i18n.getCurrentLanguage() === 'fa';
+    const checkedHashes = Array.isArray(state._ledgerOverlayHashes) ? state._ledgerOverlayHashes : [];
+    if (checkedHashes.length >= 2) {
+      state._ledgerCompareMode = 'selected';
+      renderApp();
+      setTimeout(() => {
+        document.getElementById('ci-fc-compare-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 40);
+    } else if (state._selectedForecastBatchId) {
+      state._ledgerCompareMode = 'batch';
+      renderApp();
+      setTimeout(() => {
+        document.getElementById('ci-fc-compare-card')?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      }, 40);
+    } else {
+      showFloatingToast(
+        isFa
+          ? 'برای مقایسه، تیک ۲ تا ۴ ردیف را در جدول سوابق بزنید یا یک ثبت گروهی انجام دهید.'
+          : 'Check 2–4 rows in the history table (or record a multi-model batch) to compare them side by side.'
+      );
+    }
   } else if (action === 'select-forecast-batch') {
     const bId = String(el.getAttribute('data-batch-id') || '');
     if (bId) {
       state._selectedForecastBatchId = bId;
+      state._ledgerCompareMode = 'batch';
       const byModel = new Map();
       for (const e of defaultForecastLedger.loadEntries()) {
         if (e.batchId === bId) byModel.set(String(e.modelId || 'AUTO'), e);
@@ -3262,6 +3318,9 @@ document.addEventListener('click', async (e) => {
       state._ledgerOverlayHashes = el.checked
         ? [...new Set([...current, hash])].slice(-4)
         : current.filter((h) => h !== hash);
+      if (state._ledgerOverlayHashes.length >= 2) {
+        state._ledgerCompareMode = 'selected';
+      }
       renderApp();
     }
   } else if (action === 'evaluate-forecast-outcomes' && activeTab) {
@@ -4196,11 +4255,24 @@ document.addEventListener('change', async (e) => {
         tfHorizon: 'ALL',
         status: 'ALL',
         condition: 'ALL',
+        hideDuplicates: true,
         ...(state._forecastLedgerFilters || {}),
         [filterKey]: String(el.value || 'ALL'),
       };
       renderApp();
     }
+    return;
+  }
+  if (action === 'toggle-ledger-hide-duplicates') {
+    state._forecastLedgerFilters = {
+      model: 'ALL',
+      tfHorizon: 'ALL',
+      status: 'ALL',
+      condition: 'ALL',
+      ...(state._forecastLedgerFilters || {}),
+      hideDuplicates: Boolean(el.checked),
+    };
+    renderApp();
     return;
   }
   if (action === 'set-forecast-model-weight') {
