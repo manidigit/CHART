@@ -4586,6 +4586,9 @@ test('LIVE-FORECAST-COMPARE-REFRESH-01: on-chart forecast persists across newly 
   assert.equal(tab.pinnedPreviousForecasts.length, 0);
 
   // 7. UI action & CSS wiring checks
+  assert.equal(/\bpills\.push\s*\(/.test(appSource), false, 'app.js must push forecast badges to indPills (never undeclared pills)');
+  assert.match(appSource, /indPills\.push\([\s\S]*?tv-ind-pill-forecast/, 'Live forecast badge must push into indPills');
+  assert.match(appSource, /indPills\.push\([\s\S]*?tv-ind-pill-prev/, 'Pinned previous forecast badge must push into indPills');
   assert.match(appSource, /data-action="refresh-forecast-keep-previous"/, 'OHLCV overlay must expose Refresh (Keep Previous) button');
   assert.match(appSource, /data-action="clear-pinned-forecasts"/, 'OHLCV overlay must expose Clear Previous Forecasts button');
   assert.match(appSource, /action === 'refresh-forecast-keep-previous'/, 'app.js must wire refresh-forecast-keep-previous action');

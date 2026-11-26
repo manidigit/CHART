@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Verification:**
   - Added `LIVE-FORECAST-COMPARE-REFRESH-01` regression test in `tests/web_parity.test.mjs`; verified `node --check` on all modified JS files and **64/64** passing tests.
 
+### Fixed (`LIVE-FORECAST-COMPARE-REFRESH-01` Hotfix)
+- **Chart Forecast Overlay `ReferenceError: pills is not defined` (`host_subdomain/assets/js/app.js`):**
+  - Replaced two mistaken `pills.push(...)` calls inside `renderOhlcvOverlay()` (for `.tv-ind-pill-forecast` and `.tv-ind-pill-prev`) with the declared `indPills.push(...)` array, and added a static regression guard in `tests/web_parity.test.mjs`.
+
 ### Changed (`FORECAST-UX-SIMPLIFY-03`: Everyday Forecast UX Simplification, Duplicate Guard, Clean History Table & Explicit Model Comparison)
 - **Duplicate Snapshot Prevention (`host_subdomain/assets/js/forecast/forecastLedger.js`, `app.js`):**
   - Added `findRecentDuplicateEntry()` matching same symbol + timeframe + horizon + model on the same closed anchor candle or within a 5-minute window, with opt-in `options.preventDuplicate` in `appendFromForecast()` and `appendBatchFromForecast()` (enabled on UI snapshot/batch clicks with clear FA/EN duplicate notifications while preserving append-only SHA-256 chain integrity and backward compatibility for programmatic callers).

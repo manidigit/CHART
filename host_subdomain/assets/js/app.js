@@ -750,7 +750,7 @@ function renderOhlcvOverlay(activeTab) {
         ? 'دریافت کندل جدید و رسم پیش‌بینی اصلاح‌شده با حفظ پیش‌بینی قبلی روی چارت'
         : 'Sync latest candle & plot updated forecast while keeping previous forecast on chart';
       const refreshBtnLabel = isFa ? '↻ رفرش (حفظ قبلی)' : '↻ Refresh (Keep Prev)';
-      pills.push(
+      indPills.push(
         `<span class="tv-ind-pill tv-ind-pill-forecast" style="border-color:${escapeHtml(fCol)}88">
           <span class="tv-ind-pill-dot" style="background:${escapeHtml(fCol)}"></span>
           <span>${escapeHtml(`${modelLabel} (+${hLen}${bandTag}${biasTag})`)}</span>
@@ -805,7 +805,7 @@ function renderOhlcvOverlay(activeTab) {
     const pinLabel = isFa
       ? `پیش‌بینی قبلی (${validPinnedForecasts.length})${pinStat}`
       : `Prev Forecast (${validPinnedForecasts.length})${pinStat}`;
-    pills.push(
+    indPills.push(
       `<span class="tv-ind-pill tv-ind-pill-prev" style="border-color:#F59E0B88">
         <span class="tv-ind-pill-dot" style="background:#F59E0B"></span>
         <span>${escapeHtml(pinLabel)}</span>
