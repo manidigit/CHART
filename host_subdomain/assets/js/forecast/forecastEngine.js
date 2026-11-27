@@ -23,7 +23,7 @@ import {
   validateDataReadiness,
 } from './forecastContract.js?v=1.47.41';
 import { extractForecastFeatures } from './featureExtractor.js?v=1.47.41';
-import { defaultForecastRegistry, ForecastModelRegistry } from './modelRegistry.js?v=1.47.41';
+import { defaultForecastRegistry, ForecastModelRegistry, resolveModelGovernance } from './modelRegistry.js?v=1.47.41';
 import {
   applyConformalAdjustmentToQuantiles,
   buildZeroDriftLogNormalNaiveQuantiles,
@@ -45,6 +45,12 @@ import {
 import { EmpiricalAnalogEngine } from './empiricalAnalogEngine.js?v=1.47.41';
 import { SMCPredictionEngine, computeSmcPrediction } from './smcPredictionEngine.js?v=1.47.41';
 import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.41';
+import { buildDecisionSummary, resolvePathSemantics } from './decisionLayer.js?v=1.47.41';
+import {
+  buildBehaviorScenarioContract,
+  buildCausalMarketContext,
+  extractTrajectoryBehavioralEvents,
+} from './marketContextEngine.js?v=1.47.41';
 
 export { EmpiricalAnalogEngine, SMCPredictionEngine };
 
@@ -107,7 +113,7 @@ function buildCanonicalCandlesHash(candles) {
 export class ForecastEngine {
   static project(candles = [], options = {}) {
     const symbolCode = String(options.symbolCode || 'XAUUSD').trim().toUpperCase();
-    const providerId = String(options.providerId || 'twelvedata').trim().toLowerCase();
+    const providerId = String(options.providerId || 'tvdatafeed').trim().toLowerCase();
     const timeframe = String(options.timeframe || 'M15').trim().toUpperCase();
     const horizonBars = clampHorizonBars(options.horizonBars ?? options.horizon ?? 30);
     const renderMode = normalizeRenderMode(options.renderMode);
@@ -135,10 +141,12 @@ export class ForecastEngine {
       anchorNowMs: options.anchorNowMs,
       checkClosedBar: options.checkClosedBar,
       enforceCalendarGaps: options.enforceCalendarGaps,
+      enforceStaleData: options.enforceStaleData,
+      maxStaleBars: options.maxStaleBars,
     });
 
     if (!readiness.ready) {
-      return {
+      const notReadyResult = {
         contractVersion: CONTRACT_VERSION,
         specVersion: SPEC_VERSION,
         engineVersion: ENGINE_VERSION,
@@ -162,12 +170,16 @@ export class ForecastEngine {
         keyZones: [],
         eventDictionary: null,
         mtfCoordination: null,
+        marketContext: null,
+        pathEvents: [],
+        behaviorScenarios: null,
         stability: null,
         points: [],
         scenarios: [],
         representativePaths: [],
         modelContributions: [],
         modelTrajectories: [],
+        requestedModelId,
         selectedChartModelId: 'naive_persistence',
         selectionMode: SELECTION_MODE.NO_CLEAR_WINNER_BASELINE,
         selectionReason: readiness.issues[0] || 'Data readiness check failed',
@@ -198,6 +210,8 @@ export class ForecastEngine {
         summary: null,
         inputHash: sha256Hex(`${CONTRACT_VERSION}|${symbolCode}|${timeframe}|DATA_NOT_READY|${readiness.errorCodes.join(',')}`),
       };
+      notReadyResult.decisionSummary = buildDecisionSummary(notReadyResult, { requestedModelId });
+      return notReadyResult;
     }
 
     const cleanCandles = readiness.cleanCandles;
@@ -676,6 +690,15 @@ export class ForecastEngine {
       });
     }
 
+    // Enrich all trajectories with centralized Model Governance & Path Semantics metadata (Master Plan §§5.1, 7)
+    for (const traj of modelTrajectories) {
+      const gov = resolveModelGovernance(traj.modelId, traj);
+      traj.experimentalOnly = Boolean(traj.experimentalOnly || traj.isApproximation || gov.experimentalOnly);
+      traj.governanceTier = gov.governanceTier;
+      traj.lifecycleState = gov.lifecycleState;
+      traj.pathSemantics = resolvePathSemantics(traj.modelId, traj);
+    }
+
     const selection = selectOosChartWinner(walkForward, modelTrajectories, requestedModelId);
     const chosenTrajectory =
       modelTrajectories.find(
@@ -707,7 +730,7 @@ export class ForecastEngine {
     );
     const noEdgeGate = evaluateNoEdgeGate(walkForward, uncertainty);
 
-    // Rev 2.1 strict 5-state status hierarchy:
+    // Rev 2.1 + Master Plan §6 strict 5-state status hierarchy:
     // DATA_NOT_READY -> INSUFFICIENT_EVIDENCE -> NO_EDGE -> PROVISIONAL -> VALID
     let status = FORECAST_STATUS.INSUFFICIENT_EVIDENCE;
     const hasSufficientStatEvidence =
@@ -719,8 +742,13 @@ export class ForecastEngine {
 
     if (!hasSufficientStatEvidence) {
       status = FORECAST_STATUS.INSUFFICIENT_EVIDENCE;
-    } else if (!noEdgeGate.hasEdge || uncertainty.oodStatus === OOD_STATUS.EXTREME) {
+    } else if (uncertainty.oodStatus === OOD_STATUS.EXTREME) {
       status = FORECAST_STATUS.NO_EDGE;
+    } else if (!noEdgeGate.hasEdge) {
+      status =
+        selection.selectionMode === SELECTION_MODE.AUTO_RELATIVE_PROVISIONAL
+          ? FORECAST_STATUS.PROVISIONAL
+          : FORECAST_STATUS.NO_EDGE;
     } else if (
       uncertainty.oodStatus === OOD_STATUS.ELEVATED ||
       !scenarioCalibration.calibrationPassed ||
@@ -742,8 +770,32 @@ export class ForecastEngine {
       corridorWidthPct: ((lastPt.q90 - lastPt.q10) / features.lastClose) * 100,
     };
     const stability = computeForecastStability(summary, features.lastClose, previousForecast);
+    const marketContext = buildCausalMarketContext(cleanCandles, {
+      symbolCode,
+      timeframe,
+      swingLen: 3,
+      excludeOpenBars: false,
+    });
+    const pathEvents = extractTrajectoryBehavioralEvents({
+      anchorClose: features.lastClose,
+      anchorOpenTimeUtcMs: features.lastOpenMs,
+      points,
+      marketContext,
+      chosenTrajectory,
+      keyZones,
+      atrAtAnchor: features.atr14,
+    });
+    const behaviorScenarios = buildBehaviorScenarioContract({
+      anchorClose: features.lastClose,
+      points,
+      marketContext,
+      scenarios,
+      pathEvents,
+      chosenTrajectory,
+      atrAtAnchor: features.atr14,
+    });
 
-    return {
+    const projectedResult = {
       contractVersion: CONTRACT_VERSION,
       specVersion: SPEC_VERSION,
       engineVersion: ENGINE_VERSION,
@@ -784,6 +836,9 @@ export class ForecastEngine {
       keyZones,
       eventDictionary,
       mtfCoordination,
+      marketContext,
+      pathEvents,
+      behaviorScenarios,
       stability,
       points,
       scenarios,
@@ -804,6 +859,7 @@ export class ForecastEngine {
       },
       modelContributions,
       modelTrajectories,
+      requestedModelId,
       selectedChartModelId: selection.selectedModelId,
       selectionMode: selection.selectionMode,
       selectionReason: selection.reason,
@@ -813,6 +869,8 @@ export class ForecastEngine {
       summary,
       inputHash,
     };
+    projectedResult.decisionSummary = buildDecisionSummary(projectedResult, { requestedModelId });
+    return projectedResult;
   }
 
   /**
@@ -941,17 +999,20 @@ export class ForecastEngine {
         }
       : baseResult.summary;
 
-    return {
+    const mergedResult = {
       ...baseResult,
       remoteWorker: updatedRemote,
       modelTrajectories: mergedTrajs,
       walkForward: mergedWf,
+      requestedModelId,
       selectedChartModelId: selection.selectedModelId,
       selectionMode: selection.selectionMode,
       selectionReason: selection.reason,
       points: nextPoints,
       summary: nextSummary,
     };
+    mergedResult.decisionSummary = buildDecisionSummary(mergedResult, { requestedModelId });
+    return mergedResult;
   }
 }
 

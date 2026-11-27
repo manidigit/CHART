@@ -3293,6 +3293,133 @@ body.is-forecast-scroll #app-root,
   font-weight: 600;
 }
 
+.ci-fc-ux-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(120, 123, 134, 0.06);
+}
+
+.ci-fc-research-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 9px 12px;
+  margin-bottom: 12px;
+  border-radius: 8px;
+  border: 1px solid rgba(168, 85, 247, 0.4);
+  background: rgba(168, 85, 247, 0.09);
+  font-size: 11.5px;
+  color: var(--text-strong);
+}
+
+.ci-fc-research-banner > span {
+  color: var(--text-muted);
+}
+
+.ci-fc-decision-card {
+  margin-bottom: 12px;
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.ci-fc-decision-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+@media (max-width: 780px) {
+  .ci-fc-decision-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ci-fc-decision-metric {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 9px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: rgba(120, 123, 134, 0.04);
+}
+
+.ci-fc-decision-metric > span {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.ci-fc-decision-metric > strong {
+  font-size: 13px;
+  color: var(--text-strong);
+}
+
+.ci-fc-decision-metric > small {
+  font-size: 10.5px;
+  color: var(--text-muted);
+}
+
+.ci-fc-decision-evidence {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.ci-fc-decision-reason {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-strong);
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: rgba(120, 123, 134, 0.05);
+}
+
+.ci-fc-gov-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border: 1px solid rgba(56, 189, 248, 0.38);
+  background: rgba(56, 189, 248, 0.12);
+  color: var(--accent, #38bdf8);
+}
+
+.ci-fc-gov-badge.is-experimental {
+  border-color: rgba(245, 158, 11, 0.55);
+  background: rgba(245, 158, 11, 0.14);
+  color: var(--gold, #f59e0b);
+}
+
+.ci-fc-simple-actions-card {
+  margin-top: 12px;
+}
+
+.ci-fc-simple-actions {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+@media (max-width: 680px) {
+  .ci-fc-simple-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+.ci-fc-strategy-block-note {
+  margin-top: 8px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
 .ci-fc-ledger-table {
   font-size: 11px;
 }

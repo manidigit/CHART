@@ -38,6 +38,7 @@ import {
   isStructuralForecastMatchingTab,
   isPinnedPreviousForecastMatchingTab,
   evaluateOnChartForecastProgress,
+  buildChartForecastPayloadFromLedgerEntry,
   pinCurrentForecastAsPrevious,
   clearTabPinnedForecasts,
   clearTabStructuralForecast,
@@ -50,6 +51,8 @@ import {
   fetchSystemStatus,
   uploadWorkspaceSync,
   downloadWorkspaceSync,
+  uploadForecastLedgerSync,
+  downloadForecastLedgerSync,
   loginOrRegisterOwner,
   updateOwnerEmailOnServer,
   updateOwnerPasswordOnServer,
@@ -278,8 +281,37 @@ function applyNativeModelForecastToTab(tab, modelId = 'naive_persistence', opts 
 
 function recomputeActiveTabForecast(tab, { preserveActiveOnInsufficient = false, stillSyncing = false } = {}) {
   if (!tab || !tab.showStructuralForecast) return;
-  const activeModel = String(tab.structuralForecastModel || tab.selectedForecastModelId || 'structural_wave_js');
   const candles = Array.isArray(tab.candles) ? tab.candles : [];
+  if (tab.structuralForecast?.isLedgerSnapshotReplay && tab.structuralForecast.ledgerHash) {
+    const ledgerEntry = defaultForecastLedger
+      .loadEntries()
+      .find((e) => e.forecastHash === tab.structuralForecast.ledgerHash);
+    if (ledgerEntry && candles.length > 0) {
+      const builtReplay = buildChartForecastPayloadFromLedgerEntry(ledgerEntry, {
+        candles,
+        symbolCode: tab.symbolCode,
+        timeframe: tab.timeframe,
+        provider: tab.provider,
+        visibleCount: tab.visibleCount || 48,
+        renderMode: tab.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART',
+      });
+      if (builtReplay && builtReplay.payload) {
+        const hadOriginBefore = Number(tab.structuralForecast._resolvedOriginIdx ?? -1) >= 0;
+        builtReplay.payload._resolvedOriginIdx = builtReplay.originIdx;
+        tab.structuralForecast = builtReplay.payload;
+        tab.structuralForecastStatus = 'READY';
+        tab.structuralForecastError = '';
+        if (!hadOriginBefore && builtReplay.originIdx >= 0) {
+          tab.scrollOffset = builtReplay.scrollOffset;
+        }
+        saveOpenTabsToStorage();
+        renderApp();
+        redrawActiveCanvas();
+        return;
+      }
+    }
+  }
+  const activeModel = String(tab.structuralForecastModel || tab.selectedForecastModelId || 'structural_wave_js');
   if (candles.length < 40) {
     tab.structuralForecast = null;
     if (preserveActiveOnInsufficient) {
@@ -1002,6 +1034,10 @@ function renderForecastWorkspaceContent(activeTab) {
   defaultForecastRegistry.applyConfig(state.chartPreferences.forecastPluginConfig);
   const activeCode = activeTab?.symbolCode || state.symbols.find((s) => s.inWatchlist)?.symbolCode || 'SPOTBRENT';
   const decimals = Number(activeTab?.decimals || 2);
+  const forecastUxMode =
+    (state.forecastUxMode || state.chartPreferences?.forecastUxMode || 'simple') === 'research'
+      ? 'research'
+      : 'simple';
   const currentModel = String(activeTab?.structuralForecastModel || 'structural_wave_js');
   const nativeModelChoices = defaultForecastRegistry.list();
   const nativeModelButtons = [
@@ -1012,7 +1048,7 @@ function renderForecastWorkspaceContent(activeTab) {
     { id: 'ensemble', name: 'Calibrated Ensemble (V2)', enabled: true, weight: 1, experimentalOnly: false },
   ].map((model) => {
     const available = model.enabled && Number(model.weight) > 0;
-    const label = `${model.name}${model.experimentalOnly ? ' · Approximation' : ''}${available ? '' : ' · Disabled'}`;
+    const label = `${model.name}${model.experimentalOnly ? ' · Research-only / Experimental' : ''}${available ? '' : ' · Disabled'}`;
     return `<button type="button" class="chip ${currentModel === model.id ? 'active' : ''}" data-action="set-structural-forecast-model" data-model="${escapeHtml(model.id)}" ${available ? '' : 'disabled'}>${escapeHtml(label)}</button>`;
   }).join('');
   const isNativeModelSelected = currentModel !== 'structural_wave_js';
@@ -1023,7 +1059,8 @@ function renderForecastWorkspaceContent(activeTab) {
     ? Math.max(10, Math.min(60, rawHorizon))
     : Math.max(15, Math.min(120, rawHorizon));
   const nativeModelId = isNativeModelSelected ? currentModel : String(activeTab?.selectedForecastModelId || state.chartPreferences.selectedForecastModelId || 'AUTO');
-  const nativeTab = ['overview', 'models', 'backtest', 'ledger'].includes(state.forecastStudioTab) ? state.forecastStudioTab : 'overview';
+  const rawNativeTab = ['overview', 'models', 'backtest', 'ledger'].includes(state.forecastStudioTab) ? state.forecastStudioTab : 'overview';
+  const nativeTab = forecastUxMode === 'simple' ? 'overview' : rawNativeTab;
   const needsNativeEvaluation = usesNativeEvaluation || nativeTab !== 'overview';
   const nativeEvaluation = (selected === 'structural' || needsNativeEvaluation)
     ? buildForecastForTab(activeTab, {
@@ -1037,8 +1074,9 @@ function renderForecastWorkspaceContent(activeTab) {
   const comparisonCandidates = (nativeEvaluation?.modelTrajectories || []).filter((model) => model.status === 'SUCCESS' && Array.isArray(model.points) && model.modelId !== activeCompareExcludeId);
   const savedCompareIds = state.chartPreferences.forecastCompareModelIds;
   const visibleCompareIds = Array.isArray(savedCompareIds) ? savedCompareIds : comparisonCandidates.map((model) => model.modelId);
+  const effectiveVisibleCompareIds = forecastUxMode === 'simple' ? [] : visibleCompareIds;
   if (nativeEvaluation) {
-    nativeEvaluation.visibleComparisonModelIds = visibleCompareIds;
+    nativeEvaluation.visibleComparisonModelIds = effectiveVisibleCompareIds;
     state._lastForecastResult = nativeEvaluation;
   }
   const previewCandles = activeTab
@@ -1117,7 +1155,7 @@ function renderForecastWorkspaceContent(activeTab) {
           closes: (path.points || []).map((point) => Number(point.price)),
         })),
         modelTrajectories: nativeEvaluation?.modelTrajectories || [],
-        visibleComparisonModelIds: visibleCompareIds,
+        visibleComparisonModelIds: effectiveVisibleCompareIds,
       }
     : null;
   let smcDirectPreview = null;
@@ -1158,7 +1196,7 @@ function renderForecastWorkspaceContent(activeTab) {
   const structFvgCount = Number(activeStructMeta?.engine?.params?.active_fvg_count || 0);
   const structMtfMeta = activeStructMeta?.mtf_meta || activeStructMeta?.engine?.params?.mtf_meta || null;
   const structRefH = Number(activeStructMeta?.engine?.params?.reference_horizon || structMtfMeta?.referenceHorizon || 0);
-  const structuralBannerHtml = !usesNativeEvaluation && nativeTab === 'overview'
+  const structuralBannerHtml = forecastUxMode === 'research' && !usesNativeEvaluation && nativeTab === 'overview'
     ? `<div class="ci-fc-card" style="margin-bottom:12px;border-color:rgba(139,92,246,0.45);">
         <div class="row-between" style="gap:10px;flex-wrap:wrap;">
           <div>
@@ -1183,7 +1221,7 @@ function renderForecastWorkspaceContent(activeTab) {
         </div>`
       : '';
   const overviewContent = nativeEvaluation
-    ? structuralBannerHtml + directPreviewCanvasCardHtml + renderOverviewPanel(nativeEvaluation, activeTab, decimals, isFa, state.forecastCoordView || 'independent')
+    ? structuralBannerHtml + directPreviewCanvasCardHtml + renderOverviewPanel(nativeEvaluation, activeTab, decimals, isFa, state.forecastCoordView || 'independent', forecastUxMode)
     : structuralBannerHtml + '<div class="ci-fc-card"><canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas"></canvas></div>';
   const nativePanel = nativeTab === 'overview'
     ? overviewContent
@@ -1261,27 +1299,7 @@ function renderForecastWorkspaceContent(activeTab) {
   const primaryChartAction = isNativeModelSelected ? 'apply-native-forecast-to-chart' : 'toggle-structural-forecast';
   const isPrimaryPlotted = isNativeModelSelected ? isNativePlotted : isStructuralPlotted;
 
-  return `
-    <section class="ci-forecast-studio">
-      <div class="ci-fc-header">
-        <div class="ci-fc-title-row">
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
-            ${renderSymbolBadge(activeCode, 28)}
-            <span class="ltr-num" style="font-weight:800;font-size:14px;color:var(--text-strong);">${escapeHtml(activeCode)}</span>
-            <span class="ci-fc-status-badge ${evalStatusClass}" title="${technicalStatusTooltip}">${escapeHtml(evalStatusLabel)}</span>
-            ${evalRegimeBadge}
-          </div>
-          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
-            <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
-              ${isFa ? 'ثبت اسنپ‌شات' : 'Record Local Snapshot'}
-            </button>
-            <button type="button" class="btn btn-sm ${isPrimaryPlotted ? 'btn-primary' : ''}" data-action="${primaryChartAction}" ${isNativeModelSelected && (!Array.isArray(nativeEvaluation?.points) || nativeEvaluation.points.length === 0) && !smcDirectPreview ? 'disabled' : ''}>
-              ${isPrimaryPlotted ? (isFa ? '✓ مدل انتخاب‌شده روی چارت فعال است' : '✓ Selected Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
-            </button>
-            ${!isNativeModelSelected ? `<button type="button" class="btn btn-sm" style="display:none;" data-action="apply-native-forecast-to-chart" aria-hidden="true"></button>` : ''}
-          </div>
-        </div>
-
+  const researchControlsHtml = `
         <details class="ci-fc-controls-drawer" ${nativeTab === 'overview' ? 'open' : ''}>
           <summary class="ci-fc-controls-drawer-summary ltr-num">
             <span>${isFa ? 'تنظیمات مدل، افق و مسیرهای مقایسه' : 'Model, Horizon & Compare Overlays'}</span>
@@ -1329,7 +1347,34 @@ function renderForecastWorkspaceContent(activeTab) {
 
         <div class="ci-fc-subtabs-bar">
           ${nativeTabNav}
+        </div>`;
+
+  return `
+    <section class="ci-forecast-studio">
+      <div class="ci-fc-header" data-forecast-ux-mode="${escapeHtml(forecastUxMode)}">
+        <div class="ci-fc-title-row">
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
+            ${renderSymbolBadge(activeCode, 28)}
+            <span class="ltr-num" style="font-weight:800;font-size:14px;color:var(--text-strong);">${escapeHtml(activeCode)}</span>
+            <span class="ci-fc-status-badge ${evalStatusClass}" title="${technicalStatusTooltip}">${escapeHtml(evalStatusLabel)}</span>
+            ${evalRegimeBadge}
+            <div class="ci-fc-ux-toggle" role="group" aria-label="${isFa ? 'حالت نمایش پیش‌بینی' : 'Forecast UX Mode'}">
+              <button type="button" class="chip ${forecastUxMode === 'simple' ? 'active' : ''}" data-action="set-forecast-ux-mode" data-ux-mode="simple">${isFa ? 'ساده (Simple)' : 'Simple'}</button>
+              <button type="button" class="chip ${forecastUxMode === 'research' ? 'active' : ''}" data-action="set-forecast-ux-mode" data-ux-mode="research">${isFa ? 'پژوهش (Research)' : 'Research'}</button>
+            </div>
+          </div>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;min-width:0;max-width:100%;">
+            <button type="button" class="btn btn-sm" data-action="record-forecast-snapshot">
+              ${isFa ? 'ثبت اسنپ‌شات' : 'Record Local Snapshot'}
+            </button>
+            <button type="button" class="btn btn-sm ${isPrimaryPlotted ? 'btn-primary' : ''}" data-action="${primaryChartAction}" ${isNativeModelSelected && (!Array.isArray(nativeEvaluation?.points) || nativeEvaluation.points.length === 0) && !smcDirectPreview ? 'disabled' : ''}>
+              ${isPrimaryPlotted ? (isFa ? '✓ مدل انتخاب‌شده روی چارت فعال است' : '✓ Selected Model on Chart') : (isFa ? 'نمایش مدل انتخاب‌شده روی چارت' : 'Show Selected Model on Chart')}
+            </button>
+            ${!isNativeModelSelected ? `<button type="button" class="btn btn-sm" style="display:none;" data-action="apply-native-forecast-to-chart" aria-hidden="true"></button>` : ''}
+          </div>
         </div>
+
+        ${forecastUxMode === 'research' ? researchControlsHtml : ''}
       </div>
 
       <div class="ci-fc-body">
@@ -3234,11 +3279,16 @@ document.addEventListener('click', async (e) => {
             : `Similar ${entry.modelName} snapshot already exists (#${entry.seq}) — duplicate skipped.`
         );
       } else {
+        if (entry && state.isAuthenticated) {
+          uploadForecastLedgerSync()
+            .then(() => renderApp())
+            .catch(() => {});
+        }
         showFloatingToast(
           entry
             ? isFa
-              ? `پیش‌بینی ${entry.modelName} (#${entry.seq}) ثبت شد.`
-              : `Saved ${entry.modelName} (#${entry.seq}) to local history.`
+              ? `پیش‌بینی ${entry.modelName} (#${entry.seq}) ثبت و در صف همگام‌سازی ابری قرار گرفت.`
+              : `Saved ${entry.modelName} (#${entry.seq}) and queued cloud sync.`
             : isFa
               ? 'ثبت پیش‌بینی انجام نشد.'
               : 'Forecast snapshot could not be recorded.'
@@ -3322,11 +3372,16 @@ document.addEventListener('click', async (e) => {
           state._ledgerCompareMode = 'selected';
         }
         state._ledgerOverlayHashes = (batchRes.comparisonHashes || batchRes.entries.map((e) => e.forecastHash)).slice(0, 4);
+        if (state.isAuthenticated) {
+          uploadForecastLedgerSync()
+            .then(() => renderApp())
+            .catch(() => {});
+        }
         showFloatingToast(
           isFa
             ? skippedCount > 0
               ? `${batchRes.entries.length} مدل جدید ثبت شد و ${skippedCount} مورد تکراری رد شد.`
-              : `${batchRes.entries.length} مدل در یک گروه ثبت شدند.`
+              : `${batchRes.entries.length} مدل در یک گروه ثبت و همگام‌سازی شدند.`
             : skippedCount > 0
               ? `Recorded ${batchRes.entries.length} new model(s) and skipped ${skippedCount} duplicate(s).`
               : `Recorded ${batchRes.entries.length} distinct models in one comparison batch.`
@@ -3387,13 +3442,114 @@ document.addEventListener('click', async (e) => {
       }
       renderApp();
     }
+  } else if (action === 'view-ledger-entry-on-chart') {
+    const hash = String(el.getAttribute('data-hash') || '');
+    const entry = hash
+      ? defaultForecastLedger.loadEntries().find((item) => item.forecastHash === hash)
+      : null;
+    if (entry) {
+      const targetSym = String(entry.symbolCode || activeTab?.symbolCode || 'XAUUSD').trim().toUpperCase();
+      const targetTf = String(entry.timeframe || activeTab?.timeframe || 'M15').trim().toUpperCase();
+      openOrFocusSymbolTab(targetSym, targetTf);
+      const targetTab = getActiveTab();
+      if (targetTab) {
+        targetTab.timeframe = targetTf;
+        targetTab.chartId = `${targetTab.symbolCode}_${targetTf}`;
+        const cachedCandles = getCachedOrAggregatedCandles(targetTab.symbolCode, targetTab.provider, targetTf);
+        if (cachedCandles.length > 0) {
+          targetTab.candles = cachedCandles;
+        }
+        const renderMode = String(
+          targetTab.forecastRenderMode || state.chartPreferences.forecastRenderMode || 'FAN_CHART'
+        );
+        const builtReplay = buildChartForecastPayloadFromLedgerEntry(entry, {
+          candles: targetTab.candles || [],
+          symbolCode: targetTab.symbolCode,
+          timeframe: targetTf,
+          provider: targetTab.provider,
+          visibleCount: targetTab.visibleCount || 48,
+          renderMode,
+        });
+        if (builtReplay && builtReplay.payload) {
+          builtReplay.payload._resolvedOriginIdx = builtReplay.originIdx;
+          targetTab.structuralForecast = builtReplay.payload;
+          targetTab.structuralForecastStatus = 'READY';
+          targetTab.structuralForecastError = '';
+          targetTab.showStructuralForecast = true;
+          targetTab.showFutureProjection = false;
+          targetTab.showChronosForecast = false;
+          clearTabChronosForecast(targetTab);
+          targetTab.forecastHorizonBars = builtReplay.horizonBars;
+          targetTab.structuralForecastHorizonBars = builtReplay.horizonBars;
+          targetTab.structuralForecastModel = String(entry.modelId || 'naive_persistence');
+          targetTab.selectedForecastModelId = String(entry.modelId || 'naive_persistence');
+          targetTab.scrollOffset = builtReplay.scrollOffset;
+          state.forecastEngineMode = 'structural';
+          state.chartPreferences.forecastEngineMode = 'structural';
+        }
+        state.activeWorkspaceView = 'chart';
+        state.activeModal = null;
+        state.symbolOverviewCode = null;
+        state.isSideDrawerOpen = false;
+        savePreferences();
+        saveOpenTabsToStorage();
+        renderApp();
+        redrawActiveCanvas();
+        const isFa = i18n.getCurrentLanguage() === 'fa';
+        const evalProg =
+          builtReplay && builtReplay.payload
+            ? evaluateOnChartForecastProgress(
+                targetTab.candles || [],
+                builtReplay.payload,
+                targetTf,
+                targetTab.symbolCode
+              )
+            : null;
+        const progressNote =
+          evalProg && evalProg.evaluatedBars > 0
+            ? isFa
+              ? ` (${evalProg.evaluatedBars} از ${builtReplay.horizonBars} کندل پیش‌بینی‌شده تشکیل شده · ${evalProg.inBandCount}/${evalProg.evaluatedBars} داخل بازه)`
+              : ` (${evalProg.evaluatedBars}/${builtReplay.horizonBars} predicted bars formed · ${evalProg.inBandCount}/${evalProg.evaluatedBars} in-band)`
+            : '';
+        showFloatingToast(
+          isFa
+            ? `پیش‌بینی #${entry.seq} (${entry.modelName || entry.modelId} · +${entry.horizonBars} کندل) در بازه زمانی مربوطه روی چارت نمایش داده شد${progressNote}.`
+            : `Forecast #${entry.seq} (${entry.modelName || entry.modelId} · +${entry.horizonBars} bars) overlaid on chart at its anchor timestamp${progressNote}.`
+        );
+      }
+    }
   } else if (action === 'evaluate-forecast-outcomes' && activeTab) {
     const events = defaultForecastLedger.evaluateMaturedForecasts(activeTab.candles || [], activeTab.symbolCode, activeTab.timeframe);
+    if (events.length > 0 && state.isAuthenticated) {
+      uploadForecastLedgerSync()
+        .then(() => renderApp())
+        .catch(() => {});
+    }
     showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? `${events.length} رویداد سررسید بررسی شد.` : `${events.length} matured forecast events evaluated.`);
     renderApp();
   } else if (action === 'refresh-forecast-ledger') {
-    showFloatingToast(i18n.getCurrentLanguage() === 'fa' ? 'دفتر محلی به‌روز است؛ همگام‌سازی سرور در این نسخه فعال نیست.' : 'Local ledger is current; server sync is not enabled in this web build.');
+    const isFa = i18n.getCurrentLanguage() === 'fa';
     renderApp();
+    uploadForecastLedgerSync()
+      .then((res) => {
+        if (res && res.ok) {
+          showFloatingToast(
+            isFa
+              ? `همگام‌سازی ابری دفتر کل انجام شد (${res.totalEntries || 0} پیش‌بینی، ${res.totalEvents || 0} رویداد چرخه عمر).`
+              : `Cloud ledger synced (${res.totalEntries || 0} snapshots, ${res.totalEvents || 0} lifecycle events).`
+          );
+        } else {
+          showFloatingToast(
+            isFa
+              ? 'دفتر کل محلی به‌روز است (ارتباط ابری در دسترس نیست).'
+              : 'Local ledger is up to date (cloud endpoint offline).'
+          );
+        }
+        renderApp();
+      })
+      .catch(() => {
+        renderApp();
+      });
   } else if (action === 'set-structural-forecast-horizon' && activeTab) {
     const hVal = Math.max(1, Math.min(120, Math.round(Number(el.getAttribute('data-horizon') || 30))));
     activeTab.structuralForecastHorizonBars = hVal;
@@ -3509,6 +3665,38 @@ document.addEventListener('click', async (e) => {
         showFloatingToast(isFa ? 'اجرای بازپخش تاریخی ناموفق بود.' : 'Historical replay failed.');
         renderApp();
       });
+  } else if (action === 'set-forecast-ux-mode') {
+    const nextMode = el.getAttribute('data-ux-mode') === 'research' ? 'research' : 'simple';
+    state.forecastUxMode = nextMode;
+    state.chartPreferences.forecastUxMode = nextMode;
+    if (nextMode === 'simple') {
+      state.forecastStudioTab = 'overview';
+    }
+    savePreferences();
+    renderApp();
+    redrawActiveCanvas();
+  } else if (action === 'open-forecast-ledger-from-simple') {
+    state.forecastUxMode = 'research';
+    state.chartPreferences.forecastUxMode = 'research';
+    state.forecastStudioTab = 'ledger';
+    savePreferences();
+    renderApp();
+  } else if (action === 'open-strategy-from-forecast') {
+    const ds = state._lastForecastResult?.decisionSummary || null;
+    if (ds && ds.allowStrategy === true) {
+      state.strategySimConfig = {
+        ...(state.strategySimConfig || DEFAULT_STRATEGY_CONFIG),
+        activeLabTab: 'overview',
+      };
+      state.activeModal = 'strategy-lab';
+      renderApp();
+    } else {
+      showFloatingToast(
+        isFa
+          ? (ds?.strategyBlockReasonTextFa || 'تولید سیگنال از پیش‌بینی فقط در وضعیت معتبر (VALID) با لبه آماری اثبات‌شده مجاز است.')
+          : (ds?.strategyBlockReasonText || 'Strategy generation requires VALID Forecast status with proven OOS edge.')
+      );
+    }
   } else if (action === 'set-forecast-subtab') {
     state.forecastStudioTab = String(el.getAttribute('data-tab') || 'overview');
     renderApp();
@@ -5091,6 +5279,7 @@ async function bootstrap() {
     await fetchSystemStatus();
     if (state.isAuthenticated) {
       await downloadWorkspaceSync();
+      await downloadForecastLedgerSync();
       ensureInitialTabs(true);
     }
     renderApp();

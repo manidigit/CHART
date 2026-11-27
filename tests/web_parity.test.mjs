@@ -4597,3 +4597,1257 @@ test('LIVE-FORECAST-COMPARE-REFRESH-01: on-chart forecast persists across newly 
   assert.match(cssSource, /\.tv-ind-pill-prev/, 'theme.css must style pinned previous forecast pill');
 });
 
+test('FORECAST-P0-DECISION-SIMPLE-RESEARCH-01: Phase P0 Data Readiness 5-state contract, Model Governance tiers, 4-step Decision Layer (VALID/PROVISIONAL/NO_EDGE/INSUFFICIENT_EVIDENCE/DATA_NOT_READY), AUTO Relative candidate, and Simple vs Research UX', async () => {
+  const {
+    DATA_READINESS_STATE,
+    FORECAST_STATUS,
+    EDGE_STATUS,
+    PATH_SEMANTICS,
+    SELECTION_MODE,
+    MODEL_EXECUTION_STATUS,
+    OOD_STATUS,
+    MTF_ALIGNMENT_STATE,
+    validateDataReadiness,
+  } = await import('../host_subdomain/assets/js/forecast/forecastContract.js');
+  const {
+    defaultForecastRegistry,
+    resolveModelGovernance,
+  } = await import('../host_subdomain/assets/js/forecast/modelRegistry.js');
+  const {
+    DECISION_POLICY_VERSION,
+    buildDecisionSummary,
+    resolveRelativeCandidate,
+    resolvePathSemantics,
+  } = await import('../host_subdomain/assets/js/forecast/decisionLayer.js');
+  const { selectOosChartWinner } = await import('../host_subdomain/assets/js/forecast/walkForwardEvaluator.js');
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+  const { renderDecisionCard, renderOverviewPanel, renderModelsPanel } = await import('../host_subdomain/assets/js/views/forecastView.js');
+  const appSource = await readFile(new URL('../host_subdomain/assets/js/app.js', import.meta.url), 'utf8');
+  const cssSource = await readFile(new URL('../host_subdomain/assets/css/theme.css', import.meta.url), 'utf8');
+
+  // 1. F-01: Data Readiness 5-state contract (READY, INSUFFICIENT_HISTORY, STALE_DATA, DATA_GAP, DATA_NOT_READY)
+  const stepMs = 15 * 60 * 1000;
+  const baseMs = Date.UTC(2026, 2, 16, 8, 0, 0); // Monday
+  const makeCleanBars = (count, start = baseMs) =>
+    Array.from({ length: count }, (_, i) => {
+      const c = 2500 + Math.sin(i * 0.17) * 8 + i * 0.12;
+      return {
+        open_time_utc_ms: start + i * stepMs,
+        open: c - 0.3,
+        high: c + 0.9,
+        low: c - 0.9,
+        close: c,
+        volume: 500 + (i % 40) * 10,
+      };
+    });
+
+  // Empty -> DATA_NOT_READY
+  const emptyReadiness = validateDataReadiness([], { horizonBars: 10 });
+  assert.equal(emptyReadiness.ready, false);
+  assert.equal(emptyReadiness.readinessState, DATA_READINESS_STATE.DATA_NOT_READY);
+  assert.ok(emptyReadiness.missingBarsCount >= 155);
+
+  // Insufficient bars -> INSUFFICIENT_HISTORY + exact missingBarsCount
+  const shortBars = makeCleanBars(50);
+  const shortReadiness = validateDataReadiness(shortBars, {
+    horizonBars: 10,
+    anchorNowMs: shortBars[shortBars.length - 1].open_time_utc_ms + stepMs * 2,
+  });
+  assert.equal(shortReadiness.ready, false);
+  assert.equal(shortReadiness.readinessState, DATA_READINESS_STATE.INSUFFICIENT_HISTORY);
+  assert.equal(shortReadiness.missingBarsCount, shortReadiness.nOpMin - 50);
+
+  // Stale data -> STALE_DATA when enforceStaleData: true
+  const readyBars = makeCleanBars(180);
+  const lastCloseMs = readyBars[readyBars.length - 1].open_time_utc_ms + stepMs;
+  const staleReadiness = validateDataReadiness(readyBars, {
+    horizonBars: 10,
+    symbolCode: 'BTCUSD',
+    timeframe: 'M15',
+    anchorNowMs: lastCloseMs + stepMs * 50, // 50 bars old > 4 bars crypto limit
+    enforceStaleData: true,
+  });
+  assert.equal(staleReadiness.ready, false);
+  assert.equal(staleReadiness.readinessState, DATA_READINESS_STATE.STALE_DATA);
+  assert.equal(staleReadiness.staleTelemetry.isStale, true);
+
+  // Disallowed gap -> DATA_GAP when enforceCalendarGaps: true
+  const gappedBars = makeCleanBars(180).filter((_, idx) => idx !== 90 && idx !== 91);
+  const gapReadiness = validateDataReadiness(gappedBars, {
+    horizonBars: 10,
+    symbolCode: 'BTCUSD',
+    timeframe: 'M15',
+    anchorNowMs: gappedBars[gappedBars.length - 1].open_time_utc_ms + stepMs * 2,
+    enforceCalendarGaps: true,
+  });
+  assert.equal(gapReadiness.ready, false);
+  assert.equal(gapReadiness.readinessState, DATA_READINESS_STATE.DATA_GAP);
+
+  // Ready -> READY
+  const okReadiness = validateDataReadiness(readyBars, {
+    horizonBars: 10,
+    symbolCode: 'BTCUSD',
+    timeframe: 'M15',
+    anchorNowMs: lastCloseMs + stepMs,
+    enforceStaleData: true,
+  });
+  assert.equal(okReadiness.ready, true);
+  assert.equal(okReadiness.readinessState, DATA_READINESS_STATE.READY);
+  assert.equal(okReadiness.missingBarsCount, 0);
+
+  // 2. F-04 & F-05: Model Governance tiers & exclusion of experimentalOnly models from AUTO/Decision Pool
+  const approxIds = ['native_prophet_decomp', 'native_seq_recurrent_approx', 'native_quantile_attention_approx'];
+  for (const id of approxIds) {
+    const gov = resolveModelGovernance(id);
+    assert.equal(gov.experimentalOnly, true, `${id} must be flagged experimentalOnly`);
+    assert.equal(gov.governanceTier, 'EXPERIMENTAL_APPROX', `${id} must be EXPERIMENTAL_APPROX`);
+    assert.equal(gov.decisionPoolEligible, false, `${id} must be excluded from AUTO decision pool`);
+  }
+  const decisionPoolIds = defaultForecastRegistry.getDecisionPoolPlugins().map((x) => x.plugin.id);
+  for (const id of approxIds) {
+    assert.equal(decisionPoolIds.includes(id), false, `Decision pool must exclude ${id}`);
+  }
+  assert.equal(resolvePathSemantics('structural_wave_js'), PATH_SEMANTICS.JOINT_TRAJECTORY);
+  assert.equal(resolvePathSemantics('smc_prediction_js'), PATH_SEMANTICS.JOINT_TRAJECTORY);
+  assert.equal(resolvePathSemantics('empirical_analogs'), PATH_SEMANTICS.MARGINAL_MEDIAN);
+
+  // 3. F-06, F-07, F-08: 4-Step Decision Layer & AUTO Relative Candidate
+  const mockPoints = Array.from({ length: 10 }, (_, i) => ({
+    stepAhead: i + 1,
+    openTimeUtcMs: lastCloseMs + i * stepMs,
+    q10: 2510 + i * 0.5,
+    q25: 2515 + i * 0.5,
+    q50: 2520 + i * 0.5,
+    q75: 2525 + i * 0.5,
+    q90: 2530 + i * 0.5,
+    pctChangeFromLast: 0.4,
+  }));
+  const mockTrajs = [
+    { modelId: 'naive_persistence', modelName: 'Naive Persistence', status: MODEL_EXECUTION_STATUS.SUCCESS, isCalibratedInterval: true, points: mockPoints },
+    { modelId: 'smc_prediction_js', modelName: 'SMC Prediction Engine', status: MODEL_EXECUTION_STATUS.SUCCESS, isCalibratedInterval: true, points: mockPoints },
+    { modelId: 'native_seq_recurrent_approx', modelName: 'GRU Approx', status: MODEL_EXECUTION_STATUS.SUCCESS, isApproximation: true, experimentalOnly: true, isCalibratedInterval: false, points: mockPoints },
+  ];
+
+  // Case A: AUTO Relative Candidate (beats Naive on WIS & rMAE < 1, but dmPValue = 0.14 > 0.05 so fails strict 6-gate)
+  // Also include an experimental model with even lower WIS to verify it is strictly ignored by AUTO Relative!
+  const wfRelative = {
+    evaluatedWindows: 32,
+    effectiveSampleSize: 27.5,
+    wisNaiveDistributional: 4.2,
+    conformalCalibration: { calibrationStatus: 'CALIBRATED_NORMALIZED' },
+    ensembleMetrics: null,
+    modelBenchmarks: [
+      {
+        modelId: 'native_seq_recurrent_approx',
+        modelName: 'GRU Approx',
+        experimentalOnly: true,
+        status: MODEL_EXECUTION_STATUS.SUCCESS,
+        windows: 32,
+        nEff: 27.5,
+        rMae: 0.75,
+        wis: 2.9,
+        coverage80Pct: 80.0,
+        dmPValue: 0.01,
+        bootPValue: 0.01,
+      },
+      {
+        modelId: 'smc_prediction_js',
+        modelName: 'SMC Prediction Engine',
+        experimentalOnly: false,
+        status: MODEL_EXECUTION_STATUS.SUCCESS,
+        windows: 32,
+        nEff: 27.5,
+        rMae: 0.91,
+        wis: 3.6,
+        coverage80Pct: 78.0,
+        dmPValue: 0.14, // Not strict DM pass
+        bootPValue: 0.18,
+      },
+    ],
+  };
+
+  const relCandidate = resolveRelativeCandidate(wfRelative, mockTrajs);
+  assert.ok(relCandidate, 'Must find eligible relative candidate');
+  assert.equal(relCandidate.candidate.modelId, 'smc_prediction_js', 'Must ignore experimental model and select smc_prediction_js');
+
+  const selRelative = selectOosChartWinner(wfRelative, mockTrajs, 'AUTO');
+  assert.equal(selRelative.selectionMode, SELECTION_MODE.AUTO_RELATIVE_PROVISIONAL);
+  assert.equal(selRelative.selectedModelId, 'smc_prediction_js');
+  assert.equal(selRelative.winnerModelId, null, 'Relative candidate must never claim strict winnerModelId');
+
+  const dsRelative = buildDecisionSummary({
+    status: FORECAST_STATUS.PROVISIONAL,
+    readiness: { ready: true, readinessState: DATA_READINESS_STATE.READY, statisticallySufficient: true },
+    anchorClose: 2510,
+    horizonBars: 10,
+    selectedChartModelId: selRelative.selectedModelId,
+    selectionMode: selRelative.selectionMode,
+    walkForward: wfRelative,
+    conformalCalibration: wfRelative.conformalCalibration,
+    noEdgeGate: { hasEdge: false, gateState: 'NO_EDGE_DETECTED', reasons: ['p_DM > 0.05'] },
+    uncertainty: { oodStatus: OOD_STATUS.IN_DISTRIBUTION },
+    mtfCoordination: { alignmentState: MTF_ALIGNMENT_STATE.ALIGNED },
+    scenarioCalibration: { calibrationPassed: true },
+    modelTrajectories: mockTrajs,
+    points: mockPoints,
+  });
+  assert.equal(dsRelative.policyVersion, DECISION_POLICY_VERSION);
+  assert.equal(dsRelative.status, FORECAST_STATUS.PROVISIONAL);
+  assert.equal(dsRelative.edgeStatus, EDGE_STATUS.NOT_PROVEN);
+  assert.equal(dsRelative.selectionTier, 'AUTO_RELATIVE');
+  assert.equal(dsRelative.modelId, 'smc_prediction_js');
+  assert.equal(dsRelative.pathSemantics, PATH_SEMANTICS.JOINT_TRAJECTORY);
+  assert.equal(dsRelative.allowStrategy, false, 'AUTO_RELATIVE / PROVISIONAL must NEVER allow Strategy generation');
+
+  // Case B: Manual selection of experimental model NEVER upgrades validity or Strategy eligibility
+  const dsManualExp = buildDecisionSummary(
+    {
+      status: FORECAST_STATUS.NO_EDGE,
+      readiness: { ready: true, readinessState: DATA_READINESS_STATE.READY, statisticallySufficient: true },
+      anchorClose: 2510,
+      horizonBars: 10,
+      selectedChartModelId: 'native_seq_recurrent_approx',
+      selectionMode: SELECTION_MODE.MANUAL_OVERRIDE,
+      walkForward: wfRelative,
+      conformalCalibration: wfRelative.conformalCalibration,
+      uncertainty: { oodStatus: OOD_STATUS.IN_DISTRIBUTION },
+      modelTrajectories: mockTrajs,
+      points: mockPoints,
+    },
+    { requestedModelId: 'native_seq_recurrent_approx' }
+  );
+  assert.equal(dsManualExp.selectionTier, 'MANUAL');
+  assert.equal(dsManualExp.isExperimentalOnly, true);
+  assert.equal(dsManualExp.showUncertaintyBand, false, 'Experimental uncalibrated model must not claim calibrated 80% band');
+  assert.equal(dsManualExp.allowStrategy, false);
+
+  // Case C: Strict 6-gate OOS winner -> VALID + allowStrategy = true
+  const wfStrict = {
+    ...wfRelative,
+    acceptancePassed: true,
+    modelBenchmarks: [
+      {
+        ...wfRelative.modelBenchmarks[1],
+        dmPValue: 0.02,
+        bootPValue: 0.04,
+      },
+    ],
+  };
+  const selStrict = selectOosChartWinner(wfStrict, mockTrajs, 'AUTO');
+  assert.equal(selStrict.selectionMode, SELECTION_MODE.AUTO_OOS_BEST);
+  assert.equal(selStrict.winnerModelId, 'smc_prediction_js');
+  const dsStrict = buildDecisionSummary({
+    status: FORECAST_STATUS.VALID,
+    readiness: { ready: true, readinessState: DATA_READINESS_STATE.READY, statisticallySufficient: true },
+    anchorClose: 2510,
+    horizonBars: 10,
+    selectedChartModelId: 'smc_prediction_js',
+    selectionMode: SELECTION_MODE.AUTO_OOS_BEST,
+    walkForward: wfStrict,
+    conformalCalibration: wfStrict.conformalCalibration,
+    noEdgeGate: { hasEdge: true, gateState: 'EDGE_SUPPORTED', reasons: [] },
+    uncertainty: { oodStatus: OOD_STATUS.IN_DISTRIBUTION },
+    mtfCoordination: { alignmentState: MTF_ALIGNMENT_STATE.ALIGNED },
+    scenarioCalibration: { calibrationPassed: true },
+    modelTrajectories: mockTrajs,
+    points: mockPoints,
+  });
+  assert.equal(dsStrict.status, FORECAST_STATUS.VALID);
+  assert.equal(dsStrict.edgeStatus, EDGE_STATUS.PROVEN);
+  assert.equal(dsStrict.selectionTier, 'AUTO_STRICT');
+  assert.equal(dsStrict.allowStrategy, true, 'VALID with PROVEN edge must enable Strategy generation');
+
+  // Case D: ForecastEngine.project defaults providerId to tvdatafeed and attaches decisionSummary
+  const projNotReady = ForecastEngine.project(shortBars, {
+    symbolCode: 'XAUUSD',
+    timeframe: 'M15',
+    horizonBars: 10,
+    anchorNowMs: shortBars[shortBars.length - 1].open_time_utc_ms + stepMs * 2,
+  });
+  assert.equal(projNotReady.status, FORECAST_STATUS.DATA_NOT_READY);
+  assert.ok(projNotReady.decisionSummary, 'DATA_NOT_READY result must carry decisionSummary');
+  assert.equal(projNotReady.decisionSummary.readinessState, DATA_READINESS_STATE.INSUFFICIENT_HISTORY);
+  assert.equal(projNotReady.decisionSummary.allowStrategy, false);
+
+  // 4. Simple vs Research UX rendering & 3-action guardrail
+  const mockFcForUi = {
+    status: FORECAST_STATUS.PROVISIONAL,
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    horizonBars: 10,
+    anchorClose: 2510,
+    selectedChartModelId: 'smc_prediction_js',
+    selectionMode: SELECTION_MODE.AUTO_RELATIVE_PROVISIONAL,
+    summary: { corridorWidthPct: 0.79 },
+    points: mockPoints,
+    modelTrajectories: mockTrajs,
+    decisionSummary: dsRelative,
+    featuresSummary: { ewmaSigmaPct: 0.42 },
+  };
+  const simpleHtml = renderOverviewPanel(mockFcForUi, { symbolCode: 'SPOTBRENT', timeframe: 'M15', candles: readyBars }, 2, true, 'independent', 'simple');
+  assert.match(simpleHtml, /ci-fc-decision-card/, 'Simple mode must render top Decision Card');
+  assert.match(simpleHtml, /ci-fc-simple-actions/, 'Simple mode must render 3-button action bar');
+  assert.match(simpleHtml, /data-action="open-strategy-from-forecast"\s+disabled/, 'Simple mode must disable Strategy button when allowStrategy is false');
+  assert.doesNotMatch(simpleHtml, /ci-fc-accordion/, 'Simple mode must NOT render Research diagnostic accordions');
+  assert.doesNotMatch(simpleHtml, /ci-fc-research-banner/, 'Simple mode must NOT render Research disclaimer banner');
+
+  const researchHtml = renderOverviewPanel(mockFcForUi, { symbolCode: 'SPOTBRENT', timeframe: 'M15', candles: readyBars }, 2, true, 'independent', 'research');
+  assert.match(researchHtml, /ci-fc-research-banner/, 'Research mode must render scientific evaluation disclaimer banner');
+  assert.match(researchHtml, /برای ارزیابی علمی/, 'Research mode banner must include Persian scientific evaluation disclaimer');
+  assert.match(researchHtml, /ci-fc-accordion/, 'Research mode must render diagnostic accordions');
+
+  const modelsHtml = renderModelsPanel(mockFcForUi, 2, false);
+  assert.match(modelsHtml, /Research-only \/ Experimental/, 'Models panel must badge experimentalOnly approximate models');
+  assert.match(appSource, /data-action="set-forecast-ux-mode"/, 'app.js must expose Simple/Research UX mode toggle');
+  assert.match(cssSource, /\.ci-fc-decision-card/, 'theme.css must style Decision Card');
+});
+
+test('FORECAST-P1-PATH-QUALITY-MARKET-CONTEXT-01: Phase P1 Causal Market Context Engine (§4), 7-Dimensional Path Quality (§5.2), and Ledger/Evaluation Alignment (§11)', async () => {
+  const {
+    MARKET_CONTEXT_ENGINE_VERSION,
+    PATH_QUALITY_SCHEMA_VERSION,
+    OBSERVATION_STATUS,
+    buildCausalMarketContext,
+    extractSeriesTurningPoints,
+    computePullbackAndRangeMetrics,
+    evaluatePathQualityVector,
+  } = await import('../host_subdomain/assets/js/forecast/marketContextEngine.js?v=1.47.41');
+  const { evaluateWalkForward } = await import('../host_subdomain/assets/js/forecast/walkForwardEvaluator.js?v=1.47.41');
+  const { defaultForecastRegistry } = await import('../host_subdomain/assets/js/forecast/modelRegistry.js?v=1.47.41');
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js?v=1.47.41');
+  const { ForecastLedger } = await import('../host_subdomain/assets/js/forecast/forecastLedger.js?v=1.47.41');
+  const { renderBacktestPanel, renderLedgerPanel } = await import('../host_subdomain/assets/js/views/forecastView.js?v=1.47.41');
+
+  // 1. F-03 & F-04: Causal Swing confirmation lag (index + swingLen) & BOS/CHoCH replay causality
+  const stepMs = 15 * 60 * 1000;
+  const baseMs = Date.UTC(2026, 2, 2, 8, 0, 0);
+  // Build a controlled 30-bar series with a distinct swing high at index 10 (confirmIndex = 13 for swingLen = 3)
+  // and a bullish breakout (BOS) above that swing high at index 18.
+  const pricePath = [
+    100, 101, 102, 103, 104, 105, 106, 107, 108, 109,
+    115, // index 10: local peak (115)
+    112, 110, 109, // index 11..13: 3 lower highs confirm index 10 at bar 13!
+    110, 111, 112, 114,
+    117, // index 18: decisive close above 115 -> Bullish BOS confirmed at bar 18!
+    118, 116, 115, 114, 113, 114, 115, 116, 117, 118, 119,
+  ];
+  const controlledCandles = pricePath.map((p, idx) => ({
+    open_time_utc_ms: baseMs + idx * stepMs,
+    open: p - 0.4,
+    high: p + 0.8,
+    low: p - 0.8,
+    close: p,
+    volume: 0, // zero volume to also verify no synthetic volume fabrication (§4.1/§4.3)
+    is_closed: true,
+  }));
+
+  // At index 12 (before confirmIndex = 13), the swing high at index 10 MUST NOT be in confirmed swings!
+  const ctxAt12 = buildCausalMarketContext(controlledCandles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    swingLen: 3,
+    asOfIndex: 12,
+    includeUnconfirmed: true,
+  });
+  assert.equal(ctxAt12.schemaVersion, MARKET_CONTEXT_ENGINE_VERSION);
+  const confirmedAt12 = ctxAt12.swings.filter((s) => s.index === 10);
+  assert.equal(confirmedAt12.length, 0, 'F-03: Swing high at index 10 must NOT be confirmed at index 12 (before index + 3)');
+  const unconfirmedAt12 = ctxAt12.unconfirmedSwings.filter((s) => s.index === 10);
+  assert.equal(unconfirmedAt12.length, 1, 'F-03: Swing at index 10 may only appear as UNCONFIRMED at index 12');
+  assert.equal(unconfirmedAt12[0].status, OBSERVATION_STATUS.UNCONFIRMED);
+  assert.equal(unconfirmedAt12[0].confirmedAt, null);
+
+  // At index 13 (exact confirmIndex = 10 + 3), the swing high at index 10 MUST now be confirmed!
+  const ctxAt13 = buildCausalMarketContext(controlledCandles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    swingLen: 3,
+    asOfIndex: 13,
+  });
+  const confirmedAt13 = ctxAt13.swings.find((s) => s.index === 10 && s.type === 'SWING_HIGH');
+  assert.ok(confirmedAt13, 'F-03: Swing high at index 10 must become confirmed at index 13');
+  assert.equal(confirmedAt13.status, OBSERVATION_STATUS.ACTIVE);
+  assert.ok(confirmedAt13.confirmedAt > confirmedAt13.occurredAt, 'F-03: confirmedAt must be strictly greater than occurredAt');
+
+  // F-04: At index 17 (before break at index 18), no BOS above 115.8 exists; at index 18, BOS appears!
+  const ctxAt17 = buildCausalMarketContext(controlledCandles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    swingLen: 3,
+    asOfIndex: 17,
+  });
+  assert.equal(
+    ctxAt17.structureEvents.some((ev) => ev.pivotIndex === 10),
+    false,
+    'F-04: BOS on pivot 10 must not appear before break bar 18'
+  );
+  const ctxAt18 = buildCausalMarketContext(controlledCandles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    swingLen: 3,
+    asOfIndex: 18,
+  });
+  const bosAt18 = ctxAt18.structureEvents.find((ev) => ev.pivotIndex === 10);
+  assert.ok(bosAt18, 'F-04: BOS on pivot 10 must appear at break bar 18');
+  assert.equal(bosAt18.direction, 'BULLISH');
+  assert.equal(
+    ctxAt18.liquidity.volumeProfile.status,
+    OBSERVATION_STATUS.UNAVAILABLE,
+    '§4.3: Missing real volume must return UNAVAILABLE, never fabricated volume'
+  );
+
+  // 2. F-05 & F-06: 7-Dimensional Path Quality fixtures (turning points, wave segments, pullback depth/duration, amplitude)
+  const anchorClose = 100;
+  // Realized path: rises to peak 108 at step 4, pulls back to trough 103 at step 7 (depth = 5, duration = 3 bars), resumes to 112 at step 10
+  const actualWaveCloses = [102, 104, 106, 108, 106, 104, 103, 106, 109, 112];
+  const turns = extractSeriesTurningPoints([anchorClose, ...actualWaveCloses], 0.5);
+  assert.equal(turns.length, 2, 'F-05: Must detect 1 PEAK (step 4) and 1 TROUGH (step 7)');
+  assert.equal(turns[0].type, 'PEAK');
+  assert.equal(turns[0].step, 4);
+  assert.equal(turns[1].type, 'TROUGH');
+  assert.equal(turns[1].step, 7);
+
+  const pbStats = computePullbackAndRangeMetrics(anchorClose, actualWaveCloses, 2.0);
+  assert.equal(pbStats.maxPullbackDepth, 5, 'F-06: Pullback depth from 108 to 103 must equal 5');
+  assert.equal(pbStats.pullbackDurationBars, 3, 'F-06: Pullback duration from step 5 to 7 must equal 3 bars');
+
+  // Compare wave-aware trajectory vs flat naive trajectory on the same actualWaveCloses
+  const waveTrajPoints = actualWaveCloses.map((c) => ({ q10: c - 2, q50: c, q90: c + 2 }));
+  const flatNaivePoints = actualWaveCloses.map(() => ({ q10: 96, q50: 100, q90: 104 }));
+
+  const pqWave = evaluatePathQualityVector({
+    anchorClose,
+    trajPoints: waveTrajPoints,
+    actualCandles: actualWaveCloses,
+    atrAtAnchor: 2.0,
+  });
+  const pqNaive = evaluatePathQualityVector({
+    anchorClose,
+    trajPoints: flatNaivePoints,
+    actualCandles: actualWaveCloses,
+    atrAtAnchor: 2.0,
+  });
+  assert.equal(pqWave.schemaVersion, PATH_QUALITY_SCHEMA_VERSION);
+  assert.equal(pqWave.turningPointAgreementPct, 100, 'Exact wave match must achieve 100% turning point agreement');
+  assert.equal(pqWave.segmentDirectionSimilarityPct, 100, 'Exact wave match must achieve 100% segment direction similarity');
+  assert.equal(pqWave.pullbackDepthErrorAtr, 0, 'Exact wave match must have 0 pullback depth error');
+  assert.equal(pqWave.pullbackDurationErrorBars, 0, 'Exact wave match must have 0 pullback duration error');
+  assert.ok(
+    pqWave.pathQualityScore > pqNaive.pathQualityScore + 35,
+    `Wave-accurate trajectory (${pqWave.pathQualityScore}) must score substantially higher than flat Naive (${pqNaive.pathQualityScore})`
+  );
+
+  // 3. F-07 & F-08: Walk-Forward Evaluator & ForecastEngine integration of 7D Path Quality & Market Context
+  const historyBars = Array.from({ length: 220 }, (_, i) => {
+    const wave = Math.sin(i / 5) * 4 + i * 0.15;
+    const c = 2000 + wave;
+    return {
+      open_time_utc_ms: baseMs + i * stepMs,
+      openTimeUtcMs: baseMs + i * stepMs,
+      open: c - 0.8,
+      high: c + 1.8,
+      low: c - 1.8,
+      close: c,
+      volume: 120 + (i % 15) * 10,
+      is_closed: true,
+    };
+  });
+  const wfOut = evaluateWalkForward(historyBars, defaultForecastRegistry, {
+    horizonBars: 10,
+    includeAuxiliaryModels: false,
+    skipBootstrap: true,
+  });
+  assert.ok(wfOut.evaluatedWindows > 0, 'Walk-forward must evaluate outer windows on 220 bars at H=10');
+  assert.ok(wfOut.pathQualitySummary, 'Walk-forward output must include pathQualitySummary');
+  assert.ok(Number.isFinite(wfOut.pathQualitySummary.pathQualityScore), 'pathQualitySummary must expose pathQualityScore');
+  assert.ok(Number.isFinite(wfOut.naiveMetrics.pathQualityScore), 'naiveMetrics must expose pathQualityScore on same origins');
+
+  const projOut = ForecastEngine.project(historyBars, {
+    symbolCode: 'XAUUSD',
+    timeframe: 'M15',
+    horizonBars: 10,
+    anchorNowMs: historyBars[historyBars.length - 1].open_time_utc_ms + stepMs,
+  });
+  assert.ok(projOut.marketContext, 'ForecastEngine.project must attach causal marketContext');
+  assert.equal(projOut.marketContext.schemaVersion, MARKET_CONTEXT_ENGINE_VERSION);
+
+  // 4. L-01, L-02, L-03 & O-03: Immutable Ledger evaluation with 7D Path Quality without mutating original snapshot hash
+  const testLedger = new ForecastLedger('ci_test_p1_ledger_v1');
+  testLedger.clear();
+  const anchorBar = historyBars[199];
+  const futureBars = historyBars.slice(200, 210);
+  const snapEntry = testLedger.appendFromForecast(
+    {
+      ...projOut,
+      symbolCode: 'XAUUSD',
+      timeframe: 'M15',
+      horizonBars: 10,
+      anchorOpenTimeUtcMs: anchorBar.open_time_utc_ms,
+      anchorClose: anchorBar.close,
+      points: futureBars.map((b, idx) => ({
+        stepAhead: idx + 1,
+        openTimeUtcMs: b.open_time_utc_ms,
+        q10: b.close - 5,
+        q25: b.close - 2.5,
+        q50: b.close,
+        q75: b.close + 2.5,
+        q90: b.close + 5,
+      })),
+    },
+    { modelId: 'smc_prediction_js', modelName: 'SMC Prediction Engine' }
+  );
+  assert.ok(snapEntry?.forecastHash, 'L-01: Ledger must record immutable snapshot with SHA-256 hash');
+  const hashBeforeEval = snapEntry.forecastHash;
+
+  const evalEvents = testLedger.evaluateMaturedForecasts(
+    historyBars.slice(0, 210),
+    'XAUUSD',
+    'M15'
+  );
+  assert.ok(evalEvents.length > 0, 'L-02: Ledger must evaluate matured checkpoints against subsequent closed candles');
+  const terminalEv = evalEvents.find((e) => e.horizonStep === 10);
+  assert.ok(terminalEv?.evaluationDetails?.pathQuality, 'L-02: Matured evaluationDetails must include 7D pathQuality');
+  assert.ok(terminalEv.evaluationDetails.pathQualityScore >= 85, 'Exact trajectory match must yield high 7D pathQualityScore');
+
+  const storedAfterEval = testLedger.loadEntries()[0];
+  assert.equal(storedAfterEval.forecastHash, hashBeforeEval, 'L-01: Evaluation must never overwrite or mutate original snapshot hash');
+  assert.equal(testLedger.verifyChain().valid, true, 'L-03: Snapshot SHA-256 hash chain must remain valid after evaluation');
+  assert.equal(testLedger.verifyLifecycleChain().valid, true, 'L-03: Lifecycle SHA-256 hash chain must remain valid');
+
+  const scorecards = testLedger.buildModelScorecards(20, 'XAUUSD');
+  assert.equal(scorecards.length, 1);
+  assert.ok(Number.isFinite(scorecards[0].meanPathQualityScore), 'Rolling scorecard must expose meanPathQualityScore');
+  assert.equal(testLedger.getStorageStatus().localOnly, true, 'O-03: Ledger storage status must explicitly report localOnly');
+  testLedger.clear();
+
+  // 5. UI Verification for Backtest & Ledger Panels
+  const backtestHtml = renderBacktestPanel(projOut, 2, true);
+  assert.match(backtestHtml, /fc-path-quality-7d-card/, 'Backtest panel must render 7-Dimensional Path Quality summary card');
+  assert.match(backtestHtml, /fc-market-context-card/, 'Backtest panel must render Causal Market Context summary card');
+  assert.match(backtestHtml, /Path Q/, 'Backtest benchmark table must include Path Q column');
+
+  const ledgerHtml = renderLedgerPanel(2, true);
+  assert.match(ledgerHtml, /ذخیره محلی مرورگر/, 'Ledger panel must clearly disclose local browser storage limit');
+});
+
+test('FORECAST-P3-STRATEGY-BRIDGE-PURGED-WF-01: Controlled One-Way Forecast -> Strategy Bridge (S-01..S-06), Purged Walk-Forward + Embargo + Final Untouched Holdout, Regime Breakdown, and Portfolio Risk Controls', async () => {
+  const {
+    FORECAST_STRATEGY_BRIDGE_VERSION,
+    BRIDGE_REJECTION_CODE,
+    evaluateForecastStrategyBridge,
+  } = await import('../host_subdomain/assets/js/strategy/forecastStrategyBridge.js');
+  const {
+    evaluateRiskRewardTradePlan,
+    MINIMUM_REQUIRED_RR,
+  } = await import('../host_subdomain/assets/js/strategy/riskRewardEngine.js');
+  const {
+    runClassicalStrategyBacktest,
+    compareAllClassicalStrategies,
+  } = await import('../host_subdomain/assets/js/strategy/signalBacktester.js');
+  const { renderStrategyLabModal } = await import('../host_subdomain/assets/js/views/strategyLabView.js');
+  const { state, saveCandlesToCache } = await import('../host_subdomain/assets/js/core/store.js');
+
+  assert.equal(FORECAST_STRATEGY_BRIDGE_VERSION, 'forecast-strategy-bridge/1.0.0');
+  assert.equal(MINIMUM_REQUIRED_RR, 2.0);
+
+  // Build deterministic 160-bar series with clear confirmed swing low at 99.6 (bar 152, confirmed at 155)
+  // and nearest confirmed swing high resistance at 109.5 (bar 142, confirmed at 145) with no intermediate swing highs between 101.2 and 109.5
+  const baseMs = Date.UTC(2026, 2, 1, 0, 0, 0);
+  const stepMs = 15 * 60 * 1000;
+  const candles = [];
+  for (let i = 0; i < 160; i++) {
+    let c;
+    if (i < 135) {
+      c = 100.0 + Math.sin(i * 0.25) * 0.45; // Tight base range around 99.5..100.5 (highs <= 100.95 < 101.2)
+    } else if (i <= 142) {
+      c = 100.4 + (i - 135) * 1.25; // Clean rally up to swing high peak at i=142 (c=109.15, high=109.55)
+    } else if (i <= 152) {
+      c = 109.15 - (i - 142) * 0.92; // Clean pullback down to swing low trough at i=152 (c=99.95, low=99.55)
+    } else {
+      c = 99.95 + (i - 152) * 0.18; // Gentle recovery to 101.21 at i=159 (no new swing high formed)
+    }
+    const open = c - 0.15;
+    const high = c + 0.4;
+    const low = c - 0.4;
+    candles.push({
+      open_time_utc_ms: baseMs + i * stepMs,
+      openTimeUtcMs: baseMs + i * stepMs,
+      open,
+      high,
+      low,
+      close: c,
+      volume: 1000 + (i % 11) * 50,
+      is_closed: true,
+    });
+  }
+  const lastBar = candles[candles.length - 1];
+
+  const makeMockForecast = (overrides = {}) => ({
+    status: 'READY',
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    horizonBars: 10,
+    inputHash: 'fnv1a_spotbrent_m15_160',
+    anchorOpenTimeUtcMs: lastBar.open_time_utc_ms,
+    anchorClose: lastBar.close,
+    selectedChartModelId: 'structural_wave_js',
+    selectionMode: 'AUTO_OOS_BEST',
+    points: Array.from({ length: 10 }, (_, idx) => ({
+      stepAhead: idx + 1,
+      openTimeUtcMs: lastBar.open_time_utc_ms + (idx + 1) * stepMs,
+      q10: lastBar.close - 1.5,
+      q25: lastBar.close + idx * 0.4,
+      q50: lastBar.close + (idx + 1) * 1.15, // Terminal Q50 = 101.2 + 11.5 = 112.7
+      q75: lastBar.close + (idx + 1) * 1.35,
+      q90: lastBar.close + (idx + 1) * 1.65,
+    })),
+    decisionSummary: {
+      status: 'VALID',
+      readinessState: 'READY',
+      edgeStatus: 'PROVEN',
+      selectionMode: 'AUTO_OOS_BEST',
+      selectionTier: 'AUTO_STRICT',
+      modelId: 'structural_wave_js',
+      modelName: 'Structural Wave Forecast',
+      modelVersion: '2.1.0',
+      isBaseline: false,
+      isExperimentalOnly: false,
+      pathSemantics: 'JOINT_TRAJECTORY',
+      confidence: 'HIGH',
+      reasonCode: 'STRICT_OOS_WINNER',
+      allowStrategy: true,
+    },
+    ...overrides,
+  });
+
+  // S-04: PROVISIONAL forecast must NEVER emit an actionable signal; allowResearchPreview emits preview-only object
+  const provisionalFc = makeMockForecast({
+    decisionSummary: {
+      ...makeMockForecast().decisionSummary,
+      status: 'PROVISIONAL',
+      edgeStatus: 'NOT_PROVEN',
+      selectionMode: 'AUTO_RELATIVE_PROVISIONAL',
+      selectionTier: 'AUTO_RELATIVE',
+      reasonCode: 'RELATIVE_CANDIDATE_UNPROVEN',
+      allowStrategy: false,
+    },
+  });
+  const s04Blocked = evaluateForecastStrategyBridge(provisionalFc, candles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    allowResearchPreview: false,
+  });
+  assert.equal(s04Blocked.passed, false, 'S-04: PROVISIONAL forecast must never pass Strategy Bridge');
+  assert.equal(s04Blocked.status, 'no_trade');
+  assert.equal(s04Blocked.actionable, false);
+  assert.equal(s04Blocked.signal, null);
+  assert.equal(s04Blocked.rejection_code, BRIDGE_REJECTION_CODE.FORECAST_PROVISIONAL_BLOCKED);
+
+  const s04Preview = evaluateForecastStrategyBridge(provisionalFc, candles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    allowResearchPreview: true,
+  });
+  assert.equal(s04Preview.passed, false, 'S-04: Research preview must still be passed=false and status=no_trade');
+  assert.equal(s04Preview.status, 'no_trade');
+  assert.equal(s04Preview.signal, null);
+  assert.ok(s04Preview.researchPreview, 'S-04: allowResearchPreview=true must populate researchPreview');
+  assert.equal(s04Preview.researchPreview.isPreviewOnly, true);
+  assert.equal(s04Preview.researchPreview.actionable, false);
+  assert.match(s04Preview.researchPreview.warning, /NOT A VALID SIGNAL/);
+
+  // Gate checks: DATA_NOT_READY, NO_EDGE, EXPERIMENTAL_MODEL, CONTEXT_MISMATCH, and STALE_ORIGIN
+  const dataNotReadyRes = evaluateForecastStrategyBridge(
+    makeMockForecast({
+      status: 'DATA_NOT_READY',
+      decisionSummary: { ...makeMockForecast().decisionSummary, status: 'DATA_NOT_READY', readinessState: 'INSUFFICIENT_HISTORY', allowStrategy: false },
+    }),
+    candles
+  );
+  assert.equal(dataNotReadyRes.rejection_code, BRIDGE_REJECTION_CODE.FORECAST_DATA_NOT_READY_BLOCKED);
+
+  const expModelRes = evaluateForecastStrategyBridge(
+    makeMockForecast({
+      decisionSummary: {
+        ...makeMockForecast().decisionSummary,
+        modelId: 'chronos_bolt_tiny',
+        isExperimentalOnly: true,
+      },
+    }),
+    candles
+  );
+  assert.equal(expModelRes.rejection_code, BRIDGE_REJECTION_CODE.FORECAST_EXPERIMENTAL_MODEL_BLOCKED);
+
+  const staleOriginRes = evaluateForecastStrategyBridge(
+    makeMockForecast({
+      anchorOpenTimeUtcMs: candles[candles.length - 5].open_time_utc_ms,
+    }),
+    candles
+  );
+  assert.equal(staleOriginRes.rejection_code, BRIDGE_REJECTION_CODE.FORECAST_STALE_ORIGIN);
+
+  // S-03 & S-02: Closer real structural barrier must NEVER be skipped to fabricate R:R >= 2.0
+  // Suppose entry = 100, stopLoss = 98 (risk = 2.0), and there is a close real resistance barrier at 101.8 (reward = 1.8 -> Gross R:R = 0.90)
+  // AND a farther resistance barrier at 108.0 (reward = 8.0 -> R:R = 4.0).
+  // `evaluateRiskRewardTradePlan` MUST select 101.8 as TP1 (nearest barrier) and reject with GROSS_RR_BELOW_MINIMUM / NET_RR_BELOW_MINIMUM!
+  const s03Check = evaluateRiskRewardTradePlan(
+    {
+      side: 'long',
+      entryPrice: 100.0,
+      stopLossPrice: 98.0,
+      explicitTargets: null,
+    },
+    {
+      bar: { open: 99.8, high: 100.2, low: 99.5, close: 100.0, is_closed: true },
+      barIndex: 50,
+      atr: 1.2,
+      ema20: 99.6,
+      structure: {
+        swingHighs: [
+          { price: 101.8, index: 42 }, // Closer barrier (dist = 1.8 -> R:R = 0.9 < 2.0)
+          { price: 108.0, index: 25 }, // Farther barrier (dist = 8.0 -> R:R = 4.0)
+        ],
+        swingLows: [{ price: 98.3, index: 45 }],
+        resistances: [],
+        supports: [],
+      },
+    },
+    { minRequiredRR: 2.0, spreadBps: 4, commissionBps: 5, slippageBps: 2 }
+  );
+  assert.equal(s03Check.passed, false, 'S-03 & S-02: Setup with close structural barrier yielding R:R < 2.0 must be rejected');
+  assert.equal(s03Check.take_profit_suggested[0], 101.8, 'S-03: TP1 must remain anchored to the nearest barrier (101.8) and never skip to 108.0');
+  assert.equal(s03Check.rejection_code, 'GROSS_RR_BELOW_MINIMUM');
+
+  // S-02: Even when Gross R:R >= 2.0 (e.g. Gross R:R = 2.05), round-trip Spread+Commission+Slippage pulling Net R:R < 2.0 must reject!
+  const s02NetCheck = evaluateRiskRewardTradePlan(
+    {
+      side: 'long',
+      entryPrice: 100.0,
+      stopLossPrice: 99.0, // Gross risk = 1.0
+      explicitTargets: null,
+    },
+    {
+      bar: { open: 99.8, high: 100.1, low: 99.6, close: 100.0, is_closed: true },
+      barIndex: 50,
+      atr: 1.0,
+      ema20: 99.8,
+      structure: {
+        swingHighs: [{ price: 102.05, index: 40 }], // Gross reward = 2.05 -> Gross R:R = 2.05 >= 2.0
+        swingLows: [{ price: 99.2, index: 45 }],
+        resistances: [],
+        supports: [],
+      },
+    },
+    { minRequiredRR: 2.0, spreadBps: 15, commissionBps: 15, slippageBps: 10 } // Friction pushes Net R:R < 2.0
+  );
+  assert.equal(s02NetCheck.passed, false, 'S-02: Setup with Gross R:R >= 2.0 but Net R:R < 2.0 after costs must be rejected');
+  assert.equal(s02NetCheck.rejection_code, 'NET_RR_BELOW_MINIMUM');
+
+  // S-01 & S-05: VALID + PROVEN forecast that also satisfies causal structure & Net R:R >= 2.0 emits a VALID signal scheduled strictly for NEXT_BAR_OPEN_ONLY
+  const validBridgeRes = evaluateForecastStrategyBridge(makeMockForecast(), candles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    minRequiredRR: 2.0,
+    spreadBps: 4,
+    commissionBps: 5,
+    slippageBps: 2,
+  });
+  assert.equal(validBridgeRes.passed, true, `S-05: VALID+PROVEN forecast with Net R:R >= 2.0 must pass bridge (got ${validBridgeRes.reason})`);
+  assert.equal(validBridgeRes.status, 'VALID');
+  assert.equal(validBridgeRes.actionable, true);
+  assert.ok(validBridgeRes.signal, 'S-05: Bridge must emit validated signal object');
+  assert.ok(validBridgeRes.signal.risk_reward.net_rr >= 2.0, 'S-02/S-05: Emitted bridge signal must have Net R:R >= 2.0');
+  assert.equal(validBridgeRes.signal.bar_index, candles.length - 1, 'S-01: Signal decision bar must be latest closed candle');
+  assert.equal(validBridgeRes.signal.executionPlan.entryExecutionPolicy, 'NEXT_BAR_OPEN_ONLY', 'S-01: Entry must be scheduled strictly on next bar open');
+  assert.equal(validBridgeRes.signal.executionPlan.nextBarIndex, candles.length, 'S-01: nextBarIndex must be decisionBarIndex + 1');
+  assert.equal(validBridgeRes.signal.forecastProvenance.modelId, 'structural_wave_js');
+  assert.equal(validBridgeRes.signal.forecastProvenance.inputHash, 'fnv1a_spotbrent_m15_160');
+
+  // S-06 & Purged Walk-Forward + Final Untouched Holdout + Regime Breakdown + Portfolio Risk Policy:
+  // Classical strategies run 100% independently even when Forecast is missing or DATA_NOT_READY
+  const prevForecast = state._lastForecastResult;
+  state._lastForecastResult = null;
+  const spotBrentRaw = JSON.parse(
+    await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8')
+  );
+  const spotBrentCandles = Array.isArray(spotBrentRaw) ? spotBrentRaw : spotBrentRaw.candles;
+
+  const btRes = runClassicalStrategyBacktest(spotBrentCandles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+    strategyId: 'trend_pullback_v1',
+    includeSplit: true,
+    includeSensitivity: true,
+    maxDrawdownHaltPct: 25,
+  });
+  assert.equal(btRes.status, 'READY', 'S-06: Classical strategy backtest must run independently when Forecast is null');
+  assert.ok(btRes.inSampleOutOfSample, 'Must retain 70/30 In-Sample / Out-of-Sample report');
+  assert.ok(btRes.purgedWalkForward, 'Must compute Purged Walk-Forward + Embargo + Final Untouched Holdout on >=90 bars');
+  assert.equal(btRes.purgedWalkForward.protocol, 'PURGED_WALK_FORWARD_WITH_UNTOUCHED_HOLDOUT_V1');
+  assert.ok(btRes.purgedWalkForward.purgeBars >= 2 && btRes.purgedWalkForward.embargoBars >= 2);
+  assert.equal(btRes.purgedWalkForward.folds.length, 3);
+  // Verify disjoint fold boundaries separated by gapBarsBetweenFolds and final holdout separated by gapBarsBetweenFolds
+  const gap = btRes.purgedWalkForward.gapBarsBetweenFolds;
+  for (let f = 1; f < btRes.purgedWalkForward.folds.length; f++) {
+    const prevFold = btRes.purgedWalkForward.folds[f - 1];
+    const curFold = btRes.purgedWalkForward.folds[f];
+    assert.equal(curFold.startBarIndex - prevFold.endBarIndex, gap, 'Purged Walk-Forward folds must be separated by purge + embargo bars');
+  }
+  const lastFold = btRes.purgedWalkForward.folds[btRes.purgedWalkForward.folds.length - 1];
+  assert.ok(
+    btRes.purgedWalkForward.untouchedHoldout.startBarIndex - lastFold.endBarIndex >= gap,
+    'Final Untouched Holdout must be separated from Walk-Forward folds by at least purge + embargo bars'
+  );
+  assert.equal(btRes.regimeBreakdown.length, 5, 'Must report causal regime breakdown across all 5 regime buckets');
+  assert.equal(btRes.portfolioRiskPolicy.scope, 'SINGLE_INSTRUMENT_BACKTEST');
+  assert.equal(btRes.portfolioRiskPolicy.multiSymbolCorrelationSupported, false);
+  assert.equal(btRes.portfolioRiskPolicy.sizingMode, 'UNIT_APPROXIMATION');
+  assert.equal(btRes.portfolioRiskPolicy.maxDrawdownHaltPct, 25);
+
+  const cmpAll = compareAllClassicalStrategies(spotBrentCandles, {
+    symbolCode: 'SPOTBRENT',
+    timeframe: 'M15',
+  });
+  assert.equal(cmpAll.rows.length, 5, 'S-06: All 5 classical strategies must compare independently without Forecast');
+
+  // Verify Strategy Lab modal renders Forecast Bridge card and Purged Walk-Forward card
+  const prevModal = state.activeModal;
+  const prevCache = state.candleCache['SPOTBRENT_tvdatafeed_M15'];
+  state.activeModal = 'strategy-lab';
+  state._lastForecastResult = makeMockForecast();
+  saveCandlesToCache('SPOTBRENT_tvdatafeed_M15', candles, 5000, 'SPOTBRENT');
+  const modalHtml = renderStrategyLabModal(
+    { symbolCode: 'SPOTBRENT', provider: 'tvdatafeed', timeframe: 'M15' },
+    { getCurrentLanguage: () => 'en', t: (k) => k }
+  );
+  state.activeModal = prevModal;
+  state._lastForecastResult = prevForecast;
+  if (prevCache === undefined) delete state.candleCache['SPOTBRENT_tvdatafeed_M15'];
+  else saveCandlesToCache('SPOTBRENT_tvdatafeed_M15', prevCache, 5000, 'SPOTBRENT');
+
+  assert.match(modalHtml, /Controlled Forecast → Strategy Bridge/);
+  assert.match(modalHtml, /BRIDGE VALID/);
+  assert.match(modalHtml, /Purged Walk-Forward \+ Embargo & Final Untouched Holdout/);
+  assert.match(modalHtml, /Single-instrument causal backtest/);
+});
+
+test('FORECAST-MASTER-PLAN-DELTA-01: coordinate-bound trajectory behavioral events, 3-part behavior scenario contract, OOS regime breakdown & final holdout, and strict AUTO Relative pathQualityScore guard', async () => {
+  const {
+    TRAJECTORY_EVENT_TYPES,
+    TRAJECTORY_EVENT_SOURCE,
+    buildCausalMarketContext,
+    evaluatePathQualityVector,
+    extractTrajectoryBehavioralEvents,
+    buildBehaviorScenarioContract,
+  } = await import('../host_subdomain/assets/js/forecast/marketContextEngine.js');
+  const { resolveRelativeCandidate, buildDecisionSummary } = await import(
+    '../host_subdomain/assets/js/forecast/decisionLayer.js'
+  );
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+  const { renderOverviewPanel, renderBacktestPanel } = await import(
+    '../host_subdomain/assets/js/views/forecastView.js'
+  );
+
+  // 1) Verify all 8 event types and 2 source types exist
+  assert.deepEqual(Object.keys(TRAJECTORY_EVENT_TYPES).sort(), [
+    'BREAKOUT',
+    'PULLBACK',
+    'RANGE_FORMATION',
+    'RESISTANCE_TEST',
+    'RETEST',
+    'REVERSAL',
+    'SUPPORT_REACTION',
+    'TREND_CONTINUATION',
+  ]);
+  assert.equal(TRAJECTORY_EVENT_SOURCE.MODEL_NATIVE, 'MODEL_NATIVE');
+  assert.equal(TRAJECTORY_EVENT_SOURCE.SYSTEM_DERIVED, 'SYSTEM_DERIVED');
+
+  // 2) Verify evaluatePathQualityVector computes falsePositiveEventRate and missedEventRate
+  const predCloses = [100.5, 101.2, 102.0, 101.0, 100.2, 101.5, 102.8, 103.5, 102.4, 104.0];
+  const actCloses = [100.4, 101.1, 101.9, 100.9, 100.3, 101.4, 102.7, 103.4, 102.5, 103.9];
+  const pqVec = evaluatePathQualityVector({
+    anchorClose: 100.0,
+    trajPoints: predCloses.map((q50, idx) => ({ stepAhead: idx + 1, q10: q50 - 0.6, q50, q90: q50 + 0.6 })),
+    actualCandles: actCloses,
+    atrAtAnchor: 0.8,
+  });
+  assert.equal(typeof pqVec.falsePositiveEventRate, 'number');
+  assert.equal(typeof pqVec.missedEventRate, 'number');
+  assert.ok(pqVec.falsePositiveEventRate >= 0 && pqVec.falsePositiveEventRate <= 1);
+  assert.ok(pqVec.missedEventRate >= 0 && pqVec.missedEventRate <= 1);
+
+  // 3) Run full ForecastEngine.project on real SPOTBRENT M15 fixture and verify pathEvents, behaviorScenarios, regimeBreakdown, worstRegimeSubgroup, finalHoldoutSummary
+  const spotBrentRaw = JSON.parse(
+    await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8')
+  );
+  const candles = (Array.isArray(spotBrentRaw) ? spotBrentRaw : spotBrentRaw.candles).slice(0, 260);
+  const fc = ForecastEngine.project(candles, {
+    symbolCode: 'SPOTBRENT',
+    providerId: 'tvdatafeed',
+    timeframe: 'M15',
+    horizonBars: 15,
+    selectedModelId: 'structural_wave_js',
+  });
+
+  assert.ok(Array.isArray(fc.pathEvents) && fc.pathEvents.length > 0, 'Forecast result must emit coordinate-bound pathEvents');
+  for (const ev of fc.pathEvents) {
+    assert.ok(ev.type in TRAJECTORY_EVENT_TYPES, `Event type ${ev.type} must be in TRAJECTORY_EVENT_TYPES`);
+    assert.ok(
+      ev.sourceType === TRAJECTORY_EVENT_SOURCE.MODEL_NATIVE || ev.sourceType === TRAJECTORY_EVENT_SOURCE.SYSTEM_DERIVED,
+      'Event sourceType must be MODEL_NATIVE or SYSTEM_DERIVED'
+    );
+    assert.ok(Number.isFinite(ev.stepStart) && ev.stepStart >= 1);
+    assert.ok(Number.isFinite(ev.stepEnd) && ev.stepEnd >= ev.stepStart);
+    assert.ok(Number.isFinite(ev.priceLevel) && ev.priceLevel > 0);
+    assert.ok(Array.isArray(ev.priceRange) && ev.priceRange.length === 2);
+    assert.ok(Number.isFinite(ev.invalidationLevel) && ev.invalidationLevel > 0);
+    assert.ok(typeof ev.triggerCondition === 'string' && ev.triggerCondition.length > 0);
+    assert.ok(typeof ev.invalidationCondition === 'string' && ev.invalidationCondition.length > 0);
+  }
+
+  // 4) Verify 3-Part Behavior Scenario Contract (basePath, alternativePath, invalidationZone)
+  assert.ok(fc.behaviorScenarios, 'Forecast result must include behaviorScenarios contract');
+  assert.equal(fc.behaviorScenarios.contractVersion, 'behavior-scenario/1.0.0');
+  assert.ok(fc.behaviorScenarios.basePath && Number.isFinite(fc.behaviorScenarios.basePath.targetPrice));
+  assert.ok(fc.behaviorScenarios.alternativePath && Number.isFinite(fc.behaviorScenarios.alternativePath.targetPrice));
+  assert.ok(fc.behaviorScenarios.invalidationZone && Number.isFinite(fc.behaviorScenarios.invalidationZone.triggerLevel));
+
+  // Verify uncalibrated probabilities strictly remain null (never fabricated)
+  const uncalScenarios = buildBehaviorScenarioContract({
+    points: fc.points,
+    anchorClose: fc.anchorClose,
+    marketContext: buildCausalMarketContext(candles),
+    scenarios: [
+      { id: 'SCENARIO_A', bias: 'bull', status: 'NOT_ESTIMABLE_LOW_SAMPLE', probability: null },
+      { id: 'SCENARIO_B', bias: 'bear', status: 'NOT_ESTIMABLE_LOW_SAMPLE', probability: null },
+    ],
+    pathEvents: fc.pathEvents,
+  });
+  assert.equal(uncalScenarios.basePath.calibratedProbability, null, 'Uncalibrated scenario probability must be strictly null');
+  assert.equal(uncalScenarios.alternativePath.calibratedProbability, null, 'Uncalibrated alternative probability must be strictly null');
+
+  // 5) Verify Walk-Forward OOS regimeBreakdown, worstRegimeSubgroup, finalHoldoutSummary, and event FP/Missed rates
+  assert.ok(Array.isArray(fc.walkForward.regimeBreakdown) && fc.walkForward.regimeBreakdown.length > 0);
+  assert.ok(fc.walkForward.worstRegimeSubgroup && typeof fc.walkForward.worstRegimeSubgroup.regime === 'string');
+  assert.ok(fc.walkForward.finalHoldoutSummary && fc.walkForward.finalHoldoutSummary.windowCount >= 1);
+  assert.equal(typeof fc.walkForward.pathQualitySummary.falsePositiveEventRate, 'number');
+  assert.equal(typeof fc.walkForward.pathQualitySummary.missedEventRate, 'number');
+
+  // 6) Verify D-06 / Master Plan §6.5 strict pathQualityScore guard in AUTO Relative
+  const mockWfPoorPathQ = {
+    evaluatedWindows: 35,
+    effectiveSampleSize: 28,
+    wisNaiveDistributional: 0.65,
+    conformalCalibration: { calibrationStatus: 'CALIBRATED_NORMALIZED' },
+    naiveMetrics: { pathQualityScore: 52.0 },
+    modelBenchmarks: [
+      {
+        modelId: 'native_arima_diff',
+        modelName: 'ARIMA-LogReturn (Native JS)',
+        status: 'SUCCESS',
+        windows: 35,
+        evaluatedWindows: 35,
+        wis: 0.45,
+        rMae: 0.96,
+        mase: 0.96,
+        coverage80Pct: 80,
+        pathQualityScore: 38.0, // Materially worse than naivePathQualityScore (52.0)!
+        naivePathQualityScore: 52.0,
+      },
+    ],
+  };
+  const mockTrajs = [
+    {
+      modelId: 'native_arima_diff',
+      modelName: 'ARIMA-LogReturn (Native JS)',
+      status: 'SUCCESS',
+      points: fc.points,
+    },
+    {
+      modelId: 'naive_persistence',
+      modelName: 'Naive Persistence (Random Walk)',
+      status: 'SUCCESS',
+      points: fc.points,
+    },
+  ];
+  const relCand = resolveRelativeCandidate(mockWfPoorPathQ, mockTrajs);
+  assert.equal(
+    relCand,
+    null,
+    'D-06 / §6.5: AUTO Relative must reject a candidate whose pathQualityScore is materially worse than naivePathQualityScore'
+  );
+  const dsPoor = buildDecisionSummary(
+    {
+      status: 'NO_EDGE',
+      anchorClose: fc.anchorClose,
+      horizonBars: 15,
+      selectedChartModelId: 'naive_persistence',
+      walkForward: mockWfPoorPathQ,
+      modelTrajectories: mockTrajs,
+      points: fc.points,
+    },
+    { requestedModelId: 'AUTO' }
+  );
+  assert.equal(dsPoor.status, 'NO_EDGE');
+  assert.equal(dsPoor.modelId, 'naive_persistence');
+
+  // 7) Verify UI rendering of pathEvents, behaviorScenarios, and regimeBreakdown/finalHoldoutSummary in Simple & Research modes
+  const simpleHtml = renderOverviewPanel(fc, { symbolCode: 'SPOTBRENT', timeframe: 'M15' }, 2, false, 'independent', 'simple');
+  assert.match(simpleHtml, /data-testid="fc-simple-behavior-card"/);
+  const researchHtml = renderOverviewPanel(fc, { symbolCode: 'SPOTBRENT', timeframe: 'M15' }, 2, false, 'independent', 'research');
+  assert.match(researchHtml, /data-testid="fc-path-events-card"/);
+  assert.match(researchHtml, /data-testid="fc-behavior-scenarios-card"/);
+  const backtestHtml = renderBacktestPanel(fc, 2, false);
+  assert.match(backtestHtml, /data-testid="fc-regime-holdout-card"/);
+  assert.match(backtestHtml, /Event FP \/ Missed/);
+});
+
+test('FCST-LEDGER-03-CLOUD-SYNC-01: ForecastLedger mergeCloudSnapshot bidirectional cloud sync, multi-device SHA-256 chain integrity, API endpoint & migration verification', async () => {
+  const { ForecastLedger } = await import('../host_subdomain/assets/js/forecast/forecastLedger.js');
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+  const { renderLedgerPanel } = await import('../host_subdomain/assets/js/views/forecastView.js');
+
+  const spotBrentRaw = JSON.parse(
+    await readFile(new URL('./fixtures/spotbrent_m15_sample.json', import.meta.url), 'utf8')
+  );
+  const candles = (Array.isArray(spotBrentRaw) ? spotBrentRaw : spotBrentRaw.candles).slice(0, 260);
+  const fcA = ForecastEngine.project(candles.slice(0, 220), {
+    symbolCode: 'SPOTBRENT',
+    providerId: 'tvdatafeed',
+    timeframe: 'M15',
+    horizonBars: 10,
+    selectedModelId: 'structural_wave_js',
+  });
+  const fcB = ForecastEngine.project(candles.slice(0, 240), {
+    symbolCode: 'SPOTBRENT',
+    providerId: 'tvdatafeed',
+    timeframe: 'M15',
+    horizonBars: 10,
+    selectedModelId: 'smc_prediction_js',
+  });
+
+  // Device A records a batch of 2 models and evaluates maturity
+  const ledgerA = new ForecastLedger('ci_test_ledger_dev_a', 'ci_test_lc_dev_a');
+  ledgerA.clear();
+  const batchA = ledgerA.appendBatchFromForecast(fcA, ['structural_wave_js', 'naive_persistence'], {
+    recordedAtUtcMs: 1730000000000,
+  });
+  assert.equal(batchA.entries.length, 2, 'Device A must record 2 batch entries');
+  const maturedEventsA = ledgerA.evaluateMaturedForecasts(candles.slice(0, 245), 'SPOTBRENT', 'M15');
+  assert.ok(maturedEventsA.length > 0, 'Device A must evaluate matured lifecycle events');
+
+  // Device B starts independently and records a snapshot on a later candle
+  const ledgerB = new ForecastLedger('ci_test_ledger_dev_b', 'ci_test_lc_dev_b');
+  ledgerB.clear();
+  const entryB = ledgerB.appendFromForecast(fcB, {
+    modelId: 'smc_prediction_js',
+    recordedAtUtcMs: 1730003600000,
+    generatedAtUtcMs: 1730003600000,
+  });
+  assert.ok(entryB && entryB.forecastHash, 'Device B must record independent snapshot');
+  assert.equal(entryB.syncedToCloud, false);
+
+  // Merge Device A's cloud snapshot into Device B
+  const remoteEntriesFromA = ledgerA.loadEntries();
+  const remoteEventsFromA = ledgerA.loadLifecycleEvents();
+  const mergeRes = ledgerB.mergeCloudSnapshot(remoteEntriesFromA, remoteEventsFromA);
+
+  assert.equal(mergeRes.addedEntries, 2, 'Device B must merge 2 new entries from Device A cloud snapshot');
+  assert.equal(mergeRes.totalEntries, 3, 'Device B must hold all 3 combined entries (2 from A + 1 from B)');
+  assert.ok(mergeRes.addedEvents >= 2, 'Device B must merge lifecycle events from Device A');
+
+  // Re-merging identical cloud snapshot must be idempotent (zero duplicates)
+  const idempotentRes = ledgerB.mergeCloudSnapshot(remoteEntriesFromA, remoteEventsFromA);
+  assert.equal(idempotentRes.addedEntries, 0, 'Idempotent cloud merge must add 0 duplicate entries');
+  assert.equal(idempotentRes.addedEvents, 0, 'Idempotent cloud merge must add 0 duplicate lifecycle events');
+  assert.equal(idempotentRes.totalEntries, 3);
+
+  // Tampered remote entry must be rejected by cryptographic hash verification
+  const tamperedRemote = [
+    {
+      ...remoteEntriesFromA[0],
+      forecastHash: 'f'.repeat(64),
+      terminalMedian: 999999,
+    },
+  ];
+  const tamperRes = ledgerB.mergeCloudSnapshot(tamperedRemote, []);
+  assert.equal(tamperRes.addedEntries, 0, 'Tampered cloud entry with invalid SHA-256 hash must be rejected');
+
+  // Multi-device merged chain verification must pass for both entries and lifecycle events
+  const chainAudit = ledgerB.verifyChain();
+  assert.equal(chainAudit.valid, true, `Merged multi-device entry chain must be valid: ${chainAudit.reason}`);
+  const lcAudit = ledgerB.verifyLifecycleChain();
+  assert.equal(lcAudit.valid, true, `Merged multi-device lifecycle chain must be valid: ${lcAudit.reason}`);
+
+  // Mark all synced and verify syncedToCloud flag
+  ledgerB.markSynced();
+  const finalEntriesB = ledgerB.loadEntries();
+  assert.ok(finalEntriesB.every((e) => e.syncedToCloud === true), 'All entries must be marked syncedToCloud=true');
+
+  // Verify SQL migration 005 and PHP endpoint forecast_ledger_sync.php exist and contain required schemas
+  const sql005 = await readFile(
+    new URL('../host_subdomain/migrations/005_phase4_forecast_ledger_sync.sql', import.meta.url),
+    'utf8'
+  );
+  assert.match(sql005, /CREATE TABLE IF NOT EXISTS prediction_ledger_entries/);
+  assert.match(sql005, /CREATE TABLE IF NOT EXISTS prediction_ledger_lifecycle/);
+
+  const phpEndpoint = await readFile(
+    new URL('../host_subdomain/api/v1/forecast_ledger_sync.php', import.meta.url),
+    'utf8'
+  );
+  assert.match(phpEndpoint, /prediction_ledger_entries/);
+  assert.match(phpEndpoint, /prediction_ledger_lifecycle/);
+  assert.match(phpEndpoint, /status_forecast_ledger_synced/);
+
+  // Verify renderLedgerPanel renders Cloud Sync status badge and button
+  const ledgerHtml = renderLedgerPanel(2, false);
+  assert.match(ledgerHtml, /data-testid="fc-ledger-cloud-badge"/);
+  assert.match(ledgerHtml, /data-action="refresh-forecast-ledger"/);
+  assert.match(ledgerHtml, /Cloud Sync/);
+
+  ledgerA.clear();
+  ledgerB.clear();
+});
+
+test('LEDGER-CLICK-TO-CHART-REPLAY-01: clicking a recorded 15-bar forecast ledger entry overlays strictly the 15 predicted candles at anchorOpenTimeUtcMs onto the 30+ realized chart candles and scrolls viewport to the forecast window', async () => {
+  const { ForecastEngine } = await import('../host_subdomain/assets/js/forecast/forecastEngine.js');
+  const { ForecastLedger, defaultForecastLedger } = await import(
+    '../host_subdomain/assets/js/forecast/forecastLedger.js'
+  );
+  const {
+    buildChartForecastPayloadFromLedgerEntry,
+    evaluateOnChartForecastProgress,
+    isStructuralForecastMatchingTab,
+  } = await import('../host_subdomain/assets/js/core/store.js');
+  const { renderLedgerPanel } = await import('../host_subdomain/assets/js/views/forecastView.js');
+
+  // Build 420 closed M15 candles ending well in the past so all bars are closed
+  const stepMs = 15 * 60 * 1000;
+  const totalBars = 420;
+  const baseMs = Date.UTC(2026, 0, 5, 8, 0, 0);
+  const fullCandles = [];
+  let price = 2650;
+  for (let i = 0; i < totalBars; i++) {
+    const drift = Math.sin(i / 9) * 1.4 + (i % 5 === 0 ? 0.45 : -0.2);
+    const open = price;
+    const close = Number((open + drift).toFixed(2));
+    const high = Number((Math.max(open, close) + 1.1).toFixed(2));
+    const low = Number((Math.min(open, close) - 1.1).toFixed(2));
+    price = close;
+    fullCandles.push({
+      open_time_utc_ms: baseMs + i * stepMs,
+      open,
+      high,
+      low,
+      close,
+      volume: 150 + (i % 40) * 5,
+      is_closed: true,
+    });
+  }
+
+  // Suppose the forecast of horizonBars = 15 was recorded at candle index 359 (so 60 real candles formed afterwards: 360..419)
+  const originIdxExpected = 359;
+  const historyAtForecastTime = fullCandles.slice(0, originIdxExpected + 1);
+  const fc15 = ForecastEngine.project(historyAtForecastTime, {
+    symbolCode: 'XAUUSD',
+    providerId: 'tvdatafeed',
+    timeframe: 'M15',
+    horizonBars: 15,
+    selectedModelId: 'damped_trend',
+    skipBootstrap: true,
+    bypassWalkForwardCache: true,
+  });
+
+  const testLedger = new ForecastLedger('ci_test_click_chart_ledger', 'ci_test_click_chart_lc');
+  testLedger.clear();
+  const recordedEntry = testLedger.appendFromForecast(fc15, {
+    modelId: 'damped_trend',
+    recordedAtUtcMs: historyAtForecastTime[historyAtForecastTime.length - 1].open_time_utc_ms + stepMs,
+    generatedAtUtcMs: historyAtForecastTime[historyAtForecastTime.length - 1].open_time_utc_ms + stepMs,
+  });
+  assert.ok(recordedEntry && recordedEntry.forecastHash, 'Ledger must record 15-bar forecast snapshot');
+  assert.equal(recordedEntry.horizonBars, 15);
+  assert.equal(recordedEntry.stepPoints.length, 15);
+
+  // Build chart replay payload when 60 subsequent candles have elapsed (fullCandles has 420 bars)
+  const replayBuilt = buildChartForecastPayloadFromLedgerEntry(recordedEntry, {
+    candles: fullCandles,
+    symbolCode: 'XAUUSD',
+    timeframe: 'M15',
+    provider: 'tvdatafeed',
+    visibleCount: 48,
+    renderMode: 'FAN_CHART',
+  });
+
+  assert.ok(replayBuilt && replayBuilt.payload, 'Must build chart forecast payload from ledger entry');
+  assert.equal(replayBuilt.originIdx, originIdxExpected, 'Must anchor at exact historical candle index 359');
+  assert.equal(replayBuilt.horizonBars, 15, 'Forecast horizon must remain strictly 15 bars');
+  assert.equal(
+    replayBuilt.payload.forecast.length,
+    15,
+    'Must overlay strictly the 15 predicted candles and never fabricate extra forecast bars beyond 15'
+  );
+  assert.equal(replayBuilt.elapsedBars, 60, '60 real candles have formed after the 15-bar forecast origin');
+  assert.ok(
+    replayBuilt.scrollOffset > 0,
+    'Must scroll chart back in time (scrollOffset > 0) so the historical forecast window is centered in viewport'
+  );
+
+  // Verify the visible viewport [startIdx, endIdx) contains both originIdx and the 15 predicted candles + subsequent real candles
+  const visibleCount = 48;
+  const endIdx = fullCandles.length - replayBuilt.scrollOffset;
+  const startIdx = endIdx - visibleCount;
+  assert.ok(
+    startIdx <= originIdxExpected && originIdxExpected + 15 < endIdx,
+    `Viewport [${startIdx}..${endIdx}) must frame originIdx (${originIdxExpected}), the 15 forecast bars (${originIdxExpected + 1}..${originIdxExpected + 15}), and subsequent real candles`
+  );
+
+  // Verify tab matching and on-chart realized comparison evaluation
+  const mockTab = {
+    symbolCode: 'XAUUSD',
+    provider: 'tvdatafeed',
+    timeframe: 'M15',
+    candles: fullCandles,
+    visibleCount: 48,
+    scrollOffset: replayBuilt.scrollOffset,
+    showStructuralForecast: true,
+    structuralForecast: replayBuilt.payload,
+    forecastHorizonBars: 30, // even if tab preference was 30, 15-bar ledger snapshot replay must match!
+    structuralForecastHorizonBars: 30,
+    structuralForecastModel: 'AUTO',
+  };
+  assert.equal(
+    isStructuralForecastMatchingTab(mockTab, replayBuilt.payload),
+    true,
+    'isStructuralForecastMatchingTab must accept replayed historical ledger snapshot'
+  );
+
+  const progress = evaluateOnChartForecastProgress(fullCandles, replayBuilt.payload, 'M15', 'XAUUSD');
+  assert.ok(progress, 'evaluateOnChartForecastProgress must evaluate replayed historical snapshot');
+  assert.equal(progress.originIdx, originIdxExpected);
+  assert.equal(progress.elapsedBars, 60, 'Must report 60 elapsed real candles since origin');
+  assert.equal(progress.horizonBars, 15, 'Horizon is strictly 15 bars');
+  assert.equal(
+    progress.evaluatedBars,
+    15,
+    'Must compare strictly the 15 predicted bars against the 15 realized bars and leave bars 16..60 as pure realized candles'
+  );
+  assert.equal(progress.items.length, 15);
+  assert.equal(progress.items[0].candleIdx, originIdxExpected + 1);
+  assert.equal(progress.items[14].candleIdx, originIdxExpected + 15);
+
+  // Verify renderLedgerPanel includes view-ledger-entry-on-chart clickable rows and buttons
+  defaultForecastLedger.appendFromForecast(fc15, {
+    modelId: 'damped_trend',
+    recordedAtUtcMs: historyAtForecastTime[historyAtForecastTime.length - 1].open_time_utc_ms + stepMs,
+    generatedAtUtcMs: historyAtForecastTime[historyAtForecastTime.length - 1].open_time_utc_ms + stepMs,
+  });
+  const htmlFa = renderLedgerPanel(2, true, mockTab);
+  assert.match(htmlFa, /data-action="view-ledger-entry-on-chart"/);
+  assert.match(htmlFa, /نمایش روی چارت/);
+
+  testLedger.clear();
+  defaultForecastLedger.clear();
+});
+

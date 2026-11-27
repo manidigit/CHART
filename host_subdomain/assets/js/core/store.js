@@ -2243,6 +2243,56 @@ export function reconcileTabChronosStateOnRender(tab) {
   }
 }
 
+export function resolveForecastOriginCandleIndex(
+  candles,
+  originOpenMs,
+  timeframe = 'M15',
+  symbolCode = '',
+  allowNearestClosed = false
+) {
+  if (!Array.isArray(candles) || candles.length === 0 || !(Number(originOpenMs) > 0)) {
+    return { originIdx: -1, latestClosedIdx: -1, latestClosedOpenMs: 0 };
+  }
+  const targetMs = Number(originOpenMs);
+  const tf = String(timeframe || 'M15').trim().toUpperCase();
+  const sym = String(symbolCode || '').trim().toUpperCase();
+  const nowMs = Date.now();
+
+  let originIdx = -1;
+  let nearestClosedIdx = -1;
+  let nearestClosedDiff = Infinity;
+  let latestClosedIdx = -1;
+  let latestClosedOpenMs = 0;
+
+  for (let i = candles.length - 1; i >= 0; i--) {
+    const c = candles[i];
+    const openMs = Number(c?.open_time_utc_ms || (c?.openTimeSec ? c.openTimeSec * 1000 : 0));
+    const isClosed =
+      openMs > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(openMs, tf, nowMs, sym);
+    if (latestClosedIdx < 0 && isClosed) {
+      latestClosedIdx = i;
+      latestClosedOpenMs = openMs;
+    }
+    if (originIdx < 0 && openMs === targetMs) {
+      originIdx = i;
+    }
+    if (allowNearestClosed && isClosed && openMs <= targetMs) {
+      const diff = targetMs - openMs;
+      if (diff < nearestClosedDiff) {
+        nearestClosedDiff = diff;
+        nearestClosedIdx = i;
+      }
+    }
+    if (latestClosedIdx >= 0 && originIdx >= 0) break;
+  }
+
+  if (originIdx < 0 && allowNearestClosed && nearestClosedIdx >= 0) {
+    originIdx = nearestClosedIdx;
+  }
+
+  return { originIdx, latestClosedIdx, latestClosedOpenMs };
+}
+
 export function evaluateOnChartForecastProgress(candles, forecastPayload, timeframe = 'M15', symbolCode = '') {
   if (
     !Array.isArray(candles) ||
@@ -2259,24 +2309,15 @@ export function evaluateOnChartForecastProgress(candles, forecastPayload, timefr
 
   const tf = String(timeframe || series.timeframe || 'M15').trim().toUpperCase();
   const sym = String(symbolCode || series.symbol || '').trim().toUpperCase();
-  const nowMs = Date.now();
+  const isLedgerReplay = Boolean(forecastPayload.isLedgerSnapshotReplay);
 
-  let originIdx = -1;
-  let latestClosedIdx = -1;
-  let latestClosedOpenMs = 0;
-
-  for (let i = candles.length - 1; i >= 0; i--) {
-    const c = candles[i];
-    const openMs = Number(c?.open_time_utc_ms || (c?.openTimeSec ? c.openTimeSec * 1000 : 0));
-    if (latestClosedIdx < 0 && openMs > 0 && c?.is_closed !== false && PriceFormatter.isCandleClosed(openMs, tf, nowMs, sym)) {
-      latestClosedIdx = i;
-      latestClosedOpenMs = openMs;
-    }
-    if (originIdx < 0 && openMs === originOpenMs) {
-      originIdx = i;
-    }
-    if (latestClosedIdx >= 0 && originIdx >= 0) break;
-  }
+  const { originIdx, latestClosedIdx, latestClosedOpenMs } = resolveForecastOriginCandleIndex(
+    candles,
+    originOpenMs,
+    tf,
+    sym,
+    isLedgerReplay
+  );
 
   if (originIdx < 0 || latestClosedIdx < originIdx) return null;
 
@@ -2373,9 +2414,10 @@ export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.stru
   if (forecastPayload.status !== 'READY') return false;
   if (!Array.isArray(forecastPayload.forecast) || forecastPayload.forecast.length === 0) return false;
 
+  const isLedgerReplay = Boolean(forecastPayload.isLedgerSnapshotReplay);
   const requireLatestOrigin = Boolean(options?.requireLatestOrigin);
-  const allowAnyModel = Boolean(options?.allowAnyModel);
-  const allowAnyHorizon = Boolean(options?.allowAnyHorizon);
+  const allowAnyModel = Boolean(options?.allowAnyModel) || isLedgerReplay;
+  const allowAnyHorizon = Boolean(options?.allowAnyHorizon) || isLedgerReplay;
 
   const engine = forecastPayload.engine || {};
   const series = forecastPayload.series || {};
@@ -2392,7 +2434,7 @@ export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.stru
     : Math.max(1, Math.min(120, Math.round(Number(tab.structuralForecastHorizonBars || state.chartPreferences.structuralForecastHorizonBars || 30))));
 
   if (String(series.symbol || '').trim().toUpperCase() !== tabSym) return false;
-  if (String(series.provider || '').trim().toLowerCase() !== tabProv) return false;
+  if (!isLedgerReplay && String(series.provider || '').trim().toLowerCase() !== tabProv) return false;
   if (String(series.timeframe || '').trim().toUpperCase() !== tabTf) return false;
   if (!allowAnyHorizon && Number(params.horizon_bars || 0) !== tabHorizon) return false;
   const isAutoRequestedMatch =
@@ -2413,36 +2455,30 @@ export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.stru
   if (!(originOpenMs > 0)) return false;
 
   const nowMs = Date.now();
-  let lastClosedOpenMs = 0;
-  let originCandle = null;
-  for (let i = candles.length - 1; i >= 0; i--) {
-    const c = candles[i];
-    const openMs = Number(c?.open_time_utc_ms || (c?.openTimeSec ? c.openTimeSec * 1000 : 0));
-    if (
-      lastClosedOpenMs <= 0 &&
-      openMs > 0 &&
-      c?.is_closed !== false &&
-      PriceFormatter.isCandleClosed(openMs, tabTf, nowMs, tabSym)
-    ) {
-      lastClosedOpenMs = openMs;
-    }
-    if (!originCandle && openMs === originOpenMs) {
-      originCandle = c;
-    }
-    if (lastClosedOpenMs > 0 && originCandle) break;
-  }
-  if (lastClosedOpenMs <= 0 || !originCandle) return false;
-  if (originCandle?.is_closed === false || !PriceFormatter.isCandleClosed(originOpenMs, tabTf, nowMs, tabSym)) {
+  const { originIdx, latestClosedOpenMs } = resolveForecastOriginCandleIndex(
+    candles,
+    originOpenMs,
+    tabTf,
+    tabSym,
+    isLedgerReplay
+  );
+  if (latestClosedOpenMs <= 0 || originIdx < 0) return false;
+  const originCandle = candles[originIdx];
+  const matchedOriginMs = Number(
+    originCandle?.open_time_utc_ms || (originCandle?.openTimeSec ? originCandle.openTimeSec * 1000 : originOpenMs)
+  );
+  if (originCandle?.is_closed === false || !PriceFormatter.isCandleClosed(matchedOriginMs, tabTf, nowMs, tabSym)) {
     return false;
   }
   if (requireLatestOrigin) {
-    if (originOpenMs !== lastClosedOpenMs) return false;
-  } else if (originOpenMs > lastClosedOpenMs) {
+    if (matchedOriginMs !== latestClosedOpenMs) return false;
+  } else if (matchedOriginMs > latestClosedOpenMs) {
     return false;
   }
 
   const originClosePrice = Number(originCandle.close);
   if (
+    !isLedgerReplay &&
     series.last_closed_price !== undefined &&
     Number.isFinite(originClosePrice) &&
     Math.abs(Number(series.last_closed_price) - originClosePrice) > 1e-5
@@ -2450,6 +2486,239 @@ export function isStructuralForecastMatchingTab(tab, forecastPayload = tab?.stru
     return false;
   }
   return true;
+}
+
+export function buildChartForecastPayloadFromLedgerEntry(entry, options = {}) {
+  if (!entry || typeof entry !== 'object') return null;
+  const candles = Array.isArray(options.candles) ? options.candles : [];
+  const symbolCode = String(entry.symbolCode || options.symbolCode || 'XAUUSD').trim().toUpperCase();
+  const timeframe = String(entry.timeframe || options.timeframe || 'M15').trim().toUpperCase();
+  const provider = String(options.provider || 'tvdatafeed').trim().toLowerCase();
+  const horizonBars = Math.max(1, Math.min(120, Math.round(Number(entry.horizonBars || 15))));
+  const visibleCount = Math.max(12, Math.min(5000, Math.round(Number(options.visibleCount || 48))));
+  const stepMs = Math.max(60_000, Number(PriceFormatter.stepMilliseconds(timeframe) || 900_000));
+
+  const rawAnchorMs = Number(entry.anchorOpenTimeUtcMs || 0);
+  const { originIdx, latestClosedIdx } = resolveForecastOriginCandleIndex(
+    candles,
+    rawAnchorMs,
+    timeframe,
+    symbolCode,
+    true
+  );
+
+  const originCandle = originIdx >= 0 ? candles[originIdx] : null;
+  const resolvedOriginMs = originCandle
+    ? Number(originCandle.open_time_utc_ms || (originCandle.openTimeSec ? originCandle.openTimeSec * 1000 : rawAnchorMs))
+    : rawAnchorMs;
+  const resolvedOriginClose =
+    originCandle && Number.isFinite(Number(originCandle.close)) && Number(originCandle.close) > 0
+      ? Number(originCandle.close)
+      : Number(entry.anchorClose || entry.terminalMedian || 1);
+
+  // Build exact horizonBars forecast points (1..horizonBars) without adding any extra bars beyond horizonBars
+  const rawSteps = Array.isArray(entry.stepPoints) ? entry.stepPoints : [];
+  const stepMap = new Map();
+  for (const sp of rawSteps) {
+    const s = Math.round(Number(sp?.step || 0));
+    const q50 = Number(sp?.q50 ?? sp?.q50_median);
+    if (s >= 1 && s <= horizonBars && Number.isFinite(q50) && q50 > 0) {
+      const q10 = Number.isFinite(Number(sp.q10)) && Number(sp.q10) > 0 ? Number(sp.q10) : q50 * 0.995;
+      const q90 = Number.isFinite(Number(sp.q90)) && Number(sp.q90) > 0 ? Number(sp.q90) : q50 * 1.005;
+      const q25 =
+        Number.isFinite(Number(sp.q25)) && Number(sp.q25) > 0 ? Number(sp.q25) : q10 + (q50 - q10) * 0.5;
+      const q75 =
+        Number.isFinite(Number(sp.q75)) && Number(sp.q75) > 0 ? Number(sp.q75) : q50 + (q90 - q50) * 0.5;
+      stepMap.set(s, { q10, q25, q50, q75, q90 });
+    }
+  }
+
+  // Fallback control knots from checkpointQuantiles + terminal values if stepPoints is partial or legacy
+  const cp = entry.checkpointQuantiles && typeof entry.checkpointQuantiles === 'object' ? entry.checkpointQuantiles : {};
+  for (const [k, v] of Object.entries(cp)) {
+    const s = Math.round(Number(k));
+    const q50 = Number(v?.q50);
+    if (s >= 1 && s <= horizonBars && !stepMap.has(s) && Number.isFinite(q50) && q50 > 0) {
+      const q10 = Number.isFinite(Number(v?.q10)) && Number(v.q10) > 0 ? Number(v.q10) : q50 * 0.995;
+      const q90 = Number.isFinite(Number(v?.q90)) && Number(v.q90) > 0 ? Number(v.q90) : q50 * 1.005;
+      stepMap.set(s, {
+        q10,
+        q25: q10 + (q50 - q10) * 0.5,
+        q50,
+        q75: q50 + (q90 - q50) * 0.5,
+        q90,
+      });
+    }
+  }
+
+  const termQ50 =
+    Number.isFinite(Number(entry.terminalMedian)) && Number(entry.terminalMedian) > 0
+      ? Number(entry.terminalMedian)
+      : resolvedOriginClose;
+  const termQ10 =
+    Number.isFinite(Number(entry.terminalQ10)) && Number(entry.terminalQ10) > 0
+      ? Number(entry.terminalQ10)
+      : termQ50 * 0.995;
+  const termQ90 =
+    Number.isFinite(Number(entry.terminalQ90)) && Number(entry.terminalQ90) > 0
+      ? Number(entry.terminalQ90)
+      : termQ50 * 1.005;
+  if (!stepMap.has(horizonBars)) {
+    stepMap.set(horizonBars, {
+      q10: termQ10,
+      q25: termQ10 + (termQ50 - termQ10) * 0.5,
+      q50: termQ50,
+      q75: termQ50 + (termQ90 - termQ50) * 0.5,
+      q90: termQ90,
+    });
+  }
+
+  const knownSteps = [0, ...Array.from(stepMap.keys()).sort((a, b) => a - b)];
+  const getKnot = (s) => {
+    if (s <= 0) {
+      return {
+        q10: resolvedOriginClose,
+        q25: resolvedOriginClose,
+        q50: resolvedOriginClose,
+        q75: resolvedOriginClose,
+        q90: resolvedOriginClose,
+      };
+    }
+    return stepMap.get(s);
+  };
+
+  const forecastPoints = [];
+  for (let step = 1; step <= horizonBars; step++) {
+    let pt = stepMap.get(step);
+    if (!pt) {
+      let prevStep = 0;
+      let nextStep = horizonBars;
+      for (const ks of knownSteps) {
+        if (ks < step) prevStep = ks;
+        if (ks > step) {
+          nextStep = ks;
+          break;
+        }
+      }
+      const prevKnot = getKnot(prevStep);
+      const nextKnot = getKnot(nextStep) || getKnot(horizonBars);
+      const span = Math.max(1, nextStep - prevStep);
+      const ratio = (step - prevStep) / span;
+      const lerp = (a, b) => a + (b - a) * ratio;
+      pt = {
+        q10: lerp(prevKnot.q10, nextKnot.q10),
+        q25: lerp(prevKnot.q25, nextKnot.q25),
+        q50: lerp(prevKnot.q50, nextKnot.q50),
+        q75: lerp(prevKnot.q75, nextKnot.q75),
+        q90: lerp(prevKnot.q90, nextKnot.q90),
+      };
+    }
+    const targetCandle = originIdx >= 0 ? candles[originIdx + step] : null;
+    const stepOpenMs = targetCandle
+      ? Number(targetCandle.open_time_utc_ms || (targetCandle.openTimeSec ? targetCandle.openTimeSec * 1000 : 0))
+      : resolvedOriginMs + step * stepMs;
+    forecastPoints.push({
+      step,
+      target_open_time_utc_ms: stepOpenMs,
+      q10: Number(pt.q10),
+      q25: Number(pt.q25),
+      q50_median: Number(pt.q50),
+      q75: Number(pt.q75),
+      q90: Number(pt.q90),
+    });
+  }
+
+  const modelId = String(entry.modelId || 'naive_persistence');
+  const modelName = String(entry.modelName || modelId);
+  const renderMode = String(options.renderMode || state.chartPreferences?.forecastRenderMode || 'FAN_CHART');
+
+  // Compute scrollOffset so the viewport frames [originIdx - leadBars .. originIdx + horizonBars .. subsequentRealBars]
+  let scrollOffset = 0;
+  if (originIdx >= 0 && candles.length > visibleCount) {
+    const leadBars = Math.min(10, Math.max(4, Math.floor((visibleCount - Math.min(visibleCount - 8, horizonBars)) * 0.35)));
+    const desiredStartIdx = Math.max(0, originIdx - leadBars);
+    const desiredEndIdx = Math.min(candles.length, desiredStartIdx + visibleCount);
+    const maxOffset = Math.max(0, candles.length - visibleCount);
+    scrollOffset = Math.max(0, Math.min(maxOffset, candles.length - desiredEndIdx));
+  }
+
+  const elapsedBars = originIdx >= 0 && latestClosedIdx >= originIdx ? latestClosedIdx - originIdx : 0;
+
+  const payload = {
+    status: 'READY',
+    isLedgerSnapshotReplay: true,
+    ledgerSeq: Number(entry.seq || 0),
+    ledgerHash: String(entry.forecastHash || ''),
+    recordedAtUtcMs: Number(entry.recordedAtUtcMs || 0),
+    engine: {
+      name: `${modelName} (Ledger Snapshot #${entry.seq || 0})`,
+      engine_id: 'native_model_adapter',
+      version: '1.47.41',
+      is_chronos2: false,
+      render_mode: renderMode,
+      params: {
+        horizon_bars: horizonBars,
+        model_id: modelId,
+        requested_model_id: modelId,
+        selection_mode: 'LEDGER_SNAPSHOT_REPLAY',
+        structure_bias: String(entry.regime || 'UNCLASSIFIED'),
+        volatility_regime: String(entry.oodStatus || 'NORMAL'),
+        edge_gate_state: String(entry.noEdgeGateState || 'PROVISIONAL'),
+      },
+    },
+    model: {
+      id: modelId,
+      requested_id: modelId,
+      name: modelName,
+      experimental_only: false,
+      source_engine_status: String(entry.forecastStatus || 'PROVISIONAL'),
+      oos: {
+        status: 'LEDGER_SNAPSHOT',
+        Windows: 0,
+        coverage80: null,
+        mae: null,
+      },
+    },
+    series: {
+      symbol: symbolCode,
+      provider,
+      timeframe,
+      history_bars_used: originIdx >= 0 ? originIdx + 1 : candles.length,
+      origin_open_time_utc_ms: resolvedOriginMs,
+      origin_open_time_utc: resolvedOriginMs > 0 ? new Date(resolvedOriginMs).toISOString() : '',
+      last_closed_price: resolvedOriginClose,
+    },
+    data_quality: {
+      confidence_grade: 'HIGH',
+      input_hash: String(entry.inputHash || entry.forecastHash || ''),
+    },
+    swings: [],
+    turning_points: [],
+    model_paths: [
+      {
+        model_id: modelId,
+        label: modelName,
+        points: forecastPoints.map((fp) => ({
+          step: fp.step,
+          target_open_time_utc_ms: fp.target_open_time_utc_ms,
+          price: fp.q50_median,
+        })),
+      },
+    ],
+    model_diagnostics: {},
+    key_zones: { support: null, resistance: null },
+    forecast: forecastPoints,
+  };
+
+  return {
+    payload,
+    originIdx,
+    elapsedBars,
+    horizonBars,
+    scrollOffset,
+    resolvedOriginMs,
+    resolvedOriginClose,
+  };
 }
 
 export function isPinnedPreviousForecastMatchingTab(tab, forecastPayload) {

@@ -1,91 +1,64 @@
 # TRADING STRATEGY SPEC
 
-**وضعیت:** **پیاده‌سازی نسخه ۲ روی وب (`signal-gen/1.0` + `strategy-sim/2.0` در `v1.47.41` شامل ۵ استراتژی کلاسیک و Hard Gate نسبت `Net R:R ≥ 2.0`) و نسخه ۱ (`strategy-sim/1.0`) روی اندروید** — فاز ۶ (Trading Strategy & Offline Simulation؛ کاملاً مستقل از موتور پیش‌بینی).  
-**آخرین بازبینی:** 2026-11-25  
-**وابسته به:** [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md) · **معماری و ممیزی فنی:** [`SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md`](../02-architecture/SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md)  
+**وضعیت:** **پیاده‌سازی نسخه ۲ روی وب (`signal-gen/1.0` + `strategy-sim/2.0` + `forecast-strategy-bridge/1.0.0` در `v1.47.41` شامل ۵ استراتژی کلاسیک مستقل، Hard Gate نسبت `Net R:R ≥ 2.0`، اعتبارسنجی `Purged Walk-Forward + Final Untouched Holdout`، تفکیک رژیم بازار و پل یک‌طرفه کنترل‌شده `Forecast → Strategy`) و نسخه ۱ (`strategy-sim/1.0`) روی اندروید** — فاز ۶ (Trading Strategy & Offline Simulation).  
+**آخرین بازبینی:** 2026-11-26  
+**وابسته به:** [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md) · **معماری و ممیزی فنی:** [`SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md`](../02-architecture/SIGNAL_GENERATOR_AND_RR_INTELLIGENCE_V1.md) · **برنامه جامع بهبود:** [`FORECAST_AND_STRATEGY_IMPROVEMENT_MASTER_PLAN.md`](../03-roadmap-and-issues/FORECAST_AND_STRATEGY_IMPROVEMENT_MASTER_PLAN.md)  
 **واحد شبیه‌سازی:** هر `chart_id` مستقل؛ این سند به فهرست بسته‌ای از Instrumentها وابسته نیست.  
-**مرجع داده و پیش‌بینی:** قرارداد Forecast، هویت سری، Data Readiness و Model Governance فقط در [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md) تعریف می‌شوند؛ موتور سیگنال‌دهی و شبیه‌ساز (`signal-gen/1.0` / `strategy-sim/2.0`) به‌صورت انحصاری از هسته قطعی `TechnicalAnalysisCore` (`ta-core/1.1`) تغذیه می‌کند و هیچ وابستگی یا مداخله‌ای در موتور Forecast ندارد.
+**مرجع داده و پیش‌بینی:** قرارداد Forecast، هویت سری، Data Readiness و Model Governance در [`CHART_INTELLIGENCE_MASTER_SPEC.md`](./CHART_INTELLIGENCE_MASTER_SPEC.md) و [`FORECAST_SYSTEM_SPEC_V1.md`](./FORECAST_SYSTEM_SPEC_V1.md) تعریف می‌شوند؛ ۵ استراتژی کلاسیک (`signal-gen/1.0` / `strategy-sim/2.0`) به‌صورت ۱۰۰٪ مستقل از موتور Forecast و انحصاراً بر پایه هسته قطعی `TechnicalAnalysisCore` (`ta-core/1.1`) اجرا می‌شوند و پل اختیاری یک‌طرفه `Forecast → Strategy` (`forecastStrategyBridge.js`) صرفاً زمانی فعال می‌شود که وضعیت Forecast برابر با `VALID` با لبه اثبات‌شده (`edgeStatus === 'PROVEN'`) باشد.
 
 ------------------------------------------------------------------------
 
-# 12. Trading Strategy و Portfolio Simulation — مرحله بعد
+# 12. Trading Strategy و Portfolio Simulation — مشخصات پیاده‌سازی‌شده (`strategy-sim/2.0`)
 
-## 12.1 جایگاه این ماژول
+## 12.1 جایگاه این ماژول و استقلال استراتژی‌های کلاسیک از Forecast
 
-این ماژول برای هر `chart_id` پس از آن توسعه می‌یابد که Prediction Engine همان نمودار به‌صورت مستقل، با داده معتبر و Walk-Forward ارزیابی شده باشد. پذیرش Forecast برای Strategy باید به `forecast-contract/v1` یا نسخه سازگار بعدی در Master Spec وابسته باشد؛ Strategy حق تغییر معنای خروجی پیش‌بینی یا خواندن Forecast نامعتبر/`PROVISIONAL` را ندارد.
+۱. **استراتژی‌های کلاسیک مستقل (`S-06`):** هر ۵ استراتژی کلاسیک (`trend_pullback_v1`، `rsi_reversion_v1`، `breakout_v1`، `sma_crossover_v1` و `rsi_dip_v1`) مستقیماً روی کندل‌های بسته‌شده و خروجی‌های علّی `ta-core/1.1` اجرا می‌شوند و حتی در صورت نبود یا نامعتبر بودن Forecast نیز بدون هیچ وابستگی کار می‌کنند.
+۲. **پل یک‌طرفه کنترل‌شده `Forecast → Strategy` (`forecast-strategy-bridge/1.0.0`):** مصرف خروجی پیش‌بینی در لایه استراتژی صرفاً از طریق `evaluateForecastStrategyBridge()` در `host_subdomain/assets/js/strategy/forecastStrategyBridge.js` مجاز است و مستلزم عبور هم‌زمان از هر ۸ گیت عبوری است: وضعیت `VALID` + `edgeStatus === 'PROVEN'` + `allowStrategy === true`، غیرتقریبی بودن مدل (`!experimentalOnly`)، تطبیق نماد/تایم‌فریم/کندل مبدأ، و عبور کامل از Hard Gate مستقل استراتژی (`Net R:R ≥ 2.00` پس از کسر هزینه‌ها، نزدیک‌ترین مانع ساختاری علّی به عنوان `TP1` بدون پرش از موانع نزدیک‌تر، و اجرای علّی روی `open` کندل بعدی). پیش‌بینی‌های `PROVISIONAL`، `NO_EDGE`، `INSUFFICIENT_EVIDENCE` و `DATA_NOT_READY` هرگز اجازه تولید سیگنال عملیاتی ندارند.
+۳. **نمایش بصری روی بوم نمودار:** سیگنال‌های تأییدشده (`Entry`, `SL`, `TP1`, `TP2` و نواحی ریسک/ریوارد) در نسخه وب (`v1.47.41`) با **تصمیم معماری تأییدشده مالک** مستقیماً روی بوم HTML5 Canvas اختصاصی پروژه (`host_subdomain/assets/js/components/chartRenderer.js`) رسم می‌شوند. سیگنال‌های ردشده (`NO TRADE`) و پیش‌نمایش‌های پژوهشی (`isPreviewOnly: true`) هرگز به‌عنوان فلش خرید/فروش روی نمودار رسم نمی‌شوند.
 
-وظیفه این ماژول، تبدیل خروجی پیش‌بینی به قواعد معاملاتی و سپس شبیه‌سازی عملکرد آن قواعد است. این ماژول نباید تعریف یا معیار موفقیت هسته پیش‌بینی را تغییر دهد.
+## 12.2 پارامترهای پایه شبیه‌سازی و سیاست ریسک تک‌نمادی (`portfolioRiskPolicy`)
 
-نمایش نمودار و نتایج بصری سیگنال‌های تأییدشده (`Entry`, `SL`, `TP1`, `TP2` و نواحی ریسک/ریوارد) در نسخه وب (`v1.47.41`) با **تصمیم معماری تأییدشده مالک** مستقیماً روی بوم HTML5 Canvas اختصاصی پروژه (`host_subdomain/assets/js/components/chartRenderer.js`) پیاده‌سازی شده است تا یکپارچگی کامل با ابزارهای رسم، SMC، اندیکاتورها و لایه Forecast حفظ شود (بدون جایگزینی چارت با Lightweight Charts). خروجی شبیه‌سازی فقط به‌صورت Overlay بصری برای سیگنال‌های معتبر (`status: 'valid'` و `Net R:R ≥ 2.0`) نمایش داده می‌شود؛ سیگنال‌های ردشده (`NO TRADE`) هرگز به‌عنوان فلش خرید/فروش روی نمودار رسم نمی‌شوند و این Overlay دستور قابل‌ارسال به کارگزار نیست. منطق Strategy، بک‌تست و محاسبات ریسک کاملاً مستقل از رندرر نمودار در `host_subdomain/assets/js/strategy/` قرار دارند.
+پارامترهای پیاده‌سازی‌شده در مرحله شبیه‌سازی (`strategy-sim/1.0` و `strategy-sim/2.0`):
+- سرمایه اولیه: `Initial Equity = EUR 1,000` (مستقل برای هر `chart_id`)
+- ریسک هر معامله: `1% of current equity` (`Risk Budget = Current Equity × 0.01`)
+- حداکثر پوزیشن هم‌زمان در هر نمودار: `maxConcurrentPositions = 1`
+- سقف اهرم محافظه‌کارانه: `maxLeverage = 5x` و حالت محاسبه حجم `sizingMode = 'UNIT_APPROXIMATION'` (در نبود متادیتای دقیق Tick/Contract کارگزار، با اعلان شفاف در UI)
+- کلید قطع خودکار افت سرمایه (اختیاری): `maxDrawdownHaltPct` برای توقف پذیرش معاملات جدید در صورت عبور Drawdown از سقف تعیین‌شده
+- محدودیت دامنه پرتفوی: همبستگی چندنمادی (`multiSymbolCorrelationSupported: false`) خارج از دامنه شبیه‌ساز تک‌نمادی فعلی است و صراحتاً در `portfolioRiskPolicy` گزارش می‌شود.
 
-## 12.2 پارامترهای اولیه شبیه‌سازی
+## 12.3 قواعد پیاده‌سازی‌شده استراتژی و Hard Gate ریسک به ریوارد
 
-پارامترهای قبلاً تعیین‌شده برای مرحله شبیه‌سازی:
-- سرمایه اولیه: `Initial Equity = EUR 1,000`
-- ریسک هر معامله: `1% of current equity`
-- بودجه ریسک: `Risk Budget = Current Equity × 0.01`
-
-این پارامترها برای Trading Strategy هستند؛ در مرحله اول پیش‌بینی استفاده نمی‌شوند.
-
-## 12.3 طراحی استراتژی
-
-موارد زیر باید در مرحله بعد تعریف و آزمایش شوند:
-- قواعد تبدیل پیش‌بینی به ورود یا عدم ورود.
-- Entry و زمان معتبر ورود.
-- Stop Loss و Take Profit.
-- تعداد و نحوه تخصیص اهداف سود.
-- Position Sizing.
-- قواعد خروج و مدیریت معامله باز.
-- محدودیت ریسک و تعداد معاملات هم‌زمان.
-
-تقسیم یک‌سوم حجم بین TP1/TP2/TP3 و انتقال Stop Loss پس از رسیدن به اهداف، هنوز تصمیم قطعی نیستند.
+موارد زیر در `host_subdomain/assets/js/strategy/` پیاده‌سازی و با تست‌های خودکار تأیید شده‌اند:
+- **تصمیم در کندل بسته‌شده و اجرا در کندل بعدی (`S-01`):** سیگنال در پایان کندل بسته‌شده `t` تصمیم‌گیری شده و ورود فرضی صرفاً در `open` کندل `t+1` (`NEXT_BAR_OPEN_ONLY`) انجام می‌شود.
+- **Stop Loss و Take Profit ساختاری علّی (`S-03`):** حد ضرر به سوئینگ/ناحیه علّی واقعی بعلاوه بافر ATR مقید است و `TP1` منحصراً به نزدیک‌ترین مانع ساختاری مخالف (`SR_RESISTANCE_ZONE`/`SWING_HIGH` در خرید و برعکس در فروش) متصل می‌شود؛ پرش از مانع نزدیک‌تر برای ساخت مصنوعی `R:R ≥ 2.0` اکیداً ممنوع است.
+- **قفل غیرقابل‌کاهش `Net R:R ≥ 2.00` (`S-02`):** نسبت خالص ریسک به ریوارد پس از کسر هزینه‌های رفت‌وبرگشت (`Spread + Commission + Slippage`) باید حداقل `2.00` باشد؛ در غیر این صورت کاندید با کد رد صریح (`GROSS_RR_BELOW_MINIMUM` یا `NET_RR_BELOW_MINIMUM`) به `NO TRADE` تبدیل می‌شود.
 
 ## 12.4 هزینه‌ها و حاشیه اطمینان
 
-هزینه‌های معامله در Prediction Engine و سنجش دقت پیش‌بینی دخالت داده نمی‌شوند. در مرحله Trading Strategy و محاسبه سود و زیان، هزینه‌های واقعی ابزار مربوط باید لحاظ شوند:
-- Bid/Ask Spread
-- Commission
-- Slippage
-- Swap / Overnight Financing
-- Contract/Exchange Fees
-- Currency Conversion
+هزینه‌های معامله در Prediction Engine دخالت داده نمی‌شوند، اما در مرحله Trading Strategy (`riskRewardEngine.js` و `signalBacktester.js`) تمام هزینه‌های واقعی لحاظ می‌شوند:
+- Bid/Ask Spread (`spreadBps`)
+- Commission (`commissionBps` در ورود و خروج)
+- Slippage (`slippageBps` در ورود و خروج)
+- Swap / Overnight Financing (`swapBpsPerDay`)
+- تحلیل حساسیت خودکار در ۴ سطح هزینه: **`0.0x` (Gross)**، **`1.0x` (Base)**، **`1.5x`** و **`2.0x`**
 
-استراتژی نباید به معاملات شکننده‌ای متکی باشد که با تغییر کوچک و معقول هزینه‌ها از سود به زیان تبدیل می‌شوند. باید حاشیه اطمینان کافی پس از هزینه‌ها و عدم‌قطعیت وجود داشته باشد. معاملات با مزیت خالص ناکافی می‌توانند توسط Strategy Engine رد شوند.
+## 12.5 معیارهای عملکرد و پروتکل اعتبارسنجی استراتژی (`Purged Walk-Forward + Final Holdout`)
 
-هزینه‌ها نباید از بک‌تست معاملاتی حذف شوند؛ اما نباید وارد معیار Forecast Accuracy شوند.
+در `signalBacktester.js` و مودال `Strategy Lab` شاخص‌های زیر به‌صورت استاندارد محاسبه و مستقل از دقت Forecast گزارش می‌شوند:
+- `Net Return %`، `Gross Return %`، `CAGR %` (فقط برای بازه ≥ ۳۰ روز)، `Final Equity`
+- `Win Rate`، `Profit Factor`، `Expectancy`، `Average R`، `Avg Holding Period`
+- `Maximum Drawdown (% & €)`، `Sharpe Ratio`، `Sortino Ratio`، `Max Consecutive Wins/Losses`
+- `Exposure`، `Total Costs`، `RR-Rejected Count` و میانگین `Net R:R` پذیرفته‌شده
+- **تفکیک زمانی 70/30 (`inSampleOutOfSample`)** و پروتکل **`Purged Walk-Forward + Embargo + Final Untouched Holdout`** (`PURGED_WALK_FORWARD_WITH_UNTOUCHED_HOLDOUT_V1`: رزرو ۲۰٪ پایانی کندل‌ها به عنوان Holdout دست‌نخورده و ارزیابی ۳ فولد زمانی مجزا با فاصله `purgeBars + embargoBars`)
+- **تفکیک عملکرد بر اساس رژیم علّی بازار (`regimeBreakdown`):** گزارش جداگانه معاملات در ۵ رژیم `TREND_UP`، `TREND_DOWN`، `RANGE`، `EXPANSION` و `COMPRESSION`
 
-## 12.5 معیارهای عملکرد استراتژی
+## 12.6 قرارداد اجرای شبیه‌سازی (`strategy-sim/2.0`)
 
-در مرحله بعد:
-- Net Return
-- Win Rate
-- Profit Factor
-- Expectancy
-- Average R
-- Maximum Drawdown
-- Sharpe Ratio
-- Sortino Ratio
-- Equity Curve
-- Consecutive Losses
-- Exposure و Concurrent Risk
-- حساسیت نتیجه به Spread، Slippage و سایر هزینه‌ها
-
-نتایج استراتژی باید مستقل از گزارش دقت پیش‌بینی نمایش داده شوند.
-
-## 12.6 قواعد اجرای شبیه‌سازی
-
-قواعد دقیق ورود، خروج، Gap، برخورد هم‌زمان SL/TP، پایان افق و قیمت قابل معامله باید پیش از اجرای هر آزمایش ثبت شوند. تا پیش از تعریف استراتژی، این قواعد نباید به Prediction Engine تحمیل شوند.
-
-حداقل قرارداد اجرای بک‌تست باید این موارد را نسخه‌دار و ثبت کند:
-- زمان تصمیم و زمان مجاز اجرای فرضی؛ استفاده از قیمت کندلی که پیش از قابل‌دسترس‌شدن سیگنال بسته شده، ممنوع است.
-- نوع قیمت قابل معامله (Bid/Ask/Last)، spread، slippage، commission، swap/financing، هزینه تبدیل ارز و واحد قرارداد.
-- تقویم و session ابزار، تعطیلات، gap بازگشایی و قواعد داده مفقود.
-- ترتیب رخدادها وقتی در یک کندل هم SL و هم TP لمس می‌شوند؛ اگر داده با وضوح کافی ترتیب را اثبات نکند، فرض محافظه‌کارانه باید انتخاب و گزارش شود.
-- سیاست اجرای سفارش فرضی در Gap، محدودیت نقدشوندگی، partial fill و عدم امکان اجرا در قیمت نظری.
-- قواعد پایان افق، خروج اجباری، پوزیشن باز در پایان بازه آزمون و محاسبه mark-to-market.
-- نسخه داده و Forecast مصرف‌شده، نسخه Strategy و پارامترها، شناسه آزمایش و seed در صورت وجود تصادف.
-
-بدون این قرارداد، نتیجه بک‌تست قابل مقایسه یا قابل پذیرش نیست؛ اعداد و قواعد نهایی برای هر Instrument هنوز OPEN هستند.
+قواعد قطعی اجرا در موتور بک‌تست عبارت‌اند از:
+- زمان تصمیم در کلوز کندل `t` (`is_closed === true`) و زمان اجرای فرضی در اوپن کندل `t+1`.
+- ابطال سفارش در صورت گپ بازگشایی که پیش از ورود از سطح SL یا TP1 عبور کرده باشد.
+- قاعده محافظه‌کارانه **`SL_BEFORE_TP`** در صورت لمس هم‌زمان حد ضرر و حد سود در یک کندل.
+- ثبت کامل نسخه استراتژی، پارامترها، کدهای رد کاندیدها (`Diagnostics / NO TRADE`) و `forecastProvenance` (در صورت استفاده از پل Forecast).
 
 ## 12.7 ابزارهای تحقیق و منابع GitHub
 

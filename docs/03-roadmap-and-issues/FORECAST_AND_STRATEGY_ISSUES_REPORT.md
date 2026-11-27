@@ -1,6 +1,6 @@
 # گزارش مشکلات و نقد معماری تصمیم بخش پیش‌بینی و استراتژی (`FORECAST_AND_STRATEGY_ISSUES_REPORT`)
 
-> **نسخه مرجع:** `v1.47.41` · **تاریخ ثبت:** `2026-11-25` · **وضعیت:** `OPEN — ثبت‌شده برای حل و به‌روزرسانی در فازهای بعدی`
+> **نسخه مرجع:** `v1.47.41` · **تاریخ ثبت اولیه:** `2026-11-25` · **آخرین به‌روزرسانی وضعیت:** `2026-11-26` · **وضعیت:** `RESOLVED IN CODE (P0, P1, P3 VERIFIED — 67/67 TESTS PASSING)` — یافته‌های معماری، تصمیم‌گیری، کیفیت مسیر، ساختار علّی بازار، اعتبارسنجی استراتژی و پل کنترل‌شده Forecast → Strategy در فازهای **`P0`**، **`P1`** و **`P3`** برطرف و راستی‌آزمایی شدند (صرفاً همگام‌سازی ابری Ledger سمت سرور `FCST-LEDGER-03` و بنچمارک مدل‌های بیرونی `P2` در بک‌لاگ آتی قرار دارند).
 
 ---
 
@@ -831,5 +831,21 @@ P3 — توسعه بعدی ۶. ارتباط کنترلشده Forecast و Strateg
 
 پیشنهاد اجرایی بعدی: قبل از هر تغییر کد، یک سند مستقل با عنوان `FORECAST_AND_STRATEGY_IMPROVEMENT_MASTER_PLAN.md` ایجاد کنیم که همین تصمیمها، معیارهای پذیرش، شکافهای مستنداتی و ترتیب اجرای کار را به یک مرجع واحد تبدیل کند. این سند باید با Product Foundation و System Specification سازگار باشد و جایگزین آنها نشود.
 
+---
 
+## ۸. ماتریس وضعیت رفع مسائل و پیاده‌سازی در کد (`v1.47.41` — به‌روزرسانی `2026-11-26`)
 
+بر اساس نقشه راه مصوب در `FORECAST_AND_STRATEGY_IMPROVEMENT_MASTER_PLAN.md`، تمامی کاستی‌های معماری و تحلیلی گزارش‌شده در این سند به ترتیب در سه فاز اجرایی **`P0`**، **`P1`** و **`P3`** پیاده‌سازی و با **۶۷ تست خودکار (`67/67 PASS` در `tests/web_parity.test.mjs`)** راستی‌آزمایی شدند:
+
+| ردیف | مسئله گزارش‌شده در ممیزی | فاز حل | ماژول و راهکار پیاده‌سازی‌شده | وضعیت و تست رگرسیون |
+|---|---|---|---|---|
+| 1 | **نبود لایه تصمیم واحد بالای مدل‌ها و تداخل ۳ موتور + ۱۰ مدل موازی** | **`P0`** | ایجاد `host_subdomain/assets/js/forecast/decisionLayer.js` (`forecast-decision-layer/1.0.0`) با سلسله‌مراتب تصمیم ۴ مرحله‌ای (`buildDecisionSummary`) و قرارداد ۵ حالته آمادگی داده (`evaluateDataReadinessContract`) | **RESOLVED** (`FORECAST-P0-DECISION-SIMPLE-RESEARCH-01`) |
+| 2 | **سخت‌گیری `AUTO` و افتادن مداوم به Baseline بدون تفکیک انتخاب نسبی روزمره** | **`P0`** | تفکیک صریح `AUTO_STRICT_OOS` (برنده علمی ۶ گیت با `status: VALID`) از `AUTO_RELATIVE_PROVISIONAL` (بهترین نسبی بین ۳ موتور ترجیحی با `status: PROVISIONAL`, `edgeStatus: UNPROVEN` و `allowStrategy: false`) | **RESOLVED** (`FORECAST-P0-DECISION-SIMPLE-RESEARCH-01`) |
+| 3 | **حضور مدل‌های تقریبی (`isApproximation: true`) در مسیر تصمیم و انتخاب سریع** | **`P0`** | ارتقای حاکمیت مدل‌ها در `modelRegistry.js` (`DECISION_POOL`, `STATISTICAL_CANDIDATE`, `RESEARCH_ONLY`) و ایزوله‌سازی کامل مدل‌های `experimentalOnly: true` خارج از `AUTO` و خارج از حالت `Simple` | **RESOLVED** (`FORECAST-P0-DECISION-SIMPLE-RESEARCH-01`) |
+| 4 | **شلوغی UI استودیو (۱۲ پنل پژوهشی هم‌زمان برای کاربر روزمره)** | **`P0`** | تفکیک دو حالت نمایش `Simple` (پیش‌فرض: فقط کارت تصمیم ۴ مرحله‌ای، یک مسیر اصلی + باند ۸۰٪، رویدادهای تأییدشده، ابطال و حداکثر ۳ دکمه اقدام) و `Research` (۱۲ پنل پژوهشی روی همان Snapshot منجمد) در `forecastView.js` | **RESOLVED** (`FORECAST-P0-DECISION-SIMPLE-RESEARCH-01`) |
+| 5 | **نبود لایه مشترک شناخت علّی ساختار و رفتار بازار (`Market Structure & Behavior Engine`)** | **`P1`** | ایجاد `host_subdomain/assets/js/forecast/marketContextEngine.js` (`market-context-engine/1.0.0`) با استخراج علّی سوئینگ‌ها، `BOS`/`CHoCH`، حمایت/مقاومت، رژیم بازار و رویدادهای رفتاری با تفکیک دقیق `occurredAt` و `confirmedAt` و برچسب `SYSTEM_DERIVED` | **RESOLVED** (`FORECAST-P1-PATH-QUALITY-MARKET-CONTEXT-01`) |
+| 6 | **اتکای بیش از حد به خطای نقطه پایانی به جای کیفیت کل مسیر (`Path Quality`)** | **`P1`** | پیاده‌سازی بردار ۷ بعدی کیفیت مسیر (`evaluatePathQualityVector` در `walkForwardEvaluator.js`) شامل `Endpoint`, `Path & Envelope (WIS)`, `Extrema`, `Turning Timing`, `Pullback Fidelity`, `Regime Consistency`, `Shape Similarity (DTW)` و نرخ‌های `falsePositiveEventRate` / `missedEventRate` | **RESOLVED** (`FORECAST-P1-PATH-QUALITY-MARKET-CONTEXT-01`) |
+| 7 | **جدا بودن کامل Forecast و Strategy بدون پل کنترل‌شده و امن** | **`P3`** | ایجاد `host_subdomain/assets/js/strategy/forecastStrategyBridge.js` (`forecast-strategy-bridge/1.0.0`) با ۸ گیت عبور سخت‌گیرانه (`VALID + PROVEN`, رد `PROVISIONAL`/`AUTO_RELATIVE_PROVISIONAL`/`experimentalOnly`, الزام `invalidation`, هم‌ترازی مبدأ و عبور کامل از گیت‌های `S-01..S-06` استراتژی شامل `Net R:R >= 2.0` و نزدیک‌ترین مانع ساختاری) | **RESOLVED** (`FORECAST-P3-STRATEGY-BRIDGE-PURGED-WF-01`) |
+| 8 | **کافی نبودن تفکیک `70/30` در بک‌تست استراتژی و نبود تفکیک رژیم و سیاست ریسک پرتفوی** | **`P3`** | افزودن `computePurgedWalkForwardValidation` (`purged-wf-embargo-holdout/1.0.0` با `15%` Final Untouched Holdout)، `computeTradeRegimeBreakdown` و `portfolioRiskPolicy` (`SINGLE_INSTRUMENT_ISOLATED`, `UNIT_APPROXIMATION` و Circuit Breaker اختیاری `maxDrawdownHaltPct`) در `signalBacktester.js` و `strategyLabView.js` | **RESOLVED** (`FORECAST-P3-STRATEGY-BRIDGE-PURGED-WF-01`) |
+| 9 | **محدودیت محلی بودن Ledger (`Local-Only Storage`) و نبود Server Sync** | **Backlog** | محدودیت محلی بودن صریحاً در UI و Diagnostics شفاف‌سازی شده و مدیریت سهمیه (`Quota Pruning`) فعال است؛ همگام‌سازی ابری سمت سرور под شناسه `FCST-LEDGER-03` در `OPEN_ISSUES.md` پیگیری می‌شود | **OPEN / TRACKED (`FCST-LEDGER-03`)** |
+| 10 | **بنچمارک مدل‌های بیرونی جدید (`P2` / `Chronos-2`)** | **Conditional** | طبق سیاست بند ۵ و ۷ همین گزارش و Master Plan، افزودن مدل بیرونی جدید متوقف است و صرفاً در صورت تأمین سرور مستقل (`Chronos-2`) یا نیاز آتی بررسی می‌شود | **CONDITIONAL / DEFERRED** |

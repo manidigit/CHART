@@ -9,13 +9,20 @@ import {
   LIFECYCLE_STATUS,
   EVALUATION_OUTCOME,
   SELECTION_MODE,
+  EDGE_STATUS,
+  PATH_SEMANTICS,
   normalizeRenderMode,
   clampHorizonBars,
 } from '../forecast/forecastContract.js?v=1.47.41';
-import { defaultForecastRegistry } from '../forecast/modelRegistry.js?v=1.47.41';
+import { defaultForecastRegistry, resolveModelGovernance } from '../forecast/modelRegistry.js?v=1.47.41';
 import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.41';
 import { ForecastEngine, resolveLowerTimeframeInfo } from '../forecast/forecastEngine.js?v=1.47.41';
 import { selectOosChartWinner } from '../forecast/walkForwardEvaluator.js?v=1.47.41';
+import { buildDecisionSummary } from '../forecast/decisionLayer.js?v=1.47.41';
+import {
+  extractTrajectoryBehavioralEvents,
+  buildBehaviorScenarioContract,
+} from '../forecast/marketContextEngine.js?v=1.47.41';
 import { computeSmcPrediction } from '../forecast/smcPredictionEngine.js?v=1.47.41';
 import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.41';
 
@@ -179,17 +186,40 @@ export function buildForecastForTab(activeTab, overrides = {}) {
             corridorWidthPct: ((lastPt.q90 - lastPt.q10) / anchorClose) * 100,
           }
         : baseRes.summary;
+    const nextTurningPoints = Array.isArray(chosen?.meta?.turningPoints) ? chosen.meta.turningPoints : [];
+    const nextPathEvents = extractTrajectoryBehavioralEvents({
+      points: nextPoints,
+      anchorClose,
+      anchorOpenTimeUtcMs: baseRes.anchorOpenTimeUtcMs,
+      marketContext: baseRes.marketContext,
+      chosenTrajectory: chosen,
+      keyZones: baseRes.keyZones,
+      atrAtAnchor: baseRes.marketContext?.regime?.atrNow ?? null,
+    });
+    const nextBehaviorScenarios = buildBehaviorScenarioContract({
+      points: nextPoints,
+      anchorClose,
+      marketContext: baseRes.marketContext,
+      scenarios: baseRes.scenarios,
+      pathEvents: nextPathEvents,
+      chosenTrajectory: chosen,
+      atrAtAnchor: baseRes.marketContext?.regime?.atrNow ?? null,
+    });
     const reselectedResult = {
       ...baseRes,
       renderMode,
+      requestedModelId: selectedModelId,
       selectedChartModelId: selection.selectedModelId,
       selectionMode: selection.selectionMode,
       selectionReason: selection.reason,
-      turningPoints: Array.isArray(chosen?.meta?.turningPoints) ? chosen.meta.turningPoints : [],
+      turningPoints: nextTurningPoints,
       smcPoc: Number.isFinite(Number(chosen?.meta?.pocPrice)) ? Number(chosen.meta.pocPrice) : null,
+      pathEvents: nextPathEvents,
+      behaviorScenarios: nextBehaviorScenarios,
       points: nextPoints,
       summary: nextSummary,
     };
+    reselectedResult.decisionSummary = buildDecisionSummary(reselectedResult, { requestedModelId: selectedModelId });
     const builtReselected = {
       candles: baseHit.candles,
       result: reselectedResult,
@@ -1029,7 +1059,8 @@ function getMarketConditionLabel(tag, isFa, simple = false) {
   return isFa ? 'رنج / نوسانی + بدون برتری آماری' : 'RANGING + NO_EDGE';
 }
 
-function renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa) {
+export function renderDecisionCard(fc, activeTab, decimals, isFa, uxMode = 'simple') {
+  const ds = fc?.decisionSummary || buildDecisionSummary(fc);
   const symbolCode = fc?.symbolCode || activeTab?.symbolCode || 'SPOTBRENT';
   const timeframe = fc?.timeframe || activeTab?.timeframe || 'M15';
   const candles = Array.isArray(activeTab?.candles) ? activeTab.candles : [];
@@ -1049,33 +1080,128 @@ function renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa) {
     else pendingCount += 1;
   }
 
-  const st = fc?.status || FORECAST_STATUS.DATA_NOT_READY;
-  const plainStatusMap = {
-    VALID: isFa ? 'آماده و دارای پشتوانه آماری' : 'Ready (Statistically Supported)',
-    PROVISIONAL: isFa ? 'آماده با احتیاط (نمونه محدود)' : 'Ready with Caution (Limited Sample)',
-    NO_EDGE: isFa ? 'احتیاط: بازار فاقد روند یا برتری مشخص است' : 'Caution: Neutral / No Clear Statistical Edge',
-    INSUFFICIENT_EVIDENCE: isFa ? 'داده تاریخی محدود (پیش‌بینی نمایشی/موقت)' : 'Limited Historical Sample (Provisional View)',
-    DATA_NOT_READY: isFa ? 'داده هنوز آماده نیست' : 'Data Not Ready',
-  };
+  const st = ds.status || FORECAST_STATUS.DATA_NOT_READY;
+  const badgeClass =
+    st === FORECAST_STATUS.VALID
+      ? 'ci-fc-badge-valid'
+      : st === FORECAST_STATUS.DATA_NOT_READY
+        ? 'ci-fc-badge-blocked'
+        : 'ci-fc-badge-provisional';
 
-  const convergence = computeMultiModelZoneConvergence(fc);
-  const convLabel = convergence.modelCount >= 2
-    ? isFa
-      ? `اجماع ${Math.max(convergence.bullCount, convergence.bearCount)} از ${convergence.modelCount} مدل (${convergence.bullCount >= convergence.bearCount ? 'صعودی' : 'نزولی'}) · اختلاف هدف ${convergence.targetSpreadPct ?? '—'}%`
-      : `${Math.max(convergence.bullCount, convergence.bearCount)}/${convergence.modelCount} Models Agree (${convergence.bullCount >= convergence.bearCount ? 'Bullish' : 'Bearish'}) · Spread ${convergence.targetSpreadPct ?? '—'}%`
-    : isFa
-      ? 'برای سنجش همگرایی، ۲ مدل یا بیشتر انتخاب کنید'
-      : 'Select 2+ models to see target consensus';
+  const statusHeadline = (() => {
+    if (st === FORECAST_STATUS.VALID) {
+      return isFa ? 'معتبر · برتری آماری اثبات‌شده (VALID)' : 'VALID · Statistically Proven Edge';
+    }
+    if (st === FORECAST_STATUS.PROVISIONAL) {
+      if (ds.edgeStatus === EDGE_STATUS.NOT_PROVEN) {
+        return isFa ? 'موقت · بدون اثبات آماری قطعی (PROVISIONAL)' : 'PROVISIONAL · Unproven Edge';
+      }
+      return isFa ? 'موقت · نیازمند احتیاط (PROVISIONAL)' : 'PROVISIONAL · Caution';
+    }
+    if (st === FORECAST_STATUS.NO_EDGE) {
+      return isFa ? 'بدون لبه آماری · نمایش مبنا (NO_EDGE)' : 'NO_EDGE · Baseline Fallback';
+    }
+    if (st === FORECAST_STATUS.INSUFFICIENT_EVIDENCE) {
+      return isFa ? 'شواهد OOS ناکافی (INSUFFICIENT_EVIDENCE)' : 'INSUFFICIENT_EVIDENCE';
+    }
+    return isFa
+      ? `داده آماده نیست (${ds.readinessState || 'DATA_NOT_READY'})`
+      : `DATA_NOT_READY (${ds.readinessState || 'DATA_NOT_READY'})`;
+  })();
+
+  const gov = resolveModelGovernance(ds.modelId, { experimentalOnly: ds.isExperimentalOnly });
+  const govBadgeText = ds.isExperimentalOnly
+    ? (isFa ? 'پژوهشی / تقریبی' : 'Research-only / Experimental')
+    : (isFa ? gov.roleLabelFa : gov.roleLabelEn);
+
+  const pathSemanticsLabel =
+    ds.pathSemantics === PATH_SEMANTICS.JOINT_TRAJECTORY
+      ? (isFa ? 'مسیر یکپارچه (Joint Path)' : 'Joint Trajectory')
+      : (isFa ? 'میانه حاشیه‌ای (Marginal Median)' : 'Marginal Median');
+
+  const confidenceLabel = (() => {
+    if (!ds.confidence) return '—';
+    if (ds.confidence === 'HIGH') return isFa ? 'بالا (HIGH)' : 'HIGH';
+    if (ds.confidence === 'MEDIUM') return isFa ? 'متوسط (MEDIUM)' : 'MEDIUM';
+    return isFa ? 'پایین (LOW)' : 'LOW';
+  })();
 
   const regimeStr = String(fc?.regime || 'RANGING').toUpperCase();
-  const hasEdge = Boolean(fc?.noEdgeGate?.hasEdge) || st === FORECAST_STATUS.VALID;
+  const hasEdge = ds.edgeStatus === EDGE_STATUS.PROVEN;
   const condTag = (regimeStr.includes('TREND') || regimeStr.includes('BULL') || regimeStr.includes('BEAR'))
     ? (hasEdge ? 'TRENDING_EDGE' : 'TRENDING_NO_EDGE')
     : (hasEdge ? 'RANGING_EDGE' : 'RANGING_NO_EDGE');
 
+  const pp = ds.primaryPath;
+  const primaryPathHtml = pp
+    ? (() => {
+        const pct = Number(pp.medianPctChange || 0);
+        const pctCol = pct > 0.12 ? 'var(--bull)' : pct < -0.12 ? 'var(--bear)' : 'var(--text-strong)';
+        const bandText =
+          ds.showUncertaintyBand && pp.terminalQ10 != null && pp.terminalQ90 != null
+            ? `[${PriceFormatter.formatPrice(pp.terminalQ10, decimals)} .. ${PriceFormatter.formatPrice(pp.terminalQ90, decimals)}]`
+            : (isFa ? 'بازه ۸۰٪ کالیبره‌نشده' : '80% Band Uncalibrated');
+        return `
+          <div class="ci-fc-decision-metric ltr-num">
+            <span>${isFa ? `هدف میانه (+${pp.horizonBars} کندل)` : `Primary Path (+${pp.horizonBars}b Q50)`}</span>
+            <strong style="color:${pctCol};">${PriceFormatter.formatPrice(pp.terminalQ50, decimals)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%)</strong>
+            <small>${isFa ? 'بازه ۸۰٪:' : '80% Range:'} ${escapeHtml(bandText)}</small>
+          </div>
+        `;
+      })()
+    : `
+      <div class="ci-fc-decision-metric ltr-num">
+        <span>${isFa ? 'مسیر پیش‌بینی' : 'Primary Path'}</span>
+        <strong style="color:var(--text-muted);">${isFa ? 'در دسترس نیست' : 'Unavailable'}</strong>
+        <small>${isFa ? 'منتظر آماده‌سازی داده' : 'Awaiting ready candle history'}</small>
+      </div>
+    `;
+
+  const ev = ds.evidenceSummary || {};
+  const evidenceChips = [];
+  if (st === FORECAST_STATUS.DATA_NOT_READY) {
+    if (Number(ev.missingBarsCount || 0) > 0) {
+      evidenceChips.push(isFa ? `کمبود کندل: ${ev.missingBarsCount}` : `Missing Bars: ${ev.missingBarsCount}`);
+    }
+    evidenceChips.push(`${isFa ? 'وضعیت ورودی:' : 'Readiness:'} ${ds.readinessState || 'DATA_NOT_READY'}`);
+  } else {
+    evidenceChips.push(`OOS: ${ev.evaluatedWindows ?? 0}/${ev.requiredWindows ?? 30}`);
+    if (ev.rMae != null) evidenceChips.push(`rMAE: ${Number(ev.rMae).toFixed(3)}`);
+    if (ev.coverage80Pct != null) evidenceChips.push(`Cov80: ${Number(ev.coverage80Pct).toFixed(1)}%`);
+  }
+
   return `
-    <div class="ci-fc-card" style="margin-bottom:12px;">
-      <div class="ci-fc-summary-strip ltr-num">
+    <div class="ci-fc-card ci-fc-decision-card" data-decision-status="${escapeHtml(st)}" data-ux-mode="${escapeHtml(uxMode)}">
+      <div class="row-between" style="gap:8px;flex-wrap:wrap;margin-bottom:10px;">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+          <span class="ci-fc-status-badge ${badgeClass}">${escapeHtml(statusHeadline)}</span>
+          <span class="ci-fc-gov-badge ${ds.isExperimentalOnly ? 'is-experimental' : ''}">${escapeHtml(govBadgeText)}</span>
+          <span class="ci-fc-family-tag">${escapeHtml(pathSemanticsLabel)}</span>
+        </div>
+        <span class="ci-fc-family-tag ltr-num">${isFa ? 'اطمینان:' : 'Confidence:'} <strong>${escapeHtml(confidenceLabel)}</strong></span>
+      </div>
+
+      <div class="ci-fc-decision-grid">
+        ${primaryPathHtml}
+        <div class="ci-fc-decision-metric">
+          <span>${isFa ? 'منبع مدل فعال' : 'Active Model Source'}</span>
+          <strong class="ltr-num">${escapeHtml(ds.modelName || ds.modelId)}</strong>
+          <small class="ltr-num">${escapeHtml(ds.selectionTier || 'BASELINE')} · ${escapeHtml(ds.edgeStatus || 'UNKNOWN')}</small>
+        </div>
+        <div class="ci-fc-decision-metric">
+          <span>${isFa ? 'شواهد کلیدی OOS' : 'Key OOS Evidence'}</span>
+          <div class="ci-fc-decision-evidence ltr-num">
+            ${evidenceChips.map((chip) => `<span class="ci-fc-family-tag">${escapeHtml(chip)}</span>`).join('')}
+          </div>
+          <small>${isFa ? (ds.allowStrategy ? 'مجاز برای ارزیابی استراتژی' : 'ارزیابی استراتژی قفل است') : (ds.allowStrategy ? 'Eligible for Strategy' : 'Strategy Locked')}</small>
+        </div>
+      </div>
+
+      <div class="ci-fc-decision-reason">
+        <strong>${isFa ? 'دلیل:' : 'Reason:'}</strong> ${escapeHtml(isFa ? (ds.reasonTextFa || ds.reasonText) : (ds.reasonText || ds.reasonTextFa))}
+      </div>
+
+      <div class="ci-fc-summary-strip ltr-num" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
         <div class="ci-fc-mini-stat">
           <span>${isFa ? 'نماد و تایم‌فریم' : 'Symbol & Timeframe'}</span>
           <strong>${escapeHtml(symbolCode)} · ${escapeHtml(timeframe)}</strong>
@@ -1097,26 +1223,110 @@ function renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa) {
           <strong style="font-size:11.5px;">${escapeHtml(getMarketConditionLabel(condTag, isFa, true))}</strong>
         </div>
       </div>
-      <div class="row-between" style="margin-top:8px;gap:8px;flex-wrap:wrap;font-size:11.5px;color:var(--text-muted);">
-        <span>${escapeHtml(plainStatusMap[st] || st)}</span>
-        <span class="ci-fc-family-tag">${escapeHtml(convLabel)}</span>
-      </div>
     </div>
   `;
 }
 
-export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
+export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView, uxMode = 'research') {
+  const mode = uxMode === 'simple' ? 'simple' : 'research';
+  const ds = fc?.decisionSummary || buildDecisionSummary(fc);
+
+  const researchBannerHtml =
+    mode === 'research'
+      ? `<div class="ci-fc-research-banner">
+           <strong>${isFa ? 'حالت پژوهش (Research Mode)' : 'Research Mode'}</strong>
+           <span>${isFa ? 'برای ارزیابی علمی، مقایسه مدل‌ها و بررسی معیارهای OOS — نه تصمیم‌گیری روزمره.' : 'For scientific evaluation, model comparison, and OOS diagnostics — not everyday decisions.'}</span>
+         </div>`
+      : '';
+
   if (!fc || fc.status === FORECAST_STATUS.DATA_NOT_READY) {
     const reqBars = fc?.readiness?.nOpMin || 155;
+    const missingBars = Number(fc?.readiness?.missingBarsCount || 0);
+    const readinessState = fc?.readiness?.readinessState || ds.readinessState || 'DATA_NOT_READY';
     const reasons = (fc?.readiness?.issues || []).map((r) => `<li>${escapeHtml(r)}</li>`).join('');
     return `
-      ${renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa)}
-      <div class="ci-fc-card" style="text-align:center;padding:32px;">
-        <h3 style="margin:0 0 8px 0;color:var(--bear);">${isFa ? 'دروازه آماده بودن داده: DATA_NOT_READY' : 'Data Readiness Gate: DATA_NOT_READY'}</h3>
-        <p style="margin:0 0 12px 0;color:var(--text-muted);font-size:13px;">
-          ${isFa ? `برای اجرای Nested Walk-Forward حداقل ${reqBars} کندل معتبر و تمیز لازم است.` : `At least ${reqBars} clean closed OHLC bars (and full statistical sample for VALID) are required without corruption or unclosed bars.`}
+      ${researchBannerHtml}
+      ${renderDecisionCard(fc, activeTab, decimals, isFa, mode)}
+      <div class="ci-fc-card" style="text-align:center;padding:28px;">
+        <h3 style="margin:0 0 8px 0;color:var(--bear);">${isFa ? `دروازه آماده بودن داده: ${escapeHtml(readinessState)}` : `Data Readiness Gate: ${escapeHtml(readinessState)}`}</h3>
+        <p style="margin:0 0 10px 0;color:var(--text-muted);font-size:13px;">
+          ${
+            missingBars > 0
+              ? (isFa ? `حداقل ${reqBars} کندل معتبر لازم است (${missingBars} کندل دیگر مورد نیاز است).` : `At least ${reqBars} clean closed bars are required (${missingBars} more bar(s) needed).`)
+              : (isFa ? `برای اجرای Nested Walk-Forward حداقل ${reqBars} کندل معتبر و تمیز لازم است.` : `At least ${reqBars} clean closed OHLC bars (and full statistical sample for VALID) are required without corruption or unclosed bars.`)
+          }
         </p>
         <ul style="list-style:none;padding:0;margin:0;color:var(--text-muted);font-size:12px;" class="ltr-num">${reasons}</ul>
+      </div>
+    `;
+  }
+
+  const pathSemanticsCaption =
+    ds.pathSemantics === PATH_SEMANTICS.JOINT_TRAJECTORY
+      ? (isFa ? 'مسیر یکپارچه (Joint Trajectory)' : 'Joint Trajectory Path')
+      : (isFa ? 'میانه حاشیه‌ای گام‌به‌گام (Marginal Median)' : 'Step-by-step Marginal Median');
+
+  if (mode === 'simple') {
+    const strategyDisabledAttr = ds.allowStrategy ? '' : 'disabled aria-disabled="true"';
+    const strategyBlockNote = !ds.allowStrategy
+      ? `<div class="ci-fc-strategy-block-note">${escapeHtml(isFa ? (ds.strategyBlockReasonTextFa || ds.strategyBlockReasonText) : (ds.strategyBlockReasonText || ds.strategyBlockReasonTextFa))}</div>`
+      : '';
+    const simpleEvents = Array.isArray(fc.pathEvents) ? fc.pathEvents.slice(0, 3) : [];
+    const bs = fc.behaviorScenarios;
+    const simpleBehaviorHtml =
+      simpleEvents.length > 0 || bs
+        ? `
+      <div class="ci-fc-card" style="margin-bottom:10px;" data-testid="fc-simple-behavior-card">
+        <div class="row-between" style="flex-wrap:wrap;gap:6px;margin-bottom:6px;">
+          <strong style="font-size:12.5px;">${isFa ? 'رفتار مورد انتظار و ناحیه ابطال مسیر' : 'Expected Path Behavior & Invalidation'}</strong>
+          ${bs?.invalidationZone ? `<span class="ci-fc-family-tag ltr-num" style="color:var(--bear);">${isFa ? 'ابطال:' : 'Invalidation:'} ${PriceFormatter.formatPrice(bs.invalidationZone.triggerLevel, decimals)} [${PriceFormatter.formatPrice(bs.invalidationZone.lowPrice, decimals)}..${PriceFormatter.formatPrice(bs.invalidationZone.highPrice, decimals)}]</span>` : ''}
+        </div>
+        ${
+          simpleEvents.length > 0
+            ? `<div style="display:flex;gap:6px;flex-wrap:wrap;" class="ltr-num">
+                ${simpleEvents
+                  .map(
+                    (ev) =>
+                      `<span class="ci-fc-family-tag">${escapeHtml(ev.type)} (+${ev.stepStart}..+${ev.stepEnd} @ ${PriceFormatter.formatPrice(ev.priceLevel, decimals)})</span>`
+                  )
+                  .join('')}
+              </div>`
+            : ''
+        }
+      </div>
+    `
+        : '';
+    return `
+      ${renderDecisionCard(fc, activeTab, decimals, isFa, 'simple')}
+      <div class="ci-fc-canvas-wrap ci-fc-card">
+        <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+          <div>
+            <strong style="font-size:13.5px;">${isFa ? 'مسیر اصلی پیش‌بینی و بازه ۸۰٪' : 'Primary Forecast Path & 80% Range'}</strong>
+            <div style="font-size:11.5px;color:var(--text-muted);" class="ltr-num">
+              ${isFa ? 'منبع:' : 'Source:'} <strong>${escapeHtml(ds.modelName || fc.selectedChartModelId || 'AUTO')}</strong> · ${escapeHtml(pathSemanticsCaption)} · ${isFa ? 'مبنا:' : 'Anchor:'} ${PriceFormatter.formatPrice(fc.anchorClose, decimals)}
+            </div>
+          </div>
+          <span style="font-size:11px;color:var(--text-muted);" class="ltr-num">
+            ${ds.showUncertaintyBand ? `${isFa ? 'پهنای بازه ۸۰٪:' : '80% Width:'} ${fc.summary.corridorWidthPct.toFixed(2)}%` : (isFa ? 'بازه کالیبره‌نشده' : 'Uncalibrated Band')}
+          </span>
+        </div>
+        <canvas id="forecast-studio-canvas" class="ci-fc-preview-canvas"></canvas>
+      </div>
+      ${simpleBehaviorHtml}
+
+      <div class="ci-fc-card ci-fc-simple-actions-card">
+        <div class="ci-fc-simple-actions">
+          <button type="button" class="btn btn-sm" data-action="set-forecast-ux-mode" data-ux-mode="research">
+            ${isFa ? 'مقایسه مدل‌ها / حالت پژوهش' : 'Compare Models / Research'}
+          </button>
+          <button type="button" class="btn btn-sm" data-action="open-forecast-ledger-from-simple">
+            ${isFa ? 'تاریخچه و ارزیابی (Ledger)' : 'History & Ledger'}
+          </button>
+          <button type="button" class="btn btn-sm ${ds.allowStrategy ? 'btn-primary' : ''}" data-action="open-strategy-from-forecast" ${strategyDisabledAttr}>
+            ${isFa ? 'تولید سیگنال استراتژی؟' : 'Generate Strategy Signal?'}
+          </button>
+        </div>
+        ${strategyBlockNote}
       </div>
     `;
   }
@@ -1404,14 +1614,77 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
     `
     : '';
 
+  const pathEventsList = Array.isArray(fc.pathEvents) ? fc.pathEvents : [];
+  const pathEventsHtml =
+    pathEventsList.length > 0
+      ? `
+        <div class="ci-fc-card" style="margin-bottom:12px;" data-testid="fc-path-events-card">
+          <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+            <strong style="font-size:13px;">${isFa ? 'رویدادهای رفتاری مسیر مقید به مختصات (Trajectory Behavioral Events — §5.5)' : 'Coordinate-Bound Trajectory Behavioral Events (§5.5)'}</strong>
+            <span class="ci-fc-family-tag ltr-num">${pathEventsList.length} ${isFa ? 'رویداد' : 'events'} · MODEL_NATIVE vs SYSTEM_DERIVED</span>
+          </div>
+          <div class="ci-fc-grid-2">
+            ${pathEventsList
+              .map(
+                (ev) => `
+              <div class="ci-fc-mini-stat ltr-num" style="align-items:flex-start;">
+                <div class="row-between" style="width:100%;gap:6px;margin-bottom:4px;">
+                  <strong style="font-size:11.5px;color:var(--text-strong);">${escapeHtml(ev.type)} (${escapeHtml(ev.direction)})</strong>
+                  <span class="ci-fc-family-tag">${escapeHtml(ev.sourceType)}</span>
+                </div>
+                <div style="font-size:11px;color:var(--text-main);">Steps: <strong>+${ev.stepStart}..+${ev.stepEnd}</strong> · Level: <strong>${PriceFormatter.formatPrice(ev.priceLevel, decimals)}</strong> [${PriceFormatter.formatPrice(ev.priceRange?.[0] ?? ev.priceLevel, decimals)} .. ${PriceFormatter.formatPrice(ev.priceRange?.[1] ?? ev.priceLevel, decimals)}]</div>
+                <div style="font-size:10.5px;color:var(--text-muted);">Trigger: ${escapeHtml(ev.triggerCondition || '—')}</div>
+                <div style="font-size:10.5px;color:var(--bear);">Invalidation: ${PriceFormatter.formatPrice(ev.invalidationLevel, decimals)} (${escapeHtml(ev.invalidationCondition || '—')})</div>
+              </div>
+            `
+              )
+              .join('')}
+          </div>
+        </div>
+      `
+      : '';
+
+  const bScenarios = fc.behaviorScenarios;
+  const behaviorScenariosContractHtml = bScenarios
+    ? `
+        <div class="ci-fc-card" style="margin-bottom:12px;" data-testid="fc-behavior-scenarios-card">
+          <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
+            <strong style="font-size:13px;">${isFa ? 'قرارداد سناریوی رفتاری ۳بخشی (Base / Alternative / Invalidation — §5.5)' : '3-Part Behavior Scenario Contract (Base / Alternative / Invalidation — §5.5)'}</strong>
+            <span class="ci-fc-family-tag ltr-num">${escapeHtml(bScenarios.contractVersion || 'behavior-scenario/1.0.0')}</span>
+          </div>
+          <div class="ci-fc-grid-3 ltr-num">
+            <div class="ci-fc-mini-stat" style="align-items:flex-start;border-color:rgba(56,189,248,0.4);">
+              <strong style="font-size:11.5px;color:var(--accent);">BASE_PATH (${escapeHtml(bScenarios.basePath.direction)})</strong>
+              <div style="font-size:11px;">Target: <strong>${PriceFormatter.formatPrice(bScenarios.basePath.targetPrice, decimals)}</strong> · 80%: [${PriceFormatter.formatPrice(bScenarios.basePath.corridor80?.[0] ?? bScenarios.basePath.targetPrice, decimals)}..${PriceFormatter.formatPrice(bScenarios.basePath.corridor80?.[1] ?? bScenarios.basePath.targetPrice, decimals)}]</div>
+              <div style="font-size:10.5px;color:var(--text-muted);">Prob: <strong>${bScenarios.basePath.calibratedProbability != null ? (Number(bScenarios.basePath.calibratedProbability) * 100).toFixed(1) + '%' : 'NOT_ESTIMABLE'}</strong></div>
+              <div style="font-size:10px;color:var(--text-muted);">${escapeHtml(isFa ? bScenarios.basePath.summaryFa : bScenarios.basePath.summaryEn)}</div>
+            </div>
+            <div class="ci-fc-mini-stat" style="align-items:flex-start;border-color:rgba(245,158,11,0.4);">
+              <strong style="font-size:11.5px;color:var(--gold);">ALTERNATIVE_PATH (${escapeHtml(bScenarios.alternativePath.direction)})</strong>
+              <div style="font-size:11px;">Target: <strong>${PriceFormatter.formatPrice(bScenarios.alternativePath.targetPrice, decimals)}</strong> · Extreme: ${PriceFormatter.formatPrice(bScenarios.alternativePath.extremePrice, decimals)}</div>
+              <div style="font-size:10.5px;color:var(--text-muted);">Prob: <strong>${bScenarios.alternativePath.calibratedProbability != null ? (Number(bScenarios.alternativePath.calibratedProbability) * 100).toFixed(1) + '%' : 'NOT_ESTIMABLE'}</strong></div>
+              <div style="font-size:10px;color:var(--text-muted);">${escapeHtml(isFa ? bScenarios.alternativePath.triggerConditionFa : bScenarios.alternativePath.triggerConditionEn)}</div>
+            </div>
+            <div class="ci-fc-mini-stat" style="align-items:flex-start;border-color:rgba(239,83,80,0.4);">
+              <strong style="font-size:11.5px;color:var(--bear);">INVALIDATION_ZONE</strong>
+              <div style="font-size:11px;">Trigger: <strong>${PriceFormatter.formatPrice(bScenarios.invalidationZone.triggerLevel, decimals)}</strong> [${PriceFormatter.formatPrice(bScenarios.invalidationZone.lowPrice, decimals)} .. ${PriceFormatter.formatPrice(bScenarios.invalidationZone.highPrice, decimals)}]</div>
+              <div style="font-size:10px;color:var(--text-muted);">${escapeHtml(isFa ? bScenarios.invalidationZone.conditionFa : bScenarios.invalidationZone.conditionEn)}</div>
+            </div>
+          </div>
+        </div>
+      `
+    : '';
+
   const scenariosAndModelsDrawerHtml = `
     <details class="ci-fc-card ci-fc-accordion" style="margin-bottom:12px;">
       <summary>
-        <span>${isFa ? 'سناریوها، سطوح کلیدی و لیست کامل مدل‌ها (کلیک برای مشاهده)' : 'Scenarios, Key S/R Zones & All Model Trajectories (Click to expand)'}</span>
-        <span class="ci-fc-family-tag ltr-num">${(fc.scenarios || []).length} ${isFa ? 'سناریو' : 'scenarios'} · ${(fc.modelTrajectories || []).filter((t) => t.status === MODEL_EXECUTION_STATUS.SUCCESS).length} ${isFa ? 'مدل فعال' : 'active models'}</span>
+        <span>${isFa ? 'سناریوها، رویدادهای رفتاری مسیر، سطوح کلیدی و لیست کامل مدل‌ها (کلیک برای مشاهده)' : 'Scenarios, Trajectory Behavioral Events, Key S/R Zones & All Model Trajectories (Click to expand)'}</span>
+        <span class="ci-fc-family-tag ltr-num">${pathEventsList.length} ${isFa ? 'رویداد مسیر' : 'path events'} · ${(fc.scenarios || []).length} ${isFa ? 'سناریو' : 'scenarios'} · ${(fc.modelTrajectories || []).filter((t) => t.status === MODEL_EXECUTION_STATUS.SUCCESS).length} ${isFa ? 'مدل فعال' : 'active models'}</span>
       </summary>
       <div class="ci-fc-accordion-body">
         ${winnerBannerHtml}
+        ${pathEventsHtml}
+        ${behaviorScenariosContractHtml}
         ${comparisonChipsHtml}
         <div class="ci-fc-card" style="margin-bottom:12px;">
           <div class="row-between" style="margin-bottom:10px;flex-wrap:wrap;gap:8px;">
@@ -1456,13 +1729,14 @@ export function renderOverviewPanel(fc, activeTab, decimals, isFa, coordView) {
   `;
 
   return `
-    ${renderForecastSummaryHeaderCard(fc, activeTab, decimals, isFa)}
+    ${researchBannerHtml}
+    ${renderDecisionCard(fc, activeTab, decimals, isFa, 'research')}
     <div class="ci-fc-canvas-wrap ci-fc-card">
       <div class="row-between" style="margin-bottom:8px;flex-wrap:wrap;gap:8px;">
         <div>
           <strong style="font-size:13.5px;">${isFa ? 'نمودار مسیر پیش‌بینی و بازه قیمتی (۸۰٪)' : 'Forecast Trajectory & 80% Price Range'}</strong>
           <div style="font-size:11.5px;color:var(--text-muted);" class="ltr-num">
-            ${isFa ? 'مدل فعال:' : 'Model:'} <strong>${escapeHtml(fc.selectedChartModelId || 'AUTO')}</strong> · ${isFa ? 'قیمت مبنا:' : 'Anchor:'} ${PriceFormatter.formatPrice(fc.anchorClose, decimals)}
+            ${isFa ? 'مدل فعال:' : 'Model:'} <strong>${escapeHtml(fc.selectedChartModelId || 'AUTO')}</strong> · ${escapeHtml(pathSemanticsCaption)} · ${isFa ? 'قیمت مبنا:' : 'Anchor:'} ${PriceFormatter.formatPrice(fc.anchorClose, decimals)}
           </div>
         </div>
         <span style="font-size:11px;color:var(--text-muted);" class="ltr-num">
@@ -1502,12 +1776,15 @@ export function renderModelsPanel(fc, decimals, isFa) {
         )
         .join('');
 
+      const gov = resolveModelGovernance(p.id, p);
+      const isExp = Boolean(p.experimentalOnly || gov.experimentalOnly);
       return `
         <div class="ci-fc-card ${p.enabled ? '' : 'is-disabled'}">
           <div class="row-between" style="margin-bottom:6px;gap:8px;">
-            <div>
+            <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
               <strong style="font-size:13px;">${escapeHtml(p.name)}</strong>
               <span class="ci-fc-family-tag ltr-num">${escapeHtml(p.family)}</span>
+              <span class="ci-fc-gov-badge ${isExp ? 'is-experimental' : ''}">${escapeHtml(isExp ? (isFa ? 'پژوهشی / تقریبی' : 'Research-only / Experimental') : (isFa ? gov.roleLabelFa : gov.roleLabelEn))}</span>
             </div>
             <label class="ci-fc-toggle ltr-num">
               <input type="checkbox" data-action="toggle-forecast-model" data-model-id="${escapeHtml(p.id)}" ${p.enabled ? 'checked' : ''} />
@@ -1875,6 +2152,10 @@ export function renderBacktestPanel(fc, decimals, isFa) {
           <td class="ltr-num">${isOk ? `${Number(m.directionalAccuracyPct ?? 0).toFixed(1)}%` : '—'}</td>
           <td class="ltr-num">${isOk ? `${Number(m.coverage80Pct ?? 0).toFixed(1)}%` : '—'}</td>
           <td class="ltr-num">${isOk && m.wis != null ? Number(m.wis).toFixed(4) : '—'}</td>
+          <td class="ltr-num">${isOk && m.pathQualityScore != null ? `${Number(m.pathQualityScore).toFixed(1)}/100` : '—'}</td>
+          <td class="ltr-num">${isOk && m.turningPointAgreementPct != null ? `${Number(m.turningPointAgreementPct).toFixed(1)}%` : '—'}</td>
+          <td class="ltr-num">${isOk && m.segmentDirectionSimilarityPct != null ? `${Number(m.segmentDirectionSimilarityPct).toFixed(1)}%` : '—'}</td>
+          <td class="ltr-num">${isOk && m.pullbackDepthErrorAtr != null ? `${Number(m.pullbackDepthErrorAtr).toFixed(2)}×` : '—'}</td>
           <td class="ltr-num">${isOk && m.dmPValue != null ? Number(m.dmPValue).toFixed(4) : '—'}</td>
           <td class="ltr-num">${isOk && m.bootPValue != null ? Number(m.bootPValue).toFixed(4) : '—'}</td>
         </tr>
@@ -1883,6 +2164,8 @@ export function renderBacktestPanel(fc, decimals, isFa) {
     .join('');
 
   const pv = wf.pathEventStats;
+  const pqs = wf.pathQualitySummary;
+  const mctx = fc.marketContext;
   const stab = fc.stability;
   const sensGrid = fc.eventDictionary?.sensitivityGrid || [];
   const sensRows = sensGrid
@@ -1926,6 +2209,84 @@ export function renderBacktestPanel(fc, decimals, isFa) {
     </div>
 
     ${
+      pqs
+        ? `
+      <div class="ci-fc-card" style="margin-bottom:12px;" data-testid="fc-path-quality-7d-card">
+        <strong style="font-size:13px;display:block;margin-bottom:8px;">${isFa ? 'کیفیت مسیر ۷بعدی و رفتار بازار (Path Quality & Behavior — §5.2)' : '7-Dimensional Path Quality & Market Behavior Summary (§5.2)'}</strong>
+        <div class="ci-fc-ladder-grid ltr-num">
+          <div class="ci-fc-mini-stat"><span>Path Quality vs Naive</span><strong>${Number(pqs.pathQualityScore ?? 0).toFixed(1)} / ${Number(pqs.naivePathQualityScore ?? 0).toFixed(1)}</strong></div>
+          <div class="ci-fc-mini-stat"><span>Turning Agreement</span><strong>${Number(pqs.turningPointAgreementPct ?? 0).toFixed(1)}% (±${Number(pqs.turningTimingErrorBars ?? 0).toFixed(1)}b)</strong></div>
+          <div class="ci-fc-mini-stat"><span>Wave Segment Sim</span><strong>${Number(pqs.segmentDirectionSimilarityPct ?? 0).toFixed(1)}%</strong></div>
+          <div class="ci-fc-mini-stat"><span>Pullback Depth Err</span><strong>${Number(pqs.pullbackDepthErrorAtr ?? 0).toFixed(2)}× ATR</strong></div>
+          <div class="ci-fc-mini-stat"><span>Pullback Duration Err</span><strong>${Number(pqs.pullbackDurationErrorBars ?? 0).toFixed(1)} bars</strong></div>
+          <div class="ci-fc-mini-stat"><span>Amplitude / Behavior</span><strong>${Number(pqs.amplitudeRatio ?? 1).toFixed(2)}× · ${Number(pqs.behaviorMatchRatePct ?? 0).toFixed(0)}%</strong></div>
+          <div class="ci-fc-mini-stat"><span>Event FP / Missed</span><strong>${Number((pqs.falsePositiveEventRate ?? 0) * 100).toFixed(1)}% / ${Number((pqs.missedEventRate ?? 0) * 100).toFixed(1)}%</strong></div>
+        </div>
+      </div>
+    `
+        : ''
+    }
+
+    ${
+      Array.isArray(wf.regimeBreakdown) && wf.regimeBreakdown.length > 0
+        ? `
+      <div class="ci-fc-card" style="margin-bottom:12px;" data-testid="fc-regime-holdout-card">
+        <div class="row-between" style="flex-wrap:wrap;gap:8px;margin-bottom:8px;">
+          <strong style="font-size:13px;">${isFa ? 'تفکیک عملکرد بر اساس رژیم بازار و Holdout دست‌نخورده (Regime Breakdown & Final Holdout — §5.3)' : 'OOS Regime Breakdown, Worst Subgroup & Untouched Final Holdout (§5.3)'}</strong>
+          ${
+            wf.worstRegimeSubgroup
+              ? `<span class="ci-fc-family-tag ltr-num" style="color:var(--gold);">Worst Subgroup: ${escapeHtml(wf.worstRegimeSubgroup.regime)} (PathQ ${Number(wf.worstRegimeSubgroup.pathQualityScore ?? 0).toFixed(1)}, rMAE ${Number(wf.worstRegimeSubgroup.rMae ?? 1).toFixed(3)})</span>`
+              : ''
+          }
+        </div>
+        <div class="ci-fc-ladder-grid ltr-num">
+          ${wf.regimeBreakdown
+            .map(
+              (rb) => `
+            <div class="ci-fc-mini-stat">
+              <span>${escapeHtml(rb.regime)} (n=${rb.windowCount})</span>
+              <strong>PathQ ${Number(rb.pathQualityScore ?? 0).toFixed(1)} · rMAE ${Number(rb.rMae ?? 1).toFixed(3)}</strong>
+              <span style="font-size:10px;color:var(--text-muted);">Cov80: ${Number(rb.coverage80Pct ?? 0).toFixed(1)}% · Turn: ${Number(rb.turningPointAgreementPct ?? 0).toFixed(1)}%</span>
+            </div>
+          `
+            )
+            .join('')}
+          ${
+            wf.finalHoldoutSummary
+              ? `
+            <div class="ci-fc-mini-stat" style="border-color:rgba(56,189,248,0.45);">
+              <span>Final Holdout (n=${wf.finalHoldoutSummary.windowCount})</span>
+              <strong>PathQ ${Number(wf.finalHoldoutSummary.pathQualityScore ?? 0).toFixed(1)} · rMAE ${Number(wf.finalHoldoutSummary.rMae ?? 1).toFixed(3)}</strong>
+              <span style="font-size:10px;color:var(--text-muted);">Cov80: ${Number(wf.finalHoldoutSummary.coverage80Pct ?? 0).toFixed(1)}% · WIS: ${Number(wf.finalHoldoutSummary.wis ?? 0).toFixed(4)}</span>
+            </div>
+          `
+              : ''
+          }
+        </div>
+      </div>
+    `
+        : ''
+    }
+
+    ${
+      mctx
+        ? `
+      <div class="ci-fc-card" style="margin-bottom:12px;" data-testid="fc-market-context-card">
+        <strong style="font-size:13px;display:block;margin-bottom:8px;">${isFa ? 'مشاهدات علّی ساختار بازار و رژیم (Causal Market Context — §4)' : 'Causal Market Context & Structure Engine (§4)'}</strong>
+        <div class="ci-fc-ladder-grid ltr-num">
+          <div class="ci-fc-mini-stat"><span>Regime / Volatility</span><strong>${escapeHtml(mctx.regime?.state || 'UNKNOWN')} (${escapeHtml(mctx.regime?.volatilityState || 'NORMAL')})</strong></div>
+          <div class="ci-fc-mini-stat"><span>Confirmed Swings</span><strong>${(mctx.swings || []).length}</strong></div>
+          <div class="ci-fc-mini-stat"><span>BOS / CHoCH Events</span><strong>${(mctx.structureEvents || []).length}</strong></div>
+          <div class="ci-fc-mini-stat"><span>Causal S/R Zones</span><strong>${(mctx.srZones || []).length}</strong></div>
+          <div class="ci-fc-mini-stat"><span>EQH/EQL & FVG</span><strong>${(mctx.liquidity?.equalLevels || []).length} / ${(mctx.liquidity?.fvgs || []).length}</strong></div>
+          <div class="ci-fc-mini-stat"><span>Volume Profile</span><strong>${escapeHtml(mctx.liquidity?.volumeProfile?.status || 'UNAVAILABLE')}</strong></div>
+        </div>
+      </div>
+    `
+        : ''
+    }
+
+    ${
       pv
         ? `
       <div class="ci-fc-card" style="margin-bottom:12px;">
@@ -1964,6 +2325,10 @@ export function renderBacktestPanel(fc, decimals, isFa) {
                 <th>Dir Acc</th>
                 <th>80% Cov</th>
                 <th>WIS (5Q)</th>
+                <th>Path Q</th>
+                <th>Turn %</th>
+                <th>Wave Sim</th>
+                <th>PB Err</th>
                 <th>HLN-DM p</th>
                 <th>Boot p</th>
               </tr>
@@ -2198,6 +2563,8 @@ export function renderLedgerPanel(decimals, isFa) {
                       <span>Dir Acc: <strong>${sc.directionAccuracyPct != null ? sc.directionAccuracyPct + '%' : '—'}</strong></span>
                       <span>Band Hit: <strong>${sc.meanHitRatePct != null ? sc.meanHitRatePct + '%' : '—'}</strong></span>
                       <span>Contain: <strong>${sc.containmentRatePct != null ? sc.containmentRatePct + '%' : '—'}</strong></span>
+                      <span>Path Q: <strong>${sc.meanPathQualityScore != null ? sc.meanPathQualityScore + '/100' : '—'}</strong></span>
+                      <span>Turn/Wave: <strong>${sc.meanTurningAgreementPct != null ? sc.meanTurningAgreementPct + '%' : '—'} / ${sc.meanSegmentSimilarityPct != null ? sc.meanSegmentSimilarityPct + '%' : '—'}</strong></span>
                       <span>Err ATR: <strong>${sc.meanVolAdjErrorAtr != null ? sc.meanVolAdjErrorAtr + '×' : '—'}</strong></span>
                       <span>vs Naive: <strong>${sc.baselineBeatRatePct != null ? sc.baselineBeatRatePct + '%' : '—'}</strong></span>
                       <span>Best: <strong>${escapeHtml(sc.bestContext)}</strong></span>
@@ -2321,7 +2688,7 @@ export function renderLedgerPanel(decimals, isFa) {
           }
 
           return `
-            <tr style="${item.isDuplicate ? 'opacity:0.72;' : ''}">
+            <tr data-action="view-ledger-entry-on-chart" data-hash="${escapeHtml(e.forecastHash)}" style="cursor:pointer;${item.isDuplicate ? 'opacity:0.72;' : ''}" title="${isFa ? 'کلیک برای نمایش این پیش‌بینی و کندل‌های واقعی روی چارت' : 'Click to view this forecast and realized candles on the chart'}">
               <td class="ltr-num"><input type="checkbox" data-action="toggle-ledger-overlay-entry" data-hash="${escapeHtml(e.forecastHash)}" ${overlayChecked ? 'checked' : ''} aria-label="Select forecast #${e.seq} for comparison" /></td>
               <td class="ltr-num ci-fc-wrap-cell">
                 <div style="display:flex;align-items:center;gap:5px;flex-wrap:wrap;">
@@ -2353,7 +2720,12 @@ export function renderLedgerPanel(decimals, isFa) {
                 <div style="font-size:10px;color:var(--text-muted);">${obsClose != null ? escapeHtml(evaluatedShort) : ''}</div>
               </td>
               <td class="ltr-num ci-fc-wrap-cell">${candleHitHtml}</td>
-              <td class="ltr-num"><span class="ci-fc-status-badge ${statusBadgeClass}" title="${escapeHtml(statusDetailTitle)}">${escapeHtml(statusBadgeText)}</span></td>
+              <td class="ltr-num">
+                <div style="display:flex;flex-direction:column;align-items:flex-start;gap:4px;">
+                  <span class="ci-fc-status-badge ${statusBadgeClass}" title="${escapeHtml(statusDetailTitle)}">${escapeHtml(statusBadgeText)}</span>
+                  <button type="button" class="chip" style="font-size:10px;padding:1px 6px;min-height:19px;" data-action="view-ledger-entry-on-chart" data-hash="${escapeHtml(e.forecastHash)}" title="${isFa ? 'پرش به چارت در زمان این پیش‌بینی' : 'Jump to chart at this forecast timestamp'}">${isFa ? 'نمایش روی چارت' : 'View on Chart'}</button>
+                </div>
+              </td>
             </tr>
           `;
         })
@@ -2473,6 +2845,11 @@ export function renderLedgerPanel(decimals, isFa) {
                 }
                 return isFa ? 'در انتظار' : 'Pending';
               })}
+              ${makeRow(isFa ? 'امتیاز کیفیت مسیر (۷بعدی)' : '7D Path Quality Score', (it) =>
+                it.evalDetails && it.evalDetails.pathQualityScore != null
+                  ? `<strong>${it.evalDetails.pathQualityScore}/100</strong> (${isFa ? 'چرخش' : 'Turn'} ${it.evalDetails.turningPointAgreementPct ?? 100}%)`
+                  : (isFa ? 'در انتظار' : 'Pending')
+              )}
               ${makeRow(isFa ? 'امتیاز کل (از ۱۰۰)' : 'Overall Score (0–100)', (it) =>
                 it.evalDetails
                   ? `<strong>${it.evalDetails.overallScore}/100</strong>`
@@ -2529,7 +2906,7 @@ export function renderLedgerPanel(decimals, isFa) {
       : entriesReversed
           .map(
             (e) => `
-          <tr>
+          <tr data-action="view-ledger-entry-on-chart" data-hash="${escapeHtml(e.forecastHash)}" style="cursor:pointer;" title="${isFa ? 'کلیک برای نمایش روی چارت' : 'Click to view on chart'}">
             <td class="ltr-num">#${e.seq}</td>
             <td class="ltr-num"><strong>${escapeHtml(e.symbolCode)}</strong> · ${escapeHtml(e.timeframe)} (+${e.horizonBars})${e.modelId ? ` <span class="ci-fc-family-tag">${escapeHtml(e.modelId)}</span>` : ''}</td>
             <td class="ltr-num">${escapeHtml(e.forecastStatus)}</td>
@@ -2576,20 +2953,34 @@ export function renderLedgerPanel(decimals, isFa) {
     ? `مقایسه مدل‌های انتخاب‌شده${compareBtnCount >= 2 ? ` (${compareBtnCount})` : ''}`
     : `Compare Selected Models${compareBtnCount >= 2 ? ` (${compareBtnCount})` : ''}`;
 
+  const storageStatus = defaultForecastLedger.getStorageStatus?.() || { ok: true, localOnly: true, maxEntries: 120 };
+  const syncedEntriesCount = rawEntries.filter((e) => Boolean(e.syncedToCloud)).length;
+  const isCloudSyncing = Boolean(state.isForecastLedgerSyncing);
+  const lastCloudSyncIso = state.lastForecastLedgerSyncedAt || '';
+  const cloudSyncBadgeHtml = isCloudSyncing
+    ? `<span class="ci-fc-status-badge ci-fc-badge-provisional" data-testid="fc-ledger-cloud-badge">${isFa ? 'در حال همگام‌سازی ابری…' : 'Syncing Cloud…'}</span>`
+    : syncedEntriesCount > 0 || lastCloudSyncIso
+      ? `<span class="ci-fc-status-badge ci-fc-badge-valid" data-testid="fc-ledger-cloud-badge" title="${escapeHtml(lastCloudSyncIso)}">✓ ${isFa ? `همگام ابری (${syncedEntriesCount}/${rawEntries.length})` : `Cloud Synced (${syncedEntriesCount}/${rawEntries.length})`}</span>`
+      : `<span class="ci-fc-status-badge ci-fc-badge-provisional" data-testid="fc-ledger-cloud-badge">${isFa ? 'محلی + آماده همگام‌سازی ابری' : 'Local + Cloud Sync Ready'}</span>`;
+
   return `
     <div class="ci-fc-card" style="margin-bottom:12px;">
       <div class="row-between" style="flex-wrap:wrap;gap:8px;">
         <div>
-          <strong style="font-size:13.5px;">${isFa ? 'سوابق پیش‌بینی‌ها و مقایسه نتایج' : 'Forecast History & Model Comparison'}</strong>
+          <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;">
+            <strong style="font-size:13.5px;">${isFa ? 'سوابق پیش‌بینی‌ها و مقایسه نتایج' : 'Forecast History & Model Comparison'}</strong>
+            ${cloudSyncBadgeHtml}
+          </div>
           <div style="font-size:11.5px;color:var(--text-muted);margin-top:2px;" class="ltr-num">
-            ${isFa ? `ثبت‌شده: ${uniqueEntriesCount} | در انتظار: ${pendingTotal} | ارزیابی‌شده: ${maturedTotal}` : `Saved: ${uniqueEntriesCount} · Pending: ${pendingTotal} · Matured: ${maturedTotal}`}
+            ${isFa ? `ثبت‌شده: ${uniqueEntriesCount} | در انتظار: ${pendingTotal} | ارزیابی‌شده: ${maturedTotal} · ذخیره محلی مرورگر + همگام‌سازی ابری (سقف ${storageStatus.maxEntries} رکورد)` : `Saved: ${uniqueEntriesCount} · Pending: ${pendingTotal} · Matured: ${maturedTotal} · Local Browser Ledger + Cloud Sync (Cap ${storageStatus.maxEntries})`}
+            ${!storageStatus.ok ? ` · <span style="color:var(--bear);font-weight:700;">${escapeHtml(storageStatus.error || 'STORAGE_WARNING')}</span>` : ''}
           </div>
         </div>
         <div style="display:flex;gap:8px;flex-wrap:wrap;">
           <button type="button" class="btn btn-sm btn-primary" data-action="record-selected-forecast-models">${isFa ? 'ثبت گروهی مدل‌های انتخاب‌شده' : 'Record Selected Models'}</button>
           <button type="button" class="btn btn-sm ${compareBtnCount >= 2 ? 'btn-primary' : ''}" data-action="compare-selected-ledger-entries">${compareBtnLabel}</button>
           <button type="button" class="btn btn-sm" data-action="evaluate-forecast-outcomes">${isFa ? 'بررسی سررسیدها' : 'Evaluate Matured'}</button>
-          <button type="button" class="btn btn-sm" data-action="refresh-forecast-ledger">${isFa ? 'به‌روزرسانی' : 'Refresh'}</button>
+          <button type="button" class="btn btn-sm" data-action="refresh-forecast-ledger" ${isCloudSyncing ? 'disabled' : ''}>${isFa ? 'همگام‌سازی ابری' : 'Cloud Sync'}</button>
         </div>
       </div>
     </div>

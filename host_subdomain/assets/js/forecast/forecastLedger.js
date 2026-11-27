@@ -10,6 +10,7 @@ import {
 } from './forecastContract.js?v=1.47.41';
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
 import { safeLocalStorageSet } from '../core/store.js?v=1.47.41';
+import { evaluatePathQualityVector, MARKET_CONTEXT_ENGINE_VERSION } from './marketContextEngine.js?v=1.47.41';
 
 const LEDGER_STORAGE_KEY = 'ci_forecast_ledger_v1';
 const LIFECYCLE_STORAGE_KEY = 'ci_forecast_lifecycle_v1';
@@ -47,6 +48,17 @@ export class ForecastLedger {
     this.lifecycleKey = lifecycleKey === `${LEDGER_STORAGE_KEY}_lifecycle` ? LIFECYCLE_STORAGE_KEY : lifecycleKey;
     this.entriesAnchorKey = `${this.storageKey}_anchor`;
     this.lifecycleAnchorKey = `${this.lifecycleKey}_anchor`;
+    this.lastStorageStatus = { ok: true, prunedCount: 0, maxEntries: MAX_LOCAL_LEDGER_ENTRIES, error: null };
+  }
+
+  getStorageStatus() {
+    const entries = this.loadEntries();
+    return {
+      ...this.lastStorageStatus,
+      storedEntriesCount: entries.length,
+      maxEntries: MAX_LOCAL_LEDGER_ENTRIES,
+      localOnly: true,
+    };
   }
 
   _hasStorage() {
@@ -96,14 +108,25 @@ export class ForecastLedger {
   }
 
   saveEntries(entries) {
-    if (!this._hasStorage()) return;
+    if (!this._hasStorage()) {
+      this.lastStorageStatus = { ok: false, prunedCount: 0, maxEntries: MAX_LOCAL_LEDGER_ENTRIES, error: 'LOCAL_STORAGE_UNAVAILABLE' };
+      return false;
+    }
+    const prunedCount = Math.max(0, entries.length - MAX_LOCAL_LEDGER_ENTRIES);
     const trimmed = entries.slice(-MAX_LOCAL_LEDGER_ENTRIES);
     if (entries.length > MAX_LOCAL_LEDGER_ENTRIES && trimmed.length > 0) {
       this._saveAnchorPrevHash(this.entriesAnchorKey, trimmed[0].seq, trimmed[0].prevForecastHash);
     } else if (trimmed.length === 0 || Number(trimmed[0].seq || 1) === 1) {
       this._saveAnchorPrevHash(this.entriesAnchorKey, 1, null);
     }
-    safeLocalStorageSet(this.storageKey, JSON.stringify(trimmed));
+    const ok = safeLocalStorageSet(this.storageKey, JSON.stringify(trimmed));
+    this.lastStorageStatus = {
+      ok: ok !== false,
+      prunedCount,
+      maxEntries: MAX_LOCAL_LEDGER_ENTRIES,
+      error: ok === false ? 'LOCAL_STORAGE_QUOTA_OR_WRITE_ERROR' : null,
+    };
+    return ok !== false;
   }
 
   loadLifecycleEvents() {
@@ -438,6 +461,22 @@ export class ForecastLedger {
       keyZones,
       noEdgeGateState,
       oodStatus: forecastResult.uncertainty?.oodStatus || 'IN_DISTRIBUTION',
+      marketContextVersion: forecastResult.marketContext?.schemaVersion || MARKET_CONTEXT_ENGINE_VERSION,
+      decisionReasonCode: forecastResult.decisionSummary?.reasonCode || null,
+      pathSemantics: forecastResult.decisionSummary?.pathSemantics || null,
+      pathEvents: Array.isArray(forecastResult.pathEvents)
+        ? forecastResult.pathEvents.slice(0, 8).map((ev) => ({
+            eventId: ev.eventId,
+            type: ev.type,
+            sourceType: ev.sourceType,
+            direction: ev.direction,
+            stepStart: ev.stepStart,
+            stepEnd: ev.stepEnd,
+            priceLevel: ev.priceLevel,
+            invalidationLevel: ev.invalidationLevel,
+          }))
+        : [],
+      behaviorScenarios: forecastResult.behaviorScenarios || null,
       scenarios: (forecastResult.scenarios || []).map((s) => ({
         id: s.id,
         label: s.label,
@@ -824,11 +863,30 @@ export class ForecastLedger {
           : -100;
     const beatsBaseline = terminalAbsError <= naiveTerminalError;
 
-    // 5. Overall Score (0..100)
-    const dirPts = directionHit ? 25 : 0;
-    const hitPts = Math.min(30, (hitRatePct / 100) * 30);
-    const containPts = terminalInsideBand ? 20 : 0;
+    // 5. 7-Dimensional Path Quality Vector (Master Plan §5.2)
+    const synthTrajPoints = [];
+    for (let i = 0; i < slice.length; i++) {
+      const frac = (i + 1) / Math.max(1, step);
+      const pt = hasStepPoints ? entry.stepPoints[i] : null;
+      synthTrajPoints.push({
+        q10: pt && Number.isFinite(Number(pt.q10)) ? Number(pt.q10) : anchorClose + (stepQ10 - anchorClose) * frac,
+        q50: pt && Number.isFinite(Number(pt.q50)) ? Number(pt.q50) : anchorClose + (stepQ50 - anchorClose) * frac,
+        q90: pt && Number.isFinite(Number(pt.q90)) ? Number(pt.q90) : anchorClose + (stepQ90 - anchorClose) * frac,
+      });
+    }
+    const pathQuality = evaluatePathQualityVector({
+      anchorClose,
+      trajPoints: synthTrajPoints,
+      actualCandles: slice,
+      atrAtAnchor: atrUnit,
+    });
+
+    // 6. Overall Score (0..100)
+    const dirPts = directionHit ? 20 : 0;
+    const hitPts = Math.min(25, (hitRatePct / 100) * 25);
+    const containPts = terminalInsideBand ? 15 : 0;
     const volErrPts = Math.max(0, 15 * (1 - Math.min(1, volAdjustedMaeAtr / 2.2)));
+    const pqPts = pathQuality ? (pathQuality.pathQualityScore / 100) * 15 : 8;
     const srPts =
       srSummaryStatus === 'BOUNCE_HELD'
         ? 10
@@ -837,7 +895,7 @@ export class ForecastLedger {
           : srSummaryStatus === 'UNTESTED' || srSummaryStatus === 'NO_ZONES'
             ? 5
             : 2;
-    const overallScore = Math.max(0, Math.min(100, Math.round(dirPts + hitPts + containPts + volErrPts + srPts)));
+    const overallScore = Math.max(0, Math.min(100, Math.round(dirPts + hitPts + containPts + volErrPts + pqPts + srPts)));
 
     return {
       step,
@@ -869,6 +927,13 @@ export class ForecastLedger {
       earlyInvalidationDirection,
       srSummaryStatus,
       zoneEvaluations,
+      pathQuality,
+      pathQualityScore: pathQuality ? pathQuality.pathQualityScore : overallScore,
+      turningPointAgreementPct: pathQuality ? pathQuality.turningPointAgreementPct : null,
+      segmentDirectionSimilarityPct: pathQuality ? pathQuality.segmentDirectionSimilarityPct : null,
+      pullbackDepthErrorAtr: pathQuality ? pathQuality.pullbackDepthErrorAtr : null,
+      pullbackDurationErrorBars: pathQuality ? pathQuality.pullbackDurationErrorBars : null,
+      amplitudeRatio: pathQuality ? pathQuality.amplitudeRatio : null,
       overallScore,
       marketConditionTag: entry.marketConditionTag || 'RANGING_NO_EDGE',
     };
@@ -1033,6 +1098,9 @@ export class ForecastLedger {
           containmentRatePct: null,
           meanVolAdjErrorAtr: null,
           baselineBeatRatePct: null,
+          meanPathQualityScore: null,
+          meanTurningAgreementPct: null,
+          meanSegmentSimilarityPct: null,
           bestContext: '—',
         });
         continue;
@@ -1045,6 +1113,10 @@ export class ForecastLedger {
       let volErrSum = 0;
       let volErrCount = 0;
       let baselineBeats = 0;
+      let pqScoreSum = 0;
+      let pqCount = 0;
+      let turnAgreeSum = 0;
+      let segSimSum = 0;
       const contextScores = new Map();
 
       for (const item of recent) {
@@ -1073,6 +1145,12 @@ export class ForecastLedger {
         if (Number.isFinite(Number(d?.volAdjustedMaeAtr))) {
           volErrSum += Number(d.volAdjustedMaeAtr);
           volErrCount += 1;
+        }
+        if (Number.isFinite(Number(d?.pathQualityScore))) {
+          pqScoreSum += Number(d.pathQualityScore);
+          turnAgreeSum += Number(d.turningPointAgreementPct ?? 100);
+          segSimSum += Number(d.segmentDirectionSimilarityPct ?? 100);
+          pqCount += 1;
         }
         if (d?.beatsBaseline ?? isContained) baselineBeats += 1;
 
@@ -1106,6 +1184,9 @@ export class ForecastLedger {
         containmentRatePct: Number(((containHits / recent.length) * 100).toFixed(1)),
         meanVolAdjErrorAtr: volErrCount > 0 ? Number((volErrSum / volErrCount).toFixed(2)) : null,
         baselineBeatRatePct: Number(((baselineBeats / recent.length) * 100).toFixed(1)),
+        meanPathQualityScore: pqCount > 0 ? Number((pqScoreSum / pqCount).toFixed(1)) : Number((scoreSum / recent.length).toFixed(1)),
+        meanTurningAgreementPct: pqCount > 0 ? Number((turnAgreeSum / pqCount).toFixed(1)) : null,
+        meanSegmentSimilarityPct: pqCount > 0 ? Number((segSimSum / pqCount).toFixed(1)) : null,
         bestContext,
       });
     }
@@ -1119,6 +1200,7 @@ export class ForecastLedger {
       return { valid: true, totalEvents: 0, brokenIndex: -1, error: null, reason: 'Empty lifecycle log' };
     }
     const storedAnchor = !Array.isArray(customEvents) ? this._loadAnchorPrevHash(this.lifecycleAnchorKey) : null;
+    const knownEventHashes = new Set(events.map((x) => x && x.eventHash).filter(Boolean));
     for (let i = 0; i < events.length; i++) {
       const ev = events[i];
       const expectedPrev =
@@ -1127,7 +1209,11 @@ export class ForecastLedger {
             ? storedAnchor.prevHash
             : GENESIS_HASH
           : events[i - 1].eventHash;
-      if (ev.prevEventHash !== expectedPrev) {
+      const isMultiDeviceChainLink =
+        ev.prevEventHash === GENESIS_HASH ||
+        knownEventHashes.has(ev.prevEventHash) ||
+        (storedAnchor && ev.prevEventHash === storedAnchor.prevHash);
+      if (ev.prevEventHash !== expectedPrev && !isMultiDeviceChainLink) {
         const msg = `SHA-256 Hash Chain Integrity Mismatch: lifecycle break at index ${i}`;
         return { valid: false, totalEvents: events.length, brokenIndex: i, error: msg, reason: msg };
       }
@@ -1155,13 +1241,123 @@ export class ForecastLedger {
     const entries = this.loadEntries();
     let updated = false;
     for (const item of entries) {
-      if (item.forecastHash === forecastHash) {
-        item.syncedToCloud = true;
-        updated = true;
+      if (!forecastHash || item.forecastHash === forecastHash) {
+        if (!item.syncedToCloud) {
+          item.syncedToCloud = true;
+          updated = true;
+        }
       }
     }
     if (updated) this.saveEntries(entries);
     return updated;
+  }
+
+  /**
+   * Bidirectional lossless merge of cloud entries and lifecycle events into local storage.
+   * Deduplicates entries by forecastHash and lifecycle events by eventHash while preserving
+   * multi-model batchId, evaluationDetails, and original cryptographic hash links.
+   */
+  mergeCloudSnapshot(remoteEntries = [], remoteEvents = []) {
+    const localEntries = this.loadEntries();
+    const localEvents = this.loadLifecycleEvents();
+
+    const entriesByHash = new Map();
+    for (const item of localEntries) {
+      if (item && item.forecastHash) {
+        entriesByHash.set(String(item.forecastHash), { ...item });
+      }
+    }
+
+    let addedEntries = 0;
+    for (const remote of Array.isArray(remoteEntries) ? remoteEntries : []) {
+      if (!remote || !remote.forecastHash) continue;
+      const hash = String(remote.forecastHash);
+      const isLegacy = remote.contractVersion === LEGACY_CONTRACT_VERSION;
+      const expectedHash = this.computeEntryHash(
+        remote.prevForecastHash || GENESIS_HASH,
+        this._buildHashableBody(remote),
+        isLegacy
+      );
+      if (expectedHash !== hash) continue;
+
+      const existing = entriesByHash.get(hash);
+      if (existing) {
+        entriesByHash.set(hash, {
+          ...remote,
+          ...existing,
+          syncedToCloud: true,
+        });
+      } else {
+        entriesByHash.set(hash, {
+          ...remote,
+          syncedToCloud: true,
+        });
+        addedEntries += 1;
+      }
+    }
+
+    const mergedEntries = Array.from(entriesByHash.values()).sort((a, b) => {
+      const tA = Number(a.recordedAtUtcMs || a.generatedAtUtcMs || 0);
+      const tB = Number(b.recordedAtUtcMs || b.generatedAtUtcMs || 0);
+      if (tA !== tB) return tA - tB;
+      return Number(a.seq || 0) - Number(b.seq || 0);
+    });
+    this.saveEntries(mergedEntries);
+
+    const eventsByHash = new Map();
+    for (const ev of localEvents) {
+      if (ev && ev.eventHash) {
+        eventsByHash.set(String(ev.eventHash), { ...ev });
+      }
+    }
+
+    let addedEvents = 0;
+    for (const remoteEv of Array.isArray(remoteEvents) ? remoteEvents : []) {
+      if (!remoteEv || !remoteEv.eventHash) continue;
+      const eHash = String(remoteEv.eventHash);
+      const body = {
+        seq: remoteEv.seq,
+        forecastHash: remoteEv.forecastHash,
+        symbolCode: remoteEv.symbolCode,
+        timeframe: remoteEv.timeframe,
+        horizonStep: remoteEv.horizonStep,
+        lifecycleStatus: remoteEv.lifecycleStatus,
+        evaluationOutcome: remoteEv.evaluationOutcome,
+        recordedAtUtcMs: remoteEv.recordedAtUtcMs,
+      };
+      const expectedV2 = this.computeEntryHash(remoteEv.prevEventHash || GENESIS_HASH, body, false);
+      const expectedV1 = this.computeEntryHash(remoteEv.prevEventHash || GENESIS_HASH, body, true);
+      if (eHash !== expectedV2 && eHash !== expectedV1) continue;
+
+      const existingEv = eventsByHash.get(eHash);
+      if (existingEv) {
+        eventsByHash.set(eHash, {
+          ...remoteEv,
+          ...existingEv,
+          evaluationDetails: existingEv.evaluationDetails || remoteEv.evaluationDetails || null,
+        });
+      } else {
+        eventsByHash.set(eHash, { ...remoteEv });
+        addedEvents += 1;
+      }
+    }
+
+    const mergedEvents = Array.from(eventsByHash.values()).sort((a, b) => {
+      const tA = Number(a.recordedAtUtcMs || 0);
+      const tB = Number(b.recordedAtUtcMs || 0);
+      if (tA !== tB) return tA - tB;
+      return Number(a.seq || 0) - Number(b.seq || 0);
+    });
+    this.saveLifecycleEvents(mergedEvents);
+
+    return {
+      entries: this.loadEntries(),
+      lifecycleEvents: this.loadLifecycleEvents(),
+      addedEntries,
+      addedEvents,
+      totalEntries: mergedEntries.length,
+      totalEvents: mergedEvents.length,
+    };
   }
 
   verifyChain(customEntries = null) {
@@ -1171,6 +1367,7 @@ export class ForecastLedger {
     }
 
     const storedAnchor = !Array.isArray(customEntries) ? this._loadAnchorPrevHash(this.entriesAnchorKey) : null;
+    const knownEntryHashes = new Set(entries.map((x) => x && x.forecastHash).filter(Boolean));
     for (let i = 0; i < entries.length; i++) {
       const e = entries[i];
       const expectedPrev =
@@ -1179,7 +1376,11 @@ export class ForecastLedger {
             ? storedAnchor.prevHash
             : GENESIS_HASH
           : entries[i - 1].forecastHash;
-      if (e.prevForecastHash !== expectedPrev) {
+      const isMultiDeviceChainLink =
+        e.prevForecastHash === GENESIS_HASH ||
+        knownEntryHashes.has(e.prevForecastHash) ||
+        (storedAnchor && e.prevForecastHash === storedAnchor.prevHash);
+      if (e.prevForecastHash !== expectedPrev && !isMultiDeviceChainLink) {
         const msg = `SHA-256 Hash Chain Integrity Mismatch: chain link mismatch at index ${i}`;
         return {
           valid: false,
@@ -1215,3 +1416,4 @@ export class ForecastLedger {
 }
 
 export const defaultForecastLedger = new ForecastLedger();
+

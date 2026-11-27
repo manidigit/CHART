@@ -11,6 +11,7 @@ import {
   MINIMUM_REQUIRED_RR,
   enforceMinimumRequiredRR,
   SignalBacktester,
+  evaluateForecastStrategyBridge,
 } from '../algorithms/strategySimulator.js?v=1.47.41';
 
 // Lightweight runtime lookup for one-click "Show on Chart" without serializing large objects into HTML attributes
@@ -541,6 +542,22 @@ export function renderStrategyLabModal(activeTab, i18n) {
     _latestRenderedSignalsById.set(sig.signal_id, sig);
   }
 
+  // Evaluate Controlled One-Way Forecast -> Strategy Bridge (Master Plan §10)
+  // Note: Classical strategies run 100% independently above; this bridge card reports whether the
+  // latest Forecast for this symbol/timeframe is allowed to emit a Forecast-Guided candidate.
+  const bridgeEval = evaluateForecastStrategyBridge(state._lastForecastResult || null, candles, {
+    symbolCode,
+    timeframe,
+    minRequiredRR: cfg.minRequiredRR,
+    spreadBps: cfg.spreadBps,
+    commissionBps: cfg.commissionBps,
+    slippageBps: cfg.slippageBps,
+    allowResearchPreview: state.forecastUxMode === 'research',
+  });
+  if (bridgeEval?.passed && bridgeEval.signal) {
+    _latestRenderedSignalsById.set(bridgeEval.signal.signal_id, bridgeEval.signal);
+  }
+
   const compareRes =
     activeLabTab === 'compare'
       ? SignalBacktester.compareAllStrategies(candles, {
@@ -625,6 +642,49 @@ export function renderStrategyLabModal(activeTab, i18n) {
     },
   ];
 
+  const activeOverlayId = activeTab?.showStrategySignal ? activeTab?.activeStrategySignal?.signal_id : null;
+  const bridgeSignal = bridgeEval?.signal || null;
+  const isBridgePlotted = Boolean(bridgeSignal && activeOverlayId === bridgeSignal.signal_id);
+  const bridgeHtml = `
+    <div class="card-subtle" style="margin-bottom:12px; border-left:3px solid ${bridgeEval.passed ? 'var(--bull)' : 'var(--border)'};">
+      <div class="row-between" style="margin-bottom:6px; gap:8px;">
+        <div style="display:flex; align-items:center; gap:6px; flex-wrap:wrap;">
+          <strong style="font-size:12px; color:var(--text-strong);">${isFa ? 'پل کنترل‌شده پیش‌بینی ← استراتژی (One-Way Forecast Bridge)' : 'Controlled Forecast → Strategy Bridge'}</strong>
+          <span class="ci-strat-badge ${bridgeEval.passed ? 'ci-strat-badge-valid' : 'ci-strat-badge-notrade'}">${bridgeEval.passed ? 'BRIDGE VALID' : 'NO TRADE'}</span>
+          ${bridgeEval.rejection_code ? `<span class="ltr-num" style="font-size:10.5px; color:var(--text-muted);">${escapeHtml(bridgeEval.rejection_code)}</span>` : ''}
+        </div>
+        ${
+          bridgeSignal
+            ? `<button type="button" class="btn btn-sm ${isBridgePlotted ? '' : 'btn-primary'}" data-action="${isBridgePlotted ? 'strategy-sim-clear-chart-signal' : 'strategy-sim-plot-signal'}" data-signal-id="${escapeHtml(bridgeSignal.signal_id)}">
+                ${isBridgePlotted ? (isFa ? '✕ حذف از چارت' : '✕ Hide from Chart') : (isFa ? 'نمایش روی چارت' : 'Show on Chart')}
+              </button>`
+            : ''
+        }
+      </div>
+      <div style="font-size:11.5px; color:var(--text);">${escapeHtml(isFa ? bridgeEval.reasonFa || bridgeEval.reason : bridgeEval.reason)}</div>
+      ${
+        bridgeSignal
+          ? `<div class="ltr-num" style="display:flex; gap:12px; flex-wrap:wrap; font-size:11px; margin-top:6px; color:var(--text-muted);">
+              <span><strong>Model:</strong> ${escapeHtml(bridgeEval.forecastProvenance?.modelId || '—')}</span>
+              <span><strong>Side:</strong> ${escapeHtml(bridgeSignal.side.toUpperCase())}</span>
+              <span><strong>Entry:</strong> ${bridgeSignal.entry_price_suggested}</span>
+              <span style="color:var(--bear);"><strong>SL:</strong> ${bridgeSignal.stop_loss_suggested}</span>
+              <span style="color:var(--bull);"><strong>TP1:</strong> ${bridgeSignal.take_profit_suggested?.[0] ?? '—'}</span>
+              <span><strong>Net R:R:</strong> 1:${formatNum(bridgeSignal.risk_reward?.net_rr)}</span>
+            </div>`
+          : ''
+      }
+      ${
+        !bridgeEval.passed && bridgeEval.researchPreview
+          ? `<div style="margin-top:6px; padding:6px 8px; border-radius:6px; background:rgba(245,158,11,0.08); border:1px dashed #f59e0b; font-size:10.5px; color:var(--text-muted);">
+              <strong style="color:#f59e0b;">${escapeHtml(isFa ? bridgeEval.researchPreview.warningFa : bridgeEval.researchPreview.warning)}</strong>
+              <span class="ltr-num" style="margin-inline-start:8px;">Ref ${escapeHtml(bridgeEval.researchPreview.side?.toUpperCase())} · Hypothetical Net R:R 1:${formatNum(bridgeEval.researchPreview.hypothetical_net_rr)}</span>
+            </div>`
+          : ''
+      }
+    </div>
+  `;
+
   const isOosHtml = result.inSampleOutOfSample
     ? `
       <div class="card-subtle" style="margin-bottom:12px;">
@@ -644,6 +704,48 @@ export function renderStrategyLabModal(activeTab, i18n) {
         </div>
       </div>`
     : '';
+
+  const pwf = result.purgedWalkForward;
+  const purgedWfHtml = pwf
+    ? `
+      <div class="card-subtle" style="margin-bottom:12px;">
+        <div class="row-between" style="margin-bottom:6px; flex-wrap:wrap; gap:6px;">
+          <strong style="font-size:12px; color:var(--text-strong);">${isFa ? 'اعتبارسنجی Purged Walk-Forward + Embargo و Holdout دست‌نخورده نهایی' : 'Purged Walk-Forward + Embargo & Final Untouched Holdout'}</strong>
+          <span class="ltr-num" style="font-size:10.5px; color:var(--text-muted);">Purge=${pwf.purgeBars}b · Embargo=${pwf.embargoBars}b · Positive Folds: ${pwf.positiveFoldsCount}/${pwf.foldsCount}</span>
+        </div>
+        <div style="display:grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap:8px; font-size:11.5px;" class="ltr-num">
+          <div style="padding:8px; border-radius:6px; background:var(--surface-elevated); border:1px solid var(--border);">
+            <div style="font-size:10.5px; color:var(--text-muted); margin-bottom:4px;">Aggregate Purged OOS (${pwf.foldsCount} Folds)</div>
+            <div>Net: <strong style="color:${pwf.aggregateOos.netProfitEur >= 0 ? 'var(--bull)' : 'var(--bear)'};">${pwf.aggregateOos.netProfitEur >= 0 ? '+' : ''}€${formatNum(pwf.aggregateOos.netProfitEur)}</strong> · Trades: ${pwf.aggregateOos.totalTrades} · PF: ${formatNum(pwf.aggregateOos.profitFactor)} · Exp: €${formatNum(pwf.aggregateOos.expectancyEur)}</div>
+          </div>
+          <div style="padding:8px; border-radius:6px; background:var(--surface-elevated); border:1px solid var(--border);">
+            <div style="font-size:10.5px; color:var(--text-muted); margin-bottom:4px;">Final Untouched Holdout (bars #${pwf.untouchedHoldout.startBarIndex}..${pwf.untouchedHoldout.endBarIndex})</div>
+            <div>Return: <strong style="color:${pwf.untouchedHoldout.metrics.netReturnPct >= 0 ? 'var(--bull)' : 'var(--bear)'};">${pwf.untouchedHoldout.metrics.netReturnPct >= 0 ? '+' : ''}${formatNum(pwf.untouchedHoldout.metrics.netReturnPct)}%</strong> · Trades: ${pwf.untouchedHoldout.metrics.totalTrades} · PF: ${formatNum(pwf.untouchedHoldout.metrics.profitFactor)} · DD: -${formatNum(pwf.untouchedHoldout.metrics.maxDrawdownPct)}%</div>
+          </div>
+        </div>
+      </div>`
+    : '';
+
+  const activeRegimes = (result.regimeBreakdown || []).filter((r) => r.tradesCount > 0);
+  const regimeBreakdownHtml =
+    activeRegimes.length > 0
+      ? `
+      <div class="card-subtle" style="margin-bottom:12px;">
+        <div class="row-between" style="margin-bottom:6px;">
+          <strong style="font-size:12px; color:var(--text-strong);">${isFa ? 'تفکیک عملکرد بر اساس رژیم علّی بازار (Market Regime Breakdown)' : 'Causal Market Regime Breakdown'}</strong>
+        </div>
+        <div style="display:flex; flex-wrap:wrap; gap:8px;" class="ltr-num">
+          ${activeRegimes
+            .map(
+              (r) => `
+            <div style="padding:6px 10px; border-radius:6px; background:var(--surface-elevated); border:1px solid var(--border); font-size:11px;">
+              <strong>${escapeHtml(r.regime)}</strong> (${r.tradesCount}) · Win: ${formatNum(r.winRatePct, 1)}% · AvgR: ${r.averageR >= 0 ? '+' : ''}${formatNum(r.averageR)}R · Net: <span style="color:${r.netProfitEur >= 0 ? 'var(--bull)' : 'var(--bear)'};">${r.netProfitEur >= 0 ? '+' : ''}€${formatNum(r.netProfitEur)}</span>
+            </div>`
+            )
+            .join('')}
+        </div>
+      </div>`
+      : '';
 
   const sensitivityHtml =
     result.costSensitivity.length > 0
@@ -733,6 +835,7 @@ export function renderStrategyLabModal(activeTab, i18n) {
 
   const overviewBodyHtml = `
     ${renderLiveDecisionBanner(result.signalReport, activeTab, isFa)}
+    ${bridgeHtml}
 
     <div class="card-subtle" style="margin-bottom: 12px;">
       <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 10px; margin-bottom: 8px;">
@@ -817,12 +920,18 @@ export function renderStrategyLabModal(activeTab, i18n) {
     }
 
     ${isOosHtml}
+    ${purgedWfHtml}
+    ${regimeBreakdownHtml}
     ${sensitivityHtml}
 
     ${
-      result.sizingLimitationNote
+      result.portfolioRiskPolicy || result.sizingLimitationNote
         ? `<div style="font-size:10.5px; color:var(--text-muted); padding:6px 9px; border-radius:6px; background:var(--surface-elevated); border:1px solid var(--border); margin-bottom:10px;">
-            ℹ ${escapeHtml(result.sizingLimitationNote)}
+            ℹ ${escapeHtml(
+              isFa
+                ? result.portfolioRiskPolicy?.disclaimerFa || result.sizingLimitationNote
+                : result.portfolioRiskPolicy?.disclaimer || result.sizingLimitationNote
+            )}
           </div>`
         : ''
     }

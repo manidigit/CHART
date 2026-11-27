@@ -2,9 +2,9 @@
 ## سند اجرایی مرجع برای جلوگیری از انحراف پیاده‌سازی و هدایت Gemini
 
 - **شناسه:** `FORECAST_AND_STRATEGY_IMPROVEMENT_MASTER_PLAN`
-- **نسخه:** 1.0.0
-- **تاریخ:** 2026-11-25
-- **وضعیت:** تصویب‌شده برای تبدیل به برنامه اجرایی؛ پیاده‌سازی کد هنوز در این سند تأیید نشده است.
+- **نسخه:** 1.3.0
+- **تاریخ:** 2026-11-26
+- **وضعیت:** فازهای اجرایی **`P0`** (`FORECAST-P0-DECISION-SIMPLE-RESEARCH-01`)، **`P1`** (`FORECAST-P1-PATH-QUALITY-MARKET-CONTEXT-01`) و **`P3`** (`FORECAST-P3-STRATEGY-BRIDGE-PURGED-WF-01`) در کد پیاده‌سازی، با ۶۷ تست خودکار (`67/67 PASS`) راستی‌آزمایی و در مستندات ثبت شده‌اند؛ فاز بنچمارک مدل‌های بیرونی جدید (**`P2` بیرونی**) طبق سیاست سند تا تأمین سرور یا نیاز آتی در وضعیت `CONDITIONAL / DEFERRED` است.
 - **مخزن:** `manidigit/CHART`
 - **شاخه هدف مستندات:** `main`
 - **مبنای مسئله:** `FORECAST_AND_STRATEGY_ISSUES_REPORT.md` با نسخه مرجع گزارش‌شده `v1.47.41`
@@ -642,11 +642,18 @@ Strategy کلاسیک نباید بدون انتخاب صریح کاربر یا 
 
 ---
 
-## 12. نقشه راه اجرایی و ترتیب وابستگی‌ها
+## 12. نقشه راه اجرایی، ترتیب وابستگی‌ها و وضعیت پیاده‌سازی (`v1.47.41`)
 
 ترتیب فازها عمدی است. فاز بعدی نباید با دور زدن Gate فاز قبل شروع شود.
 
-### P0 — تثبیت قراردادها و کیفیت مسیر
+| فاز اجرایی | شناسه تست رگرسیون | ماژول‌های کلیدی پیاده‌سازی‌شده | وضعیت Gate |
+|---|---|---|---|
+| **فاز اجرایی اول (`P0` تصمیم و قراردادها / بخش‌های 4، 5، 8، 9، 10)** | `FORECAST-P0-DECISION-SIMPLE-RESEARCH-01` (تست ۶۵) | `decisionLayer.js` (`forecast-decision-layer/1.0.0`)، `forecastEngine.js`، `modelRegistry.js`، `forecastView.js` | **PASS (Verified in Code)** |
+| **فاز اجرایی دوم (`P1` ساختار علّی بازار و بردار ۷ بعدی کیفیت مسیر / بخش‌های 6، 7)** | `FORECAST-P1-PATH-QUALITY-MARKET-CONTEXT-01` (تست ۶۶) | `marketContextEngine.js` (`market-context-engine/1.0.0`)، `walkForwardEvaluator.js` (`evaluatePathQualityVector`)، `forecastLedger.js` | **PASS (Verified in Code)** |
+| **فاز بنچمارک مدل‌های بیرونی جدید (`P2` غربالگری مدل‌های جدید)** | — | طبق بند 5 و 17، افزودن مدل بیرونی جدید متوقف و مشروط به اثبات برتری OOS مدل‌های فعلی یا تأمین سرور مستقل (`Chronos-2`) است | **CONDITIONAL / DEFERRED** |
+| **فاز اجرایی سوم (`P3` اعتبارسنجی استراتژی و پل کنترل‌شده Forecast → Strategy / بخش 10)** | `FORECAST-P3-STRATEGY-BRIDGE-PURGED-WF-01` (تست ۶۷) | `forecastStrategyBridge.js` (`forecast-strategy-bridge/1.0.0`)، `signalBacktester.js` (`purged-wf-embargo-holdout/1.0.0`)، `strategyLabView.js`، `app.js` | **PASS (Verified in Code)** |
+
+### P0 — تثبیت قراردادها و کیفیت مسیر (`VERIFIED`)
 
 **هدف:** جلوگیری از ادامه انباشت مدل و تبدیل خروجی به چیزی قابل سنجش.
 
@@ -659,21 +666,20 @@ Strategy کلاسیک نباید بدون انتخاب صریح کاربر یا 
 6. تست prefix-invariance و cross-timeframe برای تمام مسیرهای مجاز؛
 7. تعیین مدل‌های Research-only و Decision-eligible بر اساس شواهد واقعی.
 
-**خروجی‌های تحویلی:**
-- گزارش وضعیت کد واقعی؛
-- قرارداد ورودی/خروجی نسخه‌دار؛
-- جدول معیارهای Path Quality؛
-- تست‌های رگرسیون و Fixtureها؛
-- ماتریس مدل‌ها و وضعیت پذیرش.
+**خروجی‌های تحویلی (تکمیل‌شده در `v1.47.41`):**
+- قرارداد ۵ حالته آمادگی داده (`evaluateDataReadinessContract`: `VALID_FOR_FORECAST`, `DEGRADED_LOW_HISTORY`, `STALE_DATA`, `INVALID_TIME_ORDER`, `PROVIDER_UNAVAILABLE`)؛
+- حاکمیت مدل‌ها (`DECISION_POOL`, `STATISTICAL_CANDIDATE`, `RESEARCH_ONLY`) و ایزوله‌سازی مدل‌های تقریبی (`experimentalOnly: true`)؛
+- جداسازی `AUTO_STRICT_OOS` از `AUTO_RELATIVE_PROVISIONAL` (`allowStrategy: false`)؛
+- تست رگرسیون `FORECAST-P0-DECISION-SIMPLE-RESEARCH-01` و `FORECAST-P1-PATH-QUALITY-MARKET-CONTEXT-01`.
 
-**Gate پذیرش P0:**
+**Gate پذیرش P0 (`PASS`):**
 - هیچ look-ahead در ورودی/Feature/Label وجود نداشته باشد؛
 - مقایسه مدل و Baseline روی origin و actual یکسان باشد؛
 - تمام معیارها تعریف، واحد و روش محاسبه داشته باشند؛
 - نتایج هر نماد/تایم‌فریم/افق جدا قابل مشاهده باشد؛
 - موارد اجرا نشده صریحاً Not Run گزارش شوند.
 
-### P1 — Market Structure & Behavior Engine و Scenario Contract
+### P1 — Market Structure & Behavior Engine و Scenario Contract (`VERIFIED`)
 
 **هدف:** توصیف قابل ممیزی رفتار بازار و اتصال آن به مسیر.
 
@@ -685,19 +691,24 @@ Strategy کلاسیک نباید بدون انتخاب صریح کاربر یا 
 5. تست عدم نشت آینده و MTF؛
 6. تفکیک Model-native از System-derived event.
 
-**Gate پذیرش P1:**
+**خروجی‌های تحویلی (تکمیل‌شده در `v1.47.41`):**
+- موتور علّی ساختار و رفتار بازار در `host_subdomain/assets/js/forecast/marketContextEngine.js` با ثبت جداگانه `occurredAt` و `confirmedAt` و برچسب `SYSTEM_DERIVED`؛
+- بردار ۷ بعدی کیفیت مسیر (`evaluatePathQualityVector` در `walkForwardEvaluator.js`) شامل `Endpoint`, `Path & Envelope (WIS)`, `Extrema`, `Turning Timing`, `Pullback Fidelity`, `Regime Consistency`, `Shape Similarity (DTW)` به همراه `falsePositiveEventRate` و `missedEventRate`؛
+- اتصال به `forecastEngine.js`، `forecastLedger.js` و نمایش در حالت‌های `Simple` و `Research` در `forecastView.js`.
+
+**Gate پذیرش P1 (`PASS`):**
 - هر event به داده و روش نسخه‌دار قابل ردیابی باشد؛
 - event تأییدنشده از تأییدشده متمایز باشد؛
 - false positive و missed event اندازه‌گیری شوند؛
 - نبود داده باعث مقدار ساختگی نشود؛
 - eventها در replay تاریخی فقط در زمان قابل‌تشخیص خود ظاهر شوند.
 
-### P2 — Decision Layer و UX دوحالته
+### P2 — Decision Layer و UX دوحالته (`VERIFIED` در рамках فاز اجرایی `P0`)
 
 **هدف:** تبدیل خروجی چندمدلی به یک تصمیم شفاف و صادقانه.
 
 کارها:
-1. ساخت Decision Summary مرکزی؛
+1. ساخت Decision Summary مرکزی (`host_subdomain/assets/js/forecast/decisionLayer.js`)؛
 2. پیاده‌سازی status semantics و reason codes؛
 3. جداسازی AUTO Strict و AUTO Relative؛
 4. خروج approximationها از Decision Pool تا پذیرش مستقل؛
@@ -705,7 +716,7 @@ Strategy کلاسیک نباید بدون انتخاب صریح کاربر یا 
 6. انتقال پنل‌های پژوهشی به Research؛
 7. اتصال کامل Diagnostics به علت fallback و انتخاب مدل.
 
-**Gate پذیرش P2:**
+**Gate پذیرش P2 (`PASS`):**
 - UI و Engine در status و model selection اختلاف نداشته باشند؛
 - هیچ fallback پنهانی رخ ندهد؛
 - Relative هیچ‌گاه به‌عنوان برنده علمی یا Edge اثبات‌شده معرفی نشود؛
@@ -713,7 +724,7 @@ Strategy کلاسیک نباید بدون انتخاب صریح کاربر یا 
 - Simple در حالت‌های مختلف داده/شواهد/Edge درست رفتار کند؛
 - Research همان Snapshot و همان مبدأ Simple را بررسی کند.
 
-### P3 — Strategy Validation و Forecast Bridge
+### P3 — Strategy Validation و Forecast Bridge (`VERIFIED`)
 
 **هدف:** استفاده کنترل‌شده از Forecast بدون خراب‌کردن Strategy مستقل.
 
@@ -726,12 +737,17 @@ Strategy کلاسیک نباید بدون انتخاب صریح کاربر یا 
 6. اجرای تمام Hard Gateهای فعلی Strategy روی هر خروجی Bridge؛
 7. ثبت provenance مسیر Forecast در Trade/Signal Ledger.
 
-**Gate پذیرش P3:**
-- Strategy کلاسیک بدون Forecast همچنان کار کند؛
-- PROVISIONAL و NO_EDGE سیگنال قابل اقدام نسازند؛
-- Forecast Bridge نتواند Hard Gateهای Strategy را دور بزند؛
+**خروجی‌های تحویلی (تکمیل‌شده در `v1.47.41`):**
+- ماژول `host_subdomain/assets/js/strategy/forecastStrategyBridge.js` (`forecast-strategy-bridge/1.0.0`) با اجرای کامل ۸ گیت عبور (`VALID`, `PROVEN`, `allowStrategy === true`, غیر `AUTO_RELATIVE_PROVISIONAL`, غیر `experimentalOnly`, وجود `invalidation`, هم‌ترازی کامل مبدأ و عبور از گیت‌های کلاسیک Strategy)؛
+- ارتقای `signalBacktester.js` با `computePurgedWalkForwardValidation` (`purged-wf-embargo-holdout/1.0.0` با `15%` Holdout دست‌نخورده پایانی)، `computeTradeRegimeBreakdown` و `portfolioRiskPolicy` (`SINGLE_INSTRUMENT_ISOLATED`, `UNIT_APPROXIMATION` و Circuit Breaker اختیاری `maxDrawdownHaltPct`)؛
+- نمایش کارت‌های Bridge، Purged Walk-Forward + Holdout، تفکیک رژیم و سیاست ریسک پرتفوی در `strategyLabView.js` و اتصال دکمه `open-strategy-from-forecast` در `app.js`.
+
+**Gate پذیرش P3 (`PASS`):**
+- Strategy کلاسیک بدون Forecast همچنان کار کند (`S-06`)؛
+- PROVISIONAL و NO_EDGE سیگنال قابل اقدام نسازند (`S-04`)؛
+- Forecast Bridge نتواند Hard Gateهای Strategy را دور بزند (`S-01`, `S-02`, `S-03`, `S-05`)؛
 - نتایج Strategy در Holdout و با هزینه ثبت‌شده گزارش شوند؛
-- ادعای Portfolio Risk فقط پس از پیاده‌سازی و تست واقعی مطرح شود.
+- ادعای Portfolio Risk فقط پس از پیاده‌سازی و تست واقعی مطرح شود (`SINGLE_INSTRUMENT_ISOLATED`).
 
 ---
 
@@ -871,3 +887,7 @@ Gemini در هر مرحله باید گزارش را دقیقاً با این س
 | نسخه | تاریخ | تغییر |
 |---|---|---|
 | 1.0.0 | 2026-11-25 | ایجاد برنامه اجرایی جامع بر اساس گزارش مسائل Forecast/Strategy و هم‌ترازی با اسناد بنیادین محصول، System Specification، Acceptance Plan و Strategy |
+| 1.1.0 | 2026-11-26 | پیاده‌سازی و راستی‌آزمایی فاز `P0` (`FORECAST-P0-DECISION-SIMPLE-RESEARCH-01`): لایه تصمیم‌گیری ۴ مرحله‌ای (`decisionLayer.js`)، قرارداد ۵ حالته آمادگی داده، حاکمیت مدل‌ها (`experimentalOnly`)، جداسازی `AUTO_STRICT_OOS` از `AUTO_RELATIVE_PROVISIONAL` و رابط دوحالته `Simple` / `Research` |
+| 1.2.0 | 2026-11-26 | پیاده‌سازی و راستی‌آزمایی فاز `P1` (`FORECAST-P1-PATH-QUALITY-MARKET-CONTEXT-01`): موتور علّی ساختار و رفتار بازار (`marketContextEngine.js` با تفکیک `occurredAt` و `confirmedAt`) و بردار ۷ بعدی کیفیت مسیر (`evaluatePathQualityVector`) |
+| 1.3.0 | 2026-11-26 | پیاده‌سازی و راستی‌آزمایی فاز `P3` (`FORECAST-P3-STRATEGY-BRIDGE-PURGED-WF-01`): پل یک‌طرفه و کنترل‌شده Forecast → Strategy (`forecastStrategyBridge.js` با گیت‌های ۸گانه و `S-01..S-06`)، ارزیابی Purged Walk-Forward + Embargo + Final Untouched Holdout، تفکیک رژیم‌های بازار و سیاست ریسک پرتفوی تک‌دارایی در `signalBacktester.js` و `strategyLabView.js` (**67/67 تست پاس‌شده**) |
+

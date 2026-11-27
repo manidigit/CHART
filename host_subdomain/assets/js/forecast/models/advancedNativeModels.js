@@ -72,6 +72,9 @@ export const NativeArimaDiffModel = {
   family: 'TIME_SERIES',
   modelVersion: '1.0.0',
   isApproximation: false,
+  experimentalOnly: false,
+  governanceTier: 'STATISTICAL',
+  lifecycleState: 'CANDIDATE',
   isCalibratedInterval: true,
   description:
     'Native differenced ARIMA(p,d,q) estimator on log-prices with unit-root differencing check, AIC order selection, Hannan-Rissanen MA residuals, and analytical variance propagation.',
@@ -307,6 +310,9 @@ export const NativeProphetDecompModel = {
   family: 'DECOMPOSITION',
   modelVersion: '1.0.0',
   isApproximation: true,
+  experimentalOnly: true,
+  governanceTier: 'EXPERIMENTAL_APPROX',
+  lifecycleState: 'EXPERIMENTAL',
   isCalibratedInterval: false,
   description:
     'Piecewise linear trend with L2 changepoints and Fourier session/calendar seasonality on log-prices; lightweight native approximation of Prophet.',
@@ -480,6 +486,9 @@ export const NativeSequenceRecurrentModel = {
   family: 'SEQUENCE_APPROX',
   modelVersion: '1.0.0',
   isApproximation: true,
+  experimentalOnly: true,
+  governanceTier: 'EXPERIMENTAL_APPROX',
+  lifecycleState: 'EXPERIMENTAL',
   isCalibratedInterval: false,
   description:
     'Deterministic seeded 1-layer tanh-GRU sequence model trained on training-window-only standardized returns with 50-pass inference dropout; native approximation (not PyTorch LSTM).',
@@ -687,6 +696,9 @@ export const NativeQuantileAttentionModel = {
   family: 'ATTENTION_APPROX',
   modelVersion: '1.0.0',
   isApproximation: true,
+  experimentalOnly: true,
+  governanceTier: 'EXPERIMENTAL_APPROX',
+  lifecycleState: 'EXPERIMENTAL',
   isCalibratedInterval: false,
   description:
     'Variable-selection + scaled dot-product attention multi-quantile regressor with <90-bar gate; simplified native approximation (not PyTorch Forecasting TFT).',

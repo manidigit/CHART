@@ -29,10 +29,12 @@ import {
 } from '../core/store.js?v=1.47.41';
 import { PriceFormatter } from '../algorithms/priceFormatter.js?v=1.47.41';
 import { TimeframeAggregator } from '../algorithms/timeframeAggregator.js?v=1.47.41';
+import { defaultForecastLedger } from '../forecast/forecastLedger.js?v=1.47.41';
 
 const STORAGE_OFFLINE_SALT = 'ci_offline_pw_salt';
 const STORAGE_OFFLINE_HASH = 'ci_offline_pw_hash';
 let pendingWorkspaceSync = false;
+let pendingForecastLedgerSync = false;
 
 function clearLocalAuthSession(clearOfflineVerifier = false) {
   localStorage.removeItem('ci_session_token');
@@ -984,6 +986,109 @@ export async function downloadWorkspaceSync() {
     // Non-fatal
   }
   return false;
+}
+
+export async function uploadForecastLedgerSync() {
+  if (state.isForecastLedgerSyncing) {
+    pendingForecastLedgerSync = true;
+    return { ok: false, busy: true };
+  }
+  state.isForecastLedgerSyncing = true;
+  pendingForecastLedgerSync = false;
+  const token = localStorage.getItem('ci_session_token') || '';
+  try {
+    const entries = defaultForecastLedger.loadEntries();
+    const lifecycleEvents = defaultForecastLedger.loadLifecycleEvents();
+    const res = await fetch('./api/v1/forecast_ledger_sync.php', {
+      method: 'POST',
+      keepalive: true,
+      headers: {
+        'Content-Type': 'application/json',
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      },
+      body: JSON.stringify({
+        session_token: token,
+        entries,
+        lifecycle_events: lifecycleEvents,
+      }),
+    });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return { ok: false, error: 'UNAUTHORIZED' };
+    }
+    const json = await res.json();
+    if (json && json.ok && json.data) {
+      const remoteEntries = Array.isArray(json.data.entries) ? json.data.entries : [];
+      const remoteEvents = Array.isArray(json.data.lifecycle_events) ? json.data.lifecycle_events : [];
+      const mergeStats = defaultForecastLedger.mergeCloudSnapshot(remoteEntries, remoteEvents);
+      defaultForecastLedger.markSynced();
+      state.forecastServerLedger = remoteEntries;
+      state.forecastServerLifecycle = remoteEvents;
+      state.lastForecastLedgerSyncedAt = json.data.updated_at_utc || new Date().toISOString();
+      state.forecastLedgerSyncStatus = json.data.saved_in_database ? 'CLOUD_DB_SYNCED' : 'CLOUD_FILE_SYNCED';
+      return {
+        ok: true,
+        savedInDatabase: Boolean(json.data.saved_in_database),
+        updatedAtUtc: state.lastForecastLedgerSyncedAt,
+        ...mergeStats,
+      };
+    }
+  } catch (err) {
+    state.forecastLedgerSyncStatus = 'OFFLINE_LOCAL';
+    return { ok: false, error: String((err && err.message) || 'NETWORK_ERROR') };
+  } finally {
+    state.isForecastLedgerSyncing = false;
+    if (pendingForecastLedgerSync && state.isAuthenticated) {
+      pendingForecastLedgerSync = false;
+      setTimeout(() => {
+        uploadForecastLedgerSync().catch(() => {});
+      }, 150);
+    }
+  }
+  return { ok: false, error: 'SYNC_FAILED' };
+}
+
+export async function downloadForecastLedgerSync() {
+  const token = localStorage.getItem('ci_session_token') || '';
+  try {
+    const res = await fetch(`./api/v1/forecast_ledger_sync.php?_t=${Date.now()}`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+    });
+    if (res.status === 401) {
+      clearLocalAuthSession(false);
+      return { ok: false, error: 'UNAUTHORIZED' };
+    }
+    const json = await res.json();
+    if (json && json.ok && json.data) {
+      const remoteEntries = Array.isArray(json.data.entries) ? json.data.entries : [];
+      const remoteEvents = Array.isArray(json.data.lifecycle_events) ? json.data.lifecycle_events : [];
+      const mergeStats = defaultForecastLedger.mergeCloudSnapshot(remoteEntries, remoteEvents);
+      state.forecastServerLedger = remoteEntries;
+      state.forecastServerLifecycle = remoteEvents;
+      state.lastForecastLedgerSyncedAt = json.data.updated_at_utc || new Date().toISOString();
+      state.forecastLedgerSyncStatus = 'CLOUD_SYNCED';
+
+      const unsyncedCount = defaultForecastLedger.loadEntries().filter((e) => !e.syncedToCloud).length;
+      if (unsyncedCount > 0 && state.isAuthenticated) {
+        setTimeout(() => {
+          uploadForecastLedgerSync().catch(() => {});
+        }, 200);
+      }
+      return {
+        ok: true,
+        updatedAtUtc: state.lastForecastLedgerSyncedAt,
+        ...mergeStats,
+      };
+    }
+  } catch (err) {
+    state.forecastLedgerSyncStatus = 'OFFLINE_LOCAL';
+    return { ok: false, error: String((err && err.message) || 'NETWORK_ERROR') };
+  }
+  return { ok: false, error: 'LOAD_FAILED' };
+}
+
+export async function syncForecastLedgerCloud() {
+  return uploadForecastLedgerSync();
 }
 
 function computeExpectedLastClosedOpenMs(timeframe, nowMs = Date.now(), symbolCode = 'XAUUSD') {

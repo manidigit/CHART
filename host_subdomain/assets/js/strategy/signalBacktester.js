@@ -232,8 +232,11 @@ function executeSignalsPass(taContext, validSignals, cfg, frictionMult = 1.0, st
       drawdownPct: round2(ddPctBar),
     });
 
-    // 3. Queue next-bar open entry only if no active position (prevents overlapping exposure)
-    if (!openPosition && !pendingSignal && i < n - 1 && equity > 1.0) {
+    const maxDdHalt = Number(cfg.maxDrawdownHaltPct);
+    const haltedNow = Number.isFinite(maxDdHalt) && maxDdHalt > 0 && maxDrawdownPct >= maxDdHalt;
+
+    // 3. Queue next-bar open entry only if no active position and not halted by drawdown circuit breaker
+    if (!openPosition && !pendingSignal && !haltedNow && i < n - 1 && equity > 1.0) {
       const sig = signalsByBar.get(i);
       if (sig) {
         pendingSignal = sig;
@@ -316,9 +319,13 @@ function executeSignalsPass(taContext, validSignals, cfg, frictionMult = 1.0, st
     }
   }
 
+  const maxDdHalt = Number(cfg.maxDrawdownHaltPct);
+  const haltedByMaxDrawdown = Number.isFinite(maxDdHalt) && maxDdHalt > 0 && maxDrawdownPct >= maxDdHalt;
+
   return {
     frictionMultiplier: frictionMult,
     sizingLimitationNote,
+    haltedByMaxDrawdown,
     metrics: {
       initialEquity: round2(initialEquity),
       finalEquity: round2(equity),
@@ -350,6 +357,171 @@ function executeSignalsPass(taContext, validSignals, cfg, frictionMult = 1.0, st
   };
 }
 
+/**
+ * Master Plan §9.3: Purged Walk-Forward + Embargo + Final Untouched Holdout Validation.
+ * Ensures zero trade-holding or outcome overlap across fold boundaries and reserves an untouched
+ * final holdout segment separated by purgeBars + embargoBars.
+ */
+function computePurgedWalkForwardValidation(taContext, validSignals, cfg) {
+  const n = taContext?.candles?.length || 0;
+  if (n < 90) return null;
+
+  const purgeBars = Math.max(2, Math.min(20, Math.ceil((cfg.maxHoldBars || 64) * 0.15)));
+  const embargoBars = Math.max(2, Math.min(12, Math.ceil(purgeBars * 0.5)));
+  const gapTotal = purgeBars + embargoBars;
+
+  // Reserve last 20% of closed bars as Final Untouched Holdout
+  const holdoutLen = Math.max(18, Math.floor(n * 0.2));
+  const holdoutStartIdx = n - holdoutLen;
+  const wfEndIdx = Math.max(30, holdoutStartIdx - gapTotal);
+
+  const usableWfBars = wfEndIdx;
+  const foldCount = 3;
+  const rawFoldLen = Math.floor((usableWfBars - gapTotal * (foldCount - 1)) / foldCount);
+  if (rawFoldLen < 12) return null;
+
+  const folds = [];
+  let cursor = 0;
+  for (let f = 0; f < foldCount; f++) {
+    const fStart = cursor;
+    const fEnd = f === foldCount - 1 ? wfEndIdx : Math.min(wfEndIdx, fStart + rawFoldLen);
+    if (fEnd - fStart >= 8) {
+      const fRun = executeSignalsPass(taContext, validSignals, cfg, 1.0, fStart, fEnd);
+      folds.push({
+        foldIndex: f + 1,
+        startBarIndex: fStart,
+        endBarIndex: fEnd,
+        barCount: fEnd - fStart,
+        startTimeUtc: new Date(taContext.candles[fStart].open_time_utc_ms).toISOString(),
+        endTimeUtc: new Date(taContext.candles[fEnd - 1].open_time_utc_ms).toISOString(),
+        metrics: fRun.metrics,
+      });
+    }
+    cursor = fEnd + gapTotal;
+  }
+
+  const holdoutRun = executeSignalsPass(taContext, validSignals, cfg, 1.0, holdoutStartIdx, n);
+
+  const totalOosTrades = folds.reduce((acc, f) => acc + f.metrics.totalTrades, 0);
+  const totalOosNetProfitEur = round2(folds.reduce((acc, f) => acc + f.metrics.netProfitEur, 0));
+  const totalOosGrossProfit = folds.reduce((acc, f) => acc + f.metrics.grossProfitEur, 0);
+  const totalOosGrossLoss = folds.reduce((acc, f) => acc + f.metrics.grossLossEur, 0);
+  const totalOosWins = folds.reduce((acc, f) => acc + f.metrics.winCount, 0);
+  const positiveFoldsCount = folds.filter((f) => f.metrics.netProfitEur > 0).length;
+
+  const aggregateOosProfitFactor =
+    totalOosGrossLoss > 0
+      ? round2(Math.min(99.99, totalOosGrossProfit / totalOosGrossLoss))
+      : totalOosGrossProfit > 0
+        ? 99.99
+        : 0;
+  const aggregateOosWinRatePct = totalOosTrades > 0 ? round2((totalOosWins / totalOosTrades) * 100.0) : 0;
+  const aggregateOosExpectancyEur = totalOosTrades > 0 ? round2(totalOosNetProfitEur / totalOosTrades) : 0;
+
+  return {
+    protocol: 'PURGED_WALK_FORWARD_WITH_UNTOUCHED_HOLDOUT_V1',
+    purgeBars,
+    embargoBars,
+    gapBarsBetweenFolds: gapTotal,
+    foldsCount: folds.length,
+    positiveFoldsCount,
+    folds,
+    aggregateOos: {
+      totalTrades: totalOosTrades,
+      netProfitEur: totalOosNetProfitEur,
+      winRatePct: aggregateOosWinRatePct,
+      profitFactor: aggregateOosProfitFactor,
+      expectancyEur: aggregateOosExpectancyEur,
+    },
+    untouchedHoldout: {
+      startBarIndex: holdoutStartIdx,
+      endBarIndex: n,
+      barCount: n - holdoutStartIdx,
+      startTimeUtc: new Date(taContext.candles[holdoutStartIdx].open_time_utc_ms).toISOString(),
+      endTimeUtc: new Date(taContext.candles[n - 1].open_time_utc_ms).toISOString(),
+      metrics: holdoutRun.metrics,
+    },
+  };
+}
+
+/**
+ * Master Plan §9.3: Causal Market Regime Breakdown for executed trades.
+ * Classifies each trade at its causal entry bar into one of:
+ *   - TREND_UP, TREND_DOWN, RANGE, EXPANSION, COMPRESSION
+ */
+function classifyCausalRegimeAtBar(taContext, idx) {
+  const candles = taContext.candles;
+  const bar = candles[idx];
+  if (!bar) return 'RANGE';
+
+  const ema20Arr = taContext.indicators?.ema20 || [];
+  const ema50Arr = taContext.indicators?.ema50 || [];
+  const atrArr = taContext.indicators?.atr14 || [];
+
+  const ema20 = Number(ema20Arr[idx] ?? bar.close);
+  const ema50 = Number(ema50Arr[idx] ?? ema20);
+  const atrNow = Number(atrArr[idx] || 0);
+
+  let atrSum = 0;
+  let atrCnt = 0;
+  const lookbackStart = Math.max(0, idx - 29);
+  for (let k = lookbackStart; k <= idx; k++) {
+    const a = Number(atrArr[k] || 0);
+    if (a > 0) {
+      atrSum += a;
+      atrCnt++;
+    }
+  }
+  const atrBase = atrCnt > 0 ? atrSum / atrCnt : atrNow;
+  const volRatio = atrBase > 0 ? atrNow / atrBase : 1.0;
+
+  if (volRatio >= 1.35) return 'EXPANSION';
+  if (volRatio <= 0.72) return 'COMPRESSION';
+
+  const emaSpreadAtr = atrNow > 0 ? (ema20 - ema50) / atrNow : 0;
+  if (emaSpreadAtr >= 0.45 && bar.close >= ema20) return 'TREND_UP';
+  if (emaSpreadAtr <= -0.45 && bar.close <= ema20) return 'TREND_DOWN';
+  return 'RANGE';
+}
+
+function computeTradeRegimeBreakdown(taContext, trades = []) {
+  const regimes = ['TREND_UP', 'TREND_DOWN', 'RANGE', 'EXPANSION', 'COMPRESSION'];
+  const buckets = new Map();
+  for (const r of regimes) {
+    buckets.set(r, {
+      regime: r,
+      tradesCount: 0,
+      winCount: 0,
+      winRatePct: 0,
+      netProfitEur: 0,
+      sumR: 0,
+      averageR: 0,
+    });
+  }
+
+  for (const t of trades) {
+    const decisionIdx = Math.max(0, Number(t.entryIndex || 1) - 1);
+    const reg = classifyCausalRegimeAtBar(taContext, decisionIdx);
+    const b = buckets.get(reg) || buckets.get('RANGE');
+    b.tradesCount++;
+    if (t.netPnlEur > 0.005) b.winCount++;
+    b.netProfitEur += t.netPnlEur;
+    b.sumR += t.rMultiple;
+  }
+
+  return regimes.map((r) => {
+    const b = buckets.get(r);
+    return {
+      regime: b.regime,
+      tradesCount: b.tradesCount,
+      winCount: b.winCount,
+      winRatePct: b.tradesCount > 0 ? round2((b.winCount / b.tradesCount) * 100.0) : 0,
+      netProfitEur: round2(b.netProfitEur),
+      averageR: b.tradesCount > 0 ? round2(b.sumR / b.tradesCount) : 0,
+    };
+  });
+}
+
 export function normalizeClassicalBacktestConfig(raw = {}) {
   const validIds = new Set(CLASSICAL_STRATEGY_REGISTRY.map((s) => s.id));
   const strategyId = validIds.has(raw.strategyId) ? raw.strategyId : 'trend_pullback_v1';
@@ -360,6 +532,12 @@ export function normalizeClassicalBacktestConfig(raw = {}) {
     const n = Number(v);
     return Number.isFinite(n) ? Math.max(lo, Math.min(hi, n)) : fb;
   };
+
+  const rawMaxDdHalt = Number(raw.maxDrawdownHaltPct);
+  const maxDrawdownHaltPct =
+    Number.isFinite(rawMaxDdHalt) && rawMaxDdHalt >= 5 && rawMaxDdHalt <= 95
+      ? round2(rawMaxDdHalt)
+      : null;
 
   return {
     strategyId,
@@ -375,6 +553,7 @@ export function normalizeClassicalBacktestConfig(raw = {}) {
     swapPerBarBps: clamp(raw.swapPerBarBps, 0, 50, 0.15),
     maxLeverage: clamp(raw.maxLeverage, 1.0, 20.0, 5.0),
     duplicateCooldownBars: Math.trunc(clamp(raw.duplicateCooldownBars, 1, 30, 4)),
+    maxDrawdownHaltPct,
     strategyParams: raw.strategyParams || {},
     instrumentSpec: raw.instrumentSpec || null,
     intrabarPolicy: 'SL_BEFORE_TP',
@@ -382,7 +561,8 @@ export function normalizeClassicalBacktestConfig(raw = {}) {
 }
 
 /**
- * Full single-strategy offline signal evaluation + Net/Gross backtest + Cost Sensitivity + IS/OOS Split.
+ * Full single-strategy offline signal evaluation + Net/Gross backtest + Cost Sensitivity + IS/OOS Split +
+ * Purged Walk-Forward & Final Untouched Holdout + Regime Breakdown + Portfolio Risk Policy.
  */
 export function runClassicalStrategyBacktest(rawCandles = [], options = {}, precomputedContext = null) {
   const cfg = normalizeClassicalBacktestConfig(options);
@@ -403,6 +583,20 @@ export function runClassicalStrategyBacktest(rawCandles = [], options = {}, prec
     duplicateCooldownBars: cfg.duplicateCooldownBars,
     strategyParams: cfg.strategyParams,
   });
+
+  const defaultPortfolioRiskPolicy = {
+    scope: 'SINGLE_INSTRUMENT_BACKTEST',
+    multiSymbolCorrelationSupported: false,
+    sharedMarginSupported: false,
+    maxConcurrentPositions: 1,
+    sizingMode: cfg.instrumentSpec ? 'INSTRUMENT_SPEC_EXACT' : 'UNIT_APPROXIMATION',
+    maxDrawdownHaltPct: cfg.maxDrawdownHaltPct,
+    haltedByMaxDrawdown: false,
+    disclaimer:
+      'Single-instrument causal backtest; unit-approximation sizing is not broker lot/contract sizing and multi-symbol portfolio correlation is not simulated.',
+    disclaimerFa:
+      'بک‌تست علّی تک‌نمادی (Single-Instrument)؛ سایزینگ در حالت تقریب واحدی معادل لات/قرارداد بروکر نیست و همبستگی پرتفوی چندنمادی شبیه‌سازی نمی‌شود.',
+  };
 
   if (!taContext.ready) {
     return {
@@ -448,6 +642,9 @@ export function runClassicalStrategyBacktest(rawCandles = [], options = {}, prec
       trades: [],
       costSensitivity: [],
       inSampleOutOfSample: null,
+      purgedWalkForward: null,
+      regimeBreakdown: [],
+      portfolioRiskPolicy: defaultPortfolioRiskPolicy,
       sizingLimitationNote: null,
     };
   }
@@ -503,6 +700,7 @@ export function runClassicalStrategyBacktest(rawCandles = [], options = {}, prec
 
   // Chronological 70/30 In-Sample vs Out-of-Sample validation (strictly zero leakage)
   let inSampleOutOfSample = null;
+  let purgedWalkForward = null;
   if (options.includeSplit !== false && taContext.candles.length >= 60) {
     const splitIdx = Math.floor(taContext.candles.length * 0.7);
     const isRun = executeSignalsPass(taContext, signalReport.validSignals, cfg, 1.0, 0, splitIdx);
@@ -513,7 +711,14 @@ export function runClassicalStrategyBacktest(rawCandles = [], options = {}, prec
       inSample: isRun.metrics,
       outOfSample: oosRun.metrics,
     };
+    purgedWalkForward = computePurgedWalkForwardValidation(taContext, signalReport.validSignals, cfg);
   }
+
+  const regimeBreakdown = computeTradeRegimeBreakdown(taContext, netRun.trades);
+  const portfolioRiskPolicy = {
+    ...defaultPortfolioRiskPolicy,
+    haltedByMaxDrawdown: Boolean(netRun.haltedByMaxDrawdown),
+  };
 
   return {
     schemaVersion: SIGNAL_BACKTEST_VERSION,
@@ -531,6 +736,9 @@ export function runClassicalStrategyBacktest(rawCandles = [], options = {}, prec
     trades: netRun.trades,
     costSensitivity,
     inSampleOutOfSample,
+    purgedWalkForward,
+    regimeBreakdown,
+    portfolioRiskPolicy,
     sizingLimitationNote: netRun.sizingLimitationNote,
   };
 }

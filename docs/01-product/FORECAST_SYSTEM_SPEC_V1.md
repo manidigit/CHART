@@ -1,13 +1,13 @@
 # CHART Forecast — System Specification
 ## سند جامع تعریف سیستم پیش‌بینی، چرخه عمر اجرا و رفتارهای قابل مشاهده
 
-- **Version:** 1.0.5
-- **Date:** 2026-11-19
-- **Status:** Model-agnostic system specification. Current New Web implementation uses the Native JavaScript registry, Structural JS, causal Historical Analogs, model configuration, Walk-Forward, local Ledger and a limited leakage-safe Replay. Full migration and production acceptance remain open.
-- **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0
+- **Version:** 1.1.0
+- **Date:** 2026-11-26
+- **Status:** Model-agnostic system specification (`v1.47.41`). Live Web implementation enforces the 5-state Data Readiness contract (`READY`, `INSUFFICIENT_HISTORY`, `STALE_DATA`, `DATA_GAP`, `DATA_NOT_READY`), Model Governance tiers (`EXPERIMENTAL_APPROX` isolated from `AUTO`, `Ensemble`, and Strategy), centralized 4-step Decision Layer (`decisionLayer.js` with `AUTO_RELATIVE_PROVISIONAL` guarded by `pathQualityScore >= naivePathQualityScore`), Simple vs Research UX modes, Causal Market Context Engine (`marketContextEngine.js`), 7-Dimensional Path Quality Vector + coordinate-bound Trajectory Behavioral Events (`pathEvents`: `MODEL_NATIVE` vs `SYSTEM_DERIVED`), 3-part Behavior Scenario Contract (`behaviorScenarios`), Walk-Forward OOS `regimeBreakdown` / `worstRegimeSubgroup` / `finalHoldoutSummary`, and the Controlled One-Way Forecast → Strategy Bridge (`forecastStrategyBridge.js`).
+- **Authority:** Complements FORECAST_PRODUCT_FOUNDATION_V1.md v1.3.0 and FORECAST_AND_STRATEGY_IMPROVEMENT_MASTER_PLAN.md v1.3.0
 - **Scope:** Product/system behavior, lifecycle, user workflows, model independence, comparison, persistence semantics, evaluation boundaries and acceptance gates
-- **Current Web model scope:** 10 registered Native JavaScript models plus Structural JS, causal Historical Analogs and calibrated Ensemble are selectable. Chronos-2/Python Worker are not part of the New shared-hosting runtime.
-- **Runtime and data constraints:** TradingView is the only active market-data source. New Web forecast inference runs in Native JavaScript; no Python runtime or Cron is required on the shared host. Model availability does not establish predictive performance or production approval.
+- **Current Web model scope:** 3 preferred `Rev 2.3` structured path models (`Causal Historical Analogs`, `Structural JS`, `SMC Prediction Engine`), 7 core statistical/ML native JS registry models, 3 explicitly isolated `EXPERIMENTAL_APPROX` models, and `Calibrated Ensemble`. Chronos-2/Python Worker remain shelved outside the shared-hosting runtime.
+- **Runtime and data constraints:** TradingView (`tvdatafeed`) is the only active market-data source. New Web forecast inference runs 100% in Native JavaScript; no Python runtime or Cron is required on the shared host. Model availability does not establish predictive performance or production approval.
 
 ---
 

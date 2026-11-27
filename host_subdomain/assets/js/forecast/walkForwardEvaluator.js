@@ -21,6 +21,8 @@ import {
 import { EmpiricalAnalogEngine } from './empiricalAnalogEngine.js?v=1.47.41';
 import { computeStructuralForecast } from '../algorithms/structuralForecastEngine.js?v=1.47.41';
 import { computeSmcPrediction } from './smcPredictionEngine.js?v=1.47.41';
+import { resolveRelativeCandidate } from './decisionLayer.js?v=1.47.41';
+import { evaluatePathQualityVector } from './marketContextEngine.js?v=1.47.41';
 
 function pinball(actual, qPred, tau) {
   const err = actual - qPred;
@@ -277,6 +279,12 @@ function scoreWindow(clean, originIdx, traj, horizon) {
   const finalAct = clean[originIdx + horizon].close;
   const finalPred = traj[horizon - 1].q50;
   const dirOk = (finalAct >= baseClose && finalPred >= baseClose) || (finalAct < baseClose && finalPred < baseClose);
+  const actualWindow = clean.slice(originIdx + 1, originIdx + 1 + horizon);
+  const pq = evaluatePathQualityVector({
+    anchorClose: baseClose,
+    trajPoints: traj,
+    actualCandles: actualWindow,
+  });
   return {
     maeMean: maeSum / horizon,
     mseMean: sqErrSum / horizon,
@@ -286,6 +294,7 @@ function scoreWindow(clean, originIdx, traj, horizon) {
     in50Frac: in50 / horizon,
     widthPctMean: widthPctSum / horizon,
     dirOk,
+    pathQuality: pq,
   };
 }
 
@@ -495,9 +504,44 @@ export function evaluateWalkForward(candles, registry, options = {}) {
         windows: 0,
         wisSeries: [],
         errSeries: [],
+        pqScoreSum: 0,
+        turnAgreeSum: 0,
+        turnTimingErrSum: 0,
+        segSimSum: 0,
+        pbDepthErrSum: 0,
+        pbDurErrSum: 0,
+        ampRatioSum: 0,
+        behaviorMatchCount: 0,
+        fpEventRateSum: 0,
+        missedEventRateSum: 0,
+        windowRecords: [],
       });
     }
     return accs.get(id);
+  };
+
+  const recordPathQualityToAcc = (acc, pq, regimeTag = 'UNKNOWN', winMetric = null) => {
+    if (!pq) return;
+    acc.pqScoreSum += Number(pq.pathQualityScore || 0);
+    acc.turnAgreeSum += Number(pq.turningPointAgreementPct || 0);
+    acc.turnTimingErrSum += Number(pq.turningTimingErrorBars || 0);
+    acc.segSimSum += Number(pq.segmentDirectionSimilarityPct || 0);
+    acc.pbDepthErrSum += Number(pq.pullbackDepthErrorAtr || 0);
+    acc.pbDurErrSum += Number(pq.pullbackDurationErrorBars || 0);
+    acc.ampRatioSum += Number(pq.amplitudeRatio || 0);
+    acc.fpEventRateSum += Number(pq.falsePositiveEventRate || 0);
+    acc.missedEventRateSum += Number(pq.missedEventRate || 0);
+    if (pq.behaviorMatch) acc.behaviorMatchCount++;
+    if (winMetric) {
+      acc.windowRecords.push({
+        regime: regimeTag,
+        mae: winMetric.maeMean,
+        wis: winMetric.wisMean,
+        cov80: winMetric.in80Frac * 100,
+        dirOk: winMetric.dirOk,
+        pathQualityScore: Number(pq.pathQualityScore || 0),
+      });
+    }
   };
 
   getAcc('ensemble', 'Calibrated Ensemble (V2)', 'ENSEMBLE', false);
@@ -521,6 +565,7 @@ export function evaluateWalkForward(candles, registry, options = {}) {
     const slice = clean.slice(0, origin + 1);
     const feats = extractForecastFeatures(slice, 260);
     if (!feats) continue;
+    const windowRegime = String(feats.regime || 'RANGING').toUpperCase();
 
     const { traj: naiveTraj } = buildNaiveLogNormalTraj(feats.lastClose, feats.logReturns, horizon);
     const naiveWin = scoreWindow(clean, origin, naiveTraj, horizon);
@@ -536,6 +581,7 @@ export function evaluateWalkForward(candles, registry, options = {}) {
     naiveAcc.windows++;
     naiveAcc.wisSeries.push(naiveWin.wisMean);
     naiveAcc.errSeries.push(clean[origin + horizon].close - naiveTraj[horizon - 1].q50);
+    recordPathQualityToAcc(naiveAcc, naiveWin.pathQuality, windowRegime, naiveWin);
 
     const { ensTraj, outputs } = runEnsembleAtOrigin(slice, feats);
     const calEnsTraj = ensTraj.map((q, h) =>
@@ -554,6 +600,7 @@ export function evaluateWalkForward(candles, registry, options = {}) {
     ensAcc.windows++;
     ensAcc.wisSeries.push(ensWin.wisMean);
     ensAcc.errSeries.push(clean[origin + horizon].close - calEnsTraj[horizon - 1].q50);
+    recordPathQualityToAcc(ensAcc, ensWin.pathQuality, windowRegime, ensWin);
 
     for (const { plugin } of valModels) {
       if (plugin.id === 'naive_persistence') continue;
@@ -575,6 +622,7 @@ export function evaluateWalkForward(candles, registry, options = {}) {
       acc.windows++;
       acc.wisSeries.push(w.wisMean);
       acc.errSeries.push(clean[origin + horizon].close - calTraj[horizon - 1].q50);
+      recordPathQualityToAcc(acc, w.pathQuality, windowRegime, w);
     }
 
     if (includeAux) {
@@ -600,6 +648,7 @@ export function evaluateWalkForward(candles, registry, options = {}) {
         acc.windows++;
         acc.wisSeries.push(w.wisMean);
         acc.errSeries.push(clean[origin + horizon].close - calTraj[horizon - 1].q50);
+        recordPathQualityToAcc(acc, w.pathQuality, windowRegime, w);
       }
     }
   }
@@ -608,6 +657,90 @@ export function evaluateWalkForward(candles, registry, options = {}) {
   const naiveAcc = accs.get('naive_persistence');
   const naiveMae = Math.max(1e-9, naiveAcc.maeSum / Math.max(1, naiveAcc.windows));
   const naiveWis = Math.max(1e-9, naiveAcc.wisSum / Math.max(1, naiveAcc.windows));
+
+  const buildRegimeAndHoldoutDiagnostics = (acc, naiveRefAcc) => {
+    const recs = Array.isArray(acc.windowRecords) ? acc.windowRecords : [];
+    const naiveRecs = Array.isArray(naiveRefAcc?.windowRecords) ? naiveRefAcc.windowRecords : [];
+    const regimeMap = new Map();
+    for (let i = 0; i < recs.length; i++) {
+      const r = recs[i];
+      const nr = naiveRecs[i];
+      const key = r.regime || 'UNKNOWN';
+      if (!regimeMap.has(key)) {
+        regimeMap.set(key, {
+          regime: key,
+          windows: 0,
+          maeSum: 0,
+          naiveMaeSum: 0,
+          wisSum: 0,
+          naiveWisSum: 0,
+          cov80Sum: 0,
+          pqSum: 0,
+        });
+      }
+      const g = regimeMap.get(key);
+      g.windows++;
+      g.maeSum += r.mae;
+      g.naiveMaeSum += nr ? nr.mae : r.mae;
+      g.wisSum += r.wis;
+      g.naiveWisSum += nr ? nr.wis : r.wis;
+      g.cov80Sum += r.cov80;
+      g.pqSum += r.pathQualityScore;
+    }
+
+    const regimeBreakdown = Array.from(regimeMap.values()).map((g) => {
+      const nMae = Math.max(1e-9, g.naiveMaeSum / Math.max(1, g.windows));
+      const nWis = Math.max(1e-9, g.naiveWisSum / Math.max(1, g.windows));
+      const mMae = g.maeSum / g.windows;
+      const mWis = g.wisSum / g.windows;
+      return {
+        regime: g.regime,
+        windows: g.windows,
+        windowCount: g.windows,
+        rMae: Number((mMae / nMae).toFixed(4)),
+        wisRatio: Number((mWis / nWis).toFixed(4)),
+        coverage80Pct: Number((g.cov80Sum / g.windows).toFixed(1)),
+        pathQualityScore: Number((g.pqSum / g.windows).toFixed(1)),
+      };
+    });
+
+    const worstRegimeSubgroup =
+      regimeBreakdown.length > 0
+        ? regimeBreakdown.slice().sort((a, b) => b.rMae - a.rMae || a.pathQualityScore - b.pathQualityScore)[0]
+        : null;
+
+    // Final Untouched Holdout slice (last 20% of outer OOS windows, minimum 1 window when k > 0)
+    const holdoutCount = recs.length > 0 ? Math.max(1, Math.ceil(recs.length * 0.2)) : 0;
+    const holdoutSlice = holdoutCount > 0 ? recs.slice(-holdoutCount) : [];
+    const naiveHoldoutSlice = holdoutCount > 0 ? naiveRecs.slice(-holdoutCount) : [];
+    let finalHoldoutSummary = null;
+    if (holdoutSlice.length > 0) {
+      const hMae = holdoutSlice.reduce((s, x) => s + x.mae, 0) / holdoutSlice.length;
+      const hNaiveMae = Math.max(
+        1e-9,
+        naiveHoldoutSlice.reduce((s, x) => s + x.mae, 0) / Math.max(1, naiveHoldoutSlice.length)
+      );
+      const hWis = holdoutSlice.reduce((s, x) => s + x.wis, 0) / holdoutSlice.length;
+      const hNaiveWis = Math.max(
+        1e-9,
+        naiveHoldoutSlice.reduce((s, x) => s + x.wis, 0) / Math.max(1, naiveHoldoutSlice.length)
+      );
+      const hCov80 = holdoutSlice.reduce((s, x) => s + x.cov80, 0) / holdoutSlice.length;
+      const hPq = holdoutSlice.reduce((s, x) => s + x.pathQualityScore, 0) / holdoutSlice.length;
+      finalHoldoutSummary = {
+        holdoutWindows: holdoutSlice.length,
+        windowCount: holdoutSlice.length,
+        rMae: Number((hMae / hNaiveMae).toFixed(4)),
+        wis: Number(hWis.toFixed(4)),
+        wisRatio: Number((hWis / hNaiveWis).toFixed(4)),
+        coverage80Pct: Number(hCov80.toFixed(1)),
+        pathQualityScore: Number(hPq.toFixed(1)),
+        beatsBaselineInHoldout: hMae < hNaiveMae && hWis < hNaiveWis,
+      };
+    }
+
+    return { regimeBreakdown, worstRegimeSubgroup, finalHoldoutSummary };
+  };
 
   const finalizeAcc = (acc) => {
     const k = acc.windows;
@@ -624,6 +757,7 @@ export function evaluateWalkForward(candles, registry, options = {}) {
     const boot = dSeries.length >= 5 && options.skipBootstrap !== true
       ? centeredStationaryBlockBootstrap(dSeries, Number(options.bootstrapB || 1000), 4, 133742)
       : { pValue: 1 };
+    const subDiag = buildRegimeAndHoldoutDiagnostics(acc, naiveAcc);
 
     return {
       modelId: acc.modelId,
@@ -650,6 +784,19 @@ export function evaluateWalkForward(candles, registry, options = {}) {
       dmPValue: Number(dm.pValue.toFixed(5)),
       bootPValue: Number(boot.pValue.toFixed(5)),
       nEff: computeBartlettEffectiveSampleSize(acc.errSeries, horizon),
+      pathQualityScore: ok ? Number((acc.pqScoreSum / k).toFixed(1)) : 0,
+      turningPointAgreementPct: ok ? Number((acc.turnAgreeSum / k).toFixed(1)) : 0,
+      turningTimingErrorBars: ok ? Number((acc.turnTimingErrSum / k).toFixed(2)) : 0,
+      segmentDirectionSimilarityPct: ok ? Number((acc.segSimSum / k).toFixed(1)) : 0,
+      pullbackDepthErrorAtr: ok ? Number((acc.pbDepthErrSum / k).toFixed(3)) : 0,
+      pullbackDurationErrorBars: ok ? Number((acc.pbDurErrSum / k).toFixed(2)) : 0,
+      amplitudeRatio: ok ? Number((acc.ampRatioSum / k).toFixed(3)) : 0,
+      behaviorMatchRatePct: ok ? Number(((acc.behaviorMatchCount / k) * 100).toFixed(1)) : 0,
+      falsePositiveEventRate: ok ? Number((acc.fpEventRateSum / k).toFixed(4)) : 0,
+      missedEventRate: ok ? Number((acc.missedEventRateSum / k).toFixed(4)) : 0,
+      regimeBreakdown: subDiag.regimeBreakdown,
+      worstRegimeSubgroup: subDiag.worstRegimeSubgroup,
+      finalHoldoutSummary: subDiag.finalHoldoutSummary,
     };
   };
 
@@ -757,6 +904,23 @@ export function evaluateWalkForward(candles, registry, options = {}) {
     modelBenchmarks,
     maeImprovementVsNaivePct: Number(((1 - relativeMaeVsNaive) * 100).toFixed(2)),
     skillScoreVsNaive: Number((1 - wisModel / Math.max(1e-9, wisNaiveDistributional)).toFixed(4)),
+    pathQualitySummary: {
+      modelId: evalRef.modelId,
+      pathQualityScore: evalRef.pathQualityScore,
+      naivePathQualityScore: naiveMetrics.pathQualityScore,
+      turningPointAgreementPct: evalRef.turningPointAgreementPct,
+      turningTimingErrorBars: evalRef.turningTimingErrorBars,
+      segmentDirectionSimilarityPct: evalRef.segmentDirectionSimilarityPct,
+      pullbackDepthErrorAtr: evalRef.pullbackDepthErrorAtr,
+      pullbackDurationErrorBars: evalRef.pullbackDurationErrorBars,
+      amplitudeRatio: evalRef.amplitudeRatio,
+      behaviorMatchRatePct: evalRef.behaviorMatchRatePct,
+      falsePositiveEventRate: evalRef.falsePositiveEventRate,
+      missedEventRate: evalRef.missedEventRate,
+    },
+    regimeBreakdown: evalRef.regimeBreakdown || [],
+    worstRegimeSubgroup: evalRef.worstRegimeSubgroup || null,
+    finalHoldoutSummary: evalRef.finalHoldoutSummary || null,
     conformalCalibration,
     frozenWeights,
     splits: {
@@ -771,7 +935,7 @@ export function evaluateWalkForward(candles, registry, options = {}) {
 /**
  * Rev 2.1 Honest OOS Selection Gate (Zero !isCalibratedInterval exemption).
  */
-export function selectOosChartWinner(walkForward, modelTrajectories = [], requestedModelId = 'AUTO') {
+export function selectOosChartWinner(walkForward, modelTrajectories = [], requestedModelId = 'AUTO', options = {}) {
   const req = String(requestedModelId || 'AUTO').trim();
   const successTrajById = new Map();
   for (const t of modelTrajectories) {
@@ -833,6 +997,19 @@ export function selectOosChartWinner(walkForward, modelTrajectories = [], reques
       winnerModelId: win.modelId,
       reason: `OOS winner ${win.modelName} passed 6-gate V2.1 check (rMAE=${win.rMae.toFixed(3)}, WIS=${win.wis.toFixed(4)} < ${naiveWis.toFixed(4)}, p_DM=${win.dmPValue}, Cov80=${win.coverage80Pct.toFixed(1)}%).`,
     };
+  }
+
+  if (options?.allowAutoRelative !== false) {
+    const relativeMatch = resolveRelativeCandidate(walkForward, modelTrajectories);
+    if (relativeMatch?.candidate) {
+      const rel = relativeMatch.candidate;
+      return {
+        selectionMode: SELECTION_MODE.AUTO_RELATIVE_PROVISIONAL,
+        selectedModelId: rel.modelId,
+        winnerModelId: null,
+        reason: `Relative candidate ${rel.modelName || rel.modelId} improved over Naive (rMAE=${Number(rel.rMae).toFixed(3)}, WIS=${Number(rel.wis).toFixed(4)} < ${naiveWis.toFixed(4)}), but statistical edge is NOT strictly proven.`,
+      };
+    }
   }
 
   return {

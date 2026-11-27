@@ -93,8 +93,58 @@ export const EXECUTION_RUNTIME = Object.freeze({
   PYTHON_WORKER: 'PYTHON_WORKER',
 });
 
+export const DATA_READINESS_STATE = Object.freeze({
+  READY: 'READY',
+  INSUFFICIENT_HISTORY: 'INSUFFICIENT_HISTORY',
+  STALE_DATA: 'STALE_DATA',
+  DATA_GAP: 'DATA_GAP',
+  DATA_NOT_READY: 'DATA_NOT_READY',
+});
+
+export const PATH_SEMANTICS = Object.freeze({
+  MARGINAL_MEDIAN: 'MARGINAL_MEDIAN',
+  JOINT_TRAJECTORY: 'JOINT_TRAJECTORY',
+});
+
+export const EDGE_STATUS = Object.freeze({
+  PROVEN: 'PROVEN',
+  NOT_PROVEN: 'NOT_PROVEN',
+  UNKNOWN: 'UNKNOWN',
+});
+
+export const DECISION_CONFIDENCE = Object.freeze({
+  LOW: 'LOW',
+  MEDIUM: 'MEDIUM',
+  HIGH: 'HIGH',
+});
+
+export const MODEL_GOVERNANCE_TIER = Object.freeze({
+  BASELINE: 'BASELINE',
+  PRIMARY_STRUCTURAL: 'PRIMARY_STRUCTURAL',
+  STATISTICAL: 'STATISTICAL',
+  ENSEMBLE: 'ENSEMBLE',
+  EXPERIMENTAL_APPROX: 'EXPERIMENTAL_APPROX',
+  EXTERNAL_SHELVED: 'EXTERNAL_SHELVED',
+});
+
+export const MODEL_LIFECYCLE_STATE = Object.freeze({
+  EXPERIMENTAL: 'EXPERIMENTAL',
+  CANDIDATE: 'CANDIDATE',
+  ACCEPTED: 'ACCEPTED',
+  DEGRADED: 'DEGRADED',
+  SUSPENDED: 'SUSPENDED',
+  RETIRED: 'RETIRED',
+});
+
+export const PREFERRED_STRUCTURAL_MODELS = Object.freeze([
+  'empirical_analogs',
+  'structural_wave_js',
+  'smc_prediction_js',
+]);
+
 export const SELECTION_MODE = Object.freeze({
   AUTO_OOS_BEST: 'AUTO_OOS_BEST',
+  AUTO_RELATIVE_PROVISIONAL: 'AUTO_RELATIVE_PROVISIONAL',
   MANUAL_OVERRIDE: 'MANUAL_OVERRIDE',
   NO_CLEAR_WINNER_BASELINE: 'NO_CLEAR_WINNER_BASELINE',
   INSUFFICIENT_EVIDENCE_BASELINE: 'INSUFFICIENT_EVIDENCE_BASELINE',
@@ -316,7 +366,7 @@ export function validateDataReadiness(candles, minBarsOrOptions = {}) {
   const nOpMin = Number.isFinite(Number(opts.minBars)) ? Math.max(2, Number(opts.minBars)) : req.nOpMin;
   const timeframe = String(opts.timeframe || 'M15').toUpperCase();
   const symbolCode = String(opts.symbolCode || 'XAUUSD').toUpperCase();
-  const providerId = String(opts.providerId || 'twelvedata');
+  const providerId = String(opts.providerId || 'tvdatafeed');
   const calendarSpec = opts.calendarSpec || resolveCalendarSpec(symbolCode, providerId);
   const anchorNowMs = opts.anchorNowMs !== undefined && opts.anchorNowMs !== null ? Number(opts.anchorNowMs) : Date.now();
 
@@ -326,9 +376,11 @@ export function validateDataReadiness(candles, minBarsOrOptions = {}) {
   if (!Array.isArray(candles) || candles.length === 0) {
     return {
       ready: false,
+      readinessState: DATA_READINESS_STATE.DATA_NOT_READY,
       statisticallySufficient: false,
       barCount: 0,
       validBarCount: 0,
+      missingBarsCount: nOpMin,
       nOpMin,
       nStatMin: req.nStatMin,
       minBars: nOpMin,
@@ -337,6 +389,8 @@ export function validateDataReadiness(candles, minBarsOrOptions = {}) {
       calendarId: calendarSpec.calendarId,
       calendarVersion: calendarSpec.calendarVersion || CALENDAR_REGISTRY_VERSION,
       disallowedGapCount: 0,
+      disallowedMissingBars: 0,
+      staleTelemetry: { isStale: false, ageMs: 0, thresholdMs: 0 },
       cleanCandles: [],
     };
   }
@@ -394,12 +448,27 @@ export function validateDataReadiness(candles, minBarsOrOptions = {}) {
     issues.push(`NON_MONOTONIC_OR_DUPLICATE_TIMESTAMP: Detected ${nonMonotonic} out-of-order or duplicate timestamps`);
   }
 
-  if (cleanCandles.length > 0 && opts.checkClosedBar !== false) {
+  let staleTelemetry = { isStale: false, ageMs: 0, thresholdMs: 0 };
+  if (cleanCandles.length > 0) {
     const lastMs = cleanCandles[cleanCandles.length - 1].openTimeUtcMs;
     const closeMs = getCandleCloseMsForCalendar(lastMs, timeframe, calendarSpec);
-    if (closeMs > anchorNowMs) {
+    if (opts.checkClosedBar !== false && closeMs > anchorNowMs) {
       errorCodes.push('UNCLOSED_BAR_DETECTED');
       issues.push(`UNCLOSED_BAR_DETECTED: Last bar closes at ${closeMs} > anchorNowMs ${anchorNowMs}`);
+    }
+    const barDurationMs = Math.max(60_000, closeMs - lastMs);
+    const maxStaleMult = Number.isFinite(Number(opts.maxStaleBars))
+      ? Math.max(2, Number(opts.maxStaleBars))
+      : calendarSpec.calendarId === 'CRYPTO_24_7'
+        ? 4
+        : 96; // Allows weekend closure (~48-72h) for FX/Equities/Commodities without false stale alerts
+    const thresholdMs = barDurationMs * maxStaleMult;
+    const ageMs = Math.max(0, anchorNowMs - closeMs);
+    const isStale = Number.isFinite(ageMs) && ageMs > thresholdMs;
+    staleTelemetry = { isStale, ageMs, thresholdMs, lastCloseMs: closeMs };
+    if (opts.enforceStaleData === true && isStale) {
+      errorCodes.push('STALE_DATA');
+      issues.push(`STALE_DATA: Last closed bar is stale (${Math.round(ageMs / 60000)}m old > ${Math.round(thresholdMs / 60000)}m limit)`);
     }
   }
 
@@ -412,6 +481,7 @@ export function validateDataReadiness(candles, minBarsOrOptions = {}) {
     }
   }
 
+  const missingBarsCount = Math.max(0, nOpMin - cleanCandles.length);
   if (cleanCandles.length < nOpMin) {
     errorCodes.push('BELOW_OPERATIONAL_MIN_BARS');
     issues.push(`Need at least ${nOpMin} clean closed bars for H=${horizonBars} (found ${cleanCandles.length})`);
@@ -420,11 +490,33 @@ export function validateDataReadiness(candles, minBarsOrOptions = {}) {
   const ready = errorCodes.length === 0;
   const statisticallySufficient = ready && cleanCandles.length >= req.nStatMin;
 
+  let readinessState = DATA_READINESS_STATE.READY;
+  if (!ready) {
+    if (
+      errorCodes.includes('EMPTY_OR_MISSING') ||
+      errorCodes.includes('OHLC_CORRUPTED') ||
+      errorCodes.includes('NON_MONOTONIC_OR_DUPLICATE_TIMESTAMP') ||
+      errorCodes.includes('UNCLOSED_BAR_DETECTED')
+    ) {
+      readinessState = DATA_READINESS_STATE.DATA_NOT_READY;
+    } else if (errorCodes.includes('STALE_DATA')) {
+      readinessState = DATA_READINESS_STATE.STALE_DATA;
+    } else if (errorCodes.includes('DISALLOWED_MARKET_GAP')) {
+      readinessState = DATA_READINESS_STATE.DATA_GAP;
+    } else if (errorCodes.includes('BELOW_OPERATIONAL_MIN_BARS')) {
+      readinessState = DATA_READINESS_STATE.INSUFFICIENT_HISTORY;
+    } else {
+      readinessState = DATA_READINESS_STATE.DATA_NOT_READY;
+    }
+  }
+
   return {
     ready,
+    readinessState,
     statisticallySufficient,
     barCount: candles.length,
     validBarCount: cleanCandles.length,
+    missingBarsCount,
     nOpMin,
     nStatMin: req.nStatMin,
     minBars: nOpMin,
@@ -434,6 +526,7 @@ export function validateDataReadiness(candles, minBarsOrOptions = {}) {
     calendarVersion: calendarSpec.calendarVersion || CALENDAR_REGISTRY_VERSION,
     disallowedGapCount: gapReport.gapCount,
     disallowedMissingBars: gapReport.totalMissingBars,
+    staleTelemetry,
     cleanCandles,
   };
 }

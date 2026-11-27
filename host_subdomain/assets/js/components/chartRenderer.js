@@ -11,6 +11,7 @@ import {
   isStructuralForecastMatchingTab,
   isPinnedPreviousForecastMatchingTab,
   evaluateOnChartForecastProgress,
+  resolveForecastOriginCandleIndex,
 } from '../core/store.js?v=1.47.41';
 
 function computeCandleCountdownLabel(lastOpenEpochSec, tf, symbolCode = 'XAUUSD') {
@@ -349,11 +350,14 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
   const resolveForecastOriginGlobalIdx = (payload) => {
     const originOpenMs = Number(payload?.series?.origin_open_time_utc_ms || 0);
     if (!(originOpenMs > 0)) return -1;
-    for (let i = candles.length - 1; i >= 0; i--) {
-      const cMs = Number(candles[i].open_time_utc_ms || (candles[i].openTimeSec ? candles[i].openTimeSec * 1000 : 0));
-      if (cMs === originOpenMs) return i;
-    }
-    return -1;
+    const { originIdx } = resolveForecastOriginCandleIndex(
+      candles,
+      originOpenMs,
+      tab.timeframe || 'M15',
+      tab.symbolCode || 'XAUUSD',
+      Boolean(payload?.isLedgerSnapshotReplay)
+    );
+    return originIdx;
   };
 
   const activeForecastPoints = hasValidStructuralForecast ? structuralPoints : chronosPoints;
@@ -402,7 +406,13 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
       ? Math.max(1, Math.min(120, totalFutureBeyondCandles))
       : 0;
 
-  if (hasValidStructuralForecast && offset === 0) {
+  const isForecastOverlappingViewport =
+    offset === 0 ||
+    (activeGlobalOriginIdx >= 0 &&
+      activeGlobalOriginIdx <= endIdx &&
+      activeGlobalOriginIdx + activeHorizonCount >= startIdx);
+
+  if (hasValidStructuralForecast && isForecastOverlappingViewport) {
     for (const modelPath of (tab.structuralForecast.model_paths || []).filter((path) =>
       path.model_id === (isHistoricalAnalogSelected ? 'empirical_analogs' : selectedStructuralModel)
     )) {
@@ -428,7 +438,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
         .sort((a, b) => a.modelId.localeCompare(b.modelId))
     : [];
 
-  if (hasValidStructuralForecast && offset === 0) {
+  if (hasValidStructuralForecast && isForecastOverlappingViewport) {
     for (const trajectory of compareTrajectories) {
       for (const point of trajectory.points) {
         const price = Number(point.q50_median);
@@ -440,7 +450,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  if ((hasValidStructuralForecast || hasValidChronosForecast) && offset === 0) {
+  if ((hasValidStructuralForecast || hasValidChronosForecast) && isForecastOverlappingViewport) {
     const includeBand = hasValidStructuralForecast ? showForecastBand : showChronosBand;
     for (let i = 0; i < activeForecastPoints.length; i++) {
       const fp = activeForecastPoints[i];
@@ -461,7 +471,7 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
     }
   }
 
-  if (pinnedProgressList.length > 0 && offset === 0) {
+  if (pinnedProgressList.length > 0 && isForecastOverlappingViewport) {
     for (const item of pinnedProgressList) {
       for (const fp of item.payload.forecast || []) {
         const q50 = Number(fp.q50_median);
@@ -1821,8 +1831,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
 
           ctx.save();
           // 1. Future Forecast Zone background & vertical anchor divider at origin closed candle
+          const zoneLeftX = Math.max(0, originX);
+          const zoneRightX = Math.min(chartW, lastPt.x + slotW * 0.5);
           ctx.fillStyle = isDark ? hexToRgba(fcColor, 0.04) : hexToRgba(fcColor, 0.032);
-          ctx.fillRect(originX, topPad, Math.max(0, Math.min(chartW, lastPt.x + slotW * 0.5) - originX), chartH);
+          if (zoneRightX > zoneLeftX) {
+            ctx.fillRect(zoneLeftX, topPad, zoneRightX - zoneLeftX, chartH);
+          }
 
           ctx.strokeStyle = hexToRgba(fcColor, 0.55);
           ctx.lineWidth = 1.2;
@@ -1831,6 +1845,12 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           ctx.moveTo(originX, topPad);
           ctx.lineTo(originX, topPad + chartH);
           ctx.stroke();
+          if (activeForecastProgress && activeForecastProgress.elapsedBars > pts.length && lastPt.x >= 0 && lastPt.x <= chartW) {
+            ctx.beginPath();
+            ctx.moveTo(lastPt.x, topPad);
+            ctx.lineTo(lastPt.x, topPad + chartH);
+            ctx.stroke();
+          }
           ctx.setLineDash([]);
 
           // 2. Optional Calibrated Outer Fan (Q10..Q90) & Inner Uncertainty Band (Q25..Q75)
@@ -2064,10 +2084,14 @@ export function renderCandlestickCanvas(canvas, tab, i18n) {
           const analogCount = Number((tab.structuralForecast.model_diagnostics || {}).empirical_analogs?.matched_count || 0);
           const modeTag = activeRenderMode === 'HYBRID' ? 'Hybrid' : activeRenderMode === 'GHOST_CANDLES' ? 'QBars' : 'Fan';
           const coordTag = isCoordinatedLayer ? ' · MTF:Coord' : '';
-          const autoPrefix = tab.structuralForecast.model?.requested_id === 'AUTO' ? 'AUTO → ' : '';
+          const autoPrefix = tab.structuralForecast.isLedgerSnapshotReplay
+            ? `Snapshot #${tab.structuralForecast.ledgerSeq || ''} · `
+            : tab.structuralForecast.model?.requested_id === 'AUTO'
+              ? 'AUTO → '
+              : '';
           const liveCompareSuffix =
             activeForecastProgress && activeForecastProgress.evaluatedBars > 0
-              ? ` · Live +${activeForecastProgress.elapsedBars}b · ${activeForecastProgress.inBandCount}/${activeForecastProgress.evaluatedBars} in-band (${Math.round(activeForecastProgress.hitRatePct || 0)}%)${Number.isFinite(activeForecastProgress.meanErrPct) ? ` · err ${activeForecastProgress.meanErrPct.toFixed(2)}%` : ''}`
+              ? ` · ${tab.structuralForecast.isLedgerSnapshotReplay ? 'Realized' : 'Live'} +${activeForecastProgress.elapsedBars}b · ${activeForecastProgress.inBandCount}/${activeForecastProgress.evaluatedBars} in-band (${Math.round(activeForecastProgress.hitRatePct || 0)}%)${Number.isFinite(activeForecastProgress.meanErrPct) ? ` · err ${activeForecastProgress.meanErrPct.toFixed(2)}%` : ''}`
               : '';
           const badgeTxt = isNativeModelAdapter
             ? `${autoPrefix}${tab.structuralForecast.model?.name || tab.structuralForecast.model?.id || 'Native Model'} (+${pts.length} · ${modeTag}${coordTag} · OOS ${tab.structuralForecast.model?.oos?.status || 'NOT_EVALUATED'} · engine ${tab.structuralForecast.model?.source_engine_status || 'UNASSESSED'})${liveCompareSuffix}`

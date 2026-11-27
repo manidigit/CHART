@@ -11,7 +11,81 @@ import {
   NativeSequenceRecurrentModel,
   NativeQuantileAttentionModel,
 } from './models/advancedNativeModels.js?v=1.47.41';
-import { MODEL_REGISTRY_VERSION, REMOTE_WORKER_STATUS } from './forecastContract.js?v=1.47.41';
+import {
+  MODEL_GOVERNANCE_TIER,
+  MODEL_LIFECYCLE_STATE,
+  MODEL_REGISTRY_VERSION,
+  PREFERRED_STRUCTURAL_MODELS,
+  REMOTE_WORKER_STATUS,
+} from './forecastContract.js?v=1.47.41';
+
+export function resolveModelGovernance(modelId, plugin = null) {
+  const id = String(modelId || '').trim();
+  const isExperimental = Boolean(plugin?.experimentalOnly || plugin?.isApproximation);
+  if (id === 'naive_persistence') {
+    return {
+      governanceTier: MODEL_GOVERNANCE_TIER.BASELINE,
+      lifecycleState: MODEL_LIFECYCLE_STATE.ACCEPTED,
+      experimentalOnly: false,
+      decisionPoolEligible: true,
+      roleLabelEn: 'Mandatory Baseline',
+      roleLabelFa: 'مبنای اجباری (Baseline)',
+    };
+  }
+  if (PREFERRED_STRUCTURAL_MODELS.includes(id)) {
+    return {
+      governanceTier: MODEL_GOVERNANCE_TIER.PRIMARY_STRUCTURAL,
+      lifecycleState: MODEL_LIFECYCLE_STATE.CANDIDATE,
+      experimentalOnly: false,
+      decisionPoolEligible: true,
+      roleLabelEn: 'Primary Structural Path Candidate',
+      roleLabelFa: 'مدل اصلی ساختاریافته',
+    };
+  }
+  if (id === 'ensemble') {
+    return {
+      governanceTier: MODEL_GOVERNANCE_TIER.ENSEMBLE,
+      lifecycleState: MODEL_LIFECYCLE_STATE.CANDIDATE,
+      experimentalOnly: false,
+      decisionPoolEligible: true,
+      roleLabelEn: 'Calibrated Ensemble',
+      roleLabelFa: 'ترکیب کالیبره‌شده (Ensemble)',
+    };
+  }
+  if (id.startsWith('py_') || id.includes('chronos')) {
+    return {
+      governanceTier: MODEL_GOVERNANCE_TIER.EXTERNAL_SHELVED,
+      lifecycleState: MODEL_LIFECYCLE_STATE.SUSPENDED,
+      experimentalOnly: true,
+      decisionPoolEligible: false,
+      roleLabelEn: 'External / Shelved',
+      roleLabelFa: 'خارجی / متوقف‌شده',
+    };
+  }
+  if (
+    isExperimental ||
+    id === 'native_prophet_decomp' ||
+    id === 'native_seq_recurrent_approx' ||
+    id === 'native_quantile_attention_approx'
+  ) {
+    return {
+      governanceTier: MODEL_GOVERNANCE_TIER.EXPERIMENTAL_APPROX,
+      lifecycleState: MODEL_LIFECYCLE_STATE.EXPERIMENTAL,
+      experimentalOnly: true,
+      decisionPoolEligible: false,
+      roleLabelEn: 'Research-Only Approximation',
+      roleLabelFa: 'تجربی / پژوهشی (Approximation)',
+    };
+  }
+  return {
+    governanceTier: plugin?.governanceTier || MODEL_GOVERNANCE_TIER.STATISTICAL,
+    lifecycleState: plugin?.lifecycleState || MODEL_LIFECYCLE_STATE.CANDIDATE,
+    experimentalOnly: false,
+    decisionPoolEligible: true,
+    roleLabelEn: 'Statistical / Probabilistic',
+    roleLabelFa: 'مدل آماری / احتمالاتی',
+  };
+}
 
 export const REMOTE_DL_WORKER_SPEC = Object.freeze({
   id: 'remote_dl_worker',
@@ -90,6 +164,7 @@ export class ForecastModelRegistry {
         weight: Number(plugin.defaultWeight ?? 0.2),
         params: { ...(plugin.defaultParams || {}) },
       };
+      const gov = resolveModelGovernance(plugin.id, plugin);
       return {
         id: plugin.id,
         name: plugin.name,
@@ -101,7 +176,12 @@ export class ForecastModelRegistry {
         enabled: Boolean(cfg.enabled),
         weight: Number(cfg.weight),
         params: { ...cfg.params },
-        experimentalOnly: Boolean(plugin.experimentalOnly || plugin.isApproximation),
+        experimentalOnly: gov.experimentalOnly,
+        governanceTier: gov.governanceTier,
+        lifecycleState: gov.lifecycleState,
+        decisionPoolEligible: gov.decisionPoolEligible,
+        roleLabelEn: gov.roleLabelEn,
+        roleLabelFa: gov.roleLabelFa,
       };
     });
   }
@@ -115,6 +195,13 @@ export class ForecastModelRegistry {
       }
     }
     return items;
+  }
+
+  getDecisionPoolPlugins() {
+    return this.getEnabledPlugins().filter(({ plugin }) => {
+      const gov = resolveModelGovernance(plugin.id, plugin);
+      return gov.decisionPoolEligible && !gov.experimentalOnly;
+    });
   }
 
   setEnabled(id, enabled) {

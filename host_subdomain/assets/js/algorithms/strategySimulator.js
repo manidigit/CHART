@@ -13,6 +13,11 @@ import {
   runClassicalStrategyBacktest,
   compareAllClassicalStrategies,
 } from '../strategy/signalBacktester.js?v=1.47.41';
+import {
+  FORECAST_STRATEGY_BRIDGE_VERSION,
+  BRIDGE_REJECTION_CODE,
+  evaluateForecastStrategyBridge,
+} from '../strategy/forecastStrategyBridge.js?v=1.47.41';
 
 /**
  * Phase 6 — Offline Trading Strategy Simulator (Web ES Module)
@@ -32,11 +37,14 @@ export {
   CLASSICAL_STRATEGY_REGISTRY,
   SignalEngine,
   SignalBacktester,
+  FORECAST_STRATEGY_BRIDGE_VERSION,
+  BRIDGE_REJECTION_CODE,
   enforceMinimumRequiredRR,
   evaluateRiskRewardTradePlan,
   calculateInstrumentPositionSizing,
   runClassicalStrategyBacktest,
   compareAllClassicalStrategies,
+  evaluateForecastStrategyBridge,
 };
 
 export const STRATEGY_PRESETS = Object.freeze([
